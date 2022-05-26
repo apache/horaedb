@@ -40,10 +40,11 @@ jobs:
       #   uses: actions/cache@v2
       #   with:
       #     path: /github/home
-      # - name: Setup Rust toolchain
-      #   uses: ./.github/actions/setup-builder
-      #   with:
-      #     rust-version: ${{ matrix.rust }}
+      - name: Setup Build Environment
+        run: |
+          apt update
+          apt install --yes gcc g++ libssl-dev pkg-config cmake 
+          rm -rf /var/lib/apt/lists/*
       - name: Build workspace in debug mode
         run: |
           make build
