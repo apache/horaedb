@@ -20,10 +20,10 @@ const CLUSTER_NAME: &str = "CLUSTER_NAME";
 const ENABLE_META: &str = "ENABLE_META";
 
 fn fetch_version() -> String {
-    let build_version = env!("VERGEN_BUILD_SEMVER");
-    let git_branch = env!("VERGEN_GIT_BRANCH");
-    let git_commit_id = env!("VERGEN_GIT_SHA_SHORT");
-    let build_time = env!("VERGEN_BUILD_TIMESTAMP");
+    let build_version = option_env!("VERGEN_BUILD_SEMVER").unwrap_or("NONE");
+    let git_branch = option_env!("VERGEN_GIT_BRANCH").unwrap_or("NONE");
+    let git_commit_id = option_env!("VERGEN_GIT_SHA_SHORT").unwrap_or("NONE");
+    let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("NONE");
 
     format!(
         "\nCeresDB Version: {}\nGit branch: {}\nGit commit: {}\nBuild: {}",
