@@ -22,5 +22,5 @@ fn main() {
         }
     }
 
-    vergen(config).expect("Vergen failed to generate config");
+    let _ = vergen(config);
 }
