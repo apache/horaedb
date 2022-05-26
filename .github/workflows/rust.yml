@@ -1,0 +1,56 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+name: Rust
+
+on:
+  # always trigger
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # build the library, a compilation step used by multiple steps below
+  linux-build-lib:
+    name: Build Libraries on AMD64 Rust ${{ matrix.rust }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [1.59.0]
+    container:
+      image: rust:${{ matrix.rust }}-slim-bullseye
+      env:
+        # Disable full debug symbol generation to speed up CI build and keep memory down
+        # "1" means line tables only, which is useful for panic tracebacks.
+        RUSTFLAGS: "-C debuginfo=1"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Cargo
+        uses: actions/cache@v2
+        with:
+          # these represent dependencies downloaded by cargo
+          # and thus do not depend on the OS, arch nor rust version.
+          path: /github/home/.cargo
+          key: cargo-cache-
+      - name: Cache Rust dependencies
+        uses: actions/cache@v2
+        with:
+          # these represent compiled steps of both dependencies and arrow
+          # and thus are specific for a particular OS, arch and rust version.
+          path: /github/home/target
+          key: ${{ runner.os }}-target-cache-${{ matrix.rust }}-
+      # - name: Cache Build Dependencies
+      #   uses: actions/cache@v2
+      #   with:
+      #     path: /github/home
+      - name: Setup Rust toolchain
+        uses: ./.github/actions/setup-builder
+        with:
+          rust-version: ${{ matrix.rust }}
+      - name: Build workspace in debug mode
+        run: |
+          make build
+        env:
+          CARGO_HOME: "/github/home/.cargo"
+          CARGO_TARGET_DIR: "/github/home/target/debug"
