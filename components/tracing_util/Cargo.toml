@@ -1,0 +1,13 @@
+[package]
+name = "tracing_util"
+version = "0.1.0"
+authors = ["Databend Authors <opensource@datafuselabs.com>"]
+license = "Apache-2.0"
+publish = false
+edition = "2018"
+
+[dependencies] # In alphabetical order
+lazy_static = "1.4.0"
+tracing = "0.1.26"
+tracing-appender = "0.1.2"
+tracing-subscriber = "0.2.20"

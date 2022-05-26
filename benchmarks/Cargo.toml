@@ -1,0 +1,34 @@
+[package]
+name = "benchmarks"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arena = { path = "../components/arena" }
+arrow2 = { version = "0.7.0", features = [ "io_parquet" ] }
+arrow_deps = { path = "../arrow_deps" }
+analytic_engine = { path = "../analytic_engine" }
+clap = "2.0"
+common_types = { path = "../common_types" }
+common_util = { path = "../common_util" }
+env_logger = "0.6"
+futures = "0.3"
+log = "0.4"
+object_store = { path = "../components/object_store" }
+parquet = { path = "../components/parquet"}
+serde = "1.0"
+serde_derive = "1.0"
+table_engine = { path = "../table_engine" }
+tokio = { version = "1.0", features = ["sync"] }
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "bench"
+harness = false
+
+[[bin]]
+name = "sst-tools"

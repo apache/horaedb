@@ -1,0 +1,21 @@
+[package]
+name = "cluster"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+analytic_engine = { path = "../analytic_engine" }
+async-trait = "0.1.41"
+catalog = { path = "../catalog" }
+common_types = { path = "../common_types" }
+common_util = { path = "../common_util" }
+log = "0.4"
+meta_client_v2 = { path = "../meta_client_v2" }
+rust-fsm = "0.6.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0.60"
+snafu = { version ="0.6.10", features = ["backtraces"]}
+tokio = { version = "1.0", features = ["full"] }

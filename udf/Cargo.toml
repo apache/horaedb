@@ -1,0 +1,16 @@
+[package]
+name = "udf"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrow_deps = { path = "../arrow_deps" }
+base64 = "0.13"
+chrono = "0.4"
+common_types = { path = "../common_types" }
+common_util = { path = "../common_util" }
+hyperloglog = { path = "../components/rust-hyperloglog" }
+smallvec = "1.6"
+snafu = { version ="0.6.10", features = ["backtraces"]}

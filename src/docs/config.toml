@@ -1,0 +1,27 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+bind_addr = "0.0.0.0"
+http_port = 5000
+grpc_port = 8831
+log_level = "debug"
+
+[analytic]
+data_path = "/tmp/ceresdbx/"
+
+[analytic.table_opts]
+arena_block_size = 128
+
+[[meta_client.cluster_view.shards]]
+shard_id = 0
+[[meta_client.cluster_view.shards.nodes]]
+addr = '127.0.0.1'
+port = 38082
+
+[[meta_client.cluster_view.shards]]
+shard_id = 1
+[[meta_client.cluster_view.shards.nodes]]
+addr = '127.0.0.1'
+port = 48082
+[[meta_client.cluster_view.shards.nodes]]
+addr = '127.0.0.1'
+port = 58082

@@ -1,0 +1,50 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+[sst_bench]
+store_path = "/path/to/data/1/1"
+sst_file_name = "37.sst"
+runtime_thread_num = 1
+bench_measurement_time = "30s"
+bench_sample_size = 30
+max_projections = 5
+read_batch_row_num = 500
+reverse = false
+
+[sst_bench.predicate]
+# start_time_ms = 0
+start_time_ms = 1632985200000
+# end_time_ms = 0
+end_time_ms = 1632985800000
+
+[merge_sst_bench]
+store_path = "/path/to/data"
+space_id = 1
+table_id = 1
+sst_file_ids = [ 34, 37 ]
+runtime_thread_num = 1
+bench_measurement_time = "30s"
+bench_sample_size = 30
+max_projections = 5
+read_batch_row_num = 500
+
+[merge_sst_bench.predicate]
+start_time_ms = 0
+# start_time_ms = 1632985200000
+end_time_ms = 0
+# end_time_ms = 1632985800000
+
+[scan_memtable_bench]
+store_path = "/path/to/data/1/1"
+sst_file_name = "37.sst"
+runtime_thread_num = 1
+max_projections = 5
+arena_block_size = "64M"
+
+[merge_memtable_bench]
+store_path = "/path/to/data"
+space_id = 1
+table_id = 1
+sst_file_ids = [ 37 ]
+runtime_thread_num = 1
+max_projections = 5
+arena_block_size = "64M"

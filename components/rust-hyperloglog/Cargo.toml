@@ -1,0 +1,20 @@
+[package]
+name = "hyperloglog"
+version = "1.0.0"
+authors = ["Frank Denis <github@pureftpd.org>"]
+description = "Hyperloglog implementation in Rust"
+license = "ISC"
+homepage = "https://github.com/jedisct1/rust-hyperloglog"
+repository = "https://github.com/jedisct1/rust-hyperloglog"
+edition = "2018"
+
+[lib]
+name = "hyperloglog"
+path = "src/hyperloglog/lib.rs"
+
+[dependencies]
+bytecount = "0.6"
+bytes = { path = "../bytes" }
+rand = "0.8.0"
+siphasher = "0.3"
+snafu = { version ="0.6.10", features = ["backtraces"]}

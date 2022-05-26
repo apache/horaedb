@@ -1,0 +1,24 @@
+[package]
+name = "wal"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.41"
+common_util = {path = "../common_util"}
+common_types = {path = "../common_types"}
+log = "0.4"
+snafu = { version ="0.6.10", features = ["backtraces"] }
+tokio = { version = "1.0", features = ["sync"] }
+
+[dev-dependencies]
+tempfile = "3.1.0"
+futures = { version = "0.3", features = ["async-await"] }
+
+[dependencies.rocksdb]
+git = "https://github.com/tikv/rust-rocksdb.git"
+branch = "tikv-5.2"
+features = ["portable"]

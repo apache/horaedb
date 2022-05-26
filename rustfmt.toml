@@ -1,0 +1,14 @@
+# https://github.com/rust-lang/rustfmt/blob/master/Configurations.md
+
+# Break comments to fit on the line
+wrap_comments = true
+# Merge multiple imports into a single nested import.
+imports_granularity = "Crate"
+# Format code snippet included in doc comments.
+format_code_in_doc_comments = true
+# Reorder impl items. type and const are put first, then macros and methods.
+reorder_impl_items = true
+# Discard existing import groups, and create three groups for std, external crates, crates
+group_imports = "StdExternalCrate"
+
+license_template_path = "etc/license.template"

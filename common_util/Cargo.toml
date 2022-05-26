@@ -1,0 +1,44 @@
+[package]
+name = "common_util"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+test = ["env_logger"]
+
+[dependencies]
+# In alphabetical order
+backtrace = "0.3.9"
+common_types = { path = "../common_types", features = ["test"] }
+chrono = "0.4"
+crossbeam-utils = "0.8"
+env_logger = { version = "0.6", optional = true }
+lazy_static = "1.4.0"
+libc = "0.2"
+log = "0.4"
+logger = { path = "../components/logger"}
+snafu = { version ="0.6.10", features = ["backtraces"]}
+serde = {version = "1.0.81", features = ["derive"]}
+serde_derive = "1.0.81"
+pin-project-lite = "0.2"
+prometheus = "0.12"
+proto = { path = "../proto" }
+time = "0.1"
+tokio = { version = "1.15", features = ["full"] }
+toml = "0.5"
+
+[dev-dependencies]
+env_logger = "0.6"
+gag = "1.0"
+nix = "0.19"
+slog = "2.7"
+tempfile = "3.1.0"
+tokio-test = "0.4.2"
+
+[dev-dependencies.slog-global]
+version = "0.1"
+git = "https://github.com/breezewish/slog-global.git"
+rev = "0e23a5baff302a9d7bccd85f8f31e43339c2f2c1"

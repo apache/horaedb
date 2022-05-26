@@ -1,0 +1,21 @@
+[package]
+name = "logger"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4"
+grpcio = { path = "../../grpcio" }
+log = "0.4"
+slog = "2.7"
+slog-async = "2.6"
+slog-term = "2.8"
+slog_derive = "0.2"
+
+[dependencies.slog-global]
+version = "0.1"
+git = "https://github.com/breeswish/slog-global.git"
+rev = "0e23a5baff302a9d7bccd85f8f31e43339c2f2c1"

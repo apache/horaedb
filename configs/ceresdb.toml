@@ -1,0 +1,23 @@
+bind_addr = "0.0.0.0"
+http_port = ${HTTP_PORT}
+grpc_port = ${GRPC_PORT}
+log_level = "info"
+
+[analytic]
+data_path = "${DATA_PATH}"
+
+[[meta_client.cluster_view.schema_shards]]
+schema = 'public'
+auto_create_tables = true
+
+[[meta_client.cluster_view.schema_shards.shard_views]]
+shard_id = 0
+
+[meta_client.cluster_view.schema_shards.shard_views.node]
+addr = "${NODE_ADDR}"
+port = ${GRPC_PORT}
+
+[[route_rules.prefix_rules]]
+schema = 'public'
+prefix = 'special_prefix'
+shard = 0

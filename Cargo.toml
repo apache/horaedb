@@ -1,0 +1,74 @@
+[package]
+name = "ceresdbx"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+edition = "2018"
+resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+# In alphabetical order
+members = [
+    "analytic_engine",
+    "arrow_deps",
+    "benchmarks",
+    "catalog",
+    "catalog_impls",
+    "common_types",
+    "common_util",
+    "components/arena",
+    "components/bytes",
+    "components/logger",
+    "components/object_store",
+    "components/parquet",
+    "components/profile",
+    "components/rust-hyperloglog",
+    "components/skiplist",
+    "components/tracing",
+    "components/tracing_util",
+    "components/tracing_examples",
+    "grpcio",
+    "interpreters",
+    "meta_client",
+    "proto",
+    "query_engine",
+    "server",
+    "sql",
+    "system_catalog",
+    "table_engine",
+    "udf",
+    "wal",
+]
+
+[[bin]]
+name = "ceresdb-server"
+
+[dependencies]
+# Workspace dependencies, in alphabetical order
+analytic_engine = { path = "analytic_engine" }
+catalog = { path = "catalog" }
+catalog_impls = { path = "catalog_impls" }
+clap = "2.0"
+common_util = { path = "common_util" }
+log = "0.4"
+logger = { path = "components/logger" }
+query_engine = { path = "query_engine" }
+server = { path = "server" }
+table_engine = { path = "table_engine" }
+tracing_util = { path = "components/tracing_util" }
+udf = { path = "udf" }
+
+# Crates.io dependencies, in alphabetical order
+signal-hook = "0.3"
+
+[build-dependencies]
+vergen = { version = "5", default-features = false, features = ["build", "git"] }
+
+[profile.release]
+debug = true
+opt-level = 2
+overflow-checks = true
+
+[profile.bench]
+debug = true
