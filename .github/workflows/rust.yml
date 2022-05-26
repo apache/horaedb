@@ -26,20 +26,21 @@ jobs:
         RUSTFLAGS: "-C debuginfo=1"
     steps:
       - uses: actions/checkout@v3
-      # - name: Cache Cargo
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: /github/home/.cargo
-      #     key: cargo-cache-
-      # - name: Cache Rust dependencies
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: /github/home/target
-      #     key: ${{ runner.os }}-target-cache-${{ matrix.rust }}-
-      # - name: Cache Build Dependencies
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: /github/home
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: /github/home/.cargo
+          key: cargo-cache-
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: /github/home/target
+          key: ${{ runner.os }}-target-cache-${{ matrix.rust }}-
+      - name: Cache Build Dependencies
+        uses: actions/cache@v3
+        with:
+          path: /github/home
+          key: ${{ runner.os }}-toolchain-cache-
       - name: Setup Build Environment
         run: |
           apt update
