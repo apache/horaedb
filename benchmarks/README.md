@@ -9,7 +9,7 @@ todo
 A config template can be found in `config/bench.toml`.
 
 ## Run benchmarks
-In root directory of `ceresdbx` (not this directory `ceresdbx/benchmarks`), run the following command:
+In root directory of `ceresdb` (not this directory `ceresdb/benchmarks`), run the following command:
 ```bash
 ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench -p benchmarks
 ```

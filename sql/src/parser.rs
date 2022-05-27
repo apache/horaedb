@@ -459,12 +459,12 @@ impl<'a> Parser<'a> {
         {
             Ok(Some(ColumnOption::Unique { is_primary: true }))
         } else if self.consume_token(TAG) {
-            // Support TAG for ceresdbx
+            // Support TAG for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(TAG),
             ])))
         } else if self.consume_token(UNSIGN) {
-            // Support unsign for ceresdbx
+            // Support unsign for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(UNSIGN),
             ])))

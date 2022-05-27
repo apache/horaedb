@@ -6,7 +6,7 @@
 
 use std::env;
 
-use ceresdbx::setup;
+use ceresdb::setup;
 use clap::{App, Arg};
 use common_util::{panic, toml};
 use log::info;

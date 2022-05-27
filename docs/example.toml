@@ -5,7 +5,7 @@ log_level = "info"
 enable_cluster = true
 
 [analytic]
-data_path = "/tmp/ceresdbx"
+data_path = "/tmp/ceresdb"
 sst_data_cache_cap = 10000
 sst_meta_cache_cap = 10000
 

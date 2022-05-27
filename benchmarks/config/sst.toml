@@ -2,32 +2,29 @@
 
 runtime_thread_num = 4
 
- [rebuild_sst]
- store_path = "/Users/chunshao.rcs/Desktop/work/gitlab/ceresdb/neo/ceresdb/ceresdbx/benchmarks"
- input_file_name = "898.sst"
- # read_batch_row_num = 500
- # read_batch_row_num = 4096
-  read_batch_row_num = 8192
-# read_batch_row_num = 16384
- output_file_name = "tt_t.sst"
- num_rows_per_row_group = 8192
+[rebuild_sst]
+store_path = "/tmp/ceresdb/benchmarks"
+input_file_name = "898.sst"
+read_batch_row_num = 8192
+output_file_name = "tt_t.sst"
+num_rows_per_row_group = 8192
 compression = "SNAPPY"
 
- [rebuild_sst.predicate]
- start_time_ms = 0
- end_time_ms = 0
+[rebuild_sst.predicate]
+start_time_ms = 0
+end_time_ms = 0
 
-#[merge_sst]
-#store_path = "/Users/chunshao.rcs/Desktop/work/gitlab/ceresdb/neo/ceresdb/ceresdbx/benchmarks/2199023255564"
-#space_id = 1
-#table_id = 1
-#sst_file_ids = [1, 17, 19, 24, 31, 37, 43, 45, 9, 14, 18, 21, 27, 34, 40, 44, 5]
-#dedup = true
-#read_batch_row_num = 16384
-#output_store_path = "/Users/yingwen.yyw/data/1/1"
-#output_file_name = "16384-all.sst"
-#num_rows_per_row_group = 16384
-#
-#[merge_sst.predicate]
-#start_time_ms = 0
-#end_time_ms = 0
+[merge_sst]
+store_path = "/tmp/ceresdb/benchmarks/2199023255564"
+space_id = 1
+table_id = 1
+sst_file_ids = [1, 17, 19, 24, 31, 37, 43, 45, 9, 14, 18, 21, 27, 34, 40, 44, 5]
+dedup = true
+read_batch_row_num = 16384
+output_store_path = "/tmp/ceresdb/data/1/1"
+output_file_name = "16384-all.sst"
+num_rows_per_row_group = 16384
+
+[merge_sst.predicate]
+start_time_ms = 0
+end_time_ms = 0

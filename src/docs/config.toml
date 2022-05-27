@@ -6,7 +6,7 @@ grpc_port = 8831
 log_level = "debug"
 
 [analytic]
-data_path = "/tmp/ceresdbx/"
+data_path = "/tmp/ceresdb/"
 
 [analytic.table_opts]
 arena_block_size = 128

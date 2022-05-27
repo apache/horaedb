@@ -73,7 +73,7 @@ impl Default for Config {
             log_level: "debug".to_string(),
             enable_async_log: true,
             async_log_channel_len: 102400,
-            tracing_log_dir: String::from("/tmp/ceresdbx"),
+            tracing_log_dir: String::from("/tmp/ceresdb"),
             tracing_log_name: String::from("tracing"),
             tracing_level: String::from("info"),
             meta_client: MetaClientConfig {

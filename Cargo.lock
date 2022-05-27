@@ -547,18 +547,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ceresdbproto"
-version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git#dc8eb387ca66347c2ea9d5b00924ae63e7360be3"
-dependencies = [
- "futures",
- "grpcio 0.9.1",
- "protobuf",
- "protobuf-builder",
-]
-
-[[package]]
-name = "ceresdbx"
+name = "ceresdb"
 version = "0.1.0"
 dependencies = [
  "analytic_engine",
@@ -575,6 +564,17 @@ dependencies = [
  "tracing_util",
  "udf",
  "vergen",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdbproto.git#dc8eb387ca66347c2ea9d5b00924ae63e7360be3"
+dependencies = [
+ "futures",
+ "grpcio 0.9.1",
+ "protobuf",
+ "protobuf-builder",
 ]
 
 [[package]]

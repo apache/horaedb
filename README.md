@@ -1,4 +1,4 @@
-# ceresdbx
+# ceresdb
 
 ## Building
 Install clang (for rocksdb)

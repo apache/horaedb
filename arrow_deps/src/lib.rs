@@ -2,7 +2,7 @@
 
 //! This crate exists to add a dependency on (likely as yet
 //! unpublished) versions of arrow / datafusion so we can
-//! manage the version used by ceresdbx in a single crate.
+//! manage the version used by ceresdb in a single crate.
 
 pub mod display;
 pub mod util;
