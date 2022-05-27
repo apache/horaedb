@@ -29,8 +29,8 @@ jobs:
         RUSTFLAGS: "-C debuginfo=1"
     steps:
       - uses: actions/checkout@v3
-        with:
-          submodules: true
+        # with:
+        #   submodules: true
       - name: Cache Cargo
         uses: actions/cache@v3
         with:
@@ -91,14 +91,14 @@ jobs:
       env:
         RUSTFLAGS: "-C debuginfo=1"
     steps:
-      - use: actions/checkout@v3
-        with:
-          submodule: true
-      - name: Cache Cargo
-        uses: actions/cache@v3
-          with:
-            path: /github/home/.cargo
-            key: cargo-cache-
+      - uses: actions/checkout@v3
+        # with:
+        #   submodules: true
+      # - name: Cache Cargo
+      #   uses: actions/cache@v3
+      #     with:
+      #       path: /github/home/.cargo
+      #       key: cargo-cache-
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
@@ -136,14 +136,14 @@ jobs:
       env:
         RUSTFLAGS: "-C debuginfo=1"
     steps:
-      - use: actions/checkout@v3
-        with:
-          submodule: true
-      - name: Cache Cargo
-        uses: actions/cache@v3
-          with:
-            path: /github/home/.cargo
-            key: cargo-cache-
+      - uses: actions/checkout@v3
+        # with:
+        #   submodule: true
+      # - name: Cache Cargo
+      #   uses: actions/cache@v3
+      #     with:
+      #       path: /github/home/.cargo
+      #       key: cargo-cache-
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
