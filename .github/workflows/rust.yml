@@ -114,11 +114,11 @@ jobs:
         with:
           path: /github/home
           key: ${{ runner.os }}-toolchain-cache-
-      # - name: Setup Build Environment
-      #   run: |
-      #     apt update
-      #     apt install --yes gcc g++ libssl-dev pkg-config cmake 
-      #     rm -rf /var/lib/apt/lists/*
+      - name: Setup Build Environment
+        run: |
+          apt update
+          apt install --yes gcc g++ libssl-dev pkg-config cmake 
+          rm -rf /var/lib/apt/lists/*
       - name: Install Clippy
         run: |
           rustup component add clippy
