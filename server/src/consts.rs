@@ -3,6 +3,6 @@
 //! Common constants
 
 /// Header of catalog name
-pub const CATALOG_HEADER: &str = "x-ceresdbx-catalog";
+pub const CATALOG_HEADER: &str = "x-ceresdb-catalog";
 /// Header of tenant name
-pub const TENANT_HEADER: &str = "x-ceresdbx-access-tenant";
+pub const TENANT_HEADER: &str = "x-ceresdb-access-tenant";

@@ -1,8 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 [sst_bench]
-store_path = "/Users/chunshao.rcs/Desktop/work/gitlab/ceresdbx/1/1"
-# store_path = "/Users/yingwen.yyw/data/antmonitor_mid_table_4022"
+store_path = "/tmp/ceresdb/1/1"
 sst_file_name = "37.sst"
 runtime_thread_num = 1
 bench_measurement_time = "30s"
@@ -18,7 +17,7 @@ start_time_ms = 1632985200000
 end_time_ms = 1632985800000
 
 [merge_sst_bench]
-store_path = "/Users/chunshao.rcs/Desktop/work/gitlab/ceresdbx"
+store_path = "/tmp/ceresdb"
 space_id = 1
 table_id = 1
 sst_file_ids = [ 34, 37 ]
@@ -34,7 +33,7 @@ end_time_ms = 0
 # end_time_ms = 1632985800000
 
 [scan_memtable_bench]
-store_path = "/Users/chunshao.rcs/Desktop/work/gitlab/ceresdbx/1/1"
+store_path = "/tmp/ceresdb/1/1"
 sst_file_name = "37.sst"
 runtime_thread_num = 1
 max_projections = 5

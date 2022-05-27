@@ -1,5 +1,5 @@
 [package]
-name = "ceresdbx"
+name = "ceresdb"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
 edition = "2018"

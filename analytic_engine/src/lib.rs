@@ -73,7 +73,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            data_path: String::from("/tmp/ceresdbx"),
+            data_path: String::from("/tmp/ceresdb"),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
