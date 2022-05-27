@@ -69,6 +69,11 @@ jobs:
       image: rust:${{ matrix.rust }}-slim-bullseye
     steps:
       - uses: actions/checkout@v3
+      - name: Setup Build Environment
+        run: |
+          apt update
+          apt install --yes cmake 
+          rm -rf /var/lib/apt/lists/*
       - name: Setup Toolchain
         run: |
           rustup component add rustfmt
@@ -116,7 +121,7 @@ jobs:
       #     rm -rf /var/lib/apt/lists/*
       - name: Install Clippy
         run: |
-          rustup components add clippy
+          rustup component add clippy
       - name: Run Clippy
         run: |
           make clippy
