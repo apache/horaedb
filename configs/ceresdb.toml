@@ -16,8 +16,3 @@ shard_id = 0
 [meta_client.cluster_view.schema_shards.shard_views.node]
 addr = "${NODE_ADDR}"
 port = ${GRPC_PORT}
-
-[[route_rules.prefix_rules]]
-schema = 'public'
-prefix = 'special_prefix'
-shard = 0

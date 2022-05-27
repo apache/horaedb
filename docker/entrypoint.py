@@ -2,17 +2,18 @@
 import os
 import sys
 import commands
+from subprocess import check_output
 
 ENABLE_DATA_NODE = os.getenv('ENABLE_DATANODE') == 'true'
-HTTP_PORT = os.getenv('CERESDB_HTTP_PORT', '5000')
+HTTP_PORT = os.getenv('CERESDB_HTTP_PORT', '5440')
 GRPC_PORT = os.getenv('CERESDB_GRPC_PORT', '8831')
 DATA_PATH = '/home/admin/data/ceresdb'
 
-# hostname maybe return some ip(array)
 def get_local_ip():
-    return commands.getoutput('/usr/bin/localip').strip().split()[0]
+    ip = check_output(['hostname', '-I'])
+    return ip.strip()
 
-def create_datanode_config():
+def make_ceresdb_config():
     config = open('/etc/ceresdb/ceresdb.toml', 'r').read()
     config = config.replace("${HTTP_PORT}", HTTP_PORT)
     config = config.replace("${GRPC_PORT}", GRPC_PORT)
@@ -20,8 +21,8 @@ def create_datanode_config():
     config = config.replace("${DATA_PATH}", DATA_PATH)
     open('/etc/ceresdb/ceresdb.toml', 'w').write(config)
 
-def start_datanode():
-    create_datanode_config()
+def make_ceresdb_start_sh():
+    make_ceresdb_config()
 
     cmd = '''
 # load env
@@ -36,21 +37,15 @@ def start_supervisord():
     conf = '/etc/supervisor/supervisord.conf'
     if port:
         os.system(''' sed -i 's/:9001/:%d/g' %s ''' % (port, conf))
-    open('/etc/supervisor/conf.d/touch-admin-cron.conf', 'a').write('\nkillasgroup=true\nstopasgroup=true\n')
     os.system('/usr/bin/supervisord -c %s --nodaemon' % conf)
 
 def copy_environ():
     envs = []
     for k, v in os.environ.items():
         envs.append('export %s="%s"' % (k, v))
-        # copy DATANODE_ to CSE_
-        if 'DATANODE_' in k:
-            envs.append('export %s="%s"' % (k.replace('DATANODE_', 'CSE_'), v))
 
     envs.append('export LOCAL_IP=%s' % get_local_ip())
-    # support register ceres meta
-    envs.append('export CSE_CERES_META_NODE_ADDR=%s' % (get_local_ip()))
-
+    # enable jemalloc heap profiling
     envs.append('export MALLOC_CONF=prof:true,prof_active:false,lg_prof_sample:19')
 
     open('/ceresdb.env', 'w').write('\n'.join(envs))
@@ -58,14 +53,9 @@ def copy_environ():
 def init_dir():
     cmd = '''
 mkdir -p /home/admin/logs /home/admin/data
-
-# set logdir
 mkdir -p /home/admin/logs/ceresdb
-
-ln -nsf /data /home/admin/data
-
-chmod +777 -R /data /home/admin/data /home/admin/logs
-chown -R admin.admin /data /home/admin/data /home/admin/logs
+chmod +777 -R /home/admin/data /home/admin/logs
+chown -R admin.admin /home/admin/data /home/admin/logs
 '''
     open('/ceresdb-init.sh', 'w').write(cmd)
     os.system('sh /ceresdb-init.sh')
@@ -77,11 +67,10 @@ def main():
     print "init_dir"
     init_dir()
 
-    if ENABLE_DATA_NODE:
-        print "start_datanode"
-        start_datanode()
+    print "start_ceresdb"
+    make_ceresdb_start_sh()
 
-    print "start_datanode"
+    print "start_supervisor"
     start_supervisord()
 
 if __name__ == '__main__':

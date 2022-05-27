@@ -20,19 +20,19 @@ RUN useradd -m -s /bin/bash $USER && echo "$USER:$PASS" | chpasswd
 
 COPY --from=build /ceresdb/target/release/ceresdb-server /usr/bin/ceresdb-server
 
-RUN apt update && apt install --yes curl gdb iotop cron
+RUN apt update && apt install --yes curl gdb iotop cron supervisor python vim less net-tools
 
 ENV RUST_BACKTRACE 1
 
 COPY ./docker/entrypoint.py /entrypoint.py
 COPY ./docker/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
-COPY ./docker/supervisor/conf.d /etc/supervisor/conf.d
+COPY ./docker/supervisor/conf.d /etc/supervisor/conf.d/
 COPY ./configs/ceresdb.toml /usr/bin/
 
 RUN mkdir -p /etc/ceresdb
-RUN chmod +x /usr/bin/ceresdb-server
+COPY ./configs/ceresdb.toml /etc/ceresdb/
 
-COPY ./configs /etc/ceresdb
+RUN chmod +x /usr/bin/ceresdb-server
 
 COPY ./docker/tini /tini
 RUN chmod +x /tini
