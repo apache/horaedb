@@ -209,6 +209,13 @@ where
         options: HashMap<String, String>,
     ) -> Result<()> {
         let table_data = space_table.table_data();
+        ensure!(
+            !table_data.is_dropped(),
+            AlterDroppedTable {
+                table: &table_data.name,
+            }
+        );
+
         let current_table_options = table_data.table_options();
         info!(
             "Instance alter options, space_id:{}, tables:{:?}, old_table_opts:{:?}, options:{:?}",

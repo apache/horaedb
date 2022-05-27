@@ -20,7 +20,8 @@ use crate::{
     context::OpenContext,
     instance::{
         engine::{
-            ApplyMemTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal, RecoverTableData, Result,
+            ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
+            RecoverTableData, Result,
         },
         mem_collector::MemUsageCollector,
         write_worker,
@@ -301,7 +302,7 @@ where
             };
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(worker_local, &*table_data, log_entry_buf)
+            self.replay_table_log_entries(worker_local, &table_data, log_entry_buf)
                 .await?;
 
             // No more entries.
@@ -317,7 +318,7 @@ where
     async fn replay_table_log_entries(
         &self,
         worker_local: &WorkerLocal,
-        table_data: &TableData,
+        table_data: &TableDataRef,
         log_entries: &mut [LogEntry<ReadPayload>],
     ) -> Result<()> {
         if log_entries.is_empty() {
@@ -332,8 +333,6 @@ where
             table_data.name, table_data.id, last_sequence
         );
 
-        // TODO(yingwen): Maybe we need to trigger flush if memtable is full during
-        // recovery Replay entries
         for log_entry in log_entries {
             let (sequence, payload) = (log_entry.sequence, &mut log_entry.payload);
 
@@ -383,6 +382,25 @@ where
                         table: &table_data.name,
                         table_id: table_data.id,
                     })?;
+
+                    // Flush the table if necessary.
+                    if table_data.should_flush_table(worker_local) {
+                        let flush_req = self
+                            .preprocess_flush_without_race(worker_local, table_data)
+                            .await
+                            .context(FlushTable {
+                                space_id: table_data.space_id,
+                                table: &table_data.name,
+                                table_id: table_data.id,
+                            })?;
+                        self.flush_memtables_to_outputs(&flush_req)
+                            .await
+                            .context(FlushTable {
+                                space_id: table_data.space_id,
+                                table: &table_data.name,
+                                table_id: table_data.id,
+                            })?;
+                    }
                 }
             }
         }
