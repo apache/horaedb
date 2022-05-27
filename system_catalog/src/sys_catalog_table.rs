@@ -35,12 +35,12 @@ use table_engine::{
     predicate::PredicateBuilder,
     table::{
         GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableInfo, TableRef,
-        TableSeq, WriteRequest,
+        WriteRequest,
     },
 };
 use tokio::sync::Mutex;
 
-use crate::ENTRY_TIMESTAMP;
+use crate::{SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_ID, SYS_CATALOG_TABLE_NAME};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -214,14 +214,8 @@ pub enum Error {
 
 define_result!(Error);
 
-/// Table name of the sys catalog
-pub const TABLE_NAME: &str = "sys_catalog";
-/// Schema id of the sys catalog schema (`system/public`).
-pub const SCHEMA_ID: SchemaId = SchemaId::from_u16(1);
-/// Table sequence of the sys catalog table, always set to 1
-pub const TABLE_SEQ: TableSeq = TableSeq::from_u32(1);
-/// Table id of the `sys_catalog` table.
-pub const TABLE_ID: TableId = TableId::new(SCHEMA_ID, TABLE_SEQ);
+/// Timestamp of entry
+pub const ENTRY_TIMESTAMP: Timestamp = Timestamp::new(0);
 /// Name of key column (field)
 pub const KEY_COLUMN_NAME: &str = "key";
 /// Name of timestamp column (field)
@@ -275,7 +269,9 @@ impl SysCatalogTable {
         let open_request = OpenTableRequest {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
-            table_name: TABLE_NAME.to_string(),
+            schema_id: SYSTEM_SCHEMA_ID,
+            table_name: SYS_CATALOG_TABLE_NAME.to_string(),
+            table_id: SYS_CATALOG_TABLE_ID,
             engine: table_engine.engine_type().to_string(),
         };
 
@@ -308,8 +304,9 @@ impl SysCatalogTable {
         let create_request = CreateTableRequest {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
-            table_id: TABLE_ID,
-            table_name: TABLE_NAME.to_string(),
+            schema_id: SYSTEM_SCHEMA_ID,
+            table_name: SYS_CATALOG_TABLE_NAME.to_string(),
+            table_id: SYS_CATALOG_TABLE_ID,
             table_schema,
             partition_info: None,
             engine: table_engine.engine_type().to_string(),
@@ -333,7 +330,7 @@ impl SysCatalogTable {
     /// Returns the table id of the sys catalog table.
     #[inline]
     pub fn table_id(&self) -> TableId {
-        TABLE_ID
+        SYS_CATALOG_TABLE_ID
     }
 
     /// Add and store the catalog info
@@ -600,6 +597,7 @@ pub trait Visitor {
 
     fn visit_schema(&mut self, request: CreateSchemaRequest) -> Result<()>;
 
+    // FIXME(xikai): Should this method be called visit_table?
     async fn visit_tables(&mut self, table_info: TableInfo) -> Result<()>;
 }
 

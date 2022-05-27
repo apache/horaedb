@@ -3,7 +3,10 @@
 use protobuf_builder::Builder;
 
 fn generate_pb() {
-    Builder::new().search_dir_for_protos("protos").generate();
+    Builder::new()
+        .out_dir("./src/protos")
+        .search_dir_for_protos("protos")
+        .generate();
 }
 
 fn main() {

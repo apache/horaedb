@@ -11,56 +11,12 @@ use std::{
 };
 
 use arena::CollectorRef;
-use common_util::define_result;
-use log::info;
-use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, table::TableId};
-use tokio::sync::Mutex;
+use table_engine::table::TableId;
 
 use crate::{
     instance::{mem_collector::MemUsageCollector, write_worker::WriteGroup},
-    meta::{
-        meta_update::{AddTableMeta, MetaUpdate},
-        Manifest,
-    },
-    sst::file::FilePurger,
-    table::data::{TableData, TableDataRef, TableDataSet},
-    TableOptions,
+    table::data::{TableDataRef, TableDataSet},
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Table already exists, table:{}.\nBacktrace:\n{}", table, backtrace))]
-    TableExists { table: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to create table data, table:{}, err:{}", table, source))]
-    CreateTableData {
-        table: String,
-        source: crate::table::data::Error,
-    },
-
-    #[snafu(display("Failed to store meta data, err:{}", source))]
-    WriteMeta {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-}
-
-define_result!(Error);
-
-impl From<Error> for table_engine::engine::Error {
-    fn from(err: Error) -> Self {
-        match err {
-            Error::TableExists { table, backtrace } => Self::TableExists { table, backtrace },
-            Error::CreateTableData { ref table, .. } => Self::InvalidArguments {
-                table: table.clone(),
-                source: Box::new(err),
-            },
-            Error::WriteMeta { .. } => Self::WriteMeta {
-                source: Box::new(err),
-            },
-        }
-    }
-}
 
 /// Holds references to the table data and its space
 ///
@@ -106,37 +62,25 @@ impl fmt::Debug for SpaceAndTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SpaceAndTable")
             .field("space_id", &self.space.id)
-            .field("space_name", &self.space.name)
             .field("table_id", &self.table_data.id)
             .field("table_name", &self.table_data.name)
             .finish()
     }
 }
 
-/// Name type of space
-// TODO(yingwen): Or use binary string?
-pub type SpaceName = String;
-/// Reference of space name
-pub type SpaceNameRef<'a> = &'a str;
 /// Space id
 // TODO(yingwen): Or just use something like uuid as space id?
 pub type SpaceId = u32;
 
-/// A space can hold mulitple tables
+/// A space can hold multiple tables
 pub struct Space {
     /// Space id
     pub id: SpaceId,
-    /// Space name
-    pub name: SpaceName,
     /// Data of tables in this space
     ///
     /// Adding table into it should acquire the space lock first, then the write
     /// lock
     table_datas: RwLock<TableDataSet>,
-    /// Space lock
-    ///
-    /// Persisting meta update of this space is protected by this lock
-    mutex: Mutex<()>,
 
     /// Write workers
     pub write_group: WriteGroup,
@@ -149,16 +93,13 @@ pub struct Space {
 impl Space {
     pub fn new(
         id: SpaceId,
-        name: SpaceName,
         write_buffer_size: usize,
         write_group: WriteGroup,
         engine_mem_collector: CollectorRef,
     ) -> Self {
         Self {
             id,
-            name,
             table_datas: RwLock::new(TableDataSet::new()),
-            mutex: Mutex::new(()),
             write_group,
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
             write_buffer_size,
@@ -186,80 +127,9 @@ impl Space {
         self.mem_usage_collector.total_memory_allocated()
     }
 
-    pub async fn close(&self) -> Result<()> {
+    pub async fn close(&self) {
         // Stop the write group.
         self.write_group.stop().await;
-
-        Ok(())
-    }
-
-    /// Create a table under this space
-    ///
-    /// Returns error if the table already exists
-    pub async fn create_table<Meta: Manifest>(
-        &self,
-        request: CreateTableRequest,
-        manifest: &Meta,
-        table_opts: &TableOptions,
-        purger: &FilePurger,
-    ) -> Result<TableDataRef> {
-        info!(
-            "Space create table, space_id:{}, space_name:{}, request:{:?}",
-            self.id, self.name, request
-        );
-
-        // Checks whether the table is exists
-        if self.find_table(&request.table_name).is_some() {
-            return TableExists {
-                table: request.table_name,
-            }
-            .fail();
-        }
-
-        // Choose a write worker for this table
-        let write_handle = self.write_group.choose_worker(request.table_id);
-
-        let _lock = self.mutex.lock().await;
-
-        // Double check for table existence under space lock
-        if self.find_table(&request.table_name).is_some() {
-            return TableExists {
-                table: request.table_name,
-            }
-            .fail();
-        }
-
-        // Store table info into meta
-        let update = MetaUpdate::AddTable(AddTableMeta {
-            space_id: self.id,
-            table_id: request.table_id,
-            table_name: request.table_name.clone(),
-            schema: request.table_schema.clone(),
-            opts: table_opts.clone(),
-        });
-        manifest
-            .store_update(update)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(WriteMeta)?;
-
-        // Update memory state
-        let table_name = request.table_name.clone();
-        let table_data = Arc::new(
-            TableData::new(
-                self.id,
-                request,
-                write_handle,
-                table_opts.clone(),
-                purger,
-                self.mem_usage_collector.clone(),
-            )
-            .context(CreateTableData { table: &table_name })?,
-        );
-
-        self.insert_table(table_data.clone());
-
-        Ok(table_data)
     }
 
     /// Insert table data into space memory state if the table is

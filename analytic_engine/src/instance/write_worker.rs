@@ -22,27 +22,24 @@ use log::{error, info};
 use object_store::ObjectStore;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{
-    engine::DropTableRequest,
+    engine::{CloseTableRequest, DropTableRequest},
     table::{
         AlterSchemaRequest, Error as TableError, Result as TableResult, TableId, WriteRequest,
     },
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
-use wal::{
-    log_batch::LogEntry,
-    manager::{ReadContext, WalManager},
-};
+use wal::{log_batch::LogEntry, manager::WalManager};
 
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
-        alter, drop,
+        engine,
         flush_compaction::{self, TableFlushOptions},
-        open, write, write_worker, InstanceRef,
+        write, write_worker, InstanceRef,
     },
     meta::Manifest,
     payload::ReadPayload,
-    space::{SpaceAndTable, SpaceId},
+    space::{SpaceAndTable, SpaceId, SpaceRef},
     sst::factory::Factory,
     table::{data::TableDataRef, metrics::Metrics},
 };
@@ -311,10 +308,11 @@ impl WriteTableCommand {
 
 /// Recover table command.
 pub struct RecoverTableCommand {
+    pub space: SpaceRef,
     /// Table to recover
     pub table_data: TableDataRef,
     /// Sender for the worker to return result of recover
-    pub tx: oneshot::Sender<open::Result<()>>,
+    pub tx: oneshot::Sender<engine::Result<Option<TableDataRef>>>,
 
     // Options for recover:
     /// Batch size to read records from wal to replay
@@ -328,17 +326,48 @@ impl RecoverTableCommand {
     }
 }
 
+/// Close table command.
+pub struct CloseTableCommand {
+    /// The space of the table to close
+    pub space: SpaceRef,
+    pub request: CloseTableRequest,
+    pub tx: oneshot::Sender<engine::Result<()>>,
+}
+
+impl CloseTableCommand {
+    /// Convert into [Command]
+    pub fn into_command(self) -> Command {
+        Command::Close(self)
+    }
+}
+
 /// Drop table command
 pub struct DropTableCommand {
-    pub space_table: SpaceAndTable,
+    /// The space of the table to drop
+    pub space: SpaceRef,
     pub request: DropTableRequest,
-    pub tx: oneshot::Sender<drop::Result<()>>,
+    pub tx: oneshot::Sender<engine::Result<bool>>,
 }
 
 impl DropTableCommand {
     /// Convert into [Command]
     pub fn into_command(self) -> Command {
         Command::Drop(self)
+    }
+}
+
+/// Create table command
+pub struct CreateTableCommand {
+    /// The space of the table to drop
+    pub space: SpaceRef,
+    pub table_data: TableDataRef,
+    pub tx: oneshot::Sender<engine::Result<TableDataRef>>,
+}
+
+impl CreateTableCommand {
+    /// Convert into [Command]
+    pub fn into_command(self) -> Command {
+        Command::Create(self)
     }
 }
 
@@ -362,7 +391,7 @@ pub struct AlterOptionsCommand {
     pub space_table: SpaceAndTable,
     pub options: HashMap<String, String>,
     /// Sender for the worker to return result of alter schema
-    pub tx: oneshot::Sender<alter::Result<()>>,
+    pub tx: oneshot::Sender<engine::Result<()>>,
 }
 
 impl AlterOptionsCommand {
@@ -406,10 +435,16 @@ pub enum Command {
     Write(WriteTableCommand),
 
     /// Drop table
+    Create(CreateTableCommand),
+
+    /// Drop table
     Drop(DropTableCommand),
 
     /// Recover table
     Recover(RecoverTableCommand),
+
+    /// Close table
+    Close(CloseTableCommand),
 
     /// Alter table schema
     AlterSchema(AlterSchemaCommand),
@@ -476,6 +511,7 @@ pub async fn process_command_in_write_worker<T, E: std::error::Error + Send + Sy
     }
 }
 
+#[allow(dead_code)]
 pub async fn join_all<T, E: std::error::Error + Send + Sync + 'static>(
     table_vec: &[TableDataRef],
     rx_vec: Vec<oneshot::Receiver<std::result::Result<T, E>>>,
@@ -702,11 +738,17 @@ impl<
                 Command::Write(cmd) => {
                     self.handle_write_table(cmd).await;
                 }
+                Command::Create(cmd) => {
+                    self.handle_create_table(cmd).await;
+                }
                 Command::Drop(cmd) => {
                     self.handle_drop_table(cmd).await;
                 }
                 Command::Recover(cmd) => {
                     self.handle_recover_table(cmd).await;
+                }
+                Command::Close(cmd) => {
+                    self.handle_close_table(cmd).await;
                 }
                 Command::AlterSchema(cmd) => {
                     self.handle_alter_schema(cmd).await;
@@ -759,42 +801,70 @@ impl<
 
     async fn handle_recover_table(&mut self, cmd: RecoverTableCommand) {
         let RecoverTableCommand {
+            space,
             table_data,
             tx,
             replay_batch_size,
         } = cmd;
 
-        let read_ctx = ReadContext::default();
-        self.log_entry_buf.reserve(replay_batch_size);
-
-        let recover_res = self
+        let open_res = self
             .instance
-            .recover_table_from_wal(
-                &self.local,
+            .process_recover_table_command(
+                &mut self.local,
+                space,
                 table_data,
                 replay_batch_size,
-                &read_ctx,
                 &mut self.log_entry_buf,
             )
             .await;
-        if let Err(res) = tx.send(recover_res) {
+        if let Err(open_res) = tx.send(open_res) {
             error!(
-                "handle recover table failed to send result, recover_res:{:?}",
-                res
+                "handle open table failed to send result, open_res:{:?}",
+                open_res
+            );
+        }
+    }
+
+    async fn handle_close_table(&mut self, cmd: CloseTableCommand) {
+        let CloseTableCommand { space, request, tx } = cmd;
+
+        let close_res = self
+            .instance
+            .process_close_table_command(&mut self.local, space, request)
+            .await;
+        if let Err(close_res) = tx.send(close_res) {
+            error!(
+                "handle close table failed to send result, close:{:?}",
+                close_res
+            );
+        }
+    }
+
+    async fn handle_create_table(&mut self, cmd: CreateTableCommand) {
+        let CreateTableCommand {
+            space,
+            table_data,
+            tx,
+        } = cmd;
+
+        let create_res = self
+            .instance
+            .process_create_table_command(&mut self.local, space, table_data)
+            .await;
+        if let Err(create_res) = tx.send(create_res) {
+            error!(
+                "handle create table failed to send result, create_res:{:?}",
+                create_res
             );
         }
     }
 
     async fn handle_drop_table(&mut self, cmd: DropTableCommand) {
-        let DropTableCommand {
-            space_table,
-            request,
-            tx,
-        } = cmd;
+        let DropTableCommand { space, request, tx } = cmd;
 
         let drop_res = self
             .instance
-            .process_drop_table_command(&mut self.local, &space_table, request)
+            .process_drop_table_command(&mut self.local, space, request)
             .await;
         if let Err(res) = tx.send(drop_res) {
             error!(

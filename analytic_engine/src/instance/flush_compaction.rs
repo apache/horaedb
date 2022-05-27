@@ -169,12 +169,12 @@ pub struct TableFlushRequest {
     pub max_memtable_id: MemTableId,
 }
 
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
-    > Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+where
+    Wal: WalManager + Send + Sync + 'static,
+    Meta: Manifest + Send + Sync + 'static,
+    Store: ObjectStore,
+    Fa: Factory + Send + Sync + 'static,
 {
     /// Flush this table.
     pub async fn flush_table(

@@ -9,14 +9,17 @@ use log::info;
 use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::{
-    engine::{Close, CreateTableRequest, DropTableRequest, OpenTableRequest, Result, TableEngine},
-    table::TableRef,
+    engine::{
+        Close, CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
+        TableEngine,
+    },
+    table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 use wal::manager::WalManager;
 
 use crate::{
-    context::CommonContext, instance::InstanceRef, meta::Manifest, space::SpaceName,
+    context::CommonContext, instance::InstanceRef, meta::Manifest, space::SpaceId,
     sst::factory::Factory, table::TableImpl,
 };
 
@@ -86,18 +89,18 @@ impl<
     }
 
     async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
-        let space = build_space_name(&request.catalog_name, &request.schema_name);
+        let space_id = build_space_id(request.schema_id);
 
         info!(
-            "Table engine impl create table, space:{}, request:{:?}",
-            space, request
+            "Table engine impl create table, space_id:{}, request:{:?}",
+            space_id, request
         );
 
         let ctx = CommonContext {
             db_write_buffer_size: self.instance.db_write_buffer_size,
             space_write_buffer_size: self.instance.space_write_buffer_size,
         };
-        let space_table = self.instance.create_table(&ctx, &space, request).await?;
+        let space_table = self.instance.create_table(&ctx, space_id, request).await?;
 
         let table_impl = Arc::new(TableImpl::new(
             space_table,
@@ -109,36 +112,33 @@ impl<
     }
 
     async fn drop_table(&self, request: DropTableRequest) -> Result<bool> {
-        let space = build_space_name(&request.catalog_name, &request.schema_name);
+        let space_id = build_space_id(request.schema_id);
 
         info!(
-            "Table engine impl drop table, space:{}, request:{:?}",
-            space, request
+            "Table engine impl drop table, space_id:{}, request:{:?}",
+            space_id, request
         );
 
         let ctx = CommonContext {
             db_write_buffer_size: self.instance.db_write_buffer_size,
             space_write_buffer_size: self.instance.space_write_buffer_size,
         };
-        let dropped = self.instance.drop_table(&ctx, &space, request).await?;
+        let dropped = self.instance.drop_table(&ctx, space_id, request).await?;
         Ok(dropped)
     }
 
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
-        let space = build_space_name(&request.catalog_name, &request.schema_name);
+        let space_id = build_space_id(request.schema_id);
 
         info!(
-            "Table engine impl open table, space:{}, request:{:?}",
-            space, request
+            "Table engine impl open table, space_id:{}, request:{:?}",
+            space_id, request
         );
         let ctx = CommonContext {
             db_write_buffer_size: self.instance.db_write_buffer_size,
             space_write_buffer_size: self.instance.space_write_buffer_size,
         };
-        let space_table = match self
-            .instance
-            .find_table(&ctx, &space, &request.table_name)?
-        {
+        let space_table = match self.instance.open_table(&ctx, space_id, &request).await? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -151,13 +151,28 @@ impl<
 
         Ok(Some(table_impl))
     }
+
+    async fn close_table(&self, request: CloseTableRequest) -> Result<()> {
+        let space_id = build_space_id(request.schema_id);
+
+        info!(
+            "Table engine impl close table, space_id:{}, request:{:?}",
+            space_id, request,
+        );
+
+        let ctx = CommonContext {
+            db_write_buffer_size: self.instance.db_write_buffer_size,
+            space_write_buffer_size: self.instance.space_write_buffer_size,
+        };
+        self.instance.close_table(&ctx, space_id, request).await?;
+
+        Ok(())
+    }
 }
 
-/// Build the space name from catalog and schema
-// TODO(yingwen): Should we store the <catalog, schema> => space mapping in the
-// system catalog, then put it in the CreateTableRequest, avoid generating space
-// name here
-fn build_space_name(catalog: &str, schema: &str) -> SpaceName {
-    // FIXME(yingwen): Find out a better way to create space name
-    format!("{}/{}", catalog, schema)
+/// Generate the space id from the schema id with assumption schema id is unique
+/// globally.
+#[inline]
+fn build_space_id(schema_id: SchemaId) -> SpaceId {
+    schema_id.as_u32()
 }

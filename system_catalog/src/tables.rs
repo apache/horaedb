@@ -13,23 +13,18 @@ use common_types::{
     row::Row,
     schema,
     schema::Schema,
+    time::Timestamp,
 };
 use snafu::ResultExt;
 use table_engine::{
     stream::SendableRecordBatchStream,
-    table::{ReadRequest, SchemaId, TableId, TableRef, TableSeq},
+    table::{ReadRequest, TableId, TableRef},
 };
 
-use crate::{OneRecordBatchStream, SystemTable, ENTRY_TIMESTAMP};
+use crate::{OneRecordBatchStream, SystemTable, TABLES_TABLE_ID, TABLES_TABLE_NAME};
 
-/// Table name of the sys tables
-const TABLE_NAME: &str = "tables";
-/// Schema id of the sys catalog schema (`system/public`).
-pub const SCHEMA_ID: SchemaId = SchemaId::from_u16(1);
-/// Table sequence of the sys tables
-pub const TABLE_SEQ: TableSeq = TableSeq::from_u32(2);
-/// Table id of the `sys_catalog` table.
-pub const TABLE_ID: TableId = TableId::new(SCHEMA_ID, TABLE_SEQ);
+/// Timestamp of entry
+pub const ENTRY_TIMESTAMP: Timestamp = Timestamp::new(0);
 
 /// Build a new table schema for tables
 fn tables_schema() -> Schema {
@@ -123,11 +118,11 @@ impl<M: Manager> Tables<M> {
 #[async_trait]
 impl<M: Manager> SystemTable for Tables<M> {
     fn name(&self) -> &str {
-        TABLE_NAME
+        TABLES_TABLE_NAME
     }
 
     fn id(&self) -> TableId {
-        TABLE_ID
+        TABLES_TABLE_ID
     }
 
     fn schema(&self) -> Schema {

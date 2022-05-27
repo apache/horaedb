@@ -536,7 +536,7 @@ fn test_write_buffer_size_overflow(test_table_name: &str, env: TestEnv) {
         ];
 
         let row_group = fixed_schema_table.rows_to_row_group(&rows2);
-        // Write rowss2 to table.
+        // Write rows2 to table.
         test_ctx.write_to_table(test_table_name, row_group).await;
 
         let mut rows = Vec::new();

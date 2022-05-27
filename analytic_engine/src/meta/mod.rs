@@ -9,10 +9,12 @@ pub mod meta_update;
 use std::fmt;
 
 use async_trait::async_trait;
+use meta_update::MetaUpdate;
+use table_engine::table::TableId;
 
-use crate::meta::{meta_data::ManifestData, meta_update::MetaUpdate};
+use crate::meta::meta_data::TableManifestData;
 
-/// Manifest holds meta data of all tables
+/// Manifest holds meta data of all tables.
 #[async_trait]
 pub trait Manifest: fmt::Debug {
     type Error: std::error::Error + Send + Sync + 'static;
@@ -20,10 +22,13 @@ pub trait Manifest: fmt::Debug {
     /// Store update to manifest
     async fn store_update(&self, update: MetaUpdate) -> Result<(), Self::Error>;
 
-    /// Load all data from manifest.
+    /// Load table meta data from manifest.
     ///
     /// If `do_snapshot` is true, the manifest will try to create a snapshot of
-    /// the manifest data. The caller should ensure `store_update()` wont be
-    /// called during loading data.
-    async fn load_data(&self, do_snapshot: bool) -> Result<ManifestData, Self::Error>;
+    /// the manifest data.
+    async fn load_data(
+        &self,
+        table_id: TableId,
+        do_snapshot: bool,
+    ) -> Result<Option<TableManifestData>, Self::Error>;
 }

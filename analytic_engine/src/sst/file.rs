@@ -393,7 +393,7 @@ impl FileHandleSet {
 }
 
 /// Meta of a sst file, immutable once created
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileMeta {
     /// Id of the sst file
     pub id: FileId,

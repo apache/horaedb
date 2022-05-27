@@ -4,17 +4,19 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use common_types::schema::Version;
-use common_util::define_result;
 use log::info;
 use object_store::ObjectStore;
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
 use wal::manager::WalManager;
 
 use crate::{
     instance::{
+        engine::{
+            AlterDroppedTable, FlushTable, InvalidOptions, InvalidPreVersion, InvalidSchemaVersion,
+            OperateByWriteWorker, Result, WriteManifest,
+        },
         flush_compaction::TableFlushOptions,
         write_worker,
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
@@ -30,71 +32,12 @@ use crate::{
     table_options,
 };
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to alter schema, source:{}", source,))]
-    AlterSchema { source: write_worker::Error },
-
-    #[snafu(display("Failed to alter options, source:{}", source,))]
-    AlterOptions { source: write_worker::Error },
-
-    #[snafu(display(
-        "Try to update schema to elder version, table:{}, current_version:{}, given_version:{}.\nBacktrace:\n{}",
-        table,
-        current_version,
-        given_version,
-        backtrace,
-    ))]
-    InvalidSchemaVersion {
-        table: String,
-        current_version: Version,
-        given_version: Version,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Invalid previous schema version, table:{}, current_version:{}, pre_version:{}.\nBacktrace:\n{}",
-        table,
-        current_version,
-        pre_version,
-        backtrace,
-    ))]
-    InvalidPreVersion {
-        table: String,
-        current_version: Version,
-        pre_version: Version,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Alter schema of a dropped table:{}", table))]
-    AlterDroppedTable { table: String },
-
-    #[snafu(display("Failed to flush table, table:{}, err:{}", table, source))]
-    FlushTable {
-        table: String,
-        source: crate::instance::flush_compaction::Error,
-    },
-
-    #[snafu(display("Failed to persist alter update, err:{}", source))]
-    PersistAlter {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
-    #[snafu(display("Invalid options, table:{}, err:{}", table, source))]
-    InvalidOptions {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-}
-
-define_result!(Error);
-
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
-    > Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+where
+    Wal: WalManager + Send + Sync + 'static,
+    Meta: Manifest + Send + Sync + 'static,
+    Store: ObjectStore,
+    Fa: Factory + Send + Sync + 'static,
 {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
@@ -123,7 +66,11 @@ impl<
             rx,
         )
         .await
-        .context(AlterSchema)
+        .context(OperateByWriteWorker {
+            space_id: space_table.space().id,
+            table: &space_table.table_data().name,
+            table_id: space_table.table_data().id,
+        })
     }
 
     /// Do the actual alter schema job, must called by write worker in write
@@ -148,7 +95,9 @@ impl<
         self.flush_table_in_worker(worker_local, table_data, opts)
             .await
             .context(FlushTable {
+                space_id: space_table.space().id,
                 table: &table_data.name,
+                table_id: table_data.id,
             })?;
 
         // Now we can persist and update the schema, since this function is called by
@@ -165,7 +114,11 @@ impl<
             .store_update(meta_update)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(PersistAlter)?;
+            .context(WriteManifest {
+                space_id: space_table.space().id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
 
         info!(
             "Instance update table schema, new_schema:{:?}",
@@ -240,7 +193,11 @@ impl<
             rx,
         )
         .await
-        .context(AlterOptions)
+        .context(OperateByWriteWorker {
+            space_id: space_table.space().id,
+            table: &space_table.table_data().name,
+            table_id: space_table.table_data().id,
+        })
     }
 
     /// Do the actual alter options job, must called by write worker in write
@@ -254,8 +211,8 @@ impl<
         let table_data = space_table.table_data();
         let current_table_options = table_data.table_options();
         info!(
-            "Instance alter options, space:{:?}, tables:{:?}, old_table_opts:{:?}, options:{:?}",
-            space_table.space().name,
+            "Instance alter options, space_id:{}, tables:{:?}, old_table_opts:{:?}, options:{:?}",
+            space_table.space().id,
             space_table.table_data().name,
             current_table_options,
             options
@@ -264,7 +221,9 @@ impl<
             table_options::merge_table_options_for_alter(&options, &*current_table_options)
                 .map_err(|e| Box::new(e) as _)
                 .context(InvalidOptions {
+                    space_id: space_table.space().id,
                     table: &table_data.name,
+                    table_id: table_data.id,
                 })?;
         table_opts.sanitize();
 
@@ -281,7 +240,11 @@ impl<
             .store_update(meta_update)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(PersistAlter)?;
+            .context(WriteManifest {
+                space_id: space_table.space().id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
 
         table_data.set_table_options(worker_local, table_opts);
         Ok(())

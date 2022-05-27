@@ -15,23 +15,42 @@ use common_types::{
     record_batch::RecordBatch,
     row::Row,
     schema::{RecordSchema, Schema},
-    time::Timestamp,
 };
 use futures::Stream;
 use table_engine::{
     stream,
     stream::{PartitionedStreams, RecordBatchStream, SendableRecordBatchStream},
     table::{
-        AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Table, TableId, TableStats,
-        WriteRequest,
+        AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, SchemaId, Table, TableId,
+        TableSeq, TableStats, WriteRequest,
     },
 };
 
 pub mod sys_catalog_table;
 pub mod tables;
 
-/// Timestamp of entry
-pub const ENTRY_TIMESTAMP: Timestamp = Timestamp::new(0);
+/// Schema id of the sys catalog schema (`system/public`).
+pub const SYSTEM_SCHEMA_ID: SchemaId = SchemaId::from_u16(1);
+
+/// Table name of the `sys_catalog`.
+pub const SYS_CATALOG_TABLE_NAME: &str = "sys_catalog";
+/// Table sequence of the `sys_catalog` table, always set to 1
+pub const SYS_CATALOG_TABLE_SEQ: TableSeq = TableSeq::from_u32(1);
+/// Table id of the `sys_catalog` table.
+pub const SYS_CATALOG_TABLE_ID: TableId = TableId::new(SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_SEQ);
+
+/// Table name of the `tables` table.
+pub const TABLES_TABLE_NAME: &str = "tables";
+/// Table sequence of the `tables` table.
+pub const TABLES_TABLE_SEQ: TableSeq = TableSeq::from_u32(2);
+/// Table id of the `tables` table.
+pub const TABLES_TABLE_ID: TableId = TableId::new(SYSTEM_SCHEMA_ID, TABLES_TABLE_SEQ);
+
+// NOTE: The MAX_SYSTEM_TABLE_ID should be updated if any new system table is
+// added.
+
+/// Max table id of all the system tables.
+pub const MAX_SYSTEM_TABLE_SEQ: TableSeq = TABLES_TABLE_SEQ;
 
 /// The minimal thing that a system table needs to implement
 #[async_trait]

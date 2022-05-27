@@ -20,17 +20,13 @@ pub mod table_options;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use meta::details::{ManifestImpl, Options as ManifestOptions};
 use object_store::disk::File;
 use serde_derive::Deserialize;
 use wal::rocks_impl::manager::RocksImpl;
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
-use crate::{
-    engine::TableEngineImpl,
-    instance::InstanceRef,
-    meta::details::{ManifestImpl, Options as ManifestOptions},
-    sst::factory::FactoryImpl,
-};
+use crate::{engine::TableEngineImpl, instance::InstanceRef, sst::factory::FactoryImpl};
 
 /// Analytic table engine
 pub type AnalyticTableEngine =

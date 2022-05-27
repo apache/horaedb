@@ -23,7 +23,7 @@ use crate::{
 pub enum Error {
     #[snafu(display("Failed to open engine instance, err:{}", source))]
     OpenInstance {
-        source: crate::instance::open::Error,
+        source: crate::instance::engine::Error,
     },
 
     #[snafu(display("Failed to open wal, err:{}", source))]

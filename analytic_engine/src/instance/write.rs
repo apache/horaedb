@@ -142,12 +142,12 @@ impl EncodeContext {
     }
 }
 
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
-    > Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+where
+    Wal: WalManager + Send + Sync + 'static,
+    Meta: Manifest + Send + Sync + 'static,
+    Store: ObjectStore,
+    Fa: Factory + Send + Sync + 'static,
 {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -310,7 +310,7 @@ impl<
                     info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
                           table.name,
                           table.memtable_memory_usage(),
-                          space.name,
+                          space.id,
                           self.db_write_buffer_size,
                     );
                     self.handle_memtable_flush(worker_local, &table).await?;
@@ -323,7 +323,7 @@ impl<
                 info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
                       table.name,
                       table.memtable_memory_usage() ,
-                      space.name,
+                      space.id,
                       space.write_buffer_size,
                 );
                 self.handle_memtable_flush(worker_local, &table).await?;

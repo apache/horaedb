@@ -90,12 +90,28 @@ message SnapshotManifestMeta {
 // Meta update data to persist
 message MetaUpdate {
     oneof meta {
-        AddSpaceMeta add_space = 1;
-        AddTableMeta add_table = 2;
-        VersionEditMeta version_edit = 3;
-        AlterSchemaMeta alter_schema = 4;
-        AlterOptionsMeta alter_options = 5;
-        DropTableMeta drop_table = 6;
-        SnapshotManifestMeta snapshot_manifest = 7;
+        AddTableMeta add_table = 1;
+        VersionEditMeta version_edit = 2;
+        AlterSchemaMeta alter_schema = 3;
+        AlterOptionsMeta alter_options = 4;
+        DropTableMeta drop_table = 5;
+    }
+}
+
+message SnapshotFlagLogEntry {
+    uint64 sequence = 1;
+}
+
+message SnapshotLogEntry {
+    uint64 sequence = 1;
+    MetaUpdate meta_update = 2;
+}
+
+message MetaUpdateLogEntry {
+    oneof entry {
+        MetaUpdate normal = 1;
+        SnapshotLogEntry snapshot = 2;
+        SnapshotFlagLogEntry snapshot_start = 3;
+        SnapshotFlagLogEntry snapshot_end = 4;
     }
 }

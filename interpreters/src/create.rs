@@ -3,10 +3,13 @@
 //! Interpreter for create statements
 
 use async_trait::async_trait;
-use catalog::{manager::Manager, schema::CreateOptions};
+use catalog::{
+    manager::Manager,
+    schema::{CreateOptions, CreateTableRequest},
+};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
-use table_engine::engine::{CreateTableRequest, TableEngineRef, TableState};
+use table_engine::engine::{TableEngineRef, TableState};
 
 use crate::{
     context::Context,
@@ -100,14 +103,12 @@ impl<C: Manager> CreateInterpreter<C> {
             options,
         } = self.plan;
 
-        let table_id = schema.alloc_table_id(&table).context(AllocTableId)?;
         let request = CreateTableRequest {
             catalog_name: catalog.name().to_string(),
             schema_name: schema.name().to_string(),
-            table_id,
+            schema_id: schema.id(),
             table_name: table.clone(),
             table_schema,
-            partition_info: None,
             engine,
             options,
             state: TableState::Stable,

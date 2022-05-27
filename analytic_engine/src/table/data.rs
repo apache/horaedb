@@ -5,6 +5,8 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
+    fmt,
+    fmt::Formatter,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
         Arc, Mutex,
@@ -126,6 +128,23 @@ pub struct TableData {
 
     /// Metrics of this table.
     pub metrics: Metrics,
+}
+
+impl fmt::Debug for TableData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableData")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("space", &self.space_id)
+            .field("sst_type", &self.sst_type)
+            .field("mutable_limit", &self.mutable_limit)
+            .field("opts", &self.opts)
+            .field("last_sequence", &self.last_sequence)
+            .field("last_memtable_id", &self.last_memtable_id)
+            .field("last_file_id", &self.last_file_id)
+            .field("dropped", &self.dropped.load(Ordering::Relaxed))
+            .finish()
+    }
 }
 
 impl Drop for TableData {
@@ -453,6 +472,7 @@ impl TableData {
 pub type TableDataRef = Arc<TableData>;
 
 /// Manages TableDataRef
+#[derive(Debug)]
 pub struct TableDataSet {
     /// Name to table data
     table_datas: HashMap<String, TableDataRef>,
@@ -533,7 +553,7 @@ pub mod tests {
     use arena::NoopCollector;
     use common_types::datum::DatumKind;
     use common_util::config::ReadableDuration;
-    use table_engine::engine::TableState;
+    use table_engine::{engine::TableState, table::SchemaId};
 
     use super::*;
     use crate::{
@@ -601,6 +621,7 @@ pub mod tests {
             let create_request = CreateTableRequest {
                 catalog_name: "test_catalog".to_string(),
                 schema_name: "public".to_string(),
+                schema_id: SchemaId::new(DEFAULT_SPACE_ID).unwrap(),
                 table_id: self.table_id,
                 table_name: self.table_name,
                 table_schema,

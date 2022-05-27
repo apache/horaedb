@@ -67,6 +67,11 @@ impl FixedSchemaTable {
     }
 
     #[inline]
+    pub fn table_id(&self) -> TableId {
+        self.create_request.table_id
+    }
+
+    #[inline]
     pub fn create_request(&self) -> &CreateTableRequest {
         &self.create_request
     }
@@ -250,6 +255,11 @@ pub struct Builder {
 }
 
 impl Builder {
+    pub fn schema_id(mut self, schema_id: SchemaId) -> Self {
+        self.create_request.schema_id = schema_id;
+        self
+    }
+
     pub fn table_name(mut self, table_name: String) -> Self {
         self.create_request.table_name = table_name;
         self
@@ -288,6 +298,7 @@ impl Default for Builder {
             create_request: CreateTableRequest {
                 catalog_name: "ceresdb".to_string(),
                 schema_name: "public".to_string(),
+                schema_id: SchemaId::new(2).unwrap(),
                 table_id: new_table_id(2, 1),
                 table_name: "test_table".to_string(),
                 table_schema: FixedSchemaTable::default_schema(),

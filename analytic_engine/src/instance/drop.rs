@@ -4,16 +4,16 @@
 
 use std::sync::Arc;
 
-use common_util::define_result;
 use log::{info, warn};
 use object_store::ObjectStore;
-use snafu::{ResultExt, Snafu};
+use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 use tokio::sync::oneshot;
 use wal::manager::WalManager;
 
 use crate::{
     instance::{
+        engine::{FlushTable, OperateByWriteWorker, Result, WriteManifest},
         flush_compaction::TableFlushOptions,
         write_worker::{self, DropTableCommand, WorkerLocal},
         Instance,
@@ -22,76 +22,44 @@ use crate::{
         meta_update::{DropTableMeta, MetaUpdate},
         Manifest,
     },
-    space::SpaceAndTable,
+    space::SpaceRef,
     sst::factory::Factory,
 };
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "Failed to drop table space:{}, table:{}, err:{}",
-        space,
-        table,
-        source,
-    ))]
-    DropTable {
-        space: String,
-        table: String,
-        source: write_worker::Error,
-    },
-
-    #[snafu(display("Flush before drop failed, table:{}, err:{}", table, source))]
-    FlushTable {
-        table: String,
-        source: crate::instance::flush_compaction::Error,
-    },
-
-    #[snafu(display("Failed to persist drop table update, err:{}", source))]
-    PersistDrop {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-}
-
-define_result!(Error);
-
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
-    > Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+where
+    Wal: WalManager + Send + Sync + 'static,
+    Meta: Manifest + Send + Sync + 'static,
+    Store: ObjectStore,
+    Fa: Factory + Send + Sync + 'static,
 {
-    /// Drop table need to be handled by write worker.
+    /// Drop a table under given space
     pub async fn do_drop_table(
-        &self,
-        space_table: SpaceAndTable,
+        self: &Arc<Self>,
+        space: SpaceRef,
         request: DropTableRequest,
-    ) -> Result<()> {
-        info!(
-            "Instance drop table, space_table:{:?}, request:{:?}",
-            space_table, request
-        );
+    ) -> Result<bool> {
+        info!("Instance drop table begin, request:{:?}", request);
 
-        // Create a oneshot channel to send/receive alter schema result.
-        let (tx, rx) = oneshot::channel();
-        let cmd = DropTableCommand {
-            space_table: space_table.clone(),
-            request,
-            tx,
+        let table_data = match space.find_table(&request.table_name) {
+            Some(v) => v,
+            None => {
+                warn!("No need to drop a dropped table, request:{:?}", request);
+                return Ok(false);
+            }
         };
 
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(DropTable {
-            space: &space_table.space().name,
-            table: &space_table.table_data().name,
-        })?;
+        // Create a oneshot channel to send/receive alter schema result.
+        let (tx, rx) = oneshot::channel::<Result<bool>>();
+        let cmd = DropTableCommand { space, request, tx };
 
-        Ok(())
+        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
+            .await
+            .context(OperateByWriteWorker {
+                space_id: table_data.space_id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })
     }
 
     /// Do the actual drop table job, must be called by write worker in write
@@ -99,16 +67,23 @@ impl<
     pub(crate) async fn process_drop_table_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
-        _request: DropTableRequest,
-    ) -> Result<()> {
-        let table_data = space_table.table_data();
+        space: SpaceRef,
+        request: DropTableRequest,
+    ) -> Result<bool> {
+        let table_data = match space.find_table(&request.table_name) {
+            Some(v) => v,
+            None => {
+                warn!("Try to drop a dropped table, request:{:?}", request);
+                return Ok(false);
+            }
+        };
+
         if table_data.is_dropped() {
             warn!(
-                "Process drop table command tries to drop a dropped table, space_table:{:?}",
-                space_table
+                "Process drop table command tries to drop a dropped table, table:{:?}",
+                table_data.name,
             );
-            return Ok(());
+            return Ok(false);
         }
 
         // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
@@ -120,15 +95,17 @@ impl<
             compact_after_flush: false,
             ..Default::default()
         };
-        self.flush_table_in_worker(worker_local, table_data, opts)
+        self.flush_table_in_worker(worker_local, &table_data, opts)
             .await
             .context(FlushTable {
+                space_id: space.id,
                 table: &table_data.name,
+                table_id: table_data.id,
             })?;
 
         // Store the dropping information into meta
         let update = MetaUpdate::DropTable(DropTableMeta {
-            space_id: space_table.space().id,
+            space_id: space.id,
             table_id: table_data.id,
             table_name: table_data.name.clone(),
         });
@@ -137,7 +114,11 @@ impl<
             .store_update(update)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(PersistDrop)?;
+            .context(WriteManifest {
+                space_id: space.id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
 
         // Set the table dropped after finishing flushing and storing drop table meta
         // information.
@@ -145,8 +126,8 @@ impl<
 
         // Clear the memory status after updating manifest and clearing wal so that
         // the drop is retryable if fails to update and clear.
-        space_table.space().remove_table(&table_data.name);
+        space.remove_table(&table_data.name);
 
-        Ok(())
+        Ok(true)
     }
 }

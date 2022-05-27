@@ -21,16 +21,25 @@ fn test_drop_table_once() {
         test_ctx.open().await;
 
         let test_table1 = "test_table1";
-        test_ctx.create_fixed_schema_table(test_table1).await;
+        let table_id = test_ctx
+            .create_fixed_schema_table(test_table1)
+            .await
+            .table_id();
 
         assert!(test_ctx.drop_table(test_table1).await);
 
-        let table_opt = test_ctx.try_open_table(test_table1).await.unwrap();
+        let table_opt = test_ctx
+            .try_open_table(table_id, test_table1)
+            .await
+            .unwrap();
         assert!(table_opt.is_none());
 
         test_ctx.reopen().await;
 
-        let table_opt = test_ctx.try_open_table(test_table1).await.unwrap();
+        let table_opt = test_ctx
+            .try_open_table(table_id, test_table1)
+            .await
+            .unwrap();
         assert!(table_opt.is_none());
     });
 }
@@ -44,13 +53,19 @@ fn test_drop_table_again() {
         test_ctx.open().await;
 
         let test_table1 = "test_table1";
-        test_ctx.create_fixed_schema_table(test_table1).await;
+        let table_id = test_ctx
+            .create_fixed_schema_table(test_table1)
+            .await
+            .table_id();
 
         assert!(test_ctx.drop_table(test_table1).await);
 
         assert!(!test_ctx.drop_table(test_table1).await);
 
-        let table_opt = test_ctx.try_open_table(test_table1).await.unwrap();
+        let table_opt = test_ctx
+            .try_open_table(table_id, test_table1)
+            .await
+            .unwrap();
         assert!(table_opt.is_none());
     });
 }
@@ -64,24 +79,36 @@ fn test_drop_create_table_mixed() {
         test_ctx.open().await;
 
         let test_table1 = "test_table1";
-        test_ctx.create_fixed_schema_table(test_table1).await;
+        let table1_id = test_ctx
+            .create_fixed_schema_table(test_table1)
+            .await
+            .table_id();
 
         assert!(test_ctx.drop_table(test_table1).await);
 
         // Create another table after dropped.
         let test_table2 = "test_table2";
-        test_ctx.create_fixed_schema_table(test_table2).await;
+        let table2_id = test_ctx
+            .create_fixed_schema_table(test_table2)
+            .await
+            .table_id();
 
-        let table_opt = test_ctx.try_open_table(test_table1).await.unwrap();
+        let table_opt = test_ctx
+            .try_open_table(table1_id, test_table1)
+            .await
+            .unwrap();
         assert!(table_opt.is_none());
 
         test_ctx.reopen().await;
 
-        let table_opt = test_ctx.try_open_table(test_table1).await.unwrap();
+        let table_opt = test_ctx
+            .try_open_table(table1_id, test_table1)
+            .await
+            .unwrap();
         assert!(table_opt.is_none());
         // Table 2 is still exists.
         assert!(test_ctx
-            .try_open_table(test_table2)
+            .try_open_table(table2_id, test_table2)
             .await
             .unwrap()
             .is_some());

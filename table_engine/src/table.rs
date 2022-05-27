@@ -233,6 +233,11 @@ impl TableId {
     /// Min table id.
     pub const MIN: TableId = TableId(0);
 
+    /// Create table id from raw u64 number.
+    pub const fn from_raw(id: u64) -> Self {
+        Self(id)
+    }
+
     /// Create a new table id from `schema_id` and `table_seq`.
     pub const fn new(schema_id: SchemaId, table_seq: TableSeq) -> Self {
         let schema_id_data = schema_id.0 as u64;
@@ -536,10 +541,12 @@ pub struct TableInfo {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
-    /// Table id
-    pub table_id: TableId,
+    /// Schema id
+    pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
     /// Table engine type
     pub engine: String,
     /// Tells state of the table
@@ -556,6 +563,7 @@ impl TryFrom<TableEntry> for TableInfo {
         Ok(Self {
             catalog_name: entry.catalog_name,
             schema_name: entry.schema_name,
+            schema_id: SchemaId(entry.schema_id),
             table_id: entry.table_id.into(),
             table_name: entry.table_name,
             engine: entry.engine,
@@ -569,6 +577,7 @@ impl From<TableInfo> for TableEntry {
         let mut entry = TableEntry::new();
         entry.set_catalog_name(table_info.catalog_name);
         entry.set_schema_name(table_info.schema_name);
+        entry.set_schema_id(table_info.schema_id.as_u32());
         entry.set_table_id(table_info.table_id.as_u64());
         entry.set_table_name(table_info.table_name);
         entry.set_engine(table_info.engine);

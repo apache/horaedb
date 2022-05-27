@@ -12,8 +12,9 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CreateExistTable, CreateOptions, CreateTable, DropOptions,
-        DropTable, InvalidTableId, NameRef, Schema, SchemaMismatch, SchemaRef, TooManyTable,
+        self, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable, CreateOptions,
+        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
+        OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
         WriteTableMeta,
     },
     Catalog, CatalogRef,
@@ -26,10 +27,7 @@ use system_catalog::sys_catalog_table::{
     VisitorCatalogNotFound, VisitorOpenTable, VisitorSchemaNotFound,
 };
 use table_engine::{
-    engine::{
-        CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine, TableEngineRef,
-        TableState,
-    },
+    engine::{TableEngine, TableEngineRef, TableState},
     table::{
         ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeqGenerator,
     },
@@ -182,7 +180,7 @@ impl Inner {
         tables.insert(self.catalog_table.table_id(), table);
 
         // Use schema id of schema `system/public` as last schema id.
-        let schema_id = sys_catalog_table::SCHEMA_ID;
+        let schema_id = system_catalog::SYSTEM_SCHEMA_ID;
         self.schema_id_generator.set_last_schema_id(schema_id);
 
         // Create the default schema in system catalog.
@@ -198,7 +196,7 @@ impl Inner {
         // Use table seq of `sys_catalog` table as last table seq.
         schema
             .table_seq_generator
-            .set_last_table_seq(sys_catalog_table::TABLE_SEQ);
+            .set_last_table_seq(system_catalog::MAX_SYSTEM_TABLE_SEQ);
 
         let mut schemas = HashMap::new();
         schemas.insert(schema.name().to_string(), schema);
@@ -578,6 +576,25 @@ impl SchemaImpl {
         }
     }
 
+    fn validate_schema_info(&self, catalog_name: &str, schema_name: &str) -> schema::Result<()> {
+        ensure!(
+            self.catalog_name == catalog_name,
+            CatalogMismatch {
+                expect: &self.catalog_name,
+                given: catalog_name,
+            }
+        );
+        ensure!(
+            self.schema_name == schema_name,
+            SchemaMismatch {
+                expect: &self.schema_name,
+                given: schema_name,
+            }
+        );
+
+        Ok(())
+    }
+
     /// Insert table into memory, wont check existence
     fn insert_table_into_memory(&self, table_id: TableId, table: TableRef) {
         let mut tables = self.tables.write().unwrap();
@@ -591,41 +608,19 @@ impl SchemaImpl {
     /// - if create_if_not_exists is false, return Error
     fn check_create_table_read(
         &self,
-        request: &CreateTableRequest,
+        table_name: &str,
         create_if_not_exists: bool,
     ) -> schema::Result<Option<TableRef>> {
-        let table_id = request.table_id;
-        ensure!(
-            self.schema_id == table_id.schema_id(),
-            InvalidTableId {
-                msg: "schema id unmatch",
-                table_id,
-            }
-        );
-
         let tables = self.tables.read().unwrap();
-        if let Some(table) = tables.tables_by_name.get(&request.table_name) {
+        if let Some(table) = tables.tables_by_name.get(table_name) {
             // Already exists
             if create_if_not_exists {
                 // Create if not exists is set
                 return Ok(Some(table.clone()));
             }
             // Create if not exists is not set, need to return error
-            return CreateExistTable {
-                table: &request.table_name,
-            }
-            .fail();
+            return CreateExistTable { table: table_name }.fail();
         }
-
-        // Table is not exists, check whether table id is unique under this schema.
-        let table_by_id = tables.tables_by_id.get(&request.table_id);
-        ensure!(
-            table_by_id.is_none(),
-            InvalidTableId {
-                msg: "table with given id already exists",
-                table_id,
-            }
-        );
 
         Ok(None)
     }
@@ -637,6 +632,18 @@ impl SchemaImpl {
             .tables_by_name
             .get(name)
             .cloned()
+    }
+
+    async fn alloc_table_id<'a>(&'a self, name: NameRef<'a>) -> schema::Result<TableId> {
+        let table_seq = self
+            .table_seq_generator
+            .alloc_table_seq()
+            .context(TooManyTable {
+                schema: &self.schema_name,
+                table: name,
+            })?;
+
+        Ok(TableId::new(self.schema_id, table_seq))
     }
 }
 
@@ -666,6 +673,10 @@ impl Schema for SchemaImpl {
         &self.schema_name
     }
 
+    fn id(&self) -> SchemaId {
+        self.schema_id
+    }
+
     fn table_by_name(&self, name: NameRef) -> schema::Result<Option<TableRef>> {
         let table = self
             .tables
@@ -675,18 +686,6 @@ impl Schema for SchemaImpl {
             .get(name)
             .cloned();
         Ok(table)
-    }
-
-    fn alloc_table_id(&self, name: NameRef) -> schema::Result<TableId> {
-        let table_seq = self
-            .table_seq_generator
-            .alloc_table_seq()
-            .context(TooManyTable {
-                schema: &self.schema_name,
-                table: name,
-            })?;
-
-        Ok(TableId::new(self.schema_id, table_seq))
     }
 
     // TODO(yingwen): Do not persist if engine is memory engine.
@@ -700,35 +699,29 @@ impl Schema for SchemaImpl {
             request
         );
 
-        ensure!(
-            self.catalog_name == request.catalog_name,
-            CatalogMismatch {
-                expect: &self.catalog_name,
-                given: request.catalog_name,
-            }
-        );
-        ensure!(
-            self.schema_name == request.schema_name,
-            SchemaMismatch {
-                expect: &self.schema_name,
-                given: request.schema_name,
-            }
-        );
+        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
+
         // TODO(yingwen): Validate table id is unique.
 
         // Check table existence
-        if let Some(table) = self.check_create_table_read(&request, opts.create_if_not_exists)? {
+        if let Some(table) =
+            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
+        {
             return Ok(table);
         }
 
         // Lock schema and persist table to sys catalog table
         let _lock = self.mutex.lock().await;
         // Check again
-        if let Some(table) = self.check_create_table_read(&request, opts.create_if_not_exists)? {
+        if let Some(table) =
+            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
+        {
             return Ok(table);
         }
 
         // Create table
+        let table_id = self.alloc_table_id(&request.table_name).await?;
+        let request = request.into_engine_create_request(table_id);
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine
@@ -763,6 +756,8 @@ impl Schema for SchemaImpl {
             "Table based catalog manager drop table, request:{:?}",
             request
         );
+
+        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
 
         if self.find_table_by_name(&request.table_name).is_none() {
             return Ok(false);
@@ -821,6 +816,41 @@ impl Schema for SchemaImpl {
         return Ok(true);
     }
 
+    async fn open_table(
+        &self,
+        request: OpenTableRequest,
+        _opts: OpenOptions,
+    ) -> schema::Result<Option<TableRef>> {
+        debug!(
+            "Table based catalog manager open table, request:{:?}",
+            request
+        );
+
+        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
+
+        // All tables have been opened duration initialization, so just check
+        // whether the table exists.
+        self.check_create_table_read(&request.table_name, false)
+    }
+
+    async fn close_table(
+        &self,
+        request: CloseTableRequest,
+        _opts: CloseOptions,
+    ) -> schema::Result<()> {
+        debug!(
+            "Table based catalog manager close table, request:{:?}",
+            request
+        );
+
+        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
+
+        schema::UnSupported {
+            msg: "close table is not supported",
+        }
+        .fail()
+    }
+
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {
         Ok(self
             .tables
@@ -839,15 +869,12 @@ mod tests {
 
     use analytic_engine::{tests::util::TestEnv, AnalyticTableEngine};
     use catalog::{
-        consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
+        consts::DEFAULT_CATALOG,
         manager::Manager,
-        schema::{CreateOptions, DropOptions, SchemaRef},
+        schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
-    use table_engine::{
-        engine::{CreateTableRequest, DropTableRequest, TableState},
-        ANALYTIC_ENGINE_TYPE,
-    };
+    use table_engine::{engine::TableState, ANALYTIC_ENGINE_TYPE};
 
     use crate::table_based::TableBasedManager;
 
@@ -884,31 +911,13 @@ mod tests {
             .unwrap()
     }
 
-    async fn build_default_schema(analytic: AnalyticTableEngine) -> SchemaRef {
-        let catalog_manager = build_catalog_manager(analytic).await;
-        let catalog_name = catalog_manager.default_catalog_name();
-        let schema_name = catalog_manager.default_schema_name();
-        let catalog = catalog_manager.catalog_by_name(catalog_name);
-        assert!(catalog.is_ok());
-        assert!(catalog.as_ref().unwrap().is_some());
-        catalog
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .schema_by_name(schema_name)
-            .unwrap()
-            .unwrap()
-    }
-
-    fn build_create_table_req(table_name: &str, schema: SchemaRef) -> CreateTableRequest {
+    async fn build_create_table_req(table_name: &str, schema: SchemaRef) -> CreateTableRequest {
         CreateTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
-            schema_name: DEFAULT_SCHEMA.to_string(),
-            table_id: schema.alloc_table_id(table_name).unwrap(),
+            schema_name: schema.name().to_string(),
+            schema_id: schema.id(),
             table_name: table_name.to_string(),
             table_schema: common_types::tests::build_schema(),
-            partition_info: None,
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             options: HashMap::new(),
             state: TableState::Stable,
@@ -977,18 +986,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_alloc_table_id() {
-        let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context();
-        test_ctx.open().await;
-
-        let schema = build_default_schema(test_ctx.engine()).await;
-        let table_id = schema.alloc_table_id("test").unwrap();
-        let expected_id = 2u64 << 40 | 1u64;
-        assert_eq!(table_id.as_u64(), expected_id);
-    }
-
-    #[tokio::test]
     async fn test_create_table() {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context();
@@ -998,7 +995,7 @@ mod tests {
         let schema = build_default_schema_with_catalog(&catalog_manager).await;
 
         let table_name = "test";
-        let request = build_create_table_req(table_name, schema.clone());
+        let request = build_create_table_req(table_name, schema.clone()).await;
 
         let opts = CreateOptions {
             table_engine: catalog_manager.get_engine_proxy(),
@@ -1035,7 +1032,8 @@ mod tests {
         let engine_name = "test_engine";
         let drop_table_request = DropTableRequest {
             catalog_name: DEFAULT_CATALOG.to_string(),
-            schema_name: DEFAULT_SCHEMA.to_string(),
+            schema_name: schema.name().to_string(),
+            schema_id: schema.id(),
             table_name: table_name.to_string(),
             engine: engine_name.to_string(),
         };
@@ -1048,7 +1046,7 @@ mod tests {
             .await
             .unwrap());
 
-        let create_table_request = build_create_table_req(table_name, schema.clone());
+        let create_table_request = build_create_table_req(table_name, schema.clone()).await;
         let create_table_opts = CreateOptions {
             table_engine: catalog_manager.get_engine_proxy(),
             create_if_not_exists: true,
@@ -1097,7 +1095,7 @@ mod tests {
         // create two tables
         {
             let table_name2 = "test2";
-            let create_table_request2 = build_create_table_req(table_name2, schema.clone());
+            let create_table_request2 = build_create_table_req(table_name2, schema.clone()).await;
             schema
                 .create_table(create_table_request2.clone(), create_table_opts.clone())
                 .await

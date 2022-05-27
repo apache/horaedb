@@ -2,9 +2,7 @@
 
 //! Protobuf messages
 
-// TODO(yingwen): All the protos need review
 mod protos {
-    include!(concat!(env!("OUT_DIR"), "/protos/mod.rs"));
+    include!("./protos/mod.rs");
 }
-
 pub use protos::*;

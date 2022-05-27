@@ -101,7 +101,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum UpdateMode {
     Overwrite,
     Append,
@@ -128,7 +128,7 @@ impl ToString for UpdateMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 pub enum Compression {
     Uncompressed,
     Lz4,
@@ -197,7 +197,7 @@ impl From<Compression> for ParquetCompression {
 }
 
 /// Options for a table.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TableOptions {
     // The following options are immutable once table was created.

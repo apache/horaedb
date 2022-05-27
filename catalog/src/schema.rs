@@ -2,14 +2,14 @@
 
 //! Schema contains one or more tables
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::column_schema::ColumnSchema;
 use snafu::{Backtrace, Snafu};
 use table_engine::{
-    engine::{CreateTableRequest, DropTableRequest, TableEngineRef},
-    table::{TableId, TableRef},
+    engine::{self, TableEngineRef, TableState},
+    table::{SchemaId, TableId, TableRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -18,8 +18,40 @@ pub enum Error {
     #[snafu(display("Unsupported method, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     UnSupported { msg: String, backtrace: Backtrace },
 
+    #[snafu(display(
+        "Failed to allocate table id, schema:{}, table:{}, err:{}",
+        schema,
+        table,
+        source
+    ))]
+    AllocateTableId {
+        schema: String,
+        table: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to invalidate table id, schema:{}, table:{}, table_id:{}, err:{}",
+        schema,
+        table_name,
+        table_id,
+        source
+    ))]
+    InvalidateTableId {
+        schema: String,
+        table_name: String,
+        table_id: TableId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     #[snafu(display("Failed to create table, err:{}", source))]
     CreateTable { source: table_engine::engine::Error },
+
+    #[snafu(display("Failed to open table, err:{}", source))]
+    OpenTable { source: table_engine::engine::Error },
+
+    #[snafu(display("Failed to close table, err:{}", source))]
+    CloseTable { source: table_engine::engine::Error },
 
     #[snafu(display(
         "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
@@ -100,6 +132,44 @@ pub enum Error {
 
 define_result!(Error);
 
+/// Request of creating table.
+#[derive(Debug, Clone)]
+pub struct CreateTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
+    /// Table name
+    pub table_name: String,
+    /// Table schema
+    pub table_schema: common_types::schema::Schema,
+    /// Table engine type
+    pub engine: String,
+    /// Table options used by each engine
+    pub options: HashMap<String, String>,
+    /// Tells state of the table
+    pub state: TableState,
+}
+
+impl CreateTableRequest {
+    pub fn into_engine_create_request(self, table_id: TableId) -> engine::CreateTableRequest {
+        engine::CreateTableRequest {
+            catalog_name: self.catalog_name,
+            schema_name: self.schema_name,
+            schema_id: self.schema_id,
+            table_name: self.table_name,
+            table_id,
+            table_schema: self.table_schema,
+            partition_info: None,
+            engine: self.engine,
+            options: self.options,
+            state: self.state,
+        }
+    }
+}
+
 /// Create table options.
 #[derive(Clone)]
 pub struct CreateOptions {
@@ -111,9 +181,29 @@ pub struct CreateOptions {
     pub create_if_not_exists: bool,
 }
 
+pub type DropTableRequest = engine::DropTableRequest;
+
 /// Drop table options.
 #[derive(Clone)]
 pub struct DropOptions {
+    /// Table engine
+    pub table_engine: TableEngineRef,
+}
+
+pub type OpenTableRequest = engine::OpenTableRequest;
+
+/// Open table options.
+#[derive(Clone)]
+pub struct OpenOptions {
+    /// Table engine
+    pub table_engine: TableEngineRef,
+}
+
+pub type CloseTableRequest = engine::CloseTableRequest;
+
+/// Close table options.
+#[derive(Clone)]
+pub struct CloseOptions {
     /// Table engine
     pub table_engine: TableEngineRef,
 }
@@ -140,11 +230,11 @@ pub trait Schema {
     /// Get schema name.
     fn name(&self) -> NameRef;
 
+    /// Get schema id
+    fn id(&self) -> SchemaId;
+
     /// Find table by name.
     fn table_by_name(&self, name: NameRef) -> Result<Option<TableRef>>;
-
-    /// Allocate a table id for given table.
-    fn alloc_table_id(&self, name: NameRef) -> Result<TableId>;
 
     /// Create table according to `request`.
     async fn create_table(
@@ -157,6 +247,20 @@ pub trait Schema {
     ///
     /// Returns true if the table is really dropped.
     async fn drop_table(&self, request: DropTableRequest, opts: DropOptions) -> Result<bool>;
+
+    /// Open the table according to `request`.
+    ///
+    /// Return None if table does not exist.
+    async fn open_table(
+        &self,
+        request: OpenTableRequest,
+        opts: OpenOptions,
+    ) -> Result<Option<TableRef>>;
+
+    /// Close the table according to `request`.
+    ///
+    /// Return false if table does not exist.
+    async fn close_table(&self, request: CloseTableRequest, opts: CloseOptions) -> Result<()>;
 
     /// All tables
     fn all_tables(&self) -> Result<Vec<TableRef>>;

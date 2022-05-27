@@ -36,7 +36,7 @@ pub enum Error {
 define_result!(Error);
 
 /// Meta data of a new file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddFile {
     /// The level of the file intended to add.
     pub level: u16,
@@ -90,7 +90,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
 }
 
 /// Meta data of the file to delete.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeleteFile {
     /// The level of the file intended to delete.
     pub level: u16,

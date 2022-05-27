@@ -14,10 +14,7 @@ use proto::{analytic_common, common as common_pb, meta_update as meta_pb};
 use protobuf::Message;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
-use wal::{
-    log_batch::{Payload, PayloadDecoder},
-    manager::RegionId,
-};
+use wal::log_batch::{Payload, PayloadDecoder};
 
 use crate::{
     space::SpaceId,
@@ -36,6 +33,9 @@ pub enum Error {
     #[snafu(display("Failed to convert schema, err:{}", source))]
     ConvertSchema { source: common_types::schema::Error },
 
+    #[snafu(display("Empty log entry of meta update.\nBacktrace:\n{}", backtrace))]
+    EmptyMetaUpdateLogEntry { backtrace: Backtrace },
+
     #[snafu(display("Empty meta update.\nBacktrace:\n{}", backtrace))]
     EmptyMetaUpdate { backtrace: Backtrace },
 
@@ -53,16 +53,86 @@ pub enum Error {
 
 define_result!(Error);
 
+/// Wrapper for the meta update written into the Wal.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MetaUpdateLogEntry {
+    Normal(MetaUpdate),
+    Snapshot {
+        sequence: SequenceNumber,
+        meta_update: MetaUpdate,
+    },
+    SnapshotStart(SequenceNumber),
+    SnapshotEnd(SequenceNumber),
+}
+
+impl MetaUpdateLogEntry {
+    pub fn into_pb(self) -> meta_pb::MetaUpdateLogEntry {
+        let mut log_entry = meta_pb::MetaUpdateLogEntry::new();
+
+        match self {
+            MetaUpdateLogEntry::Normal(v) => {
+                log_entry.set_normal(v.into_pb());
+            }
+            MetaUpdateLogEntry::Snapshot {
+                sequence,
+                meta_update,
+            } => {
+                let mut snapshot_entry = meta_pb::SnapshotLogEntry::new();
+                snapshot_entry.set_sequence(sequence);
+                snapshot_entry.set_meta_update(meta_update.into_pb());
+                log_entry.set_snapshot(snapshot_entry);
+            }
+            MetaUpdateLogEntry::SnapshotStart(v) => {
+                let mut snapshot_flag_entry = meta_pb::SnapshotFlagLogEntry::new();
+                snapshot_flag_entry.set_sequence(v);
+                log_entry.set_snapshot_start(snapshot_flag_entry);
+            }
+            MetaUpdateLogEntry::SnapshotEnd(v) => {
+                let mut snapshot_flag_entry = meta_pb::SnapshotFlagLogEntry::new();
+                snapshot_flag_entry.set_sequence(v);
+                log_entry.set_snapshot_end(snapshot_flag_entry);
+            }
+        }
+
+        log_entry
+    }
+}
+
+impl TryFrom<meta_pb::MetaUpdateLogEntry> for MetaUpdateLogEntry {
+    type Error = Error;
+
+    fn try_from(src: meta_pb::MetaUpdateLogEntry) -> Result<Self> {
+        let entry = match src.entry {
+            Some(meta_pb::MetaUpdateLogEntry_oneof_entry::normal(v)) => {
+                MetaUpdateLogEntry::Normal(MetaUpdate::try_from(v)?)
+            }
+            Some(meta_pb::MetaUpdateLogEntry_oneof_entry::snapshot(mut v)) => {
+                MetaUpdateLogEntry::Snapshot {
+                    sequence: v.sequence,
+                    meta_update: MetaUpdate::try_from(v.take_meta_update())?,
+                }
+            }
+            Some(meta_pb::MetaUpdateLogEntry_oneof_entry::snapshot_start(v)) => {
+                MetaUpdateLogEntry::SnapshotStart(v.sequence)
+            }
+            Some(meta_pb::MetaUpdateLogEntry_oneof_entry::snapshot_end(v)) => {
+                MetaUpdateLogEntry::SnapshotEnd(v.sequence)
+            }
+            None => return EmptyMetaUpdateLogEntry.fail(),
+        };
+
+        Ok(entry)
+    }
+}
+
 /// Modifications to meta data in meta
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetaUpdate {
-    AddSpace(AddSpaceMeta),
     AddTable(AddTableMeta),
     DropTable(DropTableMeta),
     VersionEdit(VersionEditMeta),
     AlterSchema(AlterSchemaMeta),
     AlterOptions(AlterOptionsMeta),
-    SnapshotManifest(SnapshotManifestMeta),
 }
 
 impl MetaUpdate {
@@ -70,9 +140,6 @@ impl MetaUpdate {
         let mut meta_update = meta_pb::MetaUpdate::new();
 
         match self {
-            MetaUpdate::AddSpace(v) => {
-                meta_update.set_add_space(v.into_pb());
-            }
             MetaUpdate::AddTable(v) => {
                 meta_update.set_add_table(v.into_pb());
             }
@@ -88,19 +155,18 @@ impl MetaUpdate {
             MetaUpdate::DropTable(v) => {
                 meta_update.set_drop_table(v.into_pb());
             }
-            MetaUpdate::SnapshotManifest(v) => {
-                meta_update.set_snapshot_manifest(v.into_pb());
-            }
         }
 
         meta_update
     }
 
-    pub fn snapshot_manifest_meta(&self) -> Option<SnapshotManifestMeta> {
-        if let MetaUpdate::SnapshotManifest(v) = self {
-            Some(*v)
-        } else {
-            None
+    pub fn table_id(&self) -> TableId {
+        match self {
+            MetaUpdate::AddTable(v) => v.table_id,
+            MetaUpdate::VersionEdit(v) => v.table_id,
+            MetaUpdate::AlterSchema(v) => v.table_id,
+            MetaUpdate::AlterOptions(v) => v.table_id,
+            MetaUpdate::DropTable(v) => v.table_id,
         }
     }
 }
@@ -110,10 +176,6 @@ impl TryFrom<meta_pb::MetaUpdate> for MetaUpdate {
 
     fn try_from(src: meta_pb::MetaUpdate) -> Result<Self> {
         let meta_update = match src.meta {
-            Some(meta_pb::MetaUpdate_oneof_meta::add_space(v)) => {
-                let add_space = AddSpaceMeta::from(v);
-                MetaUpdate::AddSpace(add_space)
-            }
             Some(meta_pb::MetaUpdate_oneof_meta::add_table(v)) => {
                 let add_table = AddTableMeta::try_from(v)?;
                 MetaUpdate::AddTable(add_table)
@@ -134,10 +196,6 @@ impl TryFrom<meta_pb::MetaUpdate> for MetaUpdate {
                 let drop_table = DropTableMeta::from(v);
                 MetaUpdate::DropTable(drop_table)
             }
-            Some(meta_pb::MetaUpdate_oneof_meta::snapshot_manifest(v)) => {
-                let snapshot_manifest = SnapshotManifestMeta::from(v);
-                MetaUpdate::SnapshotManifest(snapshot_manifest)
-            }
             None => {
                 // Meta update should not be empty.
                 return EmptyMetaUpdate.fail();
@@ -148,34 +206,8 @@ impl TryFrom<meta_pb::MetaUpdate> for MetaUpdate {
     }
 }
 
-/// Meta data for a new space
-#[derive(Debug, Clone)]
-pub struct AddSpaceMeta {
-    pub space_id: SpaceId,
-    pub space_name: String,
-}
-
-impl AddSpaceMeta {
-    fn into_pb(self) -> meta_pb::AddSpaceMeta {
-        let mut target = meta_pb::AddSpaceMeta::new();
-        target.set_space_id(self.space_id);
-        target.set_space_name(self.space_name);
-
-        target
-    }
-}
-
-impl From<meta_pb::AddSpaceMeta> for AddSpaceMeta {
-    fn from(src: meta_pb::AddSpaceMeta) -> Self {
-        Self {
-            space_id: src.space_id,
-            space_name: src.space_name,
-        }
-    }
-}
-
 /// Meta data for a new table
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AddTableMeta {
     /// Space id of the table
     pub space_id: SpaceId,
@@ -218,7 +250,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
 }
 
 /// Meta data for dropping a table
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DropTableMeta {
     /// Space id of the table
     pub space_id: SpaceId,
@@ -248,7 +280,7 @@ impl From<meta_pb::DropTableMeta> for DropTableMeta {
 }
 
 /// Meta data of version edit to table
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VersionEditMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -318,7 +350,7 @@ impl TryFrom<meta_pb::VersionEditMeta> for VersionEditMeta {
 }
 
 /// Meta data of schema update.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlterSchemaMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -354,7 +386,7 @@ impl TryFrom<meta_pb::AlterSchemaMeta> for AlterSchemaMeta {
 }
 
 /// Meta data of options update.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlterOptionsMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -384,48 +416,20 @@ impl From<meta_pb::AlterOptionsMeta> for AlterOptionsMeta {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct SnapshotManifestMeta {
-    pub snapshot_region_id: RegionId,
-    /// The last sequence (inclusive) of the data in this snapshot.
-    ///
-    /// Note that the sequence refers to the manifest region.
-    pub sequence: SequenceNumber,
-}
-
-impl SnapshotManifestMeta {
-    fn into_pb(self) -> meta_pb::SnapshotManifestMeta {
-        let mut target = meta_pb::SnapshotManifestMeta::new();
-        target.set_region_id(self.snapshot_region_id);
-        target.set_sequence(self.sequence);
-
-        target
-    }
-}
-
-impl From<meta_pb::SnapshotManifestMeta> for SnapshotManifestMeta {
-    fn from(src: meta_pb::SnapshotManifestMeta) -> SnapshotManifestMeta {
-        Self {
-            snapshot_region_id: src.region_id,
-            sequence: src.sequence,
-        }
-    }
-}
-
 /// An adapter to implement [wal::log_batch::Payload] for
 /// [proto::meta_update::MetaUpdate]
 #[derive(Debug)]
-pub struct MetaUpdatePayload(meta_pb::MetaUpdate);
+pub struct MetaUpdatePayload(meta_pb::MetaUpdateLogEntry);
 
-impl From<MetaUpdate> for MetaUpdatePayload {
-    fn from(src: MetaUpdate) -> Self {
-        MetaUpdatePayload(src.into_pb())
+impl From<MetaUpdateLogEntry> for MetaUpdatePayload {
+    fn from(src: MetaUpdateLogEntry) -> Self {
+        Self(src.into_pb())
     }
 }
 
-impl From<&MetaUpdate> for MetaUpdatePayload {
-    fn from(src: &MetaUpdate) -> Self {
-        MetaUpdatePayload(src.clone().into_pb())
+impl From<&MetaUpdateLogEntry> for MetaUpdatePayload {
+    fn from(src: &MetaUpdateLogEntry) -> Self {
+        Self::from(src.clone())
     }
 }
 
@@ -433,15 +437,12 @@ impl Payload for MetaUpdatePayload {
     type Error = Error;
 
     fn encode_size(&self) -> usize {
-        self.0.compute_size().try_into().unwrap_or(usize::MAX)
+        self.0.compute_size().try_into().unwrap_or(0)
     }
 
     fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
         let mut writer = Writer::new(buf);
-        self.0
-            .write_to_writer(&mut writer)
-            .context(EncodePayloadPb)?;
-        Ok(())
+        self.0.write_to_writer(&mut writer).context(EncodePayloadPb)
     }
 }
 
@@ -450,14 +451,14 @@ pub struct MetaUpdateDecoder;
 
 impl PayloadDecoder for MetaUpdateDecoder {
     type Error = Error;
-    type Target = MetaUpdate;
+    type Target = MetaUpdateLogEntry;
 
     fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target> {
-        let meta_update = meta_pb::MetaUpdate::parse_from_bytes(buf.remaining_slice())
+        let log_entry_pb = meta_pb::MetaUpdateLogEntry::parse_from_bytes(buf.remaining_slice())
             .context(DecodePayloadPb)?;
 
-        let meta_update = MetaUpdate::try_from(meta_update)?;
+        let log_entry = MetaUpdateLogEntry::try_from(log_entry_pb)?;
 
-        Ok(meta_update)
+        Ok(log_entry)
     }
 }

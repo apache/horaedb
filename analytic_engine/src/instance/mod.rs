@@ -6,8 +6,10 @@
 //! divided into the sub crates
 
 mod alter;
+mod close;
+mod create;
 mod drop;
-mod engine;
+pub mod engine;
 pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
@@ -27,13 +29,12 @@ use object_store::ObjectStore;
 use parquet::{DataCacheRef, MetaCacheRef};
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use tokio::sync::Mutex;
 use wal::manager::WalManager;
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     meta::Manifest,
-    space::{SpaceId, SpaceName, SpaceNameRef, SpaceRef},
+    space::{SpaceId, SpaceRef},
     sst::file::FilePurger,
     table::data::TableDataRef,
     TableOptions,
@@ -48,61 +49,26 @@ pub enum Error {
     StopScheduler {
         source: crate::compaction::scheduler::Error,
     },
-
-    #[snafu(display("Failed to close space, name:{}, err:{}", name, source))]
-    CloseSpace {
-        name: String,
-        source: crate::space::Error,
-    },
 }
 
 define_result!(Error);
 
-/// Meta state
-#[derive(Debug)]
-struct MetaState {
-    /// Id of the last space
-    last_space_id: SpaceId,
-}
-
-impl MetaState {
-    /// Create a new state
-    fn new() -> Self {
-        Self { last_space_id: 1 }
-    }
-
-    /// Acquire next id for a new space
-    fn alloc_space_id(&mut self) -> SpaceId {
-        self.last_space_id += 1;
-        self.last_space_id
-    }
-}
-
-impl Default for MetaState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Spaces states
 #[derive(Default)]
 struct Spaces {
-    /// Name to space
-    name_to_space: HashMap<SpaceName, SpaceRef>,
     /// Id to space
     id_to_space: HashMap<SpaceId, SpaceRef>,
 }
 
 impl Spaces {
     /// Insert space by name, and also insert id to space mapping
-    fn insert(&mut self, space_name: SpaceName, space: SpaceRef) {
+    fn insert(&mut self, space: SpaceRef) {
         let space_id = space.id;
-        self.name_to_space.insert(space_name, space.clone());
         self.id_to_space.insert(space_id, space);
     }
 
-    fn get_by_name(&self, name: SpaceNameRef) -> Option<&SpaceRef> {
-        self.name_to_space.get(name)
+    fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
+        self.id_to_space.get(&id)
     }
 
     /// List all tables of all spaces
@@ -128,15 +94,6 @@ pub struct SpaceStore<Wal, Meta, Store, Fa> {
     wal_manager: Wal,
     /// Sst storage.
     store: Arc<Store>,
-    /// Meta lock protects mutation to meta data of the instance. This lock
-    /// should be held when persisting mutation of the instance level meta data
-    /// to the manifest.
-    /// - add a space
-    /// - delete a space
-    ///
-    /// Mutation to space's meta, like add/delete a table, is protected by
-    /// space's lock instead of this lock.
-    meta_state: Mutex<MetaState>,
     /// Sst factory.
     sst_factory: Fa,
 
@@ -155,10 +112,7 @@ impl<Wal, Meta, Store, Fa> SpaceStore<Wal, Meta, Store, Fa> {
         let spaces = self.spaces.read().unwrap().list_all_spaces();
         for space in spaces {
             // Close all spaces.
-            space
-                .close()
-                .await
-                .context(CloseSpace { name: &space.name })?;
+            space.close().await;
         }
 
         Ok(())
@@ -212,6 +166,8 @@ pub struct Instance<Wal, Meta, Store, Fa> {
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size
     pub(crate) space_write_buffer_size: usize,
+    /// replay wal batch size
+    pub(crate) replay_batch_size: usize,
 }
 
 impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa> {
@@ -233,9 +189,9 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest, Store: ObjectStore, Fa>
     Instance<Wal, Meta, Store, Fa>
 {
     /// Find space using read lock
-    fn get_space_by_read_lock(&self, space: SpaceNameRef) -> Option<SpaceRef> {
+    fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
-        spaces.get_by_name(space).cloned()
+        spaces.get_by_id(space).cloned()
     }
 
     /// Returns options to create a write group for given space

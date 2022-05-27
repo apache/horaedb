@@ -7,13 +7,17 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use catalog::{
     consts::{SYSTEM_CATALOG, SYSTEM_CATALOG_SCHEMA},
-    schema::{CreateOptions, DropOptions, NameRef, Schema, SchemaRef},
+    schema::{
+        CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest, DropOptions,
+        DropTableRequest, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaRef,
+    },
     Catalog,
 };
+use log::warn;
 use system_catalog::SystemTableAdapter;
 use table_engine::{
-    engine::{CreateTableRequest, DropTableRequest},
-    table::{Table, TableId, TableRef},
+    self,
+    table::{SchemaId, Table, TableRef},
 };
 
 const UNSUPPORTED_MSG: &str = "system tables not supported";
@@ -59,15 +63,12 @@ impl Schema for SystemTables {
         SYSTEM_CATALOG_SCHEMA
     }
 
-    fn table_by_name(&self, name: NameRef) -> catalog::schema::Result<Option<TableRef>> {
-        Ok(self.tables.get(name).map(|v| v.clone() as TableRef))
+    fn id(&self) -> SchemaId {
+        system_catalog::SYSTEM_SCHEMA_ID
     }
 
-    fn alloc_table_id(&self, _name: NameRef) -> catalog::schema::Result<TableId> {
-        catalog::schema::UnSupported {
-            msg: UNSUPPORTED_MSG,
-        }
-        .fail()
+    fn table_by_name(&self, name: NameRef) -> catalog::schema::Result<Option<TableRef>> {
+        Ok(self.tables.get(name).map(|v| v.clone() as TableRef))
     }
 
     async fn create_table(
@@ -90,6 +91,24 @@ impl Schema for SystemTables {
             msg: UNSUPPORTED_MSG,
         }
         .fail()
+    }
+
+    async fn open_table(
+        &self,
+        _request: OpenTableRequest,
+        _opts: OpenOptions,
+    ) -> catalog::schema::Result<Option<TableRef>> {
+        warn!("try to open table in the system tables");
+        Ok(None)
+    }
+
+    async fn close_table(
+        &self,
+        _request: CloseTableRequest,
+        _opts: CloseOptions,
+    ) -> catalog::schema::Result<()> {
+        warn!("try to close table in the system tables");
+        Ok(())
     }
 
     fn all_tables(&self) -> catalog::schema::Result<Vec<TableRef>> {

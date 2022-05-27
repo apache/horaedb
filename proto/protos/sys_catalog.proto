@@ -40,16 +40,18 @@ message TableEntry {
     string catalog_name = 1;
     // Name of schema
     string schema_name = 2;
+    // Schema id
+    uint32 schema_id = 3;
     // Table id
-    uint64 table_id = 3;
+    uint64 table_id = 4;
     // Table name
-    string table_name = 4;
+    string table_name = 5;
     // Table engine type
-    string engine = 5;
+    string engine = 6;
     // The state of the table.
-    TableState state = 6;
+    TableState state = 7;
     // Created time: ms
-    int64 created_time = 7;
+    int64 created_time = 8;
     // Modified time: ms
-    int64 modified_time = 8;
+    int64 modified_time = 9;
 }

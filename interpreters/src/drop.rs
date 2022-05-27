@@ -99,6 +99,7 @@ impl<C: Manager> DropInterpreter<C> {
         let request = DropTableRequest {
             catalog_name: catalog.name().to_string(),
             schema_name: schema.name().to_string(),
+            schema_id: schema.id(),
             table_name: table.clone(),
             engine: self.plan.engine,
         };

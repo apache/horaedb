@@ -12,7 +12,7 @@ use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
     partition::PartitionInfo,
-    table::{TableId, TableInfo, TableRef},
+    table::{SchemaId, TableId, TableInfo, TableRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -137,6 +137,8 @@ pub struct CreateTableRequest {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
     /// Table id
     pub table_id: TableId,
     // TODO(yingwen): catalog and schema, or add a table path struct?
@@ -186,8 +188,9 @@ impl From<CreateTableRequest> for TableInfo {
         Self {
             catalog_name: req.catalog_name,
             schema_name: req.schema_name,
-            table_id: req.table_id,
+            schema_id: req.schema_id,
             table_name: req.table_name,
+            table_id: req.table_id,
             engine: req.engine,
             state: req.state,
         }
@@ -201,6 +204,8 @@ pub struct DropTableRequest {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
     /// Table engine type
@@ -213,8 +218,12 @@ pub struct OpenTableRequest {
     pub catalog_name: String,
     /// Schema name
     pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
     /// Table name
     pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
     /// Table engine type
     pub engine: String,
 }
@@ -224,11 +233,15 @@ impl From<TableInfo> for OpenTableRequest {
         Self {
             catalog_name: table_info.catalog_name,
             schema_name: table_info.schema_name,
+            schema_id: table_info.schema_id,
             table_name: table_info.table_name,
+            table_id: table_info.table_id,
             engine: table_info.engine,
         }
     }
 }
+
+pub type CloseTableRequest = OpenTableRequest;
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
@@ -248,6 +261,9 @@ pub trait TableEngine {
 
     /// Open table, return None if table not exists
     async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>>;
+
+    /// Close table
+    async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
 }
 
 /// A reference counted pointer to table engine

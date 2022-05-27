@@ -8,8 +8,8 @@ use analytic_engine::AnalyticTableEngine;
 use async_trait::async_trait;
 use table_engine::{
     engine::{
-        CreateTableRequest, DropTableRequest, OpenTableRequest, Result, TableEngine,
-        UnknownEngineType,
+        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
+        TableEngine, UnknownEngineType,
     },
     memory::MemoryTable,
     table::TableRef,
@@ -45,6 +45,10 @@ impl TableEngine for MemoryTableEngine {
 
     async fn open_table(&self, _request: OpenTableRequest) -> Result<Option<TableRef>> {
         Ok(None)
+    }
+
+    async fn close_table(&self, _request: CloseTableRequest) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -91,6 +95,15 @@ impl TableEngine for TableEngineProxy {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.open_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.open_table(request).await,
+            engine_type => UnknownEngineType { engine_type }.fail(),
+        }
+    }
+
+    /// Close table, it is ok to close a closed table.
+    async fn close_table(&self, request: OpenTableRequest) -> Result<()> {
+        match request.engine.as_str() {
+            MEMORY_ENGINE_TYPE => self.memory.close_table(request).await,
+            ANALYTIC_ENGINE_TYPE => self.analytic.close_table(request).await,
             engine_type => UnknownEngineType { engine_type }.fail(),
         }
     }

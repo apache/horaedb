@@ -166,7 +166,7 @@ impl MemTableForWrite {
             MemTableForWrite::Sampling(v) => {
                 v.mem.put(ctx, sequence, row, schema).context(PutMemTable)?;
 
-                // Collect the timstamp of this row.
+                // Collect the timestamp of this row.
                 v.sampler.collect(timestamp).context(CollectTimestamp)?;
 
                 Ok(())
@@ -752,7 +752,7 @@ impl TableVersion {
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
 /// apply the version meta to the table, so we can avoid adding removed ssts to
 /// the version.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct TableVersionMeta {
     pub flushed_sequence: SequenceNumber,
     files: HashMap<FileId, AddFile>,

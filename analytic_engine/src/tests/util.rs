@@ -19,8 +19,8 @@ use table_engine::{
         Result as EngineResult, TableEngine,
     },
     table::{
-        AlterSchemaRequest, FlushRequest, GetRequest, ReadOrder, ReadRequest, Result, TableId,
-        TableRef, WriteRequest,
+        AlterSchemaRequest, FlushRequest, GetRequest, ReadOrder, ReadRequest, Result, SchemaId,
+        TableId, TableRef, WriteRequest,
     },
 };
 use tempfile::TempDir;
@@ -104,6 +104,7 @@ pub struct TestContext {
     pub config: Config,
     runtimes: Arc<EngineRuntimes>,
     pub engine: Option<AnalyticTableEngine>,
+    pub schema_id: SchemaId,
     last_table_seq: u32,
 
     name_to_tables: HashMap<String, TableRef>,
@@ -132,6 +133,13 @@ impl TestContext {
     }
 
     pub async fn reopen_with_tables(&mut self, tables: &[&str]) {
+        let table_infos: Vec<_> = tables
+            .iter()
+            .map(|name| {
+                let table_id = self.name_to_tables.get(*name).unwrap().id();
+                (table_id, *name)
+            })
+            .collect();
         {
             // Close all tables.
             self.name_to_tables.clear();
@@ -143,18 +151,20 @@ impl TestContext {
 
         self.open().await;
 
-        for name in tables {
-            self.open_table(name).await;
+        for (id, name) in table_infos {
+            self.open_table(id, name).await;
         }
     }
 
-    async fn open_table(&mut self, table_name: &str) {
+    async fn open_table(&mut self, table_id: TableId, table_name: &str) {
         let table = self
             .engine()
             .open_table(OpenTableRequest {
                 catalog_name: "ceresdb".to_string(),
                 schema_name: "public".to_string(),
+                schema_id: self.schema_id,
                 table_name: table_name.to_string(),
+                table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             })
             .await
@@ -164,13 +174,19 @@ impl TestContext {
         self.name_to_tables.insert(table_name.to_string(), table);
     }
 
-    pub async fn try_open_table(&mut self, table_name: &str) -> EngineResult<Option<TableRef>> {
+    pub async fn try_open_table(
+        &mut self,
+        table_id: TableId,
+        table_name: &str,
+    ) -> EngineResult<Option<TableRef>> {
         let table_opt = self
             .engine()
             .open_table(OpenTableRequest {
                 catalog_name: "ceresdb".to_string(),
                 schema_name: "public".to_string(),
+                schema_id: self.schema_id,
                 table_name: table_name.to_string(),
+                table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             })
             .await?;
@@ -190,6 +206,7 @@ impl TestContext {
         let request = DropTableRequest {
             catalog_name: "ceresdb".to_string(),
             schema_name: "public".to_string(),
+            schema_id: self.schema_id,
             table_name: table_name.to_string(),
             engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
         };
@@ -208,6 +225,7 @@ impl TestContext {
 
     pub async fn create_fixed_schema_table(&mut self, table_name: &str) -> FixedSchemaTable {
         let fixed_schema_table = FixedSchemaTable::builder()
+            .schema_id(self.schema_id)
             .table_name(table_name.to_string())
             .table_id(self.next_table_id())
             .ttl("7d".parse::<ReadableDuration>().unwrap())
@@ -351,6 +369,7 @@ impl TestEnv {
             config: self.config.clone(),
             runtimes: self.runtimes.clone(),
             engine: None,
+            schema_id: SchemaId::new(100).unwrap(),
             last_table_seq: 1,
             name_to_tables: HashMap::new(),
         }
@@ -367,9 +386,6 @@ pub struct Builder {
 
 impl Builder {
     pub fn build(self) -> TestEnv {
-        // Init log for test.
-        common_util::tests::init_log_for_test();
-
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {

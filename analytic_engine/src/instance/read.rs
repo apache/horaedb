@@ -87,8 +87,8 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest, Store: ObjectStore, Fa: Fact
         request: ReadRequest,
     ) -> Result<PartitionedStreams> {
         debug!(
-            "Instance read from table, space:{}, table:{}, table_id:{:?}, request:{:?}",
-            space_table.space().name,
+            "Instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
+            space_table.space().id,
             space_table.table_data().name,
             space_table.table_data().id,
             request
