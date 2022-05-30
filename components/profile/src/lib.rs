@@ -12,7 +12,6 @@ use std::{
 };
 
 use jemalloc_ctl::{Access, AsName};
-use jemallocator;
 use log::{error, info};
 
 #[derive(Debug)]
@@ -35,19 +34,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-const PROF_ACTIVE: &'static [u8] = b"prof.active\0";
-const PROF_DUMP: &'static [u8] = b"prof.dump\0";
-const PROFILE_OUTPUT: &'static [u8] = b"profile.out\0";
+const PROF_ACTIVE: &[u8] = b"prof.active\0";
+const PROF_DUMP: &[u8] = b"prof.dump\0";
+const PROFILE_OUTPUT: &[u8] = b"profile.out\0";
 const PROFILE_OUTPUT_FILE_PATH: &str = "/tmp/profile.out";
 
 fn set_prof_active(active: bool) -> Result<()> {
     let name = PROF_ACTIVE.name();
-    name.write(active).map_err(|e| Error::Jemalloc(e))
+    name.write(active).map_err(Error::Jemalloc)
 }
 
 fn dump_profile() -> Result<()> {
     let name = PROF_DUMP.name();
-    name.write(PROFILE_OUTPUT).map_err(|e| Error::Jemalloc(e))
+    name.write(PROFILE_OUTPUT).map_err(Error::Jemalloc)
 }
 
 struct ProfLockGuard<'a>(MutexGuard<'a, ()>);
