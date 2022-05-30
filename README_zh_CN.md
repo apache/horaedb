@@ -2,21 +2,13 @@
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
-CeresDB 诞生于蚂蚁集团内部，是一个分布式、高可用、高可靠的时间序列数据库 [Time Series Database](https://en.wikipedia.org/wiki/Time_series_database?spm=ata.21736010.0.0.7d707536F4fwj8)。
-经过多年双11打磨，作为蚂蚁全站监控数据存储的时间序列数据库，承载了每天数万亿数据点的写入，并提供多维度查询。
+CeresDB 定位高性能的、分布式的、Schema-less 的 HT(timeseries)A(analytic)P 型时间序列数据库，不同于传统的时序数据库，CeresDB 的目标是不仅能够处理时序特征（timeseries）的数据，同时也能够处理分析型（analytic）的数据。
 
-## 目标特性
-- 兼容 Opentsdb、Prometheus 查询协议
-- 支持 SQL 查询分析
-- 计算存储分离 
-- 多种存储引擎，时序分析引擎
-- 使用 [Apache Arrow](https://arrow.apache.org/)
-- 分布式、动态扩缩容
-- 高可用
-- 高压缩比
+## 项目状态
+项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
 
-## 需要
-编译需要 rust nightly 版本, 最小版本 nightly-2022-01-06
+## Roadmap
+项目 [Roadmap](./docs/roadmap.md)。
 
 ## 快速开始
 ### 获取代码
@@ -30,7 +22,7 @@ git clone git@github.com:CeresDB/ceresdb.git
 cd ceresdb
 ```
 
-### 通过镜像运行
+### 通过 Docker 运行
 确保开发环境安装了 docker，通过仓库中的提供的 Dockerfile 进行镜像的构建：
 ```shell
 docker build -t ceresdb:0.1.0 .
@@ -51,7 +43,7 @@ docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb:0.1.0
 apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
-需要注意的是，项目的编译对 cmake、gcc、g++ 等实际上都是有版本要求的，如果是在比较老的 Linux 发行版上面的话，一般需要手动安装较高版本的这些依赖。
+需要注意的是，项目的编译对 cmake、gcc、g++ 等实际上都是有版本要求的，如果开发环境使用的是较老的 Linux 发行版的话，一般需要手动安装较高版本的这些依赖。
 
 #### Rust
 Rust 的安装建议通过 [rustup](https://rustup.rs/)，安装了 rustup 之后，进入到 CeresDB 项目的时候，会自动根据 rust-toolchain 文件下载指定的 Rust 版本。
@@ -123,15 +115,13 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 [如何参与 CeresDB 代码贡献](./docs/conventional-commit.md)
 
 ## 致谢
-CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox) 、[tikv](https://github.com/tikv/tikv)，感谢 influxdb、pingcap 相关团队。
+CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox), 部分代码实现参考 [tikv](https://github.com/tikv/tikv) 以及其他的优秀开源项目，感谢 influxdb 团队、pingcap 团队，以及其他优秀的开源项目。
 
 ## 开源许可
-CeresDB 基于 [Apache License 2.0](./LICENSE) 协议，CeresDB 依赖了一些第三方组件，它们的开源协议也为 Apache License 2.0，
-另外 CeresDB 也直接引用了一些开源协议为 Apache License 2.0 的代码（可能有一些小小的改动）包括：
-- [Agatedb](https://github.com/tikv/agatedb) 中的 skiplist 
+CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 
 ## 社区
-- [CeresDB 社区角色](./ROLES.md).
+- [CeresDB 社区角色](./docs/roles.md).
 
 - 钉钉群: CeresDB 开源: 44602802
 - 微信: chunshao2008

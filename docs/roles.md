@@ -31,7 +31,7 @@
 
 **权限**
 
-加入 CeresDB GitHub 组织，成为 CeresDB 开源社区的一员。
+成为 CeresDB 开源社区的一员。
 
 ## Committer
 
@@ -52,6 +52,7 @@
 
 **权限**
 
+- 加入 CeresDB GitHub 组织
 - Pull Request review 权限
 - Pull Request approve 权限
 
