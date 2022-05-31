@@ -23,7 +23,7 @@ logger = { path = "../components/logger"}
 snafu = { version ="0.6.10", features = ["backtraces"]}
 serde = {version = "1.0.81", features = ["derive"]}
 serde_derive = "1.0.81"
-pin-project-lite = "0.2"
+pin-project-lite = "0.2.8"
 prometheus = "0.12"
 proto = { path = "../proto" }
 time = "0.1"

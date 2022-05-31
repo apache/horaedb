@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 analytic_engine = { path = "../analytic_engine" }
-async-trait = "0.1.41"
+async-trait = "0.1.53"
 catalog = { path = "../catalog" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
