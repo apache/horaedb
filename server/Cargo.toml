@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 analytic_engine = { path = "../analytic_engine" }
 arrow_deps = { path = "../arrow_deps" }
-async-trait = "0.1.41"
+async-trait = "0.1.53"
 avro-rs = "0.13"
 catalog = { path = "../catalog" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}

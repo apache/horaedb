@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 # Workspace dependencies, in alphabetical order
-async-trait = "0.1.41"
+async-trait = "0.1.53"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
