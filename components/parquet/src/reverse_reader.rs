@@ -218,6 +218,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Submodule is not supported in CI"]
     fn test_reverse_file_reader() {
         let test_file = crate::tests::get_test_file(TEST_FILE);
         let file_reader: Arc<dyn FileReader> = Arc::new(
