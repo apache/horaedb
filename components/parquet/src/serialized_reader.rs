@@ -401,7 +401,6 @@ mod tests {
     use crate::cache::{LruDataCache, LruMetaCache};
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_cursor_and_file_has_the_same_behaviour() {
         let mut buf: Vec<u8> = Vec::new();
         crate::tests::get_test_file("alltypes_plain.parquet")
@@ -424,7 +423,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_reuse_file_chunk() {
         // This test covers the case of maintaining the correct start position in a file
         // stream for each column reader after initializing and moving to the next one
@@ -545,7 +543,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_file_reader() {
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
         let reader = CachableSerializedFileReader::new("test".to_string(), test_file, None, None)
@@ -554,7 +551,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_file_reader_with_cache() {
         let reader = new_filer_reader_with_cache();
         let test_num = 10usize;
@@ -564,7 +560,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_file_reader_datapage_v2() {
         let test_file = crate::tests::get_test_file("datapage_v2.snappy.parquet");
         let reader_result =
@@ -664,7 +659,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_page_iterator() {
         let file = crate::tests::get_test_file("alltypes_plain.parquet");
         let file_reader = Arc::new(
@@ -697,7 +691,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_file_reader_key_value_metadata() {
         let file = crate::tests::get_test_file("binary.parquet");
         let file_reader = Arc::new(
@@ -726,7 +719,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Submodule is not supported in CI"]
     fn test_file_reader_filter_row_groups() -> Result<()> {
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
         let mut reader =
