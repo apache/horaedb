@@ -23,9 +23,9 @@ use std::{
 };
 
 use common_util::{define_result, runtime::Runtime};
+use iox_object_store::ObjectStore;
 use log::info;
 use mem_collector::MemUsageCollector;
-use object_store::ObjectStore;
 use parquet::{DataCacheRef, MetaCacheRef};
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;

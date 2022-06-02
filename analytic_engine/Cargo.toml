@@ -21,7 +21,7 @@ common_util = { path = "../common_util"}
 futures = "0.3"
 lazy_static = "1.4.0"
 log = "0.4"
-object_store = { path = "../components/object_store" }
+iox_object_store = { path = "../components/iox_object_store" }
 parquet = { path = "../components/parquet" }
 prometheus = "0.12"
 proto = { path = "../proto" }

@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+# Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 [sst_bench]
 store_path = "/tmp/ceresdb/1/1"

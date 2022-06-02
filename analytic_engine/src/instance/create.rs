@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
+use iox_object_store::ObjectStore;
 use log::info;
-use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
 use tokio::sync::oneshot;

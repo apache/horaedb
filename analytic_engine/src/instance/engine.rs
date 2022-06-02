@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use common_types::schema::Version;
 use common_util::define_result;
-use object_store::ObjectStore;
+use iox_object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},

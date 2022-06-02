@@ -6,7 +6,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
-use object_store::ObjectStore;
+use iox_object_store::{ObjectStore, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
@@ -23,14 +23,14 @@ pub trait Factory: Clone {
     fn new_sst_reader<'a, S: ObjectStore>(
         &self,
         options: &SstReaderOptions,
-        path: &'a S::Path,
+        path: &'a Path,
         storage: &'a S,
     ) -> Option<Box<dyn SstReader + Send + 'a>>;
 
     fn new_sst_builder<'a, S: ObjectStore>(
         &self,
         options: &SstBuilderOptions,
-        path: &'a S::Path,
+        path: &'a Path,
         storage: &'a S,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
 }
@@ -66,7 +66,7 @@ impl Factory for FactoryImpl {
     fn new_sst_reader<'a, S: ObjectStore>(
         &self,
         options: &SstReaderOptions,
-        path: &'a S::Path,
+        path: &'a Path,
         storage: &'a S,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         match options.sst_type {
@@ -77,7 +77,7 @@ impl Factory for FactoryImpl {
     fn new_sst_builder<'a, S: ObjectStore>(
         &self,
         options: &SstBuilderOptions,
-        path: &'a S::Path,
+        path: &'a Path,
         storage: &'a S,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
         match options.sst_type {

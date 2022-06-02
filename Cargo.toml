@@ -28,6 +28,7 @@ members = [
     "components/tracing",
     "components/tracing_util",
     "components/tracing_examples",
+    "components/iox_object_store",
     "grpcio",
     "interpreters",
     "meta_client",

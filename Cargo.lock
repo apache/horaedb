@@ -80,9 +80,9 @@ dependencies = [
  "common_util",
  "env_logger",
  "futures",
+ "iox_object_store",
  "lazy_static",
  "log",
- "object_store",
  "parquet 0.1.0",
  "prometheus 0.12.0",
  "proto",
@@ -91,7 +91,7 @@ dependencies = [
  "serde_derive",
  "skiplist",
  "smallvec",
- "snafu",
+ "snafu 0.6.10",
  "table_engine",
  "tempfile",
  "tokio",
@@ -316,8 +316,9 @@ dependencies = [
  "criterion",
  "env_logger",
  "futures",
+ "iox_object_store",
  "log",
- "object_store",
+ "object_store 0.1.0",
  "parquet 0.1.0",
  "serde",
  "serde_derive",
@@ -477,7 +478,7 @@ name = "bytes"
 version = "0.1.0"
 dependencies = [
  "bytes 1.1.0",
- "snafu",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -513,7 +514,7 @@ dependencies = [
  "async-trait",
  "common_types",
  "common_util",
- "snafu",
+ "snafu 0.6.10",
  "table_engine",
 ]
 
@@ -528,7 +529,7 @@ dependencies = [
  "common_util",
  "log",
  "server",
- "snafu",
+ "snafu 0.6.10",
  "system_catalog",
  "table_engine",
  "tokio",
@@ -667,7 +668,7 @@ dependencies = [
  "proto",
  "serde",
  "serde_derive",
- "snafu",
+ "snafu 0.6.10",
  "sqlparser",
 ]
 
@@ -693,7 +694,7 @@ dependencies = [
  "serde_derive",
  "slog",
  "slog-global 0.1.0 (git+https://github.com/breezewish/slog-global.git?rev=0e23a5baff302a9d7bccd85f8f31e43339c2f2c1)",
- "snafu",
+ "snafu 0.6.10",
  "tempfile",
  "time 0.1.43",
  "tokio",
@@ -1504,6 +1505,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "heck"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
+
+[[package]]
 name = "hermit-abi"
 version = "0.1.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1606,7 +1613,7 @@ dependencies = [
  "bytes 0.1.0",
  "rand 0.8.5",
  "siphasher",
- "snafu",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -1668,11 +1675,18 @@ dependencies = [
  "common_util",
  "log",
  "query_engine",
- "snafu",
+ "snafu 0.6.10",
  "sql",
  "table_engine",
  "tokio",
  "udf",
+]
+
+[[package]]
+name = "iox_object_store"
+version = "0.1.0"
+dependencies = [
+ "object_store 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2055,7 +2069,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "snafu",
+ "snafu 0.6.10",
  "table_engine",
  "tokio",
  "url",
@@ -2311,10 +2325,29 @@ dependencies = [
  "itertools",
  "oss-rust-sdk",
  "percent-encoding",
- "snafu",
+ "snafu 0.6.10",
  "tempfile",
  "tokio",
  "tokio-util 0.6.10",
+ "walkdir",
+]
+
+[[package]]
+name = "object_store"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8dcd74d8c1c0d2699d82b62c69cc5374260aa4e3a5f95330572f14822557529"
+dependencies = [
+ "async-trait",
+ "bytes 1.1.0",
+ "chrono",
+ "futures",
+ "itertools",
+ "percent-encoding",
+ "snafu 0.7.1",
+ "tokio",
+ "tracing 0.1.34",
+ "url",
  "walkdir",
 ]
 
@@ -2823,7 +2856,7 @@ dependencies = [
  "common_util",
  "futures",
  "log",
- "snafu",
+ "snafu 0.6.10",
  "sql",
  "table_engine",
  "udf",
@@ -3301,7 +3334,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "snafu",
+ "snafu 0.6.10",
  "sql",
  "system_catalog",
  "table_engine",
@@ -3491,7 +3524,17 @@ dependencies = [
  "doc-comment",
  "futures-core",
  "pin-project 0.4.29",
- "snafu-derive",
+ "snafu-derive 0.6.10",
+]
+
+[[package]]
+name = "snafu"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5177903bf45656592d9eb5c0e22f408fc023aae51dbe2088889b71633ba451f2"
+dependencies = [
+ "doc-comment",
+ "snafu-derive 0.7.1",
 ]
 
 [[package]]
@@ -3500,6 +3543,18 @@ version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1508efa03c362e23817f96cde18abed596a25219a8b2c66e8db33c03543d315b"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "410b26ed97440d90ced3e2488c868d56a86e2064f5d7d6f417909b286afe25e5"
+dependencies = [
+ "heck 0.4.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -3543,7 +3598,7 @@ dependencies = [
  "log",
  "paste 1.0.7",
  "regex",
- "snafu",
+ "snafu 0.6.10",
  "sqlparser",
  "table_engine",
  "tokio",
@@ -3598,7 +3653,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87c85aa3f8ea653bfd3ddf25f7ee357ee4d204731f6aa9ad04002306f6e2774c"
 dependencies = [
- "heck",
+ "heck 0.3.3",
  "proc-macro2",
  "quote",
  "syn",
@@ -3610,7 +3665,7 @@ version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5bb0dc7ee9c15cea6199cde9a127fa16a4c5819af85395457ad72d68edc85a38"
 dependencies = [
- "heck",
+ "heck 0.3.3",
  "proc-macro2",
  "quote",
  "rustversion",
@@ -3659,7 +3714,7 @@ dependencies = [
  "log",
  "proto",
  "protobuf",
- "snafu",
+ "snafu 0.6.10",
  "table_engine",
  "tokio",
 ]
@@ -3679,7 +3734,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "smallvec",
- "snafu",
+ "snafu 0.6.10",
  "tokio",
 ]
 
@@ -4153,7 +4208,7 @@ dependencies = [
  "common_util",
  "hyperloglog",
  "smallvec",
- "snafu",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -4290,7 +4345,7 @@ dependencies = [
  "futures",
  "log",
  "rocksdb",
- "snafu",
+ "snafu 0.6.10",
  "tempfile",
  "tokio",
 ]

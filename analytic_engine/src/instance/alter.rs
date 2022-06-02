@@ -4,8 +4,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use iox_object_store::ObjectStore;
 use log::info;
-use object_store::ObjectStore;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
