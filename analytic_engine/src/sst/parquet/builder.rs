@@ -391,12 +391,15 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
             stream_finished: false,
             fetched_row_num: 0,
         };
+        // TODO(ruihang): `RecordBytesReader` support stream read. It could be improved
+        // if the storage supports streaming upload (maltipart upload).
         let mut bytes = vec![];
         reader
             .read_to_end(&mut bytes)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ReadData)?;
+        drop(reader);
 
         self.storage
             .put(self.path, bytes.into())

@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+pub use arrow_deps::parquet::util::cursor::SliceableCursor;
 use arrow_deps::{
     arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
     parquet::{
@@ -28,7 +29,7 @@ use log::{debug, error, trace};
 use object_store::{ObjectStore, Path};
 use parquet::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,
-    DataCacheRef, MetaCacheRef, SliceableCursor,
+    DataCacheRef, MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
@@ -56,6 +57,10 @@ pub async fn read_sst_meta<S: ObjectStore>(
         .with_context(|| ReadPersist {
             path: path.to_string(),
         })?;
+    // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
+    // read. So under this situation it would be better to pass a local file to
+    // it, avoiding consumes lots of memory. Once parquet support stream data source
+    // we can feed the `GetResult` to it directly.
     let bytes = SliceableCursor::new(Arc::new(
         get_result
             .bytes()

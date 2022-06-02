@@ -15,4 +15,3 @@ use crate::cache::{DataCache, MetaCache};
 
 pub type MetaCacheRef = Arc<dyn MetaCache + Send + Sync>;
 pub type DataCacheRef = Arc<dyn DataCache + Send + Sync>;
-pub use arrow_deps::parquet::util::cursor::SliceableCursor;
