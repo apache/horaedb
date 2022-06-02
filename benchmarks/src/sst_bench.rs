@@ -8,8 +8,8 @@ use analytic_engine::sst::factory::{Factory, FactoryImpl, SstReaderOptions, SstT
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
+use iox_object_store::{LocalFileSystem, Path};
 use log::info;
-use object_store::{disk::File, path::ObjectStorePath, ObjectStore};
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -18,7 +18,7 @@ use parquet::{
 use crate::{config::SstBenchConfig, util};
 
 pub struct SstBench {
-    store: File,
+    store: LocalFileSystem,
     pub sst_file_name: String,
     max_projections: usize,
     schema: Schema,
@@ -28,12 +28,10 @@ pub struct SstBench {
 
 impl SstBench {
     pub fn new(config: SstBenchConfig) -> Self {
-        let store = File::new(config.store_path);
-
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
 
-        let mut sst_path = store.new_path();
-        sst_path.set_file_name(&config.sst_file_name);
+        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+        let sst_path = Path::from(config.sst_file_name.clone());
         let meta_cache: Option<MetaCacheRef> =
             if let Some(sst_meta_cache_cap) = config.sst_meta_cache_cap {
                 Some(Arc::new(LruMetaCache::new(sst_meta_cache_cap)))
@@ -92,8 +90,7 @@ impl SstBench {
     }
 
     pub fn run_bench(&self) {
-        let mut sst_path = self.store.new_path();
-        sst_path.set_file_name(&self.sst_file_name);
+        let sst_path = Path::from(self.sst_file_name.clone());
 
         let sst_factory = FactoryImpl;
         let mut sst_reader = sst_factory

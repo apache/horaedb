@@ -26,15 +26,15 @@ use common_types::{
     projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, time::TimeRange,
 };
 use common_util::runtime::Runtime;
+use iox_object_store::LocalFileSystem;
 use log::info;
-use object_store::{disk::File, ObjectStore};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};
 
 pub struct MergeMemTableBench {
-    store: File,
+    store: LocalFileSystem,
     memtables: MemTableVec,
     max_projections: usize,
     schema: Schema,
@@ -50,7 +50,7 @@ impl MergeMemTableBench {
     pub fn new(config: MergeMemTableBenchConfig) -> Self {
         assert!(!config.sst_file_ids.is_empty());
 
-        let store = File::new(config.store_path);
+        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let space_id = config.space_id;
         let table_id = config.table_id;
@@ -59,8 +59,7 @@ impl MergeMemTableBench {
         let data_cache: Option<DataCacheRef> = None;
 
         // Use first sst's schema.
-        let mut sst_path = store.new_path();
-        sst_util::set_sst_file_path(space_id, table_id, config.sst_file_ids[0], &mut sst_path);
+        let sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
         let schema = runtime.block_on(util::schema_from_sst(
             &store,
             &sst_path,
@@ -73,8 +72,7 @@ impl MergeMemTableBench {
 
         let mut memtables = Vec::with_capacity(config.sst_file_ids.len());
         for id in &config.sst_file_ids {
-            let mut sst_path = store.new_path();
-            sst_util::set_sst_file_path(space_id, table_id, *id, &mut sst_path);
+            let sst_path = sst_util::new_sst_file_path(space_id, table_id, *id);
 
             let memtable_factory = SkiplistMemTableFactory;
             let memtable_opts = Options {
