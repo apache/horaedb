@@ -24,8 +24,8 @@ use analytic_engine::{
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
 use futures::TryStreamExt;
-use object_store::{LocalFileSystem, Path};
 use log::info;
+use object_store::{LocalFileSystem, Path};
 use serde_derive::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;

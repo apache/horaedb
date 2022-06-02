@@ -14,8 +14,8 @@ use common_types::{
 };
 use common_util::{define_result, runtime::Runtime};
 use futures::stream::Stream;
-use object_store::ObjectStore;
 use log::{debug, error, trace};
+use object_store::ObjectStore;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{

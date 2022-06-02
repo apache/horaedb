@@ -27,8 +27,8 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
-use object_store::ObjectStore;
 use log::{debug, error, info};
+use object_store::ObjectStore;
 use proto::{common::TimeRange as TimeRangePb, sst::SstMetaData as SstMetaDataPb};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;

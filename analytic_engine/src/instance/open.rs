@@ -5,8 +5,8 @@
 use std::sync::{Arc, RwLock};
 
 use common_types::schema::IndexInWriterSchema;
-use object_store::ObjectStore;
 use log::{debug, error, info, trace, warn};
+use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::table::TableId;
 use tokio::sync::oneshot;

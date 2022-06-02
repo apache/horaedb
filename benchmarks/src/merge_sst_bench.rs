@@ -21,8 +21,8 @@ use analytic_engine::{
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use common_util::runtime::Runtime;
-use object_store::LocalFileSystem;
 use log::info;
+use object_store::LocalFileSystem;
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};

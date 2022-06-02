@@ -7,8 +7,8 @@ use common_types::{
 };
 use common_util::define_result;
 use futures::stream::{self, Stream, StreamExt};
-use object_store::ObjectStore;
 use log::{error, trace};
+use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     predicate::{filter_record_batch::RecordBatchFilter, Predicate},

@@ -22,8 +22,8 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::define_result;
-use object_store::Path;
 use log::{debug, info};
+use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
 use wal::manager::RegionId;

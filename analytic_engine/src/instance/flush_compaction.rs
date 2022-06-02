@@ -18,8 +18,8 @@ use futures::{
     future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
-use object_store::ObjectStore;
 use log::{error, info};
+use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;

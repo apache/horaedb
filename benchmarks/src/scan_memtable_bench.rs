@@ -11,8 +11,8 @@ use analytic_engine::memtable::{
 };
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
-use object_store::{LocalFileSystem, Path};
 use log::info;
+use object_store::{LocalFileSystem, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 
 use crate::{config::ScanMemTableBenchConfig, util};

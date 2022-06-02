@@ -9,8 +9,8 @@ use common_types::{
 };
 use common_util::define_result;
 use futures::StreamExt;
-use object_store::ObjectStore;
 use log::debug;
+use object_store::ObjectStore;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 

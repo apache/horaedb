@@ -10,8 +10,8 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
 };
 use common_util::{codec::row, define_result};
-use object_store::ObjectStore;
 use log::{debug, error, info, trace, warn};
+use object_store::ObjectStore;
 use proto::table_requests;
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};

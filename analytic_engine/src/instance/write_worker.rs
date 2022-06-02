@@ -18,8 +18,8 @@ use common_util::{
     time::InstantExt,
 };
 use futures::future;
-use object_store::ObjectStore;
 use log::{error, info};
+use object_store::ObjectStore;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, DropTableRequest},
