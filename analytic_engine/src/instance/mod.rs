@@ -23,7 +23,7 @@ use std::{
 };
 
 use common_util::{define_result, runtime::Runtime};
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::info;
 use mem_collector::MemUsageCollector;
 use parquet::{DataCacheRef, MetaCacheRef};

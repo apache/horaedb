@@ -18,7 +18,7 @@ use futures::{
     future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};

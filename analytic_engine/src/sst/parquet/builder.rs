@@ -23,8 +23,8 @@ use arrow_deps::{
 use async_trait::async_trait;
 use common_types::{bytes::BufMut, request_id::RequestId};
 use futures::{AsyncRead, AsyncReadExt};
-use iox_object_store::{ObjectStore, Path};
 use log::debug;
+use object_store::{ObjectStore, Path};
 use snafu::ResultExt;
 
 use crate::sst::{
@@ -423,7 +423,7 @@ mod tests {
     };
     use common_util::runtime::{self, Runtime};
     use futures::stream;
-    use iox_object_store::LocalFileSystem;
+    use object_store::LocalFileSystem;
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
 

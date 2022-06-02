@@ -5,7 +5,7 @@
 use std::sync::{Arc, RwLock};
 
 use common_types::schema::IndexInWriterSchema;
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{debug, error, info, trace, warn};
 use snafu::ResultExt;
 use table_engine::table::TableId;

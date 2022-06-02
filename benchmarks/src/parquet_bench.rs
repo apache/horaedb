@@ -12,7 +12,7 @@ use arrow_deps::parquet::{
 };
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
-use iox_object_store::{LocalFileSystem, ObjectStore, Path};
+use object_store::{LocalFileSystem, ObjectStore, Path};
 use log::info;
 use parquet::{DataCacheRef, MetaCacheRef, SliceableCursor};
 use table_engine::predicate::PredicateRef;

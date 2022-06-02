@@ -22,7 +22,7 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::define_result;
-use iox_object_store::Path;
+use object_store::Path;
 use log::{debug, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};

@@ -7,7 +7,7 @@ use common_types::{
 };
 use common_util::define_result;
 use futures::stream::{self, Stream, StreamExt};
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{error, trace};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{

@@ -27,7 +27,7 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{debug, error, info};
 use proto::{common::TimeRange as TimeRangePb, sst::SstMetaData as SstMetaDataPb};
 use snafu::{ResultExt, Snafu};

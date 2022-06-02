@@ -11,7 +11,7 @@ use analytic_engine::memtable::{
 };
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
-use iox_object_store::{LocalFileSystem, Path};
+use object_store::{LocalFileSystem, Path};
 use log::info;
 use parquet::{DataCacheRef, MetaCacheRef};
 

@@ -20,7 +20,7 @@ use common_types::{
 };
 use common_util::define_result;
 use futures::StreamExt;
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{debug, info, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};

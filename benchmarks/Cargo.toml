@@ -17,7 +17,6 @@ env_logger = "0.6"
 futures = "0.3"
 log = "0.4"
 object_store = { path = "../components/object_store" }
-iox_object_store = { path = "../components/iox_object_store" }
 parquet = { path = "../components/parquet"}
 serde = "1.0"
 serde_derive = "1.0"

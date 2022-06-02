@@ -20,8 +20,8 @@ pub mod table_options;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use iox_object_store::LocalFileSystem;
 use meta::details::{ManifestImpl, Options as ManifestOptions};
+use object_store::LocalFileSystem;
 use serde_derive::Deserialize;
 use wal::rocks_impl::manager::RocksImpl;
 

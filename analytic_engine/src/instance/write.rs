@@ -10,7 +10,7 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
 };
 use common_util::{codec::row, define_result};
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{debug, error, info, trace, warn};
 use proto::table_requests;
 use smallvec::SmallVec;

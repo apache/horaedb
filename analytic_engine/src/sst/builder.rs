@@ -17,7 +17,7 @@ pub mod error {
     pub enum Error {
         #[snafu(display("Failed to perform storage operation, err:{}", source))]
         Storage {
-            source: iox_object_store::ObjectStoreError,
+            source: object_store::ObjectStoreError,
         },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]

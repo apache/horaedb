@@ -24,7 +24,7 @@ use common_types::{
 };
 use common_util::runtime::Runtime;
 use futures::Stream;
-use iox_object_store::{ObjectStore, Path};
+use object_store::{ObjectStore, Path};
 use log::{debug, error, trace};
 use parquet::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,

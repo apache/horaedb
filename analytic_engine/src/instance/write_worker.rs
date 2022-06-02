@@ -18,7 +18,7 @@ use common_util::{
     time::InstantExt,
 };
 use futures::future;
-use iox_object_store::ObjectStore;
+use object_store::ObjectStore;
 use log::{error, info};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{

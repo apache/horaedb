@@ -5,7 +5,7 @@
 use std::{path::Path, sync::Arc};
 
 use common_util::define_result;
-use iox_object_store::LocalFileSystem;
+use object_store::LocalFileSystem;
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -37,7 +37,7 @@ pub enum Error {
 
     #[snafu(display("Failed to open object store, err:{}", source))]
     OpenObjectStore {
-        source: iox_object_store::ObjectStoreError,
+        source: object_store::ObjectStoreError,
     },
 }
 

@@ -8,7 +8,7 @@ use analytic_engine::sst::factory::{Factory, FactoryImpl, SstReaderOptions, SstT
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
-use iox_object_store::{LocalFileSystem, Path};
+use object_store::{LocalFileSystem, Path};
 use log::info;
 use parquet::{
     cache::{LruDataCache, LruMetaCache},

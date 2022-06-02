@@ -22,7 +22,7 @@ use common_types::{
 };
 use common_util::runtime::{self, Runtime};
 use futures::stream::StreamExt;
-use iox_object_store::{LocalFileSystem, Path};
+use object_store::{LocalFileSystem, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 

@@ -4,7 +4,7 @@
 
 use std::iter::FromIterator;
 
-use iox_object_store::Path;
+use object_store::Path;
 use table_engine::table::TableId;
 
 use crate::{space::SpaceId, sst::manager::FileId};

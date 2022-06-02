@@ -19,8 +19,8 @@ use common_util::{
     define_result,
     runtime::{JoinHandle, Runtime},
 };
-use iox_object_store::ObjectStore;
 use log::{debug, error, info, warn};
+use object_store::ObjectStore;
 use serde_derive::Deserialize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;

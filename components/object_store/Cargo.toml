@@ -4,20 +4,5 @@ version = "0.1.0"
 authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
 edition = "2018"
 
-[dependencies] # In alphabetical order
-async-trait = "0.1.53"
-bytes = "1.0"
-common_util = { path = "../../common_util" }
-futures = "0.3"
-itertools = "0.10"
-percent-encoding = "2.1"
-snafu = { version = "0.6.10", features = ["futures", "backtraces"] }
-tokio = { version = "1.0", features = ["macros", "fs"] }
-# Filesystem integration
-tokio-util = { version = "0.6.3", features = [ "io","compat" ] }
-walkdir = "2.3.2"
-# Aliyun OSS integration
-oss-rust-sdk = { git = "https://github.com/CeresDB/oss-rust-sdk.git", branch = "async-api" }
-
-[dev-dependencies]
-tempfile = "3.1.0"
+[dependencies]
+upstream = { package = "object_store", version =  "0.1.0" }

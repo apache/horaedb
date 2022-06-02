@@ -6,7 +6,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
-use iox_object_store::{ObjectStore, Path};
+use object_store::{ObjectStore, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
