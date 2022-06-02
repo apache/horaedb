@@ -39,6 +39,12 @@ pub enum Error {
     OpenObjectStore {
         source: object_store::ObjectStoreError,
     },
+
+    #[snafu(display("Failed to create dir for {}, err:{}", path, source))]
+    CreateDir {
+        path: String,
+        source: std::io::Error,
+    },
 }
 
 define_result!(Error);
@@ -92,7 +98,11 @@ async fn open_instance(
         };
 
     let sst_path = data_path.join(STORE_DIR_NAME);
-    tokio::fs::create_dir_all(&sst_path).await.unwrap();
+    tokio::fs::create_dir_all(&sst_path)
+        .await
+        .context(CreateDir {
+            path: sst_path.to_string_lossy().into_owned(),
+        })?;
     let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
     let open_ctx = OpenContext {
         config,
