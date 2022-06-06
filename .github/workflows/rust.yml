@@ -170,9 +170,10 @@ jobs:
       - name: Setup Build Environment
         run: |
           apt update
-          apt install --yes gcc g++ libssl-dev pkg-config cmake
+          apt install --yes gcc g++ libssl-dev pkg-config cmake git
       - name: Run Tests
         run: |
+          git clone https://github.com/apache/parquet-testing.git components/parquet-testing
           make test-ut
         env:
           CARGO_HOME: "/github/home/.cargo"
