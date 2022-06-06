@@ -121,7 +121,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 相关技术文档在[docs](docs)目录中，补充完善中~
 
 ## 致谢
-CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox), 部分代码实现参考 [tikv](https://github.com/tikv/tikv) 以及其他的优秀开源项目，感谢 influxdb 团队、pingcap 团队，以及其他优秀的开源项目。
+CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox), 部分代码实现参考 [tikv](https://github.com/tikv/tikv) 以及其他的优秀开源项目，感谢 InfluxDB 团队、PingCAP 团队，以及其他优秀的开源项目。
 
 ## 开源许可
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
