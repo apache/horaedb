@@ -11,6 +11,6 @@ base64 = "0.13"
 chrono = "0.4"
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
-hyperloglog = { path = "../components/rust-hyperloglog" }
+hyperloglog = { git = "https://github.com/CeresDB/rust-hyperloglog.git", rev = "28884d82e02199e1c5d635bf501e08550729e5c5" }
 smallvec = "1.6"
 snafu = { version ="0.6.10", features = ["backtraces"]}

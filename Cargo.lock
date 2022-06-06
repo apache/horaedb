@@ -1601,12 +1601,11 @@ dependencies = [
 [[package]]
 name = "hyperloglog"
 version = "1.0.0"
+source = "git+https://github.com/CeresDB/rust-hyperloglog.git?rev=28884d82e02199e1c5d635bf501e08550729e5c5#28884d82e02199e1c5d635bf501e08550729e5c5"
 dependencies = [
  "bytecount",
- "bytes 0.1.0",
  "rand 0.8.5",
  "siphasher",
- "snafu",
 ]
 
 [[package]]

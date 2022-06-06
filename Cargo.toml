@@ -23,7 +23,6 @@ members = [
     "components/object_store",
     "components/parquet",
     "components/profile",
-    "components/rust-hyperloglog",
     "components/skiplist",
     "components/tracing",
     "components/tracing_util",

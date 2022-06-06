@@ -31,7 +31,7 @@ pub enum Error {
     DecodeBase64 { source: base64::DecodeError },
 
     #[snafu(display("Invalid state, failed to decode hll, err:{}.", source))]
-    DecodeHll { source: hyperloglog::Error },
+    DecodeHll { source: std::io::Error },
 }
 
 define_result!(Error);
@@ -52,7 +52,7 @@ fn new_udaf() -> AggregateUdf {
 }
 
 pub(crate) fn new_function() -> AggregateFunction {
-    // Aways use the same hasher with same keys.
+    // Always use the same hasher with same keys.
     let hll = HyperLogLog::new_with_keys(HLL_ERROR_RATE, HLL_KEY0, HLL_KEY1);
 
     let accumulator_fn = move || {
