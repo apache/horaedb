@@ -3,6 +3,8 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
 CeresDB 定位高性能的、分布式的、Schema-less 的 HT(timeseries)A(analytic)P 型时间序列数据库，不同于传统的时序数据库，CeresDB 的目标是不仅能够处理时序特征（timeseries）的数据，同时也能够处理分析型（analytic）的数据。
+CeresDB 使用 [Apache Arrow](https://arrow.apache.org/) 和 [DataFusion](https://arrow.apache.org/blog/2019/02/04/datafusion-donation/) 进行构建。
+
 
 ## 项目状态
 项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
@@ -112,7 +114,11 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 ```
 
 ## 如何贡献
-[如何参与 CeresDB 代码贡献](./docs/conventional-commit.md)
+[如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
+[约定式提交](docs/conventional-commit.md)
+
+## 架构及技术文档
+相关技术文档在[docs](docs)目录中，补充完善中~
 
 ## 致谢
 CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox), 部分代码实现参考 [tikv](https://github.com/tikv/tikv) 以及其他的优秀开源项目，感谢 influxdb 团队、pingcap 团队，以及其他优秀的开源项目。
@@ -121,7 +127,7 @@ CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 
 ## 社区
-- [CeresDB 社区角色](./docs/roles.md).
+- [CeresDB 社区角色](docs/roles.md).
 
 - 钉钉群: CeresDB 开源: 44602802
 - 微信: chunshao2008
