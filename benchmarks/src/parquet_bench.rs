@@ -9,12 +9,13 @@ use arrow_deps::parquet::{
     file::{
         metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SerializedFileReader,
     },
+    util::cursor::SliceableCursor,
 };
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStore, Path};
-use parquet::{DataCacheRef, MetaCacheRef, SliceableCursor};
+use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};
