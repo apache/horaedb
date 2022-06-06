@@ -8,9 +8,10 @@ edition = "2018"
 [dependencies]
 arrow_deps = { path = "../arrow_deps" }
 base64 = "0.13"
+bincode = "1.3"
 chrono = "0.4"
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
-hyperloglog = { git = "https://github.com/CeresDB/rust-hyperloglog.git", rev = "28884d82e02199e1c5d635bf501e08550729e5c5" }
+hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "ed1b9b915072ba90c6b93fbfbba30c03215ba682", features = ["with_serde"] }
 smallvec = "1.6"
 snafu = { version ="0.6.10", features = ["backtraces"]}
