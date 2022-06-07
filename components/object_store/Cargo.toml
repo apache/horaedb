@@ -5,4 +5,10 @@ authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
 edition = "2018"
 
 [dependencies]
+async-trait = "0.1.53"
+bytes = "1.0"
+futures = "0.3"
 upstream = { package = "object_store", version =  "0.1.0" }
+# oss-rust-sdk = "0.4.0"
+oss-rust-sdk = { git = "https://github.com/NoXF/oss-rust-sdk.git", rev = "260e6fc95e06739fc33927a8b575896088a65966" }
+snafu = { version = "0.6.10", features = ["backtraces"] }
