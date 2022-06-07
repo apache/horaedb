@@ -4043,7 +4043,7 @@ name = "udf"
 version = "0.1.0"
 dependencies = [
  "arrow_deps",
- "base64 0.13.0",
+ "base64",
  "bincode",
  "chrono",
  "common_types",

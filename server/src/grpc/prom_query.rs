@@ -21,7 +21,7 @@ use log::debug;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
-    frontend::{Context as SqlContext, Frontend},
+    frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
     provider::CatalogMetaProvider,
 };
@@ -30,6 +30,12 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Result, ServerError, StatusCode},
     grpc::HandlerContext,
 };
+
+fn is_table_not_found_error(e: &FrontendError) -> bool {
+    matches!(&e, FrontendError::CreatePlan { source }
+             if matches!(source, sql::planner::Error::BuildPromPlanError { source }
+                         if matches!(source, sql::promql::Error::TableNotFound { .. })))
+}
 
 pub async fn handle_query<C, Q>(
     ctx: &HandlerContext<'_, C, Q>,
@@ -73,8 +79,7 @@ where
     let (plan, column_name) = frontend
         .promql_expr_to_plan(&mut sql_ctx, expr)
         .map_err(|e| {
-            // TODO(chenxiang): improve error match
-            let code = if e.to_string().contains("Table not found") {
+            let code = if is_table_not_found_error(&e) {
                 StatusCode::NotFound
             } else {
                 StatusCode::InternalError
