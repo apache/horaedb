@@ -326,6 +326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1600,13 +1609,13 @@ dependencies = [
 
 [[package]]
 name = "hyperloglog"
-version = "1.0.0"
+version = "1.0.1"
+source = "git+https://github.com/jedisct1/rust-hyperloglog.git?rev=ed1b9b915072ba90c6b93fbfbba30c03215ba682#ed1b9b915072ba90c6b93fbfbba30c03215ba682"
 dependencies = [
  "bytecount",
- "bytes 0.1.0",
  "rand 0.8.5",
+ "serde",
  "siphasher",
- "snafu",
 ]
 
 [[package]]
@@ -3393,6 +3402,9 @@ name = "siphasher"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bd3e3206899af3f8b12af284fafc038cc1dc2b41d1b89dd17297221c5d225de"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "skiplist"
@@ -4148,6 +4160,7 @@ version = "0.1.0"
 dependencies = [
  "arrow_deps",
  "base64 0.13.0",
+ "bincode",
  "chrono",
  "common_types",
  "common_util",
