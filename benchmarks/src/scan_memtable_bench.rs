@@ -12,7 +12,7 @@ use analytic_engine::memtable::{
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
 use log::info;
-use object_store::{disk::File, path::ObjectStorePath, ObjectStore};
+use object_store::{LocalFileSystem, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 
 use crate::{config::ScanMemTableBenchConfig, util};
@@ -25,13 +25,12 @@ pub struct ScanMemTableBench {
 
 impl ScanMemTableBench {
     pub fn new(config: ScanMemTableBenchConfig) -> Self {
-        let store = File::new(config.store_path);
+        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
 
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let meta_cache: Option<MetaCacheRef> = None;
         let data_cache: Option<DataCacheRef> = None;
-        let mut sst_path = store.new_path();
-        sst_path.set_file_name(&config.sst_file_name);
+        let sst_path = Path::from(config.sst_file_name);
         let schema = runtime.block_on(util::schema_from_sst(
             &store,
             &sst_path,

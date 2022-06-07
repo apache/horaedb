@@ -21,7 +21,7 @@ pub mod table_options;
 pub mod tests;
 
 use meta::details::{ManifestImpl, Options as ManifestOptions};
-use object_store::disk::File;
+use object_store::LocalFileSystem;
 use serde_derive::Deserialize;
 use wal::rocks_impl::manager::RocksImpl;
 
@@ -30,9 +30,10 @@ use crate::{engine::TableEngineImpl, instance::InstanceRef, sst::factory::Factor
 
 /// Analytic table engine
 pub type AnalyticTableEngine =
-    TableEngineImpl<RocksImpl, ManifestImpl<RocksImpl>, File, FactoryImpl>;
+    TableEngineImpl<RocksImpl, ManifestImpl<RocksImpl>, LocalFileSystem, FactoryImpl>;
 /// Default instance
-pub(crate) type EngineInstance = InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, File, FactoryImpl>;
+pub(crate) type EngineInstance =
+    InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, LocalFileSystem, FactoryImpl>;
 
 /// Config of analytic engine.
 #[derive(Debug, Clone, Deserialize)]

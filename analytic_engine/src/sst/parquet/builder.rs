@@ -22,10 +22,10 @@ use arrow_deps::{
 };
 use async_trait::async_trait;
 use common_types::{bytes::BufMut, request_id::RequestId};
-use futures::AsyncRead;
+use futures::{AsyncRead, AsyncReadExt};
 use log::debug;
-use object_store::{path::ObjectStorePath, ObjectStore};
-use snafu::{ensure, ResultExt};
+use object_store::{ObjectStore, Path};
+use snafu::ResultExt;
 
 use crate::sst::{
     builder::{RecordBatchStream, SstBuilder, *},
@@ -38,7 +38,7 @@ use crate::sst::{
 #[derive(Debug)]
 pub struct ParquetSstBuilder<'a, S: ObjectStore> {
     /// The path where the data is persisted.
-    path: &'a S::Path,
+    path: &'a Path,
     /// The storage where the data is persist.
     storage: &'a S,
     /// Max row group size.
@@ -47,7 +47,7 @@ pub struct ParquetSstBuilder<'a, S: ObjectStore> {
 }
 
 impl<'a, S: ObjectStore> ParquetSstBuilder<'a, S> {
-    pub fn new(path: &'a S::Path, storage: &'a S, options: &SstBuilderOptions) -> Self {
+    pub fn new(path: &'a Path, storage: &'a S, options: &SstBuilderOptions) -> Self {
         Self {
             path,
             storage,
@@ -377,7 +377,7 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
         );
 
         let total_row_num = Arc::new(AtomicUsize::new(0));
-        let reader = RecordBytesReader {
+        let mut reader = RecordBytesReader {
             request_id,
             record_stream,
             encoding_buffer: EncodingBuffer::default(),
@@ -391,33 +391,25 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
             stream_finished: false,
             fetched_row_num: 0,
         };
+        // TODO(ruihang): `RecordBytesReader` support stream read. It could be improved
+        // if the storage supports streaming upload (maltipart upload).
+        let mut bytes = vec![];
+        reader
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ReadData)?;
+        drop(reader);
 
         self.storage
-            .put(self.path, reader, None)
+            .put(self.path, bytes.into())
             .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Persist {
-                path: self.path.display(),
-            })?;
+            .context(Storage)?;
 
-        let result = self
-            .storage
-            .list_with_delimiter(self.path)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Persist {
-                path: self.path.display(),
-            })?;
-
-        ensure!(
-            result.objects.len() == 1,
-            GetFileSize {
-                path: self.path.display(),
-            }
-        );
+        let file_head = self.storage.head(self.path).await.context(Storage)?;
 
         Ok(SstInfo {
-            file_size: result.objects[0].size,
+            file_size: file_head.size,
             row_num: total_row_num.load(Ordering::Relaxed),
         })
     }
@@ -434,7 +426,7 @@ mod tests {
     };
     use common_util::runtime::{self, Runtime};
     use futures::stream;
-    use object_store::disk::File;
+    use object_store::LocalFileSystem;
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
 
@@ -476,9 +468,8 @@ mod tests {
 
             let dir = tempdir().unwrap();
             let root = dir.path();
-            let store = File::new(root);
-            let mut sst_file_path = store.new_path();
-            sst_file_path.set_file_name("data.par");
+            let store = LocalFileSystem::new_with_prefix(root).unwrap();
+            let sst_file_path = Path::from("data.par");
 
             let schema = build_schema();
             let projected_schema = ProjectedSchema::no_projection(schema.clone());

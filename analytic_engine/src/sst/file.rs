@@ -28,7 +28,7 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
 };
 use log::{debug, error, info};
-use object_store::{path::ObjectStorePath, ObjectStore};
+use object_store::ObjectStore;
 use proto::{common::TimeRange as TimeRangePb, sst::SstMetaData as SstMetaDataPb};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -579,24 +579,22 @@ impl FilePurger {
         while let Some(request) = receiver.recv().await {
             match request {
                 Request::Purge(purge_request) => {
-                    let mut sst_file_path = store.new_path();
-                    sst_util::set_sst_file_path(
+                    let sst_file_path = sst_util::new_sst_file_path(
                         purge_request.space_id,
                         purge_request.table_id,
                         purge_request.file_id,
-                        &mut sst_file_path,
                     );
 
                     info!(
                         "File purger delete file, purge_request:{:?}, sst_file_path:{}",
                         purge_request,
-                        sst_file_path.display()
+                        sst_file_path.to_string()
                     );
 
                     if let Err(e) = store.delete(&sst_file_path).await {
                         error!(
                             "File purger failed to delete file, sst_file_path:{}, err:{}",
-                            sst_file_path.display(),
+                            sst_file_path.to_string(),
                             e
                         );
                     }

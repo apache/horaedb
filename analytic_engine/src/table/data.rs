@@ -23,7 +23,7 @@ use common_types::{
 };
 use common_util::define_result;
 use log::{debug, info};
-use object_store::path::ObjectStorePath;
+use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
 use wal::manager::RegionId;
@@ -444,8 +444,8 @@ impl TableData {
     }
 
     /// Set the sst file path into the object storage path.
-    pub fn set_sst_file_path(&self, file_id: FileId, path: &mut impl ObjectStorePath) {
-        sst_util::set_sst_file_path(self.space_id, self.id, file_id, path)
+    pub fn set_sst_file_path(&self, file_id: FileId) -> Path {
+        sst_util::new_sst_file_path(self.space_id, self.id, file_id)
     }
 
     /// Allocate next memtable id

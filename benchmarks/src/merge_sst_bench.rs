@@ -22,7 +22,7 @@ use analytic_engine::{
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use common_util::runtime::Runtime;
 use log::info;
-use object_store::{disk::File, ObjectStore};
+use object_store::LocalFileSystem;
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -30,7 +30,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use crate::{config::MergeSstBenchConfig, util};
 
 pub struct MergeSstBench {
-    store: File,
+    store: LocalFileSystem,
     max_projections: usize,
     schema: Schema,
     sst_reader_options: SstReaderOptions,
@@ -46,13 +46,12 @@ impl MergeSstBench {
     pub fn new(config: MergeSstBenchConfig) -> Self {
         assert!(!config.sst_file_ids.is_empty());
 
-        let store = File::new(config.store_path);
+        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let space_id = config.space_id;
         let table_id = config.table_id;
 
-        let mut sst_path = store.new_path();
-        sst_util::set_sst_file_path(space_id, table_id, config.sst_file_ids[0], &mut sst_path);
+        let sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
         let meta_cache: Option<MetaCacheRef> = None;
         let data_cache: Option<DataCacheRef> = None;
 

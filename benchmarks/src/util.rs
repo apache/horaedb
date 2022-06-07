@@ -22,7 +22,7 @@ use common_types::{
 };
 use common_util::runtime::{self, Runtime};
 use futures::stream::StreamExt;
-use object_store::{disk::File, path::file::FilePath, ObjectStore};
+use object_store::{LocalFileSystem, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 
@@ -36,8 +36,8 @@ pub fn new_runtime(thread_num: usize) -> Runtime {
 }
 
 pub async fn meta_from_sst(
-    store: &File,
-    sst_path: &FilePath,
+    store: &LocalFileSystem,
+    sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
 ) -> SstMetaData {
@@ -49,8 +49,8 @@ pub async fn meta_from_sst(
 }
 
 pub async fn schema_from_sst(
-    store: &File,
-    sst_path: &FilePath,
+    store: &LocalFileSystem,
+    sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
 ) -> Schema {
@@ -74,8 +74,8 @@ pub fn projected_schema_by_number(
 }
 
 pub async fn load_sst_to_memtable(
-    store: &File,
-    sst_path: &FilePath,
+    store: &LocalFileSystem,
+    sst_path: &Path,
     schema: &Schema,
     memtable: &MemTableRef,
     runtime: Arc<Runtime>,
@@ -117,7 +117,7 @@ pub async fn load_sst_to_memtable(
 }
 
 pub async fn file_handles_from_ssts(
-    store: &File,
+    store: &LocalFileSystem,
     space_id: SpaceId,
     table_id: TableId,
     sst_file_ids: &[FileId],
@@ -128,8 +128,7 @@ pub async fn file_handles_from_ssts(
     let mut file_handles = Vec::with_capacity(sst_file_ids.len());
 
     for file_id in sst_file_ids.iter() {
-        let mut path = store.new_path();
-        sst_util::set_sst_file_path(space_id, table_id, *file_id, &mut path);
+        let path = sst_util::new_sst_file_path(space_id, table_id, *file_id);
 
         let sst_meta = meta_from_sst(store, &path, meta_cache, data_cache).await;
         let file_meta = FileMeta {

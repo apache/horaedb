@@ -19,7 +19,7 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use log::{error, info};
-use object_store::{path::ObjectStorePath, ObjectStore};
+use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
@@ -526,8 +526,7 @@ where
             let (batch_record_sender, batch_record_receiver) =
                 channel::<Result<RecordBatchWithKey>>(DEFAULT_CHANNEL_SIZE);
             let file_id = table_data.alloc_file_id();
-            let mut sst_file_path = self.space_store.store.new_path();
-            table_data.set_sst_file_path(file_id, &mut sst_file_path);
+            let sst_file_path = table_data.set_sst_file_path(file_id);
 
             // TODO: min_key max_key set in sst_builder build
             let mut sst_meta = SstMetaData {
@@ -567,7 +566,7 @@ where
                         Box::new(e) as _
                     })
                     .with_context(|| FailBuildSst {
-                        path: sst_file_path.display(),
+                        path: sst_file_path.to_string(),
                     })?;
 
                 // update sst metadata by built info.
@@ -645,8 +644,7 @@ where
 
         // Alloc file id for next sst file
         let file_id = table_data.alloc_file_id();
-        let mut sst_file_path = self.space_store.store.new_path();
-        table_data.set_sst_file_path(file_id, &mut sst_file_path);
+        let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let sst_builder_options = SstBuilderOptions {
             sst_type: table_data.sst_type,
@@ -679,7 +677,7 @@ where
                 Box::new(e) as _
             })
             .with_context(|| FailBuildSst {
-                path: sst_file_path.display(),
+                path: sst_file_path.to_string(),
             })?;
 
         // update sst metadata by built info.
@@ -848,8 +846,7 @@ impl<Wal, Meta: Manifest, Store: ObjectStore, Fa: Factory> SpaceStore<Wal, Meta,
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
-        let mut sst_file_path = self.store.new_path();
-        table_data.set_sst_file_path(file_id, &mut sst_file_path);
+        let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let sst_builder_options = SstBuilderOptions {
             sst_type: table_data.sst_type,
@@ -868,7 +865,7 @@ impl<Wal, Meta: Manifest, Store: ObjectStore, Fa: Factory> SpaceStore<Wal, Meta,
             .await
             .map_err(|e| Box::new(e) as _)
             .with_context(|| FailBuildSst {
-                path: sst_file_path.display(),
+                path: sst_file_path.to_string(),
             })?;
 
         // update sst metadata by built info.
@@ -887,7 +884,7 @@ impl<Wal, Meta: Manifest, Store: ObjectStore, Fa: Factory> SpaceStore<Wal, Meta,
             table_data.name,
             table_data.id,
             request_id,
-            sst_file_path.display(),
+            sst_file_path.to_string(),
             input.files,
             sst_meta
         );

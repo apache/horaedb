@@ -8,6 +8,7 @@ use common_types::{
 use common_util::define_result;
 use futures::stream::{self, Stream, StreamExt};
 use log::{error, trace};
+use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     predicate::{filter_record_batch::RecordBatchFilter, Predicate},
@@ -208,7 +209,7 @@ pub async fn filtered_stream_from_sst_file<Fa, S>(
 ) -> Result<SequencedRecordBatchStream>
 where
     Fa: sst::factory::Factory,
-    S: object_store::ObjectStore,
+    S: ObjectStore,
 {
     stream_from_sst_file(
         space_id,
@@ -233,11 +234,10 @@ pub async fn stream_from_sst_file<Fa, S>(
 ) -> Result<SequencedRecordBatchStream>
 where
     Fa: sst::factory::Factory,
-    S: object_store::ObjectStore,
+    S: ObjectStore,
 {
     sst_file.read_meter().mark();
-    let mut path = store.new_path();
-    sst_util::set_sst_file_path(space_id, table_id, sst_file.id(), &mut path);
+    let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
     let mut sst_reader = sst_factory
         .new_sst_reader(sst_reader_options, &path, store)
         .with_context(|| SstReaderNotFound {

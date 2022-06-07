@@ -3,13 +3,13 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
-    fs::File,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
     time::Instant,
 };
 
+pub use arrow_deps::parquet::util::cursor::SliceableCursor;
 use arrow_deps::{
     arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
     parquet::{
@@ -26,7 +26,7 @@ use common_types::{
 use common_util::runtime::Runtime;
 use futures::Stream;
 use log::{debug, error, trace};
-use object_store::{path::ObjectStorePath, ObjectStore};
+use object_store::{ObjectStore, Path};
 use parquet::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,
     DataCacheRef, MetaCacheRef,
@@ -46,28 +46,42 @@ const DEFAULT_CHANNEL_CAP: usize = 1000;
 
 pub async fn read_sst_meta<S: ObjectStore>(
     storage: &S,
-    path: &S::Path,
+    path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
-) -> Result<(CachableSerializedFileReader<File>, SstMetaData)> {
-    let file = storage
+) -> Result<(CachableSerializedFileReader<SliceableCursor>, SstMetaData)> {
+    let get_result = storage
         .get(path)
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ReadPersist {
-            path: path.display(),
+            path: path.to_string(),
         })?;
+    // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
+    // read. So under this situation it would be better to pass a local file to
+    // it, avoiding consumes lots of memory. Once parquet support stream data source
+    // we can feed the `GetResult` to it directly.
+    let bytes = SliceableCursor::new(Arc::new(
+        get_result
+            .bytes()
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ReadPersist {
+                path: path.to_string(),
+            })?
+            .to_vec(),
+    ));
 
     // generate the file reader
     let file_reader = CachableSerializedFileReader::new(
-        path.display(),
-        file,
+        path.to_string(),
+        bytes,
         meta_cache.clone(),
         data_cache.clone(),
     )
     .map_err(|e| Box::new(e) as _)
     .with_context(|| ReadPersist {
-        path: path.display(),
+        path: path.to_string(),
     })?;
 
     // parse sst meta data
@@ -92,13 +106,13 @@ pub async fn read_sst_meta<S: ObjectStore>(
 /// The implementation of sst based on parquet and object storage.
 pub struct ParquetSstReader<'a, S: ObjectStore> {
     /// The path where the data is persisted.
-    path: &'a S::Path,
+    path: &'a Path,
     /// The storage where the data is persist.
     storage: &'a S,
     projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_data: Option<SstMetaData>,
-    file_reader: Option<CachableSerializedFileReader<File>>,
+    file_reader: Option<CachableSerializedFileReader<SliceableCursor>>,
     /// The batch of rows in one `record_batch`.
     batch_size: usize,
     /// Read the rows in reverse order.
@@ -112,7 +126,7 @@ pub struct ParquetSstReader<'a, S: ObjectStore> {
 }
 
 impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
-    pub fn new(path: &'a S::Path, storage: &'a S, options: &SstReaderOptions) -> Self {
+    pub fn new(path: &'a Path, storage: &'a S, options: &SstReaderOptions) -> Self {
         Self {
             path,
             storage,
@@ -146,7 +160,7 @@ impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
     }
 
     fn read_record_batches(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
-        let path = self.path.display();
+        let path = self.path.to_string();
         ensure!(self.file_reader.is_some(), ReadAgain { path });
 
         let file_reader = self.file_reader.take().unwrap();
@@ -228,7 +242,7 @@ impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
 /// A reader for projection and filter on the parquet file.
 struct ProjectAndFilterReader {
     file_path: String,
-    file_reader: Option<CachableSerializedFileReader<File>>,
+    file_reader: Option<CachableSerializedFileReader<SliceableCursor>>,
     schema: Schema,
     projected_schema: ProjectedSchema,
     row_projector: RowProjector,
@@ -357,7 +371,7 @@ impl<'a, S: ObjectStore> SstReader for ParquetSstReader<'a, S> {
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
         debug!(
             "read sst:{}, projected_schema:{:?}, predicate:{:?}",
-            self.path.display(),
+            self.path.to_string(),
             self.projected_schema,
             self.predicate
         );

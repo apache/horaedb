@@ -5,7 +5,7 @@
 use std::{path::Path, sync::Arc};
 
 use common_util::define_result;
-use object_store::disk::File;
+use object_store::LocalFileSystem;
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -34,6 +34,17 @@ pub enum Error {
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
     OpenManifest { source: crate::meta::details::Error },
+
+    #[snafu(display("Failed to open object store, err:{}", source))]
+    OpenObjectStore {
+        source: object_store::ObjectStoreError,
+    },
+
+    #[snafu(display("Failed to create dir for {}, err:{}", path, source))]
+    CreateDir {
+        path: String,
+        source: std::io::Error,
+    },
 }
 
 define_result!(Error);
@@ -87,7 +98,12 @@ async fn open_instance(
         };
 
     let sst_path = data_path.join(STORE_DIR_NAME);
-    let store = File::new(sst_path);
+    tokio::fs::create_dir_all(&sst_path)
+        .await
+        .context(CreateDir {
+            path: sst_path.to_string_lossy().into_owned(),
+        })?;
+    let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
     let open_ctx = OpenContext {
         config,
         runtimes: engine_runtimes,

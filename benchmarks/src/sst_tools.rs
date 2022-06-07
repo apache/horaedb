@@ -25,11 +25,7 @@ use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
 use futures::TryStreamExt;
 use log::info;
-use object_store::{
-    disk::File,
-    path::{file::FilePath, ObjectStorePath},
-    ObjectStore,
-};
+use object_store::{LocalFileSystem, Path};
 use serde_derive::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;
@@ -58,9 +54,8 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         config, sst_builder_options
     );
 
-    let store = File::new(config.store_path);
-    let mut sst_file_path = store.new_path();
-    sst_file_path.set_file_name(&config.sst_file_name);
+    let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+    let sst_file_path = Path::from(config.sst_file_name);
 
     let mut builder = sst_factory
         .new_sst_builder(&sst_builder_options, &sst_file_path, &store)
@@ -87,10 +82,8 @@ pub struct RebuildSstConfig {
 pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     info!("Start rebuild sst, config:{:?}", config);
 
-    let store = File::new(config.store_path.clone());
-
-    let mut input_path = store.new_path();
-    input_path.set_file_name(&config.input_file_name);
+    let store = LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap();
+    let input_path = Path::from(config.input_file_name);
 
     let sst_meta = util::meta_from_sst(&store, &input_path, &None, &None).await;
 
@@ -124,8 +117,8 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
 async fn sst_to_record_batch_stream(
     sst_reader_options: &SstReaderOptions,
-    input_path: &FilePath,
-    store: &File,
+    input_path: &Path,
+    store: &LocalFileSystem,
 ) -> RecordBatchStream {
     let sst_factory = FactoryImpl;
     let mut sst_reader = sst_factory
@@ -164,7 +157,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
     let space_id = config.space_id;
     let table_id = config.table_id;
-    let store = File::new(config.store_path.clone());
+    let store = LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap();
     let (tx, _rx) = mpsc::unbounded_channel();
     let purge_queue = FilePurgeQueue::new(space_id, table_id, tx);
 
@@ -184,13 +177,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         .max()
         .unwrap();
 
-    let mut first_sst_path = store.new_path();
-    sst_util::set_sst_file_path(
-        space_id,
-        table_id,
-        config.sst_file_ids[0],
-        &mut first_sst_path,
-    );
+    let first_sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
     let schema = util::schema_from_sst(&store, &first_sst_path, &None, &None).await;
     let iter_options = IterOptions {
         batch_size: config.read_batch_row_num,

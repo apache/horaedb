@@ -9,11 +9,12 @@ use arrow_deps::parquet::{
     file::{
         metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SerializedFileReader,
     },
+    util::cursor::SliceableCursor,
 };
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
-use object_store::{disk::File, path::ObjectStorePath, ObjectStore};
+use object_store::{LocalFileSystem, ObjectStore, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
@@ -22,7 +23,7 @@ use crate::{config::SstBenchConfig, util};
 type RowGroupPredicate = Box<dyn Fn(&RowGroupMetaData, usize) -> bool + 'static>;
 
 pub struct ParquetBench {
-    store: File,
+    store: LocalFileSystem,
     pub sst_file_name: String,
     max_projections: usize,
     projection: Vec<usize>,
@@ -34,12 +35,11 @@ pub struct ParquetBench {
 
 impl ParquetBench {
     pub fn new(config: SstBenchConfig) -> Self {
-        let store = File::new(config.store_path);
+        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
 
         let runtime = util::new_runtime(config.runtime_thread_num);
 
-        let mut sst_path = store.new_path();
-        sst_path.set_file_name(&config.sst_file_name);
+        let sst_path = Path::from(config.sst_file_name.clone());
         let meta_cache: Option<MetaCacheRef> = None;
         let data_cache: Option<DataCacheRef> = None;
 
@@ -80,13 +80,13 @@ impl ParquetBench {
     }
 
     pub fn run_bench(&self) {
-        let mut sst_path = self.store.new_path();
-        sst_path.set_file_name(&self.sst_file_name);
+        let sst_path = Path::from(self.sst_file_name.clone());
 
         self.runtime.block_on(async {
             let open_instant = Instant::now();
-            let file = self.store.get(&sst_path).await.unwrap();
-            let mut file_reader = SerializedFileReader::new(file).unwrap();
+            let get_result = self.store.get(&sst_path).await.unwrap();
+            let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
+            let mut file_reader = SerializedFileReader::new(cursor).unwrap();
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
@@ -127,7 +127,7 @@ impl ParquetBench {
 
     fn build_row_group_predicate(
         &self,
-        file_reader: &SerializedFileReader<std::fs::File>,
+        file_reader: &SerializedFileReader<SliceableCursor>,
     ) -> RowGroupPredicate {
         let row_groups = file_reader.metadata().row_groups();
         let filter_results = self.predicate.filter_row_groups(&self.schema, row_groups);

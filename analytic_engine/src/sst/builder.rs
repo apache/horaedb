@@ -15,19 +15,15 @@ pub mod error {
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub))]
     pub enum Error {
-        #[snafu(display("Failed to persist sst content, path:{}, err:{}", path, source))]
-        Persist {
-            path: String,
-            source: Box<dyn std::error::Error + Send + Sync>,
+        #[snafu(display("Failed to perform storage operation, err:{}", source))]
+        Storage {
+            source: object_store::ObjectStoreError,
         },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]
         EncodeMetaData {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
-
-        #[snafu(display("Failed to get sst file size, path:{}", path))]
-        GetFileSize { path: String },
 
         #[snafu(display(
             "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
@@ -41,6 +37,11 @@ pub mod error {
 
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch {
+            source: Box<dyn std::error::Error + Send + Sync>,
+        },
+
+        #[snafu(display("Failed to read data, err:{}", source))]
+        ReadData {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
     }
