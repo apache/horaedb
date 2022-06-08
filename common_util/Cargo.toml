@@ -14,7 +14,7 @@ test = ["env_logger"]
 backtrace = "0.3.9"
 common_types = { path = "../common_types", features = ["test"] }
 chrono = "0.4"
-crossbeam-utils = "0.8"
+crossbeam-utils = "0.8.7"
 env_logger = { version = "0.6", optional = true }
 lazy_static = "1.4.0"
 libc = "0.2"
@@ -33,7 +33,7 @@ toml = "0.5"
 [dev-dependencies]
 env_logger = "0.6"
 gag = "1.0"
-nix = "0.19"
+nix = "0.20.2"
 slog = "2.7"
 tempfile = "3.1.0"
 tokio-test = "0.4.2"
