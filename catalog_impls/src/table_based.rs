@@ -27,7 +27,7 @@ use system_catalog::sys_catalog_table::{
     VisitorCatalogNotFound, VisitorOpenTable, VisitorSchemaNotFound,
 };
 use table_engine::{
-    engine::{TableEngine, TableEngineRef, TableState},
+    engine::{TableEngineRef, TableState},
     table::{
         ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeqGenerator,
     },
@@ -107,7 +107,7 @@ impl Manager for TableBasedManager {
 impl TableBasedManager {
     /// Create and init the TableBasedManager.
     // TODO(yingwen): Define all constants in catalog crate.
-    pub async fn new<T: TableEngine>(backend: &T, engine_proxy: TableEngineRef) -> Result<Self> {
+    pub async fn new(backend: TableEngineRef, engine_proxy: TableEngineRef) -> Result<Self> {
         // Create or open sys_catalog table, will also create a space (catalog + schema)
         // for system catalog.
         let catalog_table = SysCatalogTable::new(backend)
@@ -867,18 +867,21 @@ impl Schema for SchemaImpl {
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use analytic_engine::{tests::util::TestEnv, AnalyticTableEngine};
+    use analytic_engine::tests::util::TestEnv;
     use catalog::{
         consts::DEFAULT_CATALOG,
         manager::Manager,
         schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
-    use table_engine::{engine::TableState, ANALYTIC_ENGINE_TYPE};
+    use table_engine::{
+        engine::{TableEngineRef, TableState},
+        ANALYTIC_ENGINE_TYPE,
+    };
 
     use crate::table_based::TableBasedManager;
 
-    async fn build_catalog_manager(analytic: AnalyticTableEngine) -> TableBasedManager {
+    async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
         // Create table engine proxy
         let memory = MemoryTableEngine;
 
@@ -888,7 +891,7 @@ mod tests {
         });
 
         // Create catalog manager, use analytic table as backend
-        TableBasedManager::new(&analytic, engine_proxy.clone())
+        TableBasedManager::new(analytic.clone(), engine_proxy.clone())
             .await
             .unwrap_or_else(|e| {
                 panic!("Failed to create catalog manager, err:{}", e);
