@@ -27,7 +27,7 @@ use system_catalog::sys_catalog_table::{
     VisitorCatalogNotFound, VisitorOpenTable, VisitorSchemaNotFound,
 };
 use table_engine::{
-    engine::{TableEngine, TableEngineRef, TableState},
+    engine::{TableEngineRef, TableState},
     table::{
         ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeqGenerator,
     },
@@ -107,7 +107,7 @@ impl Manager for TableBasedManager {
 impl TableBasedManager {
     /// Create and init the TableBasedManager.
     // TODO(yingwen): Define all constants in catalog crate.
-    pub async fn new<T: TableEngine>(backend: &T, engine_proxy: TableEngineRef) -> Result<Self> {
+    pub async fn new(backend: TableEngineRef, engine_proxy: TableEngineRef) -> Result<Self> {
         // Create or open sys_catalog table, will also create a space (catalog + schema)
         // for system catalog.
         let catalog_table = SysCatalogTable::new(backend)

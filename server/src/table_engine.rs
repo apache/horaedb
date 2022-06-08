@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 
-use analytic_engine::AnalyticTableEngine;
 use async_trait::async_trait;
 use table_engine::{
     engine::{
@@ -57,7 +56,7 @@ pub struct TableEngineProxy {
     /// Memory table engine
     pub memory: MemoryTableEngine,
     /// Analytic table engine
-    pub analytic: AnalyticTableEngine,
+    pub analytic: TableEngineRef,
 }
 
 #[async_trait]

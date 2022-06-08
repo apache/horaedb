@@ -86,7 +86,7 @@ pub fn run_server(config: Config) {
 
         // Create catalog manager, use analytic table as backend
         let catalog_manager = CatalogManagerImpl::new(
-            TableBasedManager::new(&analytic, engine_proxy.clone())
+            TableBasedManager::new(analytic.clone(), engine_proxy.clone())
                 .await
                 .unwrap_or_else(|e| {
                     panic!("Failed to create catalog manager, err:{}", e);

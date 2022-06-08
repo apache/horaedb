@@ -29,7 +29,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,
     engine::{
-        CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine, TableRequestType,
+        CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef, TableRequestType,
         TableState,
     },
     predicate::PredicateBuilder,
@@ -252,7 +252,7 @@ pub struct SysCatalogTable {
 
 impl SysCatalogTable {
     /// Create a new [SysCatalogTable]
-    pub async fn new<T: TableEngine>(table_engine: &T) -> Result<Self> {
+    pub async fn new(table_engine: TableEngineRef) -> Result<Self> {
         let table_schema = new_sys_catalog_schema().context(BuildSchema)?;
         let key_column_index = table_schema
             .index_of(KEY_COLUMN_NAME)
