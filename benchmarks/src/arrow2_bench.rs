@@ -54,9 +54,9 @@ impl Arrow2Bench {
             let file = BufReader::new(File::open(sst_path).unwrap());
 
             let record_reader = if self.projection.is_empty() {
-                read::RecordReader::try_new(file, None, None, None, None).unwrap()
+                read::FileReader::try_new(file, None, None, None, None).unwrap()
             } else {
-                read::RecordReader::try_new(file, Some(self.projection.clone()), None, None, None).unwrap()
+                read::FileReader::try_new(file, Some(&self.projection), None, None, None).unwrap()
             };
             let open_cost = open_instant.elapsed();
 
@@ -64,7 +64,7 @@ impl Arrow2Bench {
             let mut total_rows = 0;
             let mut batch_num = 0;
             for record_batch in record_reader {
-                let num_rows = record_batch.unwrap().num_rows();
+                let num_rows = record_batch.unwrap().len();
                 total_rows += num_rows;
                 batch_num += 1;
             }

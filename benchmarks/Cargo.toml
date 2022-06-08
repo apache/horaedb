@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 arena = { path = "../components/arena" }
-arrow2 = { version = "0.7.0", features = [ "io_parquet" ] }
+arrow2 = { version = "0.12.0", features = [ "io_parquet" ] }
 arrow_deps = { path = "../arrow_deps" }
 analytic_engine = { path = "../analytic_engine" }
 clap = "2.0"
