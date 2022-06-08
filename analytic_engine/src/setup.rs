@@ -11,7 +11,7 @@ use parquet::{
     DataCacheRef, MetaCacheRef,
 };
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::{EngineRuntimes, TableEngine};
+use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use wal::{
     manager::{self, WalManager},
     rocks_impl::manager::Builder as WalBuilder,
@@ -64,7 +64,7 @@ const STORE_DIR_NAME: &str = "store";
 pub async fn open_analytic_table_engine(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
-) -> Result<Arc<dyn TableEngine>> {
+) -> Result<TableEngineRef> {
     let wal = open_wal(
         config.clone(),
         engine_runtimes.write_runtime.clone(),

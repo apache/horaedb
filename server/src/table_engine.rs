@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use table_engine::{
     engine::{
         CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine, UnknownEngineType,
+        TableEngine, UnknownEngineType, TableEngineRef,
     },
     memory::MemoryTable,
     table::TableRef,
