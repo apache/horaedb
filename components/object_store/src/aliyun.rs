@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use std::{collections::HashMap, fmt::Display, ops::Range};
 
 use async_trait::async_trait;

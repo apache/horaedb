@@ -388,6 +388,7 @@ impl Builder {
             storage: StorageOptions::Local(LocalOptions {
                 data_path: dir.path().to_str().unwrap().to_string(),
             }),
+            wal_path: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         };
 
