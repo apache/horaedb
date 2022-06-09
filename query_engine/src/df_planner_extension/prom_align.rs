@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use arrow_deps::datafusion::{
     error::DataFusionError,
-    execution::context::ExecutionContextState,
     logical_plan::{LogicalPlan, UserDefinedLogicalNode},
-    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
+    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner}, execution::context::SessionState,
 };
 use snafu::Snafu;
 use sql::promql::PromAlignNode;
@@ -28,7 +27,7 @@ impl ExtensionPlanner for PromAlignPlanner {
         node: &dyn UserDefinedLogicalNode,
         logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _ctx_state: &ExecutionContextState,
+        _ctx_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         Ok(
             if let Some(node) = node.as_any().downcast_ref::<PromAlignNode>() {

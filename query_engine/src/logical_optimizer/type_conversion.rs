@@ -9,11 +9,13 @@ use arrow_deps::{
         error::{DataFusionError, Result},
         execution::context::ExecutionProps,
         logical_plan::{
-            plan::Filter, DFSchemaRef, Expr, ExprRewriter, LogicalPlan, Operator, TableScan,
+            plan::Filter, DFSchemaRef, Expr, ExprRewritable, ExprRewriter, LogicalPlan, Operator,
+            TableScan,
         },
         optimizer::{optimizer::OptimizerRule, utils},
         scalar::ScalarValue,
     },
+    datafusion_expr::ExprSchemable,
 };
 use log::debug;
 
@@ -94,7 +96,13 @@ impl OptimizerRule for TypeConversion {
 
                 utils::from_plan(plan, &expr, &new_inputs)
             }
-            LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
+
+            LogicalPlan::Subquery(_)
+            | LogicalPlan::SubqueryAlias(_)
+            | LogicalPlan::CreateView(_)
+            | LogicalPlan::CreateCatalogSchema(_)
+            | LogicalPlan::CreateCatalog(_)
+            | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
         }
     }
 
@@ -288,6 +296,8 @@ fn timestamp_to_timestamp_ms_expr(typ: TimestampType, timestamp: i64) -> Expr {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use arrow_deps::{
         arrow::datatypes::TimeUnit,
         datafusion::{
@@ -300,19 +310,22 @@ mod tests {
 
     fn expr_test_schema() -> DFSchemaRef {
         Arc::new(
-            DFSchema::new(vec![
-                DFField::new(None, "c1", DataType::Utf8, true),
-                DFField::new(None, "c2", DataType::Int64, true),
-                DFField::new(None, "c3", DataType::Float64, true),
-                DFField::new(None, "c4", DataType::Float32, true),
-                DFField::new(None, "c5", DataType::Boolean, true),
-                DFField::new(
-                    None,
-                    "c6",
-                    DataType::Timestamp(TimeUnit::Millisecond, None),
-                    false,
-                ),
-            ])
+            DFSchema::new_with_metadata(
+                vec![
+                    DFField::new(None, "c1", DataType::Utf8, true),
+                    DFField::new(None, "c2", DataType::Int64, true),
+                    DFField::new(None, "c3", DataType::Float64, true),
+                    DFField::new(None, "c4", DataType::Float32, true),
+                    DFField::new(None, "c5", DataType::Boolean, true),
+                    DFField::new(
+                        None,
+                        "c6",
+                        DataType::Timestamp(TimeUnit::Millisecond, None),
+                        false,
+                    ),
+                ],
+                HashMap::new(),
+            )
             .unwrap(),
         )
     }

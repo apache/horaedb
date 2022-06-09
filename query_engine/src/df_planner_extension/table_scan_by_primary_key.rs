@@ -8,7 +8,7 @@ use std::{
 
 use arrow_deps::datafusion::{
     error::DataFusionError,
-    execution::context::ExecutionContextState,
+    execution::context::SessionState,
     logical_plan::{self, DFSchemaRef, Expr, LogicalPlan, TableScan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
@@ -25,7 +25,7 @@ impl ExtensionPlanner for Planner {
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         _physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _ctx_state: &ExecutionContextState,
+        _session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         node.as_any()
             .downcast_ref::<TableScanByPrimaryKey>()
@@ -88,12 +88,12 @@ impl TableScanByPrimaryKey {
                 // referred to in the query
                 let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
 
-                table_provider.scan_table(
+                futures::executor::block_on(table_provider.scan_table(
                     projection,
                     &filters,
                     *limit,
                     ReadOrder::from_is_asc(Some(self.asc)),
-                )
+                ))
             }
             _ => Err(DataFusionError::Internal(format!(
                 "expect scan plan, given plan:{:?}",

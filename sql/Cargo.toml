@@ -18,7 +18,7 @@ common_util = { path = "../common_util" }
 log = "0.4"
 paste = "1.0"
 snafu = { version ="0.6.10", features = ["backtraces"]}
-sqlparser = "0.13.0"
+sqlparser = "0.17.0"
 table_engine = { path = "../table_engine" }
 udf = { path = "../udf" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}

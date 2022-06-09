@@ -265,7 +265,7 @@ impl TryFrom<&Field> for ColumnSchema {
     type Error = Error;
 
     fn try_from(field: &Field) -> Result<Self> {
-        let meta_data = field.metadata().as_ref();
+        let meta_data = field.metadata();
         let ArrowFieldMeta {
             id,
             is_tag,

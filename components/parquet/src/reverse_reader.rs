@@ -105,8 +105,8 @@ impl SingleRowGroupFileReader {
                 // provide the row group's row number because of the reader only contains one row
                 // group.
                 row_group_meta_data.num_rows(),
-                orig_file_meta_data.created_by().clone(),
-                orig_file_meta_data.key_value_metadata().clone(),
+                orig_file_meta_data.created_by().map(str::to_string),
+                orig_file_meta_data.key_value_metadata().cloned(),
                 orig_file_meta_data.schema_descr_ptr(),
                 orig_file_meta_data.column_orders().cloned(),
             );

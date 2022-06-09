@@ -818,7 +818,9 @@ impl<'a> DatumView<'a> {
             | ScalarValue::IntervalYearMonth(_)
             | ScalarValue::IntervalDayTime(_)
             | ScalarValue::Struct(_, _)
-            | ScalarValue::Decimal128(_, _, _) => None,
+            | ScalarValue::Decimal128(_, _, _)
+            | ScalarValue::Null
+            | ScalarValue::IntervalMonthDayNano(_) => None,
         }
     }
 }

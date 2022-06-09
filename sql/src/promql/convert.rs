@@ -54,6 +54,12 @@ pub enum Error {
     #[snafu(display("Table not found, table:{}", name))]
     TableNotFound { name: String },
 
+    #[snafu(display("Table provider not found, table:{}, err:{}", name, source))]
+    TableProviderNotFound {
+        name: String,
+        source: DataFusionError,
+    },
+
     #[snafu(display("Failed to build schema, err:{}", source))]
     BuildTableSchema { source: common_types::schema::Error },
 
@@ -597,7 +603,7 @@ impl Selector {
 
         let table_provider = meta_provider
             .get_table_provider(table_ref.name().into())
-            .context(TableNotFound { name: &table })?;
+            .context(TableProviderNotFound { name: &table })?;
         let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
         let timestamp_column_name = schema.timestamp_name().to_string();
         let (projection, tag_keys) = Self::build_projection_tag_keys(&schema, &field)?;

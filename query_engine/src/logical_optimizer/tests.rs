@@ -14,6 +14,7 @@ use arrow_deps::{
         },
         physical_plan::ExecutionPlan,
     },
+    datafusion_expr::TableType,
 };
 use async_trait::async_trait;
 use common_types::schema::Schema;
@@ -36,6 +37,10 @@ pub struct MockTableProvider {
 impl TableProvider for MockTableProvider {
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn table_type(&self) -> TableType {
+        TableType::Temporary
     }
 
     fn schema(&self) -> SchemaRef {

@@ -9,11 +9,12 @@ use std::{
 
 use arrow_deps::datafusion::{
     error::DataFusionError,
+    execution::context::TaskContext,
     physical_plan::{
         coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan,
         ExecutionPlan,
     },
-    prelude::ExecutionContext,
+    prelude::SessionContext,
 };
 use async_trait::async_trait;
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -38,10 +39,9 @@ pub enum Error {
 
 define_result!(Error);
 
-#[async_trait]
 pub trait PhysicalPlan: std::fmt::Debug {
     /// execute this plan and returns the result
-    async fn execute(&self) -> Result<SendableRecordBatchStream>;
+    fn execute(&self) -> Result<SendableRecordBatchStream>;
 
     /// Convert internal metrics to string.
     fn metrics_to_string(&self) -> String;
@@ -50,12 +50,12 @@ pub trait PhysicalPlan: std::fmt::Debug {
 pub type PhysicalPlanPtr = Box<dyn PhysicalPlan + Send + Sync>;
 
 pub struct DataFusionPhysicalPlan {
-    ctx: ExecutionContext,
+    ctx: SessionContext,
     plan: Arc<dyn ExecutionPlan>,
 }
 
 impl DataFusionPhysicalPlan {
-    pub fn with_plan(ctx: ExecutionContext, plan: Arc<dyn ExecutionPlan>) -> Self {
+    pub fn with_plan(ctx: SessionContext, plan: Arc<dyn ExecutionPlan>) -> Self {
         Self { ctx, plan }
     }
 }
@@ -70,21 +70,19 @@ impl Debug for DataFusionPhysicalPlan {
 
 #[async_trait]
 impl PhysicalPlan for DataFusionPhysicalPlan {
-    async fn execute(&self) -> Result<SendableRecordBatchStream> {
-        let runtime = self.ctx.state.lock().unwrap().runtime_env.clone();
+    fn execute(&self) -> Result<SendableRecordBatchStream> {
+        let task_context = Arc::new(TaskContext::from(&self.ctx));
         let partition_count = self.plan.output_partitioning().partition_count();
         let df_stream = if partition_count <= 1 {
             self.plan
-                .execute(0, runtime)
-                .await
+                .execute(0, task_context)
                 .context(DataFusionExec { partition_count })?
         } else {
             // merge into a single partition
             let plan = CoalescePartitionsExec::new(self.plan.clone());
             // MergeExec must produce a single partition
             assert_eq!(1, plan.output_partitioning().partition_count());
-            plan.execute(0, runtime)
-                .await
+            plan.execute(0, task_context)
                 .context(DataFusionExec { partition_count })?
         };
 

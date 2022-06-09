@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_deps::datafusion::{
     physical_optimizer::{coalesce_batches::CoalesceBatches, optimizer::PhysicalOptimizerRule},
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
-    prelude::ExecutionConfig,
+    prelude::SessionConfig,
 };
 
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
@@ -55,9 +55,11 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
     fn optimize(
         &self,
         plan: Arc<dyn ExecutionPlan>,
-        config: &ExecutionConfig,
+        config: &SessionConfig,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-        if Self::detect_small_limit_plan(&*plan, config.runtime.batch_size) {
+        // todo: set it when https://github.com/apache/arrow-datafusion/pull/2660 is shipped.
+        // this field used to be: config.runtime.batch_size
+        if Self::detect_small_limit_plan(&*plan, 0) {
             Ok(plan)
         } else {
             self.original_rule.optimize(plan, config)

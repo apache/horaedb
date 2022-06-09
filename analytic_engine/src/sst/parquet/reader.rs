@@ -9,12 +9,13 @@ use std::{
     time::Instant,
 };
 
-pub use arrow_deps::parquet::util::cursor::SliceableCursor;
 use arrow_deps::{
     arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
     parquet::{
         arrow::{ArrowReader, ParquetFileArrowReader},
-        file::{metadata::RowGroupMetaData, reader::FileReader},
+        file::{
+            metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SliceableCursor,
+        },
     },
 };
 use async_trait::async_trait;
@@ -90,7 +91,6 @@ pub async fn read_sst_meta<S: ObjectStore>(
             .metadata()
             .file_metadata()
             .key_value_metadata()
-            .as_ref()
             .context(SstMetaNotFound)?;
 
         ensure!(!kv_metas.is_empty(), EmptySstMeta);

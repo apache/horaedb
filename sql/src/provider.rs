@@ -6,6 +6,7 @@ use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
 use arrow_deps::datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+    common::DataFusionError,
     datasource::TableProvider,
     physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
     sql::planner::ContextProvider,
@@ -198,10 +199,13 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 }
 
 impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
-    fn get_table_provider(&self, name: TableReference) -> Option<Arc<dyn TableProvider>> {
+    fn get_table_provider(
+        &self,
+        name: TableReference,
+    ) -> std::result::Result<Arc<(dyn TableProvider + 'static)>, DataFusionError> {
         // Find in local cache
         if let Some(p) = self.table_cache.borrow().get(name) {
-            return Some(p);
+            return Ok(p);
         }
 
         // Find in meta provider
@@ -217,12 +221,16 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
                     .borrow_mut()
                     .insert(name, table_adapter.clone());
 
-                Some(table_adapter)
+                Ok(table_adapter)
             }
-            Ok(None) => None,
+            Ok(None) => Err(DataFusionError::Execution(
+                "MetaProvider not found".to_string(),
+            )),
             Err(e) => {
                 self.maybe_set_err(e);
-                None
+                Err(DataFusionError::Execution(
+                    "MetaProvider not found".to_string(),
+                ))
             }
         }
     }
@@ -251,6 +259,13 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
                 None
             }
         }
+    }
+
+    fn get_variable_type(
+        &self,
+        _variable_names: &[String],
+    ) -> Option<common_types::schema::DataType> {
+        todo!()
     }
 }
 

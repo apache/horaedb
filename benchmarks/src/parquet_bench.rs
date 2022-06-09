@@ -7,9 +7,8 @@ use std::{sync::Arc, time::Instant};
 use arrow_deps::parquet::{
     arrow::{ArrowReader, ParquetFileArrowReader},
     file::{
-        metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SerializedFileReader,
+        metadata::RowGroupMetaData, reader::FileReader, serialized_reader::{SerializedFileReader, SliceableCursor},
     },
-    util::cursor::SliceableCursor,
 };
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
@@ -86,7 +85,8 @@ impl ParquetBench {
             let open_instant = Instant::now();
             let get_result = self.store.get(&sst_path).await.unwrap();
             let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
-            let mut file_reader = SerializedFileReader::new(cursor).unwrap();
+            // let mut file_reader = SerializedFileReader::new(cursor).unwrap();
+            let file_reader = SerializedRowGroupReader::new(cursor,&row_group_predicate)
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();

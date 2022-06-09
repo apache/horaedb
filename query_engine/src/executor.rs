@@ -100,7 +100,7 @@ impl Executor for ExecutorImpl {
             request_id, physical_plan
         );
 
-        let stream = physical_plan.execute().await.context(ExecutePhysical)?;
+        let stream = physical_plan.execute().context(ExecutePhysical)?;
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation
