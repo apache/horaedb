@@ -27,6 +27,7 @@ use tempfile::TempDir;
 
 use crate::{
     setup,
+    storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config,
 };
@@ -384,7 +385,10 @@ impl Builder {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            data_path: dir.path().to_str().unwrap().to_string(),
+            storage: StorageOptions::Local(LocalOptions {
+                data_path: dir.path().to_str().unwrap().to_string(),
+            }),
+            wal_path: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         };
 

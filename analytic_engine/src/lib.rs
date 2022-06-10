@@ -14,6 +14,7 @@ mod sampler;
 pub mod setup;
 pub mod space;
 pub mod sst;
+mod storage_options;
 pub mod table;
 pub mod table_options;
 
@@ -22,6 +23,7 @@ pub mod tests;
 
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
+use storage_options::{LocalOptions, StorageOptions};
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
@@ -29,8 +31,11 @@ pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOpti
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// Data path of the engine.
-    pub data_path: String,
+    /// Storage options of the engine.
+    pub storage: StorageOptions,
+
+    /// WAL path of the engine.
+    pub wal_path: String,
 
     /// Batch size to read records from wal to replay.
     pub replay_batch_size: usize,
@@ -64,7 +69,10 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            data_path: String::from("/tmp/ceresdb"),
+            storage: StorageOptions::Local(LocalOptions {
+                data_path: String::from("/tmp/ceresdb"),
+            }),
+            wal_path: String::from("/tmp/ceresdb"),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
@@ -74,10 +82,10 @@ impl Default for Config {
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
-            /// Zero means disabling this param, give a postive value to enable
+            /// Zero means disabling this param, give a positive value to enable
             /// it.
             space_write_buffer_size: 0,
-            /// Zero means disabling this param, give a postive value to enable
+            /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
         }

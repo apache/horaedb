@@ -5,7 +5,7 @@
 use std::{path::Path, sync::Arc};
 
 use common_util::{define_result, runtime::Runtime};
-use object_store::{LocalFileSystem, ObjectStore};
+use object_store::{aliyun::AliyunOSS, LocalFileSystem, ObjectStore};
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -23,6 +23,7 @@ use crate::{
     instance::{Instance, InstanceRef},
     meta::{details::ManifestImpl, Manifest},
     sst::factory::{Factory, FactoryImpl},
+    storage_options::{AliyunOptions, LocalOptions},
     Config,
 };
 
@@ -78,12 +79,21 @@ pub async fn open_analytic_table_engine(
     )
     .await?;
     let manifest = open_manifest(config.clone(), manifest_wal).await?;
-    let storage = open_storage(config.clone()).await?;
 
-    let instance =
-        open_instance(config, wal, manifest, storage, FactoryImpl, engine_runtimes).await?;
-
-    Ok(Arc::new(TableEngineImpl::new(instance)))
+    match config.storage {
+        crate::storage_options::StorageOptions::Local(ref opts) => {
+            let storage = open_storage_local(opts.clone()).await?;
+            let instance =
+                open_instance(config, wal, manifest, storage, FactoryImpl, engine_runtimes).await?;
+            Ok(Arc::new(TableEngineImpl::new(instance)))
+        }
+        crate::storage_options::StorageOptions::Aliyun(ref opts) => {
+            let storage = open_storage_aliyun(opts.clone()).await?;
+            let instance =
+                open_instance(config, wal, manifest, storage, FactoryImpl, engine_runtimes).await?;
+            Ok(Arc::new(TableEngineImpl::new(instance)))
+        }
+    }
 }
 
 async fn open_instance<Wal, M, Store, Fa>(
@@ -133,7 +143,7 @@ async fn open_wal(
     runtime: Arc<Runtime>,
     sub_path: &str,
 ) -> Result<impl WalManager + Send + Sync + 'static> {
-    let data_path = Path::new(&config.data_path);
+    let data_path = Path::new(&config.wal_path);
     let wal_path = data_path.join(sub_path);
     WalBuilder::with_default_rocksdb_config(wal_path, runtime)
         .build()
@@ -152,8 +162,8 @@ where
         .context(OpenManifest)
 }
 
-async fn open_storage(config: Config) -> Result<impl ObjectStore> {
-    let data_path = Path::new(&config.data_path);
+async fn open_storage_local(opts: LocalOptions) -> Result<LocalFileSystem> {
+    let data_path = Path::new(&opts.data_path);
     let sst_path = data_path.join(STORE_DIR_NAME);
     tokio::fs::create_dir_all(&sst_path)
         .await
@@ -161,4 +171,13 @@ async fn open_storage(config: Config) -> Result<impl ObjectStore> {
             path: sst_path.to_string_lossy().into_owned(),
         })?;
     LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)
+}
+
+async fn open_storage_aliyun(opts: AliyunOptions) -> Result<impl ObjectStore> {
+    Ok(AliyunOSS::new(
+        opts.key_id,
+        opts.key_secret,
+        opts.endpoint,
+        opts.bucket,
+    ))
 }
