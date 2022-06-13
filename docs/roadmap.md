@@ -1,6 +1,6 @@
 ## roadmap
 ### v0.1.0
-1. Stand-alone version, local storage
+1. Standalone version, local storage
 2. Analytical storage format
 3. Support SQL
 
@@ -12,5 +12,5 @@
 
 ### v0.3.0
 1. Time series storage format
-2. Distributed version supports dynamic expansion and contraction
-3. Provides a non-OBKV implementation of distributed WAL
+2. Support horizontal scaling
+3. Provide a non-OBKV implementation of distributed WAL
