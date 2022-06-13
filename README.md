@@ -2,9 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
-CeresDB 定位高性能的、分布式的、Schema-less 的 HT(timeseries)A(analytic)P 型时间序列数据库，不同于传统的时序数据库，CeresDB 的目标是不仅能够处理时序特征（timeseries）的数据，同时也能够处理分析型（analytic）的数据。
-CeresDB 使用 [Apache Arrow](https://arrow.apache.org/) 和 [DataFusion](https://arrow.apache.org/blog/2019/02/04/datafusion-donation/) 进行构建。
-
+CeresDB 是一个高性能、分布式、Schema-less 的时间序列数据库，能够同时处理时序型（time-series）以及分析型（analytics）负载。
 
 ## 项目状态
 项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
@@ -115,6 +113,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 
 ## 如何贡献
 [如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
+
 [约定式提交](docs/conventional-commit.md)
 
 ## 架构及技术文档
