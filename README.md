@@ -118,7 +118,7 @@ Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 Our technical documents(still under writing and polishing) describes critical parts of ceresdb in the [docs](docs).
 
 ## Acknowledgment
-Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/influxdb_iox), and some specific module implementations reference [tikv](https://github.com/tikv/tikv) and other excellent open source projects, thanks to InfluxDB, PingCAP, and any other referenced great open source projects.
+Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/influxdb_iox), and some specific module implementations reference [tikv](https://github.com/tikv/tikv) and other excellent open source projects, thanks to InfluxDB, TiKV, and any other referenced great open source projects.
 
 ## Licensing
 CeresDB is under [Apache License 2.0](./LICENSE).
