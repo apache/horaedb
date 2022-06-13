@@ -1,16 +1,16 @@
 ## roadmap
 ### v0.1.0
-1. 单机版本，本地存储
-2. 分析型存储格式
-3. 支持 SQL 查询、写入
+1. Standalone version, local storage
+2. Analytical storage format
+3. Support SQL
 
 ### v0.2.0
-2. 分布式版本支持静态拓扑
-3. 底层存储支持阿里云 oss
-4. 分布式 WAL 支持 OBKV
-5. 支持 Prometheus 协议
+1. Distributed version supports static topology
+2. The underlying storage supports Alibaba Cloud oss
+3. Distributed WAL supports OBKV
+4. Support Prometheus protocol
 
 ### v0.3.0
-1. 时序型存储格式
-2. 分布式版本支持动态扩缩容
-3. 提供非 OBKV 实现的分布式 WAL
+1. Time series storage format
+2. Support horizontal scaling
+3. Provide a non-OBKV implementation of distributed WAL
