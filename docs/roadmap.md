@@ -1,16 +1,16 @@
-## roadmap
+## RoadMap
 ### v0.1.0
-1. Standalone version, local storage
-2. Analytical storage format
-3. Support SQL
+- [x] Standalone version, local storage
+- [x] Analytical storage format
+- [x] Support SQL
 
 ### v0.2.0
-1. Distributed version supports static topology
-2. The underlying storage supports Alibaba Cloud oss
-3. Distributed WAL supports OBKV
-4. Support Prometheus protocol
+- [ ] Distributed version supports static topology
+- [ ] The underlying storage supports Alibaba Cloud oss
+- [ ] Support Prometheus protocol
+- [ ] WAL implementation based on [OBKV](https://github.com/oceanbase/oceanbase)
 
 ### v0.3.0
-1. Time series storage format
-2. Support horizontal scaling
-3. Provide a non-OBKV implementation of distributed WAL
+- [ ] Time series storage format
+- [ ] Support horizontal scaling
+- [ ] Distributed WAL implementation

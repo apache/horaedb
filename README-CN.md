@@ -1,6 +1,8 @@
 ![CeresDB](docs/logo/CeresDB.png)
 
-![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+![License](https://img.shields.io/badge/license-Apache--2.0-green.svg) 
+
+[English](./README.md)
 
 CeresDB 是一款高性能、分布式、Schema-less 的云原生时序数据库，能够同时处理时序型（time-series）以及分析型（analytics）负载。
 
@@ -124,5 +126,4 @@ CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 ## 社区
 - [CeresDB 社区角色](ROLES.md).
 - 钉钉群: CeresDB 开源: 44602802
-- 微信: chunshao2008
 - 邮箱: ceresdb@service.alipay.com

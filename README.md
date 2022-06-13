@@ -2,6 +2,8 @@
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
+[中文](./README-CN.md)
+
 CeresDB is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
 
 ## Status
@@ -126,5 +128,4 @@ CeresDB is under [Apache License 2.0](./LICENSE).
 ## Community
 - Check our community [materials](ROLES.md).
 - Join the user group on the DingTalk: 44602802
-- Contact our stuff on WeChat: chunshao2008
 - Contact us via Email: ceresdb@service.alipay.com
