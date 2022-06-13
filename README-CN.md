@@ -7,30 +7,26 @@ CeresDB 是一款高性能、分布式、Schema-less 的云原生时序数据库
 ## 项目状态
 项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
 
-## Roadmap
+## RoadMap
 项目 [Roadmap](./docs/roadmap.md)。
 
 ## 快速开始
 ### 获取代码
-直接通过 git 进行下载：
+通过 git 克隆代码仓库并进入代码目录：
 ```bash
 git clone git@github.com:CeresDB/ceresdb.git
-```
-
-进入代码目录：
-```bash
 cd ceresdb
 ```
 
 ### 通过 Docker 运行
 确保开发环境安装了 docker，通过仓库中的提供的 Dockerfile 进行镜像的构建：
 ```shell
-docker build -t ceresdb:0.1.0 .
+docker build -t ceresdb .
 ```
 
 使用编译好的镜像，启动服务：
 ```shell
-docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb:0.1.0
+docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb
 ```
 
 ### 通过源码编译运行
@@ -39,7 +35,7 @@ docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb:0.1.0
 
 #### 开发依赖（Ubuntu20.04）
 开发环境这里以 Ubuntu20.04 为例，执行如下的命令，即可安装好所需的依赖：
-```shelll
+```shell
 apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
