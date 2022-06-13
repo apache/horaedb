@@ -8,7 +8,7 @@
 - [ ] 分布式版本支持静态拓扑
 - [ ] 底层存储支持阿里云 oss
 - [ ] 支持 Prometheus 协议
-- [ ] 基于 OBKV 的 WAL 实现
+- [ ] 基于 [OBKV](https://github.com/oceanbase/oceanbase) 的 WAL 实现
 
 ### v0.3.0
 - [ ] 时序型存储格式

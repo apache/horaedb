@@ -8,7 +8,7 @@
 - [ ] Distributed version supports static topology
 - [ ] The underlying storage supports Alibaba Cloud oss
 - [ ] Support Prometheus protocol
-- [ ] WAL implementation based on OBKV
+- [ ] WAL implementation based on [OBKV](https://github.com/oceanbase/oceanbase)
 
 ### v0.3.0
 - [ ] Time series storage format
