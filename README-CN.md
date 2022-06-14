@@ -1,6 +1,10 @@
 ![CeresDB](docs/logo/CeresDB.png)
 
-![License](https://img.shields.io/badge/license-Apache--2.0-green.svg) 
+![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+[![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
+[![ClosedIssue](https://img.shields.io/github/issues-closed/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues?q=is%3Aissue+is%3Aclosed)
+![Stars](https://img.shields.io/github/stars/CeresDB/ceresdb)
+![Forks](https://img.shields.io/github/forks/CeresDB/ceresdb)
 
 [English](./README.md)
 
