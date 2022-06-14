@@ -49,12 +49,6 @@ impl<
     }
 }
 
-impl<Wal, Meta, Store, Fa> TableEngineImpl<Wal, Meta, Store, Fa> {
-    pub fn instance(&self) -> InstanceRef<Wal, Meta, Store, Fa> {
-        self.instance.clone()
-    }
-}
-
 impl<Wal, Meta, Store, Fa> Drop for TableEngineImpl<Wal, Meta, Store, Fa> {
     fn drop(&mut self) {
         info!("Table engine dropped");

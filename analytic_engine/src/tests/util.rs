@@ -16,7 +16,7 @@ use log::info;
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
-        Result as EngineResult, TableEngine,
+        Result as EngineResult, TableEngineRef,
     },
     table::{
         AlterSchemaRequest, FlushRequest, GetRequest, ReadOrder, ReadRequest, Result, SchemaId,
@@ -27,8 +27,9 @@ use tempfile::TempDir;
 
 use crate::{
     setup,
+    storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
-    AnalyticTableEngine, Config, EngineInstance,
+    Config,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -103,7 +104,7 @@ pub async fn check_get(
 pub struct TestContext {
     pub config: Config,
     runtimes: Arc<EngineRuntimes>,
-    pub engine: Option<AnalyticTableEngine>,
+    pub engine: Option<TableEngineRef>,
     pub schema_id: SchemaId,
     last_table_seq: u32,
 
@@ -338,13 +339,8 @@ impl TestContext {
     }
 
     #[inline]
-    pub fn engine(&self) -> AnalyticTableEngine {
+    pub fn engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
-    }
-
-    #[inline]
-    pub fn instance(&self) -> EngineInstance {
-        self.engine().instance()
     }
 
     fn next_table_id(&mut self) -> TableId {
@@ -389,7 +385,10 @@ impl Builder {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            data_path: dir.path().to_str().unwrap().to_string(),
+            storage: StorageOptions::Local(LocalOptions {
+                data_path: dir.path().to_str().unwrap().to_string(),
+            }),
+            wal_path: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         };
 

@@ -6,3 +6,5 @@ pub use upstream::{
     local::LocalFileSystem, path::Path, Error as ObjectStoreError, GetResult, ListResult,
     ObjectMeta, ObjectStore,
 };
+
+pub mod aliyun;

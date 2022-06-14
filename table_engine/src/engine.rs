@@ -246,7 +246,7 @@ pub type CloseTableRequest = OpenTableRequest;
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
 #[async_trait]
-pub trait TableEngine {
+pub trait TableEngine: Send + Sync {
     /// Returns the name of engine.
     fn engine_type(&self) -> &str;
 
@@ -267,7 +267,7 @@ pub trait TableEngine {
 }
 
 /// A reference counted pointer to table engine
-pub type TableEngineRef = Arc<dyn TableEngine + Send + Sync>;
+pub type TableEngineRef = Arc<dyn TableEngine>;
 
 #[derive(Clone, Debug)]
 pub struct EngineRuntimes {
