@@ -2353,7 +2353,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes 1.1.0",
+ "chrono",
  "futures",
+ "lru",
  "object_store 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "oss-rust-sdk",
  "snafu 0.6.10",
