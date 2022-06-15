@@ -10,7 +10,7 @@ use table_engine::{
     table::{Table, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
-use udf::{scalar::ScalarUdf, udaf::AggregateUdf};
+use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
 
 use crate::provider::MetaProvider;
 

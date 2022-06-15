@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use table_engine::engine::TableEngineRef;
-use udf::registry::FunctionRegistryRef;
+use df_operator::registry::FunctionRegistryRef;
 
 use crate::limiter::Limiter;
 
