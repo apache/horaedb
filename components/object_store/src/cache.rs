@@ -78,9 +78,9 @@ impl CachedStore {
     ) -> Result<Self> {
         let local_list: Vec<ObjectMeta> = local_store.list(None).await?.try_collect().await?;
         let mut state = CacheState::new(config.max_cache_size, local_list);
-        let (removed, _) = state.reserve(0);
-        if !removed.is_empty() {
-            Self::remove_paths(local_store.as_ref(), removed).await?;
+        let result = state.reserve(0);
+        if !result.removed_path.is_empty() {
+            Self::remove_paths(local_store.as_ref(), &result.removed_path).await?;
         }
 
         Ok(Self {
@@ -99,30 +99,27 @@ impl CachedStore {
             // TODO: check if this lock will block for a long time. If so we may need to
             // delete paths asynchronously.
             let mut state = self.state.lock().await;
-            let (removed, guard) = state.reserve(required_size);
-            Self::remove_paths(self.local_store.as_ref(), removed).await?;
-            guard
+            let result = state.reserve(required_size);
+            Self::remove_paths(self.local_store.as_ref(), &result.removed_path).await?;
+            result
         };
 
         // cannot reserve enough space, skip to put local store
-        if guard.is_none() {
+        if !guard.is_success() {
             return Ok(());
         }
 
         let result = self.local_store.put(location, bytes.clone()).await;
         if result.is_err() {
             let _ = self.local_store.delete(location).await;
-            self.state.lock().await.cancel_reserve(guard.unwrap());
+            self.state.lock().await.cancel_reserve(guard);
         } else {
-            self.state
-                .lock()
-                .await
-                .confirm_reserve(guard.unwrap(), location);
+            self.state.lock().await.confirm_reserve(guard, location);
         }
         result
     }
 
-    async fn remove_paths(store: &dyn ObjectStore, paths: Vec<Path>) -> Result<()> {
+    async fn remove_paths(store: &dyn ObjectStore, paths: &[Path]) -> Result<()> {
         let tasks = paths
             .iter()
             .map(|path| store.delete(path))
@@ -241,10 +238,13 @@ impl CacheState {
     /// is None means this reserve operation is failed and local store should
     /// not be written.
     #[must_use]
-    fn reserve(&mut self, size: usize) -> (Vec<Path>, Option<ReserveResult>) {
+    fn reserve(&mut self, size: usize) -> ReserveResult {
         if self.total_size + size <= self.max_size {
             self.total_size += size;
-            return (Vec::new(), Some(ReserveResult { size }));
+            return ReserveResult {
+                removed_path: Vec::new(),
+                size: Some(size),
+            };
         }
 
         let mut removed = Vec::new();
@@ -255,26 +255,38 @@ impl CacheState {
                 self.total_size -= meta.size;
                 removed.push(meta.location);
             } else {
-                // No cached entries left to remove but still haven't enough space. Return
-                // `None` to indicate that this reserve operation is failed.
-                return (removed, None);
+                return ReserveResult {
+                    removed_path: removed,
+                    // No cached entries left to remove but still haven't enough space. Return
+                    // `None` to indicate that this reserve operation is failed.
+                    size: None,
+                };
             }
         }
         self.total_size += size;
-        (removed, Some(ReserveResult { size }))
+        ReserveResult {
+            removed_path: removed,
+            size: Some(size),
+        }
     }
 
     fn cancel_reserve(&mut self, guard: ReserveResult) {
-        self.total_size -= guard.size;
+        if let Some(size) = guard.size {
+            self.total_size -= size;
+        }
     }
 
     fn confirm_reserve(&mut self, guard: ReserveResult, location: &Path) {
+        if guard.size.is_none() {
+            return;
+        }
+        let size = guard.size.unwrap();
         let prev_cache = self.cached_entries.push(
             location.to_string(),
             ObjectMeta {
                 location: location.to_owned(),
                 last_modified: MIN_DATETIME,
-                size: guard.size,
+                size,
             },
         );
         if let Some((_, meta)) = prev_cache {
@@ -284,7 +296,17 @@ impl CacheState {
 }
 
 struct ReserveResult {
-    size: usize,
+    /// Paths that need to be removed.
+    removed_path: Vec<Path>,
+    /// The size of the reserved space. If this field is None means this reserve
+    /// operation is failed.
+    size: Option<usize>,
+}
+
+impl ReserveResult {
+    fn is_success(&self) -> bool {
+        self.size.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -341,9 +363,9 @@ mod test {
         let mut state = CacheState::new(40960, Vec::new());
         let mut guards = Vec::with_capacity(10);
         for _ in 0..10 {
-            let (removed, guard) = state.reserve(4096);
-            assert_eq!(removed.len(), 0);
-            guards.push(guard.unwrap());
+            let guard = state.reserve(4096);
+            assert_eq!(guard.removed_path.len(), 0);
+            guards.push(guard);
         }
         assert_eq!(state.total_size, 4096 * 10);
         for guard in guards {
