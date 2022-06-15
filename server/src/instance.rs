@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use table_engine::engine::TableEngineRef;
 use df_operator::registry::FunctionRegistryRef;
+use table_engine::engine::TableEngineRef;
 
 use crate::limiter::Limiter;
 
