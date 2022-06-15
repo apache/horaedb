@@ -10,14 +10,14 @@ use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
 use serde_derive::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, Sender};
 use warp::{
     header,
     http::StatusCode,
     reject,
     reply::{self, Reply},
-    Filter,
+    Filter, Rejection,
 };
 
 use crate::{consts, context::RequestContext, error, handlers, instance::InstanceRef, metrics};
@@ -68,6 +68,15 @@ pub enum Error {
         source: std::net::AddrParseError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Catalog mananger err:{}.", source))]
+    CatalogManagerError { source: catalog::manager::Error },
+
+    #[snafu(display("Catalog err:{}.", source))]
+    CatalogError { source: catalog::Error },
+
+    #[snafu(display("Catalog schema err:{}.", source))]
+    CatalogSchemaError { source: catalog::schema::Error },
 }
 
 define_result!(Error);
@@ -132,6 +141,33 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
                     Ok(res) => Ok(reply::json(&res)),
                     Err(e) => Err(reject::custom(e)),
                 }
+            })
+    }
+
+    fn flush_memtable(
+        &self,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("flush_memtable")
+            .and(warp::post())
+            .and(self.with_context())
+            .and(self.with_instance())
+            .and_then(|ctx, instance: InstanceRef<C, Q>| async {
+                let mut table_names = Vec::new();
+                for catalog in instance
+                    .catalog_manager
+                    .all_catalogs()
+                    .context(CatalogManagerError)?
+                {
+                    for schema in catalog.all_schemas().context(CatalogError)? {
+                        for table in schema.all_tables().context(CatalogSchemaError)? {
+                            table_names.push(table.name().to_string());
+                            if let Err(e) = table.flush(FlushRequest::default()).await {
+                                error!("flush {} failed, err:{}", table.name(), e)
+                            }
+                        }
+                    }
+                }
+                Ok(reply::json(&table_names))
             })
     }
 
