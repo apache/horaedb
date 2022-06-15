@@ -1,6 +1,53 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Cached object store wrapper.
+//! This mod provides an [ObjectStore] implementor [CachedStore], which is made
+//! up of:
+//!
+//! - Local Store: a local file system cache
+//! - Remote Store: a remote OSS service
+//! - LRU Manager: a cache eviction policy (LRU) to keep the local store size
+//!   under control.
+//!
+//! ## Read
+//! On serving a read request, [CachedStore] will first check if the object
+//! is in the local store. If not, it will fetch it from the remote store and
+//! store it in the local store. To simplify the implementation, all the read
+//! sources returned are based on `LocalStore`. Ascii art below:
+//!
+//! Workflow
+//!
+//! ```no_rust,ignore
+//! (read)
+//!        Serve I/O requests
+//!               ▲ │
+//!             4 │ │1
+//!               │ │
+//!    ┌──────────┴─▼─────────┐
+//!    │                      │
+//!    │  Object Store Cache  │
+//!    │                      │
+//!    └─┬─▲────────────┬─▲───┘
+//!   2.1│ │3.1      2.2│ │3.2
+//!      │ │            │ │
+//!  ┌───▼─┴──┐      ┌──▼─┴─────┐
+//!  │Local FS│      │Remote OSS│
+//!  └────────┘      └──────────┘
+//! ```
+//!
+//! ## Write
+//! For write requests, we will write the content to both underlying stores.
+//!
+//! ## Restart
+//! To suit some deploy scenarios that aren't stateless, [ObjectStore] will try
+//! to load all existing entries from `LocalStore` to `LRU Manager`.
+//!
+//! ## Purge
+//! Both read and write operations may trigger purge on `LocalStore`. The purge
+//! policy is defined by the `LRU Manager`. It will get a delete list from `LRU
+//! Manager` and delete the list from `LocalStore`.
+//!
+//! To ensure the total size of `LocalStore` is always less than the threshold,
+//! [CachedStore] will first purge enough space for the incoming new objects.
 
 use std::{fmt::Display, ops::Range};
 
@@ -45,13 +92,17 @@ impl CachedStore {
 
     /// Try putting object to local store. If local store cannot make enough
     /// space for the object, this function will skip putting it and return Ok.
-    async fn put_local(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn try_put_local(&self, location: &Path, bytes: Bytes) -> Result<()> {
         let required_size = bytes.len();
 
-        let mut state = self.state.lock().await;
-        let (removed, guard) = state.reserve(required_size);
-        Self::remove_paths(self.local_store.as_ref(), removed).await?;
-        drop(state);
+        let guard = {
+            // TODO: check if this lock will block for a long time. If so we may need to
+            // delete paths asynchronously.
+            let mut state = self.state.lock().await;
+            let (removed, guard) = state.reserve(required_size);
+            Self::remove_paths(self.local_store.as_ref(), removed).await?;
+            guard
+        };
 
         // cannot reserve enough space, skip to put local store
         if guard.is_none() {
@@ -61,12 +112,12 @@ impl CachedStore {
         let result = self.local_store.put(location, bytes.clone()).await;
         if result.is_err() {
             let _ = self.local_store.delete(location).await;
-            self.state.lock().await.remove_guard(guard.unwrap());
+            self.state.lock().await.cancel_reserve(guard.unwrap());
         } else {
             self.state
                 .lock()
                 .await
-                .consume_guard(guard.unwrap(), location);
+                .confirm_reserve(guard.unwrap(), location);
         }
         result
     }
@@ -74,7 +125,7 @@ impl CachedStore {
     async fn remove_paths(store: &dyn ObjectStore, paths: Vec<Path>) -> Result<()> {
         let tasks = paths
             .iter()
-            .map(|path| store.delete(&path))
+            .map(|path| store.delete(path))
             .collect::<Vec<_>>();
         try_join_all(tasks).await?;
         Ok(())
@@ -84,7 +135,7 @@ impl CachedStore {
 #[async_trait]
 impl ObjectStore for CachedStore {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        let _ = self.put_local(location, bytes.clone()).await;
+        let _ = self.try_put_local(location, bytes.clone()).await;
 
         self.remote_store.put(location, bytes).await
     }
@@ -95,7 +146,7 @@ impl ObjectStore for CachedStore {
         } else {
             let remote_obj = self.remote_store.get(location).await?;
             let bytes = remote_obj.bytes().await?;
-            let _ = self.put_local(location, bytes).await?;
+            let _ = self.try_put_local(location, bytes).await?;
             self.local_store.get(location).await
         }
     }
@@ -106,11 +157,12 @@ impl ObjectStore for CachedStore {
         } else {
             let remote_obj = self.remote_store.get(location).await?;
             let bytes = remote_obj.bytes().await?;
-            let _ = self.put_local(location, bytes).await?;
+            let _ = self.try_put_local(location, bytes).await?;
             self.local_store.get_range(location, range).await
         }
     }
 
+    // TODO: consider whether we need to cache this request.
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
         self.remote_store.head(location).await
     }
@@ -153,10 +205,10 @@ struct CacheState {
 }
 
 impl CacheState {
-    fn new(max_size: usize, meta: Vec<ObjectMeta>) -> Self {
-        let total_size = meta.iter().map(|m| m.size).sum();
+    fn new(max_size: usize, metas: Vec<ObjectMeta>) -> Self {
+        let total_size = metas.iter().map(|m| m.size).sum();
         let mut cached_entries = LruCache::unbounded();
-        for m in meta {
+        for m in metas {
             cached_entries.put(m.location.to_string(), m);
         }
 
@@ -167,7 +219,7 @@ impl CacheState {
         }
     }
 
-    /// Try to remove a entries. Returns whether the entry was removed.
+    /// Try to remove an entry. Returns whether the entry was removed.
     fn try_remove(&mut self, location: &Path) -> bool {
         let removed = self.cached_entries.pop(&location.to_string());
         if let Some(removed) = &removed {
@@ -182,35 +234,41 @@ impl CacheState {
         self.cached_entries.get(&location.to_string()).is_some()
     }
 
-    /// Reserve space for a new entry. Returns a guard that stands for the
-    /// space. It needs to be consumed by either [remove_guard] (cancel this
-    /// reserve operation) or [consume_guard] (confirm this reserve operation).
+    /// Reserve space for a new entry. Returns paths that need to be removed and
+    /// a optional [ReserveResult] that stands for the space. It needs to be
+    /// consumed by either [remove_guard] (cancel this reserve operation) or
+    /// [consume_guard] (confirm this reserve operation). If the [ReserveResult]
+    /// is None means this reserve operation is failed and local store should
+    /// not be written.
     #[must_use]
-    fn reserve(&mut self, size: usize) -> (Vec<Path>, Option<EntryGuard>) {
+    fn reserve(&mut self, size: usize) -> (Vec<Path>, Option<ReserveResult>) {
         if self.total_size + size <= self.max_size {
             self.total_size += size;
-            return (Vec::new(), Some(EntryGuard { size }));
+            return (Vec::new(), Some(ReserveResult { size }));
         }
 
         let mut removed = Vec::new();
         while self.total_size + size > self.max_size {
+            // try to pop a cached entry.
             let popped = self.cached_entries.pop_lru();
-            if let Some(popped) = popped {
-                self.total_size -= popped.1.size;
-                removed.push(popped.1.location);
+            if let Some((_, meta)) = popped {
+                self.total_size -= meta.size;
+                removed.push(meta.location);
             } else {
+                // No cached entries left to remove but still haven't enough space. Return
+                // `None` to indicate that this reserve operation is failed.
                 return (removed, None);
             }
         }
         self.total_size += size;
-        return (removed, Some(EntryGuard { size }));
+        (removed, Some(ReserveResult { size }))
     }
 
-    fn remove_guard(&mut self, guard: EntryGuard) {
+    fn cancel_reserve(&mut self, guard: ReserveResult) {
         self.total_size -= guard.size;
     }
 
-    fn consume_guard(&mut self, guard: EntryGuard, location: &Path) {
+    fn confirm_reserve(&mut self, guard: ReserveResult, location: &Path) {
         let prev_cache = self.cached_entries.push(
             location.to_string(),
             ObjectMeta {
@@ -219,13 +277,13 @@ impl CacheState {
                 size: guard.size,
             },
         );
-        if let Some(prev_cache) = prev_cache {
-            self.total_size -= prev_cache.1.size;
+        if let Some((_, meta)) = prev_cache {
+            self.total_size -= meta.size;
         }
     }
 }
 
-struct EntryGuard {
+struct ReserveResult {
     size: usize,
 }
 
@@ -289,7 +347,7 @@ mod test {
         }
         assert_eq!(state.total_size, 4096 * 10);
         for guard in guards {
-            state.consume_guard(guard, &Path::from("object.bin"));
+            state.confirm_reserve(guard, &Path::from("object.bin"));
         }
         assert_eq!(state.total_size, 4096);
     }
