@@ -21,7 +21,7 @@ const (
 	defaultClientUrls              = "http://127.0.0.1:2379"
 	defaultPeerUrls                = "http://127.0.0.1:2380"
 	defaultInitialClusterState     = embed.ClusterStateFlagNew
-	defaultInitialClusterToken     = "ceresmeta-cluster"
+	defaultInitialClusterToken     = "ceresmeta-cluster" //#nosec G101
 	defaultCompactionMode          = "periodic"
 	defaultAutoCompactionRetention = "1h"
 

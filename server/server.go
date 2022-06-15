@@ -5,7 +5,6 @@ package server
 import (
 	"context"
 	"log"
-	"net/http"
 	"sync"
 
 	"github.com/CeresDB/ceresmeta/server/config"
@@ -29,7 +28,7 @@ type Server struct {
 	// etcd client
 	client *clientv3.Client
 	// http client
-	httpClient *http.Client
+	// httpClient *http.Client
 }
 
 // CreateServer creates the server instance without starting any services or background jobs.
@@ -72,8 +71,6 @@ func (srv *Server) Close() {
 	}
 
 	// TODO: release other resources: httpclient, etcd server and so on.
-
-	return
 }
 
 func (srv *Server) startEtcd() error {
@@ -128,10 +125,8 @@ func (srv *Server) stopBgJobs() {
 
 func (srv *Server) watchLeaderSwitch() {
 	defer srv.bgJobWg.Done()
-	return
 }
 
 func (srv *Server) watchEtcdLeaderPriority() {
 	defer srv.bgJobWg.Done()
-	return
 }
