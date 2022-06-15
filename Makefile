@@ -23,5 +23,9 @@ check: install-tools
 	@ echo "revive ..."
 	@ revive -formatter friendly -config revive.toml $(PACKAGES)
 
+test: install-tools
+	@ echo "go test ..."
+	@ go test -timeout 5m -race -cover $(PACKAGES)
+
 # TODO: support build rule
 build: check
