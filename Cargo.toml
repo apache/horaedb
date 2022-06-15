@@ -36,7 +36,7 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
-    "udf",
+    "df_operator",
     "wal",
 ]
 
@@ -56,7 +56,7 @@ query_engine = { path = "query_engine" }
 server = { path = "server" }
 table_engine = { path = "table_engine" }
 tracing_util = { path = "components/tracing_util" }
-udf = { path = "udf" }
+df_operator = { path = "df_operator" }
 
 # Crates.io dependencies, in alphabetical order
 signal-hook = "0.3"

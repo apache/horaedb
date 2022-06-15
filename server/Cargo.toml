@@ -37,7 +37,7 @@ system_catalog = { path = "../system_catalog" }
 table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }
 twox-hash = "1.6"
-udf = { path = "../udf" }
+df_operator = { path = "../df_operator" }
 warp = "0.3"
 
 [dev-dependencies]
