@@ -67,11 +67,11 @@ impl Limiter {
     }
 
     pub fn get_write_reject_list(&self) -> HashSet<String> {
-        self.write_reject_list.write().unwrap().clone()
+        self.write_reject_list.read().unwrap().clone()
     }
 
     pub fn get_read_reject_list(&self) -> HashSet<String> {
-        self.read_reject_list.write().unwrap().clone()
+        self.read_reject_list.read().unwrap().clone()
     }
 
     pub fn remove_write_reject_list(&self, reject_list: Vec<String>) {
