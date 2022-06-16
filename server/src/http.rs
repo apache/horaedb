@@ -2,7 +2,9 @@
 
 //! Http service
 
-use std::{convert::Infallible, net::IpAddr, sync::Arc};
+use std::{
+    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+};
 
 use catalog::manager::Manager as CatalogManager;
 use log::error;
@@ -17,7 +19,7 @@ use warp::{
     http::StatusCode,
     reject,
     reply::{self, Reply},
-    Filter, Rejection,
+    Filter,
 };
 
 use crate::{consts, context::RequestContext, error, handlers, instance::InstanceRef, metrics};
@@ -69,14 +71,10 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Catalog mananger err:{}.", source))]
-    CatalogManagerError { source: catalog::manager::Error },
-
-    #[snafu(display("Catalog err:{}.", source))]
-    CatalogError { source: catalog::Error },
-
-    #[snafu(display("Catalog schema err:{}.", source))]
-    CatalogSchemaError { source: catalog::schema::Error },
+    #[snafu(display("Internal err:{}.", source))]
+    InternalError {
+        source: Box<dyn StdError + Send + Sync>,
+    },
 }
 
 define_result!(Error);
@@ -108,11 +106,11 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
             .or(self.sql())
             .or(self.heap_profile())
             .or(self.admin_reject())
+            .or(self.flush_memtable())
     }
 
     fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
-            use std::collections::HashMap;
             let mut resp = HashMap::new();
             resp.insert("status", "ok");
             reply::json(&resp)
@@ -149,25 +147,53 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("flush_memtable")
             .and(warp::post())
-            .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|ctx, instance: InstanceRef<C, Q>| async {
-                let mut table_names = Vec::new();
-                for catalog in instance
-                    .catalog_manager
-                    .all_catalogs()
-                    .context(CatalogManagerError)?
-                {
-                    for schema in catalog.all_schemas().context(CatalogError)? {
-                        for table in schema.all_tables().context(CatalogSchemaError)? {
-                            table_names.push(table.name().to_string());
-                            if let Err(e) = table.flush(FlushRequest::default()).await {
-                                error!("flush {} failed, err:{}", table.name(), e)
+            .and_then(|instance: InstanceRef<C, Q>| async move {
+                let get_all_tables = || {
+                    let mut tables = Vec::new();
+                    for catalog in instance
+                        .catalog_manager
+                        .all_catalogs()
+                        .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                        .context(InternalError)?
+                    {
+                        for schema in catalog
+                            .all_schemas()
+                            .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                            .context(InternalError)?
+                        {
+                            for table in schema
+                                .all_tables()
+                                .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                                .context(InternalError)?
+                            {
+                                tables.push(table);
                             }
                         }
                     }
+                    Result::Ok(tables)
+                };
+                match get_all_tables() {
+                    Ok(tables) => {
+                        let mut failed_tables = Vec::new();
+                        let mut success_tables = Vec::new();
+
+                        for table in tables {
+                            let table_name = table.name().to_string();
+                            if let Err(e) = table.flush(FlushRequest::default()).await {
+                                error!("flush {} failed, err:{}", &table_name, e);
+                                failed_tables.push(table_name);
+                            } else {
+                                success_tables.push(table_name);
+                            }
+                        }
+                        let mut result = HashMap::new();
+                        result.insert("success", success_tables);
+                        result.insert("failed", failed_tables);
+                        Ok(reply::json(&result))
+                    }
+                    Err(e) => Err(reject::custom(e)),
                 }
-                Ok(reply::json(&table_names))
             })
     }
 
@@ -345,6 +371,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingInstance { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
+        | Error::InternalError { .. }
         | Error::JoinAsyncTask { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
