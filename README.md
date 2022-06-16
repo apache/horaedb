@@ -1,10 +1,9 @@
 ![CeresDB](docs/logo/CeresDB.png)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+[![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
-[![ClosedIssue](https://img.shields.io/github/issues-closed/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues?q=is%3Aissue+is%3Aclosed)
-![Stars](https://img.shields.io/github/stars/CeresDB/ceresdb)
-![Forks](https://img.shields.io/github/forks/CeresDB/ceresdb)
+[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 
 [中文](./README-CN.md)
 
@@ -130,6 +129,7 @@ Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/i
 CeresDB is under [Apache License 2.0](./LICENSE).
 
 ## Community
-- Check our community [materials](ROLES.md).
+- Check our community [roles](ROLES.md)
 - Join the user group on the DingTalk: 44602802
 - Contact us via Email: ceresdb@service.alipay.com
+- [WeChat QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg) 
