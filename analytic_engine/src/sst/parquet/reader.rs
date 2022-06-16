@@ -58,20 +58,15 @@ pub async fn read_sst_meta<S: ObjectStore>(
         .with_context(|| ReadPersist {
             path: path.to_string(),
         })?;
-    // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
-    // read. So under this situation it would be better to pass a local file to
-    // it, avoiding consumes lots of memory. Once parquet support stream data source
-    // we can feed the `GetResult` to it directly.
-    let bytes = SliceableCursor::new(Arc::new(
-        get_result
-            .bytes()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadPersist {
-                path: path.to_string(),
-            })?
-            .to_vec(),
-    ));
+    let bytes = get_result
+        .bytes()
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .context(ReadPersist {
+            path: path.to_string(),
+        })?
+        .to_vec();
+    let bytes = SliceableCursor::new(Arc::new(bytes));
 
     // generate the file reader
     let file_reader = CachableSerializedFileReader::new(

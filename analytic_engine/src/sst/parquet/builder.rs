@@ -4,12 +4,10 @@
 
 use std::{
     io::SeekFrom,
-    pin::Pin,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    task::{Context, Poll},
 };
 
 use arrow_deps::{
@@ -18,8 +16,8 @@ use arrow_deps::{
     parquet::{arrow::ArrowWriter, file::properties::WriterProperties},
 };
 use async_trait::async_trait;
-use common_types::{bytes::BufMut, request_id::RequestId};
-use futures::{AsyncRead, AsyncReadExt};
+use common_types::request_id::RequestId;
+use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStore, Path};
 use snafu::ResultExt;
@@ -96,16 +94,13 @@ impl std::io::Seek for EncodingBuffer {
     }
 }
 
-// impl TryClone for EncodingBuffer {
-//     fn try_clone(&self) -> std::io::Result<Self> {
-//         Ok(self.clone())
-//     }
-// }
-
 impl EncodingBuffer {
-    fn read(&self, read_buf: &mut [u8]) -> usize {
-        let mut inner = self.inner.lock().unwrap();
-        inner.read(read_buf)
+    fn into_bytes(self) -> Vec<u8> {
+        Arc::try_unwrap(self.inner)
+            .unwrap()
+            .into_inner()
+            .unwrap()
+            .buf
     }
 }
 
@@ -161,47 +156,16 @@ impl std::io::Seek for EncodingBufferInner {
     }
 }
 
-impl EncodingBufferInner {
-    /// Read the content in `self.buf[self.offset..]` into `read_buf`.
-    ///
-    /// When finishing reading, advance the `self.offset`.
-    fn read(&mut self, mut read_buf: &mut [u8]) -> usize {
-        if self.read_offset >= self.buf.len() {
-            return 0;
-        }
-        let remaining_size = self.buf.len() - self.read_offset;
-
-        let read_len = remaining_size.min(read_buf.len());
-        read_buf.put(&self.buf[self.read_offset..self.read_offset + read_len]);
-
-        self.advance(read_len);
-        read_len
-    }
-
-    /// Advance the `self.offset` by `len`.
-    ///
-    /// Caller should ensures the advanced offset wont exceed `self.buf.len()`.
-    fn advance(&mut self, len: usize) {
-        self.read_offset += len;
-
-        assert!(self.read_offset <= self.buf.len());
-    }
-}
-
 /// RecordBytesReader provides AsyncRead implementation for the encoded records
 /// by parquet.
 struct RecordBytesReader {
     request_id: RequestId,
-    record_stream: RecordBatchStream,
+    record_stream: Option<RecordBatchStream>,
     encoding_buffer: EncodingBuffer,
-    arrow_writer: Mutex<Option<ArrowWriter<EncodingBuffer>>>,
     num_rows_per_row_group: usize,
     compression: Compression,
     meta_data: SstMetaData,
     total_row_num: Arc<AtomicUsize>,
-    arrow_record_batch_vec: Vec<ArrowRecordBatch>,
-    // Whether the underlying `record_stream` is finished
-    stream_finished: bool,
 
     fetched_row_num: usize,
 }
@@ -223,140 +187,88 @@ fn build_write_properties(
         .build())
 }
 
-/// Encode the record batch with [ArrowWriter] and the encoded contents is
-/// written to the [EncodingBuffer].
-// TODO(xikai): too many parameters
-fn encode_record_batch(
-    arrow_writer: &mut Option<ArrowWriter<EncodingBuffer>>,
-    num_rows_per_row_group: usize,
-    compression: Compression,
-    meta_data: &SstMetaData,
-    mem_buf_writer: EncodingBuffer,
-    arrow_record_batch_vec: Vec<ArrowRecordBatch>,
-) -> Result<usize> {
-    if arrow_record_batch_vec.is_empty() {
-        return Ok(0);
+impl RecordBytesReader {
+    async fn read_all(mut self) -> Result<Vec<u8>> {
+        let mut arrow_writer = None;
+
+        let batches = self.record_stream.take().unwrap().collect::<Vec<_>>().await;
+        let mut arrow_record_batch_vec = Vec::new();
+        let num_batches = batches.len();
+        for (index, record_batch) in batches.into_iter().enumerate() {
+            let record_batch = record_batch.context(PollRecordBatch)?;
+
+            debug_assert!(
+                !record_batch.is_empty(),
+                "found empty record batch, request id:{}",
+                self.request_id
+            );
+
+            self.fetched_row_num += record_batch.num_rows();
+            arrow_record_batch_vec.push(record_batch.into_record_batch().into_arrow_record_batch());
+
+            if self.fetched_row_num >= self.num_rows_per_row_group || index + 1 == num_batches {
+                self.fetched_row_num = 0;
+                let row_num = self
+                    .encode_record_batch(&mut arrow_writer, arrow_record_batch_vec)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(EncodeRecordBatch)?;
+                arrow_record_batch_vec = Vec::new();
+                self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+            }
+        }
+        if let Some(arrow_writer) = arrow_writer {
+            arrow_writer
+                .close()
+                .map_err(|e| Box::new(e) as _)
+                .context(EncodeMetaData)?;
+        }
+
+        let buf = self.encoding_buffer.into_bytes();
+        Ok(buf)
     }
 
-    let arrow_schema = arrow_record_batch_vec[0].schema();
+    /// Encode the record batch with [ArrowWriter] and the encoded contents is
+    /// written to the [EncodingBuffer].
+    fn encode_record_batch(
+        &mut self,
+        arrow_writer: &mut Option<ArrowWriter<EncodingBuffer>>,
+        arrow_record_batch_vec: Vec<ArrowRecordBatch>,
+    ) -> Result<usize> {
+        if arrow_record_batch_vec.is_empty() {
+            return Ok(0);
+        }
 
-    // create arrow writer if not exist
-    if arrow_writer.is_none() {
-        let write_props = build_write_properties(num_rows_per_row_group, compression, meta_data)?;
-        let writer = ArrowWriter::try_new(mem_buf_writer, arrow_schema.clone(), Some(write_props))
+        let arrow_schema = arrow_record_batch_vec[0].schema();
+
+        // create arrow writer if not exist
+        if arrow_writer.is_none() {
+            let write_props = build_write_properties(
+                self.num_rows_per_row_group,
+                self.compression,
+                &self.meta_data,
+            )?;
+            let writer = ArrowWriter::try_new(
+                self.encoding_buffer.clone(),
+                arrow_schema.clone(),
+                Some(write_props),
+            )
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
-        *arrow_writer = Some(writer);
-    }
+            *arrow_writer = Some(writer);
+        }
 
-    let record_batch = ArrowRecordBatch::concat(&arrow_schema, &arrow_record_batch_vec)
-        .map_err(|e| Box::new(e) as _)
-        .context(EncodeRecordBatch)?;
+        let record_batch = ArrowRecordBatch::concat(&arrow_schema, &arrow_record_batch_vec)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
 
-    arrow_writer
-        .as_mut()
-        .unwrap()
-        .write(&record_batch)
-        .map_err(|e| Box::new(e) as _)
-        .context(EncodeRecordBatch)?;
-
-    Ok(record_batch.num_rows())
-}
-
-fn close_writer(arrow_writer: &mut Option<ArrowWriter<EncodingBuffer>>) -> Result<()> {
-    if let Some(arrow_writer) = arrow_writer {
         arrow_writer
-            .flush()
+            .as_mut()
+            .unwrap()
+            .write(&record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
-    }
 
-    Ok(())
-}
-
-impl AsyncRead for RecordBytesReader {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
-        let mut reader = self.get_mut();
-        let size = reader.encoding_buffer.read(buf);
-        if size > 0 {
-            return Poll::Ready(Ok(size));
-        }
-
-        // The stream is also finished
-        if reader.stream_finished {
-            return Poll::Ready(Ok(0));
-        }
-
-        // FIXME(xikai): no data may cause empty sst file.
-        // fetch more rows from the stream.
-        while reader.fetched_row_num < reader.num_rows_per_row_group {
-            match Pin::new(reader.record_stream.as_mut()).poll_next(cx) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(v) => match v {
-                    Some(record_batch) => match record_batch.context(PollRecordBatch) {
-                        Ok(record_batch) => {
-                            assert!(
-                                !record_batch.is_empty(),
-                                "found empty record batch, request id:{}",
-                                reader.request_id
-                            );
-
-                            reader.fetched_row_num += record_batch.num_rows();
-                            reader
-                                .arrow_record_batch_vec
-                                .push(record_batch.into_record_batch().into_arrow_record_batch());
-                        }
-                        Err(e) => {
-                            return Poll::Ready(Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                e,
-                            )))
-                        }
-                    },
-                    None => {
-                        reader.stream_finished = true;
-                        debug!(
-                            "Record stream finished, request_id:{}, batch_len:{}, fetched_row_num:{}, num_rows_per_row_group:{}",
-                            reader.request_id,
-                            reader.arrow_record_batch_vec.len(),
-                            reader.fetched_row_num,
-                            reader.num_rows_per_row_group,
-                        );
-                        break;
-                    }
-                },
-            }
-        }
-
-        assert!(reader.stream_finished || reader.fetched_row_num >= reader.num_rows_per_row_group);
-
-        // Reset fetched row num.
-        reader.fetched_row_num = 0;
-        match encode_record_batch(
-            reader.arrow_writer.get_mut().unwrap(),
-            reader.num_rows_per_row_group,
-            reader.compression,
-            &reader.meta_data,
-            reader.encoding_buffer.clone(),
-            std::mem::take(&mut reader.arrow_record_batch_vec),
-        ) {
-            Err(e) => return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e))),
-            Ok(row_num) => {
-                reader.total_row_num.fetch_add(row_num, Ordering::Relaxed);
-            }
-        }
-
-        if reader.stream_finished {
-            if let Err(e) = close_writer(reader.arrow_writer.get_mut().unwrap()) {
-                return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, e)));
-            }
-        }
-
-        Poll::Ready(Ok(reader.encoding_buffer.read(buf)))
+        Ok(record_batch.num_rows())
     }
 }
 
@@ -374,30 +286,18 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
         );
 
         let total_row_num = Arc::new(AtomicUsize::new(0));
-        let mut reader = RecordBytesReader {
+        let reader = RecordBytesReader {
             request_id,
-            record_stream,
+            record_stream: Some(record_stream),
             encoding_buffer: EncodingBuffer::default(),
-            arrow_writer: Mutex::new(None),
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
             total_row_num: total_row_num.clone(),
-            arrow_record_batch_vec: Vec::new(),
             // TODO(xikai): should we avoid this clone?
             meta_data: meta.to_owned(),
-            stream_finished: false,
             fetched_row_num: 0,
         };
-        // TODO(ruihang): `RecordBytesReader` support stream read. It could be improved
-        // if the storage supports streaming upload (maltipart upload).
-        let mut bytes = vec![];
-        reader
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadData)?;
-        drop(reader);
-
+        let bytes = reader.read_all().await?;
         self.storage
             .put(self.path, bytes.into())
             .await
@@ -414,6 +314,8 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
 
 #[cfg(test)]
 mod tests {
+
+    use std::task::Poll;
 
     use common_types::{
         bytes::Bytes,
