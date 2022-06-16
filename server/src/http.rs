@@ -153,17 +153,17 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
                     for catalog in instance
                         .catalog_manager
                         .all_catalogs()
-                        .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                        .map_err(|e| Box::new(e) as _)
                         .context(Internal)?
                     {
                         for schema in catalog
                             .all_schemas()
-                            .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                            .map_err(|e| Box::new(e) as _)
                             .context(Internal)?
                         {
                             for table in schema
                                 .all_tables()
-                                .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
+                                .map_err(|e| Box::new(e) as _)
                                 .context(Internal)?
                             {
                                 tables.push(table);
