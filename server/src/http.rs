@@ -72,7 +72,7 @@ pub enum Error {
     },
 
     #[snafu(display("Internal err:{}.", source))]
-    InternalError {
+    Internal {
         source: Box<dyn StdError + Send + Sync>,
     },
 }
@@ -98,7 +98,6 @@ impl<C, Q> Service<C, Q> {
     }
 }
 
-// TODO(yingwen): How to support non json response?
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
     fn routes(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         self.home()
@@ -155,17 +154,17 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
                         .catalog_manager
                         .all_catalogs()
                         .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
-                        .context(InternalError)?
+                        .context(Internal)?
                     {
                         for schema in catalog
                             .all_schemas()
                             .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
-                            .context(InternalError)?
+                            .context(Internal)?
                         {
                             for table in schema
                                 .all_tables()
                                 .map_err(|e| Box::new(e) as Box<dyn StdError + Sync + Send>)
-                                .context(InternalError)?
+                                .context(Internal)?
                             {
                                 tables.push(table);
                             }
@@ -371,7 +370,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingInstance { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
-        | Error::InternalError { .. }
+        | Error::Internal { .. }
         | Error::JoinAsyncTask { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
