@@ -1,5 +1,4 @@
 - Feature Name: (fill me in with a unique ident, my_awesome_feature)
-- Start Date: (fill me in with today's date, YYYY-MM-DD)
 - Tracking Issue: (open a issue to track this proposal and link it here)
 
 # Summary
