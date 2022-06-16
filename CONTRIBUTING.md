@@ -27,7 +27,7 @@ For features we don't plan to support we will close the feature request ticket (
 
 ## Contributing Changes
 
-CeresDB is written mostly in idiomatic Rust—please see the [Style Guide](docs/style_guide.md) for more details.
+CeresDB is written mostly in idiomatic Rust—please see the [Style Guide](docs/dev/style_guide.md) for more details.
 All code must adhere to the `rustfmt` format, and pass all of the `clippy` checks we run in CI (there are more details further down this README).
 
 ### Making a PR
@@ -41,7 +41,7 @@ PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](docs/conventional-commit.md) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](docs/dev/conventional-commit.md) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).

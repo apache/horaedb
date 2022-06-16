@@ -15,7 +15,7 @@ The project is currently under rapid development. This early stage is not produc
 
 ## RoadMap
 
-See our [RoadMap](./docs/roadmap.md)
+See our [RoadMap](./docs/dev/roadmap.md)
 
 ## Get started
 ### Clone the repository
