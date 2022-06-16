@@ -7,12 +7,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow = "13.0.0"
-datafusion = "8.0.0"
-datafusion-expr = "8.0.0"
-parquet = "13.0.0"
+arrow = "15.0.0"
+datafusion = "9.0.0"
+datafusion-expr = "9.0.0"
+parquet = "15.0.0"
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
 rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
-

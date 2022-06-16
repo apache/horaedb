@@ -13,7 +13,7 @@ use arrow_deps::{
     datafusion::{
         datasource::datasource::{TableProvider, TableProviderFilterPushDown},
         error::{DataFusionError, Result},
-        execution::context::TaskContext,
+        execution::context::{SessionState, TaskContext},
         logical_plan::Expr,
         physical_expr::PhysicalSortExpr,
         physical_plan::{
@@ -21,7 +21,7 @@ use arrow_deps::{
             SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
         },
     },
-    datafusion_expr::TableType,
+    datafusion_expr::{TableSource, TableType},
 };
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
@@ -131,6 +131,7 @@ impl TableProvider for TableProviderAdapter {
 
     async fn scan(
         &self,
+        _ctx: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
@@ -146,6 +147,28 @@ impl TableProvider for TableProviderAdapter {
     /// Get the type of this table for metadata/catalog purposes.
     fn table_type(&self) -> TableType {
         TableType::Base
+    }
+}
+
+impl TableSource for TableProviderAdapter {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    /// Get a reference to the schema for this table
+    fn schema(&self) -> SchemaRef {
+        self.read_schema.clone().into_arrow_schema_ref()
+    }
+
+    /// Get the type of this table for metadata/catalog purposes.
+    fn table_type(&self) -> TableType {
+        TableType::Base
+    }
+
+    /// Tests whether the table provider can make use of a filter expression
+    /// to optimise data retrieval.
+    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
+        Ok(TableProviderFilterPushDown::Inexact)
     }
 }
 

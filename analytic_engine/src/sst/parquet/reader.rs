@@ -12,7 +12,7 @@ use std::{
 use arrow_deps::{
     arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
     parquet::{
-        arrow::{ArrowReader, ParquetFileArrowReader},
+        arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
         file::{
             metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SliceableCursor,
         },
@@ -293,8 +293,14 @@ impl ProjectAndFilterReader {
             let reader = if self.projected_schema.is_all_projection() {
                 arrow_reader.get_record_reader(self.batch_size)
             } else {
-                let projection = self.row_projector.existed_source_projection();
-                arrow_reader.get_record_reader_by_columns(projection, self.batch_size)
+                let proj_mask = ProjectionMask::leaves(
+                    arrow_reader.get_metadata().file_metadata().schema_descr(),
+                    self.row_projector
+                        .existed_source_projection()
+                        .iter()
+                        .copied(),
+                );
+                arrow_reader.get_record_reader_by_columns(proj_mask, self.batch_size)
             };
             let reader = reader
                 .map_err(|e| Box::new(e) as _)

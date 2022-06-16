@@ -15,10 +15,7 @@ use std::{
 use arrow_deps::{
     arrow::record_batch::RecordBatch as ArrowRecordBatch,
     datafusion::parquet::basic::Compression,
-    parquet::{
-        arrow::ArrowWriter,
-        file::{properties::WriterProperties, writer::TryClone},
-    },
+    parquet::{arrow::ArrowWriter, file::properties::WriterProperties},
 };
 use async_trait::async_trait;
 use common_types::{bytes::BufMut, request_id::RequestId};
@@ -99,11 +96,11 @@ impl std::io::Seek for EncodingBuffer {
     }
 }
 
-impl TryClone for EncodingBuffer {
-    fn try_clone(&self) -> std::io::Result<Self> {
-        Ok(self.clone())
-    }
-}
+// impl TryClone for EncodingBuffer {
+//     fn try_clone(&self) -> std::io::Result<Self> {
+//         Ok(self.clone())
+//     }
+// }
 
 impl EncodingBuffer {
     fn read(&self, read_buf: &mut [u8]) -> usize {
@@ -269,7 +266,7 @@ fn encode_record_batch(
 fn close_writer(arrow_writer: &mut Option<ArrowWriter<EncodingBuffer>>) -> Result<()> {
     if let Some(arrow_writer) = arrow_writer {
         arrow_writer
-            .close()
+            .flush()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
     }

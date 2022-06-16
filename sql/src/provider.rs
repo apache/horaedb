@@ -4,12 +4,15 @@
 
 use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
-use arrow_deps::datafusion::{
-    catalog::{catalog::CatalogProvider, schema::SchemaProvider},
-    common::DataFusionError,
-    datasource::TableProvider,
-    physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
-    sql::planner::ContextProvider,
+use arrow_deps::{
+    datafusion::{
+        catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+        common::DataFusionError,
+        datasource::TableProvider,
+        physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
+        sql::planner::ContextProvider,
+    },
+    datafusion_expr::TableSource,
 };
 use catalog::manager::Manager;
 use common_types::request_id::RequestId;
@@ -202,7 +205,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     fn get_table_provider(
         &self,
         name: TableReference,
-    ) -> std::result::Result<Arc<(dyn TableProvider + 'static)>, DataFusionError> {
+    ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
         if let Some(p) = self.table_cache.borrow().get(name) {
             return Ok(p);

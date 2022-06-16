@@ -12,12 +12,11 @@ use arrow_deps::{
     },
     datafusion::{
         logical_plan::{Column, Expr, Operator},
-        optimizer::utils as datafusion_util,
         parquet::file::metadata::RowGroupMetaData,
         physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
         scalar::ScalarValue,
     },
-    parquet::file::statistics::Statistics as ParquetStatistics,
+    parquet::file::statistics::Statistics as ParquetStatistics, datafusion_expr::utils::expr_to_columns,
 };
 use common_types::{
     schema::Schema,
@@ -269,7 +268,7 @@ impl PredicateBuilder {
     /// Returns false if any error occurs.
     fn is_able_to_pushdown(expr: &Expr) -> bool {
         let mut columns = HashSet::new();
-        if let Err(e) = datafusion_util::expr_to_columns(expr, &mut columns) {
+        if let Err(e) = expr_to_columns(expr, &mut columns) {
             error!(
                 "Failed to extract columns from the expr, ignore this expr:{:?}, err:{}",
                 expr, e

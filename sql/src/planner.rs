@@ -638,8 +638,7 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
             return UnsupportedOption { value }.fail();
         }
         // Ignore this option if value is null.
-        Value::Null => None,
-        Value::Placeholder(_) => None,
+        Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
     };
 
     Ok(value_opt)

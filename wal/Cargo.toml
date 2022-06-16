@@ -20,5 +20,5 @@ futures = { version = "0.3", features = ["async-await"] }
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "773784178a0e8e5fdad81f4fd85448a3014a3700"
+rev = "6f263ec5638835eda5911a34046fc303bc307dc7"
 features = ["portable"]

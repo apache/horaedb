@@ -5,9 +5,13 @@
 use std::{sync::Arc, time::Instant};
 
 use arrow_deps::parquet::{
-    arrow::{ArrowReader, ParquetFileArrowReader},
+    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
     file::{
-        metadata::RowGroupMetaData, reader::FileReader, serialized_reader::{SerializedFileReader, SliceableCursor},
+        metadata::RowGroupMetaData,
+        reader::FileReader,
+        serialized_reader::{
+            ReadOptionsBuilder, SerializedFileReader, SerializedRowGroupReader, SliceableCursor,
+        },
     },
 };
 use common_types::schema::Schema;
@@ -82,46 +86,55 @@ impl ParquetBench {
         let sst_path = Path::from(self.sst_file_name.clone());
 
         self.runtime.block_on(async {
-            let open_instant = Instant::now();
-            let get_result = self.store.get(&sst_path).await.unwrap();
-            let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
+            // let open_instant = Instant::now();
+            // let get_result = self.store.get(&sst_path).await.unwrap();
+            // let cursor =
+            // SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().
+            // to_vec())); // let mut file_reader =
+            // SerializedFileReader::new(cursor).unwrap();
+            // let read_options =
+            // ReadOptionsBuilder::new().with_predicate(predicate);
             // let mut file_reader = SerializedFileReader::new(cursor).unwrap();
-            let file_reader = SerializedRowGroupReader::new(cursor,&row_group_predicate)
-            let open_cost = open_instant.elapsed();
+            // let open_cost = open_instant.elapsed();
 
-            let filter_begin_instant = Instant::now();
-            let row_group_predicate = self.build_row_group_predicate(&file_reader);
-            let mut arrow_reader = {
-                file_reader.filter_row_groups(&row_group_predicate);
-                ParquetFileArrowReader::new(Arc::new(file_reader))
-            };
-            let filter_cost = filter_begin_instant.elapsed();
+            // let filter_begin_instant = Instant::now();
+            // let row_group_predicate =
+            // self.build_row_group_predicate(&file_reader); let mut
+            // arrow_reader = {     file_reader.filter_row_groups(&
+            // row_group_predicate);     ParquetFileArrowReader::
+            // new(Arc::new(file_reader)) };
+            // let filter_cost = filter_begin_instant.elapsed();
 
-            let record_reader = if self.projection.is_empty() {
-                arrow_reader.get_record_reader(self.batch_size).unwrap()
-            } else {
-                arrow_reader
-                    .get_record_reader_by_columns(self.projection.clone(), self.batch_size)
-                    .unwrap()
-            };
+            // let record_reader = if self.projection.is_empty() {
+            //     arrow_reader.get_record_reader(self.batch_size).unwrap()
+            // } else {
+            //     let proj_mask = ProjectionMask::leaves(
+            //         arrow_reader.get_metadata().file_metadata().
+            // schema_descr(),         self.projection.iter().
+            // copied(),     );
+            //     arrow_reader
+            //         .get_record_reader_by_columns(proj_mask, self.batch_size)
+            //         .unwrap()
+            // };
 
-            let iter_begin_instant = Instant::now();
-            let mut total_rows = 0;
-            let mut batch_num = 0;
-            for record_batch in record_reader {
-                let num_rows = record_batch.unwrap().num_rows();
-                total_rows += num_rows;
-                batch_num += 1;
-            }
+            // let iter_begin_instant = Instant::now();
+            // let mut total_rows = 0;
+            // let mut batch_num = 0;
+            // for record_batch in record_reader {
+            //     let num_rows = record_batch.unwrap().num_rows();
+            //     total_rows += num_rows;
+            //     batch_num += 1;
+            // }
 
-            info!(
-                "\nParquetBench total rows of sst: {}, total batch num: {}, open cost: {:?}, filter cost: {:?}, iter cost: {:?}",
-                total_rows,
-                batch_num,
-                open_cost,
-                filter_cost,
-                iter_begin_instant.elapsed(),
-            );
+            // info!(
+            //     "\nParquetBench total rows of sst: {}, total batch num: {},
+            // open cost: {:?}, filter cost: {:?}, iter cost: {:?}",
+            //     total_rows,
+            //     batch_num,
+            //     open_cost,
+            //     filter_cost,
+            //     iter_begin_instant.elapsed(),
+            // );
         });
     }
 

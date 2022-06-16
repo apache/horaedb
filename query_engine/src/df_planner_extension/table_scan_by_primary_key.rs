@@ -70,7 +70,7 @@ impl TableScanByPrimaryKey {
                 source,
                 projection,
                 filters,
-                limit,
+                fetch,
                 ..
             }) => {
                 let table_provider =
@@ -91,7 +91,7 @@ impl TableScanByPrimaryKey {
                 futures::executor::block_on(table_provider.scan_table(
                     projection,
                     &filters,
-                    *limit,
+                    *fetch,
                     ReadOrder::from_is_asc(Some(self.asc)),
                 ))
             }

@@ -7,15 +7,14 @@ use arrow_deps::{
     datafusion::{
         arrow::datatypes::DataType,
         error::{DataFusionError, Result},
-        execution::context::ExecutionProps,
         logical_plan::{
             plan::Filter, DFSchemaRef, Expr, ExprRewritable, ExprRewriter, LogicalPlan, Operator,
             TableScan,
         },
-        optimizer::{optimizer::OptimizerRule, utils},
+        optimizer::{optimizer::OptimizerRule, OptimizerConfig},
         scalar::ScalarValue,
     },
-    datafusion_expr::ExprSchemable,
+    datafusion_expr::{utils, ExprSchemable},
 };
 use log::debug;
 
@@ -33,7 +32,7 @@ impl OptimizerRule for TypeConversion {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        execution_props: &ExecutionProps,
+        optimizer_config: &OptimizerConfig,
     ) -> Result<LogicalPlan> {
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
@@ -42,7 +41,7 @@ impl OptimizerRule for TypeConversion {
         match plan {
             LogicalPlan::Filter(Filter { predicate, input }) => Ok(LogicalPlan::Filter(Filter {
                 predicate: predicate.clone().rewrite(&mut rewriter)?,
-                input: Arc::new(self.optimize(input, execution_props)?),
+                input: Arc::new(self.optimize(input, optimizer_config)?),
             })),
             LogicalPlan::TableScan(TableScan {
                 table_name,
@@ -50,7 +49,7 @@ impl OptimizerRule for TypeConversion {
                 projection,
                 projected_schema,
                 filters,
-                limit,
+                fetch,
             }) => {
                 let rewrite_filters = filters
                     .clone()
@@ -63,7 +62,7 @@ impl OptimizerRule for TypeConversion {
                     projection: projection.clone(),
                     projected_schema: projected_schema.clone(),
                     filters: rewrite_filters,
-                    limit: *limit,
+                    fetch: *fetch,
                 }))
             }
             LogicalPlan::Projection { .. }
@@ -85,7 +84,7 @@ impl OptimizerRule for TypeConversion {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
                     .iter()
-                    .map(|plan| self.optimize(plan, execution_props))
+                    .map(|plan| self.optimize(plan, optimizer_config))
                     .collect::<Result<Vec<_>>>()?;
 
                 let expr = plan

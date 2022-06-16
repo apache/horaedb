@@ -8,13 +8,14 @@ use arrow_deps::{
     arrow::datatypes::SchemaRef,
     datafusion::{
         datasource::TableProvider,
+        execution::context::SessionState,
         logical_plan::{
             plan::{Extension, Filter, Projection, Sort},
             DFSchemaRef, Expr, Limit, LogicalPlan, TableScan, ToDFSchema,
         },
         physical_plan::ExecutionPlan,
     },
-    datafusion_expr::TableType,
+    datafusion_expr::{TableSource, TableType},
 };
 use async_trait::async_trait;
 use common_types::schema::Schema;
@@ -49,11 +50,22 @@ impl TableProvider for MockTableProvider {
 
     async fn scan(
         &self,
+        _ctx: &SessionState,
         _projection: &Option<Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         unimplemented!("not support")
+    }
+}
+
+impl TableSource for MockTableProvider {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn schema(&self) -> SchemaRef {
+        self.schema.to_arrow_schema_ref()
     }
 }
 
@@ -102,9 +114,10 @@ impl LogicalPlanNodeBuilder {
         self
     }
 
-    pub fn limit(mut self, n: usize) -> Self {
+    pub fn limit(mut self, skip: Option<usize>, fetch: Option<usize>) -> Self {
         let plan = LogicalPlan::Limit(Limit {
-            n,
+            skip,
+            fetch,
             input: self.take_plan(),
         });
 
@@ -136,7 +149,7 @@ impl LogicalPlanNodeBuilder {
             projection: None,
             projected_schema,
             filters: vec![],
-            limit: None,
+            fetch: None,
         });
 
         self.plan = Some(Arc::new(plan));
