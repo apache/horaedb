@@ -25,7 +25,7 @@ jobs:
   # build the library, a compilation step used by multiple steps below
   linux-build-lib:
     name: Build Libraries with Rust ${{ matrix.rust }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         rust: [1.59.0]
@@ -69,7 +69,7 @@ jobs:
   style-check:
     name: Libraries Style Check
     needs: [linux-build-lib]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         rust: [1.59.0]
@@ -95,7 +95,7 @@ jobs:
   clippy:
     name: Clippy
     needs: [linux-build-lib]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         rust: [1.59.0]
@@ -140,7 +140,7 @@ jobs:
   linux-test:
     name: Test Workspace with Rust ${{ matrix.rust }}
     needs: [linux-build-lib]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         rust: [1.59.0]
