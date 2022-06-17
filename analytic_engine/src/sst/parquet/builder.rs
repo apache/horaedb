@@ -190,11 +190,10 @@ fn build_write_properties(
 impl RecordBytesReader {
     async fn read_all(mut self) -> Result<Vec<u8>> {
         let mut arrow_writer = None;
-
-        let batches = self.record_stream.take().unwrap().collect::<Vec<_>>().await;
         let mut arrow_record_batch_vec = Vec::new();
-        let num_batches = batches.len();
-        for (index, record_batch) in batches.into_iter().enumerate() {
+        let mut record_stream = self.record_stream.take().unwrap();
+
+        while let Some(record_batch) = record_stream.next().await {
             let record_batch = record_batch.context(PollRecordBatch)?;
 
             debug_assert!(
@@ -206,7 +205,7 @@ impl RecordBytesReader {
             self.fetched_row_num += record_batch.num_rows();
             arrow_record_batch_vec.push(record_batch.into_record_batch().into_arrow_record_batch());
 
-            if self.fetched_row_num >= self.num_rows_per_row_group || index + 1 == num_batches {
+            if self.fetched_row_num >= self.num_rows_per_row_group {
                 self.fetched_row_num = 0;
                 let row_num = self
                     .encode_record_batch(&mut arrow_writer, arrow_record_batch_vec)
@@ -216,6 +215,16 @@ impl RecordBytesReader {
                 self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
             }
         }
+
+        // final check if there is any record batch left
+        if self.fetched_row_num != 0 {
+            let row_num = self
+                .encode_record_batch(&mut arrow_writer, arrow_record_batch_vec)
+                .map_err(|e| Box::new(e) as _)
+                .context(EncodeRecordBatch)?;
+            self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+        }
+
         if let Some(arrow_writer) = arrow_writer {
             arrow_writer
                 .close()
@@ -346,10 +355,8 @@ mod tests {
     fn test_parquet_build_and_read() {
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3]);
-        // TODO: num_rows should be [4, 4, 4, 3]?
-        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 2, 4, 2, 3]);
-        // TODO: num_rows should be [5, 5, 5]?
-        parquet_write_and_then_read_back(runtime, 5, vec![5, 1, 5, 1, 3]);
+        parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 3]);
+        parquet_write_and_then_read_back(runtime, 5, vec![5, 5, 5]);
     }
 
     fn parquet_write_and_then_read_back(
