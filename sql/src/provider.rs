@@ -8,7 +8,7 @@ use arrow_deps::{
     datafusion::{
         catalog::{catalog::CatalogProvider, schema::SchemaProvider},
         common::DataFusionError,
-        datasource::TableProvider,
+        datasource::{DefaultTableSource, TableProvider},
         physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
         sql::planner::ContextProvider,
     },
@@ -219,12 +219,15 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
                     self.request_id,
                     self.read_parallelism,
                 ));
+                let table_source = Arc::new(DefaultTableSource {
+                    table_provider: table_adapter,
+                });
                 // Put into cache
                 self.table_cache
                     .borrow_mut()
-                    .insert(name, table_adapter.clone());
+                    .insert(name, table_source.clone());
 
-                Ok(table_adapter)
+                Ok(table_source)
             }
             Ok(None) => Err(DataFusionError::Execution(
                 "MetaProvider not found".to_string(),
@@ -287,7 +290,12 @@ impl SchemaProvider for SchemaProviderAdapter {
         let mut names = Vec::new();
         let _ = self.tables.visit::<_, ()>(|name, table| {
             if name.catalog == self.catalog && name.schema == self.schema {
-                names.push(table.as_table_ref().name().to_string());
+                let provider = table
+                    .table_provider
+                    .as_any()
+                    .downcast_ref::<Arc<TableProviderAdapter>>()
+                    .unwrap();
+                names.push(provider.as_table_ref().name().to_string());
             }
             Ok(())
         });
@@ -300,9 +308,12 @@ impl SchemaProvider for SchemaProviderAdapter {
             schema: &self.schema,
             table: name,
         };
-        self.tables
-            .get(name_ref)
-            .map(|v| v as Arc<dyn TableProvider>)
+        self.tables.get(name_ref).map(|v| {
+            v.as_any()
+                .downcast_ref::<Arc<TableProviderAdapter>>()
+                .unwrap()
+                .clone() as _
+        })
     }
 
     fn table_exist(&self, name: &str) -> bool {

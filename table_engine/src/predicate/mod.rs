@@ -16,7 +16,8 @@ use arrow_deps::{
         physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
         scalar::ScalarValue,
     },
-    parquet::file::statistics::Statistics as ParquetStatistics, datafusion_expr::utils::expr_to_columns,
+    datafusion_expr::utils::expr_to_columns,
+    parquet::file::statistics::Statistics as ParquetStatistics,
 };
 use common_types::{
     schema::Schema,
