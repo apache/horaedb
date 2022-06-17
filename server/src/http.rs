@@ -2,7 +2,9 @@
 
 //! Http service
 
-use std::{convert::Infallible, net::IpAddr, sync::Arc};
+use std::{
+    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+};
 
 use catalog::manager::Manager as CatalogManager;
 use log::error;
@@ -10,7 +12,7 @@ use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
 use serde_derive::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, Sender};
 use warp::{
     header,
@@ -68,6 +70,11 @@ pub enum Error {
         source: std::net::AddrParseError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Internal err:{}.", source))]
+    Internal {
+        source: Box<dyn StdError + Send + Sync>,
+    },
 }
 
 define_result!(Error);
@@ -91,7 +98,6 @@ impl<C, Q> Service<C, Q> {
     }
 }
 
-// TODO(yingwen): How to support non json response?
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
     fn routes(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         self.home()
@@ -99,11 +105,11 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
             .or(self.sql())
             .or(self.heap_profile())
             .or(self.admin_reject())
+            .or(self.flush_memtable())
     }
 
     fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
-            use std::collections::HashMap;
             let mut resp = HashMap::new();
             resp.insert("status", "ok");
             reply::json(&resp)
@@ -130,6 +136,61 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
                     .context(HandleRequest);
                 match result {
                     Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    fn flush_memtable(
+        &self,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("flush_memtable")
+            .and(warp::post())
+            .and(self.with_instance())
+            .and_then(|instance: InstanceRef<C, Q>| async move {
+                let get_all_tables = || {
+                    let mut tables = Vec::new();
+                    for catalog in instance
+                        .catalog_manager
+                        .all_catalogs()
+                        .map_err(|e| Box::new(e) as _)
+                        .context(Internal)?
+                    {
+                        for schema in catalog
+                            .all_schemas()
+                            .map_err(|e| Box::new(e) as _)
+                            .context(Internal)?
+                        {
+                            for table in schema
+                                .all_tables()
+                                .map_err(|e| Box::new(e) as _)
+                                .context(Internal)?
+                            {
+                                tables.push(table);
+                            }
+                        }
+                    }
+                    Result::Ok(tables)
+                };
+                match get_all_tables() {
+                    Ok(tables) => {
+                        let mut failed_tables = Vec::new();
+                        let mut success_tables = Vec::new();
+
+                        for table in tables {
+                            let table_name = table.name().to_string();
+                            if let Err(e) = table.flush(FlushRequest::default()).await {
+                                error!("flush {} failed, err:{}", &table_name, e);
+                                failed_tables.push(table_name);
+                            } else {
+                                success_tables.push(table_name);
+                            }
+                        }
+                        let mut result = HashMap::new();
+                        result.insert("success", success_tables);
+                        result.insert("failed", failed_tables);
+                        Ok(reply::json(&result))
+                    }
                     Err(e) => Err(reject::custom(e)),
                 }
             })
@@ -309,6 +370,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingInstance { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
+        | Error::Internal { .. }
         | Error::JoinAsyncTask { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

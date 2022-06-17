@@ -8,3 +8,4 @@ pub use upstream::{
 };
 
 pub mod aliyun;
+pub mod cache;

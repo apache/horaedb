@@ -5,11 +5,11 @@
 use std::sync::Arc;
 
 use catalog::manager::Manager as CatalogManager;
+use df_operator::registry::FunctionRegistryRef;
 use grpcio::Environment;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
-use udf::registry::FunctionRegistryRef;
 
 use crate::{
     config::Config,

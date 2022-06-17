@@ -1,6 +1,9 @@
 ![CeresDB](docs/logo/CeresDB.png)
 
-![License](https://img.shields.io/badge/license-Apache--2.0-green.svg) 
+![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+[![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
+[![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
+[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 
 [English](./README.md)
 
@@ -10,7 +13,7 @@ CeresDB 是一款高性能、分布式、Schema-less 的云原生时序数据库
 项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
 
 ## RoadMap
-项目 [Roadmap](./docs/roadmap-CN.md)。
+项目 [Roadmap](./docs/dev/roadmap-CN.md)。
 
 ## 快速开始
 ### 获取代码
@@ -69,7 +72,7 @@ CeresDB 支持自定义扩展的 SQL 协议，目前可以通过 http 服务以 
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'');"
+    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
 }'
 ```
 
@@ -105,14 +108,14 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "DROP TABLE demo;"
+    "query": "DROP TABLE demo"
 }'
 ```
 
 ## 如何贡献
 [如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
 
-[约定式提交](docs/conventional-commit.md)
+[约定式提交](docs/dev/conventional-commit.md)
 
 ## 架构及技术文档
 相关技术文档在[docs](docs)目录中，补充完善中~
@@ -124,6 +127,8 @@ CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 
 ## 社区
-- [CeresDB 社区角色](ROLES.md).
+- [CeresDB 社区角色](ROLES.md)
+- [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 - 钉钉群: CeresDB 开源: 44602802
 - 邮箱: ceresdb@service.alipay.com
+- [微信群](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)

@@ -22,19 +22,12 @@ impl Default for Limiter {
 impl Limiter {
     pub fn should_limit(&self, plan: &Plan) -> bool {
         match plan {
-            Plan::Query(query) => {
-                let read_reject_list = self.read_reject_list.read().unwrap().clone();
-                for table in read_reject_list {
-                    if query
-                        .tables
-                        .get(TableReference::from(table.as_str()))
-                        .is_some()
-                    {
-                        return true;
-                    }
-                }
-                false
-            }
+            Plan::Query(query) => self.read_reject_list.read().unwrap().iter().any(|table| {
+                query
+                    .tables
+                    .get(TableReference::from(table.as_str()))
+                    .is_some()
+            }),
             Plan::Insert(insert) => self
                 .write_reject_list
                 .read()
@@ -67,11 +60,11 @@ impl Limiter {
     }
 
     pub fn get_write_reject_list(&self) -> HashSet<String> {
-        self.write_reject_list.write().unwrap().clone()
+        self.write_reject_list.read().unwrap().clone()
     }
 
     pub fn get_read_reject_list(&self) -> HashSet<String> {
-        self.read_reject_list.write().unwrap().clone()
+        self.read_reject_list.read().unwrap().clone()
     }
 
     pub fn remove_write_reject_list(&self, reject_list: Vec<String>) {

@@ -16,9 +16,9 @@ use arrow_deps::{
 };
 use catalog::manager::Manager;
 use common_types::request_id::RequestId;
+use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use snafu::{ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};
-use udf::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 
 use crate::container::{TableContainer, TableReference};
 
@@ -43,7 +43,9 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to find udf, err:{}", source))]
-    FindUdf { source: udf::registry::Error },
+    FindUdf {
+        source: df_operator::registry::Error,
+    },
 }
 
 define_result!(Error);

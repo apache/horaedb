@@ -591,6 +591,7 @@ dependencies = [
  "catalog_impls",
  "clap",
  "common_util",
+ "df_operator",
  "log",
  "logger",
  "query_engine",
@@ -598,7 +599,6 @@ dependencies = [
  "signal-hook",
  "table_engine",
  "tracing_util",
- "udf",
  "vergen",
 ]
 
@@ -1131,6 +1131,21 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn",
+]
+
+[[package]]
+name = "df_operator"
+version = "0.1.0"
+dependencies = [
+ "arrow_deps",
+ "base64 0.13.0",
+ "bincode",
+ "chrono",
+ "common_types",
+ "common_util",
+ "hyperloglog",
+ "smallvec",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -1823,13 +1838,13 @@ dependencies = [
  "catalog_impls",
  "common_types",
  "common_util",
+ "df_operator",
  "log",
  "query_engine",
  "snafu 0.6.10",
  "sql",
  "table_engine",
  "tokio",
- "udf",
 ]
 
 [[package]]
@@ -2462,10 +2477,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes 1.1.0",
+ "chrono",
  "futures",
+ "lru",
  "object_store 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "oss-rust-sdk",
  "snafu 0.6.10",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -2981,12 +3000,12 @@ dependencies = [
  "async-trait",
  "common_types",
  "common_util",
+ "df_operator",
  "futures",
  "log",
  "snafu 0.6.10",
  "sql",
  "table_engine",
- "udf",
 ]
 
 [[package]]
@@ -3445,6 +3464,7 @@ dependencies = [
  "ceresdbproto",
  "common_types",
  "common_util",
+ "df_operator",
  "futures",
  "grpcio 0.1.0",
  "http",
@@ -3467,7 +3487,6 @@ dependencies = [
  "table_engine",
  "tokio",
  "twox-hash",
- "udf",
  "warp",
 ]
 
@@ -3721,6 +3740,7 @@ dependencies = [
  "ceresdbproto",
  "common_types",
  "common_util",
+ "df_operator",
  "log",
  "paste 1.0.7",
  "regex",
@@ -3728,7 +3748,6 @@ dependencies = [
  "sqlparser",
  "table_engine",
  "tokio",
- "udf",
 ]
 
 [[package]]
@@ -4327,21 +4346,6 @@ name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
-
-[[package]]
-name = "udf"
-version = "0.1.0"
-dependencies = [
- "arrow_deps",
- "base64 0.13.0",
- "bincode",
- "chrono",
- "common_types",
- "common_util",
- "hyperloglog",
- "smallvec",
- "snafu 0.6.10",
-]
 
 [[package]]
 name = "uncover"

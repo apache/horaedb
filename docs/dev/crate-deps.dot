@@ -42,7 +42,7 @@ digraph G {
     interpreters -> catalog
     interpreters -> sql
     interpreters -> table_engine
-    interpreters -> udf
+    interpreters -> df_operator
     interpreters -> query_engine
     interpreters -> arrow_deps
 
@@ -55,7 +55,7 @@ digraph G {
     query_engine -> arrow_deps
     query_engine -> sql
     query_engine -> table_engine
-    query_engine -> udf
+    query_engine -> df_operator
 
     server -> analytic_engine
     server -> arrow_deps
@@ -66,12 +66,12 @@ digraph G {
     server -> sql
     server -> system_catalog
     server -> table_engine
-    server -> udf
+    server -> df_operator
 
     sql -> arrow_deps
     sql -> catalog
     sql -> table_engine
-    sql -> udf
+    sql -> df_operator
 
     system_catalog -> arrow_deps
     system_catalog -> catalog
@@ -81,7 +81,7 @@ digraph G {
     table_engine -> arrow_deps
     table_engine -> proto
 
-    udf -> arrow_deps
+    df_operator -> arrow_deps
 
     ceresdb -> analytic_engine
     ceresdb -> catalog
@@ -89,5 +89,5 @@ digraph G {
     ceresdb -> query_engine
     ceresdb -> server
     ceresdb -> table_engine
-    ceresdb -> udf
+    ceresdb -> df_operator
 }
