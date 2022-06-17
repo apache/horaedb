@@ -1,10 +1,9 @@
 ![CeresDB](docs/logo/CeresDB.png)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
+[![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
-[![ClosedIssue](https://img.shields.io/github/issues-closed/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues?q=is%3Aissue+is%3Aclosed)
-![Stars](https://img.shields.io/github/stars/CeresDB/ceresdb)
-![Forks](https://img.shields.io/github/forks/CeresDB/ceresdb)
+[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 
 [English](./README.md)
 
@@ -73,7 +72,7 @@ CeresDB 支持自定义扩展的 SQL 协议，目前可以通过 http 服务以 
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'');"
+    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
 }'
 ```
 
@@ -109,7 +108,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "DROP TABLE demo;"
+    "query": "DROP TABLE demo"
 }'
 ```
 
@@ -128,6 +127,8 @@ CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 
 ## 社区
-- [CeresDB 社区角色](ROLES.md).
+- [CeresDB 社区角色](ROLES.md)
+- [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 - 钉钉群: CeresDB 开源: 44602802
 - 邮箱: ceresdb@service.alipay.com
+- [微信群](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
