@@ -64,7 +64,7 @@ cargo build --release
 
 Then you can run CeresDB using the default configuration file provided in the codebase.
 ```bash
-./target/ceresdb-server --config ./docs/example.toml
+./target/release/ceresdb-server --config ./docs/example.toml
 ```
 
 ### Write and read data

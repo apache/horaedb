@@ -63,7 +63,7 @@ cargo build --release
 
 使用下载的代码中提供的默认配置文件，即可启动：
 ```bash
-./target/ceresdb-server --config ./docs/example.toml
+./target/release/ceresdb-server --config ./docs/example.toml
 ```
 
 ### 进行数据读写
