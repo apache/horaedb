@@ -74,7 +74,7 @@ CeresDB supports custom extended SQL protocol. Currently, you can create tables 
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'');"
+    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
 }'
 ```
 
@@ -110,7 +110,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "DROP TABLE demo;"
+    "query": "DROP TABLE demo"
 }'
 ```
 
