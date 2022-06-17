@@ -57,9 +57,7 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
         plan: Arc<dyn ExecutionPlan>,
         config: &SessionConfig,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-        // todo: set it when https://github.com/apache/arrow-datafusion/pull/2660 is shipped.
-        // this field used to be: config.runtime.batch_size
-        if Self::detect_small_limit_plan(&*plan, 0) {
+        if Self::detect_small_limit_plan(&*plan, config.batch_size) {
             Ok(plan)
         } else {
             self.original_rule.optimize(plan, config)

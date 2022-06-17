@@ -9,7 +9,8 @@ use arrow_deps::datafusion::{
     optimizer::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
         filter_push_down::FilterPushDown, limit_push_down::LimitPushDown, optimizer::OptimizerRule,
-        projection_push_down::ProjectionPushDown,
+        projection_push_down::ProjectionPushDown, simplify_expressions::SimplifyExpressions,
+        single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
@@ -72,17 +73,14 @@ impl Builder {
         // Always create default catalog and schema now
         let df_exec_config = { self.df_exec_config };
 
-        // todo: check this
-        // let adapted_physical_optimize_rules =
-        // Self::apply_adapters_for_physical_optimize_rules(
-        //     &self.df_exec_config.physical_optimizers,
-        // );
         let logical_optimize_rules = Self::logical_optimize_rules();
 
-        let state = default_session_builder(df_exec_config)
+        let mut state = default_session_builder(df_exec_config)
             .with_query_planner(Arc::new(QueryPlannerAdapter))
             .with_optimizer_rules(logical_optimize_rules);
-        // .with_physical_optimizer_rules(adapted_physical_optimize_rules);
+        let physical_optimizer =
+            Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
+        state.physical_optimizers = physical_optimizer;
 
         let context = SessionContext::with_state(state);
 
@@ -107,16 +105,13 @@ impl Builder {
         let mut optimizers: Vec<Arc<dyn OptimizerRule + Send + Sync>> = vec![
             Arc::new(TypeConversion),
             // These rules are the default settings of the datafusion.
-
-            // todo: enable this once  https://github.com/apache/arrow-datafusion/pull/2686 is available.
-            // Arc::new(SimplifyExpressions::new()),
+            Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
             Arc::new(EliminateLimit::new()),
             Arc::new(ProjectionPushDown::new()),
             Arc::new(FilterPushDown::new()),
             Arc::new(LimitPushDown::new()),
-            // TODO: restore this rule after the bug of df is fixed.
-            // Arc::new(SingleDistinctToGroupBy::new()),
+            Arc::new(SingleDistinctToGroupBy::new()),
         ];
 
         // FIXME(xikai): use config to control the optimize rule.

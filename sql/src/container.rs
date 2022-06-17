@@ -82,11 +82,6 @@ impl TableContainer {
             .and_then(|schemas| schemas.get(schema))
             .and_then(|tables| tables.get(table))
             .cloned()
-        // .and_then(|provider| {
-        //     Some(Arc::new(DefaultTableSource {
-        //         table_provider: provider.clone(),
-        //     }))
-        // })
     }
 
     pub fn insert(&mut self, name: TableReference, table_adapter: Arc<DefaultTableSource>) {

@@ -25,11 +25,11 @@ impl ExtensionPlanner for Planner {
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         _physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _session_state: &SessionState,
+        session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         node.as_any()
             .downcast_ref::<TableScanByPrimaryKey>()
-            .map(|order_by_node| order_by_node.build_scan_table_exec_plan())
+            .map(|order_by_node| order_by_node.build_scan_table_exec_plan(session_state))
             .transpose()
     }
 }
@@ -64,6 +64,7 @@ impl TableScanByPrimaryKey {
     /// Build the scan table [ExecutionPlan].
     fn build_scan_table_exec_plan(
         &self,
+        session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         match self.scan_plan.as_ref() {
             LogicalPlan::TableScan(TableScan {
@@ -89,6 +90,7 @@ impl TableScanByPrimaryKey {
                 let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
 
                 futures::executor::block_on(table_provider.scan_table(
+                    session_state,
                     projection,
                     &filters,
                     *fetch,

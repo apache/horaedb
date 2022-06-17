@@ -67,6 +67,7 @@ impl TableProviderAdapter {
 
     pub async fn scan_table(
         &self,
+        ctx: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
@@ -105,7 +106,7 @@ impl TableProviderAdapter {
             predicate,
             stream_state: Mutex::new(ScanStreamState::default()),
         });
-        scan_table.maybe_init_stream().await?;
+        scan_table.maybe_init_stream(ctx).await?;
 
         Ok(scan_table)
     }
@@ -131,12 +132,12 @@ impl TableProvider for TableProviderAdapter {
 
     async fn scan(
         &self,
-        _ctx: &SessionState,
+        ctx: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(projection, filters, limit, ReadOrder::None)
+        self.scan_table(ctx, projection, filters, limit, ReadOrder::None)
             .await
     }
 
@@ -166,7 +167,7 @@ impl TableSource for TableProviderAdapter {
     }
 
     /// Tests whether the table provider can make use of a filter expression
-    /// to optimise data retrieval.
+    /// to optimize data retrieval.
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
         Ok(TableProviderFilterPushDown::Inexact)
     }
@@ -211,14 +212,11 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&self) -> Result<()> {
+    async fn maybe_init_stream(&self, ctx: &SessionState) -> Result<()> {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
-                // todo: this field is not used, set it to 0.
-                // we can still set it when https://github.com/apache/arrow-datafusion/pull/2660 is shipped.
-                // this field used to be: context.session_config().batch_size,
-                batch_size: 0,
+                batch_size: ctx.config.batch_size,
                 read_parallelism: self.read_parallelism,
             },
             projected_schema: self.projected_schema.clone(),
