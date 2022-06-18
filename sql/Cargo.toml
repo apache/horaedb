@@ -15,12 +15,12 @@ arrow_deps = { path = "../arrow_deps" }
 catalog = { path = "../catalog" }
 common_types = { path = "../common_types"}
 common_util = { path = "../common_util" }
+df_operator = { path = "../df_operator" }
 log = "0.4"
 paste = "1.0"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 sqlparser = "0.13.0"
 table_engine = { path = "../table_engine" }
-df_operator = { path = "../df_operator" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
 regex = "1"
 

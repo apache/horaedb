@@ -27,6 +27,7 @@ members = [
     "components/tracing",
     "components/tracing_util",
     "components/tracing_examples",
+    "df_operator",
     "grpcio",
     "interpreters",
     "meta_client",
@@ -36,7 +37,6 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
-    "df_operator",
     "wal",
 ]
 
