@@ -15,6 +15,7 @@ catalog = { path = "../catalog" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
+df_operator = { path = "../df_operator" }
 futures = "0.3"
 grpcio = { path = "../grpcio" }
 http = "0.2"
@@ -37,7 +38,6 @@ system_catalog = { path = "../system_catalog" }
 table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }
 twox-hash = "1.6"
-df_operator = { path = "../df_operator" }
 warp = "0.3"
 
 [dev-dependencies]
