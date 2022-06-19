@@ -17,6 +17,7 @@ use crate::{
     http::{self, Service},
     instance::{Instance, InstanceRef},
     limiter::Limiter,
+    mysql,
 };
 
 #[derive(Debug, Snafu)]
@@ -42,6 +43,16 @@ pub enum Error {
     #[snafu(display("Failed to start http service, err:{}", source))]
     StartHttpService { source: crate::http::Error },
 
+    #[snafu(display("Failed to build mysql service, err:{}", source))]
+    BuildMysqlService {
+        source: crate::mysql::MysqlBuilderError,
+    },
+
+    #[snafu(display("Failed to start mysql service, err:{}", source))]
+    StartMysqlService {
+        source: crate::mysql::MysqlHandlerError,
+    },
+
     #[snafu(display("Failed to register system catalog, err:{}", source))]
     RegisterSystemCatalog { source: catalog::manager::Error },
 
@@ -59,12 +70,14 @@ define_result!(Error);
 pub struct Server<C, Q> {
     http_service: Service<C, Q>,
     rpc_services: RpcServices,
+    mysql_service: mysql::MysqlHandler<C, Q>,
 }
 
 impl<C, Q> Server<C, Q> {
     pub fn stop(mut self) {
         self.rpc_services.shutdown();
         self.http_service.stop();
+        self.mysql_service.shutdown();
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -158,6 +171,21 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             .build()
             .context(StartHttpService)?;
 
+        let mysql_config = mysql::MysqlConfig {
+            ip: self.config.bind_addr.clone(),
+            port: self.config.mysql_port,
+            thread_num: self.config.mysql_thread_num,
+        };
+
+        let mysql_service = mysql::Builder::new(mysql_config)
+            .runtimes(runtimes.clone())
+            .instance(instance.clone())
+            .build()
+            .context(BuildMysqlService)?;
+        if let Err(err) = mysql_service.start() {
+            log::error!("Start MySQL Server fail, err: {}", err);
+        }
+
         let meta_client_config = self.config.meta_client;
         let env = Arc::new(Environment::new(self.config.grpc_server_cq_count));
         let rpc_services = grpc::Builder::new()
@@ -174,6 +202,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
         let server = Server {
             http_service,
             rpc_services,
+            mysql_service,
         };
         Ok(server)
     }

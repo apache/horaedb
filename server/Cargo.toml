@@ -39,6 +39,8 @@ tokio = { version = "1.0", features = ["full"] }
 twox-hash = "1.6"
 df_operator = { path = "../df_operator" }
 warp = "0.3"
+msql-srv = "0.9"
+threadpool = "1.8.1"
 
 [dev-dependencies]
 sql = { path = "../sql" , features=["test"]}
