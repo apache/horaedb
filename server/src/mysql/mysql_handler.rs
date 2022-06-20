@@ -82,8 +82,9 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q>
             let instance = instance.clone();
             let runtimes = runtimes.clone();
 
-            runtimes.bg_runtime.spawn(AsyncMysqlIntermediary::run_on(
-                MysqlWorker::new(instance),
+            let rt = runtimes.bg_runtime.clone();
+            rt.spawn(AsyncMysqlIntermediary::run_on(
+                MysqlWorker::new(instance, runtimes.clone()),
                 stream,
             ));
         }
