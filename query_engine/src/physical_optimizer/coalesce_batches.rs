@@ -36,15 +36,17 @@ impl CoalesceBatchesAdapter {
     /// Detect the plan contains any limit plan with a small limit(smaller than
     /// `batch_size`).
     fn detect_small_limit_plan(plan: &dyn ExecutionPlan, batch_size: usize) -> bool {
-        // if let Some(limit_plan) = plan.as_any().downcast_ref::<GlobalLimitExec>() {
-        //     return limit_plan.limit() < batch_size;
-        // }
+        if let Some(limit_plan) = plan.as_any().downcast_ref::<GlobalLimitExec>() {
+            return limit_plan.skip().copied().unwrap_or(0)
+                + limit_plan.fetch().copied().unwrap_or(0)
+                < batch_size;
+        }
 
-        // for child_plan in plan.children() {
-        //     if Self::detect_small_limit_plan(&*child_plan, batch_size) {
-        //         return true;
-        //     }
-        // }
+        for child_plan in plan.children() {
+            if Self::detect_small_limit_plan(&*child_plan, batch_size) {
+                return true;
+            }
+        }
 
         // No small limit plan is found.
         false

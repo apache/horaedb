@@ -269,11 +269,12 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         }
     }
 
+    // todo: maybe support this
     fn get_variable_type(
         &self,
         _variable_names: &[String],
     ) -> Option<common_types::schema::DataType> {
-        todo!()
+        None
     }
 }
 
