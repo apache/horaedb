@@ -124,9 +124,8 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     }
 
     // todo: check if this is correct
-    fn null_counts(&self, column: &Column) -> Option<ArrayRef> {
-        // get_min_max_values!(self, column, min, null_count)
-        todo!()
+    fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
+        None
     }
 }
 

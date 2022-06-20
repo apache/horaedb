@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use arrow_deps::datafusion::{
     error::DataFusionError,
+    execution::context::SessionState,
     logical_plan::{LogicalPlan, UserDefinedLogicalNode},
-    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner}, execution::context::SessionState,
+    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
+use async_trait::async_trait;
 use snafu::Snafu;
 use sql::promql::PromAlignNode;
 
@@ -20,8 +22,9 @@ pub enum Error {
 
 pub struct PromAlignPlanner;
 
+#[async_trait]
 impl ExtensionPlanner for PromAlignPlanner {
-    fn plan_extension(
+    async fn plan_extension(
         &self,
         _planner: &dyn PhysicalPlanner,
         node: &dyn UserDefinedLogicalNode,

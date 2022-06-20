@@ -8,10 +8,16 @@ edition = "2021"
 
 [dependencies]
 arrow = "15.0.0"
-datafusion = "9.0.0"
-datafusion-expr = "9.0.0"
 parquet = "15.0.0"
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
 rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
+
+[dependencies.datafusion]
+git = "https://github.com/waynexia/arrow-datafusion.git"
+rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
+
+[dependencies.datafusion-expr]
+git = "https://github.com/waynexia/arrow-datafusion.git"
+rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
