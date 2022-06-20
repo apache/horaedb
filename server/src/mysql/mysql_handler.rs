@@ -40,10 +40,11 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q>
     pub async fn start(&mut self) -> Result<()> {
         info!("Mysql Server started in {}", self.socket_addr);
         let rt = self.runtimes.clone();
-        self.join_handler = Some(
-            rt.bg_runtime
-                .spawn(Self::loop_accept(self.instance.clone(), self.socket_addr)),
-        );
+        self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
+            self.instance.clone(),
+            self.runtimes.clone(),
+            self.socket_addr,
+        )));
         Ok(())
     }
 
@@ -55,7 +56,11 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q>
         // }
     }
 
-    async fn loop_accept(instance: InstanceRef<C, Q>, socket_addr: SocketAddr) {
+    async fn loop_accept(
+        instance: InstanceRef<C, Q>,
+        runtimes: Arc<EngineRuntimes>,
+        socket_addr: SocketAddr,
+    ) {
         let listener = match tokio::net::TcpListener::bind(socket_addr)
             .await
             .context(ServerNotRunning)
@@ -75,11 +80,12 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q>
                 }
             };
             let instance = instance.clone();
-            if let Err(err) =
-                AsyncMysqlIntermediary::run_on(MysqlWorker::new(instance), stream).await
-            {
-                log::error!("Execute sql has error, {}", err);
-            }
+            let runtimes = runtimes.clone();
+
+            runtimes.bg_runtime.spawn(AsyncMysqlIntermediary::run_on(
+                MysqlWorker::new(instance),
+                stream,
+            ));
         }
     }
 }
