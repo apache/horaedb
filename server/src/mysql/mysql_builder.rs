@@ -38,12 +38,14 @@ impl<C, Q> Builder<C, Q> {
 
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
     pub fn build(self) -> Result<MysqlHandler<C, Q>> {
+        let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
 
         let addr: SocketAddr = format!("{}:{}", self.config.ip, self.config.port)
             .parse()
             .context(ParseIpAddr { ip: self.config.ip })?;
-        let mysql_handler = MysqlHandler::new(instance, addr, self.config.thread_num);
+
+        let mysql_handler = MysqlHandler::new(instance, runtimes, addr);
         Ok(mysql_handler)
     }
 }

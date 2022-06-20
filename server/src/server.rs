@@ -73,7 +73,7 @@ pub struct Server<C, Q> {
     mysql_service: mysql::MysqlHandler<C, Q>,
 }
 
-impl<C, Q> Server<C, Q> {
+impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Server<C, Q> {
     pub fn stop(mut self) {
         self.rpc_services.shutdown();
         self.http_service.stop();
@@ -81,6 +81,10 @@ impl<C, Q> Server<C, Q> {
     }
 
     pub async fn start(&mut self) -> Result<()> {
+        self.mysql_service
+            .start()
+            .await
+            .context(StartMysqlService)?;
         self.rpc_services.start().await.context(StartGrpcService)
     }
 }
@@ -182,9 +186,6 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             .instance(instance.clone())
             .build()
             .context(BuildMysqlService)?;
-        if let Err(err) = mysql_service.start() {
-            log::error!("Start MySQL Server fail, err: {}", err);
-        }
 
         let meta_client_config = self.config.meta_client;
         let env = Arc::new(Environment::new(self.config.grpc_server_cq_count));

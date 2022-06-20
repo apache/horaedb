@@ -23,6 +23,7 @@ lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "../components/logger" }
 meta_client = { path = "../meta_client" }
+opensrv-mysql = "0.1.0"
 profile = { path = "../components/profile" }
 protobuf = "2.20"
 query_engine = { path = "../query_engine" }
@@ -39,8 +40,6 @@ tokio = { version = "1.0", features = ["full"] }
 twox-hash = "1.6"
 df_operator = { path = "../df_operator" }
 warp = "0.3"
-msql-srv = "0.9"
-threadpool = "1.8.1"
 
 [dev-dependencies]
 sql = { path = "../sql" , features=["test"]}

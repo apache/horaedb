@@ -3,58 +3,84 @@
 use std::{error::Error as StdError, net::SocketAddr, sync::Arc};
 
 use catalog::manager::Manager as CatalogManager;
+use common_util::runtime::JoinHandle;
 use log::info;
-use msql_srv::MysqlIntermediary;
+use opensrv_mysql::AsyncMysqlIntermediary;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, ResultExt, Snafu};
-use threadpool::ThreadPool;
+use table_engine::engine::EngineRuntimes;
 
 use crate::{
     instance::{Instance, InstanceRef},
     mysql::mysql_worker::MysqlWorker,
 };
-
 pub struct MysqlHandler<C, Q> {
     instance: InstanceRef<C, Q>,
-    thread_num: usize,
+    runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
+    join_handler: Option<JoinHandle<()>>,
 }
 
 impl<C, Q> MysqlHandler<C, Q> {
     pub fn new(
         instance: Arc<Instance<C, Q>>,
+        runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
-        thread_num: usize,
     ) -> MysqlHandler<C, Q> {
         Self {
             instance,
-            thread_num,
+            runtimes,
             socket_addr,
+            join_handler: None,
         }
-    }
-
-    pub fn shutdown(&mut self) {
-        todo!()
     }
 }
 
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q> {
-    pub fn start(&self) -> Result<()> {
-        info!("Mysql Server ip_addr {}", self.socket_addr);
-        let listener = std::net::TcpListener::bind(self.socket_addr).context(ServerNotRunning)?;
-        let pool = ThreadPool::new(self.thread_num);
-        for stream in listener.incoming() {
-            let stream = stream.context(AcceptConnection)?;
-            let instance = self.instance.clone();
-            pool.execute(move || {
-                if let Err(err) = MysqlIntermediary::run_on_tcp(MysqlWorker::new(instance), stream)
-                {
-                    log::error!("Execute sql has error, {}", err);
-                }
-            });
-        }
-
+    pub async fn start(&mut self) -> Result<()> {
+        info!("Mysql Server started in {}", self.socket_addr);
+        let rt = self.runtimes.clone();
+        self.join_handler = Some(
+            rt.bg_runtime
+                .spawn(Self::loop_accept(self.instance.clone(), self.socket_addr)),
+        );
         Ok(())
+    }
+
+    pub fn shutdown(&self) {
+        // if let Some(join_handle) = self.join_handler.take() {
+        //     if let Err(error) = join_handle.await {
+        //         log::error!("Unexcepted error during shutdown MySQLHandler.
+        // err: {}", error)     }
+        // }
+    }
+
+    async fn loop_accept(instance: InstanceRef<C, Q>, socket_addr: SocketAddr) {
+        let listener = match tokio::net::TcpListener::bind(socket_addr)
+            .await
+            .context(ServerNotRunning)
+        {
+            Ok(l) => l,
+            Err(err) => {
+                log::error!("Mysql Server listener address fail. err: {}", err);
+                return;
+            }
+        };
+        loop {
+            let (stream, _) = match listener.accept().await.context(AcceptConnection) {
+                Ok((s, addr)) => (s, addr),
+                Err(err) => {
+                    log::error!("Mysql Server accept new connection fail. err: {}", err);
+                    return;
+                }
+            };
+            let instance = instance.clone();
+            if let Err(err) =
+                AsyncMysqlIntermediary::run_on(MysqlWorker::new(instance), stream).await
+            {
+                log::error!("Execute sql has error, {}", err);
+            }
+        }
     }
 }
 
