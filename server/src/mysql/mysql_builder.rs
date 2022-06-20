@@ -54,7 +54,6 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
 pub struct Config {
     pub ip: String,
     pub port: u16,
-    pub thread_num: usize,
 }
 
 define_result!(Error);

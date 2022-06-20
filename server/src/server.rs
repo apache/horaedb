@@ -178,7 +178,6 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
         let mysql_config = mysql::MysqlConfig {
             ip: self.config.bind_addr.clone(),
             port: self.config.mysql_port,
-            thread_num: self.config.mysql_thread_num,
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
