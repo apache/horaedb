@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use arrow_deps::datafusion::{
     physical_optimizer::{optimizer::PhysicalOptimizerRule, repartition::Repartition},
-    physical_plan::ExecutionPlan, prelude::SessionConfig,
+    physical_plan::ExecutionPlan,
+    prelude::SessionConfig,
 };
 use log::debug;
 
