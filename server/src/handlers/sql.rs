@@ -26,8 +26,8 @@ pub struct Request {
     query: String,
 }
 
-impl Request {
-    pub fn from_query(query: String) -> Self {
+impl From<String> for Request {
+    fn from(query: String) -> Self {
         Self { query }
     }
 }

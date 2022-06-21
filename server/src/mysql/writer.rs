@@ -45,44 +45,15 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
             return Ok(());
         }
 
-        fn convert_field_type(field: &Datum) -> ColumnType {
-            match field {
-                Datum::Timestamp(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Double(_) => ColumnType::MYSQL_TYPE_DOUBLE,
-                Datum::Float(_) => ColumnType::MYSQL_TYPE_FLOAT,
-                Datum::Varbinary(_) => ColumnType::MYSQL_TYPE_VARCHAR,
-                Datum::String(_) => ColumnType::MYSQL_TYPE_VARCHAR,
-                Datum::UInt64(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::UInt32(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::UInt16(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::UInt8(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Int64(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Int32(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Int16(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Int8(_) => ColumnType::MYSQL_TYPE_LONG,
-                Datum::Boolean(_) => ColumnType::MYSQL_TYPE_SHORT,
-                Datum::Null => ColumnType::MYSQL_TYPE_VARCHAR,
-            }
-        }
-
-        fn make_column_by_filed(k: &str, v: &Datum) -> Column {
-            let column_type = convert_field_type(v);
-            Column {
-                table: "".to_string(),
-                column: k.to_string(),
-                coltype: column_type,
-                colflags: ColumnFlags::empty(),
-            }
-        }
-
         let columns = &rows[0]
             .iter()
-            .map(|(k, v)| make_column_by_filed(k, v))
+            .map(|(k, v)| make_column_by_field(k, v))
             .collect::<Vec<_>>();
-        let columns_keys = columns.iter().map(|c| c.column.clone()).collect::<Vec<_>>();
         let mut row_writer = writer.start(columns)?;
+
         for row in &rows {
-            for key in &columns_keys {
+            for column in columns {
+                let key = &column.column;
                 if let Some(val) = row.get(key) {
                     let data_type = convert_field_type(val);
                     let re = match (data_type, val) {
@@ -120,5 +91,35 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         }
 
         Ok(())
+    }
+}
+
+fn make_column_by_field(k: &str, v: &Datum) -> Column {
+    let column_type = convert_field_type(v);
+    Column {
+        table: "".to_string(),
+        column: k.to_string(),
+        coltype: column_type,
+        colflags: ColumnFlags::empty(),
+    }
+}
+
+fn convert_field_type(field: &Datum) -> ColumnType {
+    match field {
+        Datum::Timestamp(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Double(_) => ColumnType::MYSQL_TYPE_DOUBLE,
+        Datum::Float(_) => ColumnType::MYSQL_TYPE_FLOAT,
+        Datum::Varbinary(_) => ColumnType::MYSQL_TYPE_LONG_BLOB,
+        Datum::String(_) => ColumnType::MYSQL_TYPE_VARCHAR,
+        Datum::UInt64(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::UInt32(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::UInt16(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::UInt8(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Int64(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Int32(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Int16(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Int8(_) => ColumnType::MYSQL_TYPE_LONG,
+        Datum::Boolean(_) => ColumnType::MYSQL_TYPE_SHORT,
+        Datum::Null => ColumnType::MYSQL_TYPE_NULL,
     }
 }
