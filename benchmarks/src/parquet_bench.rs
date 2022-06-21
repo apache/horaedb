@@ -114,8 +114,8 @@ impl ParquetBench {
             }
 
             info!(
-                "\nParquetBench total rows of sst: {}, total batch num: {},
-            open cost: {:?}, filter cost: {:?}, iter cost: {:?}",
+                "\nParquetBench total rows of sst:{}, total batch num:{},
+                open cost:{:?}, filter cost:{:?}, iter cost:{:?}",
                 total_rows,
                 batch_num,
                 open_cost,

@@ -123,7 +123,6 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
         self.row_group_metadata.len()
     }
 
-    // todo: check if this is correct
     fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
         None
     }

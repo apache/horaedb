@@ -206,12 +206,13 @@ impl RecordBytesReader {
             arrow_record_batch_vec.push(record_batch.into_record_batch().into_arrow_record_batch());
 
             if self.fetched_row_num >= self.num_rows_per_row_group {
+                let buf_len = arrow_record_batch_vec.len();
                 self.fetched_row_num = 0;
                 let row_num = self
                     .encode_record_batch(&mut arrow_writer, arrow_record_batch_vec)
                     .map_err(|e| Box::new(e) as _)
                     .context(EncodeRecordBatch)?;
-                arrow_record_batch_vec = Vec::new();
+                arrow_record_batch_vec = Vec::with_capacity(buf_len);
                 self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
             }
         }

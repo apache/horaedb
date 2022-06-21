@@ -28,14 +28,14 @@ use crate::{
 /// Query context
 pub struct Context {
     request_id: RequestId,
-    df_exec_ctx: SessionContext,
+    df_session_ctx: SessionContext,
 }
 
 impl Context {
     // For datafusion, internal use only
     #[inline]
-    pub(crate) fn df_exec_ctx(&self) -> &SessionContext {
-        &self.df_exec_ctx
+    pub(crate) fn df_session_ctx(&self) -> &SessionContext {
+        &self.df_session_ctx
     }
 
     #[inline]
@@ -82,11 +82,9 @@ impl Builder {
             Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
         state.physical_optimizers = physical_optimizer;
 
-        let context = SessionContext::with_state(state);
-
         Context {
             request_id: self.request_id,
-            df_exec_ctx: context,
+            df_session_ctx: SessionContext::with_state(state),
         }
     }
 

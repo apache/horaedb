@@ -269,7 +269,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         }
     }
 
-    // todo: maybe support this
+    // TODO: Variable Type is not supported now
     fn get_variable_type(
         &self,
         _variable_names: &[String],
