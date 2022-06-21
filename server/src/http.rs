@@ -22,14 +22,7 @@ use warp::{
     Filter,
 };
 
-use crate::{
-    consts,
-    context::RequestContext,
-    error,
-    handlers::{self},
-    instance::InstanceRef,
-    metrics,
-};
+use crate::{consts, context::RequestContext, error, handlers, instance::InstanceRef, metrics};
 
 #[derive(Debug)]
 pub struct Config {
