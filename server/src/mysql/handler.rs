@@ -9,6 +9,7 @@ use opensrv_mysql::AsyncMysqlIntermediary;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
+use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::{
     instance::{Instance, InstanceRef},
@@ -19,6 +20,7 @@ pub struct MysqlHandler<C, Q> {
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
+    tx: Option<Sender<()>>,
 }
 
 #[derive(Debug, Snafu)]
@@ -57,34 +59,38 @@ impl<C, Q> MysqlHandler<C, Q> {
             runtimes,
             socket_addr,
             join_handler: None,
+            tx: None,
         }
     }
 }
 
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q> {
     pub async fn start(&mut self) -> Result<()> {
-        info!("Mysql service listens on {}", self.socket_addr);
+        let (tx, rx) = oneshot::channel();
+
         let rt = self.runtimes.clone();
+        self.tx = Some(tx);
         self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
             self.instance.clone(),
             self.runtimes.clone(),
             self.socket_addr,
+            rx,
         )));
+        info!("Mysql service listens on {}", self.socket_addr);
         Ok(())
     }
 
-    pub fn shutdown(&self) {
-        // if let Some(join_handle) = self.join_handler.take() {
-        //     if let Err(error) = join_handle.await {
-        //         log::error!("Unexcepted error during shutdown MySQLHandler.
-        // err: {}", error)     }
-        // }
+    pub fn shutdown(self) {
+        if let Some(tx) = self.tx {
+            let _ = tx.send(());
+        }
     }
 
     async fn loop_accept(
         instance: InstanceRef<C, Q>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
+        mut rx: Receiver<()>,
     ) {
         let listener = match tokio::net::TcpListener::bind(socket_addr)
             .await
@@ -97,21 +103,28 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q>
             }
         };
         loop {
-            let (stream, _) = match listener.accept().await.context(AcceptConnection) {
-                Ok((s, addr)) => (s, addr),
-                Err(err) => {
-                    error!("Mysql Server accept new connection fail. err: {}", err);
-                    return;
-                }
-            };
-            let instance = instance.clone();
-            let runtimes = runtimes.clone();
+            tokio::select! {
+                conn_result = listener.accept() => {
+                    let (stream, _) = match conn_result {
+                        Ok((s, addr)) => (s, addr),
+                        Err(err) => {
+                            error!("Mysql Server accept new connection fail. err: {}", err);
+                            break;
+                        }
+                    };
+                    let instance = instance.clone();
+                    let runtimes = runtimes.clone();
 
-            let rt = runtimes.read_runtime.clone();
-            rt.spawn(AsyncMysqlIntermediary::run_on(
-                MysqlWorker::new(instance, runtimes),
-                stream,
-            ));
+                    let rt = runtimes.read_runtime.clone();
+                    rt.spawn(AsyncMysqlIntermediary::run_on(
+                        MysqlWorker::new(instance, runtimes),
+                        stream,
+                    ));
+                },
+                _ = &mut rx => {
+                    break;
+                }
+            }
         }
     }
 }
