@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"go.etcd.io/etcd/server/v3/embed"
 )
 
@@ -33,6 +34,8 @@ const (
 )
 
 type Config struct {
+	Log log.Config `toml:"log" json:"log"`
+
 	EtcdStartTimeoutMs int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
 	EtcdDialTimeoutMs  int64 `toml:"etcd-dial-timeout-ms" json:"etcd-dial-timeout-ms"`
 
@@ -129,10 +132,10 @@ type Parser struct {
 
 func (p *Parser) Parse(arguments []string) (*Config, error) {
 	if err := p.flagSet.Parse(arguments); err != nil {
-		return nil, err
+		return nil, ErrInvalidCommandArgs.WithCausef("original arguments:%v, parse err:%v", arguments, err)
 	}
 
-	// TODO: support load config from file.
+	// TODO: support loading config from file.
 
 	return p.cfg, nil
 }
@@ -140,7 +143,7 @@ func (p *Parser) Parse(arguments []string) (*Config, error) {
 func makeDefaultNodeName() (string, error) {
 	host, err := os.Hostname()
 	if err != nil {
-		return "", err
+		return "", ErrRetrieveHostname.WithCause(err)
 	}
 
 	return fmt.Sprintf("%s-%s", defaultNodeNamePrefix, host), nil
@@ -156,6 +159,12 @@ func MakeConfigParser() (*Parser, error) {
 		flagSet: fs,
 		cfg:     cfg,
 	}
+
+	fs.StringVar(&cfg.Log.Level, "log-level", log.DefaultLogLevel, "level of the log")
+	fs.StringVar(&cfg.Log.File, "log-file", log.DefaultLogFile, "file for log output")
+
+	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
+	fs.Int64Var(&cfg.EtcdDialTimeoutMs, "etcd-dial-timeout-ms", defaultDailTimeoutMs, "timeout for dialing etcd server")
 
 	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
 	fs.Int64Var(&cfg.EtcdDialTimeoutMs, "etcd-dial-timeout-ms", defaultDailTimeoutMs, "timeout for dialing etcd server")

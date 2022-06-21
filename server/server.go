@@ -4,17 +4,14 @@ package server
 
 import (
 	"context"
-	"log"
 	"sync"
 
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/config"
-	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 )
-
-var ErrStartEtcdTimeout = errors.New("Fail to start etcd server in time")
 
 type Server struct {
 	ctx         context.Context
@@ -67,7 +64,7 @@ func (srv *Server) Close() {
 	srv.stopBgJobs()
 
 	if err := srv.client.Close(); err != nil {
-		log.Printf("fail to close client, err:%v", err)
+		log.Error("fail to close client", zap.Error(err))
 	}
 
 	// TODO: release other resources: httpclient, etcd server and so on.
@@ -76,7 +73,7 @@ func (srv *Server) Close() {
 func (srv *Server) startEtcd() error {
 	etcdSrv, err := embed.StartEtcd(srv.etcdCfg)
 	if err != nil {
-		return err
+		return ErrStartEtcd.WithCause(err)
 	}
 
 	newCtx, cancel := context.WithTimeout(srv.ctx, srv.cfg.EtcdStartTimeout())
@@ -85,7 +82,7 @@ func (srv *Server) startEtcd() error {
 	select {
 	case <-etcdSrv.Server.ReadyNotify():
 	case <-newCtx.Done():
-		return ErrStartEtcdTimeout
+		return ErrStartEtcdTimeout.WithCausef("timeout is:%v", srv.cfg.EtcdStartTimeout())
 	}
 
 	// TODO: build etcd client
@@ -97,7 +94,7 @@ func (srv *Server) startEtcd() error {
 		LogConfig:   &lgc,
 	})
 	if err != nil {
-		return err
+		return ErrCreateEtcdClient.WithCause(err)
 	}
 
 	srv.client = client
