@@ -24,6 +24,7 @@ members = [
     "components/parquet",
     "components/profile",
     "components/skiplist",
+    "components/table_kv",
     "components/tracing",
     "components/tracing_util",
     "components/tracing_examples",

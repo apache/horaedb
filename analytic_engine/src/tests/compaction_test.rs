@@ -7,13 +7,23 @@ use table_engine::table::FlushRequest;
 
 use crate::{
     compaction::SizeTieredCompactionOptions,
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
     tests::util::{self, TestEnv},
 };
 
 #[test]
-fn test_table_compact_current_segment() {
+fn test_table_compact_current_segment_rocks() {
+    test_table_compact_current_segment::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_table_compact_current_segment_mem_wal() {
+    test_table_compact_current_segment::<MemWalEngineBuilder>();
+}
+
+fn test_table_compact_current_segment<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -72,7 +82,7 @@ fn test_table_compact_current_segment() {
             test_table1,
             &expect_rows,
         )
-        .await;
+            .await;
 
         // Trigger a compaction.
         test_ctx.compact_table(test_table1).await;
@@ -85,6 +95,6 @@ fn test_table_compact_current_segment() {
             test_table1,
             &expect_rows,
         )
-        .await;
+            .await;
     });
 }

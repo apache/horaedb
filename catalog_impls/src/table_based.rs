@@ -867,7 +867,10 @@ impl Schema for SchemaImpl {
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use analytic_engine::tests::util::TestEnv;
+    use analytic_engine::{
+        setup::{EngineBuilder, RocksEngineBuilder},
+        tests::util::TestEnv,
+    };
     use catalog::{
         consts::DEFAULT_CATALOG,
         manager::Manager,
@@ -875,13 +878,14 @@ mod tests {
     };
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
-        engine::{TableEngineRef, TableState},
+        engine::{TableEngine, TableState},
         ANALYTIC_ENGINE_TYPE,
     };
 
     use crate::table_based::TableBasedManager;
 
-    async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
+    async fn build_catalog_manager<T: TableEngine + Clone + Send + Sync + 'static>( analytic: T,
+    ) -> TableBasedManager {
         // Create table engine proxy
         let memory = MemoryTableEngine;
 
@@ -965,12 +969,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_maybe_create_schema_by_name() {
+    async fn test_maybe_create_schema_by_name_rocks() {
+        test_maybe_create_schema_by_name::<RocksEngineBuilder>().await;
+    }
+
+    async fn test_maybe_create_schema_by_name<T>()
+        where
+            T: EngineBuilder,
+            T::Target: Clone + Send + Sync + 'static,
+    {
         let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context();
+        let mut test_ctx = env.new_context::<T>();
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.engine()).await;
+        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
         let catalog_name = catalog_manager.default_catalog_name();
         let catalog = catalog_manager.catalog_by_name(catalog_name);
         assert!(catalog.is_ok());
@@ -989,12 +1001,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_create_table() {
+    async fn test_create_table_rocks() {
+        test_create_table::<RocksEngineBuilder>().await;
+    }
+
+    async fn test_create_table<T: EngineBuilder>()
+        where
+            T: EngineBuilder,
+            T::Target: Clone + Send + Sync + 'static,
+    {
         let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context();
+        let mut test_ctx = env.new_context::<T>();
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.engine()).await;
+        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
         let schema = build_default_schema_with_catalog(&catalog_manager).await;
 
         let table_name = "test";
@@ -1023,12 +1043,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_drop_table() {
+    async fn test_drop_table_rocks() {
+        test_drop_table::<RocksEngineBuilder>().await;
+    }
+
+    async fn test_drop_table<T>()
+        where
+            T: EngineBuilder,
+            T::Target: Clone + Send + Sync + 'static,
+    {
         let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context();
+        let mut test_ctx = env.new_context::<T>();
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.engine()).await;
+        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
         let schema = build_default_schema_with_catalog(&catalog_manager).await;
 
         let table_name = "test";

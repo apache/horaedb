@@ -28,7 +28,7 @@ use table_engine::{
     },
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
-use wal::{log_batch::LogEntry, manager::WalManager};
+use wal::manager::WalManager;
 
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
@@ -38,7 +38,6 @@ use crate::{
         write, write_worker, InstanceRef,
     },
     meta::Manifest,
-    payload::ReadPayload,
     space::{SpaceAndTable, SpaceId, SpaceRef},
     sst::factory::Factory,
     table::{data::TableDataRef, metrics::Metrics},
@@ -52,17 +51,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
-        msg,
-        backtrace
+    "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
+    msg,
+    backtrace
     ))]
     BackgroundFlushFailed { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to receive cmd result, channel disconnected, table:{}, worker_id:{}.\nBacktrace:\n{}",
-        table,
-        worker_id,
-        backtrace,
+    "Failed to receive cmd result, channel disconnected, table:{}, worker_id:{}.\nBacktrace:\n{}",
+    table,
+    worker_id,
+    backtrace,
     ))]
     ReceiveFromWorker {
         table: String,
@@ -207,9 +206,9 @@ impl WorkerLocal {
         block_on_write_thread: bool,
         res_sender: Option<oneshot::Sender<TableResult<()>>>,
     ) -> Result<()>
-    where
-        F: Future<Output = flush_compaction::Result<()>> + Send + 'static,
-        T: Future<Output = ()> + Send + 'static,
+        where
+            F: Future<Output = flush_compaction::Result<()>> + Send + 'static,
+            T: Future<Output = ()> + Send + 'static,
     {
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
@@ -507,7 +506,7 @@ pub async fn process_command_in_write_worker<T, E: std::error::Error + Send + Sy
             table: &table_data.name,
             worker_id: table_data.write_handle.worker_id(),
         }
-        .fail(),
+            .fail(),
     }
 }
 
@@ -528,7 +527,7 @@ pub async fn join_all<T, E: std::error::Error + Send + Sync + 'static>(
                     table: &table_data.name,
                     worker_id: table_data.write_handle.worker_id(),
                 }
-                .fail()
+                    .fail()
             }
         }
     }
@@ -562,11 +561,11 @@ impl WriteGroup {
         opts: Options,
         instance: InstanceRef<Wal, Meta, Store, Fa>,
     ) -> Self
-    where
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
+        where
+            Wal: WalManager + Send + Sync + 'static,
+            Meta: Manifest + Send + Sync + 'static,
+            Store: ObjectStore,
+            Fa: Factory + Send + Sync + 'static,
     {
         let mut worker_datas = Vec::with_capacity(opts.worker_num);
         let mut handles = Vec::with_capacity(opts.worker_num);
@@ -592,7 +591,6 @@ impl WriteGroup {
                     data: data.clone(),
                     background_rx,
                 },
-                log_entry_buf: Vec::new(),
             };
 
             let space_id = opts.space_id;
@@ -707,16 +705,14 @@ struct WriteWorker<Wal, Meta, Store, Fa> {
     instance: InstanceRef<Wal, Meta, Store, Fa>,
     /// Worker local states
     local: WorkerLocal,
-    /// Log entry buffer for recover
-    log_entry_buf: Vec<LogEntry<ReadPayload>>,
 }
 
 impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa: Factory + Send + Sync + 'static,
-    > WriteWorker<Wal, Meta, Store, Fa>
+    Wal: WalManager + Send + Sync + 'static,
+    Meta: Manifest + Send + Sync + 'static,
+    Store: ObjectStore,
+    Fa: Factory + Send + Sync + 'static,
+> WriteWorker<Wal, Meta, Store, Fa>
 {
     /// Runs the write loop until stopped
     async fn run(&mut self) {
@@ -809,14 +805,9 @@ impl<
 
         let open_res = self
             .instance
-            .process_recover_table_command(
-                &mut self.local,
-                space,
-                table_data,
-                replay_batch_size,
-                &mut self.log_entry_buf,
-            )
+            .process_recover_table_command(&mut self.local, space, table_data, replay_batch_size)
             .await;
+
         if let Err(open_res) = tx.send(open_res) {
             error!(
                 "handle open table failed to send result, open_res:{:?}",

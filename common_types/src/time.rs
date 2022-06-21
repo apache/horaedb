@@ -77,7 +77,7 @@ impl Timestamp {
     ///
     /// The `duration_ms` must be positive
     #[inline]
-    fn checked_floor_by_i64(&self, duration_ms: i64) -> Option<Self> {
+    pub fn checked_floor_by_i64(&self, duration_ms: i64) -> Option<Self> {
         assert!(duration_ms > 0);
         let normalized_ts = if self.0 >= 0 {
             // self / duration_ms * duration_ms

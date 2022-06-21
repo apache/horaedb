@@ -23,9 +23,16 @@ pub mod tests;
 
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
+use table_kv::{config::ObkvConfig, memory::MemoryImpl, obkv::ObkvImpl};
+use wal::table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl};
 use storage_options::{LocalOptions, StorageOptions};
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
+
+/// Wal based on obkv.
+pub(crate) type ObkvWal = WalNamespaceImpl<ObkvImpl>;
+/// In-memory wal.
+pub(crate) type MemWal = WalNamespaceImpl<MemoryImpl>;
 
 /// Config of analytic engine.
 #[derive(Debug, Clone, Deserialize)]
@@ -64,6 +71,9 @@ pub struct Config {
     /// The maximum size of all Write Buffers across all spaces.
     pub db_write_buffer_size: usize,
     // End of global write buffer options.
+
+    // Obkv wal config.
+    pub obkv_wal: ObkvWalConfig,
 }
 
 impl Default for Config {
@@ -88,6 +98,35 @@ impl Default for Config {
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
+            obkv_wal: ObkvWalConfig::default(),
+        }
+    }
+}
+
+/// Config of wal based on obkv.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ObkvWalConfig {
+    /// Enable wal on obkv (disabled by default).
+    pub enable: bool,
+    /// Obkv client config.
+    pub obkv: ObkvConfig,
+    /// Wal (stores data) namespace config.
+    pub wal: NamespaceConfig,
+    /// Manifest (stores meta data) namespace config.
+    pub manifest: NamespaceConfig,
+}
+impl Default for ObkvWalConfig {
+    fn default() -> Self {
+        Self {
+            enable: false,
+            obkv: ObkvConfig::default(),
+            wal: NamespaceConfig::default(),
+            manifest: NamespaceConfig {
+                // Manifest has no ttl.
+                ttl: None,
+                ..Default::default()
+            },
         }
     }
 }

@@ -52,15 +52,15 @@ impl TableEngine for MemoryTableEngine {
 }
 
 /// Route [CreateTableRequest] to the correct engine by its engine type
-pub struct TableEngineProxy {
+pub struct TableEngineProxy<T> {
     /// Memory table engine
     pub memory: MemoryTableEngine,
     /// Analytic table engine
-    pub analytic: TableEngineRef,
+    pub analytic: T,
 }
 
 #[async_trait]
-impl TableEngine for TableEngineProxy {
+impl<T:TableEngine + Send+Sync+'static> TableEngine for TableEngineProxy {
     fn engine_type(&self) -> &str {
         "TableEngineProxy"
     }

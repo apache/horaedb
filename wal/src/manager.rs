@@ -1,11 +1,11 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
-
 //! WalManager abstraction
 
-use std::{fmt, time::Duration};
+use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
+use common_util::runtime::Runtime;
+use snafu::ResultExt;
 
 use crate::log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder};
 
@@ -89,6 +89,15 @@ pub mod error {
             source: Box<dyn std::error::Error + Send + Sync>,
             backtrace: Backtrace,
         },
+
+        #[snafu(display("Failed to close wal, err:{}.\nBacktrace:\n{}", source, backtrace))]
+        Close {
+            source: Box<dyn std::error::Error + Send + Sync>,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display("Failed to execute in runtime, err:{}", source))]
+        RuntimeExec { source: common_util::runtime::Error },
     }
 
     define_result!(Error);
@@ -134,12 +143,15 @@ pub struct ReadContext {
     /// Wal on a remote machine (reading from the local disk does not have
     /// timeout).
     pub timeout: Duration,
+    /// Batch size to read log entries.
+    pub batch_size: usize,
 }
 
 impl Default for ReadContext {
     fn default() -> Self {
         Self {
             timeout: Duration::from_secs(5),
+            batch_size: 500,
         }
     }
 }
@@ -201,20 +213,40 @@ pub struct ReadRequest {
     pub end: ReadBoundary,
 }
 
-/// Iterator abstraction for log entry.
-pub trait LogIterator {
+/// Blocking Iterator abstraction for log entry.
+pub trait BlockingLogIterator {
+    /// Fetch next log entry from the iterator.
+    ///
+    /// NOTE that this operation may **BLOCK** caller thread now.
     fn next_log_entry<D: PayloadDecoder>(
         &mut self,
         decoder: &D,
     ) -> Result<Option<LogEntry<D::Target>>>;
 }
 
+/// Vectorwise log entry iterator.
+#[async_trait]
+pub trait BatchLogIterator {
+    /// Fetch next batch of log entries from the iterator to the provided
+    /// `buffer`. This iterator should clear the `buffer` before using it.
+    ///
+    /// Returns the entries if there are remaining log entries, or empty `Vec`
+    /// if the iterator is exhausted.
+    async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
+        &mut self,
+        decoder: D,
+        buffer: VecDeque<LogEntry<D::Target>>,
+    ) -> Result<VecDeque<LogEntry<D::Target>>>;
+}
+
 /// Read abstraction for log entries in the Wal.
+#[async_trait]
 pub trait LogReader {
-    /// Iterator over log entries.
-    type Iterator: LogIterator + Send;
+    /// Batch iterator.
+    type BatchIter: BatchLogIterator + Send;
+
     /// Provide iterator on necessary entries according to `ReadRequest`.
-    fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::Iterator>;
+    async fn read_batch(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::BatchIter>;
 }
 
 // TODO(xikai): define Error as associate type.
@@ -225,7 +257,7 @@ pub trait LogReader {
 #[async_trait]
 pub trait WalManager: LogWriter + LogReader + fmt::Debug {
     /// Get current sequence number.
-    fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
@@ -234,4 +266,60 @@ pub trait WalManager: LogWriter + LogReader + fmt::Debug {
         region_id: RegionId,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
+
+    /// Close the wal gracefully.
+    async fn close_gracefully(&self) -> Result<()>;
+}
+
+/// Adapter to convert a blocking interator to a batch async iterator.
+pub struct BatchLogIteratorAdapter<I> {
+    blocking_iter: Option<I>,
+    runtime: Arc<Runtime>,
+    batch_size: usize,
+}
+
+impl<I: BlockingLogIterator + Send + 'static> BatchLogIteratorAdapter<I> {
+    pub fn new(blocking_iter: I, runtime: Arc<Runtime>, batch_size: usize) -> Self {
+        Self {
+            blocking_iter: Some(blocking_iter),
+            runtime,
+            batch_size,
+        }
+    }
+}
+
+#[async_trait]
+impl<I: BlockingLogIterator + Send + 'static> BatchLogIterator for BatchLogIteratorAdapter<I> {
+    async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
+        &mut self,
+        decoder: D,
+        mut buffer: VecDeque<LogEntry<D::Target>>,
+    ) -> Result<VecDeque<LogEntry<D::Target>>> {
+        if self.blocking_iter.is_none() {
+            return Ok(VecDeque::new());
+        }
+        buffer.clear();
+
+        let mut iter = self.blocking_iter.take().unwrap();
+        let batch_size = self.batch_size;
+        let (log_entries, iter) = self
+            .runtime
+            .spawn_blocking(move || {
+                for _ in 0..batch_size {
+                    if let Some(log_entry) = iter.next_log_entry(&decoder)? {
+                        buffer.push_back(log_entry);
+                    } else {
+                        return Ok((buffer, None));
+                    }
+                }
+
+                Ok((buffer, Some(iter)))
+            })
+            .await
+            .context(RuntimeExec)??;
+
+        self.blocking_iter = iter;
+
+        Ok(log_entries)
+    }
 }

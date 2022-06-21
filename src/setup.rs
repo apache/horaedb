@@ -4,10 +4,12 @@
 
 use std::sync::Arc;
 
-use analytic_engine::{self, setup};
+use analytic_engine::{
+    self,
+    setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
+};
 use catalog_impls::{table_based::TableBasedManager, CatalogManagerImpl};
 use common_util::runtime;
-use df_operator::registry::FunctionRegistryImpl;
 use log::info;
 use logger::RuntimeLevel;
 use query_engine::executor::ExecutorImpl;
@@ -21,6 +23,7 @@ use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
+use udf::registry::FunctionRegistryImpl;
 
 use crate::signal_handler;
 
@@ -67,61 +70,75 @@ pub fn run_server(config: Config) {
     info!("Server starts up, config:{:#?}", config);
 
     runtimes.bg_runtime.block_on(async {
-        // Build all table engine
-        // Create memory engine
-        let memory = MemoryTableEngine;
-        // Create analytic engine
-        let analytic_config = config.analytic.clone();
-        let analytic = setup::open_analytic_table_engine(analytic_config, engine_runtimes)
+        if config.analytic.obkv_wal.enable {
+            run_server_with_runtimes::<ReplicatedEngineBuilder>(config, engine_runtimes).await;
+        } else {
+            run_server_with_runtimes::<RocksEngineBuilder>(config, engine_runtimes).await;
+        }
+    });
+}
+
+async fn run_server_with_runtimes<T>(config: Config, runtimes: Arc<EngineRuntimes>)
+where
+    T: EngineBuilder,
+    T::Target: Clone + Send + Sync + 'static,
+{
+    // Build all table engine
+    // Create memory engine
+    let memory = MemoryTableEngine;
+    // Create analytic engine
+    let analytic_config = config.analytic.clone();
+    let analytic_engine_builder = T::default();
+    let analytic = analytic_engine_builder
+        .build(analytic_config, runtimes.clone())
+        .await
+        .unwrap_or_else(|e| {
+            panic!("Failed to setup analytic engine, err:{}", e);
+        });
+
+    // Create table engine proxy
+    let engine_proxy = Arc::new(TableEngineProxy {
+        memory,
+        analytic: analytic.clone(),
+    });
+
+    // Create catalog manager, use analytic table as backend
+    let catalog_manager = CatalogManagerImpl::new(
+        TableBasedManager::new(&analytic, engine_proxy.clone())
             .await
             .unwrap_or_else(|e| {
-                panic!("Failed to setup analytic engine, err:{}", e);
-            });
+                panic!("Failed to create catalog manager, err:{}", e);
+            }),
+    );
 
-        // Create table engine proxy
-        let engine_proxy = Arc::new(TableEngineProxy {
-            memory,
-            analytic: analytic.clone(),
-        });
-
-        // Create catalog manager, use analytic table as backend
-        let catalog_manager = CatalogManagerImpl::new(
-            TableBasedManager::new(analytic.clone(), engine_proxy.clone())
-                .await
-                .unwrap_or_else(|e| {
-                    panic!("Failed to create catalog manager, err:{}", e);
-                }),
-        );
-
-        // Init function registry.
-        let mut function_registry = FunctionRegistryImpl::new();
-        function_registry.load_functions().unwrap_or_else(|e| {
-            panic!("Failed to create function registry, err:{}", e);
-        });
-        let function_registry = Arc::new(function_registry);
-
-        // Create query executor
-        let query_executor = ExecutorImpl::new();
-
-        // Build and start server
-        let mut server = Builder::new(config)
-            .runtimes(runtimes.clone())
-            .catalog_manager(catalog_manager)
-            .query_executor(query_executor)
-            .table_engine(engine_proxy)
-            .function_registry(function_registry)
-            .build()
-            .unwrap_or_else(|e| {
-                panic!("Failed to create server, err:{}", e);
-            });
-        server.start().await.unwrap_or_else(|e| {
-            panic!("Failed to start server,, err:{}", e);
-        });
-
-        // Wait for signal
-        signal_handler::wait_for_signal();
-
-        // Stop server
-        server.stop();
+    // Init function registry.
+    let mut function_registry = FunctionRegistryImpl::new();
+    function_registry.load_functions().unwrap_or_else(|e| {
+        panic!("Failed to create function registry, err:{}", e);
     });
+    let function_registry = Arc::new(function_registry);
+
+    // Create query executor
+    let query_executor = ExecutorImpl::new();
+
+    // Build and start server
+    let mut server = Builder::new(config)
+        .runtimes(runtimes.clone())
+        .catalog_manager(catalog_manager)
+        .query_executor(query_executor)
+        .table_engine(engine_proxy)
+        .function_registry(function_registry)
+        .build()
+        .unwrap_or_else(|e| {
+            panic!("Failed to create server, err:{}", e);
+        });
+    server.start().await.unwrap_or_else(|e| {
+        panic!("Failed to start server,, err:{}", e);
+    });
+
+    // Wait for signal
+    signal_handler::wait_for_signal();
+
+    // Stop server
+    server.stop();
 }

@@ -1,8 +1,10 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Implementation of Manifest
+
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
+    mem,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -17,10 +19,10 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
-    log_batch::{LogWriteBatch, LogWriteEntry},
+    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
     manager::{
-        LogIterator, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber, WalManager,
-        WriteContext,
+        BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
+        WalManager, WriteContext,
     },
 };
 
@@ -67,9 +69,9 @@ pub enum Error {
     CleanSnapshotState { source: wal::manager::Error },
 
     #[snafu(display(
-        "Snapshot flag log is corrupted, end flag's sequence:{}.\nBacktrace:\n{}",
-        seq,
-        backtrace
+    "Snapshot flag log is corrupted, end flag's sequence:{}.\nBacktrace:\n{}",
+    seq,
+    backtrace
     ))]
     CorruptedSnapshotFlag {
         seq: SequenceNumber,
@@ -87,17 +89,34 @@ trait MetaUpdateLogEntryIterator {
 /// Implementation of [MetaUpdateReader]
 #[derive(Debug)]
 pub struct MetaUpdateReaderImpl<W: WalManager> {
-    iter: W::Iterator,
+    iter: W::BatchIter,
+    has_next: bool,
+    buffer: VecDeque<LogEntry<MetaUpdateLogEntry>>,
 }
 
 #[async_trait]
 impl<W: WalManager + Send + Sync> MetaUpdateLogEntryIterator for MetaUpdateReaderImpl<W> {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
-        let decoder = MetaUpdateDecoder;
+        if !self.has_next {
+            return Ok(None);
+        }
 
-        match self.iter.next_log_entry(&decoder).context(ReadEntry)? {
+        if self.buffer.is_empty() {
+            let decoder = MetaUpdateDecoder;
+            let buffer = mem::take(&mut self.buffer);
+            self.buffer = self
+                .iter
+                .next_log_entries(decoder, buffer)
+                .await
+                .context(ReadEntry)?;
+        }
+
+        match self.buffer.pop_front() {
             Some(entry) => Ok(Some((entry.sequence, entry.payload))),
-            None => Ok(None),
+            None => {
+                self.has_next = false;
+                Ok(None)
+            }
         }
     }
 }
@@ -278,8 +297,16 @@ impl<W: WalManager + Send + Sync> MetaUpdateLogStore for RegionWal<W> {
             start,
             end,
         };
-        let iter = self.wal_manager.read(&ctx, &read_req).context(ReadWal)?;
-        Ok(MetaUpdateReaderImpl { iter })
+        let iter = self
+            .wal_manager
+            .read_batch(&ctx, &read_req)
+            .await
+            .context(ReadWal)?;
+        Ok(MetaUpdateReaderImpl {
+            iter,
+            has_next: true,
+            buffer: VecDeque::with_capacity(ctx.batch_size),
+        })
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
@@ -427,7 +454,7 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                     prev_snapshot_seq,
                     reader,
                 )
-                .await
+                    .await
             }
             None => Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await,
         }
@@ -880,12 +907,12 @@ mod tests {
     }
 
     fn run_basic_manifest_test<F>(ctx: TestContext, update_table_meta: F)
-    where
-        F: for<'a> FnOnce(
-            &'a TestContext,
-            TableId,
-            &'a mut TableManifestDataBuilder,
-        ) -> BoxFuture<'a, ()>,
+        where
+            F: for<'a> FnOnce(
+                &'a TestContext,
+                TableId,
+                &'a mut TableManifestDataBuilder,
+            ) -> BoxFuture<'a, ()>,
     {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
@@ -976,13 +1003,13 @@ mod tests {
                 &mut manifest_data_builder,
                 &manifest,
             )
-            .await;
+                .await;
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.build(),
                 &manifest,
             )
-            .await;
+                .await;
         });
     }
 
@@ -1004,14 +1031,14 @@ mod tests {
                     &mut manifest_data_builder,
                     &manifest,
                 )
-                .await;
+                    .await;
             }
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.clone().build(),
                 &manifest,
             )
-            .await;
+                .await;
 
             manifest.maybe_do_snapshot(table_id).await.unwrap();
             for i in 500..550 {
@@ -1021,14 +1048,14 @@ mod tests {
                     &mut manifest_data_builder,
                     &manifest,
                 )
-                .await;
+                    .await;
             }
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.build(),
                 &manifest,
             )
-            .await;
+                .await;
         });
     }
 
@@ -1102,8 +1129,8 @@ mod tests {
 
     #[async_trait]
     impl<T> MetaUpdateLogEntryIterator for T
-    where
-        T: Iterator<Item = (SequenceNumber, MetaUpdateLogEntry)> + Send + Sync,
+        where
+            T: Iterator<Item = (SequenceNumber, MetaUpdateLogEntry)> + Send + Sync,
     {
         async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
             Ok(self.next())

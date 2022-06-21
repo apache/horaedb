@@ -1,7 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use analytic_engine::tests::util::TestEnv;
-use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
+use analytic_engine::{
+    setup::{EngineBuilder, RocksEngineBuilder},
+    tests::util::TestEnv,
+};use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::executor::ExecutorImpl;
@@ -173,22 +175,30 @@ where
 }
 
 #[tokio::test]
-async fn test_interpreters() {
+async fn test_interpreters_rocks() {
+    test_interpreters::<RocksEngineBuilder>().await;
+}
+
+async fn test_interpreters<T>()
+    where
+        T: EngineBuilder,
+        T::Target: Clone + Send + Sync + 'static,
+{
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
     test_ctx.open().await;
     let mock = MockMetaProvider::default();
     let env = Env {
-        engine: test_ctx.engine(),
+        engine: test_ctx.clone_engine(),
         meta_provider: mock,
     };
 
-    env.test_create_table().await;
-    env.test_desc_table().await;
-    env.test_exists_table().await;
-    env.test_insert_table().await;
-    env.test_select_table().await;
-    env.test_show_create_table().await;
-    env.test_alter_table().await;
-    env.test_drop_table().await;
+    test_create_table(&env).await;
+    test_desc_table(&env).await;
+    test_exists_table(&env).await;
+    test_insert_table(&env).await;
+    test_select_table(&env).await;
+    test_show_create_table(&env).await;
+    test_alter_table(&env).await;
+    test_drop_table(&env).await;
 }

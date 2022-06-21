@@ -2,7 +2,10 @@
 
 //! Open logic of instance
 
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock},
+};
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
@@ -12,7 +15,7 @@ use table_engine::table::TableId;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{LogIterator, ReadBoundary, ReadContext, ReadRequest, WalManager},
+    manager::{BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, WalManager},
 };
 
 use crate::{
@@ -164,15 +167,16 @@ where
         space: SpaceRef,
         table_data: TableDataRef,
         replay_batch_size: usize,
-        log_entry_buf: &mut Vec<LogEntry<ReadPayload>>,
     ) -> Result<Option<TableDataRef>> {
         if let Some(exist_table_data) = space.find_table_by_id(table_data.id) {
             warn!("Open a opened table, table:{}", table_data.name);
             return Ok(Some(exist_table_data));
         }
 
-        let read_ctx = ReadContext::default();
-        log_entry_buf.reserve(replay_batch_size);
+        let read_ctx = ReadContext {
+            batch_size: replay_batch_size,
+            ..Default::default()
+        };
 
         self.recover_table_from_wal(
             worker_local,
