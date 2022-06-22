@@ -2,12 +2,9 @@
 
 //! Sst builder implementation based on parquet.
 
-use std::{
-    io::SeekFrom,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 
 use arrow_deps::{
@@ -52,109 +49,12 @@ impl<'a, S: ObjectStore> ParquetSstBuilder<'a, S> {
     }
 }
 
-/// A memory writer implementing the [ParquetWriter].
-///
-/// The writer accepts the encoded bytes by parquet format and provides the byte
-/// stream to the reader.
-#[derive(Clone, Debug)]
-struct EncodingBuffer {
-    // In order to reuse the buffer, the buffer must be wrapped in the Arc and the Mutex because
-    // the writer is consumed when building a ArrowWriter.
-    inner: EncodingBufferInner,
-}
-
-impl Default for EncodingBuffer {
-    fn default() -> Self {
-        Self {
-            inner: EncodingBufferInner {
-                bytes_written: 0,
-                read_offset: 0,
-                buf: Vec::new(),
-            },
-        }
-    }
-}
-
-impl std::io::Write for EncodingBuffer {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.inner.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.flush()
-    }
-}
-
-impl std::io::Seek for EncodingBuffer {
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        self.inner.seek(pos)
-    }
-}
-
-impl EncodingBuffer {
-    fn into_bytes(self) -> Vec<u8> {
-        self.inner.buf
-    }
-}
-
-/// The underlying buffer implementing [ParquetWriter].
-///
-/// Provides the write function for [ArrowWriter] and read function for
-/// [AsyncRead].
-#[derive(Clone, Debug)]
-struct EncodingBufferInner {
-    bytes_written: usize,
-    read_offset: usize,
-    buf: Vec<u8>,
-}
-
-impl std::io::Write for EncodingBufferInner {
-    /// Write the `buf` to the `self.buf`.
-    ///
-    /// The readable bytes should be exhausted before writing new bytes.
-    /// `self.bytes_written` and `self.read_offset` is updated after writing.
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if self.read_offset != 0 {
-            assert_eq!(self.buf.len(), self.read_offset);
-            self.buf.clear();
-            self.buf.reserve(buf.len());
-            // reset the read offset
-            self.read_offset = 0;
-        }
-
-        let bytes_written = self.buf.write(buf)?;
-        // accumulate the written bytes
-        self.bytes_written += bytes_written;
-
-        Ok(bytes_written)
-    }
-
-    /// Actually nothing to flush.
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl std::io::Seek for EncodingBufferInner {
-    /// Given the assumption that the seek usage of the [ParquetWriter] in the
-    /// parquet project is just `seek(SeekFrom::Current(0))`, the
-    /// implementation panics if seek to a different target.
-    fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
-        if let SeekFrom::Current(offset) = pos {
-            assert_eq!(offset, 0);
-            return Ok(self.bytes_written as u64);
-        }
-
-        unreachable!("Only can handle the case where seek to current(0)")
-    }
-}
-
 /// RecordBytesReader provides AsyncRead implementation for the encoded records
 /// by parquet.
 struct RecordBytesReader {
     request_id: RequestId,
     record_stream: RecordBatchStream,
-    encoding_buffer: EncodingBuffer,
+    encoding_buffer: Vec<u8>,
     num_rows_per_row_group: usize,
     compression: Compression,
     meta_data: SstMetaData,
@@ -235,12 +135,11 @@ impl RecordBytesReader {
             .map_err(|e| Box::new(e) as _)
             .context(EncodeMetaData)?;
 
-        let buf = self.encoding_buffer.into_bytes();
-        Ok(buf)
+        Ok(self.encoding_buffer)
     }
 
     /// Encode the record batch with [ArrowWriter] and the encoded contents is
-    /// written to the [EncodingBuffer].
+    /// written to the buffer.
     fn encode_record_batch<W: std::io::Write>(
         arrow_writer: &mut ArrowWriter<W>,
         arrow_record_batch_vec: Vec<ArrowRecordBatch>,
@@ -280,7 +179,7 @@ impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
         let reader = RecordBytesReader {
             request_id,
             record_stream,
-            encoding_buffer: EncodingBuffer::default(),
+            encoding_buffer: vec![],
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
             total_row_num: total_row_num.clone(),
@@ -415,7 +314,7 @@ mod tests {
             };
 
             let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-            // assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+            assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
             assert_eq!(
                 expected_num_rows,
                 reader
