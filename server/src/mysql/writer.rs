@@ -123,3 +123,58 @@ fn convert_field_type(field: &Datum) -> ColumnType {
         Datum::Null => ColumnType::MYSQL_TYPE_NULL,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use common_types::{datum::Datum, time::Timestamp};
+    use opensrv_mysql::{Column, ColumnFlags, ColumnType};
+
+    use crate::mysql::writer::make_column_by_field;
+
+    struct MakeColumnTest {
+        k: &'static str,
+        v: Datum,
+        target_type: ColumnType,
+    }
+
+    #[test]
+    fn test_make_column_by_field() {
+        let tests = [
+            MakeColumnTest {
+                k: "id",
+                v: Datum::UInt64(1),
+                target_type: ColumnType::MYSQL_TYPE_LONG,
+            },
+            MakeColumnTest {
+                k: "name",
+                v: Datum::String("Bob".into()),
+                target_type: ColumnType::MYSQL_TYPE_VARCHAR,
+            },
+            MakeColumnTest {
+                k: "birthday",
+                v: Datum::Timestamp(Timestamp::now()),
+                target_type: ColumnType::MYSQL_TYPE_LONG,
+            },
+            MakeColumnTest {
+                k: "is_show",
+                v: Datum::Boolean(true),
+                target_type: ColumnType::MYSQL_TYPE_SHORT,
+            },
+            MakeColumnTest {
+                k: "money",
+                v: Datum::Double(12.25),
+                target_type: ColumnType::MYSQL_TYPE_DOUBLE,
+            },
+        ];
+
+        for test in tests {
+            let target_column = Column {
+                table: "".to_string(),
+                column: test.k.to_string(),
+                coltype: test.target_type,
+                colflags: ColumnFlags::default(),
+            };
+            assert_eq!(target_column, make_column_by_field(test.k, &test.v));
+        }
+    }
+}
