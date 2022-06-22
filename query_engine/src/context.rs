@@ -46,7 +46,7 @@ impl Context {
     pub fn builder(request_id: RequestId) -> Builder {
         Builder {
             request_id,
-            df_exec_config: SessionConfig::new(),
+            df_session_config: SessionConfig::new(),
         }
     }
 }
@@ -56,14 +56,14 @@ pub type ContextRef = Arc<Context>;
 #[must_use]
 pub struct Builder {
     request_id: RequestId,
-    df_exec_config: SessionConfig,
+    df_session_config: SessionConfig,
 }
 
 impl Builder {
     /// Set default catalog and schema of this query context
     pub fn default_catalog_and_schema(mut self, catalog: String, schema: String) -> Self {
-        self.df_exec_config = self
-            .df_exec_config
+        self.df_session_config = self
+            .df_session_config
             .with_default_catalog_and_schema(catalog, schema);
 
         self
@@ -71,7 +71,7 @@ impl Builder {
 
     pub fn build(self) -> Context {
         // Always create default catalog and schema now
-        let df_exec_config = { self.df_exec_config };
+        let df_exec_config = { self.df_session_config };
 
         let logical_optimize_rules = Self::logical_optimize_rules();
 

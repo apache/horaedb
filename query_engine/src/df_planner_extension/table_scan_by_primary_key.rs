@@ -94,7 +94,8 @@ impl TableScanByPrimaryKey {
                 // referred to in the query
                 let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
 
-                // todo: check whether we should push this await down to the result stream.
+                // TODO: `scan_table` contains some IO (read metadata) which should not happen
+                // in plan stage. It should be push down to execute stage.
                 table_provider
                     .scan_table(
                         session_state,

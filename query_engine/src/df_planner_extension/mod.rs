@@ -25,7 +25,7 @@ impl QueryPlanner for QueryPlannerAdapter {
     async fn create_physical_plan(
         &self,
         logical_plan: &LogicalPlan,
-        ctx_state: &SessionState,
+        session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(table_scan_by_primary_key::Planner),
@@ -34,7 +34,7 @@ impl QueryPlanner for QueryPlannerAdapter {
 
         let physical_planner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);
         physical_planner
-            .create_physical_plan(logical_plan, ctx_state)
+            .create_physical_plan(logical_plan, session_state)
             .await
     }
 }

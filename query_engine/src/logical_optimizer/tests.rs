@@ -50,7 +50,7 @@ impl TableProvider for MockTableProvider {
 
     async fn scan(
         &self,
-        _ctx: &SessionState,
+        _state: &SessionState,
         _projection: &Option<Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,

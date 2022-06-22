@@ -161,7 +161,6 @@ impl ExecutionPlan for PromAlignExec {
         self.input.output_partitioning()
     }
 
-    // todo: check this ordering
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
         None
     }

@@ -30,7 +30,7 @@ impl ExtensionPlanner for PromAlignPlanner {
         node: &dyn UserDefinedLogicalNode,
         logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _ctx_state: &SessionState,
+        _session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         Ok(
             if let Some(node) = node.as_any().downcast_ref::<PromAlignNode>() {

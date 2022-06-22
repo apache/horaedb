@@ -67,7 +67,7 @@ impl TableProviderAdapter {
 
     pub async fn scan_table(
         &self,
-        ctx: &SessionState,
+        state: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
@@ -106,7 +106,7 @@ impl TableProviderAdapter {
             predicate,
             stream_state: Mutex::new(ScanStreamState::default()),
         });
-        scan_table.maybe_init_stream(ctx).await?;
+        scan_table.maybe_init_stream(state).await?;
 
         Ok(scan_table)
     }
@@ -132,12 +132,12 @@ impl TableProvider for TableProviderAdapter {
 
     async fn scan(
         &self,
-        ctx: &SessionState,
+        state: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(ctx, projection, filters, limit, ReadOrder::None)
+        self.scan_table(state, projection, filters, limit, ReadOrder::None)
             .await
     }
 
@@ -212,11 +212,11 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&self, ctx: &SessionState) -> Result<()> {
+    async fn maybe_init_stream(&self, state: &SessionState) -> Result<()> {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
-                batch_size: ctx.config.batch_size,
+                batch_size: state.config.batch_size,
                 read_parallelism: self.read_parallelism,
             },
             projected_schema: self.projected_schema.clone(),
