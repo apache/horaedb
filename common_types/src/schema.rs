@@ -408,7 +408,7 @@ impl RecordSchemaWithKey {
         self.record_schema
     }
 
-    pub(crate) fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
+    pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
         self.record_schema.to_arrow_schema_ref()
     }
 
