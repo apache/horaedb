@@ -18,6 +18,7 @@ use crate::{
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     mysql,
+    mysql::error::Error as MysqlError,
 };
 
 #[derive(Debug, Snafu)]
@@ -44,14 +45,10 @@ pub enum Error {
     StartHttpService { source: crate::http::Error },
 
     #[snafu(display("Failed to build mysql service, err:{}", source))]
-    BuildMysqlService {
-        source: crate::mysql::MysqlBuilderError,
-    },
+    BuildMysqlService { source: MysqlError },
 
     #[snafu(display("Failed to start mysql service, err:{}", source))]
-    StartMysqlService {
-        source: crate::mysql::MysqlHandlerError,
-    },
+    StartMysqlService { source: MysqlError },
 
     #[snafu(display("Failed to register system catalog, err:{}", source))]
     RegisterSystemCatalog { source: catalog::manager::Error },

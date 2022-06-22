@@ -4,10 +4,13 @@ use std::{net::SocketAddr, sync::Arc};
 
 use catalog::manager::Manager as CatalogManager;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
 
-use crate::{instance::InstanceRef, mysql::handler::MysqlHandler};
+use crate::{
+    instance::InstanceRef,
+    mysql::{error::*, handler::MysqlHandler},
+};
 
 pub struct Builder<C, Q> {
     config: Config,
@@ -20,29 +23,6 @@ pub struct Config {
     pub ip: String,
     pub port: u16,
 }
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Missing runtimes to build service.\nBacktrace:\n{}", backtrace))]
-    MissingRuntimes { backtrace: Backtrace },
-
-    #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
-    MissingInstance { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
-        ip,
-        source,
-        backtrace
-    ))]
-    ParseIpAddr {
-        ip: String,
-        source: std::net::AddrParseError,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
 
 impl<C, Q> Builder<C, Q> {
     pub fn new(config: Config) -> Self {

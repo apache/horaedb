@@ -7,13 +7,13 @@ use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::{
     instance::{Instance, InstanceRef},
-    mysql::worker::MysqlWorker,
+    mysql::{error::*, worker::MysqlWorker},
 };
 pub struct MysqlHandler<C, Q> {
     instance: InstanceRef<C, Q>,
@@ -22,31 +22,6 @@ pub struct MysqlHandler<C, Q> {
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
 }
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "Mysql Server not running, err: {}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    ServerNotRunning {
-        backtrace: Backtrace,
-        source: std::io::Error,
-    },
-
-    #[snafu(display(
-        "Mysql Server Accept a new Connection fail, err:{}.\nBacktrace:\n{},",
-        source,
-        backtrace
-    ))]
-    AcceptConnection {
-        backtrace: Backtrace,
-        source: std::io::Error,
-    },
-}
-
-define_result!(Error);
 
 impl<C, Q> MysqlHandler<C, Q> {
     pub fn new(

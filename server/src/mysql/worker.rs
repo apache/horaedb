@@ -3,37 +3,23 @@
 use std::{io, marker::PhantomData, sync::Arc};
 
 use catalog::manager::Manager as CatalogManager;
-use log::error;
+use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::{ResultExt, Snafu};
+use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
     handlers::{self, sql::Request},
     instance::Instance,
-    mysql::writer::MysqlQueryResultWriter,
+    mysql::{error::*, writer::MysqlQueryResultWriter},
 };
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, C, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<C, Q>>,
     runtimes: Arc<EngineRuntimes>,
 }
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to create request context, err:{}", source))]
-    CreateContext { source: crate::context::Error },
-
-    #[snafu(display("Failed to handle SQL: {}, err:{}", sql, source))]
-    HandleSQL {
-        sql: String,
-        source: crate::handlers::error::Error,
-    },
-}
-
-define_result!(Error);
 
 impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecutor + 'static>
     MysqlWorker<W, C, Q>
@@ -76,7 +62,9 @@ impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecu
         )
     }
 
-    async fn on_close(&mut self, _id: u32) {}
+    async fn on_close(&mut self, _id: u32) {
+        info!("mysql client id{} closes", _id);
+    }
 
     async fn on_query<'a>(
         &'a mut self,
