@@ -957,10 +957,6 @@ impl Builder {
             columns.push(column_schema);
         }
 
-        // FIXME(xikai): Now we have to tolerate the decoding failure because of the bug
-        // of  datafusion (fixed by: https://github.com/apache/arrow-datafusion/commit/1448d9752ab3a38f02732274f91136a6a6ad3db4).
-        //  (The bug may cause the meta data of the schema meta lost duration plan
-        // execution.)
         let ArrowSchemaMeta {
             num_key_columns,
             timestamp_index,
