@@ -317,7 +317,7 @@ pub struct RecordSchema {
 }
 
 impl RecordSchema {
-    fn from_column_schemas(column_schemas: ColumnSchemas) -> Self {
+    fn from_column_schemas(column_schemas: ColumnSchemas, arrow_schema: &ArrowSchemaRef) -> Self {
         // Convert to arrow fields.
         let fields = column_schemas
             .columns
@@ -325,7 +325,10 @@ impl RecordSchema {
             .map(|col| col.to_arrow_field())
             .collect();
         // Build arrow schema.
-        let arrow_schema = Arc::new(ArrowSchema::new(fields));
+        let arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
+            fields,
+            arrow_schema.metadata().to_owned(),
+        ));
 
         Self {
             arrow_schema,
@@ -372,7 +375,7 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 
         let column_schemas = ColumnSchemas::new(columns);
 
-        Ok(Self::from_column_schemas(column_schemas))
+        Ok(Self::from_column_schemas(column_schemas, &arrow_schema))
     }
 }
 
@@ -700,7 +703,8 @@ impl Schema {
             }
         }
 
-        let record_schema = RecordSchema::from_column_schemas(ColumnSchemas::new(columns));
+        let record_schema =
+            RecordSchema::from_column_schemas(ColumnSchemas::new(columns), &self.arrow_schema);
 
         RecordSchemaWithKey {
             record_schema,
@@ -719,7 +723,7 @@ impl Schema {
             columns.push(column_schema.clone());
         }
 
-        RecordSchema::from_column_schemas(ColumnSchemas::new(columns))
+        RecordSchema::from_column_schemas(ColumnSchemas::new(columns), &self.arrow_schema)
     }
 
     /// Returns byte offsets in contiguous row.
