@@ -70,20 +70,19 @@ impl Builder {
 
     pub fn build(self) -> Context {
         // Always create default catalog and schema now
-        let df_exec_config = { self.df_session_config };
 
         let logical_optimize_rules = Self::logical_optimize_rules();
-
-        let mut state = default_session_builder(df_exec_config)
+        let mut state = default_session_builder(self.df_session_config)
             .with_query_planner(Arc::new(QueryPlannerAdapter))
             .with_optimizer_rules(logical_optimize_rules);
         let physical_optimizer =
             Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
         state.physical_optimizers = physical_optimizer;
+        let df_session_ctx = SessionContext::with_state(state);
 
         Context {
             request_id: self.request_id,
-            df_session_ctx: SessionContext::with_state(state),
+            df_session_ctx,
         }
     }
 
