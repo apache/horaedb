@@ -23,7 +23,7 @@ use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
-use udf::registry::FunctionRegistryImpl;
+use df_operator::registry::FunctionRegistryImpl;
 
 use crate::signal_handler;
 
@@ -81,7 +81,6 @@ pub fn run_server(config: Config) {
 async fn run_server_with_runtimes<T>(config: Config, runtimes: Arc<EngineRuntimes>)
 where
     T: EngineBuilder,
-    T::Target: Clone + Send + Sync + 'static,
 {
     // Build all table engine
     // Create memory engine
@@ -104,7 +103,7 @@ where
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = CatalogManagerImpl::new(
-        TableBasedManager::new(&analytic, engine_proxy.clone())
+        TableBasedManager::new(analytic, engine_proxy.clone())
             .await
             .unwrap_or_else(|e| {
                 panic!("Failed to create catalog manager, err:{}", e);

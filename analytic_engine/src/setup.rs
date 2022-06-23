@@ -79,14 +79,12 @@ type InstanceRefOnTableKv<T, Store> =
 /// Analytic engine builder.
 #[async_trait]
 pub trait EngineBuilder: Default {
-    type Target;
-
     /// Build the analytic engine from `config` and `engine_runtimes`.
     async fn build(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<Self::Target>;
+    ) -> Result<TableEngineRef>;
 }
 
 /// [RocksEngine] builder.
@@ -95,8 +93,6 @@ pub struct RocksEngineBuilder;
 
 #[async_trait]
 impl EngineBuilder for RocksEngineBuilder {
-    type Target = TableEngineRef;
-
     async fn build(
         &self,
         config: Config,
@@ -125,8 +121,6 @@ pub struct ReplicatedEngineBuilder;
 
 #[async_trait]
 impl EngineBuilder for ReplicatedEngineBuilder {
-    type Target = TableEngineRef;
-
     async fn build(
         &self,
         config: Config,
@@ -162,8 +156,6 @@ pub struct MemWalEngineBuilder {
 
 #[async_trait]
 impl EngineBuilder for MemWalEngineBuilder {
-    type Target = TableEngineRef;
-
     async fn build(
         &self,
         config: Config,
