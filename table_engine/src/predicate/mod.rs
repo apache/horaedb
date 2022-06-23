@@ -12,11 +12,11 @@ use arrow_deps::{
     },
     datafusion::{
         logical_plan::{Column, Expr, Operator},
-        optimizer::utils as datafusion_util,
         parquet::file::metadata::RowGroupMetaData,
         physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
         scalar::ScalarValue,
     },
+    datafusion_expr::utils::expr_to_columns,
     parquet::file::statistics::Statistics as ParquetStatistics,
 };
 use common_types::{
@@ -122,6 +122,11 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     fn num_containers(&self) -> usize {
         self.row_group_metadata.len()
     }
+
+    // TODO: support this.
+    fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
+        None
+    }
 }
 
 fn build_row_group_predicate(
@@ -177,7 +182,7 @@ impl Predicate {
         let mut results = vec![true; row_groups.len()];
         let arrow_schema: SchemaRef = schema.clone().into_arrow_schema_ref();
         for expr in &self.exprs {
-            match PruningPredicate::try_new(expr, arrow_schema.clone()) {
+            match PruningPredicate::try_new(expr.clone(), arrow_schema.clone()) {
                 Ok(pruning_predicate) => {
                     debug!("pruning_predicate is:{:?}", pruning_predicate);
 
@@ -263,7 +268,7 @@ impl PredicateBuilder {
     /// Returns false if any error occurs.
     fn is_able_to_pushdown(expr: &Expr) -> bool {
         let mut columns = HashSet::new();
-        if let Err(e) = datafusion_util::expr_to_columns(expr, &mut columns) {
+        if let Err(e) = expr_to_columns(expr, &mut columns) {
             error!(
                 "Failed to extract columns from the expr, ignore this expr:{:?}, err:{}",
                 expr, e
@@ -437,7 +442,10 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::RegexMatch
             | Operator::RegexNotMatch
             | Operator::RegexIMatch
-            | Operator::RegexNotIMatch => TimeRange::min_to_max(),
+            | Operator::RegexNotIMatch
+            | Operator::BitwiseAnd
+            | Operator::BitwiseOr
+            | Operator::StringConcat => TimeRange::min_to_max(),
         }
     }
 
@@ -518,7 +526,7 @@ impl<'a> TimeRangeExtractor<'a> {
             }
             Expr::Not(_)
             | Expr::Alias(_, _)
-            | Expr::ScalarVariable(_)
+            | Expr::ScalarVariable(_, _)
             | Expr::Column(_)
             | Expr::Literal(_)
             | Expr::IsNotNull(_)
@@ -534,6 +542,11 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::WindowFunction { .. }
             | Expr::AggregateUDF { .. }
             | Expr::Wildcard { .. }
+            | Expr::Exists { .. }
+            | Expr::InSubquery { .. }
+            | Expr::ScalarSubquery(_)
+            | Expr::QualifiedWildcard { .. }
+            | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. } => TimeRange::min_to_max(),
         }
     }

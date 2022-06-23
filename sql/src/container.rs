@@ -5,13 +5,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 pub use arrow_deps::datafusion::catalog::{ResolvedTableReference, TableReference};
-use table_engine::provider::TableProviderAdapter;
+use arrow_deps::datafusion::datasource::DefaultTableSource;
 
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping
 type CatalogMap = HashMap<String, SchemaMap>;
 type SchemaMap = HashMap<String, TableMap>;
-type TableMap = HashMap<String, Arc<TableProviderAdapter>>;
+type TableMap = HashMap<String, Arc<DefaultTableSource>>;
 
 /// Container to hold table adapters
 ///
@@ -20,7 +20,7 @@ type TableMap = HashMap<String, Arc<TableProviderAdapter>>;
 pub struct TableContainer {
     default_catalog: String,
     default_schema: String,
-    default_tables: HashMap<String, Arc<TableProviderAdapter>>,
+    default_tables: HashMap<String, Arc<DefaultTableSource>>,
     other_tables: CatalogMap,
 }
 
@@ -43,7 +43,7 @@ impl TableContainer {
         }
     }
 
-    pub fn get(&self, name: TableReference) -> Option<Arc<TableProviderAdapter>> {
+    pub fn get(&self, name: TableReference) -> Option<Arc<DefaultTableSource>> {
         match name {
             TableReference::Bare { table } => self.get_default(table),
             TableReference::Partial { schema, table } => {
@@ -67,7 +67,7 @@ impl TableContainer {
         }
     }
 
-    fn get_default(&self, table: &str) -> Option<Arc<TableProviderAdapter>> {
+    fn get_default(&self, table: &str) -> Option<Arc<DefaultTableSource>> {
         self.default_tables.get(table).cloned()
     }
 
@@ -76,7 +76,7 @@ impl TableContainer {
         catalog: &str,
         schema: &str,
         table: &str,
-    ) -> Option<Arc<TableProviderAdapter>> {
+    ) -> Option<Arc<DefaultTableSource>> {
         self.other_tables
             .get(catalog)
             .and_then(|schemas| schemas.get(schema))
@@ -84,7 +84,7 @@ impl TableContainer {
             .cloned()
     }
 
-    pub fn insert(&mut self, name: TableReference, table_adapter: Arc<TableProviderAdapter>) {
+    pub fn insert(&mut self, name: TableReference, table_adapter: Arc<DefaultTableSource>) {
         match name {
             TableReference::Bare { table } => self.insert_default(table, table_adapter),
             TableReference::Partial { schema, table } => {
@@ -118,7 +118,7 @@ impl TableContainer {
         }
     }
 
-    fn insert_default(&mut self, table: &str, table_adapter: Arc<TableProviderAdapter>) {
+    fn insert_default(&mut self, table: &str, table_adapter: Arc<DefaultTableSource>) {
         self.default_tables.insert(table.to_string(), table_adapter);
     }
 
@@ -127,7 +127,7 @@ impl TableContainer {
         catalog: String,
         schema: String,
         table: String,
-        table_adapter: Arc<TableProviderAdapter>,
+        table_adapter: Arc<DefaultTableSource>,
     ) {
         self.other_tables
             .entry(catalog)
@@ -142,7 +142,7 @@ impl TableContainer {
     /// If f returns error, stop iteration and return the error
     pub fn visit<F, E>(&self, mut f: F) -> Result<(), E>
     where
-        F: FnMut(ResolvedTableReference, &Arc<TableProviderAdapter>) -> Result<(), E>,
+        F: FnMut(ResolvedTableReference, &Arc<DefaultTableSource>) -> Result<(), E>,
     {
         // Visit default tables first
         for (table, adapter) in &self.default_tables {

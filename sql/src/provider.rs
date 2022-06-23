@@ -4,11 +4,15 @@
 
 use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
-use arrow_deps::datafusion::{
-    catalog::{catalog::CatalogProvider, schema::SchemaProvider},
-    datasource::TableProvider,
-    physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
-    sql::planner::ContextProvider,
+use arrow_deps::{
+    datafusion::{
+        catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+        common::DataFusionError,
+        datasource::{DefaultTableSource, TableProvider},
+        physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
+        sql::planner::ContextProvider,
+    },
+    datafusion_expr::TableSource,
 };
 use catalog::manager::Manager;
 use common_types::request_id::RequestId;
@@ -200,10 +204,13 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 }
 
 impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
-    fn get_table_provider(&self, name: TableReference) -> Option<Arc<dyn TableProvider>> {
+    fn get_table_provider(
+        &self,
+        name: TableReference,
+    ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
         if let Some(p) = self.table_cache.borrow().get(name) {
-            return Some(p);
+            return Ok(p);
         }
 
         // Find in meta provider
@@ -214,17 +221,24 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
                     self.request_id,
                     self.read_parallelism,
                 ));
+                let table_source = Arc::new(DefaultTableSource {
+                    table_provider: table_adapter,
+                });
                 // Put into cache
                 self.table_cache
                     .borrow_mut()
-                    .insert(name, table_adapter.clone());
+                    .insert(name, table_source.clone());
 
-                Some(table_adapter)
+                Ok(table_source)
             }
-            Ok(None) => None,
+            Ok(None) => Err(DataFusionError::Execution(
+                "MetaProvider not found".to_string(),
+            )),
             Err(e) => {
                 self.maybe_set_err(e);
-                None
+                Err(DataFusionError::Execution(
+                    "MetaProvider not found".to_string(),
+                ))
             }
         }
     }
@@ -254,6 +268,14 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
             }
         }
     }
+
+    // TODO: Variable Type is not supported now
+    fn get_variable_type(
+        &self,
+        _variable_names: &[String],
+    ) -> Option<common_types::schema::DataType> {
+        None
+    }
 }
 
 struct SchemaProviderAdapter {
@@ -271,7 +293,12 @@ impl SchemaProvider for SchemaProviderAdapter {
         let mut names = Vec::new();
         let _ = self.tables.visit::<_, ()>(|name, table| {
             if name.catalog == self.catalog && name.schema == self.schema {
-                names.push(table.as_table_ref().name().to_string());
+                let provider = table
+                    .table_provider
+                    .as_any()
+                    .downcast_ref::<Arc<TableProviderAdapter>>()
+                    .unwrap();
+                names.push(provider.as_table_ref().name().to_string());
             }
             Ok(())
         });
@@ -284,9 +311,12 @@ impl SchemaProvider for SchemaProviderAdapter {
             schema: &self.schema,
             table: name,
         };
-        self.tables
-            .get(name_ref)
-            .map(|v| v as Arc<dyn TableProvider>)
+        self.tables.get(name_ref).map(|v| {
+            v.as_any()
+                .downcast_ref::<Arc<TableProviderAdapter>>()
+                .unwrap()
+                .clone() as _
+        })
     }
 
     fn table_exist(&self, name: &str) -> bool {

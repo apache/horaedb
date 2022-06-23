@@ -3,12 +3,11 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use arrow_deps::datafusion::{
-    execution::context::ExecutionProps,
     logical_plan::{
         plan::{Extension, Filter, Projection, Sort},
         DFSchemaRef, Expr, Limit, LogicalPlan, TableScan,
     },
-    optimizer::optimizer::OptimizerRule,
+    optimizer::{optimizer::OptimizerRule, OptimizerConfig},
 };
 use common_types::schema::Schema;
 use log::info;
@@ -34,7 +33,8 @@ impl OrderByPrimaryKeyRule {
         plan: &LogicalPlan,
     ) -> arrow_deps::datafusion::error::Result<Option<LogicalPlan>> {
         if let LogicalPlan::Limit(Limit {
-            n,
+            skip,
+            fetch,
             input: sort_plan,
         }) = plan
         {
@@ -82,7 +82,8 @@ impl OrderByPrimaryKeyRule {
                                 scan_plan: scan_plan.clone(),
                                 sort_exprs: sort_exprs.clone(),
                                 sort_in_asc_order,
-                                limit: *n,
+                                skip: *skip,
+                                fetch: *fetch,
                             });
                             return Ok(Some(new_plan));
                         }
@@ -178,7 +179,8 @@ impl OrderByPrimaryKeyRule {
         }));
 
         let new_limit_plan = Arc::new(LogicalPlan::Limit(Limit {
-            n: rewrite_ctx.limit,
+            skip: rewrite_ctx.skip,
+            fetch: rewrite_ctx.fetch,
             input: new_project_plan,
         }));
 
@@ -187,7 +189,8 @@ impl OrderByPrimaryKeyRule {
             input: new_limit_plan,
         }));
         LogicalPlan::Limit(Limit {
-            n: rewrite_ctx.limit,
+            skip: rewrite_ctx.skip,
+            fetch: rewrite_ctx.fetch,
             input: new_sort_plan,
         })
     }
@@ -197,7 +200,7 @@ impl OptimizerRule for OrderByPrimaryKeyRule {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        _execution_props: &ExecutionProps,
+        _optimizer_config: &OptimizerConfig,
     ) -> arrow_deps::datafusion::error::Result<LogicalPlan> {
         match self.do_optimize(plan)? {
             Some(new_plan) => {
@@ -224,7 +227,8 @@ struct RewriteContext {
     scan_plan: Arc<LogicalPlan>,
     sort_exprs: Vec<Expr>,
     sort_in_asc_order: bool,
-    limit: usize,
+    skip: Option<usize>,
+    fetch: Option<usize>,
 }
 
 #[cfg(test)]
@@ -320,7 +324,7 @@ mod tests {
             builder
                 .projection(vec![])
                 .sort(sort_exprs.clone())
-                .limit(10)
+                .limit(None, Some(10))
                 .take_plan()
         };
 
@@ -336,9 +340,9 @@ mod tests {
             }
             builder
                 .projection(vec![])
-                .limit(10)
+                .limit(None, Some(10))
                 .sort(sort_exprs)
-                .limit(10)
+                .limit(None, Some(10))
                 .take_plan()
         };
 
@@ -385,7 +389,7 @@ mod tests {
                 .table_scan()
                 .projection(vec![])
                 .sort(sort_exprs)
-                .limit(10)
+                .limit(None, Some(10))
                 .take_plan()
         };
 
@@ -402,7 +406,7 @@ mod tests {
             builder
                 .table_scan()
                 .projection(vec![])
-                .limit(10)
+                .limit(None, Some(10))
                 .take_plan()
         };
 

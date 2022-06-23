@@ -19,7 +19,8 @@ use arrow_deps::{
     },
     datafusion::{
         error::{DataFusionError, Result as ArrowResult},
-        execution::runtime_env::RuntimeEnv,
+        execution::context::TaskContext,
+        physical_expr::PhysicalSortExpr,
         physical_plan::{
             repartition::RepartitionExec, ColumnarValue, DisplayFormatType, ExecutionPlan,
             Partitioning, PhysicalExpr, RecordBatchStream,
@@ -27,7 +28,6 @@ use arrow_deps::{
         },
     },
 };
-use async_trait::async_trait;
 use common_types::{
     schema::{ArrowSchema, ArrowSchemaRef, DataType, TSID_COLUMN},
     time::{TimeRange, Timestamp},
@@ -148,7 +148,6 @@ impl PromAlignExec {
     }
 }
 
-#[async_trait]
 impl ExecutionPlan for PromAlignExec {
     fn as_any(&self) -> &dyn Any {
         self
@@ -162,12 +161,16 @@ impl ExecutionPlan for PromAlignExec {
         self.input.output_partitioning()
     }
 
+    fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
+        None
+    }
+
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
         vec![self.input.clone()]
     }
 
     fn with_new_children(
-        &self,
+        self: Arc<Self>,
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> ArrowResult<Arc<dyn ExecutionPlan>> {
         match children.len() {
@@ -183,14 +186,14 @@ impl ExecutionPlan for PromAlignExec {
         }
     }
 
-    async fn execute(
+    fn execute(
         &self,
         partition: usize,
-        runtime: Arc<RuntimeEnv>,
+        context: Arc<TaskContext>,
     ) -> ArrowResult<DfSendableRecordBatchStream> {
         debug!("PromAlignExec: partition:{}", partition);
         Ok(Box::pin(PromAlignReader {
-            input: self.input.execute(partition, runtime).await?,
+            input: self.input.execute(partition, context)?,
             done: false,
             column_name: self.column_name.clone(),
             align_func: self.align_func.clone(),
