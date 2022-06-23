@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 //! Data models for TableKv based wal.
 
 use std::{str, time::Duration};

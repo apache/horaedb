@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 //! utilities for testing wal module.
 
 use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};

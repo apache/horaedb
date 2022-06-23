@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 //! Obkv implementation.
 
 use std::{collections::HashMap, error::Error as StdError};

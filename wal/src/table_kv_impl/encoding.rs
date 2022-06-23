@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 //! Constants and utils for encoding.
 
 use chrono::{TimeZone, Utc};

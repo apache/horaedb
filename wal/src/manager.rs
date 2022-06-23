@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 //! WalManager abstraction
 
 use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};

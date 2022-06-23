@@ -25,6 +25,6 @@ futures = { version = "0.3", features = ["async-await"] }
 env_logger = "0.6"
 
 [dependencies.rocksdb]
-git = "https://gitlab-ci:f81673c91afb96304098d9ee032f8e@code.alipay.com/github-rs/rust-rocksdb.git"
-branch = "tikv-5.2"
+git = "https://github.com/tikv/rust-rocksdb.git"
+rev = "6f263ec5638835eda5911a34046fc303bc307dc7"
 features = ["portable"]
