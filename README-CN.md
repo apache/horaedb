@@ -127,7 +127,7 @@ CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb
 CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 
 ## 社区
-- [CeresDB 社区角色](docs/community/README-CN.md)
+- [CeresDB 社区角色](docs/community/ROLES-CN.md)
 - [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
 - 邮箱: ceresdbservice@gmail.com
 - [微信群](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
