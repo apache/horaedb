@@ -878,15 +878,13 @@ mod tests {
     };
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
-        engine::{TableEngine, TableState},
+        engine::{TableEngine, TableEngineRef, TableState},
         ANALYTIC_ENGINE_TYPE,
     };
 
     use crate::table_based::TableBasedManager;
 
-    async fn build_catalog_manager<T: TableEngine + Clone + Send + Sync + 'static>(
-        analytic: T,
-    ) -> TableBasedManager {
+    async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
         // Create table engine proxy
         let memory = MemoryTableEngine;
 
@@ -933,12 +931,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_catalog_by_name_schema_by_name() {
+    async fn test_catalog_by_name_schema_by_name_rocks() {
+        test_catalog_by_name_schema_by_name::<RocksEngineBuilder>().await;
+    }
+
+    async fn test_catalog_by_name_schema_by_name<T>()
+    where
+        T: EngineBuilder,
+    {
         let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context();
+        let mut test_ctx = env.new_context::<T>();
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.engine()).await;
+        let catalog_manager = build_catalog_manager(test_ctx.engine().clone()).await;
         let catalog_name = catalog_manager.default_catalog_name();
         let schema_name = catalog_manager.default_schema_name();
         let catalog = catalog_manager.catalog_by_name(catalog_name);
@@ -977,7 +982,6 @@ mod tests {
     async fn test_maybe_create_schema_by_name<T>()
     where
         T: EngineBuilder,
-        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();
@@ -1009,7 +1013,6 @@ mod tests {
     async fn test_create_table<T: EngineBuilder>()
     where
         T: EngineBuilder,
-        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();
@@ -1051,7 +1054,6 @@ mod tests {
     async fn test_drop_table<T>()
     where
         T: EngineBuilder,
-        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();

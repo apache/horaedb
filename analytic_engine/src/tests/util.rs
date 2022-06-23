@@ -26,7 +26,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{open_analytic_table_engine, EngineBuilder},
+    setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
     storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config,
@@ -105,7 +105,7 @@ pub struct TestContext<T: EngineBuilder> {
     pub config: Config,
     runtimes: Arc<EngineRuntimes>,
     builder: T,
-    pub engine: Option<T::Target>,
+    pub engine: Option<TableEngineRef>,
     pub schema_id: SchemaId,
     last_table_seq: u32,
 
@@ -114,10 +114,18 @@ pub struct TestContext<T: EngineBuilder> {
 
 impl<T: EngineBuilder> TestContext<T> {
     pub async fn open(&mut self) {
-        let engine = open_analytic_table_engine(self.config.clone(), self.runtimes.clone())
+        // let engine = if self.config.obkv_wal.enable {
+        //     let builder = ReplicatedEngineBuilder::default();
+        //     builder.build(self.config.clone(), self.runtimes.clone()).await
+        // } else {
+        //     let builder = RocksEngineBuilder::default();
+        //     builder.build(self.config.clone(), self.runtimes.clone()).await
+        // };
+        let engine = self
+            .builder
+            .build(self.config.clone(), self.runtimes.clone())
             .await
             .unwrap();
-
         self.engine = Some(engine);
     }
 
@@ -340,7 +348,7 @@ impl<T: EngineBuilder> TestContext<T> {
     }
 
     #[inline]
-    pub fn engine(&self) -> &T::Target {
+    pub fn engine(&self) -> &TableEngineRef {
         self.engine.as_ref().unwrap()
     }
 
@@ -351,10 +359,7 @@ impl<T: EngineBuilder> TestContext<T> {
 }
 
 impl<T: EngineBuilder> TestContext<T> {
-    pub fn clone_engine(&self) -> T::Target
-    where
-        T::Target: Clone,
-    {
+    pub fn clone_engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
     }
 }

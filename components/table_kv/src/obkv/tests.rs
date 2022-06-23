@@ -161,6 +161,7 @@ fn check_scan_result(expect: &[(&[u8], &[u8])], result: &[(Vec<u8>, Vec<u8>)]) {
 }
 
 #[test]
+#[ignore]
 fn test_obkv() {
     let mut tester = ObkvTester::default();
 

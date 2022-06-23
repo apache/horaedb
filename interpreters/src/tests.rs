@@ -183,7 +183,6 @@ async fn test_interpreters_rocks() {
 async fn test_interpreters<T>()
 where
     T: EngineBuilder,
-    T::Target: Clone + Send + Sync + 'static,
 {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context::<T>();
@@ -194,12 +193,12 @@ where
         meta_provider: mock,
     };
 
-    test_create_table(&env).await;
-    test_desc_table(&env).await;
-    test_exists_table(&env).await;
-    test_insert_table(&env).await;
-    test_select_table(&env).await;
-    test_show_create_table(&env).await;
-    test_alter_table(&env).await;
-    test_drop_table(&env).await;
+    env.test_create_table().await;
+    env.test_desc_table().await;
+    env.test_exists_table().await;
+    env.test_insert_table().await;
+    env.test_select_table().await;
+    env.test_show_create_table().await;
+    env.test_alter_table().await;
+    env.test_drop_table().await;
 }

@@ -10,6 +10,7 @@ use analytic_engine::{
 };
 use catalog_impls::{table_based::TableBasedManager, CatalogManagerImpl};
 use common_util::runtime;
+use df_operator::registry::FunctionRegistryImpl;
 use log::info;
 use logger::RuntimeLevel;
 use query_engine::executor::ExecutorImpl;
@@ -23,7 +24,6 @@ use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
-use df_operator::registry::FunctionRegistryImpl;
 
 use crate::signal_handler;
 

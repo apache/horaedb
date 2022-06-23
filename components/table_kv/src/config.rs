@@ -3,9 +3,12 @@
 use common_util::config::ReadableDuration;
 use serde_derive::{Deserialize, Serialize};
 
-const TEST_FULL_USER_NAME: &str = "athena:majiao_dev0_1465:ceres_user";
-const TEST_URL: &str = "http://api.test.ocp.oceanbase.alibaba.net/services?Action=ObRootServiceInfo&User_ID=alibaba&UID=xuanchao.xc&ObRegion=athena&database=ceresdb";
-const TEST_PASSWORD: &str = "alidbano1";
+// TODO: use test conf to control which environments to test.
+const TEST_FULL_USER_NAME: &str = "user_name";
+const TEST_URL: &str = "url";
+const TEST_PASSWORD: &str = "passwd";
+const TEST_SYS_USER_NAME: &str = "";
+const TEST_SYS_PASSWORD: &str = "";
 
 /// Config of obkv.
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -53,6 +56,8 @@ impl ObkvConfig {
         };
         config.client.metadata_mysql_conn_pool_min_size = 1;
         config.client.metadata_mysql_conn_pool_max_size = 1;
+        config.client.sys_user_name = TEST_SYS_USER_NAME.to_string();
+        config.client.sys_password = TEST_SYS_PASSWORD.to_string();
 
         config
     }
