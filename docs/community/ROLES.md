@@ -1,10 +1,9 @@
 # CeresDB community roles
 
-- [CeresDB community roles](#ceresdb-community-roles)
-    - [Summary](#summary)
-    - [Contributor](#contributor)
-    - [Committer](#committer)
-    - [PMC](#pmc)
+- [Summary](#summary)
+- [Contributor](#contributor)
+- [Committer](#committer)
+- [PMC](#pmc)
 
 ## Summary
 
@@ -22,7 +21,7 @@ The requirements, responsibilities, and authorities for each role are described 
 
 **Requirements**
 
-Submited a PR and merged in any official CeresDB project successfully.
+Submit a PR and get merged in any official CeresDB project.
 
 **Responsibilities**
 

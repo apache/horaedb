@@ -68,6 +68,6 @@
 
 **权限**
 
-- Pull Request review  权限
+- Pull Request review 权限
 - Pull Request approve 权限
 - Merge 权限
