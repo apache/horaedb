@@ -129,7 +129,7 @@ Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/i
 CeresDB is under [Apache License 2.0](./LICENSE).
 
 ## Community and support
-- Check our community [roles](ROLES.md)
+- Check our community [roles](docs/community/ROLES.md)
 - Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw) 
 - Contact us via Email: ceresdbservice@gmail.com
 - WeChat group [QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg) 
