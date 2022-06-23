@@ -7,4 +7,4 @@ mod worker;
 mod writer;
 
 pub use builder::{Builder, Config as MysqlConfig};
-pub use handler::MysqlHandler;
+pub use handler::MysqlService;

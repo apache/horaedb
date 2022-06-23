@@ -15,7 +15,7 @@ use crate::{
     instance::{Instance, InstanceRef},
     mysql::{error::*, worker::MysqlWorker},
 };
-pub struct MysqlHandler<C, Q> {
+pub struct MysqlService<C, Q> {
     instance: InstanceRef<C, Q>,
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
@@ -23,12 +23,12 @@ pub struct MysqlHandler<C, Q> {
     tx: Option<Sender<()>>,
 }
 
-impl<C, Q> MysqlHandler<C, Q> {
+impl<C, Q> MysqlService<C, Q> {
     pub fn new(
         instance: Arc<Instance<C, Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
-    ) -> MysqlHandler<C, Q> {
+    ) -> MysqlService<C, Q> {
         Self {
             instance,
             runtimes,
@@ -39,7 +39,7 @@ impl<C, Q> MysqlHandler<C, Q> {
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlHandler<C, Q> {
+impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlService<C, Q> {
     pub async fn start(&mut self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
 

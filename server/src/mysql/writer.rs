@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use common_types::datum::Datum;
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 
-use crate::handlers::sql::Response;
+use crate::{handlers::sql::Response, mysql::error::*};
 
 pub struct MysqlQueryResultWriter<'a, W: std::io::Write> {
     inner: Option<QueryResultWriter<'a, W>>,
@@ -16,7 +16,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Self { inner: Some(inner) }
     }
 
-    pub fn write(&mut self, query_result: Response) -> std::io::Result<()> {
+    pub fn write(&mut self, query_result: Response) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             return match query_result {
                 Response::AffectedRows(count) => Self::write_affected_rows(inner, count),
@@ -26,7 +26,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Ok(())
     }
 
-    fn write_affected_rows(writer: QueryResultWriter<'a, W>, count: usize) -> std::io::Result<()> {
+    fn write_affected_rows(writer: QueryResultWriter<'a, W>, count: usize) -> Result<()> {
         let res = OkResponse {
             affected_rows: count as u64,
             ..Default::default()
@@ -38,7 +38,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
     fn write_rows(
         writer: QueryResultWriter<'a, W>,
         rows: Vec<HashMap<String, Datum>>,
-    ) -> std::io::Result<()> {
+    ) -> Result<()> {
         let default_response = OkResponse::default();
         if rows.is_empty() {
             writer.completed(default_response)?;

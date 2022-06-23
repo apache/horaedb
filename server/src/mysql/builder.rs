@@ -9,7 +9,7 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     instance::InstanceRef,
-    mysql::{error::*, handler::MysqlHandler},
+    mysql::{error::*, handler::MysqlService},
 };
 
 pub struct Builder<C, Q> {
@@ -45,7 +45,7 @@ impl<C, Q> Builder<C, Q> {
 }
 
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
-    pub fn build(self) -> Result<MysqlHandler<C, Q>> {
+    pub fn build(self) -> Result<MysqlService<C, Q>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
 
@@ -53,7 +53,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             .parse()
             .context(ParseIpAddr { ip: self.config.ip })?;
 
-        let mysql_handler = MysqlHandler::new(instance, runtimes, addr);
+        let mysql_handler = MysqlService::new(instance, runtimes, addr);
         Ok(mysql_handler)
     }
 }

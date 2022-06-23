@@ -67,7 +67,7 @@ define_result!(Error);
 pub struct Server<C, Q> {
     http_service: Service<C, Q>,
     rpc_services: RpcServices,
-    mysql_service: mysql::MysqlHandler<C, Q>,
+    mysql_service: mysql::MysqlService<C, Q>,
 }
 
 impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Server<C, Q> {

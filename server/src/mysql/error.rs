@@ -36,11 +36,20 @@ pub enum Error {
     #[snafu(display("Failed to create request context, err:{}", source))]
     CreateContext { source: crate::context::Error },
 
-    #[snafu(display("Failed to handle SQL: {}, err:{}", sql, source))]
-    HandleSQL {
+    #[snafu(display("Failed to handle sql: {}, err:{}", sql, source))]
+    HandleSql {
         sql: String,
         source: crate::handlers::error::Error,
     },
+
+    #[snafu(display("Unexpected error, err:{}", source))]
+    Unexpected { source: std::io::Error },
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Self::Unexpected { source: e }
+    }
 }
 
 define_result!(Error);
