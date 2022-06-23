@@ -26,7 +26,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{EngineBuilder,open_analytic_table_engine},
+    setup::{open_analytic_table_engine, EngineBuilder},
     storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config,
@@ -352,8 +352,8 @@ impl<T: EngineBuilder> TestContext<T> {
 
 impl<T: EngineBuilder> TestContext<T> {
     pub fn clone_engine(&self) -> T::Target
-        where
-            T::Target: Clone,
+    where
+        T::Target: Clone,
     {
         self.engine.clone().unwrap()
     }

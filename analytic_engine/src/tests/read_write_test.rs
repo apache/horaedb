@@ -111,7 +111,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
 
         util::check_read(
             &test_ctx,
@@ -120,7 +120,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table2,
             &rows,
         )
-            .await;
+        .await;
 
         util::check_read(
             &test_ctx,
@@ -129,7 +129,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table3,
             &rows,
         )
-            .await;
+        .await;
 
         // Reopen db.
         test_ctx
@@ -144,7 +144,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
         util::check_read(
             &test_ctx,
             &fixed_schema_table,
@@ -152,7 +152,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table2,
             &rows,
         )
-            .await;
+        .await;
         util::check_read(
             &test_ctx,
             &fixed_schema_table,
@@ -160,7 +160,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
             test_table3,
             &rows,
         )
-            .await;
+        .await;
     });
 }
 
@@ -224,7 +224,7 @@ fn test_table_write_read<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
 
         // Reopen db.
         test_ctx.reopen_with_tables(&[test_table1]).await;
@@ -237,7 +237,7 @@ fn test_table_write_read<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
     });
 }
 
@@ -300,7 +300,7 @@ fn test_table_write_get<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
 
         // Reopen db.
         test_ctx.reopen_with_tables(&[test_table1]).await;
@@ -312,7 +312,7 @@ fn test_table_write_get<T: EngineBuilder>() {
             test_table1,
             &rows,
         )
-            .await;
+        .await;
     });
 }
 
@@ -476,7 +476,7 @@ fn test_table_write_get_override_case<T: EngineBuilder>(flush_point: FlushPoint)
             test_table1,
             &expect_rows,
         )
-            .await;
+        .await;
 
         // Reopen db.
         test_ctx.reopen_with_tables(&[test_table1]).await;
@@ -488,7 +488,7 @@ fn test_table_write_get_override_case<T: EngineBuilder>(flush_point: FlushPoint)
             test_table1,
             &expect_rows,
         )
-            .await;
+        .await;
     });
 }
 
@@ -614,7 +614,7 @@ fn test_write_buffer_size_overflow<T: EngineBuilder>(test_table_name: &str, env:
             test_table_name,
             &rows,
         )
-            .await;
+        .await;
 
         let stats = table.stats();
         assert_eq!(old_stats.num_read + 5, stats.num_read);
@@ -634,7 +634,7 @@ fn test_write_buffer_size_overflow<T: EngineBuilder>(test_table_name: &str, env:
             test_table_name,
             &rows,
         )
-            .await;
+        .await;
     });
 }
 
@@ -717,7 +717,7 @@ fn test_table_write_read_reverse<T: EngineBuilder>() {
             &expect_reversed_rows,
             ReadOrder::Desc,
         )
-            .await;
+        .await;
     });
 }
 
@@ -808,6 +808,6 @@ fn test_table_write_read_reverse_after_flush<T: EngineBuilder>() {
             &expect_reversed_rows,
             ReadOrder::Desc,
         )
-            .await;
+        .await;
     });
 }

@@ -51,9 +51,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-    "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
-    msg,
-    backtrace
+        "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
+        msg,
+        backtrace
     ))]
     BackgroundFlushFailed { msg: String, backtrace: Backtrace },
 
@@ -206,9 +206,9 @@ impl WorkerLocal {
         block_on_write_thread: bool,
         res_sender: Option<oneshot::Sender<TableResult<()>>>,
     ) -> Result<()>
-        where
-            F: Future<Output = flush_compaction::Result<()>> + Send + 'static,
-            T: Future<Output = ()> + Send + 'static,
+    where
+        F: Future<Output = flush_compaction::Result<()>> + Send + 'static,
+        T: Future<Output = ()> + Send + 'static,
     {
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
@@ -506,7 +506,7 @@ pub async fn process_command_in_write_worker<T, E: std::error::Error + Send + Sy
             table: &table_data.name,
             worker_id: table_data.write_handle.worker_id(),
         }
-            .fail(),
+        .fail(),
     }
 }
 
@@ -527,7 +527,7 @@ pub async fn join_all<T, E: std::error::Error + Send + Sync + 'static>(
                     table: &table_data.name,
                     worker_id: table_data.write_handle.worker_id(),
                 }
-                    .fail()
+                .fail()
             }
         }
     }
@@ -561,11 +561,11 @@ impl WriteGroup {
         opts: Options,
         instance: InstanceRef<Wal, Meta, Store, Fa>,
     ) -> Self
-        where
-            Wal: WalManager + Send + Sync + 'static,
-            Meta: Manifest + Send + Sync + 'static,
-            Store: ObjectStore,
-            Fa: Factory + Send + Sync + 'static,
+    where
+        Wal: WalManager + Send + Sync + 'static,
+        Meta: Manifest + Send + Sync + 'static,
+        Store: ObjectStore,
+        Fa: Factory + Send + Sync + 'static,
     {
         let mut worker_datas = Vec::with_capacity(opts.worker_num);
         let mut handles = Vec::with_capacity(opts.worker_num);
@@ -708,11 +708,11 @@ struct WriteWorker<Wal, Meta, Store, Fa> {
 }
 
 impl<
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
-    Fa: Factory + Send + Sync + 'static,
-> WriteWorker<Wal, Meta, Store, Fa>
+        Wal: WalManager + Send + Sync + 'static,
+        Meta: Manifest + Send + Sync + 'static,
+        Store: ObjectStore,
+        Fa: Factory + Send + Sync + 'static,
+    > WriteWorker<Wal, Meta, Store, Fa>
 {
     /// Runs the write loop until stopped
     async fn run(&mut self) {

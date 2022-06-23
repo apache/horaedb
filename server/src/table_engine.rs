@@ -60,7 +60,7 @@ pub struct TableEngineProxy<T> {
 }
 
 #[async_trait]
-impl<T:TableEngine + Send+Sync+'static> TableEngine for TableEngineProxy {
+impl<T: TableEngine + Send + Sync + 'static> TableEngine for TableEngineProxy {
     fn engine_type(&self) -> &str {
         "TableEngineProxy"
     }

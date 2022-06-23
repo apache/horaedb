@@ -271,10 +271,7 @@ where
         table_data: TableDataRef,
         replay_batch_size: usize,
         read_ctx: &ReadContext,
-        log_entry_buf: &mut Vec<LogEntry<ReadPayload>>,
     ) -> Result<()> {
-        let decoder = WalDecoder::default();
-
         let read_req = ReadRequest {
             region_id: table_data.wal_region_id(),
             start: ReadBoundary::Min,
@@ -285,31 +282,25 @@ where
         let mut log_iter = self
             .space_store
             .wal_manager
-            .read(read_ctx, &read_req)
+            .read_batch(read_ctx, &read_req)
+            .await
             .context(ReadWal)?;
 
+        let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
-            let no_more_data = {
-                log_entry_buf.clear();
-
-                for _ in 0..replay_batch_size {
-                    if let Some(log_entry) = log_iter.next_log_entry(&decoder).context(ReadWal)? {
-                        log_entry_buf.push(log_entry);
-                    } else {
-                        break;
-                    }
-                }
-
-                log_entry_buf.len() < replay_batch_size
-            };
+            let decoder = WalDecoder::default();
+            log_entry_buf = log_iter
+                .next_log_entries(decoder, log_entry_buf)
+                .await
+                .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(worker_local, &table_data, log_entry_buf)
+            self.replay_table_log_entries(worker_local, &*table_data, &log_entry_buf)
                 .await?;
 
             // No more entries.
-            if no_more_data {
+            if log_entry_buf.is_empty() {
                 break;
             }
         }
@@ -321,23 +312,25 @@ where
     async fn replay_table_log_entries(
         &self,
         worker_local: &WorkerLocal,
-        table_data: &TableDataRef,
-        log_entries: &mut [LogEntry<ReadPayload>],
+        table_data: &TableData,
+        log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
         if log_entries.is_empty() {
             // No data in wal
             return Ok(());
         }
 
-        let last_sequence = log_entries.last().unwrap().sequence;
+        let last_sequence = log_entries.back().unwrap().sequence;
 
         info!(
             "Instance replay table log entries begin, table:{}, table_id:{:?}, sequence:{}",
             table_data.name, table_data.id, last_sequence
         );
 
+        // TODO(yingwen): Maybe we need to trigger flush if memtable is full during
+        // recovery Replay entries
         for log_entry in log_entries {
-            let (sequence, payload) = (log_entry.sequence, &mut log_entry.payload);
+            let (sequence, payload) = (log_entry.sequence, &log_entry.payload);
 
             // Apply to memtable
             match payload {
@@ -385,25 +378,6 @@ where
                         table: &table_data.name,
                         table_id: table_data.id,
                     })?;
-
-                    // Flush the table if necessary.
-                    if table_data.should_flush_table(worker_local) {
-                        let flush_req = self
-                            .preprocess_flush_without_race(worker_local, table_data)
-                            .await
-                            .context(FlushTable {
-                                space_id: table_data.space_id,
-                                table: &table_data.name,
-                                table_id: table_data.id,
-                            })?;
-                        self.flush_memtables_to_outputs(&flush_req)
-                            .await
-                            .context(FlushTable {
-                                space_id: table_data.space_id,
-                                table: &table_data.name,
-                                table_id: table_data.id,
-                            })?;
-                    }
                 }
             }
         }

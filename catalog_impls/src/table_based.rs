@@ -884,7 +884,8 @@ mod tests {
 
     use crate::table_based::TableBasedManager;
 
-    async fn build_catalog_manager<T: TableEngine + Clone + Send + Sync + 'static>( analytic: T,
+    async fn build_catalog_manager<T: TableEngine + Clone + Send + Sync + 'static>(
+        analytic: T,
     ) -> TableBasedManager {
         // Create table engine proxy
         let memory = MemoryTableEngine;
@@ -974,9 +975,9 @@ mod tests {
     }
 
     async fn test_maybe_create_schema_by_name<T>()
-        where
-            T: EngineBuilder,
-            T::Target: Clone + Send + Sync + 'static,
+    where
+        T: EngineBuilder,
+        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();
@@ -1006,9 +1007,9 @@ mod tests {
     }
 
     async fn test_create_table<T: EngineBuilder>()
-        where
-            T: EngineBuilder,
-            T::Target: Clone + Send + Sync + 'static,
+    where
+        T: EngineBuilder,
+        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();
@@ -1048,9 +1049,9 @@ mod tests {
     }
 
     async fn test_drop_table<T>()
-        where
-            T: EngineBuilder,
-            T::Target: Clone + Send + Sync + 'static,
+    where
+        T: EngineBuilder,
+        T::Target: Clone + Send + Sync + 'static,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context::<T>();

@@ -82,7 +82,7 @@ fn test_table_compact_current_segment<T: EngineBuilder>() {
             test_table1,
             &expect_rows,
         )
-            .await;
+        .await;
 
         // Trigger a compaction.
         test_ctx.compact_table(test_table1).await;
@@ -95,6 +95,6 @@ fn test_table_compact_current_segment<T: EngineBuilder>() {
             test_table1,
             &expect_rows,
         )
-            .await;
+        .await;
     });
 }

@@ -3,7 +3,8 @@
 use analytic_engine::{
     setup::{EngineBuilder, RocksEngineBuilder},
     tests::util::TestEnv,
-};use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
+};
+use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::executor::ExecutorImpl;
@@ -180,9 +181,9 @@ async fn test_interpreters_rocks() {
 }
 
 async fn test_interpreters<T>()
-    where
-        T: EngineBuilder,
-        T::Target: Clone + Send + Sync + 'static,
+where
+    T: EngineBuilder,
+    T::Target: Clone + Send + Sync + 'static,
 {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context::<T>();

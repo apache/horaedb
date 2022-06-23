@@ -23,9 +23,9 @@ pub mod tests;
 
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
+use storage_options::{LocalOptions, StorageOptions};
 use table_kv::{config::ObkvConfig, memory::MemoryImpl, obkv::ObkvImpl};
 use wal::table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl};
-use storage_options::{LocalOptions, StorageOptions};
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 

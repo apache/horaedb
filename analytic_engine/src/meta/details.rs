@@ -69,9 +69,9 @@ pub enum Error {
     CleanSnapshotState { source: wal::manager::Error },
 
     #[snafu(display(
-    "Snapshot flag log is corrupted, end flag's sequence:{}.\nBacktrace:\n{}",
-    seq,
-    backtrace
+        "Snapshot flag log is corrupted, end flag's sequence:{}.\nBacktrace:\n{}",
+        seq,
+        backtrace
     ))]
     CorruptedSnapshotFlag {
         seq: SequenceNumber,
@@ -454,7 +454,7 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                     prev_snapshot_seq,
                     reader,
                 )
-                    .await
+                .await
             }
             None => Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await,
         }
@@ -907,12 +907,12 @@ mod tests {
     }
 
     fn run_basic_manifest_test<F>(ctx: TestContext, update_table_meta: F)
-        where
-            F: for<'a> FnOnce(
-                &'a TestContext,
-                TableId,
-                &'a mut TableManifestDataBuilder,
-            ) -> BoxFuture<'a, ()>,
+    where
+        F: for<'a> FnOnce(
+            &'a TestContext,
+            TableId,
+            &'a mut TableManifestDataBuilder,
+        ) -> BoxFuture<'a, ()>,
     {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
@@ -1003,13 +1003,13 @@ mod tests {
                 &mut manifest_data_builder,
                 &manifest,
             )
-                .await;
+            .await;
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.build(),
                 &manifest,
             )
-                .await;
+            .await;
         });
     }
 
@@ -1031,14 +1031,14 @@ mod tests {
                     &mut manifest_data_builder,
                     &manifest,
                 )
-                    .await;
+                .await;
             }
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.clone().build(),
                 &manifest,
             )
-                .await;
+            .await;
 
             manifest.maybe_do_snapshot(table_id).await.unwrap();
             for i in 500..550 {
@@ -1048,14 +1048,14 @@ mod tests {
                     &mut manifest_data_builder,
                     &manifest,
                 )
-                    .await;
+                .await;
             }
             ctx.check_table_manifest_data_with_manifest(
                 table_id,
                 &manifest_data_builder.build(),
                 &manifest,
             )
-                .await;
+            .await;
         });
     }
 
@@ -1129,8 +1129,8 @@ mod tests {
 
     #[async_trait]
     impl<T> MetaUpdateLogEntryIterator for T
-        where
-            T: Iterator<Item = (SequenceNumber, MetaUpdateLogEntry)> + Send + Sync,
+    where
+        T: Iterator<Item = (SequenceNumber, MetaUpdateLogEntry)> + Send + Sync,
     {
         async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
             Ok(self.next())

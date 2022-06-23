@@ -277,7 +277,7 @@ async fn alter_schema_add_column_case<T: EngineBuilder>(
         &new_schema,
         &new_schema_row_group,
     )
-        .await;
+    .await;
 
     let old_schema_rows = [
         (
@@ -326,7 +326,7 @@ async fn alter_schema_add_column_case<T: EngineBuilder>(
         &old_schema,
         &old_schema_row_group,
     )
-        .await;
+    .await;
 
     // Reopen db.
     test_ctx.reopen_with_tables(&[table_name]).await;
@@ -339,7 +339,7 @@ async fn alter_schema_add_column_case<T: EngineBuilder>(
         &new_schema,
         &new_schema_row_group,
     )
-        .await;
+    .await;
 }
 
 async fn check_read_row_group<T: EngineBuilder>(
@@ -409,7 +409,7 @@ fn test_alter_table_options<T: EngineBuilder>() {
             "num_rows_per_row_group",
             "10000",
         )
-            .await;
+        .await;
     });
 }
 

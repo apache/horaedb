@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::info;
-use object_store::{ObjectStore};
+use object_store::{LocalFileSystem, ObjectStore};
 use snafu::ResultExt;
 use table_engine::{
     engine::{
@@ -43,11 +43,11 @@ impl<Wal, Meta, Store, Fa> Clone for TableEngineImpl<Wal, Meta, Store, Fa> {
 }
 
 impl<
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
-    Fa,
-> TableEngineImpl<Wal, Meta, Store, Fa>
+        Wal: WalManager + Send + Sync + 'static,
+        Meta: Manifest + Send + Sync + 'static,
+        Store: ObjectStore,
+        Fa,
+    > TableEngineImpl<Wal, Meta, Store, Fa>
 {
     pub fn new(instance: InstanceRef<Wal, Meta, Store, Fa>) -> Self {
         Self { instance }
@@ -62,11 +62,11 @@ impl<Wal, Meta, Store, Fa> Drop for TableEngineImpl<Wal, Meta, Store, Fa> {
 
 #[async_trait]
 impl<
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
-    Fa: Factory + Send + Sync + 'static,
-> TableEngine for TableEngineImpl<Wal, Meta, Store, Fa>
+        Wal: WalManager + Send + Sync + 'static,
+        Meta: Manifest + Send + Sync + 'static,
+        Store: ObjectStore,
+        Fa: Factory + Send + Sync + 'static,
+    > TableEngine for TableEngineImpl<Wal, Meta, Store, Fa>
 {
     fn engine_type(&self) -> &str {
         ANALYTIC_ENGINE_TYPE
@@ -170,17 +170,20 @@ impl<
 }
 
 /// Reference to instance based on rocksdb wal.
-pub(crate) type RocksInstanceRef =
-InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, File, FactoryImpl>;
+pub(crate) type RocksInstanceRef<Store> =
+    InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, Store, FactoryImpl>;
 /// Reference to instance replicating data by obkv wal.
-pub(crate) type ReplicatedInstanceRef =
-InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, File, FactoryImpl>;
+pub(crate) type ReplicatedInstanceRef<Store> =
+    InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, Store, FactoryImpl>;
 /// Engine based on rocksdb wal.
-pub type RocksEngine = TableEngineImpl<RocksImpl, ManifestImpl<RocksImpl>, File, FactoryImpl>;
+pub type RocksEngine =
+    TableEngineImpl<RocksImpl, ManifestImpl<RocksImpl>, Arc<ObjectStore>, FactoryImpl>;
 /// Engine replicating data by obkv wal.
-pub type ReplicatedEngine = TableEngineImpl<ObkvWal, ManifestImpl<ObkvWal>, File, FactoryImpl>;
+pub type ReplicatedEngine =
+    TableEngineImpl<ObkvWal, ManifestImpl<ObkvWal>, Arc<dyn ObjectStore>, FactoryImpl>;
 /// Engine based on in-memory wal, mainly for test.
-pub(crate) type MemWalEngine = TableEngineImpl<MemWal, ManifestImpl<MemWal>, File, FactoryImpl>;
+pub(crate) type MemWalEngine =
+    TableEngineImpl<MemWal, ManifestImpl<MemWal>, Arc<dyn ObjectStore>, FactoryImpl>;
 
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.

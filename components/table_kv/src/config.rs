@@ -130,8 +130,8 @@ pub struct ClientConfig {
 impl From<obkv::ClientConfig> for ClientConfig {
     fn from(client_config: obkv::ClientConfig) -> Self {
         Self {
-            sys_user_name:client_config.sys_user_name,
-            sys_password:client_config.sys_password,
+            sys_user_name: client_config.sys_user_name,
+            sys_password: client_config.sys_password,
             metadata_refresh_interval: client_config.metadata_refresh_interval.into(),
             ocp_model_cache_file: client_config.ocp_model_cache_file,
             rslist_acquire_timeout: client_config.rslist_acquire_timeout.into(),
@@ -183,8 +183,8 @@ impl Default for ClientConfig {
 impl From<ClientConfig> for obkv::ClientConfig {
     fn from(config: ClientConfig) -> obkv::ClientConfig {
         obkv::ClientConfig {
-            sys_user_name:config.sys_user_name,
-            sys_password:config.sys_password,
+            sys_user_name: config.sys_user_name,
+            sys_password: config.sys_password,
             metadata_refresh_interval: config.metadata_refresh_interval.into(),
             ocp_model_cache_file: config.ocp_model_cache_file,
             rslist_acquire_timeout: config.rslist_acquire_timeout.into(),

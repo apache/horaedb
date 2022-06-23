@@ -186,7 +186,7 @@ fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
             test_table1,
             &[],
         )
-            .await;
+        .await;
 
         test_ctx.reopen_with_tables(&[test_table1]).await;
 
@@ -198,7 +198,7 @@ fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
             test_table1,
             &[],
         )
-            .await;
+        .await;
     });
 }
 
