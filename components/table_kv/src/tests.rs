@@ -6,21 +6,25 @@ use log::{error, info};
 use rand::prelude::*;
 
 use super::*;
+use crate::{config::ObkvConfig, memory::MemoryImpl, obkv::ObkvImpl};
 
 const MAX_TABLE_ID: u32 = 30;
 
-struct ObkvTester {
-    obkv: ObkvImpl,
+struct TableKvTester<T: TableKv> {
+    table_kv: T,
     tables: HashSet<String>,
 }
 
-impl ObkvTester {
-    fn new_config() -> ObkvConfig {
-        ObkvConfig::for_test()
+impl<T: TableKv> TableKvTester<T> {
+    fn new(table_kv: T) -> Self {
+        TableKvTester {
+            table_kv,
+            tables: HashSet::new(),
+        }
     }
 
     fn create_table(&mut self, table_name: &str) {
-        self.obkv.create_table(table_name).unwrap();
+        self.table_kv.create_table(table_name).unwrap();
 
         self.tables.insert(table_name.to_string());
     }
@@ -29,33 +33,38 @@ impl ObkvTester {
         self.try_insert_batch(table_name, pairs).unwrap();
     }
 
-    fn try_insert_batch(&self, table_name: &str, pairs: &[(&[u8], &[u8])]) -> Result<()> {
-        let mut batch = ObkvWriteBatch::with_capacity(pairs.len());
+    fn try_insert_batch(
+        &self,
+        table_name: &str,
+        pairs: &[(&[u8], &[u8])],
+    ) -> std::result::Result<(), T::Error> {
+        let mut batch = T::WriteBatch::with_capacity(pairs.len());
         for pair in pairs {
             batch.insert(pair.0, pair.1);
         }
 
-        self.obkv.write(WriteContext::default(), table_name, batch)
+        self.table_kv
+            .write(WriteContext::default(), table_name, batch)
     }
 
     fn insert_or_update_batch(&self, table_name: &str, pairs: &[(&[u8], &[u8])]) {
-        let mut batch = ObkvWriteBatch::with_capacity(pairs.len());
+        let mut batch = T::WriteBatch::with_capacity(pairs.len());
         for pair in pairs {
             batch.insert_or_update(pair.0, pair.1);
         }
 
-        self.obkv
+        self.table_kv
             .write(WriteContext::default(), table_name, batch)
             .unwrap();
     }
 
     fn delete_batch(&self, table_name: &str, keys: &[&[u8]]) {
-        let mut batch = ObkvWriteBatch::with_capacity(keys.len());
+        let mut batch = T::WriteBatch::with_capacity(keys.len());
         for key in keys {
             batch.delete(key);
         }
 
-        self.obkv
+        self.table_kv
             .write(WriteContext::default(), table_name, batch)
             .unwrap();
     }
@@ -66,7 +75,7 @@ impl ObkvTester {
         table_name: &str,
         scan_req: ScanRequest,
     ) -> Vec<(Vec<u8>, Vec<u8>)> {
-        let mut iter = self.obkv.scan(ctx, table_name, scan_req).unwrap();
+        let mut iter = self.table_kv.scan(ctx, table_name, scan_req).unwrap();
 
         let mut pairs = Vec::new();
         while iter.valid() {
@@ -80,52 +89,57 @@ impl ObkvTester {
     }
 
     fn get(&self, table_name: &str, key: &[u8]) -> Option<Vec<u8>> {
-        self.obkv.get(table_name, key).unwrap()
+        self.table_kv.get(table_name, key).unwrap()
     }
 
     fn truncate_table(&self, table_name: &str) {
         info!("truncate table, table_name:{}", table_name);
 
-        self.obkv.truncate_table(table_name).unwrap();
+        self.table_kv.truncate_table(table_name).unwrap();
 
         // It seems that truncate of obkv isn't taking effect immediately.
         std::thread::sleep(Duration::from_secs(1));
     }
 }
 
-impl Default for ObkvTester {
-    fn default() -> Self {
-        let config = Self::new_config();
+impl<T: TableKv> Drop for TableKvTester<T> {
+    fn drop(&mut self) {
+        for table in &self.tables {
+            info!("tester truncate table, table_name:{}", table);
 
-        let obkv = ObkvImpl::new(config).unwrap();
+            if let Err(e) = self.table_kv.truncate_table(table) {
+                error!(
+                    "tester failed to truncate table, table_name:{}, err:{}",
+                    table, e
+                );
+            }
 
-        Self {
-            obkv,
-            tables: HashSet::new(),
+            if let Err(e) = self.table_kv.drop_table(table) {
+                error!(
+                    "tester failed to drop table, table_name:{}, err:{}",
+                    table, e
+                );
+            }
         }
     }
 }
 
-impl Drop for ObkvTester {
-    fn drop(&mut self) {
-        for table in &self.tables {
-            info!("Obkv tester truncate table, table_name:{}", table);
+fn new_obkv_config() -> ObkvConfig {
+    ObkvConfig::for_test()
+}
 
-            if let Err(e) = self.obkv.truncate_table(table) {
-                error!(
-                    "Obkv tester failed to truncate table, table_name:{}, err:{}",
-                    table, e
-                );
-            }
+fn new_obkv_tester() -> TableKvTester<ObkvImpl> {
+    let config = new_obkv_config();
 
-            if let Err(e) = self.obkv.drop_table(table) {
-                error!(
-                    "Obkv tester failed to drop table, table_name:{}, err:{}",
-                    table, e
-                );
-            }
-        }
-    }
+    let table_kv = ObkvImpl::new(config).unwrap();
+
+    TableKvTester::new(table_kv)
+}
+
+fn new_memory_tester() -> TableKvTester<MemoryImpl> {
+    let table_kv = MemoryImpl::default();
+
+    TableKvTester::new(table_kv)
 }
 
 fn random_table_name(prefix: &str) -> String {
@@ -162,13 +176,24 @@ fn check_scan_result(expect: &[(&[u8], &[u8])], result: &[(Vec<u8>, Vec<u8>)]) {
 
 #[test]
 fn test_obkv() {
-    let mut tester = ObkvTester::default();
+    let tester = new_obkv_tester();
 
+    run_table_kv_test(tester);
+}
+
+#[test]
+fn test_memory() {
+    let tester = new_memory_tester();
+
+    run_table_kv_test(tester);
+}
+
+fn run_table_kv_test<T: TableKv>(mut tester: TableKvTester<T>) {
     let table_name = random_table_name("ceresdb");
     tester.create_table(&table_name);
     tester.truncate_table(&table_name);
 
-    info!("test obkv, table_name:{}", table_name);
+    info!("test table kv, table_name:{}", table_name);
 
     test_simple_write_read(&tester, &table_name);
 
@@ -188,7 +213,7 @@ fn test_obkv() {
 }
 
 // This test does a full scan, need to truncate table.
-fn test_simple_write_read(tester: &ObkvTester, table_name: &str) {
+fn test_simple_write_read<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     tester.truncate_table(table_name);
 
     let mut data: [(&[u8], &[u8]); 3] = [
@@ -233,7 +258,7 @@ fn test_simple_write_read(tester: &ObkvTester, table_name: &str) {
     }
 }
 
-fn test_update(tester: &ObkvTester, table_name: &str) {
+fn test_update<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     let data: [(&[u8], &[u8]); 2] = [(b"update:a1", b"value a1"), (b"update:b1", b"value b1")];
 
     tester.insert_or_update_batch(table_name, &data);
@@ -256,34 +281,20 @@ fn test_update(tester: &ObkvTester, table_name: &str) {
     }
 }
 
-fn test_insert_duplicate(tester: &ObkvTester, table_name: &str) {
+fn test_insert_duplicate<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     let data: [(&[u8], &[u8]); 1] = [(b"duplicate:a1", b"value a1")];
 
     tester.insert_batch(table_name, &data);
 
     let ret = tester.try_insert_batch(table_name, &data);
-    check_duplicate_primary_key(ret, table_name);
-}
-
-fn check_duplicate_primary_key(ret: Result<()>, expect_table_name: &str) {
     if let Err(err) = ret {
         assert!(err.is_primary_key_duplicate());
-        if let Error::WriteTable {
-            table_name,
-            source: _,
-            backtrace: _,
-        } = err
-        {
-            assert_eq!(expect_table_name, table_name);
-        } else {
-            panic!("Unexpected insert error, err:{:?}", err);
-        }
     } else {
         panic!("Unexpected insert result, ret:{:?}", ret);
     }
 }
 
-fn test_delete(tester: &ObkvTester, table_name: &str) {
+fn test_delete<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     let data: [(&[u8], &[u8]); 4] = [
         (b"delete:a1", b"value a1"),
         (b"delete:b1", b"value b1"),
@@ -313,7 +324,7 @@ fn test_delete(tester: &ObkvTester, table_name: &str) {
 }
 
 // This test scan to min/max, need to truncate table.
-fn test_min_max_scan(tester: &ObkvTester, table_name: &str) {
+fn test_min_max_scan<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     tester.truncate_table(table_name);
 
     let data: [(&[u8], &[u8]); 5] = [
@@ -394,7 +405,7 @@ fn test_min_max_scan(tester: &ObkvTester, table_name: &str) {
 }
 
 // This test does a full scan, need to truncate table.
-fn test_reverse_scan(tester: &ObkvTester, table_name: &str) {
+fn test_reverse_scan<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     tester.truncate_table(table_name);
 
     let data: [(&[u8], &[u8]); 5] = [
@@ -441,7 +452,7 @@ fn test_reverse_scan(tester: &ObkvTester, table_name: &str) {
     }
 }
 
-fn test_partial_scan(tester: &ObkvTester, table_name: &str) {
+fn test_partial_scan<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     let data: [(&[u8], &[u8]); 7] = [
         (b"partial:a1", b"value a1"),
         (b"partial:b1", b"value b1"),
@@ -499,7 +510,7 @@ fn test_partial_scan(tester: &ObkvTester, table_name: &str) {
     }
 }
 
-fn test_prefix_scan(tester: &ObkvTester, table_name: &str) {
+fn test_prefix_scan<T: TableKv>(tester: &TableKvTester<T>, table_name: &str) {
     let data: [(&[u8], &[u8]); 6] = [
         (b"prefix:a1", b"value a1"),
         (b"prefix:b1", b"value b1"),

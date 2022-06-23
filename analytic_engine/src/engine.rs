@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::info;
-use object_store::{disk::File, ObjectStore};
+use object_store::{ObjectStore};
 use snafu::ResultExt;
 use table_engine::{
     engine::{

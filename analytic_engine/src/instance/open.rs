@@ -183,7 +183,6 @@ where
             table_data.clone(),
             replay_batch_size,
             &read_ctx,
-            log_entry_buf,
         )
         .await?;
 

@@ -3,6 +3,10 @@
 use common_util::config::ReadableDuration;
 use serde_derive::{Deserialize, Serialize};
 
+const TEST_FULL_USER_NAME: &str = "athena:majiao_dev0_1465:ceres_user";
+const TEST_URL: &str = "http://api.test.ocp.oceanbase.alibaba.net/services?Action=ObRootServiceInfo&User_ID=alibaba&UID=xuanchao.xc&ObRegion=athena&database=ceresdb";
+const TEST_PASSWORD: &str = "alidbano1";
+
 /// Config of obkv.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
@@ -37,6 +41,20 @@ impl Default for ObkvConfig {
 impl ObkvConfig {
     pub fn valid(&self) -> bool {
         !self.full_user_name.is_empty() && !self.param_url.is_empty()
+    }
+
+    /// Create a test-only obkv config.
+    pub fn for_test() -> Self {
+        let mut config = ObkvConfig {
+            full_user_name: TEST_FULL_USER_NAME.to_string(),
+            param_url: TEST_URL.to_string(),
+            password: TEST_PASSWORD.to_string(),
+            ..Default::default()
+        };
+        config.client.metadata_mysql_conn_pool_min_size = 1;
+        config.client.metadata_mysql_conn_pool_max_size = 1;
+
+        config
     }
 }
 
@@ -76,6 +94,8 @@ impl From<u16> for ObLogLevel {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
 pub struct ClientConfig {
+    pub sys_user_name: String,
+    pub sys_password: String,
     pub metadata_refresh_interval: ReadableDuration,
     pub ocp_model_cache_file: String,
     pub rslist_acquire_timeout: ReadableDuration,
@@ -110,6 +130,8 @@ pub struct ClientConfig {
 impl From<obkv::ClientConfig> for ClientConfig {
     fn from(client_config: obkv::ClientConfig) -> Self {
         Self {
+            sys_user_name:client_config.sys_user_name,
+            sys_password:client_config.sys_password,
             metadata_refresh_interval: client_config.metadata_refresh_interval.into(),
             ocp_model_cache_file: client_config.ocp_model_cache_file,
             rslist_acquire_timeout: client_config.rslist_acquire_timeout.into(),
@@ -161,6 +183,8 @@ impl Default for ClientConfig {
 impl From<ClientConfig> for obkv::ClientConfig {
     fn from(config: ClientConfig) -> obkv::ClientConfig {
         obkv::ClientConfig {
+            sys_user_name:config.sys_user_name,
+            sys_password:config.sys_password,
             metadata_refresh_interval: config.metadata_refresh_interval.into(),
             ocp_model_cache_file: config.ocp_model_cache_file,
             rslist_acquire_timeout: config.rslist_acquire_timeout.into(),

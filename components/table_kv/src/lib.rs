@@ -2,8 +2,11 @@
 
 use std::time::Duration;
 
-mod config;
+pub mod config;
+pub mod memory;
 pub mod obkv;
+#[cfg(test)]
+mod tests;
 
 /// Context during write.
 #[derive(Default)]
@@ -28,18 +31,21 @@ pub trait WriteBatch: Default {
 
 /// Key to seek.
 #[derive(Debug, Clone)]
-pub enum SeekKey {
-    /// Min key.
-    Min,
-    /// Max key.
-    Max,
-    /// Key with given byte values.
-    Bytes(Vec<u8>),
-}
+pub struct SeekKey(Vec<u8>);
 
 impl From<&[u8]> for SeekKey {
     fn from(key: &[u8]) -> Self {
-        Self::Bytes(key.to_vec())
+        Self(key.to_vec())
+    }
+}
+
+impl SeekKey {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -50,43 +56,59 @@ pub enum KeyBoundary {
     Included(SeekKey),
     /// Excluded key boudary.
     Excluded(SeekKey),
+    /// Include min key, only used as start key boundary.
+    MinIncluded,
+    /// Include max key, only used as end key boundary.
+    MaxIncluded,
 }
 
 impl KeyBoundary {
     pub fn included(key: &[u8]) -> Self {
-        Self::Included(SeekKey::from(key))
+        Self::Included(key.into())
     }
 
     pub fn excluded(key: &[u8]) -> Self {
-        Self::Excluded(SeekKey::from(key))
+        Self::Excluded(key.into())
     }
 
     pub fn min_included() -> Self {
-        Self::Included(SeekKey::Min)
+        Self::MinIncluded
     }
 
     pub fn max_included() -> Self {
-        Self::Included(SeekKey::Max)
+        Self::MaxIncluded
     }
 }
 
 /// Context during scan.
+#[derive(Debug, Clone)]
 pub struct ScanContext {
+    /// Timeout for a single scan operation of the scan iteator. Note that the
+    /// scan iterator continuouslly send scan request to remote server to
+    /// fetch data of next key range, and this timeout is applied to every
+    /// send request, instead of the whole iteration. So user can hold this
+    /// iterator more longer than the `timeout`.
     pub timeout: Duration,
+    /// Batch size of a single scan operation.
     pub batch_size: i32,
+}
+
+impl ScanContext {
+    /// Default scan batch size.
+    pub const DEFAULT_BATCH_SIZE: i32 = 100;
 }
 
 impl Default for ScanContext {
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(10),
-            batch_size: 100,
+            timeout: Duration::from_secs(5),
+            batch_size: Self::DEFAULT_BATCH_SIZE,
         }
     }
 }
 
 /// Scan request.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ScanRequest {
     /// Start bound.
     pub start: KeyBoundary,
@@ -98,7 +120,7 @@ pub struct ScanRequest {
 
 /// Iterator to the scan result.
 pub trait ScanIter {
-    type Error;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     /// Returns true if the iterator is valid.
     fn valid(&self) -> bool;
@@ -119,11 +141,20 @@ pub trait ScanIter {
     fn value(&self) -> &[u8];
 }
 
+/// Error of TableKv.
+pub trait TableError: std::error::Error {
+    /// Is it primary key duplicate error.
+    fn is_primary_key_duplicate(&self) -> bool;
+}
+
 /// Kv service provided by a relational database.
-pub trait TableKv {
-    type Error;
-    type WriteBatch: WriteBatch;
-    type ScanIter: ScanIter;
+pub trait TableKv: Clone + Send + Sync + 'static {
+    type Error: TableError + Send + Sync + 'static;
+    type WriteBatch: WriteBatch + Send;
+    type ScanIter: ScanIter + Send;
+
+    /// Returns true if table with `table_name` already exists.
+    fn table_exists(&self, table_name: &str) -> Result<bool, Self::Error>;
 
     /// Create table with given `table_name` if it is not exist.
     fn create_table(&self, table_name: &str) -> Result<(), Self::Error>;

@@ -1,6 +1,6 @@
 //! Obkv implementation.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error as StdError};
 
 use common_util::define_result;
 use log::{error, info};
@@ -11,8 +11,8 @@ use obkv::{
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    config::ObkvConfig, KeyBoundary, ScanContext, ScanIter, ScanRequest, SeekKey, TableKv,
-    WriteBatch, WriteContext,
+    config::ObkvConfig, KeyBoundary, ScanContext, ScanIter, ScanRequest, SeekKey, TableError,
+    TableKv, WriteBatch, WriteContext,
 };
 
 #[cfg(test)]
@@ -172,6 +172,27 @@ pub enum Error {
 
 define_result!(Error);
 
+impl Error {
+    fn obkv_result_code(&self) -> Option<obkv::ResultCodes> {
+        if let Some(obkv::error::Error::Common(obkv::error::CommonErrCode::ObException(code), _)) =
+            self.source()
+                .and_then(|s| s.downcast_ref::<obkv::error::Error>())
+        {
+            Some(*code)
+        } else {
+            None
+        }
+    }
+}
+
+impl TableError for Error {
+    fn is_primary_key_duplicate(&self) -> bool {
+        self.obkv_result_code().map_or(false, |code| {
+            code == obkv::ResultCodes::OB_ERR_PRIMARY_KEY_DUPLICATE
+        })
+    }
+}
+
 const KEY_COLUMN_NAME: &str = "k";
 const VALUE_COLUMN_NAME: &str = "v";
 const KEY_COLUMN_LEN: usize = 2048;
@@ -231,25 +252,30 @@ impl Default for ObkvWriteBatch {
 
 impl From<&SeekKey> for Value {
     fn from(key: &SeekKey) -> Value {
-        match key {
-            SeekKey::Min => Value::get_min(),
-            SeekKey::Max => Value::get_max(),
-            SeekKey::Bytes(v) => Value::from(v),
-        }
+        Value::from(&key.0)
     }
 }
 
+// Returns (key, equals).
 fn to_scan_range(bound: &KeyBoundary) -> (Vec<Value>, bool) {
     match bound {
         KeyBoundary::Included(v) => (vec![v.into()], true),
         KeyBoundary::Excluded(v) => (vec![v.into()], false),
+        KeyBoundary::MinIncluded => (vec![Value::get_min()], true),
+        KeyBoundary::MaxIncluded => (vec![Value::get_max()], true),
     }
 }
 
 /// Table kv implementation based on obkv.
+#[derive(Clone)]
 pub struct ObkvImpl {
-    config: ObkvConfig,
     client: ObTableClient,
+
+    // The following are configs, if there are too many configs, maybe we should put them
+    // on heap to avoid the `ObkvImpl` struct allocating too much stack size.
+    enable_purge_recyclebin: bool,
+    check_batch_result_num: bool,
+    max_create_table_retries: usize,
 }
 
 impl ObkvImpl {
@@ -282,7 +308,12 @@ impl ObkvImpl {
             config.param_url, config.full_user_name
         );
 
-        Ok(Self { config, client })
+        Ok(Self {
+            client,
+            enable_purge_recyclebin: config.enable_purge_recyclebin,
+            check_batch_result_num: config.check_batch_result_num,
+            max_create_table_retries: config.max_create_table_retries,
+        })
     }
 
     fn try_create_kv_table(&self, table_name: &str) -> Result<()> {
@@ -311,7 +342,7 @@ impl ObkvImpl {
     }
 
     fn try_drop_kv_table(&self, table_name: &str) -> Result<()> {
-        let drop_sql = format_drop_table_sql(table_name, self.config.enable_purge_recyclebin);
+        let drop_sql = format_drop_table_sql(table_name, self.enable_purge_recyclebin);
 
         info!(
             "Try to drop table, table_name:{}, sql:{}",
@@ -339,7 +370,7 @@ impl ObkvImpl {
         expect_num: usize,
     ) -> Result<()> {
         ensure!(
-            !self.config.check_batch_result_num || results.len() == expect_num,
+            !self.check_batch_result_num || results.len() == expect_num,
             UnexpectedResultNum {
                 table_name,
                 expect: expect_num,
@@ -355,6 +386,12 @@ impl TableKv for ObkvImpl {
     type Error = Error;
     type ScanIter = ObkvScanIter;
     type WriteBatch = ObkvWriteBatch;
+
+    fn table_exists(&self, table_name: &str) -> Result<bool> {
+        self.client
+            .check_table_exists(table_name)
+            .context(CheckTable { table_name })
+    }
 
     fn create_table(&self, table_name: &str) -> Result<()> {
         let mut retry = 0;
@@ -375,7 +412,7 @@ impl TableKv for ObkvImpl {
                     );
 
                     retry += 1;
-                    if retry > self.config.max_create_table_retries {
+                    if retry > self.max_create_table_retries {
                         return Err(e);
                     }
                 }
