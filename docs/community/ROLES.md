@@ -1,11 +1,10 @@
 # CeresDB community roles
 
-This document describes the roles in the CeresDB community, as well as the requirements and authority for each role.
-
-- [Summary](#Summary)
-- [Contributor](#contributor)
-- [Committer](#committer)
-- [PMC](#pmc)
+- [CeresDB community roles](#ceresdb-community-roles)
+    - [Summary](#summary)
+    - [Contributor](#contributor)
+    - [Committer](#committer)
+    - [PMC](#pmc)
 
 ## Summary
 
@@ -21,21 +20,21 @@ The requirements, responsibilities, and authorities for each role are described 
 
 ## Contributor
 
-**requirements**
+**Requirements**
 
 Submited a PR and merged in any official CeresDB project successfully.
 
-**responsibilities**
+**Responsibilities**
 
 Respond positively to PRs or issues assigned to you.
 
-**authority**
+**Authority**
 
 Being a member of CeresDB community.
 
 ## Committer
 
-**requirements**
+**Requirements**
 
 New Committers are recommended by existing PMCs and approved by more than 2/3 votes. A committer must meet one or more of the following conditions.
 - Have been a member of the community for more than three months
@@ -43,14 +42,14 @@ New Committers are recommended by existing PMCs and approved by more than 2/3 vo
 - Completed major features
 - Fixed serious bugs
 
-**responsibilities**
+**Responsibilities**
 
 - Support community consultation
 - Respond positively to PRs or issues assigned to you
 - Vote on major community decisions
 - Review PRs from the community
 
-**authority**
+**Authority**
 
 - Join CeresDB GitHub organization
 - Review Pull Requests
@@ -58,17 +57,17 @@ New Committers are recommended by existing PMCs and approved by more than 2/3 vo
 
 ## PMC
 
-**requirements**
+**Requirements**
 
 - More than 2/3 of the existing community PMC voted and approved
 - Focus on project development and participate in community discussions for at least one year
 
-**responsibilities**
+**Responsibilities**
 
 - Actively participate in community discussions and guide major community decisions
 - Ensuring that the community activities of CeresDB open source projects work well
 
-**authority**
+**Authority**
 
 - Review Pull Request
 - Approve Pull Requests

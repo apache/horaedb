@@ -117,7 +117,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 ## Contributing
 Any contribution is welcome!
 
-Read our [Contributing Guide](./docs/community/CONTRIBUTING.md) and make your first contribution!
+Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Architecture and Technical Documentation
 Our technical documents(still under writing and polishing) describes critical parts of ceresdb in the [docs](docs).
