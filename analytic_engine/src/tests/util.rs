@@ -26,7 +26,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
+    setup::EngineBuilder,
     storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config,

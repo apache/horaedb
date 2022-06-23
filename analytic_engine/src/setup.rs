@@ -5,14 +5,14 @@
 use std::{path::Path, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::{define_result, runtime::Runtime};
+use common_util::define_result;
 use object_store::{aliyun::AliyunOSS, LocalFileSystem, ObjectStore};
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
 };
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::{EngineRuntimes, TableEngine, TableEngineRef};
+use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
     manager::{self, WalManager},
@@ -22,13 +22,10 @@ use wal::{
 
 use crate::{
     context::OpenContext,
-    engine::{
-        MemWalEngine, ReplicatedEngine, ReplicatedInstanceRef, RocksEngine, RocksInstanceRef,
-        TableEngineImpl,
-    },
+    engine::{ReplicatedInstanceRef, RocksInstanceRef, TableEngineImpl},
     instance::{Instance, InstanceRef},
     meta::{details::ManifestImpl, Manifest},
-    sst::factory::{Factory, FactoryImpl},
+    sst::factory::FactoryImpl,
     storage_options::{AliyunOptions, LocalOptions},
     Config,
 };

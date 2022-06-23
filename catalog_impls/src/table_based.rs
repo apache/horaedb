@@ -878,7 +878,7 @@ mod tests {
     };
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
-        engine::{TableEngine, TableEngineRef, TableState},
+        engine::{TableEngineRef, TableState},
         ANALYTIC_ENGINE_TYPE,
     };
 

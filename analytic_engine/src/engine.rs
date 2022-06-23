@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::info;
-use object_store::{LocalFileSystem, ObjectStore};
+use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::{
     engine::{
@@ -25,7 +25,7 @@ use crate::{
     space::SpaceId,
     sst::factory::{Factory, FactoryImpl},
     table::TableImpl,
-    MemWal, ObkvWal,
+    ObkvWal,
 };
 
 /// TableEngine implementation
@@ -175,15 +175,6 @@ pub(crate) type RocksInstanceRef<Store> =
 /// Reference to instance replicating data by obkv wal.
 pub(crate) type ReplicatedInstanceRef<Store> =
     InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, Store, FactoryImpl>;
-/// Engine based on rocksdb wal.
-pub type RocksEngine =
-    TableEngineImpl<RocksImpl, ManifestImpl<RocksImpl>, Arc<ObjectStore>, FactoryImpl>;
-/// Engine replicating data by obkv wal.
-pub type ReplicatedEngine =
-    TableEngineImpl<ObkvWal, ManifestImpl<ObkvWal>, Arc<dyn ObjectStore>, FactoryImpl>;
-/// Engine based on in-memory wal, mainly for test.
-pub(crate) type MemWalEngine =
-    TableEngineImpl<MemWal, ManifestImpl<MemWal>, Arc<dyn ObjectStore>, FactoryImpl>;
 
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.

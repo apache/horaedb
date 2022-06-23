@@ -23,8 +23,7 @@ use crate::{
     context::OpenContext,
     instance::{
         engine::{
-            ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
-            RecoverTableData, Result,
+            ApplyMemTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal, RecoverTableData, Result,
         },
         mem_collector::MemUsageCollector,
         write_worker,
