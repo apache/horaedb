@@ -117,7 +117,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 ## Contributing
 Any contribution is welcome!
 
-Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
+Read our [Contributing Guide](./docs/community/CONTRIBUTING.md) and make your first contribution!
 
 ## Architecture and Technical Documentation
 Our technical documents(still under writing and polishing) describes critical parts of ceresdb in the [docs](docs).
@@ -128,9 +128,9 @@ Some design of CeresDB references [influxdb_iox](https://github.com/influxdata/i
 ## Licensing
 CeresDB is under [Apache License 2.0](./LICENSE).
 
-## Community
+## Community and support
 - Check our community [roles](ROLES.md)
 - Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw) 
+- Contact us via Email: ceresdbservice@gmail.com
+- WeChat group [QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg) 
 - Join the user group on DingTalk: 44602802
-- Contact us via Email: ceresdb@service.alipay.com
-- [WeChat QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg) 
