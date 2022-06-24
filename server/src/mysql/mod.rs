@@ -2,9 +2,9 @@
 
 mod builder;
 pub mod error;
-mod handler;
+mod service;
 mod worker;
 mod writer;
 
 pub use builder::{Builder, Config as MysqlConfig};
-pub use handler::MysqlService;
+pub use service::MysqlService;

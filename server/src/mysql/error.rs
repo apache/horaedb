@@ -36,7 +36,7 @@ pub enum Error {
     #[snafu(display("Failed to create request context, err:{}", source))]
     CreateContext { source: crate::context::Error },
 
-    #[snafu(display("Failed to handle sql: {}, err:{}", sql, source))]
+    #[snafu(display("Failed to handle sql:{}, err:{}", sql, source))]
     HandleSql {
         sql: String,
         source: crate::handlers::error::Error,

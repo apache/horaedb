@@ -9,7 +9,10 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     instance::InstanceRef,
-    mysql::{error::*, handler::MysqlService},
+    mysql::{
+        error::{MissingInstance, MissingRuntimes, ParseIpAddr, Result},
+        service::MysqlService,
+    },
 };
 
 pub struct Builder<C, Q> {

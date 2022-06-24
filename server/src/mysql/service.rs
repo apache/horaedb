@@ -13,8 +13,12 @@ use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::{
     instance::{Instance, InstanceRef},
-    mysql::{error::*, worker::MysqlWorker},
+    mysql::{
+        error::{Result, ServerNotRunning},
+        worker::MysqlWorker,
+    },
 };
+
 pub struct MysqlService<C, Q> {
     instance: InstanceRef<C, Q>,
     runtimes: Arc<EngineRuntimes>,

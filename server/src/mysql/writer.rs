@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use common_types::datum::Datum;
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 
-use crate::{handlers::sql::Response, mysql::error::*};
+use crate::{handlers::sql::Response, mysql::error::Result};
 
 pub struct MysqlQueryResultWriter<'a, W: std::io::Write> {
     inner: Option<QueryResultWriter<'a, W>>,

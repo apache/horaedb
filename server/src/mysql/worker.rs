@@ -11,9 +11,15 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
-    handlers::{self, sql::Request},
+    handlers::{
+        self,
+        sql::{Request, Response},
+    },
     instance::Instance,
-    mysql::{error::*, writer::MysqlQueryResultWriter},
+    mysql::{
+        error::{CreateContext, HandleSql, Result},
+        writer::MysqlQueryResultWriter,
+    },
 };
 
 pub struct MysqlWorker<W: std::io::Write + Send + Sync, C, Q> {
@@ -22,8 +28,11 @@ pub struct MysqlWorker<W: std::io::Write + Send + Sync, C, Q> {
     runtimes: Arc<EngineRuntimes>,
 }
 
-impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecutor + 'static>
-    MysqlWorker<W, C, Q>
+impl<W, C, Q> MysqlWorker<W, C, Q>
+where
+    W: std::io::Write + Send + Sync,
+    C: CatalogManager + 'static,
+    Q: QueryExecutor + 'static,
 {
     pub fn new(instance: Arc<Instance<C, Q>>, runtimes: Arc<EngineRuntimes>) -> Self {
         Self {
@@ -35,8 +44,11 @@ impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecu
 }
 
 #[async_trait::async_trait]
-impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecutor + 'static>
-    AsyncMysqlShim<W> for MysqlWorker<W, C, Q>
+impl<W, C, Q> AsyncMysqlShim<W> for MysqlWorker<W, C, Q>
+where
+    W: std::io::Write + Send + Sync,
+    C: CatalogManager + 'static,
+    Q: QueryExecutor + 'static,
 {
     type Error = crate::mysql::error::Error;
 
@@ -72,15 +84,34 @@ impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecu
     async fn on_query<'a>(
         &'a mut self,
         sql: &'a str,
-        results: QueryResultWriter<'a, W>,
+        writer: QueryResultWriter<'a, W>,
     ) -> Result<()> {
-        let ctx = match self.create_ctx() {
-            Ok(res) => res,
-            Err(error) => return Self::err(results, error),
-        };
+        match self.do_query(sql).await {
+            Ok(res) => {
+                let mut writer = MysqlQueryResultWriter::create(writer);
+                writer.write(res)
+            }
+            Err(error) => {
+                error!("{}", error);
+                let error_msg = format!("{}", error);
+                writer.error(ErrorKind::ER_UNKNOWN_ERROR, error_msg.as_bytes())?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl<W, C, Q> MysqlWorker<W, C, Q>
+where
+    W: std::io::Write + Send + Sync,
+    C: CatalogManager + 'static,
+    Q: QueryExecutor + 'static,
+{
+    async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Response> {
+        let ctx = self.create_ctx()?;
 
         let req = Request::from(sql.to_string());
-        let result = handlers::sql::handle_sql(ctx, self.instance.clone(), req)
+        handlers::sql::handle_sql(ctx, self.instance.clone(), req)
             .await
             .map_err(|e| {
                 error!("Mysql service Failed to handle sql, err: {}", e);
@@ -88,25 +119,7 @@ impl<W: std::io::Write + Send + Sync, C: CatalogManager + 'static, Q: QueryExecu
             })
             .context(HandleSql {
                 sql: sql.to_string(),
-            });
-        match result {
-            Ok(res) => {
-                let mut writer = MysqlQueryResultWriter::create(results);
-                writer.write(res)
-            }
-            Err(err) => return Self::err(results, err),
-        }
-    }
-}
-
-impl<W: std::io::Write + Sync + Send, C: CatalogManager + 'static, Q: QueryExecutor + 'static>
-    MysqlWorker<W, C, Q>
-{
-    fn err(writer: QueryResultWriter<'_, W>, error: Error) -> Result<()> {
-        error!("{}", error);
-        let error_msg = format!("{}", error);
-        writer.error(ErrorKind::ER_UNKNOWN_ERROR, error_msg.as_bytes())?;
-        Ok(())
+            })
     }
 
     fn create_ctx(&self) -> Result<RequestContext> {
