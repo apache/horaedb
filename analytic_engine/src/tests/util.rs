@@ -114,13 +114,6 @@ pub struct TestContext<T: EngineBuilder> {
 
 impl<T: EngineBuilder> TestContext<T> {
     pub async fn open(&mut self) {
-        // let engine = if self.config.obkv_wal.enable {
-        //     let builder = ReplicatedEngineBuilder::default();
-        //     builder.build(self.config.clone(), self.runtimes.clone()).await
-        // } else {
-        //     let builder = RocksEngineBuilder::default();
-        //     builder.build(self.config.clone(), self.runtimes.clone()).await
-        // };
         let engine = self
             .builder
             .build(self.config.clone(), self.runtimes.clone())

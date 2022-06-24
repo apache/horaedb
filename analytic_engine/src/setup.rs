@@ -182,12 +182,6 @@ impl EngineBuilder for MemWalEngineBuilder {
                 Ok(Arc::new(TableEngineImpl::new(instance)))
             }
         }
-
-        // let instance =
-        //     open_instance_with_table_kv(config.clone(), engine_runtimes,
-        // self.table_kv.clone(),store)         .await?;
-        //
-        // Ok(TableEngineImpl::new(instance))
     }
 }
 
@@ -319,7 +313,7 @@ where
     let instance = Instance::open(open_ctx, manifest, wal_manager, store, FactoryImpl)
         .await
         .context(OpenInstance)?;
-    return Ok(instance);
+    Ok(instance)
 }
 
 async fn open_storage_local(opts: LocalOptions) -> Result<LocalFileSystem> {
@@ -333,7 +327,7 @@ async fn open_storage_local(opts: LocalOptions) -> Result<LocalFileSystem> {
     LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)
 }
 
-async fn open_storage_aliyun(opts: AliyunOptions) -> Result<AliyunOSS> {
+async fn open_storage_aliyun(opts: AliyunOptions) -> Result<impl ObjectStore> {
     Ok(AliyunOSS::new(
         opts.key_id,
         opts.key_secret,
