@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 common_util = { path = "../../common_util" }
 log = "0.4"
-obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git" }
+obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "d525c6d7d8919d98be9a2590bbfa8c417dda6584" }
 serde = "1.0"
 serde_derive = "1.0"
 snafu = { version = "0.6.10", features = ["backtraces"] }
