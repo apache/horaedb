@@ -44,7 +44,7 @@ pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
     fn schema(&self) -> &RecordSchema;
 }
 
-pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send + Sync>>;
+pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;
 
 /// Record batch streams divided by time range.
 pub struct PartitionedStreams {

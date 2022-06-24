@@ -1,19 +1,23 @@
 [package]
 name = "arrow_deps"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow = "7.0.0"
-parquet = "7.0.0"
+arrow = "15.0.0"
+parquet = "15.0.0"
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
 rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
-git = "https://github.com/apache/arrow-datafusion.git"
-rev = "444c153863520072ea22d4f8c498dee39437516d"
+git = "https://github.com/waynexia/arrow-datafusion.git"
+rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
+
+[dependencies.datafusion-expr]
+git = "https://github.com/waynexia/arrow-datafusion.git"
+rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"

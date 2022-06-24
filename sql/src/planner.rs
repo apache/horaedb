@@ -232,7 +232,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let df_planner = SqlToRel::new(&self.meta_provider);
 
         let df_plan = df_planner
-            .sql_statement_to_plan(&sql_stmt)
+            .sql_statement_to_plan(sql_stmt)
             .context(DataFusionPlan)?;
 
         debug!("Sql statement to datafusion plan, df_plan:\n{:#?}", df_plan);
@@ -252,7 +252,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         debug!("Create table to plan, stmt:{:?}", stmt);
 
         // TODO(yingwen): Maybe support create table on other schema?
-        let table_ref = TableReference::try_from(&stmt.name).context(InvalidCreateTableName)?;
+        let table_name = stmt.name.to_string();
+        let table_ref = TableReference::from(table_name.as_str());
 
         // Now we only takes the table name and ignore the schema and catalog name
         let table = table_ref.table().to_string();
@@ -497,14 +498,13 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn find_table(&self, table_name: ObjectName) -> Result<TableRef> {
-        let table_ref = TableReference::try_from(&table_name).context(InvalidTableName)?;
+        let table_name = table_name.to_string();
+        let table_ref = TableReference::from(table_name.as_str());
 
         self.meta_provider
             .table(table_ref)
             .context(MetaProviderFindTable)?
-            .with_context(|| TableNotFound {
-                name: table_name.to_string(),
-            })
+            .with_context(|| TableNotFound { name: table_name })
     }
 }
 
@@ -638,7 +638,7 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
             return UnsupportedOption { value }.fail();
         }
         // Ignore this option if value is null.
-        Value::Null => None,
+        Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
     };
 
     Ok(value_opt)

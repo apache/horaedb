@@ -5,11 +5,8 @@
 use std::{sync::Arc, time::Instant};
 
 use arrow_deps::parquet::{
-    arrow::{ArrowReader, ParquetFileArrowReader},
-    file::{
-        metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SerializedFileReader,
-    },
-    util::cursor::SliceableCursor,
+    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
+    file::serialized_reader::{ReadOptionsBuilder, SerializedFileReader, SliceableCursor},
 };
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
@@ -20,15 +17,13 @@ use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};
 
-type RowGroupPredicate = Box<dyn Fn(&RowGroupMetaData, usize) -> bool + 'static>;
-
 pub struct ParquetBench {
     store: LocalFileSystem,
     pub sst_file_name: String,
     max_projections: usize,
     projection: Vec<usize>,
-    schema: Schema,
-    predicate: PredicateRef,
+    _schema: Schema,
+    _predicate: PredicateRef,
     batch_size: usize,
     runtime: Arc<Runtime>,
 }
@@ -57,8 +52,8 @@ impl ParquetBench {
             sst_file_name: config.sst_file_name,
             max_projections: config.max_projections,
             projection: Vec::new(),
-            schema,
-            predicate,
+            _schema: schema,
+            _predicate: predicate,
             batch_size: config.read_batch_row_num,
             runtime: Arc::new(runtime),
         }
@@ -86,22 +81,26 @@ impl ParquetBench {
             let open_instant = Instant::now();
             let get_result = self.store.get(&sst_path).await.unwrap();
             let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
-            let mut file_reader = SerializedFileReader::new(cursor).unwrap();
+            // todo: enable predicate filter
+            let read_options = ReadOptionsBuilder::new()
+                .with_predicate(Box::new(move |_, _| true))
+                .build();
+            let file_reader = SerializedFileReader::new_with_options(cursor, read_options).unwrap();
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
-            let row_group_predicate = self.build_row_group_predicate(&file_reader);
-            let mut arrow_reader = {
-                file_reader.filter_row_groups(&row_group_predicate);
-                ParquetFileArrowReader::new(Arc::new(file_reader))
-            };
+            let mut arrow_reader = { ParquetFileArrowReader::new(Arc::new(file_reader)) };
             let filter_cost = filter_begin_instant.elapsed();
 
             let record_reader = if self.projection.is_empty() {
                 arrow_reader.get_record_reader(self.batch_size).unwrap()
             } else {
+                let proj_mask = ProjectionMask::leaves(
+                    arrow_reader.get_metadata().file_metadata().schema_descr(),
+                    self.projection.iter().copied(),
+                );
                 arrow_reader
-                    .get_record_reader_by_columns(self.projection.clone(), self.batch_size)
+                    .get_record_reader_by_columns(proj_mask, self.batch_size)
                     .unwrap()
             };
 
@@ -115,7 +114,8 @@ impl ParquetBench {
             }
 
             info!(
-                "\nParquetBench total rows of sst: {}, total batch num: {}, open cost: {:?}, filter cost: {:?}, iter cost: {:?}",
+                "\nParquetBench total rows of sst:{}, total batch num:{},
+                open cost:{:?}, filter cost:{:?}, iter cost:{:?}",
                 total_rows,
                 batch_num,
                 open_cost,
@@ -123,15 +123,5 @@ impl ParquetBench {
                 iter_begin_instant.elapsed(),
             );
         });
-    }
-
-    fn build_row_group_predicate(
-        &self,
-        file_reader: &SerializedFileReader<SliceableCursor>,
-    ) -> RowGroupPredicate {
-        let row_groups = file_reader.metadata().row_groups();
-        let filter_results = self.predicate.filter_row_groups(&self.schema, row_groups);
-
-        Box::new(move |_, idx: usize| filter_results[idx])
     }
 }

@@ -178,7 +178,7 @@ impl DatumKind {
             | DataType::LargeBinary
             | DataType::FixedSizeBinary(_)
             | DataType::Struct(_)
-            | DataType::Union(_, _)
+            | DataType::Union(_, _, _)
             | DataType::List(_)
             | DataType::LargeList(_)
             | DataType::FixedSizeList(_, _)
@@ -818,7 +818,9 @@ impl<'a> DatumView<'a> {
             | ScalarValue::IntervalYearMonth(_)
             | ScalarValue::IntervalDayTime(_)
             | ScalarValue::Struct(_, _)
-            | ScalarValue::Decimal128(_, _, _) => None,
+            | ScalarValue::Decimal128(_, _, _)
+            | ScalarValue::Null
+            | ScalarValue::IntervalMonthDayNano(_) => None,
         }
     }
 }

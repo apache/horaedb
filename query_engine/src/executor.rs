@@ -87,7 +87,7 @@ impl Executor for ExecutorImpl {
 
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
-        let df_ctx = ctx.df_exec_ctx();
+        let df_ctx = ctx.df_session_ctx();
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
@@ -100,7 +100,7 @@ impl Executor for ExecutorImpl {
             request_id, physical_plan
         );
 
-        let stream = physical_plan.execute().await.context(ExecutePhysical)?;
+        let stream = physical_plan.execute().context(ExecutePhysical)?;
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation

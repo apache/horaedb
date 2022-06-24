@@ -1,7 +1,7 @@
 [package]
 name = "common_types"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,6 +20,6 @@ paste = "1.0"
 proto = { path = "../proto" }
 snafu = { version ="0.6.10", features = ["backtraces"]}
 # TODO(yingwen): Make sqlparser support a feature
-sqlparser = "0.13.0"
+sqlparser = "0.18.0"
 serde = "1.0.81"
 serde_derive = "1.0.81"

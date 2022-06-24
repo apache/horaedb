@@ -59,12 +59,12 @@ impl PhysicalOptimizerImpl {
 #[async_trait]
 impl PhysicalOptimizer for PhysicalOptimizerImpl {
     async fn optimize(&mut self, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-        let exec_ctx = self.ctx.df_exec_ctx();
-        let exec_plan = exec_ctx
+        let session_ctx = self.ctx.df_session_ctx();
+        let exec_plan = session_ctx
             .create_physical_plan(&logical_plan.df_plan)
             .await
             .context(DataFusionOptimize)?;
-        let physical_plan = DataFusionPhysicalPlan::with_plan(exec_ctx.clone(), exec_plan);
+        let physical_plan = DataFusionPhysicalPlan::with_plan(session_ctx.clone(), exec_plan);
 
         Ok(Box::new(physical_plan))
     }

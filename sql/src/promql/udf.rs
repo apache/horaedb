@@ -13,11 +13,9 @@ use arrow_deps::{
     datafusion::{
         error::{DataFusionError, Result as DataFusionResult},
         logical_plan::{create_udf, Expr},
-        physical_plan::{
-            functions::{make_scalar_function, Volatility},
-            udf::ScalarUDF,
-        },
+        physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
     },
+    datafusion_expr::Volatility,
 };
 use common_types::hash::hash64;
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
@@ -163,7 +161,7 @@ mod tests {
             datasource::MemTable,
             error::DataFusionError,
             logical_plan::{col, Expr as DataFusionExpr},
-            prelude::ExecutionContext,
+            prelude::SessionContext,
         },
     };
     use common_types::schema::{ArrowSchema, ArrowSchemaRef, DataType, Field};
@@ -281,7 +279,7 @@ mod tests {
         op: DataFusionExpr,
     ) -> Result<Vec<String>, DataFusionError> {
         let provider = MemTable::try_new(Arc::clone(&schema), rb).unwrap();
-        let mut ctx = ExecutionContext::new();
+        let ctx = SessionContext::new();
         ctx.register_table("t", Arc::new(provider)).unwrap();
 
         let df = ctx.table("t").unwrap();
