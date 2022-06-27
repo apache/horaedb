@@ -5,13 +5,14 @@
 use std::sync::Arc;
 
 use arrow_deps::datafusion::{
-    execution::context::{ExecutionConfig, ExecutionContext},
+    execution::context::default_session_builder,
     optimizer::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
         filter_push_down::FilterPushDown, limit_push_down::LimitPushDown, optimizer::OptimizerRule,
         projection_push_down::ProjectionPushDown, simplify_expressions::SimplifyExpressions,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
+    prelude::{SessionConfig, SessionContext},
 };
 use common_types::request_id::RequestId;
 
@@ -26,14 +27,14 @@ use crate::{
 /// Query context
 pub struct Context {
     request_id: RequestId,
-    df_exec_ctx: ExecutionContext,
+    df_session_ctx: SessionContext,
 }
 
 impl Context {
     // For datafusion, internal use only
     #[inline]
-    pub(crate) fn df_exec_ctx(&self) -> &ExecutionContext {
-        &self.df_exec_ctx
+    pub(crate) fn df_session_ctx(&self) -> &SessionContext {
+        &self.df_session_ctx
     }
 
     #[inline]
@@ -44,7 +45,7 @@ impl Context {
     pub fn builder(request_id: RequestId) -> Builder {
         Builder {
             request_id,
-            df_exec_config: ExecutionConfig::new(),
+            df_session_config: SessionConfig::new(),
         }
     }
 }
@@ -54,14 +55,14 @@ pub type ContextRef = Arc<Context>;
 #[must_use]
 pub struct Builder {
     request_id: RequestId,
-    df_exec_config: ExecutionConfig,
+    df_session_config: SessionConfig,
 }
 
 impl Builder {
     /// Set default catalog and schema of this query context
     pub fn default_catalog_and_schema(mut self, catalog: String, schema: String) -> Self {
-        self.df_exec_config = self
-            .df_exec_config
+        self.df_session_config = self
+            .df_session_config
             .with_default_catalog_and_schema(catalog, schema);
 
         self
@@ -69,20 +70,19 @@ impl Builder {
 
     pub fn build(self) -> Context {
         // Always create default catalog and schema now
-        let df_exec_config = {
-            let adapted_physical_optimize_rules = Self::apply_adapters_for_physical_optimize_rules(
-                &self.df_exec_config.physical_optimizers,
-            );
-            let logical_optimize_rules = Self::logical_optimize_rules();
-            self.df_exec_config
-                .with_query_planner(Arc::new(QueryPlannerAdapter))
-                .with_optimizer_rules(logical_optimize_rules)
-                .with_physical_optimizer_rules(adapted_physical_optimize_rules)
-        };
+
+        let logical_optimize_rules = Self::logical_optimize_rules();
+        let mut state = default_session_builder(self.df_session_config)
+            .with_query_planner(Arc::new(QueryPlannerAdapter))
+            .with_optimizer_rules(logical_optimize_rules);
+        let physical_optimizer =
+            Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
+        state.physical_optimizers = physical_optimizer;
+        let df_session_ctx = SessionContext::with_state(state);
 
         Context {
             request_id: self.request_id,
-            df_exec_ctx: ExecutionContext::with_config(df_exec_config),
+            df_session_ctx,
         }
     }
 
@@ -107,7 +107,7 @@ impl Builder {
             Arc::new(ProjectionPushDown::new()),
             Arc::new(FilterPushDown::new()),
             Arc::new(LimitPushDown::new()),
-            // TODO(xikai): restore this rule after the bug of df is fixed.
+            // TODO: Re-enable this. Issue: https://github.com/CeresDB/ceresdb/issues/59
             // Arc::new(SingleDistinctToGroupBy::new()),
         ];
 

@@ -9,12 +9,13 @@ use std::{
     time::Instant,
 };
 
-pub use arrow_deps::parquet::util::cursor::SliceableCursor;
 use arrow_deps::{
     arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
     parquet::{
-        arrow::{ArrowReader, ParquetFileArrowReader},
-        file::{metadata::RowGroupMetaData, reader::FileReader},
+        arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
+        file::{
+            metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SliceableCursor,
+        },
     },
 };
 use async_trait::async_trait;
@@ -61,16 +62,15 @@ pub async fn read_sst_meta<S: ObjectStore>(
     // read. So under this situation it would be better to pass a local file to
     // it, avoiding consumes lots of memory. Once parquet support stream data source
     // we can feed the `GetResult` to it directly.
-    let bytes = SliceableCursor::new(Arc::new(
-        get_result
-            .bytes()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadPersist {
-                path: path.to_string(),
-            })?
-            .to_vec(),
-    ));
+    let bytes = get_result
+        .bytes()
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .context(ReadPersist {
+            path: path.to_string(),
+        })?
+        .to_vec();
+    let bytes = SliceableCursor::new(Arc::new(bytes));
 
     // generate the file reader
     let file_reader = CachableSerializedFileReader::new(
@@ -90,7 +90,6 @@ pub async fn read_sst_meta<S: ObjectStore>(
             .metadata()
             .file_metadata()
             .key_value_metadata()
-            .as_ref()
             .context(SstMetaNotFound)?;
 
         ensure!(!kv_metas.is_empty(), EmptySstMeta);
@@ -293,8 +292,14 @@ impl ProjectAndFilterReader {
             let reader = if self.projected_schema.is_all_projection() {
                 arrow_reader.get_record_reader(self.batch_size)
             } else {
-                let projection = self.row_projector.existed_source_projection();
-                arrow_reader.get_record_reader_by_columns(projection, self.batch_size)
+                let proj_mask = ProjectionMask::leaves(
+                    arrow_reader.get_metadata().file_metadata().schema_descr(),
+                    self.row_projector
+                        .existed_source_projection()
+                        .iter()
+                        .copied(),
+                );
+                arrow_reader.get_record_reader_by_columns(proj_mask, self.batch_size)
             };
             let reader = reader
                 .map_err(|e| Box::new(e) as _)

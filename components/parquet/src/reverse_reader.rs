@@ -11,6 +11,7 @@ use arrow_deps::{
     parquet::{
         arrow::{
             self, arrow_reader::ParquetRecordBatchReader, ArrowReader, ParquetFileArrowReader,
+            ProjectionMask,
         },
         errors::Result,
         file::{
@@ -105,8 +106,8 @@ impl SingleRowGroupFileReader {
                 // provide the row group's row number because of the reader only contains one row
                 // group.
                 row_group_meta_data.num_rows(),
-                orig_file_meta_data.created_by().clone(),
-                orig_file_meta_data.key_value_metadata().clone(),
+                orig_file_meta_data.created_by().map(str::to_string),
+                orig_file_meta_data.key_value_metadata().cloned(),
                 orig_file_meta_data.schema_descr_ptr(),
                 orig_file_meta_data.column_orders().cloned(),
             );
@@ -169,7 +170,11 @@ impl Builder {
                 SingleRowGroupFileReader::new(self.file_reader.clone(), row_group_idx);
             let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(row_group_file_reader));
             let batch_reader = if let Some(proj) = &self.projection {
-                arrow_reader.get_record_reader_by_columns(proj.iter().cloned(), self.batch_size)?
+                let proj_mask = ProjectionMask::leaves(
+                    self.file_reader.metadata().file_metadata().schema_descr(),
+                    proj.iter().copied(),
+                );
+                arrow_reader.get_record_reader_by_columns(proj_mask, self.batch_size)?
             } else {
                 arrow_reader.get_record_reader(self.batch_size)?
             };

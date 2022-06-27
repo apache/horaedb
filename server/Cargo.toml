@@ -1,7 +1,7 @@
 [package]
 name = "server"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,6 +15,7 @@ catalog = { path = "../catalog" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
+df_operator = { path = "../df_operator" }
 futures = "0.3"
 grpcio = { path = "../grpcio" }
 http = "0.2"
@@ -38,7 +39,6 @@ system_catalog = { path = "../system_catalog" }
 table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }
 twox-hash = "1.6"
-df_operator = { path = "../df_operator" }
 warp = "0.3"
 
 [dev-dependencies]

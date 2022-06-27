@@ -1,7 +1,7 @@
 [package]
 name = "wal"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,5 +20,5 @@ futures = { version = "0.3", features = ["async-await"] }
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "773784178a0e8e5fdad81f4fd85448a3014a3700"
+rev = "6f263ec5638835eda5911a34046fc303bc307dc7"
 features = ["portable"]

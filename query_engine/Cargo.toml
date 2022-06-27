@@ -1,7 +1,7 @@
 [package]
 name = "query_engine"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,9 +12,9 @@ arrow_deps = { path = "../arrow_deps" }
 async-trait = "0.1.53"
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
+df_operator = { path = "../df_operator" }
 futures = "0.3"
 log = "0.4"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 sql = { path = "../sql" }
 table_engine = { path = "../table_engine" }
-df_operator = { path = "../df_operator" }

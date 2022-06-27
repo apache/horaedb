@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_deps::datafusion::{
     physical_optimizer::{coalesce_batches::CoalesceBatches, optimizer::PhysicalOptimizerRule},
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
-    prelude::ExecutionConfig,
+    prelude::SessionConfig,
 };
 
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
@@ -37,7 +37,9 @@ impl CoalesceBatchesAdapter {
     /// `batch_size`).
     fn detect_small_limit_plan(plan: &dyn ExecutionPlan, batch_size: usize) -> bool {
         if let Some(limit_plan) = plan.as_any().downcast_ref::<GlobalLimitExec>() {
-            return limit_plan.limit() < batch_size;
+            return limit_plan.skip().copied().unwrap_or(0)
+                + limit_plan.fetch().copied().unwrap_or(0)
+                < batch_size;
         }
 
         for child_plan in plan.children() {
@@ -55,9 +57,9 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
     fn optimize(
         &self,
         plan: Arc<dyn ExecutionPlan>,
-        config: &ExecutionConfig,
+        config: &SessionConfig,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-        if Self::detect_small_limit_plan(&*plan, config.runtime.batch_size) {
+        if Self::detect_small_limit_plan(&*plan, config.batch_size) {
             Ok(plan)
         } else {
             self.original_rule.optimize(plan, config)

@@ -1,11 +1,9 @@
 # CeresDB 社区角色
 
-本文档描述 CeresDB 社区中成员身份的角色，对每种角色的要求及权限。
-
 - [角色摘要](#角色摘要)
-- [Contributor](#contributor)
-- [Committer](#committer)
-- [PMC](#pmc)
+- [Contributor](#Contributor)
+- [Committer](#Committer)
+- [PMC](#PMC)
 
 ## 角色摘要
 
@@ -70,6 +68,6 @@
 
 **权限**
 
-- Pull Request review  权限
+- Pull Request review 权限
 - Pull Request approve 权限
 - Merge 权限

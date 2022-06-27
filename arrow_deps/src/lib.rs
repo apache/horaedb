@@ -11,4 +11,5 @@ pub mod util;
 // reference in cargo
 pub use arrow;
 pub use datafusion;
+pub use datafusion_expr;
 pub use parquet;

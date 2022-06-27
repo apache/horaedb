@@ -10,16 +10,12 @@ use std::{
 use arrow_deps::{
     arrow::datatypes::DataType,
     datafusion::{
-        error::DataFusionError,
-        physical_plan::{
-            aggregates::{AccumulatorFunctionImplementation, StateTypeFunction},
-            functions::{
-                ReturnTypeFunction, ScalarFunctionImplementation, Signature as DfSignature,
-                TypeSignature as DfTypeSignature, Volatility,
-            },
-            ColumnarValue as DfColumnarValue,
-        },
+        error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
         scalar::ScalarValue as DfScalarValue,
+    },
+    datafusion_expr::{
+        AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
+        Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
     },
 };
 use common_types::{column::ColumnBlock, datum::DatumKind};

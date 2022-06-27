@@ -8,29 +8,34 @@ use std::{
 
 use arrow_deps::datafusion::{
     error::DataFusionError,
-    execution::context::ExecutionContextState,
+    execution::context::SessionState,
     logical_plan::{self, DFSchemaRef, Expr, LogicalPlan, TableScan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
+use async_trait::async_trait;
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
 
 /// The extension planner creates physical plan for the
 /// [`TableScanByPrimaryKey`] which is a logical plan node.
 pub struct Planner;
 
+#[async_trait]
 impl ExtensionPlanner for Planner {
-    fn plan_extension(
+    async fn plan_extension(
         &self,
         _planner: &dyn PhysicalPlanner,
         node: &dyn UserDefinedLogicalNode,
         _logical_inputs: &[&LogicalPlan],
         _physical_inputs: &[Arc<dyn ExecutionPlan>],
-        _ctx_state: &ExecutionContextState,
+        session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
-        node.as_any()
-            .downcast_ref::<TableScanByPrimaryKey>()
-            .map(|order_by_node| order_by_node.build_scan_table_exec_plan())
-            .transpose()
+        let maybe_node = node.as_any().downcast_ref::<TableScanByPrimaryKey>();
+        if let Some(node) = maybe_node {
+            let plan = node.build_scan_table_exec_plan(session_state).await?;
+            Ok(Some(plan))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -62,15 +67,16 @@ impl TableScanByPrimaryKey {
     }
 
     /// Build the scan table [ExecutionPlan].
-    fn build_scan_table_exec_plan(
+    async fn build_scan_table_exec_plan(
         &self,
+        session_state: &SessionState,
     ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         match self.scan_plan.as_ref() {
             LogicalPlan::TableScan(TableScan {
                 source,
                 projection,
                 filters,
-                limit,
+                fetch,
                 ..
             }) => {
                 let table_provider =
@@ -88,12 +94,17 @@ impl TableScanByPrimaryKey {
                 // referred to in the query
                 let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
 
-                table_provider.scan_table(
-                    projection,
-                    &filters,
-                    *limit,
-                    ReadOrder::from_is_asc(Some(self.asc)),
-                )
+                // TODO: `scan_table` contains some IO (read metadata) which should not happen
+                // in plan stage. It should be push down to execute stage.
+                table_provider
+                    .scan_table(
+                        session_state,
+                        projection,
+                        &filters,
+                        *fetch,
+                        ReadOrder::from_is_asc(Some(self.asc)),
+                    )
+                    .await
             }
             _ => Err(DataFusionError::Internal(format!(
                 "expect scan plan, given plan:{:?}",
@@ -132,7 +143,7 @@ impl UserDefinedLogicalNode for TableScanByPrimaryKey {
         &self,
         _exprs: &[Expr],
         _inputs: &[LogicalPlan],
-    ) -> Arc<dyn UserDefinedLogicalNode + Send + Sync> {
+    ) -> Arc<dyn UserDefinedLogicalNode> {
         Arc::new(Self {
             asc: self.asc,
             scan_plan: self.scan_plan.clone(),

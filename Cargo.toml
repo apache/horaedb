@@ -1,7 +1,7 @@
 [package]
 name = "ceresdb"
 version = "0.1.0"
-authors = ["CeresDB Authors <ceresdb@service.alipay.com>"]
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2018"
 resolver = "2"
 
@@ -27,6 +27,7 @@ members = [
     "components/tracing",
     "components/tracing_util",
     "components/tracing_examples",
+    "df_operator",
     "grpcio",
     "interpreters",
     "meta_client",
@@ -36,7 +37,6 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
-    "df_operator",
     "wal",
 ]
 
@@ -50,13 +50,13 @@ catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 clap = "2.0"
 common_util = { path = "common_util" }
+df_operator = { path = "df_operator" }
 log = "0.4"
 logger = { path = "components/logger" }
 query_engine = { path = "query_engine" }
 server = { path = "server" }
 table_engine = { path = "table_engine" }
 tracing_util = { path = "components/tracing_util" }
-df_operator = { path = "df_operator" }
 
 # Crates.io dependencies, in alphabetical order
 signal-hook = "0.3"

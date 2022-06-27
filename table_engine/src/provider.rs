@@ -2,25 +2,30 @@
 
 //! Datafusion `TableProvider` adapter
 
-use std::{any::Any, fmt, sync::Arc};
+use std::{
+    any::Any,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use arrow_deps::{
     arrow::datatypes::SchemaRef,
     datafusion::{
         datasource::datasource::{TableProvider, TableProviderFilterPushDown},
         error::{DataFusionError, Result},
-        execution::runtime_env::RuntimeEnv,
+        execution::context::{SessionState, TaskContext},
         logical_plan::Expr,
+        physical_expr::PhysicalSortExpr,
         physical_plan::{
             DisplayFormatType, ExecutionPlan, Partitioning,
             SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
         },
     },
+    datafusion_expr::{TableSource, TableType},
 };
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use log::debug;
-use tokio::sync::Mutex;
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
@@ -60,8 +65,9 @@ impl TableProviderAdapter {
         &self.table
     }
 
-    pub fn scan_table(
+    pub async fn scan_table(
         &self,
+        state: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
@@ -85,7 +91,7 @@ impl TableProviderAdapter {
         };
 
         let predicate = self.predicate_from_filters(filters);
-        Ok(Arc::new(ScanTable {
+        let scan_table = Arc::new(ScanTable {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.clone())
                 .map_err(|e| {
                     DataFusionError::Internal(format!(
@@ -99,7 +105,10 @@ impl TableProviderAdapter {
             read_parallelism,
             predicate,
             stream_state: Mutex::new(ScanStreamState::default()),
-        }))
+        });
+        scan_table.maybe_init_stream(state).await?;
+
+        Ok(scan_table)
     }
 
     fn predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
@@ -123,13 +132,42 @@ impl TableProvider for TableProviderAdapter {
 
     async fn scan(
         &self,
+        state: &SessionState,
         projection: &Option<Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(projection, filters, limit, ReadOrder::None)
+        self.scan_table(state, projection, filters, limit, ReadOrder::None)
+            .await
     }
 
+    fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
+        Ok(TableProviderFilterPushDown::Inexact)
+    }
+
+    /// Get the type of this table for metadata/catalog purposes.
+    fn table_type(&self) -> TableType {
+        TableType::Base
+    }
+}
+
+impl TableSource for TableProviderAdapter {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    /// Get a reference to the schema for this table
+    fn schema(&self) -> SchemaRef {
+        self.read_schema.clone().into_arrow_schema_ref()
+    }
+
+    /// Get the type of this table for metadata/catalog purposes.
+    fn table_type(&self) -> TableType {
+        TableType::Base
+    }
+
+    /// Tests whether the table provider can make use of a filter expression
+    /// to optimize data retrieval.
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
         Ok(TableProviderFilterPushDown::Inexact)
     }
@@ -174,16 +212,11 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&self, runtime: Arc<RuntimeEnv>) -> Result<()> {
-        let mut stream_state = self.stream_state.lock().await;
-        if stream_state.inited {
-            return Ok(());
-        }
-
+    async fn maybe_init_stream(&self, state: &SessionState) -> Result<()> {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
-                batch_size: runtime.batch_size(),
+                batch_size: state.config.batch_size,
                 read_parallelism: self.read_parallelism,
             },
             projected_schema: self.projected_schema.clone(),
@@ -192,6 +225,12 @@ impl ScanTable {
         };
 
         let read_res = self.table.partitioned_read(req).await;
+
+        let mut stream_state = self.stream_state.lock().unwrap();
+        if stream_state.inited {
+            return Ok(());
+        }
+
         match read_res {
             Ok(partitioned_streams) => {
                 assert_eq!(self.read_parallelism, partitioned_streams.streams.len());
@@ -207,7 +246,6 @@ impl ScanTable {
     }
 }
 
-#[async_trait]
 impl ExecutionPlan for ScanTable {
     fn as_any(&self) -> &dyn Any {
         self
@@ -221,26 +259,31 @@ impl ExecutionPlan for ScanTable {
         Partitioning::RoundRobinBatch(self.read_parallelism)
     }
 
+    fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
+        None
+    }
+
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
         // this is a leaf node and has no children
         vec![]
     }
 
-    fn with_new_children(&self, _: Vec<Arc<dyn ExecutionPlan>>) -> Result<Arc<dyn ExecutionPlan>> {
+    fn with_new_children(
+        self: Arc<Self>,
+        _: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
         Err(DataFusionError::Internal(format!(
             "Children cannot be replaced in {:?}",
             self
         )))
     }
 
-    async fn execute(
+    fn execute(
         &self,
         partition: usize,
-        runtime: Arc<RuntimeEnv>,
+        _context: Arc<TaskContext>,
     ) -> Result<DfSendableRecordBatchStream> {
-        self.maybe_init_stream(runtime).await?;
-
-        let mut stream_state = self.stream_state.lock().await;
+        let mut stream_state = self.stream_state.lock().unwrap();
         let stream = stream_state.take_stream(partition)?;
 
         Ok(Box::pin(ToDfStream(stream)))

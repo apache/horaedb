@@ -265,20 +265,15 @@ impl TryFrom<&Field> for ColumnSchema {
     type Error = Error;
 
     fn try_from(field: &Field) -> Result<Self> {
-        let meta_data = field.metadata().as_ref();
         let ArrowFieldMeta {
             id,
             is_tag,
             comment,
-        } = if let Some(meta_data) = meta_data {
-            decode_arrow_field_meta_data(meta_data)?
-        } else {
-            // FIXME(xikai): Now we have to tolerate the decoding failure because of the bug
-            // of datafusion (fixed by: https://github.com/apache/arrow-datafusion/commit/1448d9752ab3a38f02732274f91136a6a6ad3db4).
-            //  (The bug may cause the meta data of the field meta lost duration plan
-            // execution.)
-            ArrowFieldMeta::default()
-        };
+        } = field
+            .metadata()
+            .map(decode_arrow_field_meta_data)
+            .transpose()?
+            .unwrap_or_default();
         Ok(Self {
             id,
             name: field.name().clone(),
