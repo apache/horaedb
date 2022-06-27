@@ -26,6 +26,12 @@ pub struct Request {
     query: String,
 }
 
+impl From<String> for Request {
+    fn from(query: String) -> Self {
+        Self { query }
+    }
+}
+
 // TODO(yingwen): Improve serialize performance
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -40,7 +46,6 @@ pub async fn handle_sql<C: CatalogManager + 'static, Q: QueryExecutor + 'static>
     request: Request,
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
-
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
         request_id, request

@@ -25,6 +25,7 @@ pub struct RuntimeConfig {
 pub struct Config {
     /// The address to listen.
     pub bind_addr: String,
+    pub mysql_port: u16,
     pub http_port: u16,
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
@@ -67,6 +68,7 @@ impl Default for Config {
         Self {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5000,
+            mysql_port: 3307,
             grpc_port,
             grpc_server_cq_count: 20,
             runtime: RuntimeConfig::default(),
