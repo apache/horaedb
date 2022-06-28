@@ -24,6 +24,7 @@ lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "../components/logger" }
 meta_client = { path = "../meta_client" }
+opensrv-mysql = "0.1.0"
 profile = { path = "../components/profile" }
 protobuf = "2.20"
 query_engine = { path = "../query_engine" }

@@ -20,6 +20,7 @@ mod instance;
 pub mod limiter;
 pub mod logger;
 mod metrics;
+mod mysql;
 mod router;
 pub mod server;
 pub mod table_engine;
