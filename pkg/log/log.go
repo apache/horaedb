@@ -3,10 +3,22 @@
 package log
 
 import (
-	"go.uber.org/zap/zapcore"
+	"fmt"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+func init() {
+	defaultConfig := &Config{
+		Level: "info",
+		File:  "stdout",
+	}
+	_, err := InitGlobalLogger(defaultConfig)
+	if err != nil {
+		fmt.Println("fail to init global logger, err:", err)
+	}
+}
 
 var (
 	globalLogger    *zap.Logger
@@ -36,4 +48,12 @@ func InitGlobalLogger(cfg *Config) (*zap.Logger, error) {
 	globalLogger = logger
 	globalLoggerCfg = &zapCfg
 	return logger, nil
+}
+
+func GetLogger() *zap.Logger {
+	return globalLogger
+}
+
+func GetLoggerConfig() *zap.Config {
+	return globalLoggerCfg
 }

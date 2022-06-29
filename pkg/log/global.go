@@ -8,23 +8,23 @@ import (
 )
 
 func Debug(msg string, fields ...zap.Field) {
-	globalLogger.Debug(msg, fields...)
+	globalLogger.WithOptions(zap.AddCallerSkip(1)).Debug(msg, fields...)
 }
 
 func Info(msg string, fields ...zap.Field) {
-	globalLogger.Info(msg, fields...)
+	globalLogger.WithOptions(zap.AddCallerSkip(1)).Info(msg, fields...)
 }
 
 func Warn(msg string, fields ...zap.Field) {
-	globalLogger.Warn(msg, fields...)
+	globalLogger.WithOptions(zap.AddCallerSkip(1)).Warn(msg, fields...)
 }
 
 func Error(msg string, fields ...zap.Field) {
-	globalLogger.Error(msg, fields...)
+	globalLogger.WithOptions(zap.AddCallerSkip(1)).Error(msg, fields...)
 }
 
 func Panic(msg string, fields ...zap.Field) {
-	globalLogger.Panic(msg, fields...)
+	globalLogger.WithOptions(zap.AddCallerSkip(1)).Panic(msg, fields...)
 }
 
 func Fatal(msg string, fields ...zap.Field) {

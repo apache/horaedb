@@ -14,7 +14,8 @@ import (
 
 const (
 	defaultEtcdStartTimeoutMs int64 = 10 * 1000
-	defaultDailTimeoutMs            = 5 * 1000
+	defaultCallTimeoutMs            = 5 * 1000
+	defaultEtcdLeaseTTLSec          = 10
 
 	defaultNodeNamePrefix          = "ceresmeta"
 	defaultDataDir                 = "/tmp/ceresmeta/data"
@@ -37,7 +38,9 @@ type Config struct {
 	Log log.Config `toml:"log" json:"log"`
 
 	EtcdStartTimeoutMs int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
-	EtcdDialTimeoutMs  int64 `toml:"etcd-dial-timeout-ms" json:"etcd-dial-timeout-ms"`
+	EtcdCallTimeoutMs  int64 `toml:"etcd-call-timeout-ms" json:"etcd-call-timeout-ms"`
+
+	LeaseTTLSec int64 `toml:"lease-sec" json:"lease-sec"`
 
 	NodeName            string `toml:"node-name" json:"node-name"`
 	DataDir             string `toml:"data-dir" json:"data-dir"`
@@ -72,8 +75,8 @@ func (c *Config) EtcdStartTimeout() time.Duration {
 	return time.Duration(c.EtcdStartTimeoutMs) * time.Millisecond
 }
 
-func (c *Config) EtcdDialTimeout() time.Duration {
-	return time.Duration(c.EtcdDialTimeoutMs) * time.Millisecond
+func (c *Config) EtcdCallTimeout() time.Duration {
+	return time.Duration(c.EtcdCallTimeoutMs) * time.Millisecond
 }
 
 // ValidateAndAdjust validates the config fields and adjusts some fields which should be adjusted.
@@ -164,10 +167,8 @@ func MakeConfigParser() (*Parser, error) {
 	fs.StringVar(&cfg.Log.File, "log-file", log.DefaultLogFile, "file for log output")
 
 	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
-	fs.Int64Var(&cfg.EtcdDialTimeoutMs, "etcd-dial-timeout-ms", defaultDailTimeoutMs, "timeout for dialing etcd server")
-
-	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
-	fs.Int64Var(&cfg.EtcdDialTimeoutMs, "etcd-dial-timeout-ms", defaultDailTimeoutMs, "timeout for dialing etcd server")
+	fs.Int64Var(&cfg.EtcdCallTimeoutMs, "etcd-dial-timeout-ms", defaultCallTimeoutMs, "timeout for dialing etcd server")
+	fs.Int64Var(&cfg.LeaseTTLSec, "lease-ttl-sec", defaultEtcdLeaseTTLSec, "ttl of etcd key lease (suggest 10s)")
 
 	defaultNodeName, err := makeDefaultNodeName()
 	if err != nil {
