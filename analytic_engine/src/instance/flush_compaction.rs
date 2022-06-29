@@ -391,9 +391,7 @@ where
         } = flush_req;
 
         let current_version = table_data.current_version();
-        let mut mems_to_flush = FlushableMemTables::default();
-
-        current_version.pick_memtables_to_flush(*max_memtable_id, &mut mems_to_flush);
+        let mems_to_flush = current_version.pick_memtables_to_flush(*max_sequence);
 
         if mems_to_flush.is_empty() {
             return Ok(());

@@ -83,6 +83,10 @@ impl SamplingMemTable {
         }
     }
 
+    pub fn last_sequence(&self) -> SequenceNumber {
+        self.mem.last_sequence()
+    }
+
     fn memory_usage(&self) -> usize {
         self.mem.approximate_memory_usage()
     }
@@ -321,18 +325,22 @@ impl MemTableView {
     ///
     /// Now the returned memtables are also ordered by memtable id, but this may
     /// change in the future.
-    fn pick_memtables_to_flush(&self, max_memtable_id: MemTableId, mems: &mut FlushableMemTables) {
+    fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
+        let mut mems = FlushableMemTables::default();
+
         if let Some(v) = &self.sampling_mem {
-            if v.id <= max_memtable_id {
+            if v.last_sequence() <= last_sequence {
                 mems.sampling_mem = Some(v.clone());
             }
         }
 
         for mem in self.immutables.0.values() {
-            if mem.id <= max_memtable_id {
+            if mem.last_sequence() <= last_sequence {
                 mems.memtables.push(mem.clone());
             }
         }
+
+        mems
     }
 
     /// Remove memtable from immutables or sampling memtable.
@@ -597,16 +605,12 @@ impl TableVersion {
     }
 
     /// See [MemTableView::pick_memtables_to_flush]
-    pub fn pick_memtables_to_flush(
-        &self,
-        max_memtable_id: MemTableId,
-        mems: &mut FlushableMemTables,
-    ) {
+    pub fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
         self.inner
             .read()
             .unwrap()
             .memtable_view
-            .pick_memtables_to_flush(max_memtable_id, mems);
+            .pick_memtables_to_flush(last_sequence)
     }
 
     /// Get memtable by timestamp for write.
@@ -825,9 +829,8 @@ mod tests {
             assert!(memtable_view.immutables.is_empty());
         }
 
-        let mut flushable_mems = FlushableMemTables::default();
-        let max_memtable_id = 1000;
-        version.pick_memtables_to_flush(max_memtable_id, &mut flushable_mems);
+        let last_sequence = 1000;
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         assert!(flushable_mems.is_empty());
 
         let read_view = version.pick_read_view(TimeRange::min_to_max());
@@ -896,8 +899,8 @@ mod tests {
         assert!(read_view.contains_sampling());
         assert_eq!(memtable_id, read_view.sampling_mem.unwrap().id);
 
-        let mut flushable_mems = FlushableMemTables::default();
-        version.pick_memtables_to_flush(memtable_id, &mut flushable_mems);
+        let last_sequence = 1000;
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         check_flushable_mem_with_sampling(&flushable_mems, memtable_id);
     }
 
@@ -910,6 +913,7 @@ mod tests {
         let schema = memtable.schema().clone();
 
         let memtable_id = 1;
+        let last_sequence = 1000;
         let sampling_mem = SamplingMemTable::new(memtable, memtable_id);
 
         version.set_sampling(sampling_mem);
@@ -920,8 +924,7 @@ mod tests {
         assert_eq!(table_options::DEFAULT_SEGMENT_DURATION, duration);
 
         // Flushable memtables only contains sampling memtable.
-        let mut flushable_mems = FlushableMemTables::default();
-        version.pick_memtables_to_flush(memtable_id, &mut flushable_mems);
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         check_flushable_mem_with_sampling(&flushable_mems, memtable_id);
 
         // Write to memtable after switch and before freezed.
@@ -942,8 +945,7 @@ mod tests {
 
         // Flushable memtables only contains sampling memtable before sampling
         // memtable is freezed.
-        let mut flushable_mems = FlushableMemTables::default();
-        version.pick_memtables_to_flush(memtable_id, &mut flushable_mems);
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         check_flushable_mem_with_sampling(&flushable_mems, memtable_id);
     }
 
@@ -956,6 +958,7 @@ mod tests {
         let schema = memtable.schema().clone();
 
         let memtable_id1 = 1;
+        let last_sequence = 1000;
         let sampling_mem = SamplingMemTable::new(memtable, memtable_id1);
 
         version.set_sampling(sampling_mem);
@@ -977,8 +980,7 @@ mod tests {
             .is_none());
 
         // Still flushable after freezed.
-        let mut flushable_mems = FlushableMemTables::default();
-        version.pick_memtables_to_flush(memtable_id1, &mut flushable_mems);
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         assert!(flushable_mems.sampling_mem.unwrap().freezed);
 
         let time_range =
@@ -1027,8 +1029,7 @@ mod tests {
             .is_none());
 
         // Two memtables to flush.
-        let mut flushable_mems = FlushableMemTables::default();
-        version.pick_memtables_to_flush(memtable_id2, &mut flushable_mems);
+        let flushable_mems = version.pick_memtables_to_flush(last_sequence);
         assert!(flushable_mems.sampling_mem.unwrap().freezed);
         assert_eq!(1, flushable_mems.memtables.len());
         assert_eq!(memtable_id2, flushable_mems.memtables[0].id);
