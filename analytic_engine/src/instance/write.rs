@@ -208,7 +208,7 @@ where
 
         Self::write_to_memtable(
             worker_local,
-            &table_data,
+            table_data,
             sequence,
             &row_group,
             index_in_writer,

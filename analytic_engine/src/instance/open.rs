@@ -23,8 +23,8 @@ use crate::{
     context::OpenContext,
     instance::{
         engine::{
-            ApplyMemTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal, RecoverTableData, Result,
-            FlushTable
+            ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
+            RecoverTableData, Result,
         },
         mem_collector::MemUsageCollector,
         write_worker,
@@ -37,6 +37,7 @@ use crate::{
     sst::{factory::Factory, file::FilePurger},
     table::data::{TableData, TableDataRef},
 };
+use crate::instance::flush_compaction::TableFlushOptions;
 
 impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
 where
@@ -266,7 +267,7 @@ where
     ///
     /// Called by write worker
     pub(crate) async fn recover_table_from_wal(
-        &self,
+        self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
         table_data: TableDataRef,
         replay_batch_size: usize,
@@ -310,7 +311,7 @@ where
 
     /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
-        &self,
+        self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
@@ -380,7 +381,12 @@ where
 
                     // Flush the table if necessary.
                     if table_data.should_flush_table(worker_local) {
-                        self.flush_table_in_worker_without_race(worker_local, table_data)
+                        let opts = TableFlushOptions {
+                            res_sender: None,
+                            compact_after_flush: false,
+                            block_on_write_thread: true,
+                        };
+                        self.flush_table_in_worker(worker_local, table_data, opts)
                             .await
                             .context(FlushTable {
                                 space_id: table_data.space_id,
