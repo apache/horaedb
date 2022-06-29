@@ -432,7 +432,35 @@ where
         request_id: RequestId,
         mems_to_flush: &FlushableMemTables,
     ) -> Result<()> {
-        todo!()
+        // calculate largest sequence number purged
+        let mut last_sequence_purged = SequenceNumber::MIN;
+        if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
+            last_sequence_purged = last_sequence_purged.max(sampling_mem.last_sequence());
+        }
+        for mem in &mems_to_flush.memtables {
+            last_sequence_purged = last_sequence_purged.max(mem.last_sequence());
+        }
+
+        // remove these memtables
+        let mems_to_remove = mems_to_flush.ids();
+        let edit = VersionEdit {
+            flushed_sequence: last_sequence_purged,
+            mems_to_remove,
+            files_to_add: vec![],
+            files_to_delete: vec![],
+        };
+        table_data.current_version().apply_edit(edit);
+
+        info!(
+            "Instance purged memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}, last_sequence_purged:{}",
+            table_data.name,
+            table_data.id,
+            request_id,
+            mems_to_flush,
+            last_sequence_purged
+        );
+
+        Ok(())
     }
 
     async fn dump_memtables(
@@ -500,7 +528,7 @@ where
             table_id: table_data.id,
             flushed_sequence,
             files_to_add: files_to_level0.clone(),
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
         };
         let meta_update = MetaUpdate::VersionEdit(edit_meta);
         self.space_store
@@ -516,7 +544,7 @@ where
             flushed_sequence,
             mems_to_remove,
             files_to_add: files_to_level0,
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
         };
         table_data.current_version().apply_edit(edit);
 
