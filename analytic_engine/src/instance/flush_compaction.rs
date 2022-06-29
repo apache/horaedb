@@ -167,6 +167,18 @@ pub struct TableFlushRequest {
     pub table_data: TableDataRef,
     /// Max id of memtable to flush (inclusive).
     pub max_memtable_id: MemTableId,
+    /// Max sequence number to flush (inclusive).
+    pub max_sequence: SequenceNumber,
+    /// Flush policy.
+    pub policy: TableFlushPolicy,
+}
+
+/// Policy of how to perform flush operation.
+pub enum TableFlushPolicy {
+    /// Dump memtable to sst file.
+    Dump,
+    /// Drop memtables.
+    Purge,
 }
 
 impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
@@ -305,6 +317,8 @@ where
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
             max_memtable_id: table_data.last_memtable_id(),
+            max_sequence: last_sequence,
+            policy: TableFlushPolicy::Dump,
         })
     }
 
@@ -370,6 +384,8 @@ where
         let TableFlushRequest {
             table_data,
             max_memtable_id,
+            max_sequence,
+            policy,
         } = flush_req;
 
         let current_version = table_data.current_version();
