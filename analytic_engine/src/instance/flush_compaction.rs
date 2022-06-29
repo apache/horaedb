@@ -249,27 +249,27 @@ where
             .await
     }
 
-    async fn preprocess_flush(
-        &self,
-        worker_local: &mut WorkerLocal,
-        table_data: &TableDataRef,
-    ) -> Result<TableFlushRequest> {
-        self.preprocess_flush_without_race(worker_local, table_data)
+    /// Flush given table in write worker thread and caller should ensure no race with some other work
+    /// (e.g. background compaction job).
+    /// Usually used when background jobs are not started (e.g. when startup).
+    pub async fn flush_table_in_worker_without_race(&self, worker_local: &mut WorkerLocal, table_data: &TableDataRef) -> Result<()> {
+        let flush_req = self
+            .preprocess_flush(worker_local, table_data)
+            .await?;
+        self.flush_memtables_to_outputs(&flush_req)
             .await
     }
 
-    /// Caller should ensure that no data race happens because now the guard
-    /// (`worker_local`) can be held by multiple processors.
-    pub async fn preprocess_flush_without_race(
+    async fn preprocess_flush(
         &self,
-        worker_local: &WorkerLocal,
+        worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
     ) -> Result<TableFlushRequest> {
         let current_version = table_data.current_version();
         let last_sequence = table_data.last_sequence();
         // Switch all mutable memtables
         if let Some(suggest_segment_duration) =
-            current_version.switch_memtables_or_suggest_duration(worker_local)
+        current_version.switch_memtables_or_suggest_duration(worker_local)
         {
             info!("Switch memtable and suggest segment duration, table:{}, table_id:{}, segment_duration:{:?}", table_data.name, table_data.id, suggest_segment_duration);
             assert!(suggest_segment_duration.as_millis() > 0);
@@ -362,7 +362,7 @@ where
     }
 
     /// Caller should guarantee flush of single table is sequential
-    pub(crate) async fn flush_memtables_to_outputs(
+    async fn flush_memtables_to_outputs(
         &self,
         flush_req: &TableFlushRequest,
     ) -> Result<()> {
