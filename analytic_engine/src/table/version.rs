@@ -310,7 +310,7 @@ impl MemTableView {
 
     /// Returns the memtables that needs to be flushed.
     /// - Id of returned memtables are no greater than `max_memtable_id`.
-    /// - The last sequences of the returned memtables are continuous and can
+    /// - The last sequences of the returned memtables are continuous and can be
     ///   used as flushed sequence.
     /// - All memTables with same last sequence must be picked to the same
     ///   MemTableVec, so we can update flushed sequence safely (The

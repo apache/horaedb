@@ -393,13 +393,11 @@ where
                                 table: &table_data.name,
                                 table_id: table_data.id,
                             })?;
-                        self.flush_memtables_to_outputs(&flush_req)
-                            .await
-                            .context(FlushTable {
-                                space_id: table_data.space_id,
-                                table: &table_data.name,
-                                table_id: table_data.id,
-                            })?;
+                        self.flush_memtables(&flush_req).await.context(FlushTable {
+                            space_id: table_data.space_id,
+                            table: &table_data.name,
+                            table_id: table_data.id,
+                        })?;
                     }
                 }
             }
