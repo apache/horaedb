@@ -28,7 +28,7 @@ use table_engine::{
     },
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
-use wal::{log_batch::LogEntry, manager::WalManager};
+use wal::manager::WalManager;
 
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
@@ -38,7 +38,6 @@ use crate::{
         write, write_worker, InstanceRef,
     },
     meta::Manifest,
-    payload::ReadPayload,
     space::{SpaceAndTable, SpaceId, SpaceRef},
     sst::factory::Factory,
     table::{data::TableDataRef, metrics::Metrics},
@@ -59,10 +58,10 @@ pub enum Error {
     BackgroundFlushFailed { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to receive cmd result, channel disconnected, table:{}, worker_id:{}.\nBacktrace:\n{}",
-        table,
-        worker_id,
-        backtrace,
+    "Failed to receive cmd result, channel disconnected, table:{}, worker_id:{}.\nBacktrace:\n{}",
+    table,
+    worker_id,
+    backtrace,
     ))]
     ReceiveFromWorker {
         table: String,
@@ -592,7 +591,6 @@ impl WriteGroup {
                     data: data.clone(),
                     background_rx,
                 },
-                log_entry_buf: Vec::new(),
             };
 
             let space_id = opts.space_id;
@@ -707,8 +705,6 @@ struct WriteWorker<Wal, Meta, Store, Fa> {
     instance: InstanceRef<Wal, Meta, Store, Fa>,
     /// Worker local states
     local: WorkerLocal,
-    /// Log entry buffer for recover
-    log_entry_buf: Vec<LogEntry<ReadPayload>>,
 }
 
 impl<
@@ -809,14 +805,9 @@ impl<
 
         let open_res = self
             .instance
-            .process_recover_table_command(
-                &mut self.local,
-                space,
-                table_data,
-                replay_batch_size,
-                &mut self.log_entry_buf,
-            )
+            .process_recover_table_command(&mut self.local, space, table_data, replay_batch_size)
             .await;
+
         if let Err(open_res) = tx.send(open_res) {
             error!(
                 "handle open table failed to send result, open_res:{:?}",

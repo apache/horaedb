@@ -16,11 +16,16 @@ use table_engine::{
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
-use wal::manager::WalManager;
+use wal::{manager::WalManager, rocks_impl::manager::RocksImpl};
 
 use crate::{
-    context::CommonContext, instance::InstanceRef, meta::Manifest, space::SpaceId,
-    sst::factory::Factory, table::TableImpl,
+    context::CommonContext,
+    instance::InstanceRef,
+    meta::{details::ManifestImpl, Manifest},
+    space::SpaceId,
+    sst::factory::{Factory, FactoryImpl},
+    table::TableImpl,
+    ObkvWal,
 };
 
 /// TableEngine implementation
@@ -163,6 +168,13 @@ impl<
         Ok(())
     }
 }
+
+/// Reference to instance based on rocksdb wal.
+pub(crate) type RocksInstanceRef<Store> =
+    InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, Store, FactoryImpl>;
+/// Reference to instance replicating data by obkv wal.
+pub(crate) type ReplicatedInstanceRef<Store> =
+    InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, Store, FactoryImpl>;
 
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.

@@ -669,7 +669,7 @@ impl MergeIterator {
             return Ok(());
         }
 
-        info!(
+        debug!(
             "Merge iterator init, table_id:{:?}, request_id:{}, schema:{:?}",
             self.table_id, self.request_id, self.schema
         );

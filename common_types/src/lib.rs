@@ -17,7 +17,10 @@ pub mod time;
 
 /// Sequence number
 pub type SequenceNumber = u64;
+/// Maximum sequence number, all sequence number should less than this.
 pub const MAX_SEQUENCE_NUMBER: u64 = u64::MAX;
+/// Minimum sequence number, all sequence number should greater than this, so
+/// sequence number should starts from 1.
 pub const MIN_SEQUENCE_NUMBER: u64 = 0;
 
 #[cfg(any(test, feature = "test"))]

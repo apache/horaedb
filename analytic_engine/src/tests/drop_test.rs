@@ -7,15 +7,27 @@ use std::collections::HashMap;
 use common_types::{column_schema, datum::DatumKind, time::Timestamp};
 use table_engine::table::AlterSchemaRequest;
 
-use crate::tests::{
-    table::FixedSchemaTable,
-    util::{self, TestEnv},
+use crate::{
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    tests::{
+        table::FixedSchemaTable,
+        util::{self, TestEnv},
+    },
 };
 
 #[test]
-fn test_drop_table_once() {
+fn test_drop_table_once_rocks() {
+    test_drop_table_once::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_drop_table_once_mem_wal() {
+    test_drop_table_once::<MemWalEngineBuilder>();
+}
+
+fn test_drop_table_once<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -45,9 +57,18 @@ fn test_drop_table_once() {
 }
 
 #[test]
-fn test_drop_table_again() {
+fn test_drop_table_again_rocks() {
+    test_drop_table_again::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_drop_table_again_mem_wal() {
+    test_drop_table_again::<MemWalEngineBuilder>();
+}
+
+fn test_drop_table_again<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -71,9 +92,18 @@ fn test_drop_table_again() {
 }
 
 #[test]
-fn test_drop_create_table_mixed() {
+fn test_drop_create_table_mixed_rocks() {
+    test_drop_create_table_mixed::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_drop_create_table_mixed_mem_wal() {
+    test_drop_create_table_mixed::<MemWalEngineBuilder>();
+}
+
+fn test_drop_create_table_mixed<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -115,9 +145,9 @@ fn test_drop_create_table_mixed() {
     });
 }
 
-fn test_drop_create_same_table_case(flush: bool) {
+fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -173,16 +203,34 @@ fn test_drop_create_same_table_case(flush: bool) {
 }
 
 #[test]
-fn test_drop_create_same_table() {
-    test_drop_create_same_table_case(false);
-
-    test_drop_create_same_table_case(true);
+fn test_drop_create_same_table_rocks() {
+    test_drop_create_same_table::<RocksEngineBuilder>();
 }
 
 #[test]
-fn test_alter_schema_drop_create() {
+fn test_drop_create_same_table_mem_wal() {
+    test_drop_create_same_table::<MemWalEngineBuilder>();
+}
+
+fn test_drop_create_same_table<T: EngineBuilder>() {
+    test_drop_create_same_table_case::<T>(false);
+
+    test_drop_create_same_table_case::<T>(true);
+}
+
+#[test]
+fn test_alter_schema_drop_create_rocks() {
+    test_alter_schema_drop_create::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_alter_schema_drop_create_mem_wal() {
+    test_alter_schema_drop_create::<MemWalEngineBuilder>();
+}
+
+fn test_alter_schema_drop_create<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -226,9 +274,18 @@ fn test_alter_schema_drop_create() {
 }
 
 #[test]
-fn test_alter_options_drop_create() {
+fn test_alter_options_drop_create_rocks() {
+    test_alter_options_drop_create::<RocksEngineBuilder>();
+}
+
+#[test]
+fn test_alter_options_drop_create_mem_wal() {
+    test_alter_options_drop_create::<MemWalEngineBuilder>();
+}
+
+fn test_alter_options_drop_create<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;

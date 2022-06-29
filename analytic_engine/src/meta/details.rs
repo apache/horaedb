@@ -1,8 +1,10 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Implementation of Manifest
+
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
+    mem,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -17,10 +19,10 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
-    log_batch::{LogWriteBatch, LogWriteEntry},
+    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
     manager::{
-        LogIterator, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber, WalManager,
-        WriteContext,
+        BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
+        WalManager, WriteContext,
     },
 };
 
@@ -87,17 +89,34 @@ trait MetaUpdateLogEntryIterator {
 /// Implementation of [MetaUpdateReader]
 #[derive(Debug)]
 pub struct MetaUpdateReaderImpl<W: WalManager> {
-    iter: W::Iterator,
+    iter: W::BatchIter,
+    has_next: bool,
+    buffer: VecDeque<LogEntry<MetaUpdateLogEntry>>,
 }
 
 #[async_trait]
 impl<W: WalManager + Send + Sync> MetaUpdateLogEntryIterator for MetaUpdateReaderImpl<W> {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
-        let decoder = MetaUpdateDecoder;
+        if !self.has_next {
+            return Ok(None);
+        }
 
-        match self.iter.next_log_entry(&decoder).context(ReadEntry)? {
+        if self.buffer.is_empty() {
+            let decoder = MetaUpdateDecoder;
+            let buffer = mem::take(&mut self.buffer);
+            self.buffer = self
+                .iter
+                .next_log_entries(decoder, buffer)
+                .await
+                .context(ReadEntry)?;
+        }
+
+        match self.buffer.pop_front() {
             Some(entry) => Ok(Some((entry.sequence, entry.payload))),
-            None => Ok(None),
+            None => {
+                self.has_next = false;
+                Ok(None)
+            }
         }
     }
 }
@@ -278,8 +297,16 @@ impl<W: WalManager + Send + Sync> MetaUpdateLogStore for RegionWal<W> {
             start,
             end,
         };
-        let iter = self.wal_manager.read(&ctx, &read_req).context(ReadWal)?;
-        Ok(MetaUpdateReaderImpl { iter })
+        let iter = self
+            .wal_manager
+            .read_batch(&ctx, &read_req)
+            .await
+            .context(ReadWal)?;
+        Ok(MetaUpdateReaderImpl {
+            iter,
+            has_next: true,
+            buffer: VecDeque::with_capacity(ctx.batch_size),
+        })
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {

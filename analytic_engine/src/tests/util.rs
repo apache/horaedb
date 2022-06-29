@@ -26,7 +26,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup,
+    setup::EngineBuilder,
     storage_options::{LocalOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config,
@@ -43,8 +43,8 @@ impl From<Null> for Datum {
     }
 }
 
-pub async fn check_read_with_order(
-    test_ctx: &TestContext,
+pub async fn check_read_with_order<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
     table_name: &str,
@@ -65,8 +65,8 @@ pub async fn check_read_with_order(
     }
 }
 
-pub async fn check_read(
-    test_ctx: &TestContext,
+pub async fn check_read<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
     table_name: &str,
@@ -83,8 +83,8 @@ pub async fn check_read(
     .await
 }
 
-pub async fn check_get(
-    test_ctx: &TestContext,
+pub async fn check_get<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
     table_name: &str,
@@ -101,9 +101,10 @@ pub async fn check_get(
     }
 }
 
-pub struct TestContext {
+pub struct TestContext<T: EngineBuilder> {
     pub config: Config,
     runtimes: Arc<EngineRuntimes>,
+    builder: T,
     pub engine: Option<TableEngineRef>,
     pub schema_id: SchemaId,
     last_table_seq: u32,
@@ -111,12 +112,13 @@ pub struct TestContext {
     name_to_tables: HashMap<String, TableRef>,
 }
 
-impl TestContext {
+impl<T: EngineBuilder> TestContext<T> {
     pub async fn open(&mut self) {
-        let engine = setup::open_analytic_table_engine(self.config.clone(), self.runtimes.clone())
+        let engine = self
+            .builder
+            .build(self.config.clone(), self.runtimes.clone())
             .await
             .unwrap();
-
         self.engine = Some(engine);
     }
 
@@ -339,13 +341,19 @@ impl TestContext {
     }
 
     #[inline]
-    pub fn engine(&self) -> TableEngineRef {
-        self.engine.clone().unwrap()
+    pub fn engine(&self) -> &TableEngineRef {
+        self.engine.as_ref().unwrap()
     }
 
     fn next_table_id(&mut self) -> TableId {
         self.last_table_seq += 1;
         table::new_table_id(2, self.last_table_seq)
+    }
+}
+
+impl<T: EngineBuilder> TestContext<T> {
+    pub fn clone_engine(&self) -> TableEngineRef {
+        self.engine.clone().unwrap()
     }
 }
 
@@ -360,10 +368,11 @@ impl TestEnv {
         Builder::default()
     }
 
-    pub fn new_context(&self) -> TestContext {
+    pub fn new_context<T: EngineBuilder>(&self) -> TestContext<T> {
         TestContext {
             config: self.config.clone(),
             runtimes: self.runtimes.clone(),
+            builder: T::default(),
             engine: None,
             schema_id: SchemaId::new(100).unwrap(),
             last_table_seq: 1,
