@@ -26,6 +26,7 @@ use crate::{
             ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
             RecoverTableData, Result,
         },
+        flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         write_worker,
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
@@ -37,7 +38,6 @@ use crate::{
     sst::{factory::Factory, file::FilePurger},
     table::data::{TableData, TableDataRef},
 };
-use crate::instance::flush_compaction::TableFlushOptions;
 
 impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
 where
@@ -328,7 +328,6 @@ where
             table_data.name, table_data.id, last_sequence
         );
 
-        // recovery Replay entries
         for log_entry in log_entries {
             let (sequence, payload) = (log_entry.sequence, &log_entry.payload);
 
@@ -384,7 +383,7 @@ where
                         let opts = TableFlushOptions {
                             res_sender: None,
                             compact_after_flush: false,
-                            block_on_write_thread: true,
+                            block_on_write_thread: false,
                         };
                         self.flush_table_in_worker(worker_local, table_data, opts)
                             .await
