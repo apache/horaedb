@@ -21,7 +21,7 @@ const LOG_KEY_ENCODING_V0: u8 = 0;
 const NEWEST_LOG_KEY_ENCODING_VERSION: u8 = LOG_KEY_ENCODING_V0;
 
 const LOG_VALUE_ENCODING_V0: u8 = 0;
-const NEWEST_LOG_VALUE_ENCODING_VERSION: u8 = LOG_VALUE_ENCODING_V0;
+pub const NEWEST_LOG_VALUE_ENCODING_VERSION: u8 = LOG_VALUE_ENCODING_V0;
 
 const META_KEY_ENCODING_V0: u8 = 0;
 const NEWEST_META_KEY_ENCODING_VERSION: u8 = META_KEY_ENCODING_V0;
@@ -195,12 +195,20 @@ impl LogEncoding {
 pub type LogKey = (RegionId, SequenceNumber);
 
 #[derive(Debug, Clone)]
-struct LogKeyEncoder {
+pub struct LogKeyEncoder {
     version: u8,
     namespace: Namespace,
 }
 
 impl LogKeyEncoder {
+    /// Create newest version encoder.
+    pub fn newest() -> Self {
+        Self {
+            version: NEWEST_LOG_KEY_ENCODING_VERSION,
+            namespace: Namespace::Log,
+        }
+    }
+
     /// Determine whether the raw bytes is a log key.
     pub fn is_valid<B: MemBuf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.read_u8().context(DecodeLogKey)?;
@@ -269,8 +277,17 @@ impl Decoder<LogKey> for LogKeyEncoder {
 }
 
 #[derive(Debug, Clone)]
-struct LogValueEncoder {
+pub struct LogValueEncoder {
     version: u8,
+}
+
+impl LogValueEncoder {
+    /// Create newest version encoder.
+    pub fn newest() -> Self {
+        Self {
+            version: NEWEST_LOG_VALUE_ENCODING_VERSION,
+        }
+    }
 }
 
 impl<T: Payload> Encoder<T> for LogValueEncoder {
@@ -295,9 +312,9 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
     }
 }
 
-struct LogValueDecoder<'a, D: PayloadDecoder> {
-    version: u8,
-    payload_dec: &'a D,
+pub struct LogValueDecoder<'a, D: PayloadDecoder> {
+    pub version: u8,
+    pub payload_dec: &'a D,
 }
 
 impl<'a, D: PayloadDecoder> Decoder<D::Target> for LogValueDecoder<'a, D> {

@@ -24,8 +24,8 @@ use tokio::sync::Mutex;
 use crate::{
     log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        error::*, LogIterator, LogReader, LogWriter, ReadContext, ReadRequest, RegionId,
-        WalManager, WriteContext, MAX_REGION_ID,
+        error::*, BatchLogIteratorAdapter, BlockingLogIterator, LogReader, LogWriter, ReadContext,
+        ReadRequest, RegionId, WalManager, WriteContext, MAX_REGION_ID,
     },
     rocks_impl::encoding::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
 };
@@ -523,7 +523,7 @@ impl RocksLogIterator {
     }
 }
 
-impl LogIterator for RocksLogIterator {
+impl BlockingLogIterator for RocksLogIterator {
     fn next_log_entry<D: PayloadDecoder>(
         &mut self,
         decoder: &D,
@@ -564,16 +564,24 @@ impl LogIterator for RocksLogIterator {
     }
 }
 
+#[async_trait]
 impl LogReader for RocksImpl {
-    type Iterator = RocksLogIterator;
+    type BatchIter = BatchLogIteratorAdapter<RocksLogIterator>;
 
-    fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::Iterator> {
-        if let Some(region) = self.region(req.region_id) {
-            region.read(ctx, req)
+    async fn read_batch(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::BatchIter> {
+        let blocking_iter = if let Some(region) = self.region(req.region_id) {
+            region.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
-            Ok(RocksLogIterator::new_empty(self.log_encoding.clone(), iter))
-        }
+            RocksLogIterator::new_empty(self.log_encoding.clone(), iter)
+        };
+        let runtime = self.runtime.clone();
+
+        Ok(BatchLogIteratorAdapter::new(
+            blocking_iter,
+            runtime,
+            ctx.batch_size,
+        ))
     }
 }
 
@@ -591,7 +599,7 @@ impl LogWriter for RocksImpl {
 
 #[async_trait]
 impl WalManager for RocksImpl {
-    fn sequence_num(&self, region_id: RegionId) -> Result<u64> {
+    async fn sequence_num(&self, region_id: RegionId) -> Result<u64> {
         if let Some(region) = self.region(region_id) {
             return region.sequence_num();
         }
@@ -607,6 +615,12 @@ impl WalManager for RocksImpl {
         if let Some(region) = self.region(region_id) {
             return region.delete_entries_up_to(sequence_num).await;
         }
+
+        Ok(())
+    }
+
+    async fn close_gracefully(&self) -> Result<()> {
+        info!("Close rocksdb wal gracefully");
 
         Ok(())
     }

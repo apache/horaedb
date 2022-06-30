@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 /// Options for storage backend
 #[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
 pub enum StorageOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),

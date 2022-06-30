@@ -2,7 +2,10 @@
 
 //! Open logic of instance
 
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock},
+};
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
@@ -12,7 +15,7 @@ use table_engine::table::TableId;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{LogIterator, ReadBoundary, ReadContext, ReadRequest, WalManager},
+    manager::{BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, WalManager},
 };
 
 use crate::{
@@ -23,6 +26,7 @@ use crate::{
             ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
             RecoverTableData, Result,
         },
+        flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         write_worker,
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
@@ -164,22 +168,22 @@ where
         space: SpaceRef,
         table_data: TableDataRef,
         replay_batch_size: usize,
-        log_entry_buf: &mut Vec<LogEntry<ReadPayload>>,
     ) -> Result<Option<TableDataRef>> {
         if let Some(exist_table_data) = space.find_table_by_id(table_data.id) {
             warn!("Open a opened table, table:{}", table_data.name);
             return Ok(Some(exist_table_data));
         }
 
-        let read_ctx = ReadContext::default();
-        log_entry_buf.reserve(replay_batch_size);
+        let read_ctx = ReadContext {
+            batch_size: replay_batch_size,
+            ..Default::default()
+        };
 
         self.recover_table_from_wal(
             worker_local,
             table_data.clone(),
             replay_batch_size,
             &read_ctx,
-            log_entry_buf,
         )
         .await?;
 
@@ -263,15 +267,12 @@ where
     ///
     /// Called by write worker
     pub(crate) async fn recover_table_from_wal(
-        &self,
-        worker_local: &WorkerLocal,
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
         table_data: TableDataRef,
         replay_batch_size: usize,
         read_ctx: &ReadContext,
-        log_entry_buf: &mut Vec<LogEntry<ReadPayload>>,
     ) -> Result<()> {
-        let decoder = WalDecoder::default();
-
         let read_req = ReadRequest {
             region_id: table_data.wal_region_id(),
             start: ReadBoundary::Min,
@@ -282,31 +283,25 @@ where
         let mut log_iter = self
             .space_store
             .wal_manager
-            .read(read_ctx, &read_req)
+            .read_batch(read_ctx, &read_req)
+            .await
             .context(ReadWal)?;
 
+        let mut log_entry_buf = VecDeque::with_capacity(replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
-            let no_more_data = {
-                log_entry_buf.clear();
-
-                for _ in 0..replay_batch_size {
-                    if let Some(log_entry) = log_iter.next_log_entry(&decoder).context(ReadWal)? {
-                        log_entry_buf.push(log_entry);
-                    } else {
-                        break;
-                    }
-                }
-
-                log_entry_buf.len() < replay_batch_size
-            };
+            let decoder = WalDecoder::default();
+            log_entry_buf = log_iter
+                .next_log_entries(decoder, log_entry_buf)
+                .await
+                .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(worker_local, &table_data, log_entry_buf)
+            self.replay_table_log_entries(worker_local, &table_data, &log_entry_buf)
                 .await?;
 
             // No more entries.
-            if no_more_data {
+            if log_entry_buf.is_empty() {
                 break;
             }
         }
@@ -314,19 +309,19 @@ where
         Ok(())
     }
 
-    /// Replay all log entries into memtable
+    /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
-        &self,
-        worker_local: &WorkerLocal,
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
-        log_entries: &mut [LogEntry<ReadPayload>],
+        log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
         if log_entries.is_empty() {
             // No data in wal
             return Ok(());
         }
 
-        let last_sequence = log_entries.last().unwrap().sequence;
+        let last_sequence = log_entries.back().unwrap().sequence;
 
         info!(
             "Instance replay table log entries begin, table:{}, table_id:{:?}, sequence:{}",
@@ -334,7 +329,7 @@ where
         );
 
         for log_entry in log_entries {
-            let (sequence, payload) = (log_entry.sequence, &mut log_entry.payload);
+            let (sequence, payload) = (log_entry.sequence, &log_entry.payload);
 
             // Apply to memtable
             match payload {
@@ -385,19 +380,18 @@ where
 
                     // Flush the table if necessary.
                     if table_data.should_flush_table(worker_local) {
-                        let flush_req = self
-                            .preprocess_flush_without_race(worker_local, table_data)
+                        let opts = TableFlushOptions {
+                            res_sender: None,
+                            compact_after_flush: false,
+                            block_on_write_thread: false,
+                        };
+                        self.flush_table_in_worker(worker_local, table_data, opts)
                             .await
                             .context(FlushTable {
                                 space_id: table_data.space_id,
                                 table: &table_data.name,
                                 table_id: table_data.id,
                             })?;
-                        self.flush_memtables(&flush_req).await.context(FlushTable {
-                            space_id: table_data.space_id,
-                            table: &table_data.name,
-                            table_id: table_data.id,
-                        })?;
                     }
                 }
             }

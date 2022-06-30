@@ -2,35 +2,46 @@
 
 //! utilities for testing wal module.
 
-use std::{path::Path, sync::Arc};
+use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};
 
-use common_types::bytes::{MemBuf, MemBufMut};
-use common_util::runtime::{self, Runtime};
+use async_trait::async_trait;
+use common_types::{
+    bytes::{MemBuf, MemBufMut},
+    SequenceNumber,
+};
+use common_util::{
+    config::ReadableDuration,
+    runtime::{self, Runtime},
+};
+use snafu::Snafu;
+use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload, PayloadDecoder},
-    manager::{LogIterator, LogReader, ReadContext, RegionId, WalManager, WriteContext},
+    manager::{BatchLogIterator, LogReader, ReadContext, RegionId, WalManager, WriteContext},
     rocks_impl::{self, manager::RocksImpl},
+    table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
-
-pub trait WalBuilder: Default + Send + Sync {
-    type Wal: WalManager + Send + Sync;
-    fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal>;
-}
-use common_types::SequenceNumber;
-use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 pub enum Error {}
 
+#[async_trait]
+pub trait WalBuilder: Send + Sync {
+    type Wal: WalManager + Send + Sync;
+
+    async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal>;
+}
+
 #[derive(Default)]
 pub struct RocksWalBuilder;
 
+#[async_trait]
 impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
-    fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
+    async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let wal_builder =
             rocks_impl::manager::Builder::with_default_rocksdb_config(data_path, runtime);
 
@@ -44,6 +55,51 @@ impl WalBuilder for RocksWalBuilder {
 
 pub type RocksTestEnv = TestEnv<RocksWalBuilder>;
 
+const WAL_NAMESPACE: &str = "wal";
+
+#[derive(Default)]
+pub struct MemoryTableWalBuilder {
+    table_kv: MemoryImpl,
+    ttl: Option<ReadableDuration>,
+}
+
+#[async_trait]
+impl WalBuilder for MemoryTableWalBuilder {
+    type Wal = WalNamespaceImpl<MemoryImpl>;
+
+    async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
+        let config = NamespaceConfig {
+            wal_shard_num: 2,
+            region_meta_shard_num: 2,
+            ttl: self.ttl,
+            ..Default::default()
+        };
+
+        let wal_runtimes = WalRuntimes {
+            read_runtime: runtime.clone(),
+            write_runtime: runtime.clone(),
+            bg_runtime: runtime.clone(),
+        };
+        let namespace_wal =
+            WalNamespaceImpl::open(self.table_kv.clone(), wal_runtimes, WAL_NAMESPACE, config)
+                .await
+                .unwrap();
+
+        Arc::new(namespace_wal)
+    }
+}
+
+impl MemoryTableWalBuilder {
+    pub fn with_ttl(ttl: &str) -> Self {
+        Self {
+            table_kv: MemoryImpl::default(),
+            ttl: Some(ReadableDuration::from_str(ttl).unwrap()),
+        }
+    }
+}
+
+pub type TableKvTestEnv = TestEnv<MemoryTableWalBuilder>;
+
 /// The environment for testing wal.
 pub struct TestEnv<B> {
     pub dir: TempDir,
@@ -55,7 +111,7 @@ pub struct TestEnv<B> {
 }
 
 impl<B: WalBuilder> TestEnv<B> {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn new(num_workers: usize, builder: B) -> Self {
         let runtime = runtime::Builder::default()
             .worker_threads(num_workers)
             .enable_all()
@@ -67,12 +123,14 @@ impl<B: WalBuilder> TestEnv<B> {
             runtime: Arc::new(runtime),
             write_ctx: WriteContext::default(),
             read_ctx: ReadContext::default(),
-            builder: B::default(),
+            builder,
         }
     }
 
-    pub fn build_wal(&self) -> Arc<B::Wal> {
-        self.builder.build(self.dir.path(), self.runtime.clone())
+    pub async fn build_wal(&self) -> Arc<B::Wal> {
+        self.builder
+            .build(self.dir.path(), self.runtime.clone())
+            .await
     }
 
     /// Build the log batch with [TestPayload].val range [start, end).
@@ -93,23 +151,25 @@ impl<B: WalBuilder> TestEnv<B> {
 
     /// Check whether the log entries from the iterator equals the
     /// `write_batch`.
-    pub fn check_log_entries(
+    pub async fn check_log_entries(
         &self,
         max_seq: SequenceNumber,
         write_batch: &LogWriteBatch<TestPayload>,
-        mut iter: <B::Wal as LogReader>::Iterator,
+        mut iter: <B::Wal as LogReader>::BatchIter,
     ) {
-        let dec = TestPayloadDecoder;
-        let mut log_entries = Vec::with_capacity(write_batch.entries.len());
+        let mut log_entries = VecDeque::with_capacity(write_batch.entries.len());
+        let mut buffer = VecDeque::new();
         loop {
-            let log_entry = iter
-                .next_log_entry(&dec)
+            let dec = TestPayloadDecoder;
+            buffer = iter
+                .next_log_entries(dec, buffer)
+                .await
                 .expect("should succeed to fetch next log entry");
-            if log_entry.is_none() {
+            if buffer.is_empty() {
                 break;
             }
 
-            log_entries.push(log_entry.unwrap());
+            log_entries.append(&mut buffer);
         }
 
         assert_eq!(write_batch.entries.len(), log_entries.len());
@@ -129,7 +189,7 @@ impl<B: WalBuilder> TestEnv<B> {
 /// The payload for Wal log entry for testing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TestPayload {
-    val: u32,
+    pub val: u32,
 }
 
 impl Payload for TestPayload {

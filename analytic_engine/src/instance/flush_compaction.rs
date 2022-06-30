@@ -267,17 +267,6 @@ where
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
     ) -> Result<TableFlushRequest> {
-        self.preprocess_flush_without_race(worker_local, table_data)
-            .await
-    }
-
-    /// Caller should ensure that no data race happens because now the guard
-    /// (`worker_local`) can be held by multiple processors.
-    pub async fn preprocess_flush_without_race(
-        &self,
-        worker_local: &WorkerLocal,
-        table_data: &TableDataRef,
-    ) -> Result<TableFlushRequest> {
         let current_version = table_data.current_version();
         let last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
@@ -381,7 +370,7 @@ where
     }
 
     /// Each table can only have one running flush job.
-    pub(crate) async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
+    async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
         let TableFlushRequest {
             table_data,
             // TODO: consider deprecate this field,

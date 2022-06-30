@@ -112,6 +112,16 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 }'
 ```
 
+## 平台支持
+
+|          target          |         OS        |         status        |
+|:------------------------:|:-----------------:|:---------------------:|
+| x86_64-unknown-linux-gnu |    kernel 4.9+    |       构建及运行        |
+|    x86_64-apple-darwin   | 10.15+, Catalina+ |          构建          |
+|    aarch64-apple-darwin  |   11+, Big Sur+   |          构建          |
+| aarch64-unknown-linux-gnu|        TBD        | 详见 [#63](https://github.com/CeresDB/ceresdb/issues/63)|
+|         *-windows        |         *         |         未支持         |
+
 ## 如何贡献
 [如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
 

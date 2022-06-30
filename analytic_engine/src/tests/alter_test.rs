@@ -15,6 +15,7 @@ use log::info;
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
     table_options::TableOptions,
     tests::{
         row_util,
@@ -24,9 +25,19 @@ use crate::{
 };
 
 #[test]
-fn test_alter_table_add_column() {
+fn test_alter_table_add_column_rocks() {
+    test_alter_table_add_column::<RocksEngineBuilder>();
+}
+
+#[ignore = "Enable this test when manifest use another snapshot implementation"]
+#[test]
+fn test_alter_table_add_column_mem_wal() {
+    test_alter_table_add_column::<MemWalEngineBuilder>();
+}
+
+fn test_alter_table_add_column<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -95,7 +106,10 @@ fn add_columns(schema_builder: schema::Builder) -> schema::Builder {
         .unwrap()
 }
 
-async fn alter_schema_same_schema_version_case(test_ctx: &TestContext, table_name: &str) {
+async fn alter_schema_same_schema_version_case<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
+    table_name: &str,
+) {
     info!("test alter_schema_same_schema_version_case");
 
     let mut schema_builder = FixedSchemaTable::default_schema_builder();
@@ -114,7 +128,10 @@ async fn alter_schema_same_schema_version_case(test_ctx: &TestContext, table_nam
     assert!(res.is_err());
 }
 
-async fn alter_schema_old_pre_version_case(test_ctx: &TestContext, table_name: &str) {
+async fn alter_schema_old_pre_version_case<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
+    table_name: &str,
+) {
     info!("test alter_schema_old_pre_version_case");
 
     let mut schema_builder = FixedSchemaTable::default_schema_builder();
@@ -137,8 +154,8 @@ async fn alter_schema_old_pre_version_case(test_ctx: &TestContext, table_name: &
     assert!(res.is_err());
 }
 
-async fn alter_schema_add_column_case(
-    test_ctx: &mut TestContext,
+async fn alter_schema_add_column_case<T: EngineBuilder>(
+    test_ctx: &mut TestContext<T>,
     table_name: &str,
     start_ms: i64,
     flush: bool,
@@ -325,8 +342,8 @@ async fn alter_schema_add_column_case(
     .await;
 }
 
-async fn check_read_row_group(
-    test_ctx: &TestContext,
+async fn check_read_row_group<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
     msg: &str,
     table_name: &str,
     schema: &Schema,
@@ -347,9 +364,19 @@ async fn check_read_row_group(
 }
 
 #[test]
-fn test_alter_table_options() {
+fn test_alter_table_options_rocks() {
+    test_alter_table_options::<RocksEngineBuilder>();
+}
+
+#[ignore = "Enable this test when manifest use another snapshot implementation"]
+#[test]
+fn test_alter_table_options_mem_wal() {
+    test_alter_table_options::<MemWalEngineBuilder>();
+}
+
+fn test_alter_table_options<T: EngineBuilder>() {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context();
+    let mut test_ctx = env.new_context::<T>();
 
     env.block_on(async {
         test_ctx.open().await;
@@ -386,8 +413,8 @@ fn test_alter_table_options() {
     });
 }
 
-async fn alter_immutable_option_case(
-    test_ctx: &TestContext,
+async fn alter_immutable_option_case<T: EngineBuilder>(
+    test_ctx: &TestContext<T>,
     table_name: &str,
     opt_key: &str,
     opt_value: &str,
@@ -407,8 +434,8 @@ async fn alter_immutable_option_case(
     assert_options_eq(&old_opts, &opts_after_alter);
 }
 
-async fn alter_mutable_option_case(
-    test_ctx: &mut TestContext,
+async fn alter_mutable_option_case<T: EngineBuilder>(
+    test_ctx: &mut TestContext<T>,
     table_name: &str,
     opt_key: &str,
     opt_value: &str,
