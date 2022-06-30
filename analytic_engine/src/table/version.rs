@@ -229,6 +229,10 @@ impl FlushableMemTables {
 
         memtable_ids
     }
+
+    pub fn len(&self) -> usize {
+        self.sampling_mem.as_ref().map_or(0, |_| 1) + self.memtables.len()
+    }
 }
 
 /// Vec to store memtables

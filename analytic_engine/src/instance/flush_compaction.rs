@@ -380,12 +380,12 @@ where
         }
     }
 
-    /// Caller should guarantee flush of single table is sequential
+    /// Each table can only have one running flush job.
     pub(crate) async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
-        // TODO(yingwen): Record memtables num to flush as statistics
         let TableFlushRequest {
             table_data,
-            max_memtable_id,
+            // TODO: consider deprecate this field,
+            max_memtable_id: _,
             max_sequence,
             policy,
         } = flush_req;
@@ -405,6 +405,7 @@ where
 
         // Start flush duration timer.
         let local_metrics = table_data.metrics.local_flush_metrics();
+        local_metrics.observe_memtables_num(mems_to_flush.len());
         let _timer = local_metrics.flush_duration_histogram.start_timer();
 
         match policy {

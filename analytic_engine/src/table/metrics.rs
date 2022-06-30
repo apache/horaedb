@@ -111,6 +111,7 @@ pub struct Metrics {
     pub flush_duration_histogram: Histogram,
     flush_sst_num_histogram: Histogram,
     flush_sst_size_histogram: Histogram,
+    flush_memtables_num_histogram: Histogram,
 
     pub compaction_duration_histogram: Histogram,
     compaction_sst_num_histogram: Histogram,
@@ -135,6 +136,8 @@ impl Metrics {
                 .with_label_values(&[table_name]),
             flush_sst_num_histogram: TABLE_FLUSH_SST_NUM_HISTOGRAM.with_label_values(&[table_name]),
             flush_sst_size_histogram: TABLE_FLUSH_SST_SIZE_HISTOGRAM
+                .with_label_values(&[table_name]),
+            flush_memtables_num_histogram: TABLE_FLUSH_SST_NUM_HISTOGRAM
                 .with_label_values(&[table_name]),
 
             compaction_duration_histogram: TABLE_COMPACT_DURATION_HISTOGRAM
@@ -181,6 +184,7 @@ impl Metrics {
             flush_duration_histogram: self.flush_duration_histogram.local(),
             flush_sst_num_histogram: self.flush_sst_num_histogram.local(),
             flush_sst_size_histogram: self.flush_sst_size_histogram.local(),
+            flush_memtables_num_histogram: self.flush_memtables_num_histogram.local(),
         }
     }
 
@@ -215,6 +219,7 @@ pub struct LocalFlushMetrics {
     pub flush_duration_histogram: LocalHistogram,
     flush_sst_num_histogram: LocalHistogram,
     flush_sst_size_histogram: LocalHistogram,
+    flush_memtables_num_histogram: LocalHistogram,
 }
 
 impl LocalFlushMetrics {
@@ -225,5 +230,9 @@ impl LocalFlushMetrics {
     pub fn observe_sst_size(&self, sst_size: u64) {
         // Convert bytes to KB.
         self.flush_sst_size_histogram.observe(sst_size as f64 / KB);
+    }
+
+    pub fn observe_memtables_num(&self, num: usize) {
+        self.flush_memtables_num_histogram.observe(num as f64);
     }
 }
