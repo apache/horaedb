@@ -426,6 +426,9 @@ where
         Ok(())
     }
 
+    /// Flush action for [TableFlushPolicy::Purge].
+    ///
+    /// Purge is simply removing all selected memtables.
     async fn purge_memtables(
         &self,
         table_data: &TableData,
@@ -463,6 +466,14 @@ where
         Ok(())
     }
 
+    /// Flush action for [TableFlushPolicy::Dump].
+    ///
+    /// This will write picked memtables [FlushableMemTables] to level 0 sst
+    /// files. Sampling memtable may be dumped into multiple sst file according
+    /// to the sampled segment duration.
+    ///
+    /// Memtables will be removed after all of them are dumped. The max sequence
+    /// number in dumped memtables will be sent to the [WalManager].
     async fn dump_memtables(
         &self,
         table_data: &TableData,
@@ -474,6 +485,7 @@ where
         let mut flushed_sequence = 0;
         let mut sst_num = 0;
 
+        // process sampling memtable and frozen memtable
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
                 .dump_sampling_memtable(
@@ -491,10 +503,9 @@ where
                 }
             }
         }
-
         for mem in &mems_to_flush.memtables {
             let file = self
-                .dump_memtable_to_output(&*table_data, request_id, mem)
+                .dump_normal_memtable(&*table_data, request_id, mem)
                 .await?;
             if let Some(file) = file {
                 let sst_size = file.meta.size;
@@ -538,7 +549,7 @@ where
             .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
-        // Apply to the table version.
+        // Edit table version to remove dumped memtables.
         let mems_to_remove = mems_to_flush.ids();
         let edit = VersionEdit {
             flushed_sequence,
@@ -691,7 +702,8 @@ where
         Ok(Some(max_sequence))
     }
 
-    async fn dump_memtable_to_output(
+    /// Flush rows in normal (non-sampling) memtable to at most one sst file.
+    async fn dump_normal_memtable(
         &self,
         table_data: &TableData,
         request_id: RequestId,

@@ -312,19 +312,12 @@ impl MemTableView {
         }
     }
 
-    /// Returns the memtables that needs to be flushed.
-    /// - Id of returned memtables are no greater than `max_memtable_id`.
-    /// - The last sequences of the returned memtables are continuous and can be
-    ///   used as flushed sequence.
-    /// - All memTables with same last sequence must be picked to the same
-    ///   MemTableVec, so we can update flushed sequence safely (The
-    ///   `max_memtable_id` should also guarantee this).
-    /// - If freezed memtable exists, that memtable will be return if memtable
-    ///   id is no greater than `max_memtable_id` (The memtable id should always
-    ///   less than `max_memtable_id`).
+    /// Returns memtables need to be flushed. Only sampling memtable and
+    /// immutables will be considered. And only memtables which `last_sequence`
+    /// less or equal to the given [SequenceNumber] will be picked.
     ///
-    /// Now the returned memtables are also ordered by memtable id, but this may
-    /// change in the future.
+    /// This method assumes that one sequence number will not exist in multiple
+    /// memtables.
     fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
         let mut mems = FlushableMemTables::default();
 
