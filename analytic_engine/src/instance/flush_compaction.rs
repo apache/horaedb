@@ -178,7 +178,9 @@ pub struct TableFlushRequest {
 pub enum TableFlushPolicy {
     /// Dump memtable to sst file.
     Dump,
+    // TODO: use this policy and remove "allow(dead_code)"
     /// Drop memtables.
+    #[allow(dead_code)]
     Purge,
 }
 
