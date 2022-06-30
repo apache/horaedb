@@ -70,11 +70,42 @@ func main() {
 ## Logging
 ### Principles
 - Structured log by [zap](https://github.com/uber-go/zap).
+- Use the package `github.com/ceresmeta/pkg/log` which is based on [zap](https://github.com/uber-go/zap).
+- Create local logger with common fields if necessary.
 
 ### Example
+Normal usage:
 ```go
-if err := srv.Run(); err != nil {
+import "github.com/ceresmeta/pkg/log"
+
+func main() {
+  if err := srv.Run(); err != nil {
     log.Error("fail to run server", zap.Error(err))
     return
+  }
+}
+```
+
+Local logger:
+```go
+import "github.com/ceresmeta/pkg/log"
+
+type lease struct {
+    ID int64
+    logger *zap.Logger
+}
+
+func NewLease(ID int64) *lease {
+    logger := log.With(zap.Int64("lease-id", ID))
+	
+    return &lease {
+        ID,
+        logger,
+    }
+}
+
+func (l *lease) Close() {
+    l.logger.Info("lease is closed")
+    l.ID = 0
 }
 ```

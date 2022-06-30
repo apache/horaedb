@@ -14,5 +14,5 @@ CeresMeta refers to the excellent project [pd](https://github.com/tikv/pd) in de
 The project is under rapid development so that any contribution is welcome.
 Check our [Contributing Guide](https://github.com/CeresDB/ceresmeta/blob/main/CONTRIBUTING.md) and make your first contribution!
 
-## Licensing
+## License
 CeresMeta is under [Apache License 2.0](./LICENSE).
