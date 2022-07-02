@@ -2,10 +2,13 @@
 
 //! Interpreter for create statements
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use catalog::{
     manager::Manager,
-    schema::{CreateOptions, CreateTableRequest},
+    schema::{CreateOptions, CreateTableRequest, Schema},
+    Catalog,
 };
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
@@ -135,4 +138,45 @@ impl<C: Manager> Interpreter for CreateInterpreter<C> {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         self.execute_create().await.context(Create)
     }
+}
+
+pub fn get_catalog<C: Manager>(
+    ctx: &Context,
+    catalog_manager: &C,
+) -> Result<Arc<dyn Catalog + Send + Sync>> {
+    let default_catalog = ctx.default_catalog();
+    let catalog = catalog_manager
+        .catalog_by_name(default_catalog)
+        .context(FindCatalog {
+            name: default_catalog,
+        })?
+        .context(CatalogNotExists {
+            name: default_catalog,
+        })?;
+    Ok(catalog)
+}
+
+pub fn get_schema<C: Manager>(
+    ctx: &Context,
+    catalog_manager: &C,
+) -> Result<Arc<dyn Schema + Send + Sync>> {
+    let default_catalog = ctx.default_catalog();
+    let catalog = catalog_manager
+        .catalog_by_name(default_catalog)
+        .context(FindCatalog {
+            name: default_catalog,
+        })?
+        .context(CatalogNotExists {
+            name: default_catalog,
+        })?;
+    let default_schema = ctx.default_schema();
+    let schema = catalog
+        .schema_by_name(default_schema)
+        .context(FindSchema {
+            name: default_schema,
+        })?
+        .context(SchemaNotExists {
+            name: default_schema,
+        })?;
+    Ok(schema)
 }

@@ -216,14 +216,23 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_show(&mut self) -> Result<Statement> {
-        if self
-            .parser
-            .parse_one_of_keywords(&[Keyword::CREATE])
-            .is_some()
-        {
-            Ok(self.parse_show_create()?)
-        } else {
-            self.expected("create", self.parser.peek_token())
+        match self.parser.peek_token() {
+            Token::Word(w) => match w.keyword {
+                Keyword::TABLES => {
+                    self.parser.next_token();
+                    Ok(Statement::ShowTables)
+                }
+                Keyword::DATABASE => {
+                    self.parser.next_token();
+                    Ok(Statement::ShowDatabase)
+                }
+                Keyword::CREATE => {
+                    self.parser.next_token();
+                    Ok(self.parse_show_create()?)
+                }
+                _ => self.expected("create/tables/database", self.parser.peek_token()),
+            },
+            _ => self.expected("create/tables/database", self.parser.peek_token()),
         }
     }
 

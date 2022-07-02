@@ -7,41 +7,26 @@ use arrow_deps::arrow::{
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
-use async_trait::async_trait;
 use query_engine::executor::RecordBatchVec;
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::ensure;
 use sql::{ast::ShowCreateObject, plan::ShowCreatePlan};
 use table_engine::table::TableRef;
 
-use crate::interpreter::{
-    Interpreter, InterpreterPtr, Output, Result as InterpreterResult, ShowCreate,
+use crate::{
+    interpreter::Output,
+    show::{Result, UnsupportedType},
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "Unsupported show create type, type: {:?}, err:{}",
-        obj_type,
-        backtrace
-    ))]
-    UnsupportedType {
-        obj_type: ShowCreateObject,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
 
 pub struct ShowCreateInInterpreter {
     plan: ShowCreatePlan,
 }
 
 impl ShowCreateInInterpreter {
-    pub fn create(plan: ShowCreatePlan) -> InterpreterPtr {
-        Box::new(Self { plan })
+    pub fn create(plan: ShowCreatePlan) -> ShowCreateInInterpreter {
+        Self { plan }
     }
 
-    async fn execute_show_create(self: Box<Self>) -> Result<Output> {
+    pub fn execute_show_create(self) -> Result<Output> {
         let ShowCreatePlan { table, obj_type } = self.plan;
 
         ensure!(
@@ -125,12 +110,5 @@ impl ShowCreateInInterpreter {
         } else {
             "".to_string()
         }
-    }
-}
-
-#[async_trait]
-impl Interpreter for ShowCreateInInterpreter {
-    async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
-        self.execute_show_create().await.context(ShowCreate)
     }
 }
