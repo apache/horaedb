@@ -1229,57 +1229,83 @@ mod tests {
         let sql = "show create table test_table;";
         quick_test(
             sql,
-            r#"ShowCreate(
-    ShowCreatePlan {
-        table: MemoryTable {
-            name: "test_table",
-            id: TableId(100, 0, 100),
-            schema: Schema {
-                num_key_columns: 2,
-                timestamp_index: 1,
-                tsid_index: None,
-                enable_tsid_primary_key: false,
-                column_schemas: ColumnSchemas {
-                    columns: [
-                        ColumnSchema {
-                            id: 1,
-                            name: "key1",
-                            data_type: Varbinary,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 2,
-                            name: "key2",
-                            data_type: Timestamp,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 3,
-                            name: "field1",
-                            data_type: Double,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 4,
-                            name: "field2",
-                            data_type: String,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                    ],
+            r#"Show(
+    ShowCreatePlan(
+        ShowCreatePlan {
+            table: MemoryTable {
+                name: "test_table",
+                id: TableId(100, 0, 100),
+                schema: Schema {
+                    num_key_columns: 2,
+                    timestamp_index: 1,
+                    tsid_index: None,
+                    enable_tsid_primary_key: false,
+                    column_schemas: ColumnSchemas {
+                        columns: [
+                            ColumnSchema {
+                                id: 1,
+                                name: "key1",
+                                data_type: Varbinary,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 2,
+                                name: "key2",
+                                data_type: Timestamp,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 3,
+                                name: "field1",
+                                data_type: Double,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 4,
+                                name: "field2",
+                                data_type: String,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                        ],
+                    },
+                    version: 1,
                 },
-                version: 1,
             },
+            obj_type: Table,
         },
-        obj_type: Table,
-    },
+    ),
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_show_tables_statement_to_plan() {
+        let sql = "show tables;";
+        quick_test(
+            sql,
+            r#"Show(
+    ShowTables,
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_show_database_statement_to_plan() {
+        let sql = "show database;";
+        quick_test(
+            sql,
+            r#"Show(
+    ShowDatabase,
 )"#,
         )
         .unwrap();
