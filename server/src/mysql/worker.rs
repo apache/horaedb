@@ -58,7 +58,7 @@ where
         info: StatementMetaWriter<'a, W>,
     ) -> Result<()> {
         info.error(
-            ErrorKind::ER_UNKNOWN_ERROR,
+            ErrorKind::ER_NOT_SUPPORTED_YET,
             "Prepare is not supported in CeresDB".as_bytes(),
         )?;
         Ok(())
@@ -71,7 +71,7 @@ where
         writer: QueryResultWriter<'a, W>,
     ) -> Result<()> {
         writer.error(
-            ErrorKind::ER_UNKNOWN_ERROR,
+            ErrorKind::ER_NOT_SUPPORTED_YET,
             "Execute is not supported in CeresDB".as_bytes(),
         )?;
         Ok(())
@@ -92,8 +92,8 @@ where
                 writer.write(res)
             }
             Err(error) => {
-                error!("{}", error);
-                let error_msg = format!("{}", error);
+                error!("MysqlWorker on_query failed. err:{}", error);
+                let error_msg = error.to_string();
                 writer.error(ErrorKind::ER_UNKNOWN_ERROR, error_msg.as_bytes())?;
                 Ok(())
             }
