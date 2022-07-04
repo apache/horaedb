@@ -51,7 +51,7 @@ use crate::{
         file::{self, FileMeta, SstMetaData},
     },
     table::{
-        data::{MemTableId, TableData, TableDataRef},
+        data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
@@ -165,8 +165,6 @@ impl Default for TableFlushOptions {
 pub struct TableFlushRequest {
     /// Table to flush.
     pub table_data: TableDataRef,
-    /// Max id of memtable to flush (inclusive).
-    pub max_memtable_id: MemTableId,
     /// Max sequence number to flush (inclusive).
     pub max_sequence: SequenceNumber,
     /// Flush policy.
@@ -174,7 +172,7 @@ pub struct TableFlushRequest {
 }
 
 /// Policy of how to perform flush operation.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TableFlushPolicy {
     /// Dump memtable to sst file.
     Dump,
@@ -312,7 +310,6 @@ where
         // Try to flush all memtables of current table
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
-            max_memtable_id: table_data.last_memtable_id(),
             max_sequence: last_sequence,
             policy: TableFlushPolicy::Dump,
         })
@@ -375,8 +372,6 @@ where
     async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
         let TableFlushRequest {
             table_data,
-            // TODO: consider deprecate this field,
-            max_memtable_id: _,
             max_sequence,
             policy,
         } = flush_req;
