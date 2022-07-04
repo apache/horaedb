@@ -1,16 +1,16 @@
 # Introduction to CeresDB's Architecture
 ## Target
-- Provide the overall cognition of CeresDB to the developers who want to know more about CeresDB but have no way to start.
+- Provide the overview of CeresDB to the developers who want to know more about CeresDB but have no idea where to start.
 - Make a brief introduction to the important modules of CeresDB and the connections between these modules but details about their implementations are not be involved.
 
 ## Motivation
-CeresDB is a timeseries database. However, CeresDB's goal is to handle both timeseries and analytic workloads compared with the traditional ones, which always have a poor performance in handling analytic workloads.
+CeresDB is a timeseries database. However, CeresDB's goal is to handle both timeseries and analytic workloads compared with the traditional ones, which usually have a poor performance in handling analytic workloads.
 
-In the traditional timeseries database, the `Tag` columns (InfluxDB calls them `Tag` and Prometheus calls them `Label`) are normally indexed by generating an inverted index. However, it is found that the cardinality of `Tag` varies in different scenarios. And in some scenarios the cardinality of `Tag` is very high and it takes a very high cost to store and retrieve the inverted index. On the other hand, it is observed that scanning+pruning often used by the analytical databases can do a good job to handle such these scenarios.
+In the traditional timeseries database, the `Tag` columns (InfluxDB calls them `Tag` and Prometheus calls them `Label`) are normally indexed by generating an inverted index. However, it is found that the cardinality of `Tag` varies in different scenarios. And in some scenarios the cardinality of `Tag` is very high, and it takes a very high cost to store and retrieve the inverted index. On the other hand, it is observed that scanning+pruning often used by the analytical databases can do a good job to handle such these scenarios.
 
 The basic design idea of CeresDB is to adopt a hybrid storage format and the corresponding query method for a better performance in processing both timeseries and analytic workloads.
 
-## Architure
+## Architecture
 ```console
 ┌──────────────────────────────────────────┐
 │       RPC Layer (HTTP/gRPC/MySQL)        │
@@ -71,14 +71,14 @@ module path: https://github.com/CeresDB/ceresdb/tree/main/catalog_impls
 
 The levels of metadata adopted by CeresDB is similar to PostgreSQL: `Catalog > Schema > Table`, but they are only used as namespace.
 
-At present, `Catalog` and `Schema` have two different kinds of implementation for stand-alone and distributed mode because some strategies to generate ids and ways to persist meta data differ in different mode.
+At present, `Catalog` and `Schema` have two different kinds of implementation for stand-alone and distributed mode because some strategies to generate ids and ways to persist metadata differ in different mode.
 
 ### Query Engine
 module path: https://github.com/CeresDB/ceresdb/tree/main/query_engine
 
 `Query Engine` is responsible for creating, optimizing and executing query plan given a SQL and now such work is mainly delegated to [DataFusion](https://github.com/apache/arrow-datafusion).
 
-Besides the basic functions of SQL, CeresDB also defines some customized query protocols and optimization rules for some specific query plans by utilizing the extensibility provided by [DataFusion](https://github.com/apache/arrow-datafusion). For example, the implementation of `PromQL` is implemented in this way and read it if you are interested.
+In addition to the basic functions of SQL, CeresDB also defines some customized query protocols and optimization rules for some specific query plans by utilizing the extensibility provided by [DataFusion](https://github.com/apache/arrow-datafusion). For example, the implementation of `PromQL` is implemented in this way and read it if you are interested.
 
 ### Pluggable Table Engine
 module path: https://github.com/CeresDB/ceresdb/tree/main/table_engine
@@ -95,7 +95,7 @@ Now the requirements for a `Table Engine` are:
 - Take responsibilities for creating, opening, dropping and closing `Table` instance;
 - ....
 
-Actually the things that a `Table Engine` needs to process are a little complicated. And now in CeresDB only one `Table Engine` called `Analytic` is provided and does a good job in processing analytical workload but it is not ready yet to handle the timeseries workload (we plan to enhance it for a better performance by increasing some indexes which helps handle timeseries workload).
+Actually the things that a `Table Engine` needs to process are a little complicated. And now in CeresDB only one `Table Engine` called `Analytic` is provided and does a good job in processing analytical workload, but it is not ready yet to handle the timeseries workload (we plan to enhance it for a better performance by increasing some indexes which helps handle timeseries workload).
 
 The following part gives a description about details of `Analytic Table Engine`.
 
@@ -104,11 +104,11 @@ module path: https://github.com/CeresDB/ceresdb/tree/main/wal
 
 The model of CeresDB processing data is `WAL` + MemTable` that the recent written data is written to `WAL` first and then to `MemTable` and after a certain amount of data in `MemTable` is accumulated, the data will be organized in a query-friendly form to persistent devices.
 
-Now two implemenations of `WAL` are provided for stand-alone and distributed mode:
+Now two implementations of `WAL` are provided for stand-alone and distributed mode:
 - For stand-alone mode, `WAL` is based on `RocksDB` and data is persisted on the local disk.
-- For distributed mode, `WAL` is requred as a distributed component and to be responsible for reliability of the newly written data so now we provide a implementation based on [OceanBase](https://github.com/oceanbase/oceanbase) and in our roadmap a more lightweight implementation will be provided.
+- For distributed mode, `WAL` is required as a distributed component and to be responsible for reliability of the newly written data, so now we provide an implementation based on [OceanBase](https://github.com/oceanbase/oceanbase) and in our roadmap a more lightweight implementation will be provided.
 
-Besides, `WAL`'s trait definition tells that `WAL` has the concept of `Region` and actually each table is assigned to a `Region` so that the independence between tables is gained and such an indepenence provides convenience for some operations on table's level (such as different `TTL`s for different tables).
+Besides, `WAL`'s trait definition tells that `WAL` has the concept of `Region` and actually each table is assigned to a `Region` so that the independence between tables is gained and such an independence provides convenience for some operations on table's level (such as different `TTL`s for different tables).
 
 #### MemTable
 module path: https://github.com/CeresDB/ceresdb/tree/main/analytic_engine/src/memtable
@@ -122,7 +122,7 @@ module path: https://github.com/CeresDB/ceresdb/blob/main/analytic_engine/src/in
 
 What `Flush` does is that when the memory usage of `MemTable` reaches the threshold, some `MemTables` are selected for flushing into query-friendly `SST`s saved on persistent device.
 
-During the flushing procedure, the data will be divided by a centern time range (which is configured by table option `Segment Duration`), and no `SST` will span the `Segment Duration`. Actually this is also a common operation in most timeseries databases which organizes data according in the time dimension to speed up subsequent time-related operations, such as querying data over a time range and assisting purge data outside the `TTL`.
+During the flushing procedure, the data will be divided by a certain time range (which is configured by table option `Segment Duration`), and no `SST` will span the `Segment Duration`. Actually this is also a common operation in most timeseries databases which organizes data in the time dimension to speed up subsequent time-related operations, such as querying data over a time range and assisting purge data outside the `TTL`.
 
 At present, the control process of `Flush` is a little complicated, so the details will be explained in another document.
 
@@ -141,7 +141,7 @@ module path: https://github.com/CeresDB/ceresdb/tree/main/analytic_engine/src/me
 - The sequence number where the newest flush finishes;
 - The information of `SST`, such as `SST` path.
 
-Now the `Manifest` is based on `WAL` (this is a different instance from the `WAL` mentioned above for newly written data) and in order to avoid infinite expansion of metadata (actually every `Flush` leads to a update on ssts information), `Snapshot` is also introduced to clean up the history of meta data updates.
+Now the `Manifest` is based on `WAL` (this is a different instance from the `WAL` mentioned above for newly written data) and in order to avoid infinite expansion of metadata (actually every `Flush` leads to an update on sst information), `Snapshot` is also introduced to clean up the history of metadata updates.
 
 #### Object Store
 module path: https://github.com/CeresDB/ceresdb/tree/main/components/object_store
@@ -157,17 +157,17 @@ module path: https://github.com/CeresDB/ceresdb/tree/main/analytic_engine/src/ss
 
 Both `Flush` and `Compaction` involves `SST` and in the codebase `SST` itself is actually an abstraction that can have multiple specific implementations. The current implementation is based on [Parquet](https://parquet.apache.org/), which is a column-oriented data file format designed for efficient data storage and retrieval.
 
-The format of `SST` is very critical for retrieving data and is also the most important part to perform well in hanlding both timeseries and analytic workloads. At present, our [Parquet](https://parquet.apache.org/)-based implementation is good at processing analytic workload but is poor at processing timeseries workload. In our road map, a new hybrid storage format is planned to be able to process the two workloads at the same time.
+The format of `SST` is very critical for retrieving data and is also the most important part to perform well in handling both timeseries and analytic workloads. At present, our [Parquet](https://parquet.apache.org/)-based implementation is good at processing analytic workload but is poor at processing timeseries workload. In our road map, a new hybrid storage format is planned to be able to process the two workloads at the same time.
 
 #### Space
 module path: https://github.com/CeresDB/ceresdb/blob/main/analytic_engine/src/space.rs
 
-In `Analytic Engine`, there is a concept called `space` and here is a explanation for it to resolve some ambiguities when read source code. Actually `Analytic Engine` does not have the concept of `catalog` and `schema` and only provides two levels of relationship: `space` and `table`. And in the implementation, the `schema id` (which should be unique across all `catalog`s) on the upper layer is actually mapped to `space id`.
+In `Analytic Engine`, there is a concept called `space` and here is an explanation for it to resolve some ambiguities when read source code. Actually `Analytic Engine` does not have the concept of `catalog` and `schema` and only provides two levels of relationship: `space` and `table`. And in the implementation, the `schema id` (which should be unique across all `catalog`s) on the upper layer is actually mapped to `space id`.
 
 The `space` in `Analytic Engine` serves mainly for isolation of resources for different tenants, such as the usage of memory.
 
 ## Critical Path
-After a brief introduction to some important modules of CeresDB, we will give a description for some critical pathes in code, hoping to provide insterested developers with a guide for reading the code.
+After a brief introduction to some important modules of CeresDB, we will give a description for some critical paths in code, hoping to provide interested developers with a guide for reading the code.
 
 ### Query
 Take `SELECT` SQL as an example:
