@@ -9,11 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"go.uber.org/zap"
-
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server"
 	"github.com/CeresDB/ceresmeta/server/config"
+	"go.uber.org/zap"
 )
 
 func panicf(format string, args ...any) {
