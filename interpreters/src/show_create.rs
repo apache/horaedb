@@ -17,12 +17,12 @@ use crate::{
     show::{Result, UnsupportedType},
 };
 
-pub struct ShowCreateInInterpreter {
+pub struct ShowCreateInterpreter {
     plan: ShowCreatePlan,
 }
 
-impl ShowCreateInInterpreter {
-    pub fn create(plan: ShowCreatePlan) -> ShowCreateInInterpreter {
+impl ShowCreateInterpreter {
+    pub fn create(plan: ShowCreatePlan) -> ShowCreateInterpreter {
         Self { plan }
     }
 

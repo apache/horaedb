@@ -28,8 +28,14 @@ pub enum Error {
     #[snafu(display("Failed to execute alter table, err:{}", source))]
     AlterTable { source: crate::alter_table::Error },
 
-    #[snafu(display("Failed to execute show, err:{}", source))]
-    ShowCreate { source: crate::show::Error },
+    #[snafu(display("Failed to execute show create tables, err:{}", source))]
+    ShowCreateTable { source: crate::show::Error },
+
+    #[snafu(display("Failed to execute show tables, err:{}", source))]
+    ShowTables { source: crate::show::Error },
+
+    #[snafu(display("Failed to execute show database, err:{}", source))]
+    ShowDatabases { source: crate::show::Error },
 
     #[snafu(display("Failed to execute exists, err:{}", source))]
     Exists { source: crate::exists::Error },

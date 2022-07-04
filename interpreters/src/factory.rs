@@ -11,7 +11,7 @@ use crate::{
     alter_table::AlterTableInterpreter, context::Context, create::CreateInterpreter,
     describe::DescribeInterpreter, drop::DropInterpreter, exists::ExistsInterpreter,
     insert::InsertInterpreter, interpreter::InterpreterPtr, select::SelectInterpreter,
-    show::ShowInInterpreter,
+    show::ShowInterpreter,
 };
 
 /// A factory to create interpreters
@@ -42,7 +42,7 @@ impl<Q: Executor + 'static, C: CatalogManager + 'static> Factory<Q, C> {
             }
             Plan::Describe(p) => DescribeInterpreter::create(p),
             Plan::AlterTable(p) => AlterTableInterpreter::create(p),
-            Plan::Show(p) => ShowInInterpreter::create(ctx, p, self.catalog_manager),
+            Plan::Show(p) => ShowInterpreter::create(ctx, p, self.catalog_manager),
             Plan::Exists(p) => ExistsInterpreter::create(p),
         }
     }

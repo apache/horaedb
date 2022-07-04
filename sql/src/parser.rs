@@ -216,23 +216,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_show(&mut self) -> Result<Statement> {
-        match self.parser.peek_token() {
-            Token::Word(w) => match w.keyword {
-                Keyword::TABLES => {
-                    self.parser.next_token();
-                    Ok(Statement::ShowTables)
-                }
-                Keyword::DATABASE => {
-                    self.parser.next_token();
-                    Ok(Statement::ShowDatabase)
-                }
-                Keyword::CREATE => {
-                    self.parser.next_token();
-                    Ok(self.parse_show_create()?)
-                }
-                _ => self.expected("create/tables/database", self.parser.peek_token()),
-            },
-            _ => self.expected("create/tables/database", self.parser.peek_token()),
+        if self.consume_token("TABLES") {
+            Ok(Statement::ShowTables)
+        } else if self.consume_token("DATABASES") {
+            Ok(Statement::ShowDatabase)
+        } else if self.consume_token("CREATE") {
+            Ok(self.parse_show_create()?)
+        } else {
+            self.expected("create/tables/databases", self.parser.peek_token())
         }
     }
 
