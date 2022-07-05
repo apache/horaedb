@@ -23,8 +23,10 @@ use crate::{
     context::OpenContext,
     instance::{
         engine::{
-            ApplyMemTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal, RecoverTableData, Result,
+            ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
+            RecoverTableData, Result,
         },
+        flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         write_worker,
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
@@ -265,8 +267,8 @@ where
     ///
     /// Called by write worker
     pub(crate) async fn recover_table_from_wal(
-        &self,
-        worker_local: &WorkerLocal,
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
         table_data: TableDataRef,
         replay_batch_size: usize,
         read_ctx: &ReadContext,
@@ -295,7 +297,7 @@ where
                 .context(ReadWal)?;
 
             // Replay all log entries of current table
-            self.replay_table_log_entries(worker_local, &*table_data, &log_entry_buf)
+            self.replay_table_log_entries(worker_local, &table_data, &log_entry_buf)
                 .await?;
 
             // No more entries.
@@ -307,11 +309,11 @@ where
         Ok(())
     }
 
-    /// Replay all log entries into memtable
+    /// Replay all log entries into memtable and flush if necessary.
     async fn replay_table_log_entries(
-        &self,
-        worker_local: &WorkerLocal,
-        table_data: &TableData,
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
+        table_data: &TableDataRef,
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
         if log_entries.is_empty() {
@@ -326,8 +328,6 @@ where
             table_data.name, table_data.id, last_sequence
         );
 
-        // TODO(yingwen): Maybe we need to trigger flush if memtable is full during
-        // recovery Replay entries
         for log_entry in log_entries {
             let (sequence, payload) = (log_entry.sequence, &log_entry.payload);
 
@@ -377,6 +377,22 @@ where
                         table: &table_data.name,
                         table_id: table_data.id,
                     })?;
+
+                    // Flush the table if necessary.
+                    if table_data.should_flush_table(worker_local) {
+                        let opts = TableFlushOptions {
+                            res_sender: None,
+                            compact_after_flush: false,
+                            block_on_write_thread: false,
+                        };
+                        self.flush_table_in_worker(worker_local, table_data, opts)
+                            .await
+                            .context(FlushTable {
+                                space_id: table_data.space_id,
+                                table: &table_data.name,
+                                table_id: table_data.id,
+                            })?;
+                    }
                 }
             }
         }
