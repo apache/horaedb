@@ -21,7 +21,7 @@ pub enum Statement {
     AlterAddColumn(AlterAddColumn),
     /// SHOW CREATE TABLE
     ShowCreate(ShowCreate),
-    ShowDatabase,
+    ShowDatabases,
     ShowTables,
     Exists(ExistsTable),
 }

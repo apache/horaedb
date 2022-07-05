@@ -4,12 +4,12 @@ use std::{convert::TryInto, sync::Arc};
 
 use arrow_deps::arrow::{
     array::StringArray,
-    datatypes::{DataType, Field, Schema},
+    datatypes::{DataType, Field, Schema as DataSchema},
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
-use catalog::manager::Manager;
-use snafu::{Backtrace, ResultExt, Snafu};
+use catalog::{manager::Manager, schema::Schema, Catalog};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
     plan::{ShowCreatePlan, ShowPlan},
@@ -17,7 +17,7 @@ use sql::{
 
 use crate::{
     context::Context,
-    create::{self, get_catalog, get_schema},
+    create::{CatalogNotExists, FindCatalog, FindSchema, SchemaNotExists},
     interpreter::{
         Interpreter, InterpreterPtr, Output, Result as InterpreterResult, ShowCreateTable,
         ShowDatabases, ShowTables,
@@ -25,8 +25,8 @@ use crate::{
     show_create::ShowCreateInterpreter,
 };
 
-const SHOW_TABLES_SCHEMA: &str = "Tables";
-const SHOW_DATABASES_SCHEMA: &str = "Schemas";
+const SHOW_TABLES_COLUMN_SCHEMA: &str = "Tables";
+const SHOW_DATABASES_COLUMN_SCHEMA: &str = "Schemas";
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
@@ -41,27 +41,30 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Create a new arrow RecordBatch fail, err:{}", source))]
-    NewRecordBatch {
+    #[snafu(display("Failed to create a new arrow RecordBatch, err:{}", source))]
+    CreateRecordBatch {
         source: arrow_deps::arrow::error::ArrowError,
     },
 
-    #[snafu(display("Arrow RecordBatch to common_types::RecordBatch fail, err:{}", source))]
+    #[snafu(display(
+        "Failed to convert arrow::RecordBatch to common_types::RecordBatch, err:{}",
+        source
+    ))]
     ToCommonRecordType {
         source: common_types::record_batch::Error,
     },
 
-    #[snafu(display("Fetch tables fail, err:{}", source))]
+    #[snafu(display("Failed to fetch tables, err:{}", source))]
     FetchTables { source: catalog::schema::Error },
 
-    #[snafu(display("Fetch databases fail, err:{}", source))]
+    #[snafu(display("Failed to fetch databases, err:{}", source))]
     FetchDatabases { source: catalog::Error },
 
-    #[snafu(display("Fetch catalog fail, err:{}", source))]
-    FetchCatalog { source: create::Error },
+    #[snafu(display("Failed to fetch catalog, err:{}", source))]
+    FetchCatalog { source: crate::create::Error },
 
-    #[snafu(display("Fetch schema fail, err:{}", source))]
-    FetchSchema { source: create::Error },
+    #[snafu(display("Failed to fetch schema, err:{}", source))]
+    FetchSchema { source: crate::create::Error },
 }
 
 define_result!(Error);
@@ -89,7 +92,7 @@ impl<C: Manager> ShowInterpreter<C> {
     }
 
     fn show_tables(ctx: Context, catalog_manager: C) -> Result<Output> {
-        let schema = get_schema(&ctx, &catalog_manager).context(FetchSchema)?;
+        let schema = get_default_schema(&ctx, &catalog_manager).context(FetchSchema)?;
 
         let tables_names = schema
             .all_tables()
@@ -98,20 +101,24 @@ impl<C: Manager> ShowInterpreter<C> {
             .map(|t| t.name().to_string())
             .collect::<Vec<_>>();
 
-        let schema = Schema::new(vec![Field::new(SHOW_TABLES_SCHEMA, DataType::Utf8, false)]);
+        let schema = DataSchema::new(vec![Field::new(
+            SHOW_TABLES_COLUMN_SCHEMA,
+            DataType::Utf8,
+            false,
+        )]);
         let record_batch = RecordBatch::try_new(
             Arc::new(schema),
             vec![Arc::new(StringArray::from(tables_names))],
         )
-        .context(NewRecordBatch)?;
+        .context(CreateRecordBatch)?;
 
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
         Ok(Output::Records(vec![record_batch]))
     }
 
-    fn show_database(ctx: Context, catalog_manager: C) -> Result<Output> {
-        let catalog = get_catalog(&ctx, &catalog_manager).context(FetchCatalog)?;
+    fn show_databases(ctx: Context, catalog_manager: C) -> Result<Output> {
+        let catalog = get_default_catalog(&ctx, &catalog_manager).context(FetchCatalog)?;
         let schema_names = catalog
             .all_schemas()
             .context(FetchDatabases)?
@@ -119,8 +126,8 @@ impl<C: Manager> ShowInterpreter<C> {
             .map(|t| t.name().to_string())
             .collect::<Vec<_>>();
 
-        let schema = Schema::new(vec![Field::new(
-            SHOW_DATABASES_SCHEMA,
+        let schema = DataSchema::new(vec![Field::new(
+            SHOW_DATABASES_COLUMN_SCHEMA,
             DataType::Utf8,
             false,
         )]);
@@ -128,7 +135,7 @@ impl<C: Manager> ShowInterpreter<C> {
             Arc::new(schema),
             vec![Arc::new(StringArray::from(schema_names))],
         )
-        .context(NewRecordBatch)?;
+        .context(CreateRecordBatch)?;
 
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
@@ -145,8 +152,42 @@ impl<C: Manager> Interpreter for ShowInterpreter<C> {
                 Self::show_tables(self.ctx, self.catalog_manager).context(ShowTables)
             }
             ShowPlan::ShowDatabase => {
-                Self::show_database(self.ctx, self.catalog_manager).context(ShowDatabases)
+                Self::show_databases(self.ctx, self.catalog_manager).context(ShowDatabases)
             }
         }
     }
+}
+
+fn get_default_catalog<C: Manager>(
+    ctx: &Context,
+    catalog_manager: &C,
+) -> crate::create::Result<Arc<dyn Catalog + Send + Sync>> {
+    let default_catalog = ctx.default_catalog();
+    let catalog = catalog_manager
+        .catalog_by_name(default_catalog)
+        .context(FindCatalog {
+            name: default_catalog,
+        })?
+        .context(CatalogNotExists {
+            name: default_catalog,
+        })?;
+    Ok(catalog)
+}
+
+fn get_default_schema<C: Manager>(
+    ctx: &Context,
+    catalog_manager: &C,
+) -> crate::create::Result<Arc<dyn Schema + Send + Sync>> {
+    let catalog = get_default_catalog(ctx, catalog_manager)?;
+
+    let default_schema = ctx.default_schema();
+    let schema = catalog
+        .schema_by_name(default_schema)
+        .context(FindSchema {
+            name: default_schema,
+        })?
+        .context(SchemaNotExists {
+            name: default_schema,
+        })?;
+    Ok(schema)
 }

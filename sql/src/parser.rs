@@ -219,7 +219,7 @@ impl<'a> Parser<'a> {
         if self.consume_token("TABLES") {
             Ok(Statement::ShowTables)
         } else if self.consume_token("DATABASES") {
-            Ok(Statement::ShowDatabase)
+            Ok(Statement::ShowDatabases)
         } else if self.consume_token("CREATE") {
             Ok(self.parse_show_create()?)
         } else {

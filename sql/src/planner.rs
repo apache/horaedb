@@ -189,7 +189,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             Statement::AlterAddColumn(s) => planner.alter_add_column_to_plan(s),
             Statement::ShowCreate(s) => planner.show_create_to_plan(s),
             Statement::ShowTables => planner.show_tables_to_plan(),
-            Statement::ShowDatabase => planner.show_database_to_plan(),
+            Statement::ShowDatabases => planner.show_databases_to_plan(),
             Statement::Exists(s) => planner.exists_table_to_plan(s),
         }
     }
@@ -503,7 +503,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowTables))
     }
 
-    fn show_database_to_plan(&self) -> Result<Plan> {
+    fn show_databases_to_plan(&self) -> Result<Plan> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
@@ -1300,7 +1300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_show_database_statement_to_plan() {
+    fn test_show_databases_statement_to_plan() {
         let sql = "show database;";
         quick_test(
             sql,

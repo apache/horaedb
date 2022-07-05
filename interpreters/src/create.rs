@@ -2,13 +2,10 @@
 
 //! Interpreter for create statements
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use catalog::{
     manager::Manager,
-    schema::{CreateOptions, CreateTableRequest, Schema},
-    Catalog,
+    schema::{CreateOptions, CreateTableRequest},
 };
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
@@ -20,6 +17,7 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to find catalog, name:{}, err:{}", name, source))]
     FindCatalog {
@@ -138,45 +136,4 @@ impl<C: Manager> Interpreter for CreateInterpreter<C> {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         self.execute_create().await.context(Create)
     }
-}
-
-pub fn get_catalog<C: Manager>(
-    ctx: &Context,
-    catalog_manager: &C,
-) -> Result<Arc<dyn Catalog + Send + Sync>> {
-    let default_catalog = ctx.default_catalog();
-    let catalog = catalog_manager
-        .catalog_by_name(default_catalog)
-        .context(FindCatalog {
-            name: default_catalog,
-        })?
-        .context(CatalogNotExists {
-            name: default_catalog,
-        })?;
-    Ok(catalog)
-}
-
-pub fn get_schema<C: Manager>(
-    ctx: &Context,
-    catalog_manager: &C,
-) -> Result<Arc<dyn Schema + Send + Sync>> {
-    let default_catalog = ctx.default_catalog();
-    let catalog = catalog_manager
-        .catalog_by_name(default_catalog)
-        .context(FindCatalog {
-            name: default_catalog,
-        })?
-        .context(CatalogNotExists {
-            name: default_catalog,
-        })?;
-    let default_schema = ctx.default_schema();
-    let schema = catalog
-        .schema_by_name(default_schema)
-        .context(FindSchema {
-            name: default_schema,
-        })?
-        .context(SchemaNotExists {
-            name: default_schema,
-        })?;
-    Ok(schema)
 }
