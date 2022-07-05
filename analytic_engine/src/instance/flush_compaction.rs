@@ -51,7 +51,7 @@ use crate::{
         file::{self, FileMeta, SstMetaData},
     },
     table::{
-        data::{MemTableId, TableData, TableDataRef},
+        data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
@@ -165,8 +165,21 @@ impl Default for TableFlushOptions {
 pub struct TableFlushRequest {
     /// Table to flush.
     pub table_data: TableDataRef,
-    /// Max id of memtable to flush (inclusive).
-    pub max_memtable_id: MemTableId,
+    /// Max sequence number to flush (inclusive).
+    pub max_sequence: SequenceNumber,
+    /// Flush policy.
+    pub policy: TableFlushPolicy,
+}
+
+/// Policy of how to perform flush operation.
+#[derive(Debug, Clone, Copy)]
+pub enum TableFlushPolicy {
+    /// Dump memtable to sst file.
+    Dump,
+    // TODO: use this policy and remove "allow(dead_code)"
+    /// Drop memtables.
+    #[allow(dead_code)]
+    Purge,
 }
 
 impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
@@ -256,12 +269,16 @@ where
     ) -> Result<TableFlushRequest> {
         let current_version = table_data.current_version();
         let last_sequence = table_data.last_sequence();
-        // Switch all mutable memtables
+        // Switch (freeze) all mutable memtables. And update segment duration if
+        // suggestion is returned.
         if let Some(suggest_segment_duration) =
             current_version.switch_memtables_or_suggest_duration(worker_local)
         {
-            info!("Switch memtable and suggest segment duration, table:{}, table_id:{}, segment_duration:{:?}", table_data.name, table_data.id, suggest_segment_duration);
-            assert!(suggest_segment_duration.as_millis() > 0);
+            info!(
+                "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
+                table_data.name, table_data.id, suggest_segment_duration
+            );
+            assert!(!suggest_segment_duration.is_zero());
 
             let mut new_table_opts = (*table_data.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
@@ -293,7 +310,8 @@ where
         // Try to flush all memtables of current table
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
-            max_memtable_id: table_data.last_memtable_id(),
+            max_sequence: last_sequence,
+            policy: TableFlushPolicy::Dump,
         })
     }
 
@@ -310,7 +328,7 @@ where
         let table = table_data.name.clone();
 
         let instance = self.clone();
-        let flush_job = async move { instance.flush_memtables_to_outputs(&flush_req).await };
+        let flush_job = async move { instance.flush_memtables(&flush_req).await };
 
         let compact_req = TableCompactionRequest::no_waiter(
             table_data.clone(),
@@ -350,40 +368,114 @@ where
         }
     }
 
-    /// Caller should guarantee flush of single table is sequential
-    async fn flush_memtables_to_outputs(&self, flush_req: &TableFlushRequest) -> Result<()> {
-        // TODO(yingwen): Record memtables num to flush as statistics
+    /// Each table can only have one running flush job.
+    async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
         let TableFlushRequest {
             table_data,
-            max_memtable_id,
+            max_sequence,
+            policy,
         } = flush_req;
 
         let current_version = table_data.current_version();
-        let mut mems_to_flush = FlushableMemTables::default();
-
-        current_version.pick_memtables_to_flush(*max_memtable_id, &mut mems_to_flush);
+        let mems_to_flush = current_version.pick_memtables_to_flush(*max_sequence);
 
         if mems_to_flush.is_empty() {
             return Ok(());
         }
 
         let request_id = RequestId::next_id();
-
         info!(
-            "Instance try to flush memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}",
-            table_data.name, table_data.id, request_id, mems_to_flush
+            "Instance try to flush memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}, policy:{:?}",
+            table_data.name, table_data.id, request_id, mems_to_flush, policy,
         );
 
-        let local_metrics = table_data.metrics.local_flush_metrics();
         // Start flush duration timer.
+        let local_metrics = table_data.metrics.local_flush_metrics();
+        local_metrics.observe_memtables_num(mems_to_flush.len());
         let _timer = local_metrics.flush_duration_histogram.start_timer();
+
+        match policy {
+            TableFlushPolicy::Dump => {
+                self.dump_memtables(table_data, request_id, &mems_to_flush)
+                    .await?
+            }
+            TableFlushPolicy::Purge => {
+                self.purge_memtables(table_data, request_id, &mems_to_flush)
+                    .await?
+            }
+        }
+
+        info!(
+            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}",
+            table_data.name, table_data.id, request_id
+        );
+
+        Ok(())
+    }
+
+    /// Flush action for [TableFlushPolicy::Purge].
+    ///
+    /// Purge is simply removing all selected memtables.
+    async fn purge_memtables(
+        &self,
+        table_data: &TableData,
+        request_id: RequestId,
+        mems_to_flush: &FlushableMemTables,
+    ) -> Result<()> {
+        // calculate largest sequence number purged
+        let mut last_sequence_purged = SequenceNumber::MIN;
+        if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
+            last_sequence_purged = last_sequence_purged.max(sampling_mem.last_sequence());
+        }
+        for mem in &mems_to_flush.memtables {
+            last_sequence_purged = last_sequence_purged.max(mem.last_sequence());
+        }
+
+        // remove these memtables
+        let mems_to_remove = mems_to_flush.ids();
+        let edit = VersionEdit {
+            flushed_sequence: last_sequence_purged,
+            mems_to_remove,
+            files_to_add: vec![],
+            files_to_delete: vec![],
+        };
+        table_data.current_version().apply_edit(edit);
+
+        info!(
+            "Instance purged memtables, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}, last_sequence_purged:{}",
+            table_data.name,
+            table_data.id,
+            request_id,
+            mems_to_flush,
+            last_sequence_purged
+        );
+
+        Ok(())
+    }
+
+    /// Flush action for [TableFlushPolicy::Dump].
+    ///
+    /// This will write picked memtables [FlushableMemTables] to level 0 sst
+    /// files. Sampling memtable may be dumped into multiple sst file according
+    /// to the sampled segment duration.
+    ///
+    /// Memtables will be removed after all of them are dumped. The max sequence
+    /// number in dumped memtables will be sent to the [WalManager].
+    async fn dump_memtables(
+        &self,
+        table_data: &TableData,
+        request_id: RequestId,
+        mems_to_flush: &FlushableMemTables,
+    ) -> Result<()> {
+        let local_metrics = table_data.metrics.local_flush_metrics();
         let mut files_to_level0 = Vec::with_capacity(mems_to_flush.memtables.len());
         let mut flushed_sequence = 0;
         let mut sst_num = 0;
 
+        // process sampling memtable and frozen memtable
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
-                .flush_sampling_memtable(
+                .dump_sampling_memtable(
                     &*table_data,
                     request_id,
                     sampling_mem,
@@ -398,10 +490,9 @@ where
                 }
             }
         }
-
         for mem in &mems_to_flush.memtables {
             let file = self
-                .flush_memtable_to_output(&*table_data, request_id, mem)
+                .dump_normal_memtable(&*table_data, request_id, mem)
                 .await?;
             if let Some(file) = file {
                 let sst_size = file.meta.size;
@@ -435,7 +526,7 @@ where
             table_id: table_data.id,
             flushed_sequence,
             files_to_add: files_to_level0.clone(),
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
         };
         let meta_update = MetaUpdate::VersionEdit(edit_meta);
         self.space_store
@@ -445,13 +536,13 @@ where
             .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
-        // Apply to the table version.
+        // Edit table version to remove dumped memtables.
         let mems_to_remove = mems_to_flush.ids();
         let edit = VersionEdit {
             flushed_sequence,
             mems_to_remove,
             files_to_add: files_to_level0,
-            files_to_delete: Vec::new(),
+            files_to_delete: vec![],
         };
         table_data.current_version().apply_edit(edit);
 
@@ -465,11 +556,6 @@ where
                 sequence: flushed_sequence,
             })?;
 
-        info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}",
-            table_data.name, table_data.id, request_id
-        );
-
         Ok(())
     }
 
@@ -477,7 +563,7 @@ where
     /// duration.
     ///
     /// Returns flushed sequence.
-    async fn flush_sampling_memtable(
+    async fn dump_sampling_memtable(
         &self,
         table_data: &TableData,
         request_id: RequestId,
@@ -603,7 +689,8 @@ where
         Ok(Some(max_sequence))
     }
 
-    async fn flush_memtable_to_output(
+    /// Flush rows in normal (non-sampling) memtable to at most one sst file.
+    async fn dump_normal_memtable(
         &self,
         table_data: &TableData,
         request_id: RequestId,
@@ -657,11 +744,7 @@ where
         let sst_info = builder
             .build(request_id, &sst_meta, record_batch_stream)
             .await
-            .map_err(|e| {
-                // TODO(yingwen): Maybe remove this log.
-                error!("Failed to build sst file, meta:{:?}, err:{}", sst_meta, e);
-                Box::new(e) as _
-            })
+            .map_err(|e| Box::new(e) as _)
             .with_context(|| FailBuildSst {
                 path: sst_file_path.to_string(),
             })?;
