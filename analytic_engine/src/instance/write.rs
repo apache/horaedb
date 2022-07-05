@@ -208,7 +208,7 @@ where
 
         Self::write_to_memtable(
             worker_local,
-            &**table_data,
+            table_data,
             sequence,
             &row_group,
             index_in_writer,
@@ -380,7 +380,7 @@ where
     /// The len of `row_group` and `encoded_rows` must be equal.
     pub(crate) fn write_to_memtable(
         worker_local: &WorkerLocal,
-        table_data: &TableData,
+        table_data: &TableDataRef,
         sequence: SequenceNumber,
         row_group: &RowGroup,
         index_in_writer: IndexInWriterSchema,
