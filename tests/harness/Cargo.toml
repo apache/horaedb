@@ -1,0 +1,12 @@
+[package]
+name = "ceresdb-test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.58"
+ceresdb-client-rs = { path = "../../../ceresdb-client-rs" }
+tokio = { version = "1.19", features = ["full"] }
+walkdir = "2.3.2"

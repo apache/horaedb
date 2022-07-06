@@ -73,10 +73,10 @@ version = "0.1.0"
 dependencies = [
  "arc-swap 1.5.0",
  "arena",
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
  "base64 0.13.0",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "env_logger",
  "futures 0.3.21",
@@ -85,7 +85,7 @@ dependencies = [
  "object_store 0.1.0",
  "parquet 0.1.0",
  "prometheus 0.12.0",
- "proto",
+ "proto 0.1.0",
  "protobuf",
  "serde",
  "serde_derive",
@@ -227,6 +227,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow_deps"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+dependencies = [
+ "arrow",
+ "datafusion",
+ "datafusion-expr",
+ "parquet 15.0.0",
+ "uncover",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,9 +361,9 @@ dependencies = [
  "analytic_engine",
  "arena",
  "arrow2",
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "clap",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "criterion",
  "env_logger",
@@ -642,6 +654,15 @@ dependencies = [
 
 [[package]]
 name = "bytes"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+dependencies = [
+ "bytes 1.1.0",
+ "snafu 0.6.10",
+]
+
+[[package]]
+name = "bytes"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "206fdffcfa2df7cbe15601ef46c813fce0965eb3286db6b56c583b814b51c81c"
@@ -682,7 +703,7 @@ name = "catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "snafu 0.6.10",
  "table_engine",
@@ -695,7 +716,7 @@ dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "log",
  "server",
@@ -732,6 +753,38 @@ dependencies = [
  "table_engine",
  "tracing_util",
  "vergen",
+]
+
+[[package]]
+name = "ceresdb-client-rs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "avro-rs",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=cbfd0135a5311d7a1d66d2d274a633c2572be29d)",
+ "common_types 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
+ "grpcio 0.9.1",
+]
+
+[[package]]
+name = "ceresdb-test"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ceresdb-client-rs",
+ "tokio 1.19.2",
+ "walkdir",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=cbfd0135a5311d7a1d66d2d274a633c2572be29d#cbfd0135a5311d7a1d66d2d274a633c2572be29d"
+dependencies = [
+ "futures 0.3.21",
+ "grpcio 0.9.1",
+ "protobuf",
+ "protobuf-builder",
 ]
 
 [[package]]
@@ -848,13 +901,31 @@ dependencies = [
 name = "common_types"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "byteorder",
  "bytes 0.1.0",
  "chrono",
  "murmur3",
  "paste 1.0.7",
- "proto",
+ "proto 0.1.0",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "sqlparser",
+]
+
+[[package]]
+name = "common_types"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+dependencies = [
+ "arrow_deps 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
+ "byteorder",
+ "bytes 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
+ "chrono",
+ "murmur3",
+ "paste 1.0.7",
+ "proto 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
  "serde",
  "serde_derive",
  "snafu 0.6.10",
@@ -867,7 +938,7 @@ version = "0.1.0"
 dependencies = [
  "backtrace",
  "chrono",
- "common_types",
+ "common_types 0.1.0",
  "crossbeam-utils 0.8.10",
  "env_logger",
  "gag",
@@ -878,7 +949,7 @@ dependencies = [
  "nix 0.20.2",
  "pin-project-lite",
  "prometheus 0.12.0",
- "proto",
+ "proto 0.1.0",
  "serde",
  "serde_derive",
  "slog",
@@ -1343,11 +1414,11 @@ dependencies = [
 name = "df_operator"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "base64 0.13.0",
  "bincode",
  "chrono",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "hyperloglog",
  "smallvec 1.8.1",
@@ -2288,11 +2359,11 @@ name = "interpreters"
 version = "0.1.0"
 dependencies = [
  "analytic_engine",
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
  "catalog",
  "catalog_impls",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "df_operator",
  "log",
@@ -2731,8 +2802,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "catalog",
- "ceresdbproto",
- "common_types",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
  "grpcio 0.1.0",
@@ -3430,7 +3501,7 @@ dependencies = [
 name = "parquet"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "bytes 1.1.0",
  "lru",
  "parquet-format",
@@ -3731,6 +3802,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+dependencies = [
+ "protobuf",
+ "protobuf-builder",
+]
+
+[[package]]
 name = "protobuf"
 version = "2.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3799,9 +3879,9 @@ dependencies = [
 name = "query_engine"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "df_operator",
  "futures 0.3.21",
@@ -4486,12 +4566,12 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "analytic_engine",
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
  "avro-rs",
  "catalog",
- "ceresdbproto",
- "common_types",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "common_types 0.1.0",
  "common_util",
  "df_operator",
  "futures 0.3.21",
@@ -4813,10 +4893,10 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 name = "sql"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "catalog",
- "ceresdbproto",
- "common_types",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "common_types 0.1.0",
  "common_util",
  "df_operator",
  "log",
@@ -4959,14 +5039,14 @@ dependencies = [
 name = "system_catalog"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
  "catalog",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
  "log",
- "proto",
+ "proto 0.1.0",
  "protobuf",
  "snafu 0.6.10",
  "table_engine",
@@ -4977,13 +5057,13 @@ dependencies = [
 name = "table_engine"
 version = "0.1.0"
 dependencies = [
- "arrow_deps",
+ "arrow_deps 0.1.0",
  "async-trait",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
  "log",
- "proto",
+ "proto 0.1.0",
  "protobuf",
  "serde",
  "serde_derive",
@@ -5788,7 +5868,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "env_logger",
  "futures 0.3.21",
