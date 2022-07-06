@@ -1289,7 +1289,7 @@ mod tests {
 
     #[test]
     fn test_show_tables_statement_to_plan() {
-        let sql = "SHOW TABLES;";
+        let sql = "show tables;";
         quick_test(
             sql,
             r#"Show(
