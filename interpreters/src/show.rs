@@ -65,9 +65,23 @@ pub enum Error {
 
     #[snafu(display("Failed to fetch schema, err:{}", source))]
     FetchSchema { source: crate::create::Error },
+
+    #[snafu(display("Failed to convert from create::Error to show::Error, err:{}", source))]
+    FromCreateError { source: crate::create::Error },
 }
 
 define_result!(Error);
+
+impl From<crate::create::Error> for Error {
+    fn from(error: crate::create::Error) -> Self {
+        use crate::create::Error::*;
+        match error {
+            FindCatalog { .. } | CatalogNotExists { .. } => Error::FetchCatalog { source: error },
+            FindSchema { .. } | SchemaNotExists { .. } => Error::FetchSchema { source: error },
+            other => Error::FromCreateError { source: other },
+        }
+    }
+}
 
 pub struct ShowInterpreter<C> {
     ctx: Context,
@@ -92,7 +106,7 @@ impl<C: Manager> ShowInterpreter<C> {
     }
 
     fn show_tables(ctx: Context, catalog_manager: C) -> Result<Output> {
-        let schema = get_default_schema(&ctx, &catalog_manager).context(FetchSchema)?;
+        let schema = get_default_schema(&ctx, &catalog_manager)?;
 
         let tables_names = schema
             .all_tables()
@@ -118,7 +132,7 @@ impl<C: Manager> ShowInterpreter<C> {
     }
 
     fn show_databases(ctx: Context, catalog_manager: C) -> Result<Output> {
-        let catalog = get_default_catalog(&ctx, &catalog_manager).context(FetchCatalog)?;
+        let catalog = get_default_catalog(&ctx, &catalog_manager)?;
         let schema_names = catalog
             .all_schemas()
             .context(FetchDatabases)?
@@ -161,7 +175,7 @@ impl<C: Manager> Interpreter for ShowInterpreter<C> {
 fn get_default_catalog<C: Manager>(
     ctx: &Context,
     catalog_manager: &C,
-) -> crate::create::Result<Arc<dyn Catalog + Send + Sync>> {
+) -> Result<Arc<dyn Catalog + Send + Sync>> {
     let default_catalog = ctx.default_catalog();
     let catalog = catalog_manager
         .catalog_by_name(default_catalog)
@@ -177,7 +191,7 @@ fn get_default_catalog<C: Manager>(
 fn get_default_schema<C: Manager>(
     ctx: &Context,
     catalog_manager: &C,
-) -> crate::create::Result<Arc<dyn Schema + Send + Sync>> {
+) -> Result<Arc<dyn Schema + Send + Sync>> {
     let catalog = get_default_catalog(ctx, catalog_manager)?;
 
     let default_schema = ctx.default_schema();
