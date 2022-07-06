@@ -42,7 +42,7 @@ type etcdKV struct {
 
 // NewEtcdKV creates a new etcd kv.
 //nolint
-func NewEtcdKV(client *clientv3.Client, rootPath string, requestTimeout time.Duration) *etcdKV {
+func NewEtcdKV(client *clientv3.Client, rootPath string, requestTimeout time.Duration) KV {
 	return &etcdKV{
 		client:         client,
 		rootPath:       rootPath,

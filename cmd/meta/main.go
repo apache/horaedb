@@ -43,8 +43,7 @@ func main() {
 
 	// TODO: Do adjustment to config for preparing joining existing cluster.
 
-	ctx, cancel := context.WithCancel(context.Background())
-	srv, err := server.CreateServer(ctx, cfg)
+	srv, err := server.CreateServer(cfg)
 	if err != nil {
 		log.Error("fail to create server", zap.Error(err))
 		return
@@ -60,10 +59,11 @@ func main() {
 	var sig os.Signal
 	go func() {
 		sig = <-sc
-		cancel()
 	}()
 
-	if err := srv.Run(); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := srv.Run(ctx); err != nil {
 		log.Error("fail to run server", zap.Error(err))
 		return
 	}

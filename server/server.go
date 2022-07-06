@@ -7,17 +7,19 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/CeresDB/ceresdbproto/pkg/metapb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/ceresmeta/server/grpcservice"
 	"github.com/CeresDB/ceresmeta/server/member"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 type Server struct {
-	ctx      context.Context
 	isClosed int32
 
 	cfg     *config.Config
@@ -37,35 +39,38 @@ type Server struct {
 }
 
 // CreateServer creates the server instance without starting any services or background jobs.
-func CreateServer(ctx context.Context, cfg *config.Config) (*Server, error) {
+func CreateServer(cfg *config.Config) (*Server, error) {
 	etcdCfg, err := cfg.GenEtcdConfig()
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: register grpc service in the etcdCfg.ServiceRegister
-
 	srv := &Server{
-		ctx:      context.Background(),
 		isClosed: 0,
 
 		cfg:     cfg,
 		etcdCfg: etcdCfg,
 	}
+
+	grpcService := grpcservice.NewService(cfg.GrpcHandleTimeout(), srv)
+	etcdCfg.ServiceRegister = func(grpcSrv *grpc.Server) {
+		grpcSrv.RegisterService(&metapb.CeresmetaRpcService_ServiceDesc, grpcService)
+	}
+
 	return srv, nil
 }
 
 // Run runs the services and background jobs.
-func (srv *Server) Run() error {
-	if err := srv.startEtcd(); err != nil {
+func (srv *Server) Run(ctx context.Context) error {
+	if err := srv.startEtcd(ctx); err != nil {
 		return err
 	}
 
-	if err := srv.startServer(); err != nil {
+	if err := srv.startHTTPServer(ctx); err != nil {
 		return err
 	}
 
-	srv.startBgJobs()
+	srv.startBgJobs(ctx)
 
 	return nil
 }
@@ -88,13 +93,13 @@ func (srv *Server) IsClosed() bool {
 	return atomic.LoadInt32(&srv.isClosed) == 1
 }
 
-func (srv *Server) startEtcd() error {
+func (srv *Server) startEtcd(ctx context.Context) error {
 	etcdSrv, err := embed.StartEtcd(srv.etcdCfg)
 	if err != nil {
 		return ErrStartEtcd.WithCause(err)
 	}
 
-	newCtx, cancel := context.WithTimeout(srv.ctx, srv.cfg.EtcdStartTimeout())
+	newCtx, cancel := context.WithTimeout(ctx, srv.cfg.EtcdStartTimeout())
 	defer cancel()
 
 	select {
@@ -121,14 +126,14 @@ func (srv *Server) startEtcd() error {
 	return nil
 }
 
-/// startServer starts the http/grpc services.
-func (srv *Server) startServer() error {
+/// startServer starts the http services.
+func (srv *Server) startHTTPServer(_ context.Context) error {
 	return nil
 }
 
-func (srv *Server) startBgJobs() {
+func (srv *Server) startBgJobs(ctx context.Context) {
 	var bgJobCtx context.Context
-	bgJobCtx, srv.bgJobCancel = context.WithCancel(srv.ctx)
+	bgJobCtx, srv.bgJobCancel = context.WithCancel(ctx)
 
 	go srv.watchLeader(bgJobCtx)
 	go srv.watchEtcdLeaderPriority(bgJobCtx)
@@ -142,7 +147,7 @@ func (srv *Server) stopBgJobs() {
 // watchLeader watches whether the leader of the cluster exists.
 // Every node campaigns the leadership if it finds the leader is offline and the leader should keep the leadership after
 // election. And Keep the leader node also be the leader of the etcd cluster during election.
-func (srv *Server) watchLeader(_ context.Context) {
+func (srv *Server) watchLeader(ctx context.Context) {
 	srv.bgJobWg.Add(1)
 	defer srv.bgJobWg.Done()
 
@@ -151,7 +156,7 @@ func (srv *Server) watchLeader(_ context.Context) {
 	}
 	watcher := member.NewLeaderWatcher(watchCtx, srv.member, srv.cfg.LeaseTTLSec)
 
-	watcher.Watch(srv.ctx)
+	watcher.Watch(ctx)
 }
 
 func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {
@@ -169,4 +174,12 @@ func (ctx *leaderWatchContext) ShouldStop() bool {
 
 func (ctx *leaderWatchContext) EtcdLeaderID() uint64 {
 	return ctx.srv.etcdSrv.Server.Lead()
+}
+
+func (*Server) BindHeartbeatStream(_ context.Context, _ string, _ grpcservice.HeartbeatSender) error {
+	return nil
+}
+
+func (*Server) ProcessHeartbeat(_ context.Context, _ *metapb.NodeHeartbeatRequest) error {
+	return nil
 }

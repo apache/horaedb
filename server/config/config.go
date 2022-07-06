@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	defaultEtcdStartTimeoutMs int64 = 10 * 1000
-	defaultCallTimeoutMs            = 5 * 1000
-	defaultEtcdLeaseTTLSec          = 10
+	defaultGrpcHandleTimeoutMs int64 = 10 * 1000
+	defaultEtcdStartTimeoutMs  int64 = 10 * 1000
+	defaultCallTimeoutMs             = 5 * 1000
+	defaultEtcdLeaseTTLSec           = 10
 
 	defaultNodeNamePrefix          = "ceresmeta"
 	defaultDataDir                 = "/tmp/ceresmeta/data"
@@ -37,8 +38,9 @@ const (
 type Config struct {
 	Log log.Config `toml:"log" json:"log"`
 
-	EtcdStartTimeoutMs int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
-	EtcdCallTimeoutMs  int64 `toml:"etcd-call-timeout-ms" json:"etcd-call-timeout-ms"`
+	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms" json:"grpc-handle-timeout-ms"`
+	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
+	EtcdCallTimeoutMs   int64 `toml:"etcd-call-timeout-ms" json:"etcd-call-timeout-ms"`
 
 	LeaseTTLSec int64 `toml:"lease-sec" json:"lease-sec"`
 
@@ -69,6 +71,10 @@ type Config struct {
 	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`
 	AdvertiseClientUrls string `toml:"advertise-client-urls" json:"advertise-client-urls"`
 	AdvertisePeerUrls   string `toml:"advertise-peer-urls" json:"advertise-peer-urls"`
+}
+
+func (c *Config) GrpcHandleTimeout() time.Duration {
+	return time.Duration(c.GrpcHandleTimeoutMs) * time.Millisecond
 }
 
 func (c *Config) EtcdStartTimeout() time.Duration {
@@ -166,6 +172,7 @@ func MakeConfigParser() (*Parser, error) {
 	fs.StringVar(&cfg.Log.Level, "log-level", log.DefaultLogLevel, "level of the log")
 	fs.StringVar(&cfg.Log.File, "log-file", log.DefaultLogFile, "file for log output")
 
+	fs.Int64Var(&cfg.GrpcHandleTimeoutMs, "grpc-handle-timeout-ms", defaultGrpcHandleTimeoutMs, "timeout for handling grpc requests")
 	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
 	fs.Int64Var(&cfg.EtcdCallTimeoutMs, "etcd-dial-timeout-ms", defaultCallTimeoutMs, "timeout for dialing etcd server")
 	fs.Int64Var(&cfg.LeaseTTLSec, "lease-ttl-sec", defaultEtcdLeaseTTLSec, "ttl of etcd key lease (suggest 10s)")
