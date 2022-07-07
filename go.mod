@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto v0.0.0-20220628102323-cbfd0135a531
+	github.com/CeresDB/ceresdbproto v0.0.0-20220705103012-eba30f7dff73
 	github.com/axw/gocov v1.1.0
 	github.com/mgechev/revive v1.2.1
 	github.com/pingcap/log v1.1.0

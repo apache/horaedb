@@ -20,7 +20,6 @@ package storage
 import (
 	"path"
 	"strings"
-	"time"
 
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/pingcap/log"
@@ -36,25 +35,19 @@ const (
 type etcdKV struct {
 	client   *clientv3.Client
 	rootPath string
-
-	requestTimeout time.Duration
 }
 
 // NewEtcdKV creates a new etcd kv.
 //nolint
-func NewEtcdKV(client *clientv3.Client, rootPath string, requestTimeout time.Duration) KV {
+func NewEtcdKV(client *clientv3.Client, rootPath string) KV {
 	return &etcdKV{
-		client:         client,
-		rootPath:       rootPath,
-		requestTimeout: requestTimeout,
+		client:   client,
+		rootPath: rootPath,
 	}
 }
 
-func (kv *etcdKV) Get(key string) (string, error) {
+func (kv *etcdKV) Get(ctx context.Context, key string) (string, error) {
 	key = path.Join(kv.rootPath, key)
-
-	ctx, cancel := context.WithTimeout(context.Background(), kv.requestTimeout)
-	defer cancel()
 
 	resp, err := kv.client.Get(ctx, key)
 	if err != nil {
@@ -68,12 +61,9 @@ func (kv *etcdKV) Get(key string) (string, error) {
 	return string(resp.Kvs[0].Value), nil
 }
 
-func (kv *etcdKV) Scan(key, endKey string, limit int) ([]string, []string, error) {
+func (kv *etcdKV) Scan(ctx context.Context, key, endKey string, limit int) ([]string, []string, error) {
 	key = strings.Join([]string{kv.rootPath, key}, delimiter)
 	endKey = strings.Join([]string{kv.rootPath, endKey}, delimiter)
-
-	ctx, cancel := context.WithTimeout(context.Background(), kv.requestTimeout)
-	defer cancel()
 
 	withRange := clientv3.WithRange(endKey)
 	withLimit := clientv3.WithLimit(int64(limit))
@@ -90,10 +80,8 @@ func (kv *etcdKV) Scan(key, endKey string, limit int) ([]string, []string, error
 	return keys, values, nil
 }
 
-func (kv *etcdKV) Put(key, value string) error {
+func (kv *etcdKV) Put(ctx context.Context, key, value string) error {
 	key = strings.Join([]string{kv.rootPath, key}, delimiter)
-	ctx, cancel := context.WithTimeout(context.Background(), kv.requestTimeout)
-	defer cancel()
 	_, err := kv.client.Put(ctx, key, value)
 	if err != nil {
 		e := etcdutil.ErrEtcdKVPut.WithCause(err)
@@ -103,10 +91,8 @@ func (kv *etcdKV) Put(key, value string) error {
 	return nil
 }
 
-func (kv *etcdKV) Delete(key string) error {
+func (kv *etcdKV) Delete(ctx context.Context, key string) error {
 	key = strings.Join([]string{kv.rootPath, key}, delimiter)
-	ctx, cancel := context.WithTimeout(context.Background(), kv.requestTimeout)
-	defer cancel()
 	_, err := kv.client.Delete(ctx, key)
 	if err != nil {
 		err = etcdutil.ErrEtcdKVDelete.WithCause(err)

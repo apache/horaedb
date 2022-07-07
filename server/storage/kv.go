@@ -17,10 +17,12 @@
 
 package storage
 
+import "context"
+
 // KV is an abstract interface for kv storage
 type KV interface {
-	Get(key string) (string, error)
-	Scan(key, endKey string, limit int) (keys []string, values []string, err error)
-	Put(key, value string) error
-	Delete(key string) error
+	Get(ctx context.Context, key string) (string, error)
+	Scan(ctx context.Context, key, endKey string, limit int) (keys []string, values []string, err error)
+	Put(ctx context.Context, key, value string) error
+	Delete(ctx context.Context, key string) error
 }

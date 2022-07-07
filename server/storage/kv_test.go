@@ -18,6 +18,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"path"
@@ -31,6 +32,8 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 )
+
+const defaultRequestTimeout = time.Second * 10
 
 func TestEtcd(t *testing.T) {
 	re := require.New(t)
@@ -46,37 +49,41 @@ func TestEtcd(t *testing.T) {
 	re.NoError(err)
 	rootPath := path.Join("/pd", strconv.FormatUint(100, 10))
 
-	kv := NewEtcdKV(client, rootPath, time.Second*10)
+	kv := NewEtcdKV(client, rootPath)
 	testReadWrite(re, kv)
 	testRange(re, kv)
 }
 
 func testReadWrite(re *require.Assertions, kv KV) {
-	v, err := kv.Get("key")
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+	v, err := kv.Get(ctx, "key")
 	re.NoError(err)
 	re.Equal("", v)
-	err = kv.Put("key", "value")
+	err = kv.Put(ctx, "key", "value")
 	re.NoError(err)
-	v, err = kv.Get("key")
+	v, err = kv.Get(ctx, "key")
 	re.NoError(err)
 	re.Equal("value", v)
-	err = kv.Delete("key")
+	err = kv.Delete(ctx, "key")
 	re.NoError(err)
-	v, err = kv.Get("key")
+	v, err = kv.Get(ctx, "key")
 	re.NoError(err)
 	re.Equal("", v)
-	err = kv.Delete("key")
+	err = kv.Delete(ctx, "key")
 	re.NoError(err)
 }
 
 func testRange(re *require.Assertions, kv KV) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
 	keys := []string{
 		"test-a", "test-a/a", "test-a/ab",
 		"test", "test/a", "test/ab",
 		"testa", "testa/a", "testa/ab",
 	}
 	for _, k := range keys {
-		err := kv.Put(k, k)
+		err := kv.Put(ctx, k, k)
 		re.NoError(err)
 	}
 	sortedKeys := keys
@@ -97,7 +104,7 @@ func testRange(re *require.Assertions, kv KV) {
 	}
 
 	for _, tc := range testCases {
-		ks, vs, err := kv.Scan(tc.start, tc.end, tc.limit)
+		ks, vs, err := kv.Scan(ctx, tc.start, tc.end, tc.limit)
 		re.NoError(err)
 		re.Equal(tc.expect, ks)
 		re.Equal(tc.expect, vs)
