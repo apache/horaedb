@@ -1,14 +1,14 @@
-Prometheus extension for CeresDB 
+Prometheus read extension for CeresDB 
 ---------------------------
 
-- Feature Name: prometheus-extension
+- Feature Name: prometheus-read-extension
 - Tracking Issue: TBD
 
 # Summary
-Drop-in and full-featured Prometheus extension for CeresDB
+Drop-in and full-featured Prometheus read extension for CeresDB
 
 # Motivation
-Prometheus and PromQL are wide used in monitoring scenarios. It would be great if CeresDB is compatible with it. 
+Prometheus and PromQL are wide used in monitoring scenarios. It would be great if CeresDB can be queried using PromQL. 
 
 CeresDB has the ability to store and compute a large amount of data. But PromQL contains some specific operators. Though CeresDB supports a subset, it is hard and infeasible to implement all of them.
 
@@ -22,7 +22,7 @@ This proposal aims to provide a way that:
 # Details
 The proposed architecture contains three parts `Prometheus`, `CeresDB`, and `Query Frontend`. They can be combined in two ways.
 
-One is to deploy them together in a single node. This node provides Prometheus service via `Query Frontend` and the other two components are internal. This requires `CeresDB` server to implements `Prometheus`' remote storage interface, and can communicate with `Query Frontend`.
+One is to deploy them together in a single node. This node provides Prometheus service via `Query Frontend` and the other two components are internal. This requires `CeresDB` server to implement `Prometheus`' remote storage interface, and can communicate with `Query Frontend`.
 
 ```plaintext
                 Prometheus
