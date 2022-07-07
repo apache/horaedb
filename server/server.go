@@ -126,7 +126,7 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 
 	srv.etcdCli = client
 	etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: etcdSrv.Server}
-	srv.member = member.NewMember("", uint64(etcdSrv.Server.ID()), "", client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
+	srv.member = member.NewMember("", uint64(etcdSrv.Server.ID()), srv.cfg.NodeName, client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
 	srv.etcdSrv = etcdSrv
 	return nil
 }

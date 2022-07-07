@@ -23,6 +23,10 @@ type CodeError interface {
 // Is checks whether the cause of `err` is the kind of error specified by the `expectCode`.
 // Returns false if the cause of `err` is not CodeError.
 func Is(err error, expectCode Code) bool {
+	if err == nil {
+		return false
+	}
+
 	cause := errors.Cause(err)
 	cerr, ok := cause.(CodeError)
 	if !ok {

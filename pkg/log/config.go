@@ -9,7 +9,7 @@ import (
 
 const (
 	DefaultLogLevel = "info"
-	DefaultLogFile  = "/tmp/ceresmeta/out.log"
+	DefaultLogFile  = "stdout"
 )
 
 type Config struct {

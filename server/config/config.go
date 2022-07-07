@@ -36,7 +36,8 @@ const (
 )
 
 type Config struct {
-	Log log.Config `toml:"log" json:"log"`
+	Log     log.Config `toml:"log" json:"log"`
+	EtcdLog log.Config `toml:"etcd-log" json:"etcd-log"`
 
 	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms" json:"grpc-handle-timeout-ms"`
 	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
@@ -129,7 +130,10 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 		return nil, err
 	}
 
-	cfg.SetupGlobalLoggers()
+	cfg.Logger = "zap"
+	cfg.LogOutputs = []string{c.EtcdLog.File}
+	cfg.LogLevel = c.EtcdLog.Level
+
 	return cfg, nil
 }
 
@@ -141,7 +145,11 @@ type Parser struct {
 
 func (p *Parser) Parse(arguments []string) (*Config, error) {
 	if err := p.flagSet.Parse(arguments); err != nil {
-		return nil, ErrInvalidCommandArgs.WithCausef("original arguments:%v, parse err:%v", arguments, err)
+		if err == flag.ErrHelp {
+			return nil, ErrHelpRequested.WithCause(err)
+		}
+
+		return nil, ErrInvalidCommandArgs.WithCausef("fail to parse flag arguments:%v, err:%v", arguments, err)
 	}
 
 	// TODO: support loading config from file.
@@ -169,8 +177,10 @@ func MakeConfigParser() (*Parser, error) {
 		cfg:     cfg,
 	}
 
-	fs.StringVar(&cfg.Log.Level, "log-level", log.DefaultLogLevel, "level of the log")
+	fs.StringVar(&cfg.Log.Level, "log-level", log.DefaultLogLevel, "log level")
 	fs.StringVar(&cfg.Log.File, "log-file", log.DefaultLogFile, "file for log output")
+	fs.StringVar(&cfg.EtcdLog.Level, "etcd-log-level", log.DefaultLogLevel, "log level of etcd")
+	fs.StringVar(&cfg.EtcdLog.File, "etcd-log-file", log.DefaultLogFile, "file for log output of etcd")
 
 	fs.Int64Var(&cfg.GrpcHandleTimeoutMs, "grpc-handle-timeout-ms", defaultGrpcHandleTimeoutMs, "timeout for handling grpc requests")
 	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")

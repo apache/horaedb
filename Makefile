@@ -27,5 +27,5 @@ test: install-tools
 	@ echo "go test ..."
 	@ go test -timeout 5m -race -cover $(PACKAGES)
 
-# TODO: support build rule
 build: check
+	@ go build -o ceresmeta ./cmd/meta/...

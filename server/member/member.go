@@ -29,6 +29,7 @@ type Member struct {
 	etcdLeaderGetter etcdutil.EtcdLeaderGetter
 	leader           *metapb.Member
 	rpcTimeout       time.Duration
+	logger           *zap.Logger
 }
 
 func formatLeaderKey(rootPath string) string {
@@ -37,6 +38,7 @@ func formatLeaderKey(rootPath string) string {
 
 func NewMember(rootPath string, id uint64, name string, etcdCli *clientv3.Client, etcdLeaderGetter etcdutil.EtcdLeaderGetter, rpcTimeout time.Duration) *Member {
 	leaderKey := formatLeaderKey(rootPath)
+	logger := log.With(zap.String("node-name", name), zap.Uint64("node-id", id))
 	return &Member{
 		ID:               id,
 		Name:             name,
@@ -46,6 +48,7 @@ func NewMember(rootPath string, id uint64, name string, etcdCli *clientv3.Client
 		etcdLeaderGetter: etcdLeaderGetter,
 		leader:           nil,
 		rpcTimeout:       rpcTimeout,
+		logger:           logger,
 	}
 }
 
@@ -86,7 +89,7 @@ func (m *Member) WaitForLeaderChange(ctx context.Context, revision int64) {
 	watcher := clientv3.NewWatcher(m.etcdCli)
 	defer func() {
 		if err := watcher.Close(); err != nil {
-			log.Error("close watcher failed", zap.Error(err))
+			m.logger.Error("close watcher failed", zap.Error(err))
 		}
 	}()
 
@@ -98,7 +101,7 @@ func (m *Member) WaitForLeaderChange(ctx context.Context, revision int64) {
 		for resp := range wch {
 			// meet compacted error, use the compact revision.
 			if resp.CompactRevision != 0 {
-				log.Warn("required revision has been compacted, use the compact revision",
+				m.logger.Warn("required revision has been compacted, use the compact revision",
 					zap.Int64("required-revision", revision),
 					zap.Int64("compact-revision", resp.CompactRevision))
 				revision = resp.CompactRevision
@@ -106,13 +109,13 @@ func (m *Member) WaitForLeaderChange(ctx context.Context, revision int64) {
 			}
 
 			if resp.Canceled {
-				log.Error("watcher is cancelled", zap.Int64("revision", revision), zap.String("leader-key", m.leaderKey))
+				m.logger.Error("watcher is cancelled", zap.Int64("revision", revision), zap.String("leader-key", m.leaderKey))
 				return
 			}
 
 			for _, ev := range resp.Events {
 				if ev.Type == mvccpb.DELETE {
-					log.Info("current leader is deleted", zap.String("leader-key", m.leaderKey))
+					m.logger.Info("current leader is deleted", zap.String("leader-key", m.leaderKey))
 					return
 				}
 			}
@@ -141,7 +144,7 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64) e
 		ctx1, cancel := context.WithTimeout(context.Background(), m.rpcTimeout)
 		defer cancel()
 		if err := newLease.Close(ctx1); err != nil {
-			log.Error("close lease failed", zap.Error(err))
+			m.logger.Error("close lease failed", zap.Error(err))
 		}
 	}
 	defer closeLeaseOnce.Do(closeLease)
@@ -167,7 +170,7 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64) e
 		return ErrTxnPutLeader.WithCausef("txn put leader failed, resp:%v", resp)
 	}
 
-	log.Info("succeed to set leader", zap.String("leader-key", m.leaderKey), zap.String("leader", m.Name))
+	m.logger.Info("succeed to set leader", zap.String("leader-key", m.leaderKey), zap.String("leader", m.Name))
 
 	// keep the leadership after success in campaigning leader.
 	closeLeaseWg.Add(1)
@@ -185,16 +188,16 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64) e
 		select {
 		case <-leaderCheckTicker.C:
 			if newLease.IsExpired() {
-				log.Info("no longer a leader because lease has expired")
+				m.logger.Info("no longer a leader because lease has expired")
 				return nil
 			}
 			etcdLeader := m.etcdLeaderGetter.EtcdLeaderID()
 			if etcdLeader != m.ID {
-				log.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name))
+				m.logger.Info("etcd leader changed and should re-assign the leadership", zap.String("old-leader", m.Name))
 				return nil
 			}
 		case <-ctx.Done():
-			log.Info("server is closed")
+			m.logger.Info("server is closed")
 			return nil
 		}
 	}

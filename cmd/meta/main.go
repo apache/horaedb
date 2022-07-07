@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server"
 	"github.com/CeresDB/ceresmeta/server/config"
@@ -27,6 +28,10 @@ func main() {
 	}
 
 	cfg, err := cfgParser.Parse(os.Args[1:])
+	if coderr.Is(err, coderr.PrintHelpUsage) {
+		return
+	}
+
 	if err != nil {
 		panicf("fail to parse config from command line params, err:%v", err)
 	}
@@ -49,6 +54,8 @@ func main() {
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
 		syscall.SIGHUP,
@@ -59,10 +66,9 @@ func main() {
 	var sig os.Signal
 	go func() {
 		sig = <-sc
+		cancel()
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	if err := srv.Run(ctx); err != nil {
 		log.Error("fail to run server", zap.Error(err))
 		return
