@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use catalog::{manager::Manager, schema::DropOptions};
+use log::info;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::DropTablePlan;
 use table_engine::engine::{DropTableRequest, TableEngineRef};
@@ -108,12 +109,15 @@ impl<C: Manager> DropInterpreter<C> {
             table_engine: self.table_engine,
         };
 
-        let dropped = schema
+        if !schema
             .drop_table(request, opts)
             .await
-            .context(SchemaDropTable { table: &table })?;
+            .context(SchemaDropTable { table: &table })?
+        {
+            info!("Failed to drop table {}", &table);
+        }
 
-        Ok(Output::AffectedRows(if dropped { 1 } else { 0 }))
+        Ok(Output::AffectedRows(0))
     }
 }
 

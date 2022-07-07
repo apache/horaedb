@@ -137,12 +137,12 @@ impl Table for MemoryTable {
 
     // TODO: Alter schema is not supported now
     async fn alter_schema(&self, _request: AlterSchemaRequest) -> Result<usize> {
-        Ok(1)
+        Ok(0)
     }
 
     // TODO: Alter modify setting is not supported now
     async fn alter_options(&self, _options: HashMap<String, String>) -> Result<usize> {
-        Ok(1)
+        Ok(0)
     }
 
     async fn flush(&self, _request: FlushRequest) -> Result<()> {
