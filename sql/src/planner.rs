@@ -34,7 +34,7 @@ use crate::{
     parser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
-        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan,
+        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan,
     },
     promql::{ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
@@ -188,6 +188,8 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             Statement::AlterModifySetting(s) => planner.alter_modify_setting_to_plan(s),
             Statement::AlterAddColumn(s) => planner.alter_add_column_to_plan(s),
             Statement::ShowCreate(s) => planner.show_create_to_plan(s),
+            Statement::ShowTables => planner.show_tables_to_plan(),
+            Statement::ShowDatabases => planner.show_databases_to_plan(),
             Statement::Exists(s) => planner.exists_table_to_plan(s),
         }
     }
@@ -494,7 +496,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             table,
             obj_type: show_create.obj_type,
         };
-        Ok(Plan::ShowCreate(plan))
+        Ok(Plan::Show(ShowPlan::ShowCreatePlan(plan)))
+    }
+
+    fn show_tables_to_plan(&self) -> Result<Plan> {
+        Ok(Plan::Show(ShowPlan::ShowTables))
+    }
+
+    fn show_databases_to_plan(&self) -> Result<Plan> {
+        Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
     fn find_table(&self, table_name: ObjectName) -> Result<TableRef> {
@@ -1219,57 +1229,83 @@ mod tests {
         let sql = "show create table test_table;";
         quick_test(
             sql,
-            r#"ShowCreate(
-    ShowCreatePlan {
-        table: MemoryTable {
-            name: "test_table",
-            id: TableId(100, 0, 100),
-            schema: Schema {
-                num_key_columns: 2,
-                timestamp_index: 1,
-                tsid_index: None,
-                enable_tsid_primary_key: false,
-                column_schemas: ColumnSchemas {
-                    columns: [
-                        ColumnSchema {
-                            id: 1,
-                            name: "key1",
-                            data_type: Varbinary,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 2,
-                            name: "key2",
-                            data_type: Timestamp,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 3,
-                            name: "field1",
-                            data_type: Double,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                        ColumnSchema {
-                            id: 4,
-                            name: "field2",
-                            data_type: String,
-                            is_nullable: false,
-                            is_tag: false,
-                            comment: "",
-                        },
-                    ],
+            r#"Show(
+    ShowCreatePlan(
+        ShowCreatePlan {
+            table: MemoryTable {
+                name: "test_table",
+                id: TableId(100, 0, 100),
+                schema: Schema {
+                    num_key_columns: 2,
+                    timestamp_index: 1,
+                    tsid_index: None,
+                    enable_tsid_primary_key: false,
+                    column_schemas: ColumnSchemas {
+                        columns: [
+                            ColumnSchema {
+                                id: 1,
+                                name: "key1",
+                                data_type: Varbinary,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 2,
+                                name: "key2",
+                                data_type: Timestamp,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 3,
+                                name: "field1",
+                                data_type: Double,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                            ColumnSchema {
+                                id: 4,
+                                name: "field2",
+                                data_type: String,
+                                is_nullable: false,
+                                is_tag: false,
+                                comment: "",
+                            },
+                        ],
+                    },
+                    version: 1,
                 },
-                version: 1,
             },
+            obj_type: Table,
         },
-        obj_type: Table,
-    },
+    ),
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_show_tables_statement_to_plan() {
+        let sql = "SHOW TABLES;";
+        quick_test(
+            sql,
+            r#"Show(
+    ShowTables,
+)"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_show_databases_statement_to_plan() {
+        let sql = "SHOW DATABASES;";
+        quick_test(
+            sql,
+            r#"Show(
+    ShowDatabase,
 )"#,
         )
         .unwrap();

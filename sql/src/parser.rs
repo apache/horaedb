@@ -216,14 +216,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_show(&mut self) -> Result<Statement> {
-        if self
-            .parser
-            .parse_one_of_keywords(&[Keyword::CREATE])
-            .is_some()
-        {
+        if self.consume_token("TABLES") {
+            Ok(Statement::ShowTables)
+        } else if self.consume_token("DATABASES") {
+            Ok(Statement::ShowDatabases)
+        } else if self.consume_token("CREATE") {
             Ok(self.parse_show_create()?)
         } else {
-            self.expected("create", self.parser.peek_token())
+            self.expected("create/tables/databases", self.parser.peek_token())
         }
     }
 

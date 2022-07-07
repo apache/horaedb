@@ -17,6 +17,7 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to find catalog, name:{}, err:{}", name, source))]
     FindCatalog {

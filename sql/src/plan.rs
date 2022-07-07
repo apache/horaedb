@@ -50,8 +50,8 @@ pub enum Plan {
     Describe(DescribeTablePlan),
     /// Alter table plan
     AlterTable(AlterTablePlan),
-    /// Show create plan
-    ShowCreate(ShowCreatePlan),
+    /// Show plan
+    Show(ShowPlan),
     /// Exists table
     Exists(ExistsTablePlan),
 }
@@ -150,6 +150,16 @@ pub struct ShowCreatePlan {
     pub table: TableRef,
     /// The type to show
     pub obj_type: ShowCreateObject,
+}
+
+#[derive(Debug)]
+pub enum ShowPlan {
+    /// show create table
+    ShowCreatePlan(ShowCreatePlan),
+    /// show tables
+    ShowTables,
+    /// show database
+    ShowDatabase,
 }
 
 #[derive(Debug)]
