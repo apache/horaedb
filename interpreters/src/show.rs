@@ -66,7 +66,7 @@ pub enum Error {
     #[snafu(display("Failed to fetch schema, err:{}", source))]
     FetchSchema { source: crate::create::Error },
 
-    #[snafu(display("Failed to convert from create::Error to show::Error, err:{}", source))]
+    #[snafu(display("From create::Error, err:{}", source))]
     FromCreateError { source: crate::create::Error },
 }
 
