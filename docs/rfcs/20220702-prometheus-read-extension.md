@@ -2,7 +2,7 @@ Prometheus read extension for CeresDB
 ---------------------------
 
 - Feature Name: prometheus-read-extension
-- Tracking Issue: TBD
+- Tracking Issue: https://github.com/CeresDB/ceresdb/issues/90
 
 # Summary
 Drop-in and full-featured Prometheus read extension for CeresDB
