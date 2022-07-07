@@ -7,6 +7,7 @@ import (
 )
 
 var (
-	ErrRecvHeartbeat           = coderr.NewCodeError(coderr.Internal, "receive heartbeat")
-	ErrRegisterHeartbeatSender = coderr.NewCodeError(coderr.Internal, "register heartbeat sender")
+	ErrRecvHeartbeat         = coderr.NewCodeError(coderr.Internal, "receive heartbeat")
+	ErrBindHeartbeatStream   = coderr.NewCodeError(coderr.Internal, "bind heartbeat sender")
+	ErrUnbindHeartbeatStream = coderr.NewCodeError(coderr.Internal, "unbind heartbeat sender")
 )

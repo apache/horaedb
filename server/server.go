@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/grpcservice"
 	"github.com/CeresDB/ceresmeta/server/member"
+	"github.com/CeresDB/ceresmeta/server/schedule"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
@@ -26,6 +27,7 @@ type Server struct {
 	etcdCfg *embed.Config
 
 	// The fields below are initialized after Run of server is called.
+	hbStreams *schedule.HeartbeatStreams
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -66,7 +68,7 @@ func (srv *Server) Run(ctx context.Context) error {
 		return err
 	}
 
-	if err := srv.startHTTPServer(ctx); err != nil {
+	if err := srv.startServer(ctx); err != nil {
 		return err
 	}
 
@@ -77,6 +79,7 @@ func (srv *Server) Run(ctx context.Context) error {
 
 func (srv *Server) Close() {
 	atomic.StoreInt32(&srv.isClosed, 1)
+
 	srv.stopBgJobs()
 
 	if srv.etcdCli != nil {
@@ -85,6 +88,8 @@ func (srv *Server) Close() {
 			log.Error("fail to close etcdCli", zap.Error(err))
 		}
 	}
+
+	srv.hbStreams.Close()
 
 	// TODO: release other resources: httpclient, etcd server and so on.
 }
@@ -126,8 +131,9 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 	return nil
 }
 
-/// startServer starts the http services.
-func (srv *Server) startHTTPServer(_ context.Context) error {
+/// startServer starts involved services.
+func (srv *Server) startServer(ctx context.Context) error {
+	srv.hbStreams = schedule.NewHeartbeatStreams(ctx)
 	return nil
 }
 
@@ -176,7 +182,13 @@ func (ctx *leaderWatchContext) EtcdLeaderID() uint64 {
 	return ctx.srv.etcdSrv.Server.Lead()
 }
 
-func (*Server) BindHeartbeatStream(_ context.Context, _ string, _ grpcservice.HeartbeatSender) error {
+func (srv *Server) BindHeartbeatStream(_ context.Context, node string, sender grpcservice.HeartbeatStreamSender) error {
+	srv.hbStreams.Bind(node, sender)
+	return nil
+}
+
+func (srv *Server) UnbindHeartbeatStream(_ context.Context, node string) error {
+	srv.hbStreams.Unbind(node)
 	return nil
 }
 

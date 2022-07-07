@@ -26,34 +26,73 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 	}
 }
 
-type HeartbeatSender interface {
+type HeartbeatStreamSender interface {
 	Send(response *metapb.NodeHeartbeatResponse) error
 }
 
+// Handler is needed by grpc service to process the requests.
 type Handler interface {
-	BindHeartbeatStream(ctx context.Context, node string, sender HeartbeatSender) error
+	UnbindHeartbeatStream(ctx context.Context, node string) error
+	BindHeartbeatStream(ctx context.Context, node string, sender HeartbeatStreamSender) error
 	ProcessHeartbeat(ctx context.Context, req *metapb.NodeHeartbeatRequest) error
+
+	// TODO: define the methods for handling other grpc requests.
+}
+
+type streamBinder struct {
+	timeout time.Duration
+	h       Handler
+	stream  HeartbeatStreamSender
+
+	// States of the binder which may be updated.
+	node  string
+	bound bool
+}
+
+func (b *streamBinder) bindIfNot(ctx context.Context, node string) error {
+	if b.bound {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+	if err := b.h.BindHeartbeatStream(ctx, node, b.stream); err != nil {
+		return ErrBindHeartbeatStream.WithCausef("node:%s, err:%v", node, err)
+	}
+
+	b.bound = true
+	b.node = node
+	return nil
+}
+
+func (b *streamBinder) unbind(ctx context.Context) error {
+	if !b.bound {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, b.timeout)
+	defer cancel()
+	if err := b.h.UnbindHeartbeatStream(ctx, b.node); err != nil {
+		return ErrUnbindHeartbeatStream.WithCausef("node:%s, err:%v", b.node, err)
+	}
+
+	return nil
 }
 
 func (s *Service) NodeHeartbeat(heartbeatSrv metapb.CeresmetaRpcService_NodeHeartbeatServer) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	isStreamBound := false
-	bindStreamIfNot := func(ctx context.Context, node string) {
-		if isStreamBound {
-			return
-		}
-
-		ctx1, cancel := context.WithTimeout(ctx, s.opTimeout)
-		defer cancel()
-
-		if err := s.h.BindHeartbeatStream(ctx1, node, heartbeatSrv); err != nil {
-			log.Error("fail to bind node stream", zap.String("node", node), zap.Error(err))
-		} else {
-			isStreamBound = true
-		}
+	binder := streamBinder{
+		timeout: s.opTimeout,
+		h:       s.h,
+		stream:  heartbeatSrv,
 	}
+	defer func() {
+		if err := binder.unbind(ctx); err != nil {
+			log.Error("fail to unbind stream", zap.Error(err))
+		}
+	}()
 
 	// Process the message from the stream sequentially.
 	for {
@@ -66,7 +105,10 @@ func (s *Service) NodeHeartbeat(heartbeatSrv metapb.CeresmetaRpcService_NodeHear
 			return ErrRecvHeartbeat.WithCause(err)
 		}
 
-		bindStreamIfNot(ctx, req.Info.Node)
+		if err := binder.bindIfNot(ctx, req.Info.Node); err != nil {
+			log.Error("fail to bind node stream", zap.Error(err))
+		}
+
 		func() {
 			ctx1, cancel := context.WithTimeout(ctx, s.opTimeout)
 			defer cancel()
