@@ -79,7 +79,7 @@ where
 
         let output = self.sql_to_output(sql).await.unwrap();
         if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 1);
+            assert_eq!(v, 0);
         } else {
             panic!();
         }
