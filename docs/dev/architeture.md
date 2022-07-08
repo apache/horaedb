@@ -11,26 +11,24 @@ In the traditional timeseries database, the `Tag` columns (InfluxDB calls them `
 The basic design idea of CeresDB is to adopt a hybrid storage format and the corresponding query method for a better performance in processing both timeseries and analytic workloads.
 
 ## Architecture
-```console
+```plaintext
 ┌──────────────────────────────────────────┐
 │       RPC Layer (HTTP/gRPC/MySQL)        │
 └──────────────────────────────────────────┘
 ┌──────────────────────────────────────────┐
-│             Query Protocols:             │
-│              SQL/PromQL/...              │
+│                 SQL Layer                │
+│ ┌─────────────────┐  ┌─────────────────┐ │
+│ │     Parser      │  │     Planner     │ │
+│ └─────────────────┘  └─────────────────┘ │
 └──────────────────────────────────────────┘
+┌───────────────────┐  ┌───────────────────┐
+│    Interpreter    │  │      Catalog      │
+└───────────────────┘  └───────────────────┘
 ┌──────────────────────────────────────────┐
-│     Catalog/Schema/Table Management      │
-└──────────────────────────────────────────┘
-┌──────────────────────────────────────────┐
-│                Query Engine              │
-│ ┌─────────────────┐ ┌──────────────────┐ │
-│ │     Parser      │ │     Planner      │ │
-│ └─────────────────┘ └──────────────────┘ │
-│ ┌─────────────────┐ ┌──────────────────┐ │
-│ │    Optimizer    │ │     Executor     │ │
-│ └─────────────────┘ └──────────────────┘ │
-│                                          │
+│               Query Engine               │
+│ ┌─────────────────┐  ┌─────────────────┐ │
+│ │    Optimizer    │  │    Executor     │ │
+│ └─────────────────┘  └─────────────────┘ │
 └──────────────────────────────────────────┘
 ┌──────────────────────────────────────────┐
 │         Pluggable Table Engine           │
@@ -46,39 +44,45 @@ The basic design idea of CeresDB is to adopt a hybrid storage format and the cor
 │  ││    Manifest    ││  Object Store  ││  │
 │  │└────────────────┘└────────────────┘│  │
 │  └────────────────────────────────────┘  │
-│   ┌ ─ ─ ─ ─ ─ ─ ─      ┌ ─ ─ ─ ─ ─ ─ ─   │
-│        Hybrid    │        Timeseries  │  │
-│   └ ─ ─ ─ ─ ─ ─ ─      └ ─ ─ ─ ─ ─ ─ ─   │
+│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
+│           Another Table Engine        │  │
+│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─   │
 └──────────────────────────────────────────┘
 ```
 
-The figure above shows the architecture of CeresDB stand-alone service. And it should be noted some modules(`Hybrid` and `Timeseries` Table Engine) wrapped by dashed line means they are just in plan and have not been implemented yet.
-
-The details of some important modules will be described in the following part.
+The figure above shows the architecture of CeresDB stand-alone service and the details of some important modules will be described in the following part.
 
 ### RPC Layer
 module path: https://github.com/CeresDB/ceresdb/tree/main/server
 
-The current RPC supports multiple protocols including HTTP, GRPC, MySQL.
+The current RPC supports multiple protocols including HTTP, gRPC, MySQL.
 
 Basically, HTTP and MySQL are used to debug CeresDB, query manually and perform DDL operations (such as creating, deleting tables, etc.). And gRPC protocol can be regarded as a customized protocol for high-performance, which is suitable for massive reading and writing operations.
 
-### Query Protocol
+### SQL Layer 
 module path: https://github.com/CeresDB/ceresdb/tree/main/sql
 
-Now only the SQL is supported. In the short term, we will support PromQL. In the long term, some other query protocols may be supported too.
+SQL layer takes responsibilities for parsing sql and generating the plan.
 
-### Metadata management
+Based on [sqlparser](https://github.com/sqlparser-rs/sqlparser-rs) a sql dialect, which introduces some key concepts including `Tag` and `Timestamp`, is provided for processing timeseries data. And by utilizing [DataFusion](https://github.com/apache/arrow-datafusion) the planner can generate not only normal logical plans but also custom ones, such as plans for `PromQL`. 
+
+### Interpreter
+module path: https://github.com/CeresDB/ceresdb/tree/main/interpreters
+
+The `Interpreter` module encapsulates the SQL `CRUD` operations. Actually, a sql received by CeresDB will be parsed, converted into the query plan and then executed in some specific interpreter, such as `SelectInterpreter`, `InsertInterpreter` and etc.
+
+Interpreter
+### Catalog
 module path: https://github.com/CeresDB/ceresdb/tree/main/catalog_impls
 
-The levels of metadata adopted by CeresDB is similar to PostgreSQL: `Catalog > Schema > Table`, but they are only used as namespace.
+`Catalog` is actually the module managing metadata and the levels of metadata adopted by CeresDB is similar to PostgreSQL: `Catalog > Schema > Table`, but they are only used as namespace.
 
 At present, `Catalog` and `Schema` have two different kinds of implementation for stand-alone and distributed mode because some strategies to generate ids and ways to persist metadata differ in different mode.
 
 ### Query Engine
 module path: https://github.com/CeresDB/ceresdb/tree/main/query_engine
 
-`Query Engine` is responsible for creating, optimizing and executing query plan given a SQL and now such work is mainly delegated to [DataFusion](https://github.com/apache/arrow-datafusion).
+`Query Engine` is responsible for optimizing and executing query plan given a basic SQL plan provided by SQL layer and now such work is mainly delegated to [DataFusion](https://github.com/apache/arrow-datafusion).
 
 In addition to the basic functions of SQL, CeresDB also defines some customized query protocols and optimization rules for some specific query plans by utilizing the extensibility provided by [DataFusion](https://github.com/apache/arrow-datafusion). For example, the implementation of `PromQL` is implemented in this way and read it if you are interested.
 
@@ -97,7 +101,7 @@ Now the requirements for a `Table Engine` are:
 - Take responsibilities for creating, opening, dropping and closing `Table` instance;
 - ....
 
-Actually the things that a `Table Engine` needs to process are a little complicated. And now in CeresDB only one `Table Engine` called `Analytic` is provided and does a good job in processing analytical workload, but it is not ready yet to handle the timeseries workload (we plan to enhance it for a better performance by increasing some indexes which helps handle timeseries workload).
+Actually the things that a `Table Engine` needs to process are a little complicated. And now in CeresDB only one `Table Engine` called `Analytic` is provided and does a good job in processing analytical workload, but it is not ready yet to handle the timeseries workload (we plan to enhance it for a better performance by adding some indexes which help handle timeseries workload).
 
 The following part gives a description about details of `Analytic Table Engine`.
 
@@ -115,7 +119,7 @@ Besides, `WAL`'s trait definition tells that `WAL` has the concept of `Region` a
 #### MemTable
 module path: https://github.com/CeresDB/ceresdb/tree/main/analytic_engine/src/memtable
 
-`Memtable` is used to store the newly written data and after a certain amount of data is accumulated, CeresDB organizes the data in `MemTable` into a query-friendly storage format (`SST`) and stores it to the persistent device. Before persisting, `MemTable` also provides querying.
+`Memtable` is used to store the newly written data and after a certain amount of data is accumulated, CeresDB organizes the data in `MemTable` into a query-friendly storage format (`SST`) and stores it to the persistent device. `MemTable` is readable before it gets persisted (flushed).
 
 The current implementation of `MemTable` is based on [agatedb's skiplist](https://github.com/tikv/agatedb/blob/8510bff2bfde5b766c3f83cf81c00141967d48a4/skiplist). It allows concurrent reads and writes and can control memory usage based on [Arena](https://github.com/CeresDB/ceresdb/tree/main/components/skiplist).
 
@@ -138,7 +142,7 @@ The detailed strategy of `Compaction` will also be described with `Flush` in sub
 #### Manifest
 module path: https://github.com/CeresDB/ceresdb/tree/main/analytic_engine/src/meta
 
-`Manifest` takes responsibilities for managing metadata of `Analytic Engine` including:
+`Manifest` takes responsibilities for managing tables' metadata of `Analytic Engine` including:
 - Table schema and table options;
 - The sequence number where the newest flush finishes;
 - The information of `SST`, such as `SST` path.
@@ -172,11 +176,47 @@ The `space` in `Analytic Engine` serves mainly for isolation of resources for di
 After a brief introduction to some important modules of CeresDB, we will give a description for some critical paths in code, hoping to provide interested developers with a guide for reading the code.
 
 ### Query
-Take `SELECT` SQL as an example:
-- Server module chooses a proper module to process the requests according the protocol (it may be HTTP, gRPC or mysql) used by the requests;
+```plaintext
+┌───────┐      ┌───────┐      ┌───────┐ 
+│       │──1──▶│       │──2──▶│       │ 
+│Server │      │  SQL  │      │Catalog│ 
+│       │◀─10──│       │◀─3───│       │ 
+└───────┘      └───────┘      └───────┘ 
+                │    ▲                  
+               4│   9│                  
+                │    │                  
+                ▼    │                  
+┌─────────────────────────────────────┐ 
+│                                     │ 
+│             Interpreter             │ 
+│                                     │ 
+└─────────────────────────────────────┘ 
+                           │    ▲       
+                          5│   8│       
+                           │    │       
+                           ▼    │       
+                   ┌──────────────────┐ 
+                   │                  │ 
+                   │   Query Engine   │ 
+                   │                  │ 
+                   └──────────────────┘ 
+                           │    ▲       
+                          6│   7│       
+                           │    │       
+                           ▼    │       
+ ┌─────────────────────────────────────┐
+ │                                     │
+ │            Table Engine             │
+ │                                     │
+ └─────────────────────────────────────┘
+```
+Take `SELECT` SQL as an example. The figure above shows the query procedure and the numbers in it indicates the order of calling between the modules.
+
+Here are the details:
+- Server module chooses a proper rpc module (it may be HTTP, gRPC or mysql) to process the requests according the protocol used by the requests;
 - Parse SQL in the request by the parser;
 - With the parsed sql and the catalog/schema module, [DataFusion](https://github.com/apache/arrow-datafusion) can generate the logical plan;
-- With the logical plan, the corresponding `Interpreter` (`Interpreter` module  encapsulates the SQL `CRUD` operations) is created and logical plan will be executed by it;
+- With the logical plan, the corresponding `Interpreter` is created and logical plan will be executed by it;
 - For the logical plan of normal `Select` SQL, it will be executed through `SelectInterpreter`;
 - In the `SelectInterpreter` the specific query logic is executed by the `Query Engine`:
     - Optimize the logical plan;
@@ -191,8 +231,44 @@ Take `SELECT` SQL as an example:
 - After the protocol layer converts the results, the server module responds to the client with them.
 
 ### Write
-Take `INSERT` SQL as an example:
-- Server module chooses a proper module to process the requests according the protocol (it may be HTTP, gRPC or mysql) used by the requests;
+```plaintext
+┌───────┐      ┌───────┐      ┌───────┐ 
+│       │──1──▶│       │──2──▶│       │ 
+│Server │      │  SQL  │      │Catalog│ 
+│       │◀─8───│       │◀─3───│       │ 
+└───────┘      └───────┘      └───────┘ 
+                │    ▲                  
+               4│   7│                  
+                │    │                  
+                ▼    │                  
+┌─────────────────────────────────────┐ 
+│                                     │ 
+│             Interpreter             │ 
+│                                     │ 
+└─────────────────────────────────────┘ 
+      │    ▲                            
+      │    │                            
+      │    │                            
+      │    │                            
+      │    │       ┌──────────────────┐ 
+      │    │       │                  │ 
+     5│   6│       │   Query Engine   │ 
+      │    │       │                  │ 
+      │    │       └──────────────────┘ 
+      │    │                            
+      │    │                            
+      │    │                            
+      ▼    │                            
+ ┌─────────────────────────────────────┐
+ │                                     │
+ │            Table Engine             │
+ │                                     │
+ └─────────────────────────────────────┘
+```
+Take `INSERT` SQL as an example. The figure above shows the query procedure and the numbers in it indicates the order of calling between the modules.
+
+Here are the details:
+- Server module chooses a proper rpc module (it may be HTTP, gRPC or mysql) to process the requests according the protocol used by the requests;
 - Parse SQL in the request by the parser;
 - With the parsed sql and the catalog/schema module, [DataFusion](https://github.com/apache/arrow-datafusion) can generate the logical plan;
 - With the logical plan, the corresponding `Interpreter` is created and logical plan will be executed by it;
