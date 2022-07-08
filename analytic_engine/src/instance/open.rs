@@ -391,6 +391,7 @@ where
                             })?;
                     }
                 }
+                ReadPayload::AlterSchema { .. } => unimplemented!(),
             }
         }
 

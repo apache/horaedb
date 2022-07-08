@@ -13,7 +13,7 @@ use common_util::{
     codec::{row::WalRowDecoder, Decoder},
     define_result,
 };
-use proto::table_requests;
+use proto::{meta_update, table_requests};
 use protobuf::Message;
 use snafu::{Backtrace, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
@@ -60,6 +60,7 @@ define_result!(Error);
 #[derive(Clone, Copy)]
 enum Header {
     Write = 1,
+    AlterSchema = 2,
 }
 
 impl Header {
@@ -87,12 +88,14 @@ const HEADER_SIZE: usize = 1;
 #[derive(Debug)]
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),
+    AlterSchema(&'a meta_update::AlterSchemaMeta),
 }
 
 impl<'a> Payload for WritePayload<'a> {
     fn encode_size(&self) -> usize {
         let body_size = match self {
             WritePayload::Write(req) => req.compute_size(),
+            WritePayload::AlterSchema(req) => req.compute_size(),
         };
 
         HEADER_SIZE + body_size as usize
@@ -110,6 +113,11 @@ impl<'a> Payload for WritePayload<'a> {
                     .context(EncodeBody)
                     .map_err(Box::new)?;
             }
+            WritePayload::AlterSchema(req) => {
+                write_header(Header::Write, buf)?;
+                let mut writer = Writer::new(buf);
+                req.write_to_writer(&mut writer).context(EncodeBody)?;
+            }
         }
 
         Ok(())
@@ -120,6 +128,40 @@ impl<'a> Payload for WritePayload<'a> {
 #[derive(Debug)]
 pub enum ReadPayload {
     Write { row_group: RowGroup },
+    AlterSchema { schema: Schema },
+}
+
+impl ReadPayload {
+    fn decode_write_from_pb(buf: &[u8]) -> Result<Self> {
+        let mut write_req_pb: table_requests::WriteRequest =
+            Message::parse_from_bytes(buf).context(DecodeBody)?;
+
+        // Consume and convert schema in pb
+        let schema: Schema = write_req_pb
+            .take_schema()
+            .try_into()
+            .context(DecodeSchema)?;
+
+        // Consume and convert rows in pb
+        let encoded_rows = write_req_pb.take_rows().into_vec();
+        let mut builder = RowGroupBuilder::with_capacity(schema.clone(), encoded_rows.len());
+        let row_decoder = WalRowDecoder::new(&schema);
+        for row_bytes in &encoded_rows {
+            let row = row_decoder
+                .decode(&mut row_bytes.as_slice())
+                .context(DecodeRow)?;
+            // We skip schema check here
+            builder.push_checked_row(row);
+        }
+
+        let row_group = builder.build();
+
+        Ok(Self::Write { row_group })
+    }
+
+    fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
+        todo!()
+    }
 }
 
 /// Wal payload decoder
@@ -143,33 +185,8 @@ impl PayloadDecoder for WalDecoder {
         };
 
         let payload = match header {
-            Header::Write => {
-                let mut write_req_pb: table_requests::WriteRequest =
-                    Message::parse_from_bytes(buf.remaining_slice()).context(DecodeBody)?;
-
-                // Consume and convert schema in pb
-                let schema: Schema = write_req_pb
-                    .take_schema()
-                    .try_into()
-                    .context(DecodeSchema)?;
-
-                // Consume and convert rows in pb
-                let encoded_rows = write_req_pb.take_rows().into_vec();
-                let mut builder =
-                    RowGroupBuilder::with_capacity(schema.clone(), encoded_rows.len());
-                let row_decoder = WalRowDecoder::new(&schema);
-                for row_bytes in &encoded_rows {
-                    let row = row_decoder
-                        .decode(&mut row_bytes.as_slice())
-                        .context(DecodeRow)?;
-                    // We skip schema check here
-                    builder.push_checked_row(row);
-                }
-
-                let row_group = builder.build();
-
-                ReadPayload::Write { row_group }
-            }
+            Header::Write => ReadPayload::decode_write_from_pb(buf.remaining_slice())?,
+            Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(buf.remaining_slice())?,
         };
 
         Ok(payload)
