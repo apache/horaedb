@@ -260,7 +260,7 @@ fn test_alter_schema_drop_create<T: EngineBuilder>() {
             .try_alter_schema(test_table1, request)
             .await
             .unwrap();
-        assert_eq!(1, affected);
+        assert_eq!(0, affected);
 
         // Drop table.
         assert!(test_ctx.drop_table(test_table1).await);
@@ -301,7 +301,7 @@ fn test_alter_options_drop_create<T: EngineBuilder>() {
             .try_alter_options(test_table1, new_opts)
             .await
             .unwrap();
-        assert_eq!(1, affected);
+        assert_eq!(0, affected);
 
         // Drop table.
         assert!(test_ctx.drop_table(test_table1).await);
