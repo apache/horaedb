@@ -150,7 +150,7 @@ where
         let sql = "alter table test_table add column add_col string";
         let output = self.sql_to_output(sql).await.unwrap();
         if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 1);
+            assert_eq!(v, 0);
         } else {
             panic!();
         }
@@ -158,7 +158,7 @@ where
         let sql = "alter table test_table modify SETTING ttl='9d'";
         let output = self.sql_to_output(sql).await.unwrap();
         if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 1);
+            assert_eq!(v, 0);
         } else {
             panic!();
         }
@@ -168,7 +168,7 @@ where
         let sql = "drop table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
         if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 1);
+            assert_eq!(v, 0);
         } else {
             panic!();
         }
