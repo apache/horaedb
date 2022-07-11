@@ -219,7 +219,7 @@ impl<
             .await
             .map_err(|e| Box::new(e) as _)
             .context(AlterSchema { table: self.name() })?;
-        Ok(1)
+        Ok(0)
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
@@ -228,7 +228,7 @@ impl<
             .await
             .map_err(|e| Box::new(e) as _)
             .context(AlterOptions { table: self.name() })?;
-        Ok(1)
+        Ok(0)
     }
 
     async fn flush(&self, request: FlushRequest) -> Result<()> {

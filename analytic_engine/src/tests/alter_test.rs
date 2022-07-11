@@ -184,7 +184,7 @@ async fn alter_schema_add_column_case<T: EngineBuilder>(
         .try_alter_schema(table_name, request)
         .await
         .unwrap();
-    assert_eq!(1, affected);
+    assert_eq!(0, affected);
 
     let rows = [
         (
@@ -428,7 +428,7 @@ async fn alter_immutable_option_case<T: EngineBuilder>(
         .try_alter_options(table_name, new_opts)
         .await
         .unwrap();
-    assert_eq!(1, affected);
+    assert_eq!(0, affected);
 
     let opts_after_alter = test_ctx.table(table_name).options();
     assert_options_eq(&old_opts, &opts_after_alter);
@@ -450,7 +450,7 @@ async fn alter_mutable_option_case<T: EngineBuilder>(
         .try_alter_options(table_name, new_opts)
         .await
         .unwrap();
-    assert_eq!(1, affected);
+    assert_eq!(0, affected);
 
     let opts_after_alter = test_ctx.table(table_name).options();
     assert_options_eq(&expect_opts, &opts_after_alter);

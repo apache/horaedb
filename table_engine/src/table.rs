@@ -445,12 +445,12 @@ pub trait Table: std::fmt::Debug {
     /// Alter table schema to the schema specific in [AlterSchemaRequest] if
     /// the `pre_schema_version` is equal to current schema version.
     ///
-    /// Returns the affected rows (always 1).
+    /// Returns the affected rows (always 0).
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize>;
 
     /// Alter table options.
     ///
-    /// Returns the affected rows (always 1).
+    /// Returns the affected rows (always 0).
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize>;
 
     /// Flush this table.

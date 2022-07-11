@@ -125,7 +125,7 @@ impl<C: Manager> CreateInterpreter<C> {
             .await
             .context(SchemaCreateTable { table })?;
 
-        Ok(Output::AffectedRows(1))
+        Ok(Output::AffectedRows(0))
     }
 }
 
