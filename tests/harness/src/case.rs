@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use std::{fmt::Display, path::Path};
 
 use anyhow::{Context, Result};
@@ -11,8 +13,8 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
 };
 
-const INTERCEPTOR_PREFIX: &'static str = "-- CERESDB";
-const COMMENT_PREFIX: &'static str = "--";
+const INTERCEPTOR_PREFIX: &str = "-- CERESDB";
+const COMMENT_PREFIX: &str = "--";
 
 pub struct TestCase {
     name: String,
