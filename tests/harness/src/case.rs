@@ -124,6 +124,7 @@ impl Query {
     }
 
     // TODO: implement query interceptor.
+    #[allow(dead_code)]
     fn intercept(&self, _result: QueriedRows) -> QueriedRows {
         todo!()
     }

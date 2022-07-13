@@ -1,14 +1,14 @@
 use std::{
     path::{Path, PathBuf},
-    process::Command,
     time::Instant,
 };
 
 use anyhow::{Context, Result};
 use ceresdb_client_rs::client::Client;
+use prettydiff::diff_lines;
 use tokio::{
     fs::{remove_file, File, OpenOptions},
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
 };
 use walkdir::WalkDir;
 
@@ -21,7 +21,6 @@ const OUTPUT_FILE_EXTENSION: &'static str = "out";
 /// Expected result provides with queries
 const RESULT_FILE_EXTENSION: &'static str = "result";
 /// Tools to compare file
-const DIFF_BINARY: &'static str = "diff";
 
 pub struct Runner {
     case_root: String,
@@ -51,7 +50,7 @@ impl Runner {
                 let elapsed = timer.elapsed();
 
                 output_file.flush().await?;
-                let is_different = self.compare(&path);
+                let is_different = self.compare(&path).await?;
                 if !is_different {
                     remove_file(output_path).await?;
                 } else {
@@ -116,21 +115,24 @@ impl Runner {
     }
 
     /// Compare files' diff, return true if two files are different
-    fn compare<P: AsRef<Path>>(&self, path: P) -> bool {
-        let diff = Command::new(DIFF_BINARY)
-            .arg(
-                path.as_ref()
-                    .with_extension(RESULT_FILE_EXTENSION)
-                    .as_os_str(),
-            )
-            .arg(
-                path.as_ref()
-                    .with_extension(OUTPUT_FILE_EXTENSION)
-                    .as_os_str(),
-            )
-            .output()
-            .expect(&format!("Cannot diff over {:?}", path.as_ref()));
+    async fn compare<P: AsRef<Path>>(&self, path: P) -> Result<bool> {
+        let mut result_lines = vec![];
+        File::open(path.as_ref().with_extension(RESULT_FILE_EXTENSION))
+            .await?
+            .read_to_end(&mut result_lines)
+            .await?;
+        let result_lines = String::from_utf8(result_lines)?;
 
-        !diff.stdout.is_empty()
+        let mut output_lines = vec![];
+        File::open(path.as_ref().with_extension(OUTPUT_FILE_EXTENSION))
+            .await?
+            .read_to_end(&mut output_lines)
+            .await?;
+        let output_lines = String::from_utf8(output_lines)?;
+
+        let diff = diff_lines(&result_lines, &output_lines);
+        println!("{}", diff);
+
+        Ok(!diff.diff().is_empty())
     }
 }

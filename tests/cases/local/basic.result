@@ -8,8 +8,8 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to co
 
 SELECT * FROM demo;
 
-t,tsid,name,value,,
-Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),,
+t,tsid,name,value,
+Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
 
 
 DROP TABLE demo;
