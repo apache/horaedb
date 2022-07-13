@@ -5,7 +5,7 @@ use std::{
 
 use ceresdb_client_rs::{client::Client, Builder};
 
-const BINARY_PATH_ENV: &'static str = "CERESDB_TEST_BINARY_PATH";
+const BINARY_PATH_ENV: &'static str = "CERESDB_BINARY_PATH";
 const SERVER_ENDPOINT_ENV: &'static str = "CERESDB_SERVER_ENDPOINT";
 const CASE_ROOT_PATH_ENV: &'static str = "CERESDB_TEST_CASE_PATH";
 

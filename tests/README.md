@@ -11,7 +11,7 @@ The binary takes these env variables to run:
 
 The command to run the test looks like
 ```bash
-CERESDB_TEST_BINARY_PATH="./target/debug/ceresdb-server" CERESDB_SERVER_ENDPOINT="127.0.0.1:8831" CERESDB_TEST_CASE_PATH="./tests/cases" ./target/release/ceresdb-test
+CERESDB_BINARY_PATH="./target/debug/ceresdb-server" CERESDB_SERVER_ENDPOINT="127.0.0.1:8831" CERESDB_TEST_CASE_PATH="./tests/cases" ./target/release/ceresdb-test
 ```
 
 Make sure the `diff(1)` command is available in your environment. `ceresdb-test` will use it to compare the output against the expected.
