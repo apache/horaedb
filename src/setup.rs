@@ -58,6 +58,7 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
         read_runtime: Arc::new(build_runtime("cse-read", config.read_thread_num)),
         write_runtime: Arc::new(build_runtime("cse-write", config.write_thread_num)),
+        meta_runtime: Arc::new(build_runtime("cse-write", config.meta_thread_num)),
         bg_runtime: Arc::new(build_runtime("cse-bg", config.background_thread_num)),
     }
 }

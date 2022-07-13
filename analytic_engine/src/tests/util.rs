@@ -415,6 +415,7 @@ impl Builder {
             runtimes: Arc::new(EngineRuntimes {
                 read_runtime: runtime.clone(),
                 write_runtime: runtime.clone(),
+                meta_runtime: runtime.clone(),
                 bg_runtime: runtime,
             }),
         }

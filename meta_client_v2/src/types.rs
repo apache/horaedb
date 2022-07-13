@@ -1,8 +1,6 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
-
 use std::collections::HashMap;
 
-use ceresdbproto::{
+use ceresdbxproto::{
     metaV2::ShardRole as PbShardRole,
     metagrpcV2::{
         AllocSchemaIdRequest as PbAllocSchemaIdRequest,
@@ -49,10 +47,12 @@ pub enum ErrorType {
     UNKNOWN,
 }
 
+#[derive(Debug)]
 pub struct AllocSchemaIdRequest {
     pub name: String,
 }
 
+#[derive(Debug)]
 pub struct AllocSchemaIdResponse {
     pub header: ResponseHeader,
 
@@ -60,11 +60,13 @@ pub struct AllocSchemaIdResponse {
     pub id: SchemaId,
 }
 
+#[derive(Debug)]
 pub struct AllocTableIdRequest {
     pub schema_name: String,
     pub name: String,
 }
 
+#[derive(Debug)]
 pub struct AllocTableIdResponse {
     pub header: ResponseHeader,
 
@@ -75,11 +77,14 @@ pub struct AllocTableIdResponse {
     pub id: TableId,
 }
 
+#[derive(Debug, Clone)]
 pub struct DropTableRequest {
     pub schema_name: String,
     pub name: String,
+    pub id: TableId,
 }
 
+#[derive(Debug)]
 pub struct DropTableResponse {
     pub header: ResponseHeader,
 }
@@ -110,11 +115,6 @@ pub struct ShardTables {
     pub tables: Vec<TableInfo>,
 }
 
-#[derive(Debug)]
-struct NodeHeartbeatRequest {
-    info: NodeInfo,
-}
-
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Node {
     pub addr: String,
@@ -129,7 +129,7 @@ impl ToString for Node {
 
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct NodeMetaInfo {
-    pub node: String,
+    pub node: Node,
     pub zone: String,
     pub idc: String,
     pub binary_version: String,
@@ -163,11 +163,14 @@ pub enum ShardRole {
 
 #[derive(Debug, Clone)]
 pub enum ActionCmd {
-    NoneCmd(NoneCmd),
-    OpenCmd(OpenCmd),
-    SplitCmd(SplitCmd),
-    CloseCmd(CloseCmd),
-    ChangeRoleCmd(ChangeRoleCmd),
+    MetaNoneCmd(NoneCmd),
+    MetaOpenCmd(OpenCmd),
+    MetaSplitCmd(SplitCmd),
+    MetaCloseCmd(CloseCmd),
+    MetaChangeRoleCmd(ChangeRoleCmd),
+
+    AddTableCmd(AddTableCmd),
+    DropTableCmd(DropTableCmd),
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +190,21 @@ pub struct CloseCmd {
 }
 
 #[derive(Debug, Clone)]
+pub struct AddTableCmd {
+    pub schema_name: String,
+    pub name: String,
+    pub shard_id: ShardId,
+    pub schema_id: SchemaId,
+    pub id: TableId,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableCmd {
+    pub schema_name: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct ChangeRoleCmd {}
 
 #[derive(Debug, Deserialize, Clone)]
@@ -199,7 +217,6 @@ pub struct MetaClientConfig {
     pub timeout: ReadableDuration,
     pub cq_count: usize,
 
-    ///
     /// - If `enable_meta` is true, the client will fetch cluster view from
     ///   remote meta ndoe.
     /// - If `enable_meta` is false, the client will try to read cluster view
@@ -279,12 +296,12 @@ impl From<PbNodeHeartbeatResponse> for NodeHeartbeatResponse {
 impl From<NodeHeartbeatResponse_oneof_cmd> for ActionCmd {
     fn from(pb: NodeHeartbeatResponse_oneof_cmd) -> Self {
         match pb {
-            NodeHeartbeatResponse_oneof_cmd::none_cmd(_) => ActionCmd::NoneCmd(NoneCmd {}),
-            NodeHeartbeatResponse_oneof_cmd::open_cmd(v) => ActionCmd::OpenCmd(v.into()),
-            NodeHeartbeatResponse_oneof_cmd::split_cmd(v) => ActionCmd::SplitCmd(v.into()),
-            NodeHeartbeatResponse_oneof_cmd::close_cmd(v) => ActionCmd::CloseCmd(v.into()),
+            NodeHeartbeatResponse_oneof_cmd::none_cmd(_) => ActionCmd::MetaNoneCmd(NoneCmd {}),
+            NodeHeartbeatResponse_oneof_cmd::open_cmd(v) => ActionCmd::MetaOpenCmd(v.into()),
+            NodeHeartbeatResponse_oneof_cmd::split_cmd(v) => ActionCmd::MetaSplitCmd(v.into()),
+            NodeHeartbeatResponse_oneof_cmd::close_cmd(v) => ActionCmd::MetaCloseCmd(v.into()),
             NodeHeartbeatResponse_oneof_cmd::change_role_cmd(v) => {
-                ActionCmd::ChangeRoleCmd(v.into())
+                ActionCmd::MetaChangeRoleCmd(v.into())
             }
         }
     }
@@ -445,6 +462,7 @@ impl From<DropTableRequest> for PbDropTableRequest {
         let mut pb = PbDropTableRequest::new();
         pb.set_schema_name(req.schema_name);
         pb.set_name(req.name);
+        pb.set_id(req.id);
         pb
     }
 }
