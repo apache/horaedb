@@ -10,7 +10,10 @@ use common_types::{
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
 use query_engine::executor::RecordBatchVec;
-use serde::Serialize;
+use serde::{
+    ser::{SerializeMap, SerializeSeq},
+    Serialize,
+};
 use snafu::ensure;
 use sql::{
     frontend::{Context as SqlContext, Frontend},
@@ -22,8 +25,6 @@ use crate::handlers::{
     prelude::*,
 };
 
-type ResponseRows = Vec<ResponseRow>;
-
 #[derive(Debug, Deserialize)]
 pub struct Request {
     query: String,
@@ -34,11 +35,10 @@ pub struct Request {
 #[serde(rename_all = "snake_case")]
 pub enum Response {
     AffectedRows(usize),
-    #[serde(with = "http_format")]
     Rows(ResponseRows),
 }
 
-pub struct ResponseRow {
+pub struct ResponseRows {
     pub column_names: Vec<ResponseColumn>,
     pub data: Vec<Vec<Datum>>,
 }
@@ -48,8 +48,46 @@ pub struct ResponseColumn {
     pub data_type: DatumKind,
 }
 
-#[derive(Serialize)]
-struct Row(#[serde(with = "row_format")] Vec<(String, Datum)>);
+struct Row<'a>(Vec<(&'a String, &'a Datum)>);
+
+impl<'a> Serialize for Row<'a> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let rows = &self.0;
+        let mut map = serializer.serialize_map(Some(rows.len()))?;
+        for (key, value) in rows {
+            map.serialize_entry(key, value)?;
+        }
+        map.end()
+    }
+}
+
+impl Serialize for ResponseRows {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let total_count = self.data.len();
+        let mut seq = serializer.serialize_seq(Some(total_count))?;
+
+        for rows in &self.data {
+            let data = rows
+                .iter()
+                .enumerate()
+                .map(|(col_idx, datum)| {
+                    let column_name = &self.column_names[col_idx].name;
+                    (column_name, datum)
+                })
+                .collect::<Vec<_>>();
+            let row = Row(data);
+            seq.serialize_element(&row)?;
+        }
+
+        seq.end()
+    }
+}
 
 impl From<String> for Request {
     fn from(query: String) -> Self {
@@ -145,100 +183,43 @@ fn convert_output(output: Output) -> ArrowResult<Response> {
 }
 
 fn convert_records(records: RecordBatchVec) -> ArrowResult<Response> {
-    // let total_rows = records.iter().map(|v| v.num_rows()).sum();
-    // let mut resp = Vec::with_capacity(total_rows);
+    if records.is_empty() {
+        return Ok(Response::Rows(ResponseRows {
+            column_names: Vec::new(),
+            data: Vec::new(),
+        }));
+    }
 
-    let mut response_rows = Vec::new();
-    for record_batch in records {
-        let num_cols = record_batch.num_columns();
-        let num_rows = record_batch.num_rows();
-        let schema = record_batch.schema();
+    let record_batch = &records[0];
+    let num_cols = record_batch.num_columns();
+    let num_rows = record_batch.num_rows();
+    let schema = record_batch.schema();
 
-        let mut column_names = Vec::with_capacity(num_cols);
-        let mut column_data = Vec::with_capacity(num_rows);
+    let mut column_names = Vec::with_capacity(num_cols);
+    let mut column_data = Vec::with_capacity(num_rows);
 
+    for col_idx in 0..num_cols {
+        let column_schema = schema.column(col_idx).clone();
+        column_names.push(ResponseColumn {
+            name: column_schema.name,
+            data_type: column_schema.data_type,
+        });
+    }
+
+    for row_idx in 0..num_rows {
+        let mut row_data = Vec::with_capacity(num_cols);
         for col_idx in 0..num_cols {
-            let column_schema = schema.column(col_idx).clone();
-            column_names.push(ResponseColumn {
-                name: column_schema.name,
-                data_type: column_schema.data_type,
-            });
+            let column = record_batch.column(col_idx);
+            let column = column.datum(row_idx);
+
+            row_data.push(column);
         }
 
-        for row_idx in 0..num_rows {
-            let mut row_data = Vec::with_capacity(num_cols);
-            for col_idx in 0..num_cols {
-                let column = record_batch.column(col_idx);
-                let column = column.datum(row_idx);
-
-                row_data.push(column);
-            }
-
-            column_data.push(row_data);
-        }
-
-        response_rows.push(ResponseRow {
-            column_names,
-            data: column_data,
-        })
+        column_data.push(row_data);
     }
 
-    Ok(Response::Rows(response_rows))
-}
-
-mod http_format {
-    use serde::{
-        ser::SerializeSeq,
-        Serializer,
-    };
-
-    use super::Row;
-    use crate::handlers::sql::ResponseRows;
-
-    pub fn serialize<S>(records: &ResponseRows, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let total_count = records.iter().map(|row| row.data.len()).sum();
-        let mut seq = serializer.serialize_seq(Some(total_count))?;
-
-        for record in records {
-            let column_names = &record.column_names;
-            // let mut map = seq.serialize_map(Some(column_names.len()))?;
-
-            for rows in &record.data {
-                let data = rows
-                    .iter()
-                    .enumerate()
-                    .map(|(col_idx, datum)| {
-                        let column_name = &column_names[col_idx].name.clone();
-                        (column_name.clone(), datum.clone())
-                    })
-                    .collect::<Vec<_>>();
-                let row = Row(data);
-                seq.serialize_element(&row)?;
-            }
-        }
-
-        seq.end()
-    }
-}
-
-mod row_format {
-    use common_types::datum::Datum;
-    use serde::{
-        ser::SerializeMap,
-        Serializer,
-    };
-
-    pub fn serialize<S>(rows: &[(String, Datum)], serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(rows.len()))?;
-        for (key, value) in rows {
-            map.serialize_entry(key, value)?;
-        }
-        map.end()
-    }
+    Ok(Response::Rows(ResponseRows {
+        column_names,
+        data: column_data,
+    }))
 }

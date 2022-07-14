@@ -4,7 +4,7 @@ use common_types::datum::{Datum, DatumKind};
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 
 use crate::{
-    handlers::sql::{Response, ResponseColumn, ResponseRow},
+    handlers::sql::{Response, ResponseColumn, ResponseRows},
     mysql::error::Result,
 };
 
@@ -36,24 +36,21 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Ok(())
     }
 
-    fn write_response_row(
-        writer: QueryResultWriter<'a, W>,
-        response_row: &ResponseRow,
-    ) -> Result<()> {
+    fn write_rows(writer: QueryResultWriter<'a, W>, rows: ResponseRows) -> Result<()> {
         let default_response = OkResponse::default();
-        if response_row.column_names.is_empty() {
+        if rows.column_names.is_empty() {
             writer.completed(default_response)?;
             return Ok(());
         }
 
-        let columns = &response_row
+        let columns = &rows
             .column_names
             .iter()
             .map(make_column_by_field)
             .collect::<Vec<_>>();
         let mut row_writer = writer.start(columns)?;
 
-        for row in &response_row.data {
+        for row in &rows.data {
             for val in row {
                 let data_type = convert_field_type(val);
                 let re = match (data_type, val) {
@@ -88,17 +85,6 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         }
 
         Ok(())
-    }
-
-    fn write_rows(writer: QueryResultWriter<'a, W>, rows: Vec<ResponseRow>) -> Result<()> {
-        let default_response = OkResponse::default();
-        if rows.is_empty() {
-            writer.completed(default_response)?;
-            return Ok(());
-        }
-
-        let row = &rows[0];
-        Self::write_response_row(writer, row)
     }
 }
 
@@ -154,9 +140,7 @@ fn convert_field_type(field: &Datum) -> ColumnType {
 
 #[cfg(test)]
 mod tests {
-    use common_types::{
-        datum::DatumKind,
-    };
+    use common_types::datum::DatumKind;
     use opensrv_mysql::{Column, ColumnFlags, ColumnType};
 
     use crate::{handlers::sql::ResponseColumn, mysql::writer::make_column_by_field};
