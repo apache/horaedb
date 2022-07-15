@@ -1,0 +1,18 @@
+CREATE TABLE demo (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to convert output, query: CREATE TABLE demo (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');. Caused by: Rpc error, code:500, message:Failed to convert output - affected rows: 1" })
+
+INSERT INTO demo(t, name, value) VALUES(1651737067000, 'ceresdb', 100);
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to convert output, query: INSERT INTO demo(t, name, value) VALUES(1651737067000, 'ceresdb', 100);. Caused by: Rpc error, code:500, message:Failed to convert output - affected rows: 1" })
+
+SELECT * FROM demo;
+
+t,tsid,name,value,
+Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
+
+
+DROP TABLE demo;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to convert output, query: DROP TABLE demo;. Caused by: Rpc error, code:500, message:Failed to convert output - affected rows: 1" })
+

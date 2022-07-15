@@ -38,11 +38,13 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
+    "tests/harness",
     "wal",
 ]
 
 [[bin]]
 name = "ceresdb-server"
+path = "src/bin/ceresdb-server.rs"
 
 [dependencies]
 # Workspace dependencies, in alphabetical order
