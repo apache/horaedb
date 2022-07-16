@@ -279,7 +279,7 @@ impl PredicateBuilder {
             return false;
         }
 
-        Self::is_expr_pushdown(expr)
+        Self::is_expr_supported(expr)
     }
 
     /// Recursively split all "AND" expressions into smaller one
@@ -317,7 +317,7 @@ impl PredicateBuilder {
     /// - Primitive binary expr in the form: `column op constant`. Op must be a
     ///   comparing operation.
     /// - `InList` expr.
-    fn is_expr_pushdown(expr: &Expr) -> bool {
+    fn is_expr_supported(expr: &Expr) -> bool {
         match expr {
             Expr::BinaryExpr { left, op, right } => {
                 matches!(
@@ -571,5 +571,131 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. } => TimeRange::min_to_max(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use arrow_deps::{
+        arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField},
+        datafusion::logical_expr::{expr_fn::col, lit},
+        parquet::{
+            basic::Type,
+            file::{metadata::ColumnChunkMetaData, statistics::Statistics},
+            schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
+        },
+    };
+
+    use super::*;
+
+    fn convert_data_type(data_type: &ArrowDataType) -> Type {
+        match data_type {
+            ArrowDataType::Boolean => Type::BOOLEAN,
+            ArrowDataType::Int32 => Type::INT32,
+            ArrowDataType::Int64 => Type::INT64,
+            ArrowDataType::Utf8 => Type::BYTE_ARRAY,
+            _ => unimplemented!(),
+        }
+    }
+
+    fn prepare_arrow_schema(fields: Vec<(&str, ArrowDataType)>) -> Arc<ArrowSchema> {
+        let fields = fields
+            .into_iter()
+            .map(|(name, data_type)| ArrowField::new(name, data_type, false))
+            .collect();
+        Arc::new(ArrowSchema::new(fields))
+    }
+
+    fn prepare_parquet_schema_descr(schema: &ArrowSchema) -> SchemaDescPtr {
+        let mut fields = schema
+            .fields()
+            .iter()
+            .map(|field| {
+                Arc::new(
+                    SchemaType::primitive_type_builder(
+                        field.name(),
+                        convert_data_type(field.data_type()),
+                    )
+                    .build()
+                    .unwrap(),
+                )
+            })
+            .collect();
+        let schema = SchemaType::group_type_builder("schema")
+            .with_fields(&mut fields)
+            .build()
+            .unwrap();
+
+        Arc::new(SchemaDescriptor::new(Arc::new(schema)))
+    }
+
+    fn prepare_metadata(schema: &ArrowSchema, statistics: Statistics) -> RowGroupMetaData {
+        let schema_descr = prepare_parquet_schema_descr(schema);
+        let column_metadata = schema_descr
+            .columns()
+            .iter()
+            .cloned()
+            .map(|col_descr| {
+                ColumnChunkMetaData::builder(col_descr)
+                    .set_statistics(statistics.clone())
+                    .build()
+                    .unwrap()
+            })
+            .collect();
+        RowGroupMetaData::builder(schema_descr)
+            .set_column_metadata(column_metadata)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn filter_i32_by_equal_operator() {
+        let expr = col("a").eq(lit(5i32));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let expected = vec![false];
+
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int32)]);
+        let metadata = prepare_metadata(&arrow_schema, stat);
+        let schema = arrow_schema.try_into().unwrap();
+        let predicate = PredicateBuilder::default()
+            .add_pushdown_exprs(&[expr])
+            .build();
+        let result = predicate.filter_row_groups(&schema, &[metadata]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn filter_i64_by_greater_operator() {
+        let expr = col("a").eq(lit(14i64));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let expected = vec![true];
+
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
+        let metadata = prepare_metadata(&arrow_schema, stat);
+        let schema = arrow_schema.try_into().unwrap();
+
+        let predicate = PredicateBuilder::default()
+            .add_pushdown_exprs(&[expr])
+            .build();
+        let result = predicate.filter_row_groups(&schema, &[metadata]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn filter_i64_by_in_list_operator() {
+        let expr = col("a").in_list(vec![lit(17i64), lit(100i64)], false);
+        let stat = Statistics::int32(Some(101), Some(200), None, 0, false);
+        let expected = vec![false];
+
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
+        let metadata = prepare_metadata(&arrow_schema, stat);
+        let schema = arrow_schema.try_into().unwrap();
+
+        let predicate = PredicateBuilder::default()
+            .add_pushdown_exprs(&[expr])
+            .build();
+        let result = predicate.filter_row_groups(&schema, &[metadata]);
+        assert_eq!(result, expected);
     }
 }
