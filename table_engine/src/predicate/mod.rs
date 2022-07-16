@@ -23,7 +23,7 @@ use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
-use log::{debug, error};
+use log::{debug, error, trace};
 use snafu::{ResultExt, Snafu};
 
 pub mod filter_record_batch;
@@ -181,7 +181,7 @@ impl Predicate {
         for expr in &self.exprs {
             match PruningPredicate::try_new(expr.clone(), arrow_schema.clone()) {
                 Ok(pruning_predicate) => {
-                    debug!("pruning_predicate is:{:?}", pruning_predicate);
+                    trace!("pruning_predicate is:{:?}", pruning_predicate);
 
                     if let Ok(values) = build_row_group_predicate(&pruning_predicate, row_groups) {
                         for (curr_val, result_val) in values.into_iter().zip(results.iter_mut()) {
@@ -233,10 +233,7 @@ impl PredicateBuilder {
         }
 
         // Only keep single_column and primitive binary expressions
-        let pushdown_exprs: Vec<_> = split_exprs
-            .into_iter()
-            .filter(Self::is_able_to_pushdown)
-            .collect();
+        let pushdown_exprs: Vec<_> = split_exprs.into_iter().filter(Self::check_expr).collect();
 
         self.exprs = pushdown_exprs;
 
@@ -275,18 +272,14 @@ impl PredicateBuilder {
     }
 
     /// Determine whether the `expr` can be pushed down.
-    /// Returns false if any error occurs.
-    fn is_able_to_pushdown(expr: &Expr) -> bool {
-        let mut columns = HashSet::new();
-        if let Err(e) = expr_to_columns(expr, &mut columns) {
-            error!(
-                "Failed to extract columns from the expr, ignore this expr:{:?}, err:{}",
-                expr, e
-            );
+    /// Returns false if this `expr` cannot be pushed down or any
+    /// error occurs.
+    fn check_expr(expr: &Expr) -> bool {
+        if Self::count_columns(expr) != 1 {
             return false;
         }
 
-        columns.len() == 1 && Self::is_primitive_binary_expr(expr)
+        Self::is_expr_pushdown(expr)
     }
 
     /// Recursively split all "AND" expressions into smaller one
@@ -305,9 +298,26 @@ impl PredicateBuilder {
         }
     }
 
-    /// Return true if the given expression is in a primitive binary in the
-    /// form: `column op constant` and op must be a comparison one.
-    fn is_primitive_binary_expr(expr: &Expr) -> bool {
+    /// Count how many columns are involved in one expr
+    fn count_columns(expr: &Expr) -> usize {
+        let mut columns = HashSet::new();
+        if let Err(e) = expr_to_columns(expr, &mut columns) {
+            error!(
+                "Failed to extract columns from expr, ignore this expr:{:?}, err:{}",
+                expr, e
+            );
+            return 0;
+        }
+
+        columns.len()
+    }
+
+    /// Return true if the given expression is supported to be pushed down.
+    /// Current supports:
+    /// - Primitive binary expr in the form: `column op constant`. Op must be a
+    ///   comparing operation.
+    /// - `InList` expr.
+    fn is_expr_pushdown(expr: &Expr) -> bool {
         match expr {
             Expr::BinaryExpr { left, op, right } => {
                 matches!(
@@ -323,11 +333,13 @@ impl PredicateBuilder {
                         | Operator::GtEq
                 )
             }
+            // Expr::InList { .. } => true,
             _ => false,
         }
     }
 }
 
+/// Extract the time range requirement from expressions.
 struct TimeRangeExtractor<'a> {
     timestamp_column_name: &'a str,
     filters: &'a [Expr],
