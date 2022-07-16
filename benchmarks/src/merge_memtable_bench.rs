@@ -199,7 +199,7 @@ fn mock_sst_reader_options(
         read_batch_row_num: 500,
         reverse: false,
         projected_schema,
-        predicate: Arc::new(Predicate::new(TimeRange::min_to_max())),
+        predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         data_cache: None,
         runtime,

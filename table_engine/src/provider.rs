@@ -114,7 +114,7 @@ impl TableProviderAdapter {
     fn predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
         PredicateBuilder::default()
             .add_pushdown_exprs(filters)
-            .set_time_range(&self.read_schema, filters)
+            .extract_time_range(&self.read_schema, filters)
             .build()
     }
 }

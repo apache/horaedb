@@ -154,22 +154,19 @@ fn build_row_group_predicate(
 pub struct Predicate {
     /// Predicates in the query for filter out the columns that meet all the
     /// exprs.
-    pub exprs: Vec<Expr>,
+    exprs: Vec<Expr>,
     /// The time range involved by the query.
-    pub time_range: TimeRange,
+    time_range: TimeRange,
 }
 
 pub type PredicateRef = Arc<Predicate>;
 
 impl Predicate {
+    /// Create an empty predicate.
     pub fn empty() -> Self {
-        Self::new(TimeRange::min_to_max())
-    }
-
-    pub fn new(time_range: TimeRange) -> Self {
         Self {
-            exprs: Vec::new(),
-            time_range,
+            exprs: vec![],
+            time_range: TimeRange::min_to_max(),
         }
     }
 
@@ -205,6 +202,14 @@ impl Predicate {
 
         results
     }
+
+    pub fn exprs(&self) -> &[Expr] {
+        &self.exprs
+    }
+
+    pub fn time_range(&self) -> TimeRange {
+        self.time_range
+    }
 }
 
 /// Builder for [Predicate]
@@ -238,9 +243,14 @@ impl PredicateBuilder {
         self
     }
 
+    pub fn set_time_range(mut self, time_range: TimeRange) -> Self {
+        self.time_range = Some(time_range);
+        self
+    }
+
     /// Extract the time range from the `filter_exprs` and set it as
-    /// `TimeRange::zero_to_max()` if no timestamp predicate is found.
-    pub fn set_time_range(mut self, schema: &Schema, filter_exprs: &[Expr]) -> Self {
+    /// [`TimeRange::min_to_max`] if no timestamp predicate is found.
+    pub fn extract_time_range(mut self, schema: &Schema, filter_exprs: &[Expr]) -> Self {
         let time_range_extractor = TimeRangeExtractor {
             timestamp_column_name: schema.timestamp_name(),
             filters: filter_exprs,

@@ -2,7 +2,7 @@
 
 //! Table implementation
 
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt};
 
 use arrow_deps::datafusion::logical_plan::{Column, Expr};
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use futures::TryStreamExt;
 use object_store::ObjectStore;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
-    predicate::Predicate,
+    predicate::PredicateBuilder,
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
@@ -158,14 +158,16 @@ impl<
             );
         }
 
+        let predicate = PredicateBuilder::default()
+            .set_time_range(TimeRange::min_to_max())
+            .add_pushdown_exprs(&primary_key_exprs)
+            .build();
+
         let read_request = ReadRequest {
             request_id: request.request_id,
             opts: ReadOptions::default(),
             projected_schema: request.projected_schema,
-            predicate: Arc::new(Predicate {
-                exprs: primary_key_exprs,
-                time_range: TimeRange::min_to_max(),
-            }),
+            predicate,
             order: ReadOrder::None,
         };
         let mut batch_stream = self

@@ -45,15 +45,13 @@ impl ParquetBench {
             &data_cache,
         ));
 
-        let predicate = Arc::new(config.predicate.into_predicate());
-
         ParquetBench {
             store,
             sst_file_name: config.sst_file_name,
             max_projections: config.max_projections,
             projection: Vec::new(),
             _schema: schema,
-            _predicate: predicate,
+            _predicate: config.predicate.into_predicate(),
             batch_size: config.read_batch_row_num,
             runtime: Arc::new(runtime),
         }

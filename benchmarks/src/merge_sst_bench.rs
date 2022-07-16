@@ -69,7 +69,7 @@ impl MergeSstBench {
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
             projected_schema,
-            predicate: Arc::new(predicate),
+            predicate,
             meta_cache: meta_cache.clone(),
             data_cache: data_cache.clone(),
             runtime: runtime.clone(),
