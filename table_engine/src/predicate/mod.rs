@@ -568,13 +568,12 @@ mod test {
             .unwrap()
     }
 
-    #[test]
-    fn filter_i32_by_equal_operator() {
-        let expr = col("a").eq(lit(5i32));
-        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
-        let expected = vec![false];
-
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int32)]);
+    fn check_predicate_filter(
+        expr: Expr,
+        stat: Statistics,
+        arrow_schema: Arc<ArrowSchema>,
+        expected: Vec<bool>,
+    ) {
         let metadata = prepare_metadata(&arrow_schema, stat);
         let schema = arrow_schema.try_into().unwrap();
         let predicate = PredicateBuilder::default()
@@ -582,59 +581,49 @@ mod test {
             .build();
         let result = predicate.filter_row_groups(&schema, &[metadata]);
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn filter_i32_by_equal_operator() {
+        let expr = col("a").eq(lit(5i32));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int32)]);
+        let expected = vec![false];
+
+        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 
     #[test]
     fn filter_i64_by_greater_operator() {
         let expr = col("a").eq(lit(14i64));
         let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
         let expected = vec![true];
 
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
-        let metadata = prepare_metadata(&arrow_schema, stat);
-        let schema = arrow_schema.try_into().unwrap();
-
-        let predicate = PredicateBuilder::default()
-            .add_pushdown_exprs(&[expr])
-            .build();
-        let result = predicate.filter_row_groups(&schema, &[metadata]);
-        assert_eq!(result, expected);
+        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 
     #[test]
     fn filter_two_i32_cols_by_lesser_operator() {
         let expr = col("a").lt(col("b"));
         let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
-        let expected = vec![true];
-
         let arrow_schema = prepare_arrow_schema(vec![
             ("a", ArrowDataType::Int32),
             ("b", ArrowDataType::Int32),
         ]);
-        let metadata = prepare_metadata(&arrow_schema, stat);
-        let schema = arrow_schema.try_into().unwrap();
+        // nothing actually gets calculated.
+        let expected = vec![true];
 
-        let predicate = PredicateBuilder::default()
-            .add_pushdown_exprs(&[expr])
-            .build();
-        let result = predicate.filter_row_groups(&schema, &[metadata]);
-        assert_eq!(result, expected);
+        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 
     #[test]
     fn filter_i64_by_in_list_operator() {
         let expr = col("a").in_list(vec![lit(17i64), lit(100i64)], false);
         let stat = Statistics::int32(Some(101), Some(200), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
         let expected = vec![false];
 
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
-        let metadata = prepare_metadata(&arrow_schema, stat);
-        let schema = arrow_schema.try_into().unwrap();
-
-        let predicate = PredicateBuilder::default()
-            .add_pushdown_exprs(&[expr])
-            .build();
-        let result = predicate.filter_row_groups(&schema, &[metadata]);
-        assert_eq!(result, expected);
+        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 }
