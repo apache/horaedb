@@ -3,7 +3,7 @@
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
 
-use std::{collections::HashSet, convert::TryInto, sync::Arc};
+use std::{convert::TryInto, sync::Arc};
 
 use arrow_deps::{
     arrow::{
@@ -16,7 +16,6 @@ use arrow_deps::{
         physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
         scalar::ScalarValue,
     },
-    datafusion_expr::utils::expr_to_columns,
     parquet::file::statistics::Statistics as ParquetStatistics,
 };
 use common_types::{
@@ -221,22 +220,9 @@ pub struct PredicateBuilder {
 }
 
 impl PredicateBuilder {
-    /// Adds the expressions from `filter_exprs` that can be pushed down to
-    /// query engine.
+    /// Adds expressions.
     pub fn add_pushdown_exprs(mut self, filter_exprs: &[Expr]) -> Self {
-        // For each expression of the filter_exprs, recursively split it if it is is an
-        // AND conjunction. For example, expression (x AND y) is split into [x,
-        // y].
-        let mut split_exprs = vec![];
-        for filter_expr in filter_exprs {
-            Self::split_and_expr(filter_expr, &mut split_exprs)
-        }
-
-        // Only keep single_column and primitive binary expressions
-        let pushdown_exprs: Vec<_> = split_exprs.into_iter().filter(Self::check_expr).collect();
-
-        self.exprs = pushdown_exprs;
-
+        self.exprs.extend_from_slice(filter_exprs);
         self
     }
 
@@ -269,73 +255,6 @@ impl PredicateBuilder {
             exprs: self.exprs,
             time_range: self.time_range.unwrap_or_else(TimeRange::min_to_max),
         })
-    }
-
-    /// Determine whether the `expr` can be pushed down.
-    /// Returns false if this `expr` cannot be pushed down or any
-    /// error occurs.
-    fn check_expr(expr: &Expr) -> bool {
-        if Self::count_columns(expr) != 1 {
-            return false;
-        }
-
-        Self::is_expr_supported(expr)
-    }
-
-    /// Recursively split all "AND" expressions into smaller one
-    /// Example: "A AND B AND C" => [A, B, C]
-    fn split_and_expr(expr: &Expr, predicates: &mut Vec<Expr>) {
-        match expr {
-            Expr::BinaryExpr {
-                right,
-                op: Operator::And,
-                left,
-            } => {
-                Self::split_and_expr(left, predicates);
-                Self::split_and_expr(right, predicates);
-            }
-            other => predicates.push(other.clone()),
-        }
-    }
-
-    /// Count how many columns are involved in one expr
-    fn count_columns(expr: &Expr) -> usize {
-        let mut columns = HashSet::new();
-        if let Err(e) = expr_to_columns(expr, &mut columns) {
-            error!(
-                "Failed to extract columns from expr, ignore this expr:{:?}, err:{}",
-                expr, e
-            );
-            return 0;
-        }
-
-        columns.len()
-    }
-
-    /// Return true if the given expression is supported to be pushed down.
-    /// Current supports:
-    /// - Primitive binary expr in the form: `column op constant`. Op must be a
-    ///   comparing operation.
-    /// - `InList` expr.
-    fn is_expr_supported(expr: &Expr) -> bool {
-        match expr {
-            Expr::BinaryExpr { left, op, right } => {
-                matches!(
-                    (&**left, &**right),
-                    (Expr::Column(_), Expr::Literal(_)) | (Expr::Literal(_), Expr::Column(_))
-                ) && matches!(
-                    op,
-                    Operator::Eq
-                        | Operator::NotEq
-                        | Operator::Lt
-                        | Operator::LtEq
-                        | Operator::Gt
-                        | Operator::GtEq
-                )
-            }
-            // Expr::InList { .. } => true,
-            _ => false,
-        }
     }
 }
 
@@ -672,6 +591,26 @@ mod test {
         let expected = vec![true];
 
         let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
+        let metadata = prepare_metadata(&arrow_schema, stat);
+        let schema = arrow_schema.try_into().unwrap();
+
+        let predicate = PredicateBuilder::default()
+            .add_pushdown_exprs(&[expr])
+            .build();
+        let result = predicate.filter_row_groups(&schema, &[metadata]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn filter_two_i32_cols_by_lesser_operator() {
+        let expr = col("a").lt(col("b"));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let expected = vec![true];
+
+        let arrow_schema = prepare_arrow_schema(vec![
+            ("a", ArrowDataType::Int32),
+            ("b", ArrowDataType::Int32),
+        ]);
         let metadata = prepare_metadata(&arrow_schema, stat);
         let schema = arrow_schema.try_into().unwrap();
 
