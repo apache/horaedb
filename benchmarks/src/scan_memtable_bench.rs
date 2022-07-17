@@ -25,7 +25,7 @@ pub struct ScanMemTableBench {
 
 impl ScanMemTableBench {
     pub fn new(config: ScanMemTableBenchConfig) -> Self {
-        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
 
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let meta_cache: Option<MetaCacheRef> = None;

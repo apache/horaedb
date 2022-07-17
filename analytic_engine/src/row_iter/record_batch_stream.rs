@@ -8,7 +8,7 @@ use common_types::{
 use common_util::define_result;
 use futures::stream::{self, Stream, StreamExt};
 use log::{error, trace};
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     predicate::{filter_record_batch::RecordBatchFilter, Predicate},
@@ -199,17 +199,16 @@ pub fn stream_from_memtable(
 
 /// Build the filtered by `sst_read_options.predicate`
 /// [SequencedRecordBatchStream] from a sst.
-pub async fn filtered_stream_from_sst_file<Fa, S>(
+pub async fn filtered_stream_from_sst_file<Fa>(
     space_id: SpaceId,
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &Fa,
     sst_reader_options: &SstReaderOptions,
-    store: &S,
+    store: &ObjectStoreRef,
 ) -> Result<SequencedRecordBatchStream>
 where
     Fa: sst::factory::Factory,
-    S: ObjectStore,
 {
     stream_from_sst_file(
         space_id,
@@ -224,17 +223,16 @@ where
 }
 
 /// Build the [SequencedRecordBatchStream] from a sst.
-pub async fn stream_from_sst_file<Fa, S>(
+pub async fn stream_from_sst_file<Fa>(
     space_id: SpaceId,
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &Fa,
     sst_reader_options: &SstReaderOptions,
-    store: &S,
+    store: &ObjectStoreRef,
 ) -> Result<SequencedRecordBatchStream>
 where
     Fa: sst::factory::Factory,
-    S: ObjectStore,
 {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());

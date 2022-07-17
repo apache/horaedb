@@ -27,7 +27,7 @@ use common_types::{
 use common_util::runtime::Runtime;
 use futures::Stream;
 use log::{debug, error, trace};
-use object_store::{ObjectStore, Path};
+use object_store::{ObjectStoreRef, Path};
 use parquet::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,
     DataCacheRef, MetaCacheRef,
@@ -45,8 +45,8 @@ use crate::sst::{
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
 
-pub async fn read_sst_meta<S: ObjectStore>(
-    storage: &S,
+pub async fn read_sst_meta(
+    storage: &ObjectStoreRef,
     path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
@@ -103,11 +103,11 @@ pub async fn read_sst_meta<S: ObjectStore>(
 }
 
 /// The implementation of sst based on parquet and object storage.
-pub struct ParquetSstReader<'a, S: ObjectStore> {
+pub struct ParquetSstReader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    storage: &'a S,
+    storage: &'a ObjectStoreRef,
     projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_data: Option<SstMetaData>,
@@ -124,8 +124,8 @@ pub struct ParquetSstReader<'a, S: ObjectStore> {
     runtime: Arc<Runtime>,
 }
 
-impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
-    pub fn new(path: &'a Path, storage: &'a S, options: &SstReaderOptions) -> Self {
+impl<'a> ParquetSstReader<'a> {
+    pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
         Self {
             path,
             storage,
@@ -143,7 +143,7 @@ impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
     }
 }
 
-impl<'a, S: ObjectStore> ParquetSstReader<'a, S> {
+impl<'a> ParquetSstReader<'a> {
     async fn init_if_necessary(&mut self) -> Result<()> {
         if self.meta_data.is_some() {
             return Ok(());
@@ -364,7 +364,7 @@ impl Stream for RecordBatchReceiver {
 }
 
 #[async_trait]
-impl<'a, S: ObjectStore> SstReader for ParquetSstReader<'a, S> {
+impl<'a> SstReader for ParquetSstReader<'a> {
     async fn meta_data(&mut self) -> Result<&SstMetaData> {
         self.init_if_necessary().await?;
         Ok(self.meta_data.as_ref().unwrap())

@@ -25,7 +25,7 @@ use std::{
 use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use parquet::{DataCacheRef, MetaCacheRef};
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
@@ -93,7 +93,7 @@ pub struct SpaceStore<Wal, Meta, Fa> {
     /// Wal of all tables
     wal_manager: Wal,
     /// Sst storage.
-    store: Arc<dyn ObjectStore>,
+    store: ObjectStoreRef,
     /// Sst factory.
     sst_factory: Fa,
 
@@ -120,7 +120,7 @@ impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
 }
 
 impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
-    fn store_ref(&self) -> &dyn ObjectStore {
+    fn store_ref(&self) -> &ObjectStoreRef {
         &self.store
     }
 

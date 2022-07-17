@@ -10,7 +10,7 @@ use common_types::{
 use common_util::define_result;
 use futures::StreamExt;
 use log::debug;
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 
@@ -49,7 +49,7 @@ define_result!(Error);
 
 /// Required parameters to construct the [Builder].
 #[derive(Clone, Debug)]
-pub struct ChainConfig<'a, S, Fa> {
+pub struct ChainConfig<'a, Fa> {
     pub request_id: RequestId,
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -61,21 +61,21 @@ pub struct ChainConfig<'a, S, Fa> {
     pub sst_reader_options: SstReaderOptions,
     pub sst_factory: Fa,
     /// Sst storage
-    pub store: &'a S,
+    pub store: &'a ObjectStoreRef,
 }
 
 /// Builder for [ChainIterator].
 #[must_use]
-pub struct Builder<'a, S, Fa> {
-    config: ChainConfig<'a, S, Fa>,
+pub struct Builder<'a, Fa> {
+    config: ChainConfig<'a, Fa>,
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
     memtables: MemTableVec,
     ssts: Vec<Vec<FileHandle>>,
 }
 
-impl<'a, S, Fa> Builder<'a, S, Fa> {
-    pub fn new(config: ChainConfig<'a, S, Fa>) -> Self {
+impl<'a, Fa> Builder<'a, Fa> {
+    pub fn new(config: ChainConfig<'a, Fa>) -> Self {
         Self {
             config,
             sampling_mem: None,
@@ -100,7 +100,7 @@ impl<'a, S, Fa> Builder<'a, S, Fa> {
     }
 }
 
-impl<'a, S: ObjectStore, Fa: Factory> Builder<'a, S, Fa> {
+impl<'a, Fa: Factory> Builder<'a, Fa> {
     pub async fn build(self) -> Result<ChainIterator> {
         let total_sst_streams: usize = self.ssts.iter().map(|v| v.len()).sum();
         let mut total_streams = self.memtables.len() + total_sst_streams;

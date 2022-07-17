@@ -22,7 +22,7 @@ use common_types::{
 };
 use common_util::runtime::{self, Runtime};
 use futures::stream::StreamExt;
-use object_store::{LocalFileSystem, Path};
+use object_store::{ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 
@@ -36,7 +36,7 @@ pub fn new_runtime(thread_num: usize) -> Runtime {
 }
 
 pub async fn meta_from_sst(
-    store: &LocalFileSystem,
+    store: &ObjectStoreRef,
     sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
@@ -49,7 +49,7 @@ pub async fn meta_from_sst(
 }
 
 pub async fn schema_from_sst(
-    store: &LocalFileSystem,
+    store: &ObjectStoreRef,
     sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
@@ -74,7 +74,7 @@ pub fn projected_schema_by_number(
 }
 
 pub async fn load_sst_to_memtable(
-    store: &LocalFileSystem,
+    store: &ObjectStoreRef,
     sst_path: &Path,
     schema: &Schema,
     memtable: &MemTableRef,
@@ -117,7 +117,7 @@ pub async fn load_sst_to_memtable(
 }
 
 pub async fn file_handles_from_ssts(
-    store: &LocalFileSystem,
+    store: &ObjectStoreRef,
     space_id: SpaceId,
     table_id: TableId,
     sst_file_ids: &[FileId],

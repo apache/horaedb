@@ -2,6 +2,8 @@
 
 //! Re-export of [object_store] crate.
 
+use std::sync::Arc;
+
 pub use upstream::{
     local::LocalFileSystem, path::Path, Error as ObjectStoreError, GetResult, ListResult,
     ObjectMeta, ObjectStore,
@@ -9,3 +11,5 @@ pub use upstream::{
 
 pub mod aliyun;
 pub mod cache;
+
+pub type ObjectStoreRef = Arc<dyn ObjectStore + Send + Sync>;

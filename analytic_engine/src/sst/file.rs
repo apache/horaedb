@@ -28,7 +28,7 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
 };
 use log::{debug, error, info};
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use proto::{common::TimeRange as TimeRangePb, sst::SstMetaData as SstMetaDataPb};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -531,10 +531,7 @@ pub struct FilePurger {
 }
 
 impl FilePurger {
-    pub fn start<Store: ObjectStore + Send + Sync + 'static>(
-        runtime: &Runtime,
-        store: Arc<Store>,
-    ) -> Self {
+    pub fn start(runtime: &Runtime, store: ObjectStoreRef) -> Self {
         // We must use unbound channel, so the sender wont block when the handle is
         // dropped.
         let (tx, rx) = mpsc::unbounded_channel();
@@ -570,10 +567,7 @@ impl FilePurger {
         FilePurgeQueue::new(space_id, table_id, self.sender.clone())
     }
 
-    async fn purge_file_loop<Store: ObjectStore>(
-        store: Arc<Store>,
-        mut receiver: UnboundedReceiver<Request>,
-    ) {
+    async fn purge_file_loop(store: ObjectStoreRef, mut receiver: UnboundedReceiver<Request>) {
         info!("File purger start");
 
         while let Some(request) = receiver.recv().await {

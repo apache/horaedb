@@ -56,9 +56,10 @@ use bytes::Bytes;
 use chrono::MIN_DATETIME;
 use futures::{future::try_join_all, lock::Mutex, stream::BoxStream, TryStreamExt};
 use lru::LruCache;
+use serde::Deserialize;
 use upstream::{path::Path, GetResult, ListResult, ObjectMeta, ObjectStore, Result};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct CachedStoreConfig {
     pub max_cache_size: usize,
 }

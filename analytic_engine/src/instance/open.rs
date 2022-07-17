@@ -9,7 +9,7 @@ use std::{
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::table::TableId;
 use tokio::sync::oneshot;
@@ -50,10 +50,9 @@ where
         ctx: OpenContext,
         manifest: Meta,
         wal_manager: Wal,
-        store: Arc<dyn ObjectStore>,
+        store: ObjectStoreRef,
         sst_factory: Fa,
     ) -> Result<Arc<Self>> {
-        let store = Arc::new(store);
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
             manifest,

@@ -11,14 +11,14 @@ use arrow_deps::parquet::{
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
-use object_store::{LocalFileSystem, ObjectStore, Path};
+use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};
 
 pub struct ParquetBench {
-    store: LocalFileSystem,
+    store: ObjectStoreRef,
     pub sst_file_name: String,
     max_projections: usize,
     projection: Vec<usize>,
@@ -30,7 +30,7 @@ pub struct ParquetBench {
 
 impl ParquetBench {
     pub fn new(config: SstBenchConfig) -> Self {
-        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
 
         let runtime = util::new_runtime(config.runtime_thread_num);
 

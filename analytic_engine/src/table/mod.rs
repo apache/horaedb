@@ -8,7 +8,6 @@ use arrow_deps::datafusion::logical_plan::{Column, Expr};
 use async_trait::async_trait;
 use common_types::{row::Row, schema::Schema, time::TimeRange};
 use futures::TryStreamExt;
-use object_store::ObjectStore;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     predicate::Predicate,

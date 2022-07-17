@@ -20,7 +20,6 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
 };
 use log::{debug, error, info, warn};
-use object_store::ObjectStore;
 use serde_derive::Deserialize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -299,7 +298,7 @@ impl OngoingTask {
     }
 }
 
-struct ScheduleWorker<Wal, Meta, Store, Fa> {
+struct ScheduleWorker<Wal, Meta, Fa> {
     sender: Sender<ScheduleTask>,
     receiver: Receiver<ScheduleTask>,
     space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
@@ -323,9 +322,8 @@ async fn schedule_table_compaction(sender: Sender<ScheduleTask>, request: TableC
 impl<
         Wal: Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore + Send + Sync + 'static,
         Fa: Factory + Send + Sync + 'static,
-    > ScheduleWorker<Wal, Meta, Store, Fa>
+    > ScheduleWorker<Wal, Meta, Fa>
 {
     async fn schedule_loop(&mut self) {
         while self.running.load(Ordering::Relaxed) {
