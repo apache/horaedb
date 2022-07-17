@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use common_types::schema::Version;
 use common_util::define_result;
-use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
@@ -207,11 +206,10 @@ impl From<Error> for table_engine::engine::Error {
     }
 }
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Find space by name, create if the space is not exists

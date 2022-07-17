@@ -39,11 +39,10 @@ use crate::{
     table::data::{TableData, TableDataRef},
 };
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Open a new instance
@@ -51,7 +50,7 @@ where
         ctx: OpenContext,
         manifest: Meta,
         wal_manager: Wal,
-        store: Store,
+        store: Arc<dyn ObjectStore>,
         sst_factory: Fa,
     ) -> Result<Arc<Self>> {
         let store = Arc::new(store);

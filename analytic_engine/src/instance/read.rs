@@ -15,7 +15,6 @@ use common_types::{
 use common_util::{define_result, runtime::Runtime};
 use futures::stream::Stream;
 use log::{debug, error, trace};
-use object_store::ObjectStore;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{
@@ -76,9 +75,7 @@ fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequ
     table_options.need_dedup() || read_request.order.is_in_order()
 }
 
-impl<Wal: WalManager + Send + Sync, Meta: Manifest, Store: ObjectStore, Fa: Factory>
-    Instance<Wal, Meta, Store, Fa>
-{
+impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa: Factory> Instance<Wal, Meta, Fa> {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(

@@ -19,7 +19,6 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use log::{error, info};
-use object_store::ObjectStore;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
@@ -182,11 +181,10 @@ pub enum TableFlushPolicy {
     Purge,
 }
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Flush this table.
@@ -768,7 +766,7 @@ where
     }
 }
 
-impl<Wal, Meta: Manifest, Store: ObjectStore, Fa: Factory> SpaceStore<Wal, Meta, Store, Fa> {
+impl<Wal, Meta: Manifest, Fa: Factory> SpaceStore<Wal, Meta, Fa> {
     pub(crate) async fn compact_table(
         &self,
         runtime: Arc<Runtime>,

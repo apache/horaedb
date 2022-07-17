@@ -224,10 +224,9 @@ impl SchedulerImpl {
     pub fn new<
         Wal: Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore + Send + Sync + 'static,
         Fa: Factory + Send + Sync + 'static,
     >(
-        space_store: Arc<SpaceStore<Wal, Meta, Store, Fa>>,
+        space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
     ) -> Self {
@@ -303,7 +302,7 @@ impl OngoingTask {
 struct ScheduleWorker<Wal, Meta, Store, Fa> {
     sender: Sender<ScheduleTask>,
     receiver: Receiver<ScheduleTask>,
-    space_store: Arc<SpaceStore<Wal, Meta, Store, Fa>>,
+    space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
     picker_manager: PickerManager,

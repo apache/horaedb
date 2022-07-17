@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use log::{info, warn};
-use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 use tokio::sync::oneshot;
@@ -26,11 +25,10 @@ use crate::{
     sst::factory::Factory,
 };
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Drop a table under given space

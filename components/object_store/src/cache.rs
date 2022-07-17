@@ -49,7 +49,7 @@
 //! To ensure the total size of `LocalStore` is always less than the threshold,
 //! [CachedStore] will first purge enough space for the incoming new objects.
 
-use std::{fmt::Display, ops::Range};
+use std::{fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -65,15 +65,15 @@ pub struct CachedStoreConfig {
 
 #[derive(Debug)]
 pub struct CachedStore {
-    local_store: Box<dyn ObjectStore>,
-    remote_store: Box<dyn ObjectStore>,
+    local_store: Arc<dyn ObjectStore>,
+    remote_store: Arc<dyn ObjectStore>,
     state: Mutex<CacheState>,
 }
 
 impl CachedStore {
     pub async fn init(
-        local_store: Box<dyn ObjectStore>,
-        remote_store: Box<dyn ObjectStore>,
+        local_store: Arc<dyn ObjectStore>,
+        remote_store: Arc<dyn ObjectStore>,
         config: CachedStoreConfig,
     ) -> Result<Self> {
         let local_list: Vec<ObjectMeta> = local_store.list(None).await?.try_collect().await?;
@@ -324,8 +324,8 @@ mod test {
         let local_path = tempdir().unwrap();
         let remote_path = tempdir().unwrap();
 
-        let local_store = Box::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-        let remote_store = Box::new(LocalFileSystem::new_with_prefix(remote_path.path()).unwrap());
+        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let remote_store = Arc::new(LocalFileSystem::new_with_prefix(remote_path.path()).unwrap());
         let config = CachedStoreConfig { max_cache_size };
 
         CachedStore::init(local_store, remote_store, config)
@@ -404,8 +404,8 @@ mod test {
         let local_path = tempdir().unwrap();
         let remote_path = tempdir().unwrap();
 
-        let local_store = Box::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-        let remote_store = Box::new(LocalFileSystem::new_with_prefix(remote_path.path()).unwrap());
+        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let remote_store = Arc::new(LocalFileSystem::new_with_prefix(remote_path.path()).unwrap());
         let config = CachedStoreConfig {
             max_cache_size: 4096,
         };
