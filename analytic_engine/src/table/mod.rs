@@ -8,7 +8,6 @@ use arrow_deps::datafusion::logical_plan::{Column, Expr};
 use async_trait::async_trait;
 use common_types::{row::Row, schema::Schema, time::TimeRange};
 use futures::TryStreamExt;
-use object_store::ObjectStore;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     predicate::Predicate,
@@ -38,19 +37,19 @@ pub mod version_edit;
 // TODO(yingwen): How to handle drop table?
 
 /// Table trait implementation
-pub struct TableImpl<Wal, Meta, Store, Fa> {
+pub struct TableImpl<Wal, Meta, Fa> {
     /// Space and table info
     space_table: SpaceAndTable,
     /// Instance
-    instance: InstanceRef<Wal, Meta, Store, Fa>,
+    instance: InstanceRef<Wal, Meta, Fa>,
     /// Engine type
     engine_type: String,
 }
 
-impl<Wal, Meta, Store, Fa> TableImpl<Wal, Meta, Store, Fa> {
+impl<Wal, Meta, Fa> TableImpl<Wal, Meta, Fa> {
     pub fn new(
         space_table: SpaceAndTable,
-        instance: InstanceRef<Wal, Meta, Store, Fa>,
+        instance: InstanceRef<Wal, Meta, Fa>,
         engine_type: String,
     ) -> Self {
         Self {
@@ -61,7 +60,7 @@ impl<Wal, Meta, Store, Fa> TableImpl<Wal, Meta, Store, Fa> {
     }
 }
 
-impl<Wal, Meta, Store, Fa> fmt::Debug for TableImpl<Wal, Meta, Store, Fa> {
+impl<Wal, Meta, Fa> fmt::Debug for TableImpl<Wal, Meta, Fa> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
             .field("space_table", &self.space_table)
@@ -73,9 +72,8 @@ impl<Wal, Meta, Store, Fa> fmt::Debug for TableImpl<Wal, Meta, Store, Fa> {
 impl<
         Wal: WalManager + Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
         Fa: Factory + Send + Sync + 'static,
-    > Table for TableImpl<Wal, Meta, Store, Fa>
+    > Table for TableImpl<Wal, Meta, Fa>
 {
     fn name(&self) -> &str {
         &self.space_table.table_data().name

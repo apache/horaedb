@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::info;
-use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::{
     engine::{
@@ -29,12 +28,12 @@ use crate::{
 };
 
 /// TableEngine implementation
-pub struct TableEngineImpl<Wal, Meta, Store, Fa> {
+pub struct TableEngineImpl<Wal, Meta, Fa> {
     /// Instance of the table engine
-    instance: InstanceRef<Wal, Meta, Store, Fa>,
+    instance: InstanceRef<Wal, Meta, Fa>,
 }
 
-impl<Wal, Meta, Store, Fa> Clone for TableEngineImpl<Wal, Meta, Store, Fa> {
+impl<Wal, Meta, Fa> Clone for TableEngineImpl<Wal, Meta, Fa> {
     fn clone(&self) -> Self {
         Self {
             instance: self.instance.clone(),
@@ -42,19 +41,15 @@ impl<Wal, Meta, Store, Fa> Clone for TableEngineImpl<Wal, Meta, Store, Fa> {
     }
 }
 
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
-        Fa,
-    > TableEngineImpl<Wal, Meta, Store, Fa>
+impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static, Fa>
+    TableEngineImpl<Wal, Meta, Fa>
 {
-    pub fn new(instance: InstanceRef<Wal, Meta, Store, Fa>) -> Self {
+    pub fn new(instance: InstanceRef<Wal, Meta, Fa>) -> Self {
         Self { instance }
     }
 }
 
-impl<Wal, Meta, Store, Fa> Drop for TableEngineImpl<Wal, Meta, Store, Fa> {
+impl<Wal, Meta, Fa> Drop for TableEngineImpl<Wal, Meta, Fa> {
     fn drop(&mut self) {
         info!("Table engine dropped");
     }
@@ -64,9 +59,8 @@ impl<Wal, Meta, Store, Fa> Drop for TableEngineImpl<Wal, Meta, Store, Fa> {
 impl<
         Wal: WalManager + Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
         Fa: Factory + Send + Sync + 'static,
-    > TableEngine for TableEngineImpl<Wal, Meta, Store, Fa>
+    > TableEngine for TableEngineImpl<Wal, Meta, Fa>
 {
     fn engine_type(&self) -> &str {
         ANALYTIC_ENGINE_TYPE
@@ -170,11 +164,9 @@ impl<
 }
 
 /// Reference to instance based on rocksdb wal.
-pub(crate) type RocksInstanceRef<Store> =
-    InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, Store, FactoryImpl>;
+pub(crate) type RocksInstanceRef = InstanceRef<RocksImpl, ManifestImpl<RocksImpl>, FactoryImpl>;
 /// Reference to instance replicating data by obkv wal.
-pub(crate) type ReplicatedInstanceRef<Store> =
-    InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, Store, FactoryImpl>;
+pub(crate) type ReplicatedInstanceRef = InstanceRef<ObkvWal, ManifestImpl<ObkvWal>, FactoryImpl>;
 
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.

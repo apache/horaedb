@@ -10,8 +10,19 @@ sst_data_cache_cap = 10000
 sst_meta_cache_cap = 10000
 
 [analytic.storage]
+type = "Cache"
+cache_opts = { max_cache_size = 10000000 }
+
+[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb"
+
+[analytic.storage.remote_store]
+type = "Aliyun"
+key_id = "key_id"
+key_secret = "key_secret"
+endpoint = "endpoint"
+bucket = "bucket"
 
 [[meta_client.cluster_view.schema_shards]]
 schema = 'public'

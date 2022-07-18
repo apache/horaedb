@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use common_types::request_id::RequestId;
 use futures::StreamExt;
 use log::debug;
-use object_store::{ObjectStore, Path};
+use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 
 use crate::sst::{
@@ -28,18 +28,18 @@ use crate::sst::{
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
-pub struct ParquetSstBuilder<'a, S: ObjectStore> {
+pub struct ParquetSstBuilder<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    storage: &'a S,
+    storage: &'a ObjectStoreRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
     compression: Compression,
 }
 
-impl<'a, S: ObjectStore> ParquetSstBuilder<'a, S> {
-    pub fn new(path: &'a Path, storage: &'a S, options: &SstBuilderOptions) -> Self {
+impl<'a> ParquetSstBuilder<'a> {
+    pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstBuilderOptions) -> Self {
         Self {
             path,
             storage,
@@ -163,7 +163,7 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a, S: ObjectStore> SstBuilder for ParquetSstBuilder<'a, S> {
+impl<'a> SstBuilder for ParquetSstBuilder<'a> {
     async fn build(
         &mut self,
         request_id: RequestId,
@@ -255,7 +255,7 @@ mod tests {
 
             let dir = tempdir().unwrap();
             let root = dir.path();
-            let store = LocalFileSystem::new_with_prefix(root).unwrap();
+            let store = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap()) as _;
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema();

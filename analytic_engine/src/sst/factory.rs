@@ -6,7 +6,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
-use object_store::{ObjectStore, Path};
+use object_store::{ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
@@ -20,18 +20,18 @@ use crate::{
 };
 
 pub trait Factory: Clone {
-    fn new_sst_reader<'a, S: ObjectStore>(
+    fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
-        storage: &'a S,
+        storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>>;
 
-    fn new_sst_builder<'a, S: ObjectStore>(
+    fn new_sst_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
-        storage: &'a S,
+        storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
 }
 
@@ -63,22 +63,22 @@ pub struct SstBuilderOptions {
 pub struct FactoryImpl;
 
 impl Factory for FactoryImpl {
-    fn new_sst_reader<'a, S: ObjectStore>(
+    fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
-        storage: &'a S,
+        storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         match options.sst_type {
             SstType::Parquet => Some(Box::new(ParquetSstReader::new(path, storage, options))),
         }
     }
 
-    fn new_sst_builder<'a, S: ObjectStore>(
+    fn new_sst_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
-        storage: &'a S,
+        storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
         match options.sst_type {
             SstType::Parquet => Some(Box::new(ParquetSstBuilder::new(path, storage, options))),

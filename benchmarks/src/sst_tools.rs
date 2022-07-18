@@ -25,7 +25,7 @@ use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
 use futures::TryStreamExt;
 use log::info;
-use object_store::{LocalFileSystem, Path};
+use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use serde_derive::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;
@@ -54,7 +54,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         config, sst_builder_options
     );
 
-    let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
     let sst_file_path = Path::from(config.sst_file_name);
 
     let mut builder = sst_factory
@@ -82,7 +82,7 @@ pub struct RebuildSstConfig {
 pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     info!("Start rebuild sst, config:{:?}", config);
 
-    let store = LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap();
+    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
     let input_path = Path::from(config.input_file_name);
 
     let sst_meta = util::meta_from_sst(&store, &input_path, &None, &None).await;
@@ -118,7 +118,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 async fn sst_to_record_batch_stream(
     sst_reader_options: &SstReaderOptions,
     input_path: &Path,
-    store: &LocalFileSystem,
+    store: &ObjectStoreRef,
 ) -> RecordBatchStream {
     let sst_factory = FactoryImpl;
     let mut sst_reader = sst_factory
@@ -157,7 +157,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
     let space_id = config.space_id;
     let table_id = config.table_id;
-    let store = LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap();
+    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
     let (tx, _rx) = mpsc::unbounded_channel();
     let purge_queue = FilePurgeQueue::new(space_id, table_id, tx);
 

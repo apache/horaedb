@@ -27,14 +27,14 @@ use common_types::{
 };
 use common_util::runtime::Runtime;
 use log::info;
-use object_store::LocalFileSystem;
+use object_store::{LocalFileSystem, ObjectStoreRef};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};
 
 pub struct MergeMemTableBench {
-    store: LocalFileSystem,
+    store: ObjectStoreRef,
     memtables: MemTableVec,
     max_projections: usize,
     schema: Schema,
@@ -50,7 +50,7 @@ impl MergeMemTableBench {
     pub fn new(config: MergeMemTableBenchConfig) -> Self {
         assert!(!config.sst_file_ids.is_empty());
 
-        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let space_id = config.space_id;
         let table_id = config.table_id;

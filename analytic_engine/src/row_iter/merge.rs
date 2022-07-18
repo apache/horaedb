@@ -21,7 +21,7 @@ use common_types::{
 use common_util::define_result;
 use futures::StreamExt;
 use log::{debug, info, trace};
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 
@@ -84,7 +84,7 @@ define_result!(Error);
 
 /// Required parameters to construct the [MergeBuilder]
 #[derive(Debug)]
-pub struct MergeConfig<'a, S, Fa> {
+pub struct MergeConfig<'a, Fa> {
     pub request_id: RequestId,
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -98,7 +98,7 @@ pub struct MergeConfig<'a, S, Fa> {
     pub sst_reader_options: SstReaderOptions,
     pub sst_factory: Fa,
     /// Sst storage
-    pub store: &'a S,
+    pub store: &'a ObjectStoreRef,
 
     pub merge_iter_options: IterOptions,
 
@@ -108,8 +108,8 @@ pub struct MergeConfig<'a, S, Fa> {
 
 /// Builder for building merge stream from memtables and sst files.
 #[must_use]
-pub struct MergeBuilder<'a, S, Fa> {
-    config: MergeConfig<'a, S, Fa>,
+pub struct MergeBuilder<'a, Fa> {
+    config: MergeConfig<'a, Fa>,
 
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
@@ -119,8 +119,8 @@ pub struct MergeBuilder<'a, S, Fa> {
     ssts: Vec<Vec<FileHandle>>,
 }
 
-impl<'a, S: ObjectStore, Fa: Factory> MergeBuilder<'a, S, Fa> {
-    pub fn new(config: MergeConfig<'a, S, Fa>) -> Self {
+impl<'a, Fa: Factory> MergeBuilder<'a, Fa> {
+    pub fn new(config: MergeConfig<'a, Fa>) -> Self {
         Self {
             config,
             sampling_mem: None,

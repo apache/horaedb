@@ -9,7 +9,7 @@ use std::{
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
-use object_store::ObjectStore;
+use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::table::TableId;
 use tokio::sync::oneshot;
@@ -39,11 +39,10 @@ use crate::{
     table::data::{TableData, TableDataRef},
 };
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Open a new instance
@@ -51,10 +50,9 @@ where
         ctx: OpenContext,
         manifest: Meta,
         wal_manager: Wal,
-        store: Store,
+        store: ObjectStoreRef,
         sst_factory: Fa,
     ) -> Result<Arc<Self>> {
-        let store = Arc::new(store);
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
             manifest,

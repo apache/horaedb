@@ -2,11 +2,12 @@
 
 //! Setup the analytic engine
 
-use std::{path::Path, sync::Arc};
+use std::{path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
-use object_store::{aliyun::AliyunOSS, LocalFileSystem, ObjectStore};
+use futures::Future;
+use object_store::{aliyun::AliyunOSS, cache::CachedStore, LocalFileSystem, ObjectStoreRef};
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -26,7 +27,7 @@ use crate::{
     instance::{Instance, InstanceRef},
     meta::{details::ManifestImpl, Manifest},
     sst::factory::FactoryImpl,
-    storage_options::{AliyunOptions, LocalOptions},
+    storage_options::StorageOptions,
     Config,
 };
 
@@ -70,8 +71,8 @@ const WAL_DIR_NAME: &str = "wal";
 const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 
-type InstanceRefOnTableKv<T, Store> =
-    InstanceRef<WalNamespaceImpl<T>, ManifestImpl<WalNamespaceImpl<T>>, Store, FactoryImpl>;
+type InstanceRefOnTableKv<T> =
+    InstanceRef<WalNamespaceImpl<T>, ManifestImpl<WalNamespaceImpl<T>>, FactoryImpl>;
 
 /// Analytic engine builder.
 #[async_trait]
@@ -97,18 +98,9 @@ impl EngineBuilder for RocksEngineBuilder {
     ) -> Result<TableEngineRef> {
         assert!(!config.obkv_wal.enable);
 
-        match config.storage {
-            crate::storage_options::StorageOptions::Local(ref opts) => {
-                let store = open_storage_local(opts.clone()).await?;
-                let instance = open_rocks_instance(config.clone(), engine_runtimes, store).await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-            crate::storage_options::StorageOptions::Aliyun(ref opts) => {
-                let store = open_storage_aliyun(opts.clone()).await?;
-                let instance = open_rocks_instance(config.clone(), engine_runtimes, store).await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-        }
+        let store = open_storage(config.storage.clone()).await?;
+        let instance = open_rocks_instance(config, engine_runtimes, store).await?;
+        Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 }
 
@@ -125,20 +117,9 @@ impl EngineBuilder for ReplicatedEngineBuilder {
     ) -> Result<TableEngineRef> {
         assert!(config.obkv_wal.enable);
 
-        match config.storage {
-            crate::storage_options::StorageOptions::Local(ref opts) => {
-                let store = open_storage_local(opts.clone()).await?;
-                let instance =
-                    open_replicated_instance(config.clone(), engine_runtimes, store).await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-            crate::storage_options::StorageOptions::Aliyun(ref opts) => {
-                let store = open_storage_aliyun(opts.clone()).await?;
-                let instance =
-                    open_replicated_instance(config.clone(), engine_runtimes, store).await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-        }
+        let store = open_storage(config.storage.clone()).await?;
+        let instance = open_replicated_instance(config, engine_runtimes, store).await?;
+        Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 }
 
@@ -158,41 +139,19 @@ impl EngineBuilder for MemWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<TableEngineRef> {
-        match config.storage {
-            crate::storage_options::StorageOptions::Local(ref opts) => {
-                let store = open_storage_local(opts.clone()).await?;
-                let instance = open_instance_with_table_kv(
-                    config.clone(),
-                    engine_runtimes,
-                    self.table_kv.clone(),
-                    store,
-                )
+        let store = open_storage(config.storage.clone()).await?;
+        let instance =
+            open_instance_with_table_kv(config, engine_runtimes, self.table_kv.clone(), store)
                 .await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-            crate::storage_options::StorageOptions::Aliyun(ref opts) => {
-                let store = open_storage_aliyun(opts.clone()).await?;
-                let instance = open_instance_with_table_kv(
-                    config.clone(),
-                    engine_runtimes,
-                    self.table_kv.clone(),
-                    store,
-                )
-                .await?;
-                Ok(Arc::new(TableEngineImpl::new(instance)))
-            }
-        }
+        Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 }
 
-async fn open_rocks_instance<Store>(
+async fn open_rocks_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
-    store: Store,
-) -> Result<RocksInstanceRef<Store>>
-where
-    Store: ObjectStore,
-{
+    store: ObjectStoreRef,
+) -> Result<RocksInstanceRef> {
     let write_runtime = engine_runtimes.write_runtime.clone();
     let data_path = Path::new(&config.wal_path);
     let wal_path = data_path.join(WAL_DIR_NAME);
@@ -215,14 +174,11 @@ where
     Ok(instance)
 }
 
-async fn open_replicated_instance<Store>(
+async fn open_replicated_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
-    store: Store,
-) -> Result<ReplicatedInstanceRef<Store>>
-where
-    Store: ObjectStore,
-{
+    store: ObjectStoreRef,
+) -> Result<ReplicatedInstanceRef> {
     assert!(config.obkv_wal.enable);
 
     // Notice the creation of obkv client may block current thread.
@@ -236,15 +192,12 @@ where
     open_instance_with_table_kv(config, engine_runtimes, obkv, store).await
 }
 
-async fn open_instance_with_table_kv<T: TableKv, Store>(
+async fn open_instance_with_table_kv<T: TableKv>(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
-    store: Store,
-) -> Result<InstanceRefOnTableKv<T, Store>>
-where
-    Store: ObjectStore,
-{
+    store: ObjectStoreRef,
+) -> Result<InstanceRefOnTableKv<T>> {
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
         write_runtime: engine_runtimes.write_runtime.clone(),
@@ -277,17 +230,16 @@ where
     Ok(instance)
 }
 
-async fn open_with_wal_manifest<Wal, Meta, Store>(
+async fn open_with_wal_manifest<Wal, Meta>(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: Wal,
     manifest: Meta,
-    store: Store,
-) -> Result<InstanceRef<Wal, Meta, Store, FactoryImpl>>
+    store: ObjectStoreRef,
+) -> Result<InstanceRef<Wal, Meta, FactoryImpl>>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
 {
     let meta_cache: Option<MetaCacheRef> =
         if let Some(sst_meta_cache_cap) = &config.sst_meta_cache_cap {
@@ -316,22 +268,36 @@ where
     Ok(instance)
 }
 
-async fn open_storage_local(opts: LocalOptions) -> Result<LocalFileSystem> {
-    let data_path = Path::new(&opts.data_path);
-    let sst_path = data_path.join(STORE_DIR_NAME);
-    tokio::fs::create_dir_all(&sst_path)
-        .await
-        .context(CreateDir {
-            path: sst_path.to_string_lossy().into_owned(),
-        })?;
-    LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)
-}
-
-async fn open_storage_aliyun(opts: AliyunOptions) -> Result<impl ObjectStore> {
-    Ok(AliyunOSS::new(
-        opts.key_id,
-        opts.key_secret,
-        opts.endpoint,
-        opts.bucket,
-    ))
+fn open_storage(
+    opts: StorageOptions,
+) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
+    Box::pin(async move {
+        match opts {
+            StorageOptions::Local(local_opts) => {
+                let data_path = Path::new(&local_opts.data_path);
+                let sst_path = data_path.join(STORE_DIR_NAME);
+                tokio::fs::create_dir_all(&sst_path)
+                    .await
+                    .context(CreateDir {
+                        path: sst_path.to_string_lossy().into_owned(),
+                    })?;
+                let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
+                Ok(Arc::new(store) as _)
+            }
+            StorageOptions::Aliyun(aliyun_opts) => Ok(Arc::new(AliyunOSS::new(
+                aliyun_opts.key_id,
+                aliyun_opts.key_secret,
+                aliyun_opts.endpoint,
+                aliyun_opts.bucket,
+            )) as _),
+            StorageOptions::Cache(cache_opts) => {
+                let local_store = open_storage(*cache_opts.local_store).await?;
+                let remote_store = open_storage(*cache_opts.remote_store).await?;
+                let store = CachedStore::init(local_store, remote_store, cache_opts.cache_opts)
+                    .await
+                    .context(OpenObjectStore)?;
+                Ok(Arc::new(store) as _)
+            }
+        }
+    })
 }

@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use log::info;
-use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
 use tokio::sync::oneshot;
@@ -27,11 +26,10 @@ use crate::{
     table_options,
 };
 
-impl<Wal, Meta, Store, Fa> Instance<Wal, Meta, Store, Fa>
+impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Store: ObjectStore,
     Fa: Factory + Send + Sync + 'static,
 {
     /// Create table need to be handled by write worker.

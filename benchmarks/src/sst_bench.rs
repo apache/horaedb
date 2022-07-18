@@ -9,7 +9,7 @@ use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
 use log::info;
-use object_store::{LocalFileSystem, Path};
+use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
@@ -18,7 +18,7 @@ use parquet::{
 use crate::{config::SstBenchConfig, util};
 
 pub struct SstBench {
-    store: LocalFileSystem,
+    store: ObjectStoreRef,
     pub sst_file_name: String,
     max_projections: usize,
     schema: Schema,
@@ -30,7 +30,7 @@ impl SstBench {
     pub fn new(config: SstBenchConfig) -> Self {
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
 
-        let store = LocalFileSystem::new_with_prefix(config.store_path).unwrap();
+        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
         let sst_path = Path::from(config.sst_file_name.clone());
         let meta_cache: Option<MetaCacheRef> =
             if let Some(sst_meta_cache_cap) = config.sst_meta_cache_cap {

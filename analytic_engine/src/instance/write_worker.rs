@@ -19,7 +19,6 @@ use common_util::{
 };
 use futures::future;
 use log::{error, info};
-use object_store::ObjectStore;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, DropTableRequest},
@@ -557,14 +556,10 @@ pub struct WriteGroup {
 }
 
 impl WriteGroup {
-    pub fn new<Wal, Meta, Store, Fa>(
-        opts: Options,
-        instance: InstanceRef<Wal, Meta, Store, Fa>,
-    ) -> Self
+    pub fn new<Wal, Meta, Fa>(opts: Options, instance: InstanceRef<Wal, Meta, Fa>) -> Self
     where
         Wal: WalManager + Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
         Fa: Factory + Send + Sync + 'static,
     {
         let mut worker_datas = Vec::with_capacity(opts.worker_num);
@@ -698,11 +693,11 @@ impl WorkerSharedData {
 ///
 /// The write worker should ensure there is only one flush thread (task) is
 /// running.
-struct WriteWorker<Wal, Meta, Store, Fa> {
+struct WriteWorker<Wal, Meta, Fa> {
     /// Command receiver
     rx: mpsc::Receiver<Command>,
     /// Engine instance
-    instance: InstanceRef<Wal, Meta, Store, Fa>,
+    instance: InstanceRef<Wal, Meta, Fa>,
     /// Worker local states
     local: WorkerLocal,
 }
@@ -710,9 +705,8 @@ struct WriteWorker<Wal, Meta, Store, Fa> {
 impl<
         Wal: WalManager + Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Store: ObjectStore,
         Fa: Factory + Send + Sync + 'static,
-    > WriteWorker<Wal, Meta, Store, Fa>
+    > WriteWorker<Wal, Meta, Fa>
 {
     /// Runs the write loop until stopped
     async fn run(&mut self) {

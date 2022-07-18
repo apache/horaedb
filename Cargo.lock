@@ -3283,6 +3283,8 @@ dependencies = [
  "lru",
  "object_store 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "oss-rust-sdk",
+ "serde",
+ "serde_derive",
  "snafu 0.6.10",
  "tempfile",
  "tokio 1.19.2",
