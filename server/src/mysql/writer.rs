@@ -1,11 +1,12 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::HashMap;
-
-use common_types::datum::Datum;
+use common_types::datum::{Datum, DatumKind};
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 
-use crate::{handlers::sql::Response, mysql::error::Result};
+use crate::{
+    handlers::sql::{Response, ResponseColumn, ResponseRows},
+    mysql::error::Result,
+};
 
 pub struct MysqlQueryResultWriter<'a, W: std::io::Write> {
     inner: Option<QueryResultWriter<'a, W>>,
@@ -35,57 +36,50 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Ok(())
     }
 
-    fn write_rows(
-        writer: QueryResultWriter<'a, W>,
-        rows: Vec<HashMap<String, Datum>>,
-    ) -> Result<()> {
+    fn write_rows(writer: QueryResultWriter<'a, W>, rows: ResponseRows) -> Result<()> {
         let default_response = OkResponse::default();
-        if rows.is_empty() {
+        if rows.column_names.is_empty() {
             writer.completed(default_response)?;
             return Ok(());
         }
 
-        let columns = &rows[0]
+        let columns = &rows
+            .column_names
             .iter()
-            .map(|(k, v)| make_column_by_field(k, v))
+            .map(make_column_by_field)
             .collect::<Vec<_>>();
         let mut row_writer = writer.start(columns)?;
 
-        for row in &rows {
-            for column in columns {
-                let key = &column.column;
-                if let Some(val) = row.get(key) {
-                    let data_type = convert_field_type(val);
-                    let re = match (data_type, val) {
-                        (_, Datum::Varbinary(_)) => row_writer.write_col("[Varbinary]"),
-                        (_, Datum::Null) => row_writer.write_col(None::<u8>),
-                        (ColumnType::MYSQL_TYPE_LONG, Datum::Timestamp(t)) => {
-                            row_writer.write_col(t.as_i64())
-                        }
-                        (ColumnType::MYSQL_TYPE_VARCHAR, v) => {
-                            row_writer.write_col(v.as_str().map_or("", |s| s))
-                        }
-                        (ColumnType::MYSQL_TYPE_LONG, v) => {
-                            row_writer.write_col(v.as_u64().map_or(0, |v| v))
-                        }
-                        (ColumnType::MYSQL_TYPE_SHORT, Datum::Boolean(b)) => {
-                            row_writer.write_col(*b as i8)
-                        }
-                        (ColumnType::MYSQL_TYPE_DOUBLE, v) => {
-                            row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
-                        }
-                        (ColumnType::MYSQL_TYPE_FLOAT, v) => {
-                            row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
-                        }
-                        (_, v) => Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Unsupported column type, val: {:?}", v),
-                        )),
-                    };
-                    re?;
-                } else {
-                    row_writer.write_col(None::<u8>)?;
-                }
+        for row in &rows.data {
+            for val in row {
+                let data_type = convert_field_type(val);
+                let re = match (data_type, val) {
+                    (_, Datum::Varbinary(v)) => row_writer.write_col(v.as_ref()),
+                    (_, Datum::Null) => row_writer.write_col(None::<u8>),
+                    (ColumnType::MYSQL_TYPE_LONG, Datum::Timestamp(t)) => {
+                        row_writer.write_col(t.as_i64())
+                    }
+                    (ColumnType::MYSQL_TYPE_VARCHAR, v) => {
+                        row_writer.write_col(v.as_str().map_or("", |s| s))
+                    }
+                    (ColumnType::MYSQL_TYPE_LONG, v) => {
+                        row_writer.write_col(v.as_u64().map_or(0, |v| v))
+                    }
+                    (ColumnType::MYSQL_TYPE_SHORT, Datum::Boolean(b)) => {
+                        row_writer.write_col(*b as i8)
+                    }
+                    (ColumnType::MYSQL_TYPE_DOUBLE, v) => {
+                        row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
+                    }
+                    (ColumnType::MYSQL_TYPE_FLOAT, v) => {
+                        row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
+                    }
+                    (_, v) => Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Unsupported column type, val: {:?}", v),
+                    )),
+                };
+                re?;
             }
             row_writer.end_row()?;
         }
@@ -94,13 +88,33 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
     }
 }
 
-fn make_column_by_field(k: &str, v: &Datum) -> Column {
-    let column_type = convert_field_type(v);
+fn make_column_by_field(column: &ResponseColumn) -> Column {
+    let column_type = conver_datum_kind_type(&column.data_type);
     Column {
         table: "".to_string(),
-        column: k.to_string(),
+        column: column.name.clone(),
         coltype: column_type,
         colflags: ColumnFlags::empty(),
+    }
+}
+
+fn conver_datum_kind_type(data_type: &DatumKind) -> ColumnType {
+    match data_type {
+        DatumKind::Timestamp => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Double => ColumnType::MYSQL_TYPE_DOUBLE,
+        DatumKind::Float => ColumnType::MYSQL_TYPE_FLOAT,
+        DatumKind::Varbinary => ColumnType::MYSQL_TYPE_LONG_BLOB,
+        DatumKind::String => ColumnType::MYSQL_TYPE_VARCHAR,
+        DatumKind::UInt64 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::UInt32 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::UInt16 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::UInt8 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Int64 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Int32 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Int16 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Int8 => ColumnType::MYSQL_TYPE_LONG,
+        DatumKind::Boolean => ColumnType::MYSQL_TYPE_SHORT,
+        DatumKind::Null => ColumnType::MYSQL_TYPE_NULL,
     }
 }
 
@@ -126,14 +140,13 @@ fn convert_field_type(field: &Datum) -> ColumnType {
 
 #[cfg(test)]
 mod tests {
-    use common_types::{datum::Datum, time::Timestamp};
+    use common_types::datum::DatumKind;
     use opensrv_mysql::{Column, ColumnFlags, ColumnType};
 
-    use crate::mysql::writer::make_column_by_field;
+    use crate::{handlers::sql::ResponseColumn, mysql::writer::make_column_by_field};
 
     struct MakeColumnTest {
-        k: &'static str,
-        v: Datum,
+        column: ResponseColumn,
         target_type: ColumnType,
     }
 
@@ -141,28 +154,38 @@ mod tests {
     fn test_make_column_by_field() {
         let tests = [
             MakeColumnTest {
-                k: "id",
-                v: Datum::UInt64(1),
+                column: ResponseColumn {
+                    name: "id".to_string(),
+                    data_type: DatumKind::Int32,
+                },
                 target_type: ColumnType::MYSQL_TYPE_LONG,
             },
             MakeColumnTest {
-                k: "name",
-                v: Datum::String("Bob".into()),
+                column: ResponseColumn {
+                    name: "name".to_string(),
+                    data_type: DatumKind::String,
+                },
                 target_type: ColumnType::MYSQL_TYPE_VARCHAR,
             },
             MakeColumnTest {
-                k: "birthday",
-                v: Datum::Timestamp(Timestamp::now()),
+                column: ResponseColumn {
+                    name: "birthday".to_string(),
+                    data_type: DatumKind::Timestamp,
+                },
                 target_type: ColumnType::MYSQL_TYPE_LONG,
             },
             MakeColumnTest {
-                k: "is_show",
-                v: Datum::Boolean(true),
+                column: ResponseColumn {
+                    name: "is_show".to_string(),
+                    data_type: DatumKind::Boolean,
+                },
                 target_type: ColumnType::MYSQL_TYPE_SHORT,
             },
             MakeColumnTest {
-                k: "money",
-                v: Datum::Double(12.25),
+                column: ResponseColumn {
+                    name: "money".to_string(),
+                    data_type: DatumKind::Double,
+                },
                 target_type: ColumnType::MYSQL_TYPE_DOUBLE,
             },
         ];
@@ -170,11 +193,11 @@ mod tests {
         for test in tests {
             let target_column = Column {
                 table: "".to_string(),
-                column: test.k.to_string(),
+                column: test.column.name.clone(),
                 coltype: test.target_type,
                 colflags: ColumnFlags::default(),
             };
-            assert_eq!(target_column, make_column_by_field(test.k, &test.v));
+            assert_eq!(target_column, make_column_by_field(&test.column));
         }
     }
 }
