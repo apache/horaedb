@@ -258,8 +258,11 @@ pub trait LogReader {
 /// space.
 #[async_trait]
 pub trait WalManager: LogWriter + LogReader + fmt::Debug {
+    type Error;
+
     /// Get current sequence number.
-    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, region_id: RegionId)
+        -> std::result::Result<SequenceNumber, Error>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
@@ -267,10 +270,10 @@ pub trait WalManager: LogWriter + LogReader + fmt::Debug {
         &self,
         region_id: RegionId,
         sequence_num: SequenceNumber,
-    ) -> Result<()>;
+    ) -> std::result::Result<(), Error>;
 
     /// Close the wal gracefully.
-    async fn close_gracefully(&self) -> Result<()>;
+    async fn close_gracefully(&self) -> std::result::Result<(), Error>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.

@@ -136,6 +136,8 @@ impl<T: TableKv> LogReader for WalNamespaceImpl<T> {
 
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
+    type Error = Error;
+
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
         self.namespace
             .last_sequence(region_id)

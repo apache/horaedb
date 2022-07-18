@@ -599,6 +599,8 @@ impl LogWriter for RocksImpl {
 
 #[async_trait]
 impl WalManager for RocksImpl {
+    type Error = Error;
+
     async fn sequence_num(&self, region_id: RegionId) -> Result<u64> {
         if let Some(region) = self.region(region_id) {
             return region.sequence_num();
