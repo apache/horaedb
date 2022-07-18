@@ -35,7 +35,7 @@ use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     meta::Manifest,
     space::{SpaceId, SpaceRef},
-    sst::file::FilePurger,
+    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::TableDataRef,
     TableOptions,
 };
@@ -85,7 +85,7 @@ impl Spaces {
     }
 }
 
-pub struct SpaceStore<Wal, Meta, Fa> {
+pub struct SpaceStore<Wal, Meta> {
     /// All spaces of the engine.
     spaces: RwLock<Spaces>,
     /// Manifest (or meta) stores meta data of the engine instance.
@@ -95,19 +95,19 @@ pub struct SpaceStore<Wal, Meta, Fa> {
     /// Sst storage.
     store: ObjectStoreRef,
     /// Sst factory.
-    sst_factory: Fa,
+    sst_factory: SstFactoryRef,
 
     meta_cache: Option<MetaCacheRef>,
     data_cache: Option<DataCacheRef>,
 }
 
-impl<Wal, Meta, Fa> Drop for SpaceStore<Wal, Meta, Fa> {
+impl<Wal, Meta> Drop for SpaceStore<Wal, Meta> {
     fn drop(&mut self) {
         info!("SpaceStore dropped");
     }
 }
 
-impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
+impl<Wal, Meta> SpaceStore<Wal, Meta> {
     async fn close(&self) -> Result<()> {
         let spaces = self.spaces.read().unwrap().list_all_spaces();
         for space in spaces {
@@ -119,7 +119,7 @@ impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
     }
 }
 
-impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
+impl<Wal, Meta> SpaceStore<Wal, Meta> {
     fn store_ref(&self) -> &ObjectStoreRef {
         &self.store
     }
@@ -142,9 +142,9 @@ impl<Wal, Meta, Fa> SpaceStore<Wal, Meta, Fa> {
 ///
 /// Manages all spaces, also contains needed resources shared across all table
 // TODO(yingwen): Track memory usage of all tables (or tables of space)
-pub struct Instance<Wal, Meta, Fa> {
+pub struct Instance<Wal, Meta> {
     /// Space storage
-    space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
+    space_store: Arc<SpaceStore<Wal, Meta>>,
     /// Runtime to execute async tasks.
     runtimes: Arc<EngineRuntimes>,
     /// Global table options, overwrite mutable options in each table's
@@ -170,7 +170,7 @@ pub struct Instance<Wal, Meta, Fa> {
     pub(crate) replay_batch_size: usize,
 }
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa> {
+impl<Wal, Meta> Instance<Wal, Meta> {
     /// Close the instance gracefully.
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
@@ -185,7 +185,7 @@ impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa> {
 }
 
 // TODO(yingwen): Instance builder
-impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa> Instance<Wal, Meta, Fa> {
+impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
     /// Find space using read lock
     fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
@@ -222,4 +222,4 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa> Instance<Wal, Meta, Fa> 
 }
 
 /// Instance reference
-pub type InstanceRef<Wal, Meta, Fa> = Arc<Instance<Wal, Meta, Fa>>;
+pub type InstanceRef<Wal, Meta> = Arc<Instance<Wal, Meta>>;

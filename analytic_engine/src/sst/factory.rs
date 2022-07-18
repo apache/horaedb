@@ -19,7 +19,7 @@ use crate::{
     table_options::Compression,
 };
 
-pub trait Factory: Clone {
+pub trait Factory: Send + Sync + Debug {
     fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
@@ -59,7 +59,7 @@ pub struct SstBuilderOptions {
     pub compression: Compression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default)]
 pub struct FactoryImpl;
 
 impl Factory for FactoryImpl {
@@ -85,3 +85,6 @@ impl Factory for FactoryImpl {
         }
     }
 }
+
+/// Sst factory reference
+pub type FactoryRef = Arc<dyn Factory>;

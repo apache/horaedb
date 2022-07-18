@@ -38,7 +38,6 @@ use crate::{
     },
     meta::Manifest,
     space::{SpaceAndTable, SpaceId, SpaceRef},
-    sst::factory::Factory,
     table::{data::TableDataRef, metrics::Metrics},
 };
 
@@ -556,11 +555,10 @@ pub struct WriteGroup {
 }
 
 impl WriteGroup {
-    pub fn new<Wal, Meta, Fa>(opts: Options, instance: InstanceRef<Wal, Meta, Fa>) -> Self
+    pub fn new<Wal, Meta>(opts: Options, instance: InstanceRef<Wal, Meta>) -> Self
     where
         Wal: WalManager + Send + Sync + 'static,
         Meta: Manifest + Send + Sync + 'static,
-        Fa: Factory + Send + Sync + 'static,
     {
         let mut worker_datas = Vec::with_capacity(opts.worker_num);
         let mut handles = Vec::with_capacity(opts.worker_num);
@@ -693,20 +691,17 @@ impl WorkerSharedData {
 ///
 /// The write worker should ensure there is only one flush thread (task) is
 /// running.
-struct WriteWorker<Wal, Meta, Fa> {
+struct WriteWorker<Wal, Meta> {
     /// Command receiver
     rx: mpsc::Receiver<Command>,
     /// Engine instance
-    instance: InstanceRef<Wal, Meta, Fa>,
+    instance: InstanceRef<Wal, Meta>,
     /// Worker local states
     local: WorkerLocal,
 }
 
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Fa: Factory + Send + Sync + 'static,
-    > WriteWorker<Wal, Meta, Fa>
+impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static>
+    WriteWorker<Wal, Meta>
 {
     /// Runs the write loop until stopped
     async fn run(&mut self) {

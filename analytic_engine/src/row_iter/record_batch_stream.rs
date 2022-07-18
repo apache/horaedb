@@ -18,8 +18,10 @@ use table_engine::{
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
     space::SpaceId,
-    sst,
-    sst::{factory::SstReaderOptions, file::FileHandle},
+    sst::{
+        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
+        file::FileHandle,
+    },
     table::sst_util,
 };
 
@@ -199,17 +201,14 @@ pub fn stream_from_memtable(
 
 /// Build the filtered by `sst_read_options.predicate`
 /// [SequencedRecordBatchStream] from a sst.
-pub async fn filtered_stream_from_sst_file<Fa>(
+pub async fn filtered_stream_from_sst_file(
     space_id: SpaceId,
     table_id: TableId,
     sst_file: &FileHandle,
-    sst_factory: &Fa,
+    sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
     store: &ObjectStoreRef,
-) -> Result<SequencedRecordBatchStream>
-where
-    Fa: sst::factory::Factory,
-{
+) -> Result<SequencedRecordBatchStream> {
     stream_from_sst_file(
         space_id,
         table_id,
@@ -223,17 +222,14 @@ where
 }
 
 /// Build the [SequencedRecordBatchStream] from a sst.
-pub async fn stream_from_sst_file<Fa>(
+pub async fn stream_from_sst_file(
     space_id: SpaceId,
     table_id: TableId,
     sst_file: &FileHandle,
-    sst_factory: &Fa,
+    sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
     store: &ObjectStoreRef,
-) -> Result<SequencedRecordBatchStream>
-where
-    Fa: sst::factory::Factory,
-{
+) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
     let mut sst_reader = sst_factory

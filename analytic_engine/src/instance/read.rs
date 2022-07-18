@@ -36,7 +36,7 @@ use crate::{
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceAndTable,
-    sst::factory::{Factory, SstReaderOptions},
+    sst::factory::SstReaderOptions,
     table::{
         data::TableData,
         version::{ReadView, TableVersion},
@@ -75,7 +75,7 @@ fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequ
     table_options.need_dedup() || read_request.order.is_in_order()
 }
 
-impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa: Factory> Instance<Wal, Meta, Fa> {
+impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(
@@ -178,7 +178,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa: Factory> Instance<Wal, M
                 sequence,
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
-                sst_factory: self.space_store.sst_factory.clone(),
+                sst_factory: &self.space_store.sst_factory,
                 sst_reader_options: sst_reader_options.clone(),
                 store: self.space_store.store_ref(),
                 merge_iter_options: iter_options.clone(),
@@ -239,7 +239,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest, Fa: Factory> Instance<Wal, M
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_reader_options: sst_reader_options.clone(),
-                sst_factory: self.space_store.sst_factory.clone(),
+                sst_factory: &self.space_store.sst_factory,
                 store: self.space_store.store_ref(),
             };
             let builder = chain::Builder::new(chain_config);

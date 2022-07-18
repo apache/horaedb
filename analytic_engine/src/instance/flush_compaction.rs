@@ -46,7 +46,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{Factory, SstBuilderOptions, SstReaderOptions, SstType},
+        factory::{SstBuilderOptions, SstReaderOptions, SstType},
         file::{self, FileMeta, SstMetaData},
     },
     table::{
@@ -181,11 +181,10 @@ pub enum TableFlushPolicy {
     Purge,
 }
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Flush this table.
     pub async fn flush_table(
@@ -766,7 +765,7 @@ where
     }
 }
 
-impl<Wal, Meta: Manifest, Fa: Factory> SpaceStore<Wal, Meta, Fa> {
+impl<Wal, Meta: Manifest> SpaceStore<Wal, Meta> {
     pub(crate) async fn compact_table(
         &self,
         runtime: Arc<Runtime>,
@@ -883,7 +882,7 @@ impl<Wal, Meta: Manifest, Fa: Factory> SpaceStore<Wal, Meta, Fa> {
                 sequence,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
-                sst_factory: self.sst_factory.clone(),
+                sst_factory: &self.sst_factory,
                 sst_reader_options,
                 store: self.store_ref(),
                 merge_iter_options: iter_options.clone(),

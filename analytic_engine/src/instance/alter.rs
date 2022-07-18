@@ -26,16 +26,14 @@ use crate::{
         Manifest,
     },
     space::SpaceAndTable,
-    sst::factory::Factory,
     table::data::TableDataRef,
     table_options,
 };
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(

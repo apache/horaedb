@@ -25,7 +25,6 @@ use crate::{
     instance::{flush_compaction::TableFlushOptions, InstanceRef},
     meta::Manifest,
     space::SpaceAndTable,
-    sst::factory::Factory,
 };
 
 pub mod data;
@@ -37,19 +36,19 @@ pub mod version_edit;
 // TODO(yingwen): How to handle drop table?
 
 /// Table trait implementation
-pub struct TableImpl<Wal, Meta, Fa> {
+pub struct TableImpl<Wal, Meta> {
     /// Space and table info
     space_table: SpaceAndTable,
     /// Instance
-    instance: InstanceRef<Wal, Meta, Fa>,
+    instance: InstanceRef<Wal, Meta>,
     /// Engine type
     engine_type: String,
 }
 
-impl<Wal, Meta, Fa> TableImpl<Wal, Meta, Fa> {
+impl<Wal, Meta> TableImpl<Wal, Meta> {
     pub fn new(
         space_table: SpaceAndTable,
-        instance: InstanceRef<Wal, Meta, Fa>,
+        instance: InstanceRef<Wal, Meta>,
         engine_type: String,
     ) -> Self {
         Self {
@@ -60,7 +59,7 @@ impl<Wal, Meta, Fa> TableImpl<Wal, Meta, Fa> {
     }
 }
 
-impl<Wal, Meta, Fa> fmt::Debug for TableImpl<Wal, Meta, Fa> {
+impl<Wal, Meta> fmt::Debug for TableImpl<Wal, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
             .field("space_table", &self.space_table)
@@ -69,11 +68,8 @@ impl<Wal, Meta, Fa> fmt::Debug for TableImpl<Wal, Meta, Fa> {
 }
 
 #[async_trait]
-impl<
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Fa: Factory + Send + Sync + 'static,
-    > Table for TableImpl<Wal, Meta, Fa>
+impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static> Table
+    for TableImpl<Wal, Meta>
 {
     fn name(&self) -> &str {
         &self.space_table.table_data().name

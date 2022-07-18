@@ -71,8 +71,7 @@ const WAL_DIR_NAME: &str = "wal";
 const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 
-type InstanceRefOnTableKv<T> =
-    InstanceRef<WalNamespaceImpl<T>, ManifestImpl<WalNamespaceImpl<T>>, FactoryImpl>;
+type InstanceRefOnTableKv<T> = InstanceRef<WalNamespaceImpl<T>, ManifestImpl<WalNamespaceImpl<T>>>;
 
 /// Analytic engine builder.
 #[async_trait]
@@ -236,7 +235,7 @@ async fn open_with_wal_manifest<Wal, Meta>(
     wal_manager: Wal,
     manifest: Meta,
     store: ObjectStoreRef,
-) -> Result<InstanceRef<Wal, Meta, FactoryImpl>>
+) -> Result<InstanceRef<Wal, Meta>>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
@@ -262,9 +261,15 @@ where
         data_cache,
     };
 
-    let instance = Instance::open(open_ctx, manifest, wal_manager, store, FactoryImpl)
-        .await
-        .context(OpenInstance)?;
+    let instance = Instance::open(
+        open_ctx,
+        manifest,
+        wal_manager,
+        store,
+        Arc::new(FactoryImpl::default()),
+    )
+    .await
+    .context(OpenInstance)?;
     Ok(instance)
 }
 

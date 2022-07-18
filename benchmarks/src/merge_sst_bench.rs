@@ -14,7 +14,7 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryImpl, SstReaderOptions, SstType},
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
         file::{FileHandle, FilePurgeQueue, Request},
     },
     table::sst_util,
@@ -122,7 +122,7 @@ impl MergeSstBench {
         let sequence = u64::MAX;
         let iter_options = IterOptions::default();
         let projected_schema = self.sst_reader_options.projected_schema.clone();
-        let sst_factory = FactoryImpl;
+        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
         let mut builder = MergeBuilder::new(MergeConfig {
@@ -132,7 +132,7 @@ impl MergeSstBench {
             sequence,
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
-            sst_factory,
+            sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
             store: &self.store,
             merge_iter_options: iter_options.clone(),
@@ -171,7 +171,7 @@ impl MergeSstBench {
         let space_id = self.space_id;
         let table_id = self.table_id;
         let projected_schema = self.sst_reader_options.projected_schema.clone();
-        let sst_factory = FactoryImpl;
+        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
         let builder = chain::Builder::new(ChainConfig {
@@ -180,7 +180,7 @@ impl MergeSstBench {
             table_id,
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
-            sst_factory,
+            sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
             store: &self.store,
         })

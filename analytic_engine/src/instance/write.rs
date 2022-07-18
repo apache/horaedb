@@ -32,7 +32,6 @@ use crate::{
     meta::Manifest,
     payload::WritePayload,
     space::SpaceAndTable,
-    sst::factory::Factory,
     table::{
         data::{TableData, TableDataRef},
         version::MemTableForWrite,
@@ -141,11 +140,10 @@ impl EncodeContext {
     }
 }
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Write data to the table under give space.
     pub async fn write_to_table(

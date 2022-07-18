@@ -38,7 +38,6 @@ use crate::{
     },
     instance::SpaceStore,
     meta::Manifest,
-    sst::factory::Factory,
     table::data::TableDataRef,
     TableOptions,
 };
@@ -220,12 +219,8 @@ pub struct SchedulerImpl {
 }
 
 impl SchedulerImpl {
-    pub fn new<
-        Wal: Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Fa: Factory + Send + Sync + 'static,
-    >(
-        space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
+    pub fn new<Wal: Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static>(
+        space_store: Arc<SpaceStore<Wal, Meta>>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
     ) -> Self {
@@ -298,10 +293,10 @@ impl OngoingTask {
     }
 }
 
-struct ScheduleWorker<Wal, Meta, Fa> {
+struct ScheduleWorker<Wal, Meta> {
     sender: Sender<ScheduleTask>,
     receiver: Receiver<ScheduleTask>,
-    space_store: Arc<SpaceStore<Wal, Meta, Fa>>,
+    space_store: Arc<SpaceStore<Wal, Meta>>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
     picker_manager: PickerManager,
@@ -319,12 +314,7 @@ async fn schedule_table_compaction(sender: Sender<ScheduleTask>, request: TableC
     }
 }
 
-impl<
-        Wal: Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-        Fa: Factory + Send + Sync + 'static,
-    > ScheduleWorker<Wal, Meta, Fa>
-{
+impl<Wal: Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static> ScheduleWorker<Wal, Meta> {
     async fn schedule_loop(&mut self) {
         while self.running.load(Ordering::Relaxed) {
             // TODO(yingwen): Maybe add a random offset to the interval.

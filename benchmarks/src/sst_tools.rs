@@ -14,7 +14,10 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         builder::RecordBatchStream,
-        factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
+        factory::{
+            Factory, FactoryImpl, FactoryRef as SstFactoryRef, SstBuilderOptions, SstReaderOptions,
+            SstType,
+        },
         file::{self, FilePurgeQueue, SstMetaData},
         manager::FileId,
     },
@@ -200,7 +203,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             runtime: runtime.clone(),
         };
 
-        let sst_factory = FactoryImpl;
+        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
             space_id,
@@ -208,7 +211,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             sequence,
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
-            sst_factory,
+            sst_factory: &sst_factory,
             sst_reader_options,
             store: &store,
             merge_iter_options: iter_options.clone(),
