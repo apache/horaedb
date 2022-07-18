@@ -809,12 +809,30 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
+source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?branch=fix-generate-rust-files#d394d687ce1da7213070d09707388a81ef50b125"
+dependencies = [
+ "futures 0.3.21",
+ "grpcio 0.9.1",
+ "protobuf",
+ "protobuf-builder",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git#a7db8811a949eb194788eda2125284e9b2ffdd4b"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
  "protobuf",
  "protobuf-builder",
+]
+
+[[package]]
+name = "ceresdbproto_deps"
+version = "0.1.0"
+dependencies = [
+ "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?branch=fix-generate-rust-files)",
 ]
 
 [[package]]
@@ -894,6 +912,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "cluster"
+version = "0.1.0"
+dependencies = [
+ "analytic_engine",
+ "async-trait",
+ "catalog",
+ "common_types",
+ "common_util",
+ "log",
+ "meta_client_v2",
+ "rust-fsm",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "snafu 0.6.10",
+ "tokio 1.19.2",
 ]
 
 [[package]]
@@ -2816,12 +2853,41 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "catalog",
+<<<<<<< HEAD
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
  "common_types 0.1.0",
+=======
+ "ceresdbproto_deps",
+ "common_types",
+>>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
  "common_util",
  "futures 0.3.21",
  "grpcio 0.1.0",
  "log",
+ "rand 0.7.3",
+ "reqwest 0.11.11",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "snafu 0.6.10",
+ "table_engine",
+ "tokio 1.19.2",
+ "url 2.2.2",
+]
+
+[[package]]
+name = "meta_client_v2"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "catalog",
+ "ceresdbproto_deps",
+ "common_types",
+ "common_util",
+ "futures 0.3.21",
+ "grpcio 0.1.0",
+ "log",
+ "protobuf",
  "rand 0.7.3",
  "reqwest 0.11.11",
  "serde",
@@ -4396,6 +4462,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-fsm"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b9ee4731a0f53c973772b83c43c57a26e146b6fa024af5aeab972b63d678b65"
+dependencies = [
+ "rust-fsm-dsl",
+]
+
+[[package]]
+name = "rust-fsm-dsl"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44237c429621e3606374941c3061fe95686bdaddb9b4f6524e4edc2d21da9c58"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "rust_decimal"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4634,8 +4719,13 @@ dependencies = [
  "async-trait",
  "avro-rs",
  "catalog",
+<<<<<<< HEAD
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
+=======
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "common_types",
+>>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
  "common_util",
  "df_operator",
  "futures 0.3.21",
@@ -4959,8 +5049,13 @@ version = "0.1.0"
 dependencies = [
  "arrow_deps 0.1.0",
  "catalog",
+<<<<<<< HEAD
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
+=======
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "common_types",
+>>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
  "common_util",
  "df_operator",
  "log",

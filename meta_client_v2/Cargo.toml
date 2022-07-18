@@ -8,10 +8,9 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.53"
 catalog = { path = "../catalog" }
+ceresdbproto_deps = { path = "../ceresdbproto_deps" }
 common_types = { path = "../common_types" }
-table_engine = { path = "../table_engine" }
 common_util = { path = "../common_util" }
-ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
 futures = "0.3"
 grpcio = { path = "../grpcio" }
 log = "0.4"
@@ -22,5 +21,6 @@ serde = "1.0"
 serde_derive = "1.0.81"
 serde_json = "1.0.60"
 snafu = { version ="0.6.10", features = ["backtraces"]}
+table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }
 url = "2.2"

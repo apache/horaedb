@@ -1,0 +1,11 @@
+[package]
+name = "ceresdbproto_deps"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.ceresdbproto]
+git = "https://github.com/ShiKaiWi/ceresdbproto.git"
+branch = "fix-generate-rust-files"

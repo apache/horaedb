@@ -1,20 +1,19 @@
 use std::collections::HashMap;
 
-use ceresdbxproto::{
-    metaV2::ShardRole as PbShardRole,
-    metagrpcV2::{
+use ceresdbproto_deps::ceresdbproto::{
+    cluster::ShardRole as PbShardRole,
+    common::ResponseHeader as PbResponseHeader,
+    meta_service::{
         AllocSchemaIdRequest as PbAllocSchemaIdRequest,
         AllocSchemaIdResponse as PbAllocSchemaIdResponse,
         AllocTableIdRequest as PbAllocTableIdRequest,
         AllocTableIdResponse as PbAllocTableIdResponse, ChangeRoleCmd as PbChangeRoleCmd,
         CloseCmd as PbCloseCmd, DropTableRequest as PbDropTableRequest,
-        DropTableResponse as PbDropTableResponse, Error as PbError, ErrorType as PbErrorType,
-        GetTablesRequest as PbGetTablesRequest, GetTablesResponse as PbGetTablesResponse,
-        NodeHeartbeatResponse as PbNodeHeartbeatResponse, NodeHeartbeatResponse_oneof_cmd,
-        NodeInfo as PbNodeInfo, NoneCmd as PbNoneCmd, OpenCmd as PbOpenCmd,
-        RequestHeader as PbRequestHeader, ResponseHeader as PbResponseHeader,
-        ShardInfo as PbShardInfo, ShardTables as PbShardTables, SplitCmd as PbSplitCmd,
-        TableInfo as PbTableInfo,
+        DropTableResponse as PbDropTableResponse, GetTablesRequest as PbGetTablesRequest,
+        GetTablesResponse as PbGetTablesResponse, NodeHeartbeatResponse as PbNodeHeartbeatResponse,
+        NodeHeartbeatResponse_oneof_cmd, NodeInfo as PbNodeInfo, NoneCmd as PbNoneCmd,
+        OpenCmd as PbOpenCmd, RequestHeader as PbRequestHeader, ShardInfo as PbShardInfo,
+        ShardTables as PbShardTables, SplitCmd as PbSplitCmd, TableInfo as PbTableInfo,
     },
 };
 use common_util::config::ReadableDuration;
@@ -32,19 +31,15 @@ pub struct RequestHeader {
 
 #[derive(Debug, Clone)]
 pub struct ResponseHeader {
-    pub success: bool,
-    pub error: ResponseError,
+    pub code: u32,
+    pub err_msg: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ResponseError {
-    pub error_type: ErrorType,
-    pub message: String,
-}
-
-#[derive(Debug, Clone)]
-pub enum ErrorType {
-    UNKNOWN,
+impl ResponseHeader {
+    #[inline]
+    pub fn is_success(&self) -> bool {
+        self.code == 0
+    }
 }
 
 #[derive(Debug)]
@@ -394,25 +389,8 @@ impl From<RequestHeader> for PbRequestHeader {
 impl From<PbResponseHeader> for ResponseHeader {
     fn from(mut pb: PbResponseHeader) -> Self {
         Self {
-            success: pb.get_success(),
-            error: pb.take_error().into(),
-        }
-    }
-}
-
-impl From<PbErrorType> for ErrorType {
-    fn from(pb: PbErrorType) -> Self {
-        match pb {
-            PbErrorType::UNKNOWN => ErrorType::UNKNOWN,
-        }
-    }
-}
-
-impl From<PbError> for ResponseError {
-    fn from(mut pb: PbError) -> Self {
-        Self {
-            error_type: pb.get_error_type().into(),
-            message: pb.take_message(),
+            code: pb.get_code(),
+            err_msg: pb.take_error(),
         }
     }
 }

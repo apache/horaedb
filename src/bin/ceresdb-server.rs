@@ -14,10 +14,7 @@ use server::config::Config;
 
 /// The ip address of current node.
 const NODE_ADDR: &str = "CSE_CERES_META_NODE_ADDR";
-const META_PEERS: &str = "META_PEERS";
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
-/// Enable communication with meta node.
-const ENABLE_META: &str = "ENABLE_META";
 
 fn fetch_version() -> String {
     let build_version = option_env!("VERGEN_BUILD_SEMVER").unwrap_or("NONE");
@@ -53,17 +50,8 @@ fn main() {
         None => Config::default(),
     };
 
-    // Combine configs from env.
-    if let Ok(enable_meta) = env::var(ENABLE_META) {
-        if let Ok(enable_meta) = enable_meta.parse::<bool>() {
-            config.meta_client.enable_meta = enable_meta;
-        }
-    }
     if let Ok(node_addr) = env::var(NODE_ADDR) {
         config.meta_client.node = node_addr;
-    }
-    if let Ok(meta_addr) = env::var(META_PEERS) {
-        config.meta_client.meta_addr = meta_addr;
     }
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
         config.meta_client.cluster = cluster;

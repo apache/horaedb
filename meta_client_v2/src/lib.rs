@@ -4,14 +4,14 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbxproto::{
-    metagrpcV2::{
+use ceresdbproto_deps::ceresdbproto::{
+    meta_service::{
         AllocSchemaIdRequest as PbAllocSchemaIdRequest,
         AllocTableIdRequest as PbAllocTableIdRequest, DropTableRequest as PbDropTableRequest,
         GetTablesRequest as PbGetTablesRequest, NodeHeartbeatRequest as PbNodeHeartbeatRequest,
         NodeHeartbeatResponse as PbNodeHeartbeatResponse,
     },
-    metagrpcV2_grpc::CeresmetaRpcServiceClient,
+    meta_service_grpc::CeresmetaRpcServiceClient,
 };
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
 use futures::{SinkExt, TryStreamExt};
@@ -544,7 +544,7 @@ impl MetaClient for MetaClientImpl {
 }
 
 fn check_response_header(header: &ResponseHeader) -> Result<()> {
-    if header.success {
+    if header.is_success() {
         Ok(())
     } else {
         Meta {
