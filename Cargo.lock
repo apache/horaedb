@@ -809,7 +809,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?branch=fix-generate-rust-files#d394d687ce1da7213070d09707388a81ef50b125"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=ec5404e0f60fc748d3e8b68a592e2926ac1e84de#ec5404e0f60fc748d3e8b68a592e2926ac1e84de"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
@@ -832,7 +832,7 @@ dependencies = [
 name = "ceresdbproto_deps"
 version = "0.1.0"
 dependencies = [
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?branch=fix-generate-rust-files)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=ec5404e0f60fc748d3e8b68a592e2926ac1e84de)",
 ]
 
 [[package]]
