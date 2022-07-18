@@ -15,7 +15,7 @@ use analytic_engine::{
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceId,
-    sst::factory::{FactoryImpl, SstReaderOptions, SstType},
+    sst::factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
     table::{
         sst_util,
         version::{MemTableState, MemTableVec},
@@ -138,7 +138,7 @@ impl MergeMemTableBench {
         let sequence = u64::MAX;
         let iter_options = IterOptions::default();
         let projected_schema = self.projected_schema.clone();
-        let sst_factory = FactoryImpl;
+        let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
         let mut builder = MergeBuilder::new(MergeConfig {
@@ -148,7 +148,7 @@ impl MergeMemTableBench {
             sequence,
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
-            sst_factory,
+            sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
             store: &self.store,
             merge_iter_options: iter_options.clone(),

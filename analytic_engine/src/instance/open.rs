@@ -35,15 +35,14 @@ use crate::{
     meta::{meta_data::TableManifestData, Manifest},
     payload::{ReadPayload, WalDecoder},
     space::{Space, SpaceId, SpaceRef},
-    sst::{factory::Factory, file::FilePurger},
+    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::{TableData, TableDataRef},
 };
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Open a new instance
     pub async fn open(
@@ -51,7 +50,7 @@ where
         manifest: Meta,
         wal_manager: Wal,
         store: ObjectStoreRef,
-        sst_factory: Fa,
+        sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),

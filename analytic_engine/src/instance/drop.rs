@@ -22,14 +22,12 @@ use crate::{
         Manifest,
     },
     space::SpaceRef,
-    sst::factory::Factory,
 };
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Drop a table under given space
     pub async fn do_drop_table(

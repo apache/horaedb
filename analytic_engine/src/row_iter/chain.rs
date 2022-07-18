@@ -21,7 +21,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{Factory, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
         file::FileHandle,
     },
     table::version::{MemTableVec, SamplingMemTable},
@@ -49,7 +49,7 @@ define_result!(Error);
 
 /// Required parameters to construct the [Builder].
 #[derive(Clone, Debug)]
-pub struct ChainConfig<'a, Fa> {
+pub struct ChainConfig<'a> {
     pub request_id: RequestId,
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -59,23 +59,24 @@ pub struct ChainConfig<'a, Fa> {
     pub predicate: PredicateRef,
 
     pub sst_reader_options: SstReaderOptions,
-    pub sst_factory: Fa,
+    /// Sst factory
+    pub sst_factory: &'a SstFactoryRef,
     /// Sst storage
     pub store: &'a ObjectStoreRef,
 }
 
 /// Builder for [ChainIterator].
 #[must_use]
-pub struct Builder<'a, Fa> {
-    config: ChainConfig<'a, Fa>,
+pub struct Builder<'a> {
+    config: ChainConfig<'a>,
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
     memtables: MemTableVec,
     ssts: Vec<Vec<FileHandle>>,
 }
 
-impl<'a, Fa> Builder<'a, Fa> {
-    pub fn new(config: ChainConfig<'a, Fa>) -> Self {
+impl<'a> Builder<'a> {
+    pub fn new(config: ChainConfig<'a>) -> Self {
         Self {
             config,
             sampling_mem: None,
@@ -100,7 +101,7 @@ impl<'a, Fa> Builder<'a, Fa> {
     }
 }
 
-impl<'a, Fa: Factory> Builder<'a, Fa> {
+impl<'a> Builder<'a> {
     pub async fn build(self) -> Result<ChainIterator> {
         let total_sst_streams: usize = self.ssts.iter().map(|v| v.len()).sum();
         let mut total_streams = self.memtables.len() + total_sst_streams;
@@ -141,7 +142,7 @@ impl<'a, Fa: Factory> Builder<'a, Fa> {
                     self.config.space_id,
                     self.config.table_id,
                     sst,
-                    &self.config.sst_factory,
+                    self.config.sst_factory,
                     &self.config.sst_reader_options,
                     self.config.store,
                 )

@@ -19,14 +19,12 @@ use crate::{
     },
     meta::Manifest,
     space::SpaceRef,
-    sst::factory::Factory,
 };
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Close table need to be handled by write worker.
     pub async fn do_close_table(&self, space: SpaceRef, request: CloseTableRequest) -> Result<()> {

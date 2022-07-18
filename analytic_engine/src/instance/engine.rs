@@ -18,7 +18,6 @@ use crate::{
     instance::{write_worker::WriteGroup, Instance},
     meta::Manifest,
     space::{Space, SpaceAndTable, SpaceId, SpaceRef},
-    sst::factory::Factory,
 };
 
 #[derive(Debug, Snafu)]
@@ -206,11 +205,10 @@ impl From<Error> for table_engine::engine::Error {
     }
 }
 
-impl<Wal, Meta, Fa> Instance<Wal, Meta, Fa>
+impl<Wal, Meta> Instance<Wal, Meta>
 where
     Wal: WalManager + Send + Sync + 'static,
     Meta: Manifest + Send + Sync + 'static,
-    Fa: Factory + Send + Sync + 'static,
 {
     /// Find space by name, create if the space is not exists
     pub async fn find_or_create_space(

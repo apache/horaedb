@@ -33,7 +33,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{Factory, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
         file::FileHandle,
         manager::{FileId, MAX_LEVEL},
     },
@@ -84,7 +84,7 @@ define_result!(Error);
 
 /// Required parameters to construct the [MergeBuilder]
 #[derive(Debug)]
-pub struct MergeConfig<'a, Fa> {
+pub struct MergeConfig<'a> {
     pub request_id: RequestId,
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -96,7 +96,8 @@ pub struct MergeConfig<'a, Fa> {
     pub predicate: PredicateRef,
 
     pub sst_reader_options: SstReaderOptions,
-    pub sst_factory: Fa,
+    /// Sst factory
+    pub sst_factory: &'a SstFactoryRef,
     /// Sst storage
     pub store: &'a ObjectStoreRef,
 
@@ -108,8 +109,8 @@ pub struct MergeConfig<'a, Fa> {
 
 /// Builder for building merge stream from memtables and sst files.
 #[must_use]
-pub struct MergeBuilder<'a, Fa> {
-    config: MergeConfig<'a, Fa>,
+pub struct MergeBuilder<'a> {
+    config: MergeConfig<'a>,
 
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
@@ -119,8 +120,8 @@ pub struct MergeBuilder<'a, Fa> {
     ssts: Vec<Vec<FileHandle>>,
 }
 
-impl<'a, Fa: Factory> MergeBuilder<'a, Fa> {
-    pub fn new(config: MergeConfig<'a, Fa>) -> Self {
+impl<'a> MergeBuilder<'a> {
+    pub fn new(config: MergeConfig<'a>) -> Self {
         Self {
             config,
             sampling_mem: None,
@@ -205,7 +206,7 @@ impl<'a, Fa: Factory> MergeBuilder<'a, Fa> {
                     self.config.space_id,
                     self.config.table_id,
                     f,
-                    &self.config.sst_factory,
+                    self.config.sst_factory,
                     &self.config.sst_reader_options,
                     self.config.store,
                 )
