@@ -5,7 +5,7 @@ use std::{fmt::Display, path::Path};
 use anyhow::{Context, Result};
 use ceresdb_client_rs::{
     client::{Client, RpcContext},
-    model::{display::CsvFormatter, request::QueryRequest, QueriedRows},
+    model::{display::CsvFormatter, request::QueryRequest, QueryResponse},
     DbClient,
 };
 use tokio::{
@@ -112,9 +112,14 @@ impl Query {
         };
         let result = client.query(&query_ctx, &query_req).await;
         match result {
-            Ok(rows) => {
-                self.write_result(writer, format!("{}", CsvFormatter { rows }))
-                    .await?
+            Ok(resp) => {
+                if resp.has_schema() {
+                    self.write_result(writer, format!("{}", CsvFormatter { resp }))
+                        .await?
+                } else {
+                    self.write_result(writer, format!("affected_rows: {}", resp.affected_rows))
+                        .await?
+                }
             }
             Err(e) => {
                 self.write_result(writer, format!("Failed to execute query, err: {:?}", e))
@@ -127,7 +132,7 @@ impl Query {
 
     // TODO: implement query interceptor.
     #[allow(dead_code)]
-    fn intercept(&self, _result: QueriedRows) -> QueriedRows {
+    fn intercept(&self, _result: QueryResponse) -> QueryResponse {
         todo!()
     }
 

@@ -22,7 +22,7 @@ use sql::{
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result, ServerError, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     grpc::HandlerContext,
 };
 
@@ -165,13 +165,15 @@ pub async fn fetch_query_output<C: CatalogManager + 'static, Q: QueryExecutor + 
     Ok(Some(output))
 }
 
+// TODO(chenxiang): Output can have both `rows` and `affected_rows`
 fn convert_output(output: &Output) -> Result<QueryResponse> {
     match output {
         Output::Records(records) => convert_records(records),
-        Output::AffectedRows(rows) => Err(ServerError::ErrNoCause {
-            code: StatusCode::InternalError,
-            msg: format!("Failed to convert output - affected rows: {}", rows),
-        }),
+        Output::AffectedRows(rows) => {
+            let mut resp = empty_ok_resp();
+            resp.affected_rows = *rows as u32;
+            Ok(resp)
+        }
     }
 }
 

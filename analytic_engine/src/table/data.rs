@@ -155,7 +155,7 @@ impl Drop for TableData {
 
 #[inline]
 fn get_mutable_limit(opts: &TableOptions) -> u32 {
-    opts.write_buffer_size * 7 / 8
+    opts.write_buffer_size / 8 * 7
 }
 
 impl TableData {

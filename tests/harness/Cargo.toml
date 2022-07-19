@@ -7,7 +7,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.58"
-ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "0ae51ffa2e4b984e6da841512a7ff07be57c75a2" }
-prettydiff = "0.6.1"
+ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a935a0ebacd1304d69d25e3e8611afa7d64611d6" }
+
+prettydiff = { version = "0.6.1", features = [ "prettytable-rs"]}
 tokio = { version = "1.19", features = ["full"] }
 walkdir = "2.3.2"

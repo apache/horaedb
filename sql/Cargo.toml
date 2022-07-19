@@ -21,7 +21,7 @@ paste = "1.0"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 sqlparser = "0.18.0"
 table_engine = { path = "../table_engine" }
-ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
+ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git", rev = "2c10152d021cd5a26b9c870cdede6a0317adca3d" }
 regex = "1"
 
 [dev-dependencies]
