@@ -18,7 +18,7 @@ use futures::{SinkExt, TryStreamExt};
 use grpcio::{
     CallOption, ChannelBuilder, ClientDuplexReceiver, ClientDuplexSender, Environment, WriteFlags,
 };
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde_derive::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::{sync::RwLock, time};
@@ -225,17 +225,19 @@ impl MetaClientImplInner {
     }
 
     async fn reconnect_heartbeat_channel(&self) {
+        info!("gRPC reconnect begin");
+
         loop {
-            info!("Grpc reconnect begin");
             match self.connect_grpc_client() {
                 Ok(client) => {
-                    info!("Grpc reconnect success");
-                    let grpc_client = &mut *self.grpc_client.write().await;
-                    *grpc_client = Some(client);
+                    *self.grpc_client.write().await = Some(client);
+
+                    info!("gRPC reconnect succeeds");
                     return;
                 }
                 Err(e) => {
-                    error!("Grpc reconnect failed, err:{}", e);
+                    error!("gRPC reconnect failed, err:{}", e);
+
                     time::sleep(self.error_wait_lease()).await;
                 }
             }
@@ -247,31 +249,29 @@ impl MetaClientImplInner {
         CeresmetaRpcServiceClient::new(cb.connect(&self.meta_config.meta_addr))
     }
 
-    // TODO(yingwen): Store the value in field
+    // TODO: Store the value in field
     fn error_wait_lease(&self) -> Duration {
         Duration::from_secs(self.meta_config.lease.as_secs() / 2)
     }
 
+    // TODO: support elegant exit
     async fn start_fetch_action_cmd(&self) {
+        info!("Begin fetching action cmd loop");
         loop {
-            info!("Fetch action cmd get grpc client");
+            debug!("Begin fetching action cmd once");
             let receiver = match &*self.grpc_client.read().await {
-                Some(client) => {
-                    info!("Fetch action cmd get grpc client inner");
-                    client
-                        .heartbeat_channel
-                        .write()
-                        .await
-                        .action_cmd_receiver
-                        .take()
-                }
+                Some(client) => client
+                    .heartbeat_channel
+                    .write()
+                    .await
+                    .action_cmd_receiver
+                    .take(),
                 None => {
-                    warn!("Grpc client is not inited when starting fetch action cmd");
+                    warn!("gRPC client is not inited when starting fetch action cmd");
                     None
                 }
             };
 
-            info!("Fetch action cmd get grpc client fetch_action_cmd");
             if let Some(v) = receiver {
                 match self.fetch_action_cmd(v).await {
                     Ok(()) => {
@@ -290,7 +290,7 @@ impl MetaClientImplInner {
                     }
                 }
             } else {
-                warn!("Skip action command fetch, because no receiver found");
+                warn!("Skip action command fetch because no receiver found");
             }
 
             time::sleep(self.error_wait_lease()).await;
@@ -367,7 +367,7 @@ impl MetaClientImpl {
 impl MetaClient for MetaClientImpl {
     async fn start(&self) -> Result<()> {
         info!(
-            "Meta client is starting, config:{:?}",
+            "Meta client is starting with config:{:?}",
             self.inner.meta_config
         );
 
@@ -384,7 +384,8 @@ impl MetaClient for MetaClientImpl {
     }
 
     async fn stop(&self) -> Result<()> {
-        todo!()
+        // TODO: support elegant stop
+        Ok(())
     }
 
     async fn register_event_handler(&self, handler: EventHandlerRef) -> Result<()> {
