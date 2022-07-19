@@ -8,5 +8,4 @@ export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases
 export CERESDB_TEST_HARNESS ?= $(ROOT)/../target/$(MODE)/ceresdb-test
 
 run:
-	echo $(CERESDB_TEST_CASE_PATH)
 	cd harness && $(CERESDB_TEST_HARNESS)

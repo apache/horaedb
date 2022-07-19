@@ -165,6 +165,7 @@ pub async fn fetch_query_output<C: CatalogManager + 'static, Q: QueryExecutor + 
     Ok(Some(output))
 }
 
+// TODO(chenxiang): Output can have both `rows` and `affected_rows`
 fn convert_output(output: &Output) -> Result<QueryResponse> {
     match output {
         Output::Records(records) => convert_records(records),
