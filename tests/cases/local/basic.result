@@ -15,3 +15,4 @@ Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringByt
 DROP TABLE demo;
 
 affected_rows: 0
+

@@ -132,10 +132,13 @@ impl Runner {
             .await?;
         let output_lines = String::from_utf8(output_lines)?;
 
-        let diff = diff_lines(&result_lines, &output_lines);
+        let diff = diff_lines(&result_lines, &output_lines)
+            .set_diff_only(true)
+            .names("Expected", "Actual");
         let is_different = diff.diff().iter().any(|d| !matches!(d, DiffOp::Equal(_)));
         if is_different {
-            println!("Result unexpected, path:{:?}\n{}", path.as_ref(), diff);
+            println!("Result unexpected, path:{:?}\n", path.as_ref());
+            diff.prettytable();
         }
 
         Ok(is_different)

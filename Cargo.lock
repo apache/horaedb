@@ -775,11 +775,11 @@ dependencies = [
 [[package]]
 name = "ceresdb-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=0ae51ffa2e4b984e6da841512a7ff07be57c75a2#0ae51ffa2e4b984e6da841512a7ff07be57c75a2"
+source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=a935a0ebacd1304d69d25e3e8611afa7d64611d6#a935a0ebacd1304d69d25e3e8611afa7d64611d6"
 dependencies = [
  "async-trait",
  "avro-rs",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=cbfd0135a5311d7a1d66d2d274a633c2572be29d)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
  "grpcio 0.9.1",
 ]
@@ -798,7 +798,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=cbfd0135a5311d7a1d66d2d274a633c2572be29d#cbfd0135a5311d7a1d66d2d274a633c2572be29d"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
@@ -4634,7 +4634,7 @@ dependencies = [
  "async-trait",
  "avro-rs",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
  "common_util",
  "df_operator",
@@ -4959,7 +4959,7 @@ version = "0.1.0"
 dependencies = [
  "arrow_deps 0.1.0",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
  "common_util",
  "df_operator",
