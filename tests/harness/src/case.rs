@@ -5,7 +5,9 @@ use std::{fmt::Display, path::Path};
 use anyhow::{Context, Result};
 use ceresdb_client_rs::{
     client::{Client, RpcContext},
-    model::{display::CsvFormatter, request::QueryRequest, QueriedRows},
+    model::{
+        display::CsvFormatter, request::QueryRequest, QueriedRows, QueryResponse as ClientResponse,
+    },
     DbClient,
 };
 use tokio::{
@@ -112,10 +114,16 @@ impl Query {
         };
         let result = client.query(&query_ctx, &query_req).await;
         match result {
-            Ok(rows) => {
-                self.write_result(writer, format!("{}", CsvFormatter { rows }))
-                    .await?
-            }
+            Ok(resp) => match resp {
+                ClientResponse::Rows(rows) => {
+                    self.write_result(writer, format!("{}", CsvFormatter { rows }))
+                        .await?
+                }
+                ClientResponse::AffectedRows(affected) => {
+                    self.write_result(writer, format!("affected_rows: {}", affected))
+                        .await?
+                }
+            },
             Err(e) => {
                 self.write_result(writer, format!("Failed to execute query, err: {:?}", e))
                     .await?

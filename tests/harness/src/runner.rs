@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use ceresdb_client_rs::client::Client;
-use prettydiff::diff_lines;
+use prettydiff::{basic::DiffOp, diff_lines};
 use tokio::{
     fs::{remove_file, File, OpenOptions},
     io::{AsyncReadExt, AsyncWriteExt},
@@ -133,8 +133,11 @@ impl Runner {
         let output_lines = String::from_utf8(output_lines)?;
 
         let diff = diff_lines(&result_lines, &output_lines);
-        println!("{}", diff);
+        let is_different = diff.diff().iter().any(|d| !matches!(d, DiffOp::Equal(_)));
+        if is_different {
+            println!("Result unexpected, path:{:?}\n{}", path.as_ref(), diff);
+        }
 
-        Ok(!diff.diff().is_empty())
+        Ok(is_different)
     }
 }
