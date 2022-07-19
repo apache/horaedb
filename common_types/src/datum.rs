@@ -4,10 +4,6 @@
 
 use std::{convert::TryFrom, fmt, str};
 
-use arrow_deps::{
-    arrow::datatypes::{DataType, TimeUnit},
-    datafusion::scalar::ScalarValue,
-};
 use chrono::{Local, TimeZone};
 use proto::common::DataType as DataTypePb;
 use serde::ser::{Serialize, Serializer};
@@ -154,47 +150,6 @@ impl DatumKind {
         }
     }
 
-    /// Create DatumKind from [arrow_deps::arrow::datatypes::DataType], if the
-    /// type is not supported, returns None
-    pub fn from_data_type(data_type: &DataType) -> Option<Self> {
-        match data_type {
-            DataType::Null => Some(Self::Null),
-            DataType::Timestamp(TimeUnit::Millisecond, None) => Some(Self::Timestamp),
-            DataType::Float64 => Some(Self::Double),
-            DataType::Float32 => Some(Self::Float),
-            DataType::Binary => Some(Self::Varbinary),
-            DataType::Utf8 => Some(Self::String),
-            DataType::UInt64 => Some(Self::UInt64),
-            DataType::UInt32 => Some(Self::UInt32),
-            DataType::UInt16 => Some(Self::UInt16),
-            DataType::UInt8 => Some(Self::UInt8),
-            DataType::Int64 => Some(Self::Int64),
-            DataType::Int32 => Some(Self::Int32),
-            DataType::Int16 => Some(Self::Int16),
-            DataType::Int8 => Some(Self::Int8),
-            DataType::Boolean => Some(Self::Boolean),
-            DataType::Float16
-            | DataType::LargeUtf8
-            | DataType::LargeBinary
-            | DataType::FixedSizeBinary(_)
-            | DataType::Struct(_)
-            | DataType::Union(_, _, _)
-            | DataType::List(_)
-            | DataType::LargeList(_)
-            | DataType::FixedSizeList(_, _)
-            | DataType::Time32(_)
-            | DataType::Time64(_)
-            | DataType::Timestamp(_, _)
-            | DataType::Date32
-            | DataType::Date64
-            | DataType::Interval(_)
-            | DataType::Duration(_)
-            | DataType::Dictionary(_, _)
-            | DataType::Decimal(_, _)
-            | DataType::Map(_, _) => None,
-        }
-    }
-
     /// Get name of this kind.
     fn as_str(&self) -> &str {
         match self {
@@ -220,28 +175,6 @@ impl DatumKind {
     #[inline]
     pub fn into_u8(self) -> u8 {
         self as u8
-    }
-}
-
-impl From<DatumKind> for DataType {
-    fn from(kind: DatumKind) -> Self {
-        match kind {
-            DatumKind::Null => DataType::Null,
-            DatumKind::Timestamp => DataType::Timestamp(TimeUnit::Millisecond, None),
-            DatumKind::Double => DataType::Float64,
-            DatumKind::Float => DataType::Float32,
-            DatumKind::Varbinary => DataType::Binary,
-            DatumKind::String => DataType::Utf8,
-            DatumKind::UInt64 => DataType::UInt64,
-            DatumKind::UInt32 => DataType::UInt32,
-            DatumKind::UInt16 => DataType::UInt16,
-            DatumKind::UInt8 => DataType::UInt8,
-            DatumKind::Int64 => DataType::Int64,
-            DatumKind::Int32 => DataType::Int32,
-            DatumKind::Int16 => DataType::Int16,
-            DatumKind::Int8 => DataType::Int8,
-            DatumKind::Boolean => DataType::Boolean,
-        }
     }
 }
 
@@ -609,28 +542,6 @@ impl Datum {
         }
     }
 
-    pub fn as_scalar_value(&self) -> Option<ScalarValue> {
-        match self {
-            Datum::Null => None,
-            Datum::Timestamp(v) => {
-                Some(ScalarValue::TimestampMillisecond(Some((*v).as_i64()), None))
-            }
-            Datum::Double(v) => Some(ScalarValue::Float64(Some(*v))),
-            Datum::Float(v) => Some(ScalarValue::Float32(Some(*v))),
-            Datum::Varbinary(v) => Some(ScalarValue::Binary(Some(v.to_vec()))),
-            Datum::String(v) => Some(ScalarValue::Utf8(Some(v.to_string()))),
-            Datum::UInt64(v) => Some(ScalarValue::UInt64(Some(*v))),
-            Datum::UInt32(v) => Some(ScalarValue::UInt32(Some(*v))),
-            Datum::UInt16(v) => Some(ScalarValue::UInt16(Some(*v))),
-            Datum::UInt8(v) => Some(ScalarValue::UInt8(Some(*v))),
-            Datum::Int64(v) => Some(ScalarValue::Int64(Some(*v))),
-            Datum::Int32(v) => Some(ScalarValue::Int32(Some(*v))),
-            Datum::Int16(v) => Some(ScalarValue::Int16(Some(*v))),
-            Datum::Int8(v) => Some(ScalarValue::Int8(Some(*v))),
-            Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
-        }
-    }
-
     #[cfg(test)]
     pub fn as_view(&self) -> DatumView {
         match self {
@@ -786,41 +697,142 @@ impl<'a> DatumView<'a> {
             DatumView::Boolean(_) => DatumKind::Boolean,
         }
     }
+}
 
-    pub fn from_scalar_value(val: &'a ScalarValue) -> Option<Self> {
-        match val {
-            ScalarValue::Boolean(v) => v.map(DatumView::Boolean),
-            ScalarValue::Float32(v) => v.map(DatumView::Float),
-            ScalarValue::Float64(v) => v.map(DatumView::Double),
-            ScalarValue::Int8(v) => v.map(DatumView::Int8),
-            ScalarValue::Int16(v) => v.map(DatumView::Int16),
-            ScalarValue::Int32(v) => v.map(DatumView::Int32),
-            ScalarValue::Int64(v) => v.map(DatumView::Int64),
-            ScalarValue::UInt8(v) => v.map(DatumView::UInt8),
-            ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
-            ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
-            ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
-            ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
-                v.as_ref().map(|v| DatumView::String(v.as_str()))
+#[cfg(feature = "arrow_deps")]
+pub mod arrow_convert {
+    use arrow_deps::{
+        arrow::datatypes::{DataType, TimeUnit},
+        datafusion::scalar::ScalarValue,
+    };
+
+    use super::*;
+
+    impl DatumKind {
+        /// Create DatumKind from [arrow_deps::arrow::datatypes::DataType], if
+        /// the type is not supported, returns None
+        pub fn from_data_type(data_type: &DataType) -> Option<Self> {
+            match data_type {
+                DataType::Null => Some(Self::Null),
+                DataType::Timestamp(TimeUnit::Millisecond, None) => Some(Self::Timestamp),
+                DataType::Float64 => Some(Self::Double),
+                DataType::Float32 => Some(Self::Float),
+                DataType::Binary => Some(Self::Varbinary),
+                DataType::Utf8 => Some(Self::String),
+                DataType::UInt64 => Some(Self::UInt64),
+                DataType::UInt32 => Some(Self::UInt32),
+                DataType::UInt16 => Some(Self::UInt16),
+                DataType::UInt8 => Some(Self::UInt8),
+                DataType::Int64 => Some(Self::Int64),
+                DataType::Int32 => Some(Self::Int32),
+                DataType::Int16 => Some(Self::Int16),
+                DataType::Int8 => Some(Self::Int8),
+                DataType::Boolean => Some(Self::Boolean),
+                DataType::Float16
+                | DataType::LargeUtf8
+                | DataType::LargeBinary
+                | DataType::FixedSizeBinary(_)
+                | DataType::Struct(_)
+                | DataType::Union(_, _, _)
+                | DataType::List(_)
+                | DataType::LargeList(_)
+                | DataType::FixedSizeList(_, _)
+                | DataType::Time32(_)
+                | DataType::Time64(_)
+                | DataType::Timestamp(_, _)
+                | DataType::Date32
+                | DataType::Date64
+                | DataType::Interval(_)
+                | DataType::Duration(_)
+                | DataType::Dictionary(_, _)
+                | DataType::Decimal(_, _)
+                | DataType::Map(_, _) => None,
             }
-            ScalarValue::Binary(v) | ScalarValue::LargeBinary(v) => {
-                v.as_ref().map(|v| DatumView::Varbinary(v.as_slice()))
+        }
+    }
+
+    impl Datum {
+        pub fn as_scalar_value(&self) -> Option<ScalarValue> {
+            match self {
+                Datum::Null => None,
+                Datum::Timestamp(v) => {
+                    Some(ScalarValue::TimestampMillisecond(Some((*v).as_i64()), None))
+                }
+                Datum::Double(v) => Some(ScalarValue::Float64(Some(*v))),
+                Datum::Float(v) => Some(ScalarValue::Float32(Some(*v))),
+                Datum::Varbinary(v) => Some(ScalarValue::Binary(Some(v.to_vec()))),
+                Datum::String(v) => Some(ScalarValue::Utf8(Some(v.to_string()))),
+                Datum::UInt64(v) => Some(ScalarValue::UInt64(Some(*v))),
+                Datum::UInt32(v) => Some(ScalarValue::UInt32(Some(*v))),
+                Datum::UInt16(v) => Some(ScalarValue::UInt16(Some(*v))),
+                Datum::UInt8(v) => Some(ScalarValue::UInt8(Some(*v))),
+                Datum::Int64(v) => Some(ScalarValue::Int64(Some(*v))),
+                Datum::Int32(v) => Some(ScalarValue::Int32(Some(*v))),
+                Datum::Int16(v) => Some(ScalarValue::Int16(Some(*v))),
+                Datum::Int8(v) => Some(ScalarValue::Int8(Some(*v))),
+                Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
             }
-            ScalarValue::TimestampMillisecond(v, _) => {
-                v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
+        }
+    }
+
+    impl<'a> DatumView<'a> {
+        pub fn from_scalar_value(val: &'a ScalarValue) -> Option<Self> {
+            match val {
+                ScalarValue::Boolean(v) => v.map(DatumView::Boolean),
+                ScalarValue::Float32(v) => v.map(DatumView::Float),
+                ScalarValue::Float64(v) => v.map(DatumView::Double),
+                ScalarValue::Int8(v) => v.map(DatumView::Int8),
+                ScalarValue::Int16(v) => v.map(DatumView::Int16),
+                ScalarValue::Int32(v) => v.map(DatumView::Int32),
+                ScalarValue::Int64(v) => v.map(DatumView::Int64),
+                ScalarValue::UInt8(v) => v.map(DatumView::UInt8),
+                ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
+                ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
+                ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
+                ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
+                    v.as_ref().map(|v| DatumView::String(v.as_str()))
+                }
+                ScalarValue::Binary(v) | ScalarValue::LargeBinary(v) => {
+                    v.as_ref().map(|v| DatumView::Varbinary(v.as_slice()))
+                }
+                ScalarValue::TimestampMillisecond(v, _) => {
+                    v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
+                }
+                ScalarValue::List(_, _)
+                | ScalarValue::Date32(_)
+                | ScalarValue::Date64(_)
+                | ScalarValue::TimestampSecond(_, _)
+                | ScalarValue::TimestampMicrosecond(_, _)
+                | ScalarValue::TimestampNanosecond(_, _)
+                | ScalarValue::IntervalYearMonth(_)
+                | ScalarValue::IntervalDayTime(_)
+                | ScalarValue::Struct(_, _)
+                | ScalarValue::Decimal128(_, _, _)
+                | ScalarValue::Null
+                | ScalarValue::IntervalMonthDayNano(_) => None,
             }
-            ScalarValue::List(_, _)
-            | ScalarValue::Date32(_)
-            | ScalarValue::Date64(_)
-            | ScalarValue::TimestampSecond(_, _)
-            | ScalarValue::TimestampMicrosecond(_, _)
-            | ScalarValue::TimestampNanosecond(_, _)
-            | ScalarValue::IntervalYearMonth(_)
-            | ScalarValue::IntervalDayTime(_)
-            | ScalarValue::Struct(_, _)
-            | ScalarValue::Decimal128(_, _, _)
-            | ScalarValue::Null
-            | ScalarValue::IntervalMonthDayNano(_) => None,
+        }
+    }
+
+    impl From<DatumKind> for DataType {
+        fn from(kind: DatumKind) -> Self {
+            match kind {
+                DatumKind::Null => DataType::Null,
+                DatumKind::Timestamp => DataType::Timestamp(TimeUnit::Millisecond, None),
+                DatumKind::Double => DataType::Float64,
+                DatumKind::Float => DataType::Float32,
+                DatumKind::Varbinary => DataType::Binary,
+                DatumKind::String => DataType::Utf8,
+                DatumKind::UInt64 => DataType::UInt64,
+                DatumKind::UInt32 => DataType::UInt32,
+                DatumKind::UInt16 => DataType::UInt16,
+                DatumKind::UInt8 => DataType::UInt8,
+                DatumKind::Int64 => DataType::Int64,
+                DatumKind::Int32 => DataType::Int32,
+                DatumKind::Int16 => DataType::Int16,
+                DatumKind::Int8 => DataType::Int8,
+                DatumKind::Boolean => DataType::Boolean,
+            }
         }
     }
 }

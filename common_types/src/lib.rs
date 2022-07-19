@@ -3,14 +3,20 @@
 //! Contains common types
 
 pub mod bytes;
+#[cfg(feature = "arrow_deps")]
 pub mod column;
+#[cfg(feature = "arrow_deps")]
 pub mod column_schema;
 pub mod datum;
 pub mod hash;
+#[cfg(feature = "arrow_deps")]
 pub mod projected_schema;
+#[cfg(feature = "arrow_deps")]
 pub mod record_batch;
 pub mod request_id;
+#[cfg(feature = "arrow_deps")]
 pub mod row;
+#[cfg(feature = "arrow_deps")]
 pub mod schema;
 pub mod string;
 pub mod time;
