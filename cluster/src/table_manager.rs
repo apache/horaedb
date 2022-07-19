@@ -8,31 +8,50 @@ use snafu::OptionExt;
 
 use crate::{Result, ShardNotFound};
 
+pub type TableName = String;
+pub type SchemaName = String;
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 struct SchemaInfo {
-    name: String,
+    name: SchemaName,
     id: SchemaId,
 }
 
-/// Manage table and shard correspondence information
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ShardTableInfo {
+    pub shard_id: ShardId,
+    pub table_info: TableInfo,
+}
+
+impl From<&AddTableCmd> for ShardTableInfo {
+    fn from(cmd: &AddTableCmd) -> Self {
+        let table_info = TableInfo {
+            id: cmd.id,
+            name: cmd.name.clone(),
+            schema_id: cmd.schema_id,
+            schema_name: cmd.schema_name.clone(),
+        };
+        ShardTableInfo {
+            shard_id: cmd.shard_id,
+            table_info,
+        }
+    }
+}
+
+/// TableManager manages information about tables, shards, schemas and their
+/// relationships:
+/// * one shard -> multiple tables
+/// * one schema -> multiple tables
+#[derive(Debug, Default)]
 pub struct TableManager {
     inner: RwLock<Inner>,
 }
 
 impl TableManager {
-    pub fn new() -> Self {
-        Self {
-            inner: RwLock::new(Inner {
-                shard_infos: HashMap::new(),
-                schema_infos: HashMap::new(),
-                tables: BTreeMap::new(),
-            }),
-        }
-    }
-
-    pub fn get_shards_info(&self) -> Vec<ShardInfo> {
-        self.inner.read().unwrap().get_shards_info()
+    pub fn get_shards_infos(&self) -> Vec<ShardInfo> {
+        self.inner.read().unwrap().get_shards_infos()
     }
 
     pub fn add_shard_table(&self, shard_table: ShardTableInfo) -> Result<()> {
@@ -64,38 +83,15 @@ impl TableManager {
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct ShardTableInfo {
-    pub shard_id: ShardId,
-    pub table_info: TableInfo,
-}
-
-impl From<&AddTableCmd> for ShardTableInfo {
-    fn from(cmd: &AddTableCmd) -> Self {
-        let table_info = TableInfo {
-            id: cmd.id,
-            name: cmd.name.clone(),
-            schema_id: cmd.schema_id,
-            schema_name: cmd.schema_name.clone(),
-        };
-        ShardTableInfo {
-            shard_id: cmd.shard_id,
-            table_info,
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Inner {
     shard_infos: HashMap<ShardId, ShardInfo>,
     schema_infos: HashMap<String, SchemaInfo>,
-    // schema_name -> table_name -> shard_table_info
-    tables: BTreeMap<String, BTreeMap<String, ShardTableInfo>>,
+    tables: BTreeMap<SchemaName, BTreeMap<TableName, ShardTableInfo>>,
 }
 
 impl Inner {
-    fn get_shards_info(&self) -> Vec<ShardInfo> {
+    fn get_shards_infos(&self) -> Vec<ShardInfo> {
         self.shard_infos.values().cloned().collect()
     }
 
@@ -135,7 +131,7 @@ impl Inner {
     }
 
     fn add_shard_table(&mut self, shard_table: ShardTableInfo) -> Result<()> {
-        let mut shard_info = self
+        let shard_info = self
             .find_shard_info(shard_table.shard_id)
             .context(ShardNotFound {
                 shard_id: shard_table.shard_id,
