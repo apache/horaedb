@@ -4,6 +4,7 @@
 
 use std::{convert::TryFrom, fmt, str};
 
+#[cfg(feature = "arrow_deps")]
 use arrow_deps::{
     arrow::datatypes::{DataType, TimeUnit},
     datafusion::scalar::ScalarValue,
@@ -156,6 +157,7 @@ impl DatumKind {
 
     /// Create DatumKind from [arrow_deps::arrow::datatypes::DataType], if the
     /// type is not supported, returns None
+    #[cfg(feature = "arrow_deps")]
     pub fn from_data_type(data_type: &DataType) -> Option<Self> {
         match data_type {
             DataType::Null => Some(Self::Null),
@@ -223,6 +225,7 @@ impl DatumKind {
     }
 }
 
+#[cfg(feature = "arrow_deps")]
 impl From<DatumKind> for DataType {
     fn from(kind: DatumKind) -> Self {
         match kind {
@@ -609,6 +612,7 @@ impl Datum {
         }
     }
 
+    #[cfg(feature = "arrow_deps")]
     pub fn as_scalar_value(&self) -> Option<ScalarValue> {
         match self {
             Datum::Null => None,
@@ -787,6 +791,7 @@ impl<'a> DatumView<'a> {
         }
     }
 
+    #[cfg(feature = "arrow_deps")]
     pub fn from_scalar_value(val: &'a ScalarValue) -> Option<Self> {
         match val {
             ScalarValue::Boolean(v) => v.map(DatumView::Boolean),

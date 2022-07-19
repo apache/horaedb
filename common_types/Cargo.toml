@@ -7,11 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["arrow_deps"]
 test = []
 
 [dependencies]
 # In alphabetical order
-arrow_deps = { path = "../arrow_deps" }
+arrow_deps = { path = "../arrow_deps", optional = true }
 byteorder = "1.2"
 bytes = { path = "../components/bytes" }
 chrono = "0.4"
