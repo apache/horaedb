@@ -3,10 +3,10 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client_v2::{SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo};
+use meta_client_v2::{AddTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo};
+use snafu::OptionExt;
 
-use super::Result;
-use crate::ShardNotFound;
+use crate::{Result, ShardNotFound};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -35,21 +35,8 @@ impl TableManager {
         self.inner.read().unwrap().get_shards_info()
     }
 
-    pub fn add_table(
-        &self,
-        shard_id: ShardId,
-        schema_name: String,
-        table_name: String,
-        schema_id: SchemaId,
-        table_id: TableId,
-    ) -> Result<()> {
-        self.inner.write().unwrap().add_table(
-            shard_id,
-            schema_name,
-            table_name,
-            schema_id,
-            table_id,
-        )
+    pub fn add_shard_table(&self, shard_table: ShardTableInfo) -> Result<()> {
+        self.inner.write().unwrap().add_shard_table(shard_table)
     }
 
     pub fn drop_table(&self, schema_name: &str, table_name: &str) {
@@ -79,9 +66,24 @@ impl TableManager {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-struct ShardTableInfo {
-    id: ShardId,
-    table_info: TableInfo,
+pub struct ShardTableInfo {
+    pub shard_id: ShardId,
+    pub table_info: TableInfo,
+}
+
+impl From<&AddTableCmd> for ShardTableInfo {
+    fn from(cmd: &AddTableCmd) -> Self {
+        let table_info = TableInfo {
+            id: cmd.id,
+            name: cmd.name.clone(),
+            schema_id: cmd.schema_id,
+            schema_name: cmd.schema_name.clone(),
+        };
+        ShardTableInfo {
+            shard_id: cmd.shard_id,
+            table_info,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -117,7 +119,7 @@ impl Inner {
                     .insert(
                         table.name.clone(),
                         ShardTableInfo {
-                            id: shard_info.shard_id,
+                            shard_id: shard_info.shard_id,
                             table_info: table.clone(),
                         },
                     );
@@ -125,42 +127,26 @@ impl Inner {
         }
     }
 
-    fn add_table(
-        &mut self,
-        shard_id: ShardId,
-        schema_name: String,
-        table_name: String,
-        schema_id: SchemaId,
-        table_id: TableId,
-    ) -> Result<()> {
-        let mut shard_info = None;
-        for shard in self.shard_infos.values() {
-            if shard.shard_id == shard_id {
-                shard_info = Some(shard);
-                break;
-            }
-        }
-        match shard_info {
-            None => ShardNotFound { shard_id }.fail(),
-            Some(v) => {
-                self.tables
-                    .entry(schema_name.clone())
-                    .or_insert_with(BTreeMap::new)
-                    .insert(
-                        table_name.clone(),
-                        ShardTableInfo {
-                            id: v.shard_id,
-                            table_info: TableInfo {
-                                id: table_id,
-                                name: table_name,
-                                schema_id,
-                                schema_name,
-                            },
-                        },
-                    );
-                Ok(())
-            }
-        }
+    fn find_shard_info(&self, shard_id: ShardId) -> Option<ShardInfo> {
+        self.shard_infos
+            .values()
+            .find(|info| info.shard_id == shard_id)
+            .cloned()
+    }
+
+    fn add_shard_table(&mut self, shard_table: ShardTableInfo) -> Result<()> {
+        let mut shard_info = self
+            .find_shard_info(shard_table.shard_id)
+            .context(ShardNotFound {
+                shard_id: shard_table.shard_id,
+            })?;
+
+        self.tables
+            .entry(shard_table.table_info.schema_name.clone())
+            .or_insert_with(BTreeMap::new)
+            .insert(shard_table.table_info.name.clone(), shard_table);
+
+        Ok(())
     }
 
     fn drop_table(&mut self, schema_name: &str, table_name: &str) {

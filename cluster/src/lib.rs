@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use common_util::{define_result, runtime::Runtime};
 use log::{debug, error, info};
-use meta_client_v2::{ActionCmd, EventHandler, MetaClient, ShardId, TableId};
+use meta_client_v2::{ActionCmd, EventHandler, MetaClient, ShardId, TableId, TableInfo};
 pub use meta_client_v2::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, DropTableResponse, GetTablesRequest,
@@ -11,7 +11,10 @@ pub use meta_client_v2::{
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::time;
 
-use crate::{config::ClusterConfig, table_manager::TableManager};
+use crate::{
+    config::ClusterConfig,
+    table_manager::{ShardTableInfo, TableManager},
+};
 
 pub mod config;
 mod table_manager;
@@ -145,16 +148,21 @@ impl EventHandler for ClusterImplInner {
                 Ok(())
             }
             ActionCmd::MetaNoneCmd(_) => Ok(()),
-            ActionCmd::AddTableCmd(cmd) => self
-                .table_manager
-                .add_table(
-                    cmd.shard_id,
-                    cmd.schema_name.clone(),
-                    cmd.name.clone(),
-                    cmd.schema_id,
-                    cmd.id,
-                )
-                .map_err(|e| Box::new(e) as _),
+            ActionCmd::AddTableCmd(cmd) => {
+                let table_info = TableInfo {
+                    id: cmd.id,
+                    name: cmd.name.clone(),
+                    schema_id: cmd.schema_id,
+                    schema_name: cmd.schema_name.clone(),
+                };
+                let shard_table = ShardTableInfo {
+                    id: cmd.shard_id,
+                    table_info: table_info,
+                };
+                self.table_manager
+                    .add_shard_table(shard_table)
+                    .map_err(|e| Box::new(e) as _)
+            }
             ActionCmd::DropTableCmd(cmd) => {
                 self.table_manager.drop_table(&cmd.schema_name, &cmd.name);
                 Ok(())
