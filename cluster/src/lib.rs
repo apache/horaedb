@@ -9,8 +9,8 @@ pub use meta_client_v2::{
 use meta_client_v2::{ShardId, TableId};
 use snafu::{Backtrace, Snafu};
 
+pub mod cluster_impl;
 pub mod config;
-pub mod meta_impl;
 mod table_manager;
 
 #[derive(Debug, Snafu)]
@@ -59,9 +59,10 @@ pub trait TableManipulator {
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
-// TODO: add more methods
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
-    async fn start(&self) -> Result<()>;
+    async fn start(&mut self) -> Result<()>;
+    async fn stop(&mut self) -> Result<()>;
+    // TODO: add more methods, such as provide the topology of the cluster.
 }

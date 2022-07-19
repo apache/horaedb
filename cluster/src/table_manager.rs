@@ -131,8 +131,7 @@ impl Inner {
     }
 
     fn add_shard_table(&mut self, shard_table: ShardTableInfo) -> Result<()> {
-        let shard_info = self
-            .find_shard_info(shard_table.shard_id)
+        self.find_shard_info(shard_table.shard_id)
             .context(ShardNotFound {
                 shard_id: shard_table.shard_id,
             })?;

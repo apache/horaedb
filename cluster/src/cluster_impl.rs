@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use common_util::runtime::Runtime;
+use common_util::runtime::{JoinHandle, Runtime};
 use log::{debug, error, info};
 use meta_client_v2::{ActionCmd, EventHandler, GetTablesRequest, MetaClient};
 use snafu::ResultExt;
@@ -13,10 +13,16 @@ use crate::{
     Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
+/// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
+///
+/// Its functions are to:
+/// * Receive and handle events from meta cluster by [`MetaClient`];
+/// * Send heartbeat to meta cluster;
 pub struct ClusterImpl {
     inner: Arc<Inner>,
     runtime: Arc<Runtime>,
     config: ClusterConfig,
+    heartbeat_handle: Option<JoinHandle<()>>,
 }
 
 impl ClusterImpl {
@@ -32,7 +38,31 @@ impl ClusterImpl {
             inner: Arc::new(inner),
             runtime,
             config,
+            heartbeat_handle: None,
         })
+    }
+
+    fn start_heartbeat_loop(&self) -> JoinHandle<()> {
+        let interval = self.heartbeat_interval();
+        let error_wait_lease = self.error_wait_lease();
+        let inner = self.inner.clone();
+        self.runtime.spawn(async move {
+            loop {
+                let shards_info = inner.table_manager.get_shards_infos();
+                info!("Node heartbeat to meta, shards info:{:?}", shards_info);
+
+                let resp = inner.meta_client.send_heartbeat(shards_info).await;
+                match resp {
+                    Ok(()) => {
+                        time::sleep(interval).await;
+                    }
+                    Err(e) => {
+                        error!("Send heartbeat to meta failed, err:{}", e);
+                        time::sleep(error_wait_lease).await;
+                    }
+                }
+            }
+        });
     }
 
     // Register node every 2/3 lease
@@ -117,36 +147,27 @@ impl Inner {
 
 #[async_trait]
 impl Cluster for ClusterImpl {
-    async fn start(&self) -> Result<()> {
-        let inner = self.inner.clone();
-
-        inner
+    async fn start(&mut self) -> Result<()> {
+        // register the event handler to meta client.
+        self.inner
             .meta_client
-            .register_event_handler(inner.clone())
+            .register_event_handler(self.inner.clone())
             .await
             .context(MetaClientFailure)?;
-        inner.meta_client.start().await.context(StartMetaClient)?;
 
-        let mut interval = time::interval(self.heartbeat_interval());
-        let error_wait_lease = self.error_wait_lease();
-        self.runtime.spawn(async move {
-            loop {
-                let shards_info = inner.table_manager.get_shards_infos();
-                info!("Node heartbeat to meta, shards info:{:?}", shards_info);
+        // start the meat_client after registering the event handler.
+        self.inner
+            .meta_client
+            .start()
+            .await
+            .context(StartMetaClient)?;
 
-                let resp = inner.meta_client.send_heartbeat(shards_info).await;
-                match resp {
-                    Ok(()) => {
-                        interval.tick().await;
-                    }
-                    Err(e) => {
-                        error!("Node heartbeat to meta failed, error:{}", e);
-                        time::sleep(error_wait_lease).await;
-                    }
-                }
-            }
-        });
-
+        // start the backgroup loop for sending heartbeat.
+        self.heartbeat_handle = Some(self.start_heartbeat_loop());
         Ok(())
+    }
+
+    async fn stop(&mut self) -> Result<()> {
+        todo!()
     }
 }
