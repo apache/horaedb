@@ -62,7 +62,7 @@ pub trait TableManipulator {
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
-    async fn start(&mut self) -> Result<()>;
-    async fn stop(&mut self) -> Result<()>;
+    async fn start(&self) -> Result<()>;
+    async fn stop(&self) -> Result<()>;
     // TODO: add more methods, such as provide the topology of the cluster.
 }

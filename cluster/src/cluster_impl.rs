@@ -1,11 +1,17 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use meta_client_v2::{ActionCmd, EventHandler, GetTablesRequest, MetaClient};
 use snafu::ResultExt;
-use tokio::time;
+use tokio::{
+    sync::mpsc::{self, Sender},
+    time,
+};
 
 use crate::{
     config::ClusterConfig,
@@ -22,7 +28,8 @@ pub struct ClusterImpl {
     inner: Arc<Inner>,
     runtime: Arc<Runtime>,
     config: ClusterConfig,
-    heartbeat_handle: Option<JoinHandle<()>>,
+    heartbeat_handle: Mutex<Option<JoinHandle<()>>>,
+    stop_hearbeat_tx: Mutex<Option<Sender<()>>>,
 }
 
 impl ClusterImpl {
@@ -38,31 +45,40 @@ impl ClusterImpl {
             inner: Arc::new(inner),
             runtime,
             config,
-            heartbeat_handle: None,
+            heartbeat_handle: Mutex::new(None),
+            stop_hearbeat_tx: Mutex::new(None),
         })
     }
 
-    fn start_heartbeat_loop(&self) -> JoinHandle<()> {
+    fn start_heartbeat_loop(&self) {
         let interval = self.heartbeat_interval();
         let error_wait_lease = self.error_wait_lease();
         let inner = self.inner.clone();
-        self.runtime.spawn(async move {
+        let (tx, mut rx) = mpsc::channel(1);
+
+        let handle = self.runtime.spawn(async move {
             loop {
                 let shards_info = inner.table_manager.get_shards_infos();
                 info!("Node heartbeat to meta, shards info:{:?}", shards_info);
 
                 let resp = inner.meta_client.send_heartbeat(shards_info).await;
-                match resp {
-                    Ok(()) => {
-                        time::sleep(interval).await;
-                    }
+                let wait = match resp {
+                    Ok(()) => interval,
                     Err(e) => {
                         error!("Send heartbeat to meta failed, err:{}", e);
-                        time::sleep(error_wait_lease).await;
+                        error_wait_lease
                     }
+                };
+
+                if time::timeout(wait, rx.recv()).await.is_ok() {
+                    warn!("Receive exit command and exit heartbeat loop");
+                    break;
                 }
             }
         });
+
+        *self.stop_hearbeat_tx.lock().unwrap() = Some(tx);
+        *self.heartbeat_handle.lock().unwrap() = Some(handle);
     }
 
     // Register node every 2/3 lease
@@ -91,6 +107,8 @@ impl EventHandler for Inner {
         &self,
         event: &ActionCmd,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        debug!("Receive event:{:?}", event);
+
         match event {
             ActionCmd::MetaOpenCmd(open_cmd) => {
                 let resp = self
@@ -101,11 +119,6 @@ impl EventHandler for Inner {
                     .await
                     .context(MetaClientFailure)
                     .map_err(Box::new)?;
-
-                debug!(
-                    "EventHandler handle open cmd:{:?}, get tables:{:?}",
-                    open_cmd, resp
-                );
 
                 for shard_tables in resp.tables_map.values() {
                     for table in &shard_tables.tables {
@@ -124,10 +137,16 @@ impl EventHandler for Inner {
                 .add_shard_table(ShardTableInfo::from(cmd))
                 .map_err(|e| Box::new(e) as _),
             ActionCmd::DropTableCmd(cmd) => {
+                warn!("Drop table, schema:{}, table:{}", cmd.schema_name, cmd.name);
+
                 self.table_manager.drop_table(&cmd.schema_name, &cmd.name);
                 Ok(())
             }
-            action_cmd => todo!("handle other action cmd:{:?}", action_cmd),
+            action_cmd => {
+                warn!("Nothing to do for cmd:{:?}", action_cmd);
+
+                Ok(())
+            }
         }
     }
 }
@@ -147,7 +166,7 @@ impl Inner {
 
 #[async_trait]
 impl Cluster for ClusterImpl {
-    async fn start(&mut self) -> Result<()> {
+    async fn start(&self) -> Result<()> {
         // register the event handler to meta client.
         self.inner
             .meta_client
@@ -163,11 +182,28 @@ impl Cluster for ClusterImpl {
             .context(StartMetaClient)?;
 
         // start the backgroup loop for sending heartbeat.
-        self.heartbeat_handle = Some(self.start_heartbeat_loop());
+        self.start_heartbeat_loop();
         Ok(())
     }
 
-    async fn stop(&mut self) -> Result<()> {
-        todo!()
+    async fn stop(&self) -> Result<()> {
+        info!("try to stop cluster");
+
+        {
+            let tx = self.stop_hearbeat_tx.lock().unwrap().take();
+            if let Some(tx) = tx {
+                let _ = tx.send(()).await;
+            }
+        }
+
+        {
+            let handle = self.heartbeat_handle.lock().unwrap().take();
+            if let Some(handle) = handle {
+                let _ = handle.await;
+            }
+        }
+
+        info!("finish stopping cluster");
+        Ok(())
     }
 }

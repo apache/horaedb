@@ -120,6 +120,8 @@ pub trait EventHandler {
 pub trait MetaClient {
     /// Start the meta client and the events will occur afterwards.
     async fn start(&self) -> Result<()>;
+    /// Stop the meta client and release all the resources.
+    async fn stop(&self) -> Result<()>;
 
     /// Register handler for the event.
     ///
@@ -379,6 +381,10 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client has started");
 
         Ok(())
+    }
+
+    async fn stop(&self) -> Result<()> {
+        todo!()
     }
 
     async fn register_event_handler(&self, handler: EventHandlerRef) -> Result<()> {
