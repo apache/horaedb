@@ -1,0 +1,52 @@
+DROP TABLE IF EXISTS 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE 05_alter_table_t0(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 05_alter_table_t0(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: 05" })
+
+INSERT INTO TABLE 05_alter_table_t0(a, t) values(1,1);
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: INSERT INTO TABLE 05_alter_table_t0(a, t) values(1,1);, err:sql parser error: Expected identifier, found: 05" })
+
+SELECT * FROM 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SELECT * FROM 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+ALTER TABLE 05_alter_table_t0 RENAME TO `t1`;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: ALTER TABLE 05_alter_table_t0 RENAME TO `t1`;, err:sql parser error: Expected identifier, found: 05" })
+
+ALTER TABLE 05_alter_table_t0 add COLUMN (b string);
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: ALTER TABLE 05_alter_table_t0 add COLUMN (b string);, err:sql parser error: Expected identifier, found: 05" })
+
+DESCRIBE TABLE 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DESCRIBE TABLE 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+INSERT INTO TABLE 05_alter_table_t0(a, b, t) values (2, '2', 2);
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: INSERT INTO TABLE 05_alter_table_t0(a, b, t) values (2, '2', 2);, err:sql parser error: Expected identifier, found: 05" })
+
+SELECT * FROM 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SELECT * FROM 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+ALTER TABLE 05_alter_table_t0 DROP COLUMN b;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: ALTER TABLE 05_alter_table_t0 DROP COLUMN b;, err:sql parser error: Expected identifier, found: 05" })
+
+DESCRIBE TABLE 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DESCRIBE TABLE 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+SELECT * FROM 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SELECT * FROM 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE 05_alter_table_t0;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE 05_alter_table_t0;, err:sql parser error: Expected identifier, found: 05" })
+

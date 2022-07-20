@@ -1,0 +1,88 @@
+DROP TABLE IF EXISTS 05_create_tables_t;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t2;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t2;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t3;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t3;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t4;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t4;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE 05_create_tables_t(c1 int) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 05_create_tables_t(c1 int) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE 05_create_tables_t(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 05_create_tables_t(c1 int, t timestamp, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE IF NOT EXISTS 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE IF NOT EXISTS 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+CREATE TABLE 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 05_create_tables_t(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+create table 05_create_tables_t2(a int, b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: create table 05_create_tables_t2(a int, b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: 05" })
+
+insert into 05_create_tables_t2(a, b, t) values(1,1,1),(2,2,2);
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: insert into 05_create_tables_t2(a, b, t) values(1,1,1),(2,2,2);, err:sql parser error: Expected identifier, found: 05" })
+
+select a+b from 05_create_tables_t2;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: select a+b from 05_create_tables_t2;, err:sql parser error: Expected identifier, found: 05" })
+
+create table 05_create_tables_t2(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: create table 05_create_tables_t2(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+create table 05_create_tables_t2(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: create table 05_create_tables_t2(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+create table 05_create_tables_t3(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: create table 05_create_tables_t3(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+create table 05_create_tables_t4(`a` int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: create table 05_create_tables_t4(`a` int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 05" })
+
+describe table 05_create_tables_t4;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: describe table 05_create_tables_t4;, err:sql parser error: Expected identifier, found: 05" })
+
+show create table 05_create_tables_t4;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: show create table 05_create_tables_t4;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t2;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t2;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t3;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t3;, err:sql parser error: Expected identifier, found: 05" })
+
+DROP TABLE IF EXISTS 05_create_tables_t4;
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 05_create_tables_t4;, err:sql parser error: Expected identifier, found: 05" })
+
