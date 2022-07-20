@@ -238,12 +238,15 @@ impl<'a> Parser<'a> {
 
         let obj_name = self.parser.parse_object_name()?;
 
-        Ok(Statement::ShowCreate(ShowCreate { obj_type, obj_name }))
+        Ok(Statement::ShowCreate(ShowCreate {
+            obj_type,
+            table_name: obj_name.into(),
+        }))
     }
 
     fn parse_alter_add_column(&mut self) -> Result<Statement> {
         self.parser.expect_keyword(Keyword::TABLE)?;
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         self.parser
             .expect_keywords(&[Keyword::ADD, Keyword::COLUMN])?;
         let (mut columns, _) = self.parse_columns()?;
@@ -259,7 +262,7 @@ impl<'a> Parser<'a> {
 
     fn parse_alter_modify_setting(&mut self) -> Result<Statement> {
         self.parser.expect_keyword(Keyword::TABLE)?;
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         if self.consume_token(MODIFY) && self.consume_token(SETTING) {
             let options = self
                 .parser
@@ -275,7 +278,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_describe(&mut self) -> Result<Statement> {
         let _ = self.parser.parse_keyword(Keyword::TABLE);
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         Ok(Statement::Describe(DescribeTable { table_name }))
     }
 
@@ -285,14 +288,14 @@ impl<'a> Parser<'a> {
         let if_not_exists =
             self.parser
                 .parse_keywords(&[Keyword::IF, Keyword::NOT, Keyword::EXISTS]);
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         let (columns, constraints) = self.parse_columns()?;
         let engine = self.parse_table_engine()?;
         let options = self.parser.parse_options(Keyword::WITH)?;
 
         Ok(Statement::Create(CreateTable {
             if_not_exists,
-            name: table_name,
+            table_name,
             columns,
             engine,
             constraints,
@@ -303,11 +306,11 @@ impl<'a> Parser<'a> {
     pub fn parse_drop(&mut self) -> Result<Statement> {
         self.parser.expect_keyword(Keyword::TABLE)?;
         let if_exists = self.parser.parse_keywords(&[Keyword::IF, Keyword::EXISTS]);
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         let engine = self.parse_table_engine()?;
 
         Ok(Statement::Drop(DropTable {
-            name: table_name,
+            table_name,
             if_exists,
             engine,
         }))
@@ -315,7 +318,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_exists(&mut self) -> Result<Statement> {
         let _ = self.parser.parse_keyword(Keyword::TABLE);
-        let table_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
         Ok(Statement::Exists(ExistsTable { table_name }))
     }
 
@@ -494,6 +497,7 @@ mod tests {
     use sqlparser::ast::{DataType, Ident, ObjectName, Value};
 
     use super::*;
+    use crate::ast::TableName;
 
     fn expect_parse_ok(sql: &str, expected: Statement) -> Result<()> {
         let statements = Parser::parse_sql(sql)?;
@@ -554,8 +558,8 @@ mod tests {
         }
     }
 
-    fn make_object_name(name: impl Into<String>) -> ObjectName {
-        ObjectName(vec![Ident::new(name)])
+    fn make_table_name(name: impl Into<String>) -> TableName {
+        ObjectName(vec![Ident::new(name)]).into()
     }
 
     #[test]
@@ -564,7 +568,7 @@ mod tests {
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 double)";
         let expected = Statement::Create(CreateTable {
             if_not_exists: true,
-            name: make_object_name("t"),
+            table_name: make_table_name("t"),
             columns: vec![make_column_def("c1", DataType::Double)],
             engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             constraints: vec![],
@@ -576,7 +580,7 @@ mod tests {
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double, c3 string,) ENGINE = XX";
         let expected = Statement::Create(CreateTable {
             if_not_exists: false,
-            name: make_object_name("mytbl"),
+            table_name: make_table_name("mytbl"),
             columns: vec![
                 make_column_def("c1", DataType::Timestamp),
                 make_column_def("c2", DataType::Double),
@@ -715,7 +719,7 @@ mod tests {
         {
             let sql = "ALTER TABLE t ADD COLUMN (c1 DOUBLE, c2 STRING)";
             let expected = Statement::AlterAddColumn(AlterAddColumn {
-                table_name: make_object_name("t"),
+                table_name: make_table_name("t"),
                 columns: vec![
                     make_column_def("c1", DataType::Double),
                     make_column_def("c2", DataType::String),
@@ -727,7 +731,7 @@ mod tests {
         {
             let sql = "ALTER TABLE t ADD COLUMN c1 DOUBLE";
             let expected = Statement::AlterAddColumn(AlterAddColumn {
-                table_name: make_object_name("t"),
+                table_name: make_table_name("t"),
                 columns: vec![make_column_def("c1", DataType::Double)],
             });
             expect_parse_ok(sql, expected).unwrap();
@@ -739,7 +743,7 @@ mod tests {
         {
             let sql = "ALTER TABLE t ADD COLUMN (c1 DOUBLE, c2 STRING tag)";
             let expected = Statement::AlterAddColumn(AlterAddColumn {
-                table_name: make_object_name("t"),
+                table_name: make_table_name("t"),
                 columns: vec![
                     make_column_def("c1", DataType::Double),
                     make_tag_column_def("c2", DataType::String),
@@ -751,7 +755,7 @@ mod tests {
         {
             let sql = "ALTER TABLE t ADD COLUMN c1 string tag";
             let expected = Statement::AlterAddColumn(AlterAddColumn {
-                table_name: make_object_name("t"),
+                table_name: make_table_name("t"),
                 columns: vec![make_tag_column_def("c1", DataType::String)],
             });
             expect_parse_ok(sql, expected).unwrap();
@@ -765,7 +769,7 @@ mod tests {
         assert_eq!(statements.len(), 1);
         match &statements[0] {
             Statement::Drop(DropTable {
-                name,
+                table_name: name,
                 if_exists,
                 engine,
             }) => {
@@ -781,7 +785,7 @@ mod tests {
         assert_eq!(statements.len(), 1);
         match &statements[0] {
             Statement::Drop(DropTable {
-                name,
+                table_name: name,
                 if_exists,
                 engine,
             }) => {
@@ -798,7 +802,7 @@ mod tests {
         {
             let sql = "EXISTS TABLE xxx_table";
             let expected = Statement::Exists(ExistsTable {
-                table_name: make_object_name("xxx_table"),
+                table_name: make_table_name("xxx_table"),
             });
             expect_parse_ok(sql, expected).unwrap();
         }
@@ -806,7 +810,7 @@ mod tests {
         {
             let sql = "EXISTS xxx_table";
             let expected = Statement::Exists(ExistsTable {
-                table_name: make_object_name("xxx_table"),
+                table_name: make_table_name("xxx_table"),
             });
             expect_parse_ok(sql, expected).unwrap()
         }
