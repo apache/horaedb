@@ -8,7 +8,10 @@ use std::{
 use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{debug, error, info, warn};
-use meta_client_v2::{ActionCmd, EventHandler, GetTablesRequest, MetaClient};
+use meta_client_v2::{
+    types::{ActionCmd, GetTablesRequest},
+    EventHandler, MetaClient,
+};
 use snafu::ResultExt;
 use tokio::{
     sync::mpsc::{self, Sender},

@@ -5,7 +5,9 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client_v2::{AddTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo};
+use meta_client_v2::types::{
+    AddTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
+};
 use snafu::OptionExt;
 
 use crate::{Result, ShardNotFound};
