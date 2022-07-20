@@ -82,7 +82,7 @@ struct GrpcClient {
 // dependency.
 type EventHandlers = Vec<Weak<dyn EventHandler + Send + Sync>>;
 
-struct MetaClientImplInner {
+struct Inner {
     meta_config: MetaClientConfig,
     node_meta_info: NodeMetaInfo,
 
@@ -90,7 +90,7 @@ struct MetaClientImplInner {
     handlers: RwLock<EventHandlers>,
 }
 
-impl MetaClientImplInner {
+impl Inner {
     fn new(meta_config: MetaClientConfig, node_meta_info: NodeMetaInfo) -> Result<Self> {
         let client = Self {
             meta_config,
@@ -258,7 +258,7 @@ impl MetaClientImplInner {
 
 /// Default meta client impl, will interact with a remote meta node.
 pub struct MetaClientImpl {
-    inner: Arc<MetaClientImplInner>,
+    inner: Arc<Inner>,
     runtime: Arc<Runtime>,
 
     eventloop_handle: Mutex<Option<JoinHandle<()>>>,
@@ -272,7 +272,7 @@ impl MetaClientImpl {
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         Ok(Self {
-            inner: Arc::new(MetaClientImplInner::new(config, node_meta_info)?),
+            inner: Arc::new(Inner::new(config, node_meta_info)?),
             runtime,
             eventloop_handle: Mutex::new(None),
             stop_eventloop_tx: Mutex::new(None),
