@@ -138,12 +138,12 @@ pub fn filter_stream(
     origin_stream: SequencedRecordBatchStream,
     predicate: &Predicate,
 ) -> SequencedRecordBatchStream {
-    if predicate.exprs.is_empty() {
+    if predicate.exprs().is_empty() {
         return origin_stream;
     }
 
     let mut select_row_buf = Vec::new();
-    let filter = RecordBatchFilter::from(predicate.exprs.as_slice());
+    let filter = RecordBatchFilter::from(predicate.exprs());
     let stream = origin_stream.filter_map(move |sequence_record_batch| {
         let v = match sequence_record_batch {
             Ok(v) => maybe_filter_record_batch(v, &filter, &mut select_row_buf).map(Ok),

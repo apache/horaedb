@@ -870,7 +870,7 @@ impl<Wal, Meta: Manifest> SpaceStore<Wal, Meta> {
                 read_batch_row_num: table_options.num_rows_per_row_group,
                 reverse: false,
                 projected_schema: projected_schema.clone(),
-                predicate: Arc::new(Predicate::new(TimeRange::min_to_max())),
+                predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),
                 data_cache: self.data_cache.clone(),
                 runtime: runtime.clone(),

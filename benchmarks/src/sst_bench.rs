@@ -60,7 +60,7 @@ impl SstBench {
             read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
             projected_schema,
-            predicate: Arc::new(predicate),
+            predicate,
             meta_cache,
             data_cache,
             runtime: runtime.clone(),

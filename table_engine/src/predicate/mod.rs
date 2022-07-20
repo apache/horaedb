@@ -3,7 +3,7 @@
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
 
-use std::{collections::HashSet, convert::TryInto, sync::Arc};
+use std::{convert::TryInto, sync::Arc};
 
 use arrow_deps::{
     arrow::{
@@ -16,14 +16,13 @@ use arrow_deps::{
         physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
         scalar::ScalarValue,
     },
-    datafusion_expr::utils::expr_to_columns,
     parquet::file::statistics::Statistics as ParquetStatistics,
 };
 use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
-use log::{debug, error};
+use log::{debug, error, trace};
 use snafu::{ResultExt, Snafu};
 
 pub mod filter_record_batch;
@@ -154,22 +153,19 @@ fn build_row_group_predicate(
 pub struct Predicate {
     /// Predicates in the query for filter out the columns that meet all the
     /// exprs.
-    pub exprs: Vec<Expr>,
+    exprs: Vec<Expr>,
     /// The time range involved by the query.
-    pub time_range: TimeRange,
+    time_range: TimeRange,
 }
 
 pub type PredicateRef = Arc<Predicate>;
 
 impl Predicate {
+    /// Create an empty predicate.
     pub fn empty() -> Self {
-        Self::new(TimeRange::min_to_max())
-    }
-
-    pub fn new(time_range: TimeRange) -> Self {
         Self {
-            exprs: Vec::new(),
-            time_range,
+            exprs: vec![],
+            time_range: TimeRange::min_to_max(),
         }
     }
 
@@ -184,7 +180,7 @@ impl Predicate {
         for expr in &self.exprs {
             match PruningPredicate::try_new(expr.clone(), arrow_schema.clone()) {
                 Ok(pruning_predicate) => {
-                    debug!("pruning_predicate is:{:?}", pruning_predicate);
+                    trace!("pruning_predicate is:{:?}", pruning_predicate);
 
                     if let Ok(values) = build_row_group_predicate(&pruning_predicate, row_groups) {
                         for (curr_val, result_val) in values.into_iter().zip(results.iter_mut()) {
@@ -205,6 +201,14 @@ impl Predicate {
 
         results
     }
+
+    pub fn exprs(&self) -> &[Expr] {
+        &self.exprs
+    }
+
+    pub fn time_range(&self) -> TimeRange {
+        self.time_range
+    }
 }
 
 /// Builder for [Predicate]
@@ -216,31 +220,20 @@ pub struct PredicateBuilder {
 }
 
 impl PredicateBuilder {
-    /// Adds the expressions from `filter_exprs` that can be pushed down to
-    /// query engine.
+    /// Adds expressions.
     pub fn add_pushdown_exprs(mut self, filter_exprs: &[Expr]) -> Self {
-        // For each expression of the filter_exprs, recursively split it if it is is an
-        // AND conjunction. For example, expression (x AND y) is split into [x,
-        // y].
-        let mut split_exprs = vec![];
-        for filter_expr in filter_exprs {
-            Self::split_and_expr(filter_expr, &mut split_exprs)
-        }
+        self.exprs.extend_from_slice(filter_exprs);
+        self
+    }
 
-        // Only keep single_column and primitive binary expressions
-        let pushdown_exprs: Vec<_> = split_exprs
-            .into_iter()
-            .filter(Self::is_able_to_pushdown)
-            .collect();
-
-        self.exprs = pushdown_exprs;
-
+    pub fn set_time_range(mut self, time_range: TimeRange) -> Self {
+        self.time_range = Some(time_range);
         self
     }
 
     /// Extract the time range from the `filter_exprs` and set it as
-    /// `TimeRange::zero_to_max()` if no timestamp predicate is found.
-    pub fn set_time_range(mut self, schema: &Schema, filter_exprs: &[Expr]) -> Self {
+    /// [`TimeRange::min_to_max`] if no timestamp predicate is found.
+    pub fn extract_time_range(mut self, schema: &Schema, filter_exprs: &[Expr]) -> Self {
         let time_range_extractor = TimeRangeExtractor {
             timestamp_column_name: schema.timestamp_name(),
             filters: filter_exprs,
@@ -263,61 +256,9 @@ impl PredicateBuilder {
             time_range: self.time_range.unwrap_or_else(TimeRange::min_to_max),
         })
     }
-
-    /// Determine whether the `expr` can be pushed down.
-    /// Returns false if any error occurs.
-    fn is_able_to_pushdown(expr: &Expr) -> bool {
-        let mut columns = HashSet::new();
-        if let Err(e) = expr_to_columns(expr, &mut columns) {
-            error!(
-                "Failed to extract columns from the expr, ignore this expr:{:?}, err:{}",
-                expr, e
-            );
-            return false;
-        }
-
-        columns.len() == 1 && Self::is_primitive_binary_expr(expr)
-    }
-
-    /// Recursively split all "AND" expressions into smaller one
-    /// Example: "A AND B AND C" => [A, B, C]
-    fn split_and_expr(expr: &Expr, predicates: &mut Vec<Expr>) {
-        match expr {
-            Expr::BinaryExpr {
-                right,
-                op: Operator::And,
-                left,
-            } => {
-                Self::split_and_expr(left, predicates);
-                Self::split_and_expr(right, predicates);
-            }
-            other => predicates.push(other.clone()),
-        }
-    }
-
-    /// Return true if the given expression is in a primitive binary in the
-    /// form: `column op constant` and op must be a comparison one.
-    fn is_primitive_binary_expr(expr: &Expr) -> bool {
-        match expr {
-            Expr::BinaryExpr { left, op, right } => {
-                matches!(
-                    (&**left, &**right),
-                    (Expr::Column(_), Expr::Literal(_)) | (Expr::Literal(_), Expr::Column(_))
-                ) && matches!(
-                    op,
-                    Operator::Eq
-                        | Operator::NotEq
-                        | Operator::Lt
-                        | Operator::LtEq
-                        | Operator::Gt
-                        | Operator::GtEq
-                )
-            }
-            _ => false,
-        }
-    }
 }
 
+/// Extract the time range requirement from expressions.
 struct TimeRangeExtractor<'a> {
     timestamp_column_name: &'a str,
     filters: &'a [Expr],
@@ -549,5 +490,140 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. } => TimeRange::min_to_max(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use arrow_deps::{
+        arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField},
+        datafusion::logical_expr::{expr_fn::col, lit},
+        parquet::{
+            basic::Type,
+            file::{metadata::ColumnChunkMetaData, statistics::Statistics},
+            schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
+        },
+    };
+
+    use super::*;
+
+    fn convert_data_type(data_type: &ArrowDataType) -> Type {
+        match data_type {
+            ArrowDataType::Boolean => Type::BOOLEAN,
+            ArrowDataType::Int32 => Type::INT32,
+            ArrowDataType::Int64 => Type::INT64,
+            ArrowDataType::Utf8 => Type::BYTE_ARRAY,
+            _ => unimplemented!(),
+        }
+    }
+
+    fn prepare_arrow_schema(fields: Vec<(&str, ArrowDataType)>) -> Arc<ArrowSchema> {
+        let fields = fields
+            .into_iter()
+            .map(|(name, data_type)| ArrowField::new(name, data_type, false))
+            .collect();
+        Arc::new(ArrowSchema::new(fields))
+    }
+
+    fn prepare_parquet_schema_descr(schema: &ArrowSchema) -> SchemaDescPtr {
+        let mut fields = schema
+            .fields()
+            .iter()
+            .map(|field| {
+                Arc::new(
+                    SchemaType::primitive_type_builder(
+                        field.name(),
+                        convert_data_type(field.data_type()),
+                    )
+                    .build()
+                    .unwrap(),
+                )
+            })
+            .collect();
+        let schema = SchemaType::group_type_builder("schema")
+            .with_fields(&mut fields)
+            .build()
+            .unwrap();
+
+        Arc::new(SchemaDescriptor::new(Arc::new(schema)))
+    }
+
+    fn prepare_metadata(schema: &ArrowSchema, statistics: Statistics) -> RowGroupMetaData {
+        let schema_descr = prepare_parquet_schema_descr(schema);
+        let column_metadata = schema_descr
+            .columns()
+            .iter()
+            .cloned()
+            .map(|col_descr| {
+                ColumnChunkMetaData::builder(col_descr)
+                    .set_statistics(statistics.clone())
+                    .build()
+                    .unwrap()
+            })
+            .collect();
+        RowGroupMetaData::builder(schema_descr)
+            .set_column_metadata(column_metadata)
+            .build()
+            .unwrap()
+    }
+
+    fn check_predicate_filter(
+        expr: Expr,
+        stat: Statistics,
+        arrow_schema: Arc<ArrowSchema>,
+        expected: Vec<bool>,
+    ) {
+        let metadata = prepare_metadata(&arrow_schema, stat);
+        let schema = arrow_schema.try_into().unwrap();
+        let predicate = PredicateBuilder::default()
+            .add_pushdown_exprs(&[expr])
+            .build();
+        let result = predicate.filter_row_groups(&schema, &[metadata]);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn filter_i32_by_equal_operator() {
+        let expr = col("a").eq(lit(5i32));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int32)]);
+        let expected = vec![false];
+
+        check_predicate_filter(expr, stat, arrow_schema, expected);
+    }
+
+    #[test]
+    fn filter_i64_by_greater_operator() {
+        let expr = col("a").eq(lit(14i64));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
+        let expected = vec![true];
+
+        check_predicate_filter(expr, stat, arrow_schema, expected);
+    }
+
+    #[test]
+    fn filter_two_i32_cols_by_lesser_operator() {
+        let expr = col("a").lt(col("b"));
+        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![
+            ("a", ArrowDataType::Int32),
+            ("b", ArrowDataType::Int32),
+        ]);
+        // nothing actually gets calculated.
+        let expected = vec![true];
+
+        check_predicate_filter(expr, stat, arrow_schema, expected);
+    }
+
+    #[test]
+    fn filter_i64_by_in_list_operator() {
+        let expr = col("a").in_list(vec![lit(17i64), lit(100i64)], false);
+        let stat = Statistics::int32(Some(101), Some(200), None, 0, false);
+        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
+        let expected = vec![false];
+
+        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 }
