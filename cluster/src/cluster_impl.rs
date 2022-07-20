@@ -167,6 +167,8 @@ impl Inner {
 #[async_trait]
 impl Cluster for ClusterImpl {
     async fn start(&self) -> Result<()> {
+        info!("Cluster is starting with config:{:?}", self.config);
+
         // register the event handler to meta client.
         self.inner
             .meta_client
@@ -183,11 +185,13 @@ impl Cluster for ClusterImpl {
 
         // start the backgroup loop for sending heartbeat.
         self.start_heartbeat_loop();
+
+        info!("Cluster has started");
         Ok(())
     }
 
     async fn stop(&self) -> Result<()> {
-        info!("try to stop cluster");
+        info!("Cluster is stopping");
 
         {
             let tx = self.stop_hearbeat_tx.lock().unwrap().take();
@@ -203,7 +207,7 @@ impl Cluster for ClusterImpl {
             }
         }
 
-        info!("finish stopping cluster");
+        info!("Cluster has stopped");
         Ok(())
     }
 }

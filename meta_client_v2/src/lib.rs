@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 
@@ -13,15 +13,25 @@ use ceresdbproto_deps::ceresdbproto::{
     },
     meta_service_grpc::CeresmetaRpcServiceClient,
 };
-use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    runtime::{JoinHandle, Runtime},
+};
 use futures::{SinkExt, TryStreamExt};
 use grpcio::{
     CallOption, ChannelBuilder, ClientDuplexReceiver, ClientDuplexSender, Environment, WriteFlags,
 };
 use log::{debug, error, info, warn};
 use serde_derive::Deserialize;
-use snafu::{Backtrace, ResultExt, Snafu};
-use tokio::{sync::RwLock, time};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use tokio::{
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        RwLock,
+    },
+    time,
+};
 pub use types::*;
 
 mod types;
@@ -40,11 +50,20 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get grpc client, grpc client is none, msg:{}.\nBacktrace:\n{}",
-        msg,
+        "Failed to init heatbeat stream, err:{}.\nBacktrace:\n{}",
+        source,
         backtrace
     ))]
-    FailGetGrpcClient { msg: String, backtrace: Backtrace },
+    InitHeartBeatStream {
+        source: grpcio::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to get grpc client, grpc client is not inited.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    FailGetGrpcClient { backtrace: Backtrace },
 
     #[snafu(display("Failed to send heartbeat, cluster:{}, err:{}", cluster, source))]
     FailSendHeartbeat {
@@ -214,7 +233,7 @@ impl MetaClientImplInner {
         let client = self.build_rpc_client();
         let (sender, receiver) = client
             .node_heartbeat_opt(CallOption::default())
-            .context(FetchActionCmd)?;
+            .context(InitHeartBeatStream)?;
         Ok(GrpcClient {
             client,
             heartbeat_channel: RwLock::new(NodeHeartbeatChannel {
@@ -254,8 +273,7 @@ impl MetaClientImplInner {
         Duration::from_secs(self.meta_config.lease.as_secs() / 2)
     }
 
-    // TODO: support elegant exit
-    async fn start_fetch_action_cmd(&self) {
+    async fn fetch_action_cmd_loop(&self, mut stop_rx: Receiver<()>) {
         info!("Begin fetching action cmd loop");
         loop {
             debug!("Begin fetching action cmd once");
@@ -293,7 +311,13 @@ impl MetaClientImplInner {
                 warn!("Skip action command fetch because no receiver found");
             }
 
-            time::sleep(self.error_wait_lease()).await;
+            if time::timeout(self.error_wait_lease(), stop_rx.recv())
+                .await
+                .is_ok()
+            {
+                warn!("Receive exit message, exit the fetch_action_cmd loop");
+                break;
+            }
         }
     }
 
@@ -348,6 +372,9 @@ impl MetaClientImplInner {
 pub struct MetaClientImpl {
     inner: Arc<MetaClientImplInner>,
     runtime: Arc<Runtime>,
+
+    eventloop_handle: Mutex<Option<JoinHandle<()>>>,
+    stop_eventloop_tx: Mutex<Option<Sender<()>>>,
 }
 
 impl MetaClientImpl {
@@ -359,6 +386,8 @@ impl MetaClientImpl {
         Ok(Self {
             inner: Arc::new(MetaClientImplInner::new(config, node_meta_info)?),
             runtime,
+            eventloop_handle: Mutex::new(None),
+            stop_eventloop_tx: Mutex::new(None),
         })
     }
 }
@@ -374,17 +403,36 @@ impl MetaClient for MetaClientImpl {
         self.inner.reconnect_heartbeat_channel().await;
 
         let inner = self.inner.clone();
-        self.runtime.spawn(async move {
-            inner.start_fetch_action_cmd().await;
+        let (tx, rx) = mpsc::channel(1);
+        let eventloop_handle = self.runtime.spawn(async move {
+            inner.fetch_action_cmd_loop(rx).await;
         });
 
-        info!("Meta client has started");
+        *self.eventloop_handle.lock().unwrap() = Some(eventloop_handle);
+        *self.stop_eventloop_tx.lock().unwrap() = Some(tx);
 
+        info!("Meta client has started");
         Ok(())
     }
 
     async fn stop(&self) -> Result<()> {
-        // TODO: support elegant stop
+        info!("Meta client is stopping");
+
+        {
+            let tx = self.stop_eventloop_tx.lock().unwrap().take();
+            if let Some(tx) = tx {
+                let _ = tx.send(()).await;
+            }
+        }
+
+        {
+            let handle = self.eventloop_handle.lock().unwrap().take();
+            if let Some(handle) = handle {
+                let _ = handle.await;
+            }
+        }
+
+        info!("Meta client has stopped");
         Ok(())
     }
 
@@ -396,157 +444,162 @@ impl MetaClient for MetaClientImpl {
     }
 
     async fn alloc_schema_id(&self, req: AllocSchemaIdRequest) -> Result<AllocSchemaIdResponse> {
-        if let Some(grpc_client) = &*self.inner.grpc_client.read().await {
-            let mut pb_req = PbAllocSchemaIdRequest::from(req);
-            pb_req.set_header(self.inner.request_header().into());
-            let pb_resp = grpc_client
-                .client
-                .alloc_schema_id_async_opt(&pb_req, CallOption::default())
-                .map_err(|e| Box::new(e) as _)
-                .context(FailAllocSchemaId)?
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(FailAllocSchemaId)?;
-            let resp = AllocSchemaIdResponse::from(pb_resp);
-            info!(
-                "Meta client alloc schema id, req:{:?}, resp:{:?}",
-                pb_req, resp
-            );
-            check_response_header(&resp.header)?;
-            Ok(resp)
-        } else {
-            FailGetGrpcClient {
-                msg: "alloc schema id".to_string(),
-            }
-            .fail()
-        }
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = PbAllocSchemaIdRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+        let pb_resp = grpc_client
+            .client
+            .alloc_schema_id_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailAllocSchemaId)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailAllocSchemaId)?;
+
+        debug!(
+            "Meta client alloc schema id, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
+
+        let resp = AllocSchemaIdResponse::from(pb_resp);
+
+        check_response_header(&resp.header)?;
+        Ok(resp)
     }
 
     async fn alloc_table_id(&self, req: AllocTableIdRequest) -> Result<AllocTableIdResponse> {
-        if let Some(grpc_client) = &*self.inner.grpc_client.read().await {
-            let mut pb_req = PbAllocTableIdRequest::from(req);
-            pb_req.set_header(self.inner.request_header().into());
-            let pb_resp = grpc_client
-                .client
-                .alloc_table_id_async_opt(&pb_req, CallOption::default())
-                .map_err(|e| Box::new(e) as _)
-                .context(FailAllocTableId)?
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(FailAllocTableId)?;
-            let resp = AllocTableIdResponse::from(pb_resp);
-            info!(
-                "Meta client alloc table id, req:{:?}, resp:{:?}",
-                pb_req, resp
-            );
-            check_response_header(&resp.header)?;
-            self.inner
-                .handle_event(&ActionCmd::AddTableCmd(AddTableCmd {
-                    schema_name: resp.schema_name.clone(),
-                    name: resp.name.clone(),
-                    shard_id: resp.shard_id,
-                    schema_id: resp.schema_id,
-                    id: resp.id,
-                }))
-                .await?;
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-            Ok(resp)
-        } else {
-            FailGetGrpcClient {
-                msg: "alloc table id".to_string(),
-            }
-            .fail()
-        }
+        let mut pb_req = PbAllocTableIdRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+        let pb_resp = grpc_client
+            .client
+            .alloc_table_id_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailAllocTableId)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailAllocTableId)?;
+
+        debug!(
+            "Meta client alloc table id, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
+
+        let resp = AllocTableIdResponse::from(pb_resp);
+        check_response_header(&resp.header)?;
+
+        let add_table_cmd = ActionCmd::AddTableCmd(AddTableCmd {
+            schema_name: resp.schema_name.clone(),
+            name: resp.name.clone(),
+            shard_id: resp.shard_id,
+            schema_id: resp.schema_id,
+            id: resp.id,
+        });
+        self.inner.handle_event(&add_table_cmd).await?;
+
+        Ok(resp)
     }
 
     async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse> {
-        if let Some(grpc_client) = &*self.inner.grpc_client.read().await {
-            let mut pb_req = PbDropTableRequest::from(req.clone());
-            pb_req.set_header(self.inner.request_header().into());
-            let pb_resp = grpc_client
-                .client
-                .drop_table_async_opt(&pb_req, CallOption::default())
-                .map_err(|e| Box::new(e) as _)
-                .context(FailDropTable)?
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(FailDropTable)?;
-            let resp = DropTableResponse::from(pb_resp);
-            info!("Meta client drop table, req:{:?}, resp:{:?}", pb_req, resp);
-            check_response_header(&resp.header)?;
-            self.inner
-                .handle_event(&ActionCmd::DropTableCmd(DropTableCmd {
-                    schema_name: req.schema_name.clone(),
-                    name: req.name.clone(),
-                }))
-                .await?;
-            Ok(resp)
-        } else {
-            FailGetGrpcClient {
-                msg: "drop table".to_string(),
-            }
-            .fail()
-        }
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = PbDropTableRequest::from(req.clone());
+        pb_req.set_header(self.inner.request_header().into());
+        let pb_resp = grpc_client
+            .client
+            .drop_table_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailDropTable)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailDropTable)?;
+
+        debug!(
+            "Meta client drop table, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
+
+        let resp = DropTableResponse::from(pb_resp);
+        check_response_header(&resp.header)?;
+
+        let drop_table_cmd = ActionCmd::DropTableCmd(DropTableCmd {
+            schema_name: req.schema_name.clone(),
+            name: req.name.clone(),
+        });
+        self.inner.handle_event(&drop_table_cmd).await?;
+
+        Ok(resp)
     }
 
     async fn get_tables(&self, req: GetTablesRequest) -> Result<GetTablesResponse> {
-        if let Some(grpc_client) = &*self.inner.grpc_client.read().await {
-            let mut pb_req = PbGetTablesRequest::from(req);
-            pb_req.set_header(self.inner.request_header().into());
-            let pb_resp = grpc_client
-                .client
-                .get_tables_async_opt(&pb_req, CallOption::default())
-                .map_err(|e| Box::new(e) as _)
-                .context(FailGetTables)?
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(FailGetTables)?;
-            let resp = GetTablesResponse::from(pb_resp);
-            info!("Meta client get tables, req:{:?}, resp:{:?}", pb_req, resp);
-            check_response_header(&resp.header)?;
-            Ok(resp)
-        } else {
-            FailGetGrpcClient {
-                msg: "get tables".to_string(),
-            }
-            .fail()
-        }
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = PbGetTablesRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+
+        let pb_resp = grpc_client
+            .client
+            .get_tables_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailGetTables)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailGetTables)?;
+
+        debug!(
+            "Meta client get tables, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
+
+        let resp = GetTablesResponse::from(pb_resp);
+        check_response_header(&resp.header)?;
+
+        Ok(resp)
     }
 
     async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
-        let ret = if let Some(grpc_client) = &*self.inner.grpc_client.read().await {
-            info!(
-                "Meta client send heartbeat, cluster:{}, shards_info:{:?}",
-                self.inner.get_cluster_name(),
-                shards_info
-            );
-            let mut pb_request = PbNodeHeartbeatRequest::new();
-            pb_request.set_header(self.inner.request_header().into());
-            let node_info = NodeInfo {
-                node_meta_info: self.inner.node_meta_info(),
-                shards_info,
-            };
-            pb_request.set_info(node_info.into());
-            info!("Meta client send heartbeat req:{:?}", pb_request);
-            grpc_client
-                .heartbeat_channel
-                .write()
-                .await
-                .heartbeat_sender
-                .send((pb_request, WriteFlags::default()))
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(FailSendHeartbeat {
-                    cluster: self.inner.get_cluster_name(),
-                })
-        } else {
-            error!("Meta client send heartbeat failed, grpc client is none");
-            Ok(())
+        info!(
+            "Meta client send heartbeat, cluster:{}, shards_info:{:?}",
+            self.inner.get_cluster_name(),
+            shards_info
+        );
+
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_request = PbNodeHeartbeatRequest::new();
+        pb_request.set_header(self.inner.request_header().into());
+        let node_info = NodeInfo {
+            node_meta_info: self.inner.node_meta_info(),
+            shards_info,
         };
-        if ret.is_err() {
+        pb_request.set_info(node_info.into());
+
+        info!("Meta client send heartbeat req:{:?}", pb_request);
+
+        let send_res = grpc_client
+            .heartbeat_channel
+            .write()
+            .await
+            .heartbeat_sender
+            .send((pb_request, WriteFlags::default()))
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailSendHeartbeat {
+                cluster: self.inner.get_cluster_name(),
+            });
+
+        // FIXME: reconnect the heartbeat channel iff specific errors occur.
+        if send_res.is_err() {
             self.inner.reconnect_heartbeat_channel().await;
         }
-        ret
+        send_res
     }
 }
 
