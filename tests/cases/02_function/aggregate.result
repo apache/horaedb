@@ -1,0 +1,18 @@
+DROP TABLE IF EXISTS `02_function_aggretate_table1`;
+
+affected_rows: 0
+
+CREATE TABLE `02_function_aggretate_table1` (    `timestamp` timestamp NOT NULL,    `arch` string TAG,    `datacenter` string TAG,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false',	 update_mode='OVERWRITE');
+
+affected_rows: 0
+
+INSERT INTO `02_function_aggretate_table1`    (`timestamp`, `arch`, `datacenter`, `value`)VALUES    (1658304762, 'x86-64', 'china', 100),    (1658304762, 'arm64', 'china', 110);
+
+affected_rows: 2
+
+SELECT sum(`value`) FROM `02_function_aggretate_table1`;
+
+SUM(02_function_aggretate_table1.value),
+Int64(210),
+
+
