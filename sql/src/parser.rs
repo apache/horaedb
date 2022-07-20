@@ -236,11 +236,11 @@ impl<'a> Parser<'a> {
             ))),
         }?;
 
-        let obj_name = self.parser.parse_object_name()?;
+        let table_name = self.parser.parse_object_name()?.into();
 
         Ok(Statement::ShowCreate(ShowCreate {
             obj_type,
-            table_name: obj_name.into(),
+            table_name,
         }))
     }
 
@@ -769,11 +769,11 @@ mod tests {
         assert_eq!(statements.len(), 1);
         match &statements[0] {
             Statement::Drop(DropTable {
-                table_name: name,
+                table_name,
                 if_exists,
                 engine,
             }) => {
-                assert_eq!(name.to_string(), "test_ttl".to_string());
+                assert_eq!(table_name.to_string(), "test_ttl".to_string());
                 assert!(!if_exists);
                 assert_eq!(*engine, ANALYTIC_ENGINE_TYPE.to_string());
             }
@@ -785,11 +785,11 @@ mod tests {
         assert_eq!(statements.len(), 1);
         match &statements[0] {
             Statement::Drop(DropTable {
-                table_name: name,
+                table_name,
                 if_exists,
                 engine,
             }) => {
-                assert_eq!(name.to_string(), "test_ttl".to_string());
+                assert_eq!(table_name.to_string(), "test_ttl".to_string());
                 assert!(if_exists);
                 assert_eq!(*engine, ANALYTIC_ENGINE_TYPE.to_string());
             }
