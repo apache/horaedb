@@ -818,17 +818,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ceresdbproto"
-version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git#a7db8811a949eb194788eda2125284e9b2ffdd4b"
-dependencies = [
- "futures 0.3.21",
- "grpcio 0.9.1",
- "protobuf",
- "protobuf-builder",
-]
-
-[[package]]
 name = "ceresdbproto_deps"
 version = "0.1.0"
 dependencies = [
@@ -921,7 +910,7 @@ dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "log",
  "meta_client_v2",
@@ -2853,13 +2842,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "catalog",
-<<<<<<< HEAD
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
- "common_types 0.1.0",
-=======
  "ceresdbproto_deps",
- "common_types",
->>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
+ "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
  "grpcio 0.1.0",
@@ -2882,7 +2866,7 @@ dependencies = [
  "async-trait",
  "catalog",
  "ceresdbproto_deps",
- "common_types",
+ "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
  "grpcio 0.1.0",
@@ -4719,13 +4703,8 @@ dependencies = [
  "async-trait",
  "avro-rs",
  "catalog",
-<<<<<<< HEAD
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
-=======
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
- "common_types",
->>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
  "common_util",
  "df_operator",
  "futures 0.3.21",
@@ -5049,13 +5028,8 @@ version = "0.1.0"
 dependencies = [
  "arrow_deps 0.1.0",
  "catalog",
-<<<<<<< HEAD
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0",
-=======
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
- "common_types",
->>>>>>> 1e5d77e (feat: bump to latest ceresdbproto)
  "common_util",
  "df_operator",
  "log",
