@@ -165,7 +165,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
             runtime: self.read_runtime().clone(),
         };
 
-        let time_range = request.predicate.time_range;
+        let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, &*table_options);
 
@@ -226,7 +226,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
             runtime: self.read_runtime().clone(),
         };
 
-        let time_range = request.predicate.time_range;
+        let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, &*table_options);
 

@@ -18,7 +18,6 @@ use analytic_engine::{
 use common_types::{
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
-    time::TimeRange,
 };
 use common_util::runtime::{self, Runtime};
 use futures::stream::StreamExt;
@@ -85,7 +84,7 @@ pub async fn load_sst_to_memtable(
         read_batch_row_num: 500,
         reverse: false,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
-        predicate: Arc::new(Predicate::new(TimeRange::min_to_max())),
+        predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         data_cache: None,
         runtime,
