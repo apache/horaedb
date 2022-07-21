@@ -32,7 +32,7 @@ affected_rows: 0
 
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:`05_create_tables_t`, err:Failed to create table, table already exists, table:`05_create_tables_t`." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t, err:Failed to create table, table already exists, table:05_create_tables_t." })
 
 create table `05_create_tables_t2`(a int, b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
 
@@ -44,15 +44,18 @@ affected_rows: 2
 
 select a+b from `05_create_tables_t2`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: select a+b from `05_create_tables_t2`;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Execution error: MetaProvider not found" })
+05_create_tables_t2.a Plus 05_create_tables_t2.b,
+Int32(2),
+Int32(4),
+
 
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:`05_create_tables_t2`, err:Failed to create table, table already exists, table:`05_create_tables_t2`." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t2, err:Failed to create table, table already exists, table:05_create_tables_t2." })
 
 create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:`05_create_tables_t2`, err:Failed to create table, table already exists, table:`05_create_tables_t2`." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: create table `05_create_tables_t2`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t2, err:Failed to create table, table already exists, table:05_create_tables_t2." })
 
 create table `05_create_tables_t3`(a int,b int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
@@ -68,6 +71,12 @@ name,type,is_primary,is_nullable,is_tag,
 String(StringBytes(b"t")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
 String(StringBytes(b"tsid")),String(StringBytes(b"uint64")),Boolean(true),Boolean(false),Boolean(false),
 String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(true),Boolean(false),
+
+
+show create table `05_create_tables_t4`;
+
+Table,Create Table,
+String(StringBytes(b"05_create_tables_t4")),String(StringBytes(b"CREATE TABLE `05_create_tables_t4` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 DROP TABLE IF EXISTS `05_create_tables_t`;

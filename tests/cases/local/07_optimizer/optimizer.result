@@ -1,6 +1,6 @@
 DROP TABLE `07_optimizer_t`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DROP TABLE `07_optimizer_t`;. Caused by: Failed to create plan, err:Table not found, table:`07_optimizer_t`" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DROP TABLE `07_optimizer_t`;. Caused by: Failed to create plan, err:Table not found, table:07_optimizer_t" })
 
 CREATE TABLE `07_optimizer_t` (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
 

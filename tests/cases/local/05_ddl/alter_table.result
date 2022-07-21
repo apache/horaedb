@@ -12,7 +12,9 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT * FROM `05_alter_table_t0`;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Execution error: MetaProvider not found" })
+t,tsid,a,
+Timestamp(Timestamp(1)),Int64(0),Int32(1),
+
 
 ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
 
@@ -37,7 +39,10 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT * FROM `05_alter_table_t0`;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Execution error: MetaProvider not found" })
+t,tsid,a,b,
+Timestamp(Timestamp(1)),Int64(0),Int32(1),Null,
+Timestamp(Timestamp(2)),Int64(0),Int32(2),String(StringBytes(b"2")),
+
 
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
 
@@ -54,7 +59,10 @@ String(StringBytes(b"b")),String(StringBytes(b"string")),Boolean(false),Boolean(
 
 SELECT * FROM `05_alter_table_t0`;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT * FROM `05_alter_table_t0`;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Execution error: MetaProvider not found" })
+t,tsid,a,b,
+Timestamp(Timestamp(1)),Int64(0),Int32(1),Null,
+Timestamp(Timestamp(2)),Int64(0),Int32(2),String(StringBytes(b"2")),
+
 
 DROP TABLE `05_alter_table_t0`;
 

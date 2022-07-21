@@ -28,7 +28,7 @@ create table `05_create_tables_t3`(a int,b int, t timestamp NOT NULL, TIMESTAMP 
 
 create table `05_create_tables_t4`(`a` int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 describe table `05_create_tables_t4`;
--- show create table `05_create_tables_t4`;
+show create table `05_create_tables_t4`;
 
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
