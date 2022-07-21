@@ -1,48 +1,36 @@
-DROP TABLE IF EXISTS 06_show_a;
+DROP TABLE IF EXISTS `06_show_a`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 06_show_a;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-DROP TABLE IF EXISTS 06_show_b;
+DROP TABLE IF EXISTS `06_show_b`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 06_show_b;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-DROP TABLE IF EXISTS 06_show_c;
+DROP TABLE IF EXISTS `06_show_c`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE IF EXISTS 06_show_c;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-CREATE TABLE 06_show_a (a bigint, b int default 3, c string default 'x', d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+CREATE TABLE `06_show_a` (a bigint, b int default 3, c string default 'x', d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 06_show_a (a bigint, b int default 3, c string default 'x', d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-SHOW CREATE TABLE 06_show_a;
+CREATE TABLE `06_show_b` (a bigint, b int null default null, c string, d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SHOW CREATE TABLE 06_show_a;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-CREATE TABLE 06_show_b (a bigint, b int null default null, c string, d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+CREATE TABLE `06_show_c` (a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 06_show_b (a bigint, b int null default null, c string, d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-SHOW CREATE TABLE 06_show_b;
+DROP TABLE `06_show_a`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SHOW CREATE TABLE 06_show_b;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-CREATE TABLE 06_show_c (a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+DROP TABLE `06_show_b`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 06_show_c (a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 
-SHOW CREATE TABLE 06_show_c;
+DROP TABLE `06_show_c`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SHOW CREATE TABLE 06_show_c;, err:sql parser error: Expected identifier, found: 06" })
-
-DROP TABLE 06_show_a;
-
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE 06_show_a;, err:sql parser error: Expected identifier, found: 06" })
-
-DROP TABLE 06_show_b;
-
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE 06_show_b;, err:sql parser error: Expected identifier, found: 06" })
-
-DROP TABLE 06_show_c;
-
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: DROP TABLE 06_show_c;, err:sql parser error: Expected identifier, found: 06" })
+affected_rows: 0
 

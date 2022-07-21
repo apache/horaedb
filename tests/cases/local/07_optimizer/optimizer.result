@@ -1,8 +1,12 @@
-CREATE TABLE 07_optimizer_t (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
+DROP TABLE `07_optimizer_t`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE 07_optimizer_t (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: 07" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DROP TABLE `07_optimizer_t`;. Caused by: Failed to create plan, err:Table not found, table:`07_optimizer_t`" })
 
-EXPLAIN SELECT max(value) AS c1, avg(value) AS c2 FROM 07_optimizer_t GROUP BY name;
+CREATE TABLE `07_optimizer_t` (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: EXPLAIN SELECT max(value) AS c1, avg(value) AS c2 FROM 07_optimizer_t GROUP BY name;, err:sql parser error: Expected end of statement, found: max" })
+affected_rows: 0
+
+DROP TABLE `07_optimizer_t`;
+
+affected_rows: 0
 
