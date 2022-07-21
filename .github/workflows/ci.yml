@@ -9,14 +9,18 @@ on:
     paths-ignore:
       - 'docs/**'
       - 'etc/**'
+      - '.github/**'
       - '**.md'
+      - '**.yml'
   pull_request:
     branches:
       - main
     paths-ignore:
       - 'docs/**'
       - 'etc/**'
+      - '.github/**'
       - '**.md'
+      - '**.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -58,7 +62,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           apt update
-          apt install --yes gcc g++ libssl-dev pkg-config cmake 
+          apt install --yes gcc g++ libssl-dev pkg-config cmake
           rm -rf /var/lib/apt/lists/*
       - name: Build workspace in debug mode
         run: |
@@ -82,7 +86,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           apt update
-          apt install --yes cmake 
+          apt install --yes cmake
           rm -rf /var/lib/apt/lists/*
       - name: Setup Toolchain
         run: |
@@ -128,7 +132,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           apt update
-          apt install --yes gcc g++ libssl-dev pkg-config cmake 
+          apt install --yes gcc g++ libssl-dev pkg-config cmake
           rm -rf /var/lib/apt/lists/*
       - name: Install Clippy
         run: |
