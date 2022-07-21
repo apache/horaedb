@@ -19,7 +19,9 @@ use tempfile::TempDir;
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload, PayloadDecoder},
-    manager::{BatchLogIterator, LogReader, ReadContext, RegionId, WalManager, WriteContext},
+    manager::{
+        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, RegionId, WalManager, WriteContext,
+    },
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -155,7 +157,7 @@ impl<B: WalBuilder> TestEnv<B> {
         &self,
         max_seq: SequenceNumber,
         write_batch: &LogWriteBatch<TestPayload>,
-        mut iter: <B::Wal as LogReader>::BatchIter,
+        mut iter: BatchLogIteratorAdapter,
     ) {
         let mut log_entries = VecDeque::with_capacity(write_batch.entries.len());
         let mut buffer = VecDeque::new();

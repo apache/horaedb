@@ -175,20 +175,24 @@ impl LogEncoding {
             .context(manager::Decoding)
     }
 
-    pub fn decode_value<D: PayloadDecoder>(
-        &self,
-        mut buf: &[u8],
-        decoder: &D,
-    ) -> manager::Result<D::Target> {
-        let value_dec = LogValueDecoder {
-            version: self.value_enc_version,
-            payload_dec: decoder,
-        };
-
-        value_dec
-            .decode(&mut buf)
+    pub fn decode_value<'a>(&self, mut buf: &'a [u8]) -> manager::Result<&'a [u8]> {
+        let version = buf
+            .read_u8()
+            .context(DecodeLogValueHeader)
             .map_err(|e| Box::new(e) as _)
-            .context(manager::Decoding)
+            .context(manager::Decoding)?;
+
+        if version != self.value_enc_version {
+            return InvalidVersion {
+                expect: self.value_enc_version,
+                given: version,
+            }
+            .fail()
+            .map_err(|e| Box::new(e) as _)
+            .context(manager::Decoding);
+        }
+
+        Ok(buf)
     }
 }
 

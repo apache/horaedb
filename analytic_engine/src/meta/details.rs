@@ -21,8 +21,8 @@ use tokio::sync::Mutex;
 use wal::{
     log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
     manager::{
-        BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
-        WalManager, WriteContext,
+        BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
+        RegionId, SequenceNumber, WalManager, WriteContext,
     },
 };
 
@@ -87,15 +87,15 @@ trait MetaUpdateLogEntryIterator {
 }
 
 /// Implementation of [MetaUpdateReader]
-#[derive(Debug)]
-pub struct MetaUpdateReaderImpl<W: WalManager> {
-    iter: W::BatchIter,
+// #[derive(Debug)]
+pub struct MetaUpdateReaderImpl {
+    iter: BatchLogIteratorAdapter,
     has_next: bool,
     buffer: VecDeque<LogEntry<MetaUpdateLogEntry>>,
 }
 
 #[async_trait]
-impl<W: WalManager + Send + Sync> MetaUpdateLogEntryIterator for MetaUpdateReaderImpl<W> {
+impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
         if !self.has_next {
             return Ok(None);
@@ -288,7 +288,7 @@ impl<W> RegionWal<W> {
 
 #[async_trait]
 impl<W: WalManager + Send + Sync> MetaUpdateLogStore for RegionWal<W> {
-    type Iter = MetaUpdateReaderImpl<W>;
+    type Iter = MetaUpdateReaderImpl;
 
     async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
         let ctx = ReadContext::default();

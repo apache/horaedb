@@ -23,7 +23,7 @@ use table_kv::{
 use tokio::sync::Mutex;
 
 use crate::{
-    log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
+    log_batch::{LogEntry, LogWriteBatch, Payload},
     manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
     rocks_impl::encoding::LogKey,
     table_kv_impl::{
@@ -661,10 +661,7 @@ impl<T: TableKv> TableLogIterator<T> {
 }
 
 impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
-    fn next_log_entry<D: PayloadDecoder>(
-        &mut self,
-        decoder: &D,
-    ) -> manager::Result<Option<LogEntry<D::Target>>> {
+    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data() {
             return Ok(None);
         }
@@ -682,6 +679,10 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             }
         }
 
+        self.step_current_iter()
+            .map_err(|e| Box::new(e) as _)
+            .context(manager::Read)?;
+
         // Fetch and decode current log entry.
         let current_iter = self.current_iter.as_ref().unwrap();
         self.current_log_key = self
@@ -689,21 +690,10 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             .decode_key(current_iter.key())
             .map_err(|e| Box::new(e) as _)
             .context(manager::Decoding)?;
-        let payload = self
-            .log_encoding
-            .decode_value(current_iter.value(), decoder)
-            .map_err(|e| Box::new(e) as _)
-            .context(manager::Encoding)?;
         let log_entry = LogEntry {
             sequence: self.current_log_key.1,
-            payload,
+            payload: current_iter.value(),
         };
-
-        // Step current iterator, if it becomes invalid, reset `current_iter` to None
-        // and advance `current_bucket_index`.
-        self.step_current_iter()
-            .map_err(|e| Box::new(e) as _)
-            .context(manager::Read)?;
 
         Ok(Some(log_entry))
     }

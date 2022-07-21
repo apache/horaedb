@@ -6,7 +6,7 @@ use common_types::SequenceNumber;
 
 use crate::{
     log_batch::LogWriteBatch,
-    manager::{LogReader, LogWriter, ReadBoundary, ReadRequest, RegionId, WalManager},
+    manager::{LogWriter, ReadBoundary, ReadRequest, RegionId, WalManager},
     tests::util::{
         MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, TestPayload,
         WalBuilder,

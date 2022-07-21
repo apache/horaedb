@@ -71,6 +71,7 @@ impl ObkvTester {
         let mut iter = self.obkv.scan(ctx, table_name, scan_req).unwrap();
 
         let mut pairs = Vec::new();
+        println!("scan");
         while iter.valid() {
             let pair = (iter.key().to_vec(), iter.value().to_vec());
             pairs.push(pair);

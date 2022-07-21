@@ -22,9 +22,9 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
+    log_batch::{LogEntry, LogWriteBatch, Payload},
     manager::{
-        error::*, BatchLogIteratorAdapter, BlockingLogIterator, LogReader, LogWriter, ReadContext,
+        error::*, BatchLogIteratorAdapter, BlockingLogIterator, LogWriter, ReadContext,
         ReadRequest, RegionId, WalManager, WriteContext, MAX_REGION_ID,
     },
     rocks_impl::encoding::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
@@ -524,10 +524,7 @@ impl RocksLogIterator {
 }
 
 impl BlockingLogIterator for RocksLogIterator {
-    fn next_log_entry<D: PayloadDecoder>(
-        &mut self,
-        decoder: &D,
-    ) -> Result<Option<LogEntry<D::Target>>> {
+    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data {
             return Ok(None);
         }
@@ -552,7 +549,7 @@ impl BlockingLogIterator for RocksLogIterator {
         self.no_more_data = self.is_end_reached(&curr_log_key);
 
         if self.is_valid_log_key(&curr_log_key) {
-            let payload = self.log_encoding.decode_value(self.iter.value(), decoder)?;
+            let payload = self.log_encoding.decode_value(self.iter.value())?;
             let log_entry = LogEntry {
                 sequence: curr_log_key.1,
                 payload,
@@ -561,27 +558,6 @@ impl BlockingLogIterator for RocksLogIterator {
         } else {
             Ok(None)
         }
-    }
-}
-
-#[async_trait]
-impl LogReader for RocksImpl {
-    type BatchIter = BatchLogIteratorAdapter<RocksLogIterator>;
-
-    async fn read_batch(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::BatchIter> {
-        let blocking_iter = if let Some(region) = self.region(req.region_id) {
-            region.read(ctx, req)?
-        } else {
-            let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
-            RocksLogIterator::new_empty(self.log_encoding.clone(), iter)
-        };
-        let runtime = self.runtime.clone();
-
-        Ok(BatchLogIteratorAdapter::new(
-            blocking_iter,
-            runtime,
-            ctx.batch_size,
-        ))
     }
 }
 
@@ -623,6 +599,27 @@ impl WalManager for RocksImpl {
         info!("Close rocksdb wal gracefully");
 
         Ok(())
+    }
+
+    /// Provide iterator on necessary entries according to `ReadRequest`.
+    async fn read_batch(
+        &self,
+        ctx: &ReadContext,
+        req: &ReadRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        let blocking_iter = if let Some(region) = self.region(req.region_id) {
+            region.read(ctx, req)?
+        } else {
+            let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
+            RocksLogIterator::new_empty(self.log_encoding.clone(), iter)
+        };
+        let runtime = self.runtime.clone();
+
+        Ok(BatchLogIteratorAdapter::new(
+            Box::new(blocking_iter),
+            runtime,
+            ctx.batch_size,
+        ))
     }
 }
 

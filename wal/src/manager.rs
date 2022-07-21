@@ -9,7 +9,10 @@ pub use common_types::SequenceNumber;
 use common_util::runtime::Runtime;
 use snafu::ResultExt;
 
-use crate::log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder};
+use crate::{
+    log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
+    manager,
+};
 
 pub mod error {
     use common_util::define_result;
@@ -216,14 +219,15 @@ pub struct ReadRequest {
 }
 
 /// Blocking Iterator abstraction for log entry.
-pub trait BlockingLogIterator {
+pub trait BlockingLogIterator: Send {
     /// Fetch next log entry from the iterator.
     ///
     /// NOTE that this operation may **BLOCK** caller thread now.
-    fn next_log_entry<D: PayloadDecoder>(
-        &mut self,
-        decoder: &D,
-    ) -> Result<Option<LogEntry<D::Target>>>;
+    // fn next_log_entry<D: PayloadDecoder>(
+    //     &mut self,
+    //     decoder: &D,
+    // ) -> Result<Option<LogEntry<D::Target>>>;
+    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>>;
 }
 
 /// Vectorwise log entry iterator.
@@ -241,23 +245,13 @@ pub trait BatchLogIterator {
     ) -> Result<VecDeque<LogEntry<D::Target>>>;
 }
 
-/// Read abstraction for log entries in the Wal.
-#[async_trait]
-pub trait LogReader {
-    /// Batch iterator.
-    type BatchIter: BatchLogIterator + Send;
-
-    /// Provide iterator on necessary entries according to `ReadRequest`.
-    async fn read_batch(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::BatchIter>;
-}
-
 // TODO(xikai): define Error as associate type.
 /// Management of multi-region Wals.
 ///
 /// Every region has its own increasing (and maybe hallow) sequence number
 /// space.
 #[async_trait]
-pub trait WalManager: LogWriter + LogReader + fmt::Debug {
+pub trait WalManager: LogWriter + fmt::Debug {
     /// Get current sequence number.
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
@@ -271,17 +265,29 @@ pub trait WalManager: LogWriter + LogReader + fmt::Debug {
 
     /// Close the wal gracefully.
     async fn close_gracefully(&self) -> Result<()>;
+
+    /// Provide iterator on necessary entries according to `ReadRequest`.
+    async fn read_batch(
+        &self,
+        ctx: &ReadContext,
+        req: &ReadRequest,
+    ) -> Result<BatchLogIteratorAdapter>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.
-pub struct BatchLogIteratorAdapter<I> {
-    blocking_iter: Option<I>,
+// #[derive(Debug)]
+pub struct BatchLogIteratorAdapter {
+    blocking_iter: Option<Box<dyn BlockingLogIterator>>,
     runtime: Arc<Runtime>,
     batch_size: usize,
 }
 
-impl<I: BlockingLogIterator + Send + 'static> BatchLogIteratorAdapter<I> {
-    pub fn new(blocking_iter: I, runtime: Arc<Runtime>, batch_size: usize) -> Self {
+impl BatchLogIteratorAdapter {
+    pub fn new(
+        blocking_iter: Box<dyn BlockingLogIterator + Send>,
+        runtime: Arc<Runtime>,
+        batch_size: usize,
+    ) -> Self {
         Self {
             blocking_iter: Some(blocking_iter),
             runtime,
@@ -291,7 +297,7 @@ impl<I: BlockingLogIterator + Send + 'static> BatchLogIteratorAdapter<I> {
 }
 
 #[async_trait]
-impl<I: BlockingLogIterator + Send + 'static> BatchLogIterator for BatchLogIteratorAdapter<I> {
+impl BatchLogIterator for BatchLogIteratorAdapter {
     async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
         &mut self,
         decoder: D,
@@ -308,7 +314,16 @@ impl<I: BlockingLogIterator + Send + 'static> BatchLogIterator for BatchLogItera
             .runtime
             .spawn_blocking(move || {
                 for _ in 0..batch_size {
-                    if let Some(log_entry) = iter.next_log_entry(&decoder)? {
+                    if let Some(raw_log_entry) = iter.next_log_entry()? {
+                        let mut raw_payload = raw_log_entry.payload;
+                        let payload = decoder
+                            .decode(&mut raw_payload)
+                            .map_err(|e| Box::new(e) as _)
+                            .context(manager::Decoding)?;
+                        let log_entry = LogEntry {
+                            sequence: raw_log_entry.sequence,
+                            payload,
+                        };
                         buffer.push_back(log_entry);
                     } else {
                         return Ok((buffer, None));
