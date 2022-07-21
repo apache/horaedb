@@ -679,10 +679,6 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             }
         }
 
-        self.step_current_iter()
-            .map_err(|e| Box::new(e) as _)
-            .context(manager::Read)?;
-
         // Fetch and decode current log entry.
         let current_iter = self.current_iter.as_ref().unwrap();
         self.current_log_key = self
@@ -694,6 +690,12 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             sequence: self.current_log_key.1,
             payload: current_iter.value(),
         };
+
+        // Step current iterator, if it becomes invalid, reset `current_iter` to None
+        // and advance `current_bucket_index`.
+        self.step_current_iter()
+            .map_err(|e| Box::new(e) as _)
+            .context(manager::Read)?;
 
         Ok(Some(log_entry))
     }
