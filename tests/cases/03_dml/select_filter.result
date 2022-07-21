@@ -1,0 +1,31 @@
+DROP TABLE IF EXISTS `03_dml_select_filter_table1`;
+
+affected_rows: 0
+
+CREATE TABLE `03_dml_select_filter_table1` (    `timestamp` timestamp NOT NULL,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false');
+
+affected_rows: 0
+
+INSERT INTO `03_dml_select_filter_table1`    (`timestamp`, `value`)VALUES    (1, 100),    (2, 1000),    (3, 200),    (4, 30000),    (5, 4400),    (6, 400);
+
+affected_rows: 6
+
+SELECT    `timestamp`,    `value`FROM    `03_dml_select_filter_table1`where `value` > 50+50ORDER BY    `value` ASC;
+
+timestamp,value,
+Timestamp(Timestamp(3)),Int32(200),
+Timestamp(Timestamp(6)),Int32(400),
+Timestamp(Timestamp(2)),Int32(1000),
+Timestamp(Timestamp(5)),Int32(4400),
+Timestamp(Timestamp(4)),Int32(30000),
+
+
+SELECT    `timestamp`,    `value`FROM    `03_dml_select_filter_table1`where `value` > 50+50 and `value` <= 4400ORDER BY    `value` ASC;
+
+timestamp,value,
+Timestamp(Timestamp(3)),Int32(200),
+Timestamp(Timestamp(6)),Int32(400),
+Timestamp(Timestamp(2)),Int32(1000),
+Timestamp(Timestamp(5)),Int32(4400),
+
+

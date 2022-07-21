@@ -7,12 +7,8 @@ CREATE TABLE `01_system_table1` (
     `datacenter` string TAG,
     `hostname` string TAG,
     `value` double,
-    timestamp KEY (timestamp)) ENGINE=Analytic
-WITH(
-	 enable_ttl='true',
-	 ttl='7d',
-	 update_mode='OVERWRITE'
-);
+    timestamp KEY (timestamp)) ENGINE=Analytic;
+
 
 -- FIXME
 SELECT

@@ -2,17 +2,64 @@ DROP TABLE IF EXISTS `02_function_aggretate_table1`;
 
 affected_rows: 0
 
-CREATE TABLE `02_function_aggretate_table1` (    `timestamp` timestamp NOT NULL,    `arch` string TAG,    `datacenter` string TAG,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false',	 update_mode='OVERWRITE');
+CREATE TABLE `02_function_aggretate_table1` (    `timestamp` timestamp NOT NULL,    `arch` string TAG,    `datacenter` string TAG,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false');
 
 affected_rows: 0
 
-INSERT INTO `02_function_aggretate_table1`    (`timestamp`, `arch`, `datacenter`, `value`)VALUES    (1658304762, 'x86-64', 'china', 100),    (1658304762, 'arm64', 'china', 110);
+INSERT INTO `02_function_aggretate_table1`    (`timestamp`, `arch`, `datacenter`, `value`)VALUES    (1658304762, 'x86-64', 'china', 100),    (1658304763, 'x86-64', 'china', 200),    (1658304762, 'arm64', 'china', 110),    (1658304763, 'arm64', 'china', 210);
 
-affected_rows: 2
+affected_rows: 4
 
 SELECT sum(`value`) FROM `02_function_aggretate_table1`;
 
 SUM(02_function_aggretate_table1.value),
-Int64(210),
+Int64(620),
+
+
+SELECT    `arch`,    sum(`value`)FROM    `02_function_aggretate_table1`WHERE    `timestamp` BETWEEN 1658304763 AND 1658304763GROUP BY    `arch`ORDER BY    `arch` DESC;
+
+arch,SUM(02_function_aggretate_table1.value),
+String(StringBytes(b"x86-64")),Int64(200),
+String(StringBytes(b"arm64")),Int64(210),
+
+
+SELECT count(`value`) FROM `02_function_aggretate_table1`;
+
+COUNT(02_function_aggretate_table1.value),
+Int64(4),
+
+
+SELECT avg(`value`) FROM `02_function_aggretate_table1`;
+
+AVG(02_function_aggretate_table1.value),
+Double(155.0),
+
+
+SELECT max(`value`) FROM `02_function_aggretate_table1`;
+
+MAX(02_function_aggretate_table1.value),
+Int32(210),
+
+
+SELECT min(`value`) FROM `02_function_aggretate_table1`;
+
+MIN(02_function_aggretate_table1.value),
+Int32(100),
+
+
+INSERT INTO `02_function_aggretate_table1`    (`timestamp`, `arch`, `datacenter`, `value`)VALUES    (1658304762, 'x86-64', 'china', 100);
+
+affected_rows: 1
+
+SELECT count(`value`) FROM `02_function_aggretate_table1`;
+
+COUNT(02_function_aggretate_table1.value),
+Int64(4),
+
+
+SELECT count(distinct(`value`)) FROM `02_function_aggretate_table1`;
+
+COUNT(DISTINCT 02_function_aggretate_table1.value),
+Int64(4),
 
 
