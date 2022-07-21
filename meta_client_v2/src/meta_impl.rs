@@ -36,10 +36,10 @@ use tokio::{
 
 use crate::{
     types::{
-        ActionCmd, AddTableCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-        AllocTableIdResponse, DropTableCmd, DropTableRequest, DropTableResponse, GetTablesRequest,
-        GetTablesResponse, NodeHeartbeatResponse, NodeInfo, NodeMetaInfo, RequestHeader,
-        ResponseHeader, ShardInfo,
+        ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
+        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest, DropTableResponse,
+        GetTablesRequest, GetTablesResponse, NodeHeartbeatResponse, NodeInfo, NodeMetaInfo,
+        RequestHeader, ResponseHeader, ShardInfo,
     },
     EventHandler, EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailDropTable,
     FailGetGrpcClient, FailGetTables, FailHandleEvent, FailSendHeartbeat, FetchActionCmd,
@@ -346,7 +346,7 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailAllocSchemaId)?;
 
-        debug!(
+        info!(
             "Meta client alloc schema id, req:{:?}, resp:{:?}",
             pb_req, pb_resp
         );
@@ -372,7 +372,7 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailAllocTableId)?;
 
-        debug!(
+        info!(
             "Meta client alloc table id, req:{:?}, resp:{:?}",
             pb_req, pb_resp
         );
@@ -380,7 +380,7 @@ impl MetaClient for MetaClientImpl {
         let resp = AllocTableIdResponse::from(pb_resp);
         check_response_header(&resp.header)?;
 
-        let add_table_cmd = ActionCmd::AddTableCmd(AddTableCmd {
+        let add_table_cmd = ActionCmd::CreateTableCmd(CreateTableCmd {
             schema_name: resp.schema_name.clone(),
             name: resp.name.clone(),
             shard_id: resp.shard_id,

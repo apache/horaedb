@@ -56,10 +56,10 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
 
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
-        read_runtime: Arc::new(build_runtime("cse-read", config.read_thread_num)),
-        write_runtime: Arc::new(build_runtime("cse-write", config.write_thread_num)),
-        meta_runtime: Arc::new(build_runtime("cse-write", config.meta_thread_num)),
-        bg_runtime: Arc::new(build_runtime("cse-bg", config.background_thread_num)),
+        read_runtime: Arc::new(build_runtime("ceres-read", config.read_thread_num)),
+        write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
+        meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
+        bg_runtime: Arc::new(build_runtime("ceres-bg", config.background_thread_num)),
     }
 }
 

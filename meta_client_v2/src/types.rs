@@ -166,7 +166,7 @@ pub enum ActionCmd {
     MetaCloseCmd(CloseCmd),
     MetaChangeRoleCmd(ChangeRoleCmd),
 
-    AddTableCmd(AddTableCmd),
+    CreateTableCmd(CreateTableCmd),
     DropTableCmd(DropTableCmd),
 }
 
@@ -187,7 +187,7 @@ pub struct CloseCmd {
 }
 
 #[derive(Debug, Clone)]
-pub struct AddTableCmd {
+pub struct CreateTableCmd {
     pub schema_name: String,
     pub name: String,
     pub shard_id: ShardId,

@@ -6,7 +6,7 @@ use std::{
 };
 
 use meta_client_v2::types::{
-    AddTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
+    CreateTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
 };
 use snafu::OptionExt;
 
@@ -29,8 +29,8 @@ pub struct ShardTableInfo {
     pub table_info: TableInfo,
 }
 
-impl From<&AddTableCmd> for ShardTableInfo {
-    fn from(cmd: &AddTableCmd) -> Self {
+impl From<&CreateTableCmd> for ShardTableInfo {
+    fn from(cmd: &CreateTableCmd) -> Self {
         let table_info = TableInfo {
             id: cmd.id,
             name: cmd.name.clone(),

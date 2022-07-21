@@ -34,7 +34,7 @@ pub struct ClusterImpl {
     runtime: Arc<Runtime>,
     config: ClusterConfig,
     heartbeat_handle: Mutex<Option<JoinHandle<()>>>,
-    stop_hearbeat_tx: Mutex<Option<Sender<()>>>,
+    stop_heartbeat_tx: Mutex<Option<Sender<()>>>,
 }
 
 impl ClusterImpl {
@@ -51,7 +51,7 @@ impl ClusterImpl {
             runtime,
             config,
             heartbeat_handle: Mutex::new(None),
-            stop_hearbeat_tx: Mutex::new(None),
+            stop_heartbeat_tx: Mutex::new(None),
         })
     }
 
@@ -82,7 +82,7 @@ impl ClusterImpl {
             }
         });
 
-        *self.stop_hearbeat_tx.lock().unwrap() = Some(tx);
+        *self.stop_heartbeat_tx.lock().unwrap() = Some(tx);
         *self.heartbeat_handle.lock().unwrap() = Some(handle);
     }
 
@@ -110,11 +110,11 @@ impl EventHandler for Inner {
 
     async fn handle(
         &self,
-        event: &ActionCmd,
+        cmd: &ActionCmd,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        debug!("Receive event:{:?}", event);
+        info!("Receive action command:{:?}", cmd);
 
-        match event {
+        match cmd {
             ActionCmd::MetaOpenCmd(open_cmd) => {
                 let resp = self
                     .meta_client
@@ -136,8 +136,7 @@ impl EventHandler for Inner {
 
                 Ok(())
             }
-            ActionCmd::MetaNoneCmd(_) => Ok(()),
-            ActionCmd::AddTableCmd(cmd) => self
+            ActionCmd::CreateTableCmd(cmd) => self
                 .table_manager
                 .add_shard_table(ShardTableInfo::from(cmd))
                 .map_err(|e| Box::new(e) as _),
@@ -147,8 +146,10 @@ impl EventHandler for Inner {
                 self.table_manager.drop_table(&cmd.schema_name, &cmd.name);
                 Ok(())
             }
-            action_cmd => {
-                warn!("Nothing to do for cmd:{:?}", action_cmd);
+            ActionCmd::MetaNoneCmd(_)
+            | ActionCmd::MetaSplitCmd(_)
+            | ActionCmd::MetaChangeRoleCmd(_) => {
+                warn!("Nothing to do for cmd:{:?}", cmd);
 
                 Ok(())
             }
@@ -188,7 +189,7 @@ impl Cluster for ClusterImpl {
             .await
             .context(StartMetaClient)?;
 
-        // start the backgroup loop for sending heartbeat.
+        // start the backgroud loop for sending heartbeat.
         self.start_heartbeat_loop();
 
         info!("Cluster has started");
@@ -198,8 +199,12 @@ impl Cluster for ClusterImpl {
     async fn stop(&self) -> Result<()> {
         info!("Cluster is stopping");
 
+        if let Err(e) = self.inner.meta_client.stop().await {
+            error!("Fail to stop meta client, err:{}", e);
+        }
+
         {
-            let tx = self.stop_hearbeat_tx.lock().unwrap().take();
+            let tx = self.stop_heartbeat_tx.lock().unwrap().take();
             if let Some(tx) = tx {
                 let _ = tx.send(()).await;
             }
