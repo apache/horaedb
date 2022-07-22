@@ -1,7 +1,7 @@
 # Static Routing
 This guide shows how to deloy a CeresDB cluster with static, rule-based routing.
 
-The crucial point here is that CeresDB server provides routing function according to the config so what we need to do is just a valid config which contains the routing rules and then ship the config to every CeresDB instance in the cluster.
+The crucial point here is that CeresDB server provides configurable routing function on table name so what we need is just a valid config containing routing rules which will be shipped to every CeresDB instance in the cluster.
 
 ## Target
 First of all, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deployed according to the two-instance example.
@@ -19,14 +19,11 @@ enable_cluster = true
 wal_path = "/tmp/ceresdb"
 
 [analytic.storage]
-type = "Cache"
-
-[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb"
 ```
 
-In order to deploy three CeresDB instances on the same machine, the config should choose different ports to serve and separate data directory to store data.
+In order to deploy two CeresDB instances on the same machine, the config should choose different ports to serve and data directories to store data.
 
 Say the CeresDB_0's config is:
 ```toml
@@ -40,9 +37,6 @@ enable_cluster = true
 wal_path = "/tmp/ceresdb_0"
 
 [analytic.storage]
-type = "Cache"
-
-[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb_0"
 ```
@@ -59,9 +53,6 @@ enable_cluster = true
 wal_path = "/tmp/ceresdb_1"
 
 [analytic.storage]
-type = "Cache"
-
-[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb_1"
 ```
@@ -105,18 +96,18 @@ Provided with shcema&shard declaration, routing rules can be defined and here is
 ```toml
 [[route_rules.prefix_rules]]
 schema = 'public_0'
-prefix = 'auto'
+prefix = 'prod_'
 shard = 0
 ```
-This rule means that all the table with `auto` prefix belonging to `public_0` should be routed to `shard_0` of `public_0`, that is to say, `CeresDB_0`. As for the other tables whose names are not prefixed by `auto` will be routed by hash to `shard_0` and `shard_1` of `public_0`.
+This rule means that all the table with `prod_` prefix belonging to `public_0` should be routed to `shard_0` of `public_0`, that is to say, `CeresDB_0`. As for the other tables whose names are not prefixed by `prod_` will be routed by hash to both `shard_0` and `shard_1` of `public_0`.
 
 Besides prefix rule, we can also define a hash rule:
 ```toml
 [[route_rules.hash_rules]]
 schema = 'public_1'
-shards = [1]
+shards = [0, 1]
 ```
-This rule tells CeresDB to route `public_1`'s tables to `shard_1` of `public_1`, that is to say, `CeresDB_1`. And it is worth mentioning that`shard_0` of `public_1` will receive no requests if this rule is applied.
+This rule tells CeresDB to route `public_1`'s tables to both `shard_0` and `shard_1` of `public_1`, that is to say, `CeresDB0` and `CeresDB_1`. And actually this is default routing behavior if no such rule provided for schema `public_1`.
 
 For now, we can provide the full example config for `CeresDB_0` and `CeresDB_1`:
 ```toml
@@ -130,9 +121,6 @@ enable_cluster = true
 wal_path = "/tmp/ceresdb_0"
 
 [analytic.storage]
-type = "Cache"
-
-[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb_0"
 
@@ -164,15 +152,15 @@ port = 18831
 
 [[route_rules.prefix_rules]]
 schema = 'public_0'
-prefix = 'auto'
+prefix = 'prod_'
 shard = 0
 
 [[route_rules.hash_rules]]
 schema = 'public_1'
-shards = [1]
+shards = [0, 1]
 ```
 
-```yaml
+```toml
 bind_addr = "0.0.0.0"
 http_port = 15440
 grpc_port = 18831
@@ -217,12 +205,12 @@ port = 18831
 
 [[route_rules.prefix_rules]]
 schema = 'public_0'
-prefix = 'auto'
+prefix = 'prod_'
 shard = 0
 
 [[route_rules.hash_rules]]
 schema = 'public_1'
-shards = [1]
+shards = [0, 1]
 ```
 
 Let's call the two different config files as `config_0.yaml` and `config_1.ymal` but you should know in the real environment the different CeresDB intances can be deloyed across different machines, that is to say, there is no need to choose different ports and data directories for different CeresDB instances so that all the CeresDB instances can share one exactly **same** config file.
