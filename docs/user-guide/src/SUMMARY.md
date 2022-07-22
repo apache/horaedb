@@ -25,3 +25,7 @@
     - [Static Routing](deploy/static_routing.md)
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
+
+-----
+
+- [Trouble Shooting](trouble_shooting.md)
