@@ -213,7 +213,7 @@ schema = 'public_1'
 shards = [0, 1]
 ```
 
-Let's call the two different config files as `config_0.yaml` and `config_1.ymal` but you should know in the real environment the different CeresDB intances can be deployed across different machines, that is to say, there is no need to choose different ports and data directories for different CeresDB instances so that all the CeresDB instances can share one exactly **same** config file.
+Let's call the two different config files as `config_0.toml` and `config_1.toml` but you should know in the real environment the different CeresDB intances can be deployed across different machines, that is to say, there is no need to choose different ports and data directories for different CeresDB instances so that all the CeresDB instances can share one exactly **same** config file.
 
 ## Start CeresDBs
 After the configs are prepared, what we should to do is to start CeresDB container with the specific config.
