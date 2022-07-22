@@ -4,7 +4,7 @@ This page shows you how to get started with CeresDB quickly. You'll start a stan
 
 ## Start server
 
-[CeresDB docker image](https://hub.docker.com/repository/docker/ceresdb/ceresdb-server) is the easiest way to get started, if you haven't install Docker, go [there](https://www.docker.com/products/docker-desktop/) to install it first.
+[CeresDB docker image](https://hub.docker.com/r/ceresdb/ceresdb-server) is the easiest way to get started, if you haven't install Docker, go [there](https://www.docker.com/products/docker-desktop/) to install it first.
 
 You can use command below to start a standalone server
 ```bash
