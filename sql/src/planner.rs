@@ -28,7 +28,7 @@ use table_engine::table::TableRef;
 use crate::{
     ast::{
         AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-        ShowCreate, Statement,
+        ShowCreate, Statement, TableName,
     },
     container::TableReference,
     parser,
@@ -249,12 +249,12 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn create_table_to_plan(&self, stmt: CreateTable) -> Result<Plan> {
-        ensure!(!stmt.name.0.is_empty(), CreateTableNameEmpty);
+        ensure!(!stmt.table_name.is_empty(), CreateTableNameEmpty);
 
         debug!("Create table to plan, stmt:{:?}", stmt);
 
         // TODO(yingwen): Maybe support create table on other schema?
-        let table_name = stmt.name.to_string();
+        let table_name = stmt.table_name.to_string();
         let table_ref = TableReference::from(table_name.as_str());
 
         // Now we only takes the table name and ignore the schema and catalog name
@@ -378,9 +378,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
         let table = if stmt.if_exists {
-            stmt.name.to_string()
+            stmt.table_name.to_string()
         } else {
-            self.find_table(stmt.name)?.name().to_string()
+            self.find_table(stmt.table_name)?.name().to_string()
         };
 
         Ok(Plan::Drop(DropTablePlan {
@@ -405,7 +405,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 source,
                 ..
             } => {
-                let table = self.find_table(table_name)?;
+                let table = self.find_table(ObjectName(table_name.0).into())?;
 
                 let schema = table.schema();
                 // Column name and its index in insert stmt: {column name} => index
@@ -491,7 +491,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn show_create_to_plan(&self, show_create: ShowCreate) -> Result<Plan> {
-        let table = self.find_table(show_create.obj_name)?;
+        let table = self.find_table(show_create.table_name)?;
         let plan = ShowCreatePlan {
             table,
             obj_type: show_create.obj_type,
@@ -507,7 +507,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
-    fn find_table(&self, table_name: ObjectName) -> Result<TableRef> {
+    fn find_table(&self, table_name: TableName) -> Result<TableRef> {
         let table_name = table_name.to_string();
         let table_ref = TableReference::from(table_name.as_str());
 

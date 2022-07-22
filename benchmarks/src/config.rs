@@ -11,7 +11,10 @@ use common_util::{
     toml,
 };
 use serde_derive::Deserialize;
-use table_engine::{predicate::Predicate, table::TableId};
+use table_engine::{
+    predicate::{PredicateBuilder, PredicateRef},
+    table::TableId,
+};
 
 const BENCH_CONFIG_PATH_KEY: &str = "ANALYTIC_BENCH_CONFIG_PATH";
 
@@ -95,7 +98,7 @@ pub struct BenchPredicate {
 }
 
 impl BenchPredicate {
-    pub fn into_predicate(self) -> Predicate {
+    pub fn into_predicate(self) -> PredicateRef {
         let start = Timestamp::new(self.start_time_ms);
         let end = if self.start_time_ms == self.end_time_ms {
             Timestamp::now()
@@ -104,7 +107,9 @@ impl BenchPredicate {
         };
         let time_range = TimeRange::new(start, end).unwrap();
 
-        Predicate::new(time_range)
+        PredicateBuilder::default()
+            .set_time_range(time_range)
+            .build()
     }
 }
 

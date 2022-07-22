@@ -12,7 +12,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
-    time::{TimeRange, Timestamp},
+    time::Timestamp,
 };
 use common_util::config::ReadableDuration;
 use table_engine::{
@@ -178,7 +178,7 @@ pub fn new_read_all_request_with_order(
         request_id: RequestId::next_id(),
         opts,
         projected_schema: ProjectedSchema::no_projection(schema),
-        predicate: Arc::new(Predicate::new(TimeRange::min_to_max())),
+        predicate: Arc::new(Predicate::empty()),
         order,
     }
 }
