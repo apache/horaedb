@@ -4,9 +4,10 @@ This guide shows how to deloy a CeresDB cluster with static, rule-based routing.
 The crucial point here is that CeresDB server provides configurable routing function on table name so what we need is just a valid config containing routing rules which will be shipped to every CeresDB instance in the cluster.
 
 ## Target
-First of all, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deployed according to the two-instance example.
+First of all, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deployed according to the two-instances example.
 
 ## Prepare Config
+### Basic
 Suppose the basic config of CeresDB is:
 ```toml
 bind_addr = "0.0.0.0"
@@ -25,7 +26,7 @@ data_path = "/tmp/ceresdb"
 
 In order to deploy two CeresDB instances on the same machine, the config should choose different ports to serve and data directories to store data.
 
-Say the CeresDB_0's config is:
+Say the `CeresDB_0`'s config is:
 ```toml
 bind_addr = "0.0.0.0"
 http_port = 5440
@@ -41,7 +42,7 @@ type = "Local"
 data_path = "/tmp/ceresdb_0"
 ```
 
-The CeresDB_1's config is:
+Then the `CeresDB_1`'s config is:
 ```toml
 bind_addr = "0.0.0.0"
 http_port = 15440
@@ -57,6 +58,7 @@ type = "Local"
 data_path = "/tmp/ceresdb_1"
 ```
 
+### Schema&Shard declaration
 Then we should define the common part -- schema&shard declaration and routing rules.
 
 Here is the config for schema&shard declaration:
@@ -92,6 +94,7 @@ In the config above, two schemas are declared:
 * `public_0` has two shards served by `CeresDB_0`.
 * `public_1` has two shards served by both `CeresDB_0` and `CeresDB_1`.
 
+### Routing rules
 Provided with shcema&shard declaration, routing rules can be defined and here is an example of prefix rule:
 ```toml
 [[route_rules.prefix_rules]]
@@ -210,7 +213,7 @@ schema = 'public_1'
 shards = [0, 1]
 ```
 
-Let's call the two different config files as `config_0.yaml` and `config_1.ymal` but you should know in the real environment the different CeresDB intances can be deloyed across different machines, that is to say, there is no need to choose different ports and data directories for different CeresDB instances so that all the CeresDB instances can share one exactly **same** config file.
+Let's call the two different config files as `config_0.yaml` and `config_1.ymal` but you should know in the real environment the different CeresDB intances can be deployed across different machines, that is to say, there is no need to choose different ports and data directories for different CeresDB instances so that all the CeresDB instances can share one exactly **same** config file.
 
 ## Start CeresDBs
 After the configs are prepared, what we should to do is to start CeresDB container with the specific config.
@@ -221,59 +224,4 @@ sudo docker run -d -t --name ceresdb_0 -p 5440:5440 -p 8831:8831 -v $(pwd)/confi
 sudo docker run -d -t --name ceresdb_1 -p 15440:15440 -p 18831:18831 -v $(pwd)/config_1.toml:/etc/ceresdb/ceresdb.toml ceresdb/ceresdb-server:v0.1.0-alpha
 ```
 
-After the two containers are created and starting running, read and write requests can be served by the CeresDB cluster consisting of two instances.
-
-## Read and Write
-Create a table called `prod_0` belonging to `public_0`:
-```bash
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_0' \
---data-raw '{
-    "query": "CREATE TABLE `prod_0` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
-}'
-```
-
-Create a tabel called `dev_1` belonging to `public_1`:
-```bash
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_1' \
---data-raw '{
-    "query": "CREATE TABLE `dev_1` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
-}'
-```
-
-Insert some records into the two tables:
-```bash
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_1' \
---data-raw '{
-    "query": "INSERT INTO dev_1(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
-}'
-
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_0' \
---data-raw '{
-    "query": "INSERT INTO prod_0(t, name, value) VALUES(1651737067001, '\''ceresdb'\'', 100)"
-}'
-```
-
-Query the inserted records from another instance:
-```
-curl --location --request POST 'http://127.0.0.1:15440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_0' \
---data-raw '{
-    "query": "select * from prod_0"
-}'
-
-curl --location --request POST 'http://127.0.0.1:15440/sql' \
---header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: public_1' \
---data-raw '{
-    "query": "select * from dev_1"
-}'
-```
+After the two containers are created and starting running, read and write requests can be served by the two-instances CeresDB cluster. 
