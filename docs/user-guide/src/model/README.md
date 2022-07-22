@@ -1,2 +1,3 @@
 # Data Model
-This chapter introduces the Data model of CeresDB.
+
+This chapter introduces the data model of CeresDB.

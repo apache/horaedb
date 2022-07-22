@@ -1,7 +1,7 @@
 # Data Types
 
-CeresDB implements table model, and the supported data types are similar to mysql.
-The following table lists the mapping relationship between mysql and CeresDB.
+CeresDB implements table model, and the supported data types are similar to MySQL.
+The following table lists the mapping relationship between MySQL and CeresDB.
 
 ## Support Data Type(case-insensitive)
 
