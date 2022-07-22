@@ -1,6 +1,7 @@
 name: Deploy Use Guide
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -23,6 +24,7 @@ jobs:
       run: |
         # This assumes your book is in the root of your repository.
         # Just add a `cd` here if you need to change to another directory.
+        cd docs/user-guide
         mdbook build
         git worktree add gh-pages gh-pages
         git config user.name "Deploy from CI"
