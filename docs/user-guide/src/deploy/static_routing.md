@@ -171,9 +171,6 @@ enable_cluster = true
 wal_path = "/tmp/ceresdb_1"
 
 [analytic.storage]
-type = "Cache"
-
-[analytic.storage.local_store]
 type = "Local"
 data_path = "/tmp/ceresdb_1"
 
@@ -220,9 +217,63 @@ After the configs are prepared, what we should to do is to start CeresDB contain
 
 Just run the commands below:
 ```shell
-docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 -v $(pwd)/config_0.yaml:/etc/ceresdbx/ceresdb.toml  ceresdb_0
-docker run -d -t --name ceresdb -p 15440:15440 -p 18831:18831 -v $(pwd)/config_0.yaml:/etc/ceresdbx/ceresdb.toml ceresdb_1
+sudo docker run -d -t --name ceresdb_0 -p 5440:5440 -p 8831:8831 -v $(pwd)/config_0.toml:/etc/ceresdb/ceresdb.toml ceresdb/ceresdb-server:v0.1.0-alpha
+sudo docker run -d -t --name ceresdb_1 -p 15440:15440 -p 18831:18831 -v $(pwd)/config_1.toml:/etc/ceresdb/ceresdb.toml ceresdb/ceresdb-server:v0.1.0-alpha
 ```
 
 After the two containers are created and starting running, read and write requests can be served by the CeresDB cluster consisting of two instances.
 
+## Read and Write
+Create a table called `prod_0` belonging to `public_0`:
+```bash
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_0' \
+--data-raw '{
+    "query": "CREATE TABLE `prod_0` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
+}'
+```
+
+Create a tabel called `dev_1` belonging to `public_1`:
+```bash
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_1' \
+--data-raw '{
+    "query": "CREATE TABLE `dev_1` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
+}'
+```
+
+Insert some records into the two tables:
+```bash
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_1' \
+--data-raw '{
+    "query": "INSERT INTO dev_1(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
+}'
+
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_0' \
+--data-raw '{
+    "query": "INSERT INTO prod_0(t, name, value) VALUES(1651737067001, '\''ceresdb'\'', 100)"
+}'
+```
+
+Query the inserted records from another instance:
+```
+curl --location --request POST 'http://127.0.0.1:15440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_0' \
+--data-raw '{
+    "query": "select * from prod_0"
+}'
+
+curl --location --request POST 'http://127.0.0.1:15440/sql' \
+--header 'Content-Type: application/json' \
+--header 'x-ceresdb-access-tenant: public_1' \
+--data-raw '{
+    "query": "select * from dev_1"
+}'
+```
