@@ -4,7 +4,7 @@ on:
     branches:
       - main
     paths:
-      - README.md
+      - ./docs/dockerhub-description.md
       - .github/workflows/dockerhub-description.yml
 
 jobs:
@@ -18,4 +18,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ceresdb/ceresdb-server
-          short-description: ${{ github.event.repository.description }}
+          readme-filepath: ./docs/dockerhub-description.md
+          # docker hub only support 100 chars, enable this when this limit is canceled
+          # short-description: ${{ github.event.repository.description }}
