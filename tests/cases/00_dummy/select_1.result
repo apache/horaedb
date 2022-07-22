@@ -1,0 +1,62 @@
+SELECT 1;
+
+Int64(1),
+Int64(1),
+
+
+SELECT x;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Schema error: No field named 'x'. Valid fields are ." })
+
+SELECT 'a';
+
+Failed to execute query, err: Client("Failed to parse schema from JSON")
+
+SELECT NOT(1=1);
+
+NOT Int64(1) = Int64(1),
+Boolean(false),
+
+
+SELECT NOT(1);
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: SELECT NOT(1);. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to do logical optimization, err:DataFusion Failed to optimize logical plan, err:Internal error: NOT 'Literal { value: Int64(1) }' can't be evaluated because the expression's type is Int64, not boolean or NULL. This was likely caused by a bug in DataFusion's code and we would welcome that you file an bug report in our issue tracker." })
+
+SELECT TRUE;
+
+Boolean(true),
+Boolean(true),
+
+
+SELECT FALSE;
+
+Boolean(false),
+Boolean(false),
+
+
+SELECT NOT(TRUE);
+
+NOT Boolean(true),
+Boolean(false),
+
+
+SELECT 10 - 2 * 3;
+
+Int64(10) - Int64(2) * Int64(3),
+Int64(4),
+
+
+SELECT (10 - 2) * 3;
+
+Int64(10) - Int64(2) * Int64(3),
+Int64(24),
+
+
+SELECT "That is not good.";
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SELECT \"That is not good.\";, err:sql parser error: Expected an expression:, found: \"" })
+
+SELECT *;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT *;. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:Error during planning: SELECT * with no tables specified is not valid" })
+
