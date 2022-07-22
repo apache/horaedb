@@ -1,0 +1,19 @@
+DROP TABLE `04_explain_t`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DROP TABLE `04_explain_t`;. Caused by: Failed to create plan, err:Table not found, table:04_explain_t" })
+
+CREATE TABLE `04_explain_t` (t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic;
+
+affected_rows: 0
+
+EXPLAIN SELECT t FROM `04_explain_t`;
+
+plan_type,plan,
+String(StringBytes(b"logical_plan")),String(StringBytes(b"Projection: #04_explain_t.t\n  TableScan: 04_explain_t projection=Some([t])")),
+String(StringBytes(b"physical_plan")),String(StringBytes(b"ProjectionExec: expr=[t@0 as t]\n  ScanTable: table=04_explain_t, parallelism=8, order=None, \n")),
+
+
+DROP TABLE `04_explain_t`;
+
+affected_rows: 0
+
