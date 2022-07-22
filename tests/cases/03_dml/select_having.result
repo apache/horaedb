@@ -36,3 +36,7 @@ SELECT    `value` % 3,    MAX(`value`) AS maxFROM    `03_dml_select_having_table
 Int64(1),Int32(30004),
 
 
+DROP TABLE `03_dml_select_having_table1`;
+
+affected_rows: 0
+

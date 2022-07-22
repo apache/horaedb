@@ -51,15 +51,19 @@ INSERT INTO `02_function_aggretate_table1`    (`timestamp`, `arch`, `datacenter`
 
 affected_rows: 1
 
-SELECT count(`value`) FROM `02_function_aggretate_table1`;
+SELECT count(`arch`) FROM `02_function_aggretate_table1`;
 
-COUNT(02_function_aggretate_table1.value),
+COUNT(02_function_aggretate_table1.arch),
 Int64(4),
 
 
-SELECT count(distinct(`value`)) FROM `02_function_aggretate_table1`;
+SELECT count(distinct(`arch`)) FROM `02_function_aggretate_table1`;
 
-COUNT(DISTINCT 02_function_aggretate_table1.value),
-Int64(4),
+COUNT(DISTINCT 02_function_aggretate_table1.arch),
+Int64(2),
 
+
+DROP TABLE `02_function_aggretate_table1`;
+
+affected_rows: 0
 

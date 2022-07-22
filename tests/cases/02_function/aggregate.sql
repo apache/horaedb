@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS `02_function_aggretate_table1`;
 
 CREATE TABLE `02_function_aggretate_table1` (
@@ -43,13 +42,14 @@ SELECT max(`value`) FROM `02_function_aggretate_table1`;
 
 SELECT min(`value`) FROM `02_function_aggretate_table1`;
 
-
 -- duplicate with last insert
 INSERT INTO `02_function_aggretate_table1`
     (`timestamp`, `arch`, `datacenter`, `value`)
 VALUES
     (1658304762, 'x86-64', 'china', 100);
 
-SELECT count(`value`) FROM `02_function_aggretate_table1`;
+SELECT count(`arch`) FROM `02_function_aggretate_table1`;
 
-SELECT count(distinct(`value`)) FROM `02_function_aggretate_table1`;
+SELECT count(distinct(`arch`)) FROM `02_function_aggretate_table1`;
+
+DROP TABLE `02_function_aggretate_table1`;

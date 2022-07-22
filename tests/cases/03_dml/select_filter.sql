@@ -39,3 +39,5 @@ FROM
 where `value` > 50+50 and `value` <= 4400
 ORDER BY
     `value` ASC;
+
+DROP TABLE `03_dml_select_filter_table1`;

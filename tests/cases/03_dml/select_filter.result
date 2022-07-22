@@ -29,3 +29,7 @@ Timestamp(Timestamp(2)),Int32(1000),
 Timestamp(Timestamp(5)),Int32(4400),
 
 
+DROP TABLE `03_dml_select_filter_table1`;
+
+affected_rows: 0
+

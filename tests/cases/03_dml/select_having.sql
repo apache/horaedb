@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS `03_dml_select_having_table1`;
 
 CREATE TABLE `03_dml_select_having_table1` (
@@ -51,7 +50,6 @@ ORDER BY
     max ASC;
 
 
-
 SELECT
     `value` % 3,
     MAX(`value`) AS max
@@ -63,3 +61,5 @@ HAVING
     max > 10000
 ORDER BY
     max ASC;
+
+DROP TABLE `03_dml_select_having_table1`;

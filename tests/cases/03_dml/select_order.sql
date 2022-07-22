@@ -1,4 +1,3 @@
-
 DROP TABLE IF EXISTS `03_dml_select_order_table1`;
 
 CREATE TABLE `03_dml_select_order_table1` (
@@ -10,7 +9,7 @@ WITH(
 );
 
 
-INSERT INTO `03_dml_select_order_table1`
+INSERT INTO `03_dml_select_order_table1` (`timestamp`, `value`)
 VALUES
     (1, 100),
     (2, 1000),
@@ -36,3 +35,5 @@ FROM
     `03_dml_select_order_table1`
 ORDER BY
     `value` DESC;
+
+DROP TABLE `03_dml_select_order_table1`;
