@@ -76,5 +76,22 @@ EXPLAIN query;
 `EXPLAIN` shows how a query will be executed. Add it to the beginning of a query like
 
 ```sql
-EXPLAIN SELECT
+EXPLAIN SELECT max(value) AS c1, avg(value) AS c2 FROM `t` GROUP BY name;
+```
+
+will give
+
+```
+logical_plan
+Projection: #MAX(07_optimizer_t.value) AS c1, #AVG(07_optimizer_t.value) AS c2
+  Aggregate: groupBy=[[#07_optimizer_t.name]], aggr=[[MAX(#07_optimizer_t.value), AVG(#07_optimizer_t.value)]]
+    TableScan: 07_optimizer_t projection=Some([name, value])
+
+physical_plan
+ProjectionExec: expr=[MAX(07_optimizer_t.value)@1 as c1, AVG(07_optimizer_t.value)@2 as c2]
+  AggregateExec: mode=FinalPartitioned, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]
+    CoalesceBatchesExec: target_batch_size=4096
+      RepartitionExec: partitioning=Hash([Column { name: \"name\", index: 0 }], 6)
+        AggregateExec: mode=Partial, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]
+          ScanTable: table=07_optimizer_t, parallelism=8, order=None
 ```

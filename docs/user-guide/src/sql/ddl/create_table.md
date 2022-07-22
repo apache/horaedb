@@ -22,7 +22,7 @@ Table options syntax are key-value pairs. Value should be quote with quotation m
 
 ## IF NOT EXIST
 
-Add `IF NOT EXIST` to tell CeresDB to ignore errors if the table name is already occupied.
+Add `IF NOT EXIST` to tell CeresDB to ignore errors if the table name is already exists.
 
 ## Define Column
 

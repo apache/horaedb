@@ -2,7 +2,7 @@
 
 `ALTER TABLE` can change the schema or options of a table.
 
-CeresDB current supports add column.
+CeresDB current supports `ADD COLUMN`.
 
 ```sql
 -- create a table and add a column to it
