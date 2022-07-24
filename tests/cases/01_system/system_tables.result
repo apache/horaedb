@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS `01_system_table1`;
+
+affected_rows: 0
+
+CREATE TABLE `01_system_table1` (    `timestamp` timestamp NOT NULL,    `arch` string TAG,    `datacenter` string TAG,    `hostname` string TAG,    `value` double,    timestamp KEY (timestamp)) ENGINE=Analytic;
+
+affected_rows: 0
+
+SELECT    `timestamp`,    `catalog`,    `schema`,    `table_name`,    `engine`FROM    system.public.tablesWHERE    table_name = '01_system_table1';
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: SELECT     `timestamp`,     `catalog`,     `schema`,     `table_name`,     `engine` FROM     system.public.tables WHERE     table_name = '01_system_table1';. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:Convert from arrow record batch, err:External error: Execution error: Failed to read table, partition:3, err:Failed to scan table, table:tables, err:Failed to append datum, err:Data type conflict, expect:UInt64, given:String." })
+
+SHOW TABLES `name` LIKE '01_system_table1';
+
+Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SHOW TABLES `name` LIKE '01_system_table1';, err:sql parser error: Expected end of statement, found: `name`" })
+
