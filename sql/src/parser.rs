@@ -7,7 +7,7 @@
 use log::debug;
 use paste::paste;
 use sqlparser::{
-    ast::{ColumnDef, ColumnOption, ColumnOptionDef, Ident, TableConstraint},
+    ast::{ColumnDef, ColumnOption, Ident, TableConstraint},
     dialect::{keywords::Keyword, Dialect, MySqlDialect},
     parser::{IsOptional::Mandatory, Parser as SqlParser, ParserError},
     tokenizer::{Token, Tokenizer},
@@ -15,8 +15,8 @@ use sqlparser::{
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
-    AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, Statement,
+    AlterAddColumn, AlterModifySetting, CerseColumnDef, CerseColumnOption, CerseColumnOptionDef,
+    CreateTable, DescribeTable, DropTable, ExistsTable, ShowCreate, ShowCreateObject, Statement,
 };
 
 define_result!(ParserError);
@@ -252,7 +252,7 @@ impl<'a> Parser<'a> {
         let (mut columns, _) = self.parse_columns()?;
         if columns.is_empty() {
             let column_def = self.parse_column_def()?;
-            columns.push(column_def);
+            columns.push(column_def.into());
         }
         Ok(Statement::AlterAddColumn(AlterAddColumn {
             table_name,
@@ -327,7 +327,7 @@ impl<'a> Parser<'a> {
         let mut columns = vec![];
         let mut constraints = vec![];
         if !self.parser.consume_token(&Token::LParen) || self.parser.consume_token(&Token::RParen) {
-            return Ok((columns, constraints));
+            return Ok((Vec::new(), constraints));
         }
 
         loop {
@@ -352,8 +352,41 @@ impl<'a> Parser<'a> {
                 );
             }
         }
+        let mut cols: Vec<ColumnDef> = vec![];
+        for mut column in columns {
+            let options = column.options;
+            let mut new_opts = vec![];
+            for option in options {
+                if let CerseColumnOption::Unique {
+                    is_primary,
+                    is_timestamp,
+                } = option.option
+                {
+                    if is_primary {
+                        constraints.push(TableConstraint::Unique {
+                            name: None,
+                            columns: vec![column.name.clone()],
+                            is_primary: true,
+                        })
+                    } else if is_timestamp {
+                        constraints.push(TableConstraint::Unique {
+                            name: Some(Ident {
+                                value: TS_KEY.to_owned(),
+                                quote_style: None,
+                            }),
+                            columns: vec![column.name.clone()],
+                            is_primary: false,
+                        });
+                    }
+                } else {
+                    new_opts.push(option);
+                }
+            }
+            column.options = new_opts;
+            cols.push(column.into());
+        }
 
-        Ok((columns, constraints))
+        Ok((cols, constraints))
     }
 
     /// Parses the set of valid formats
@@ -372,7 +405,7 @@ impl<'a> Parser<'a> {
     }
 
     // Copy from sqlparser
-    fn parse_column_def(&mut self) -> Result<ColumnDef> {
+    fn parse_column_def(&mut self) -> Result<CerseColumnDef> {
         let name = self.parser.parse_identifier()?;
         let data_type = self.parser.parse_data_type()?;
         let collation = if self.parser.parse_keyword(Keyword::COLLATE) {
@@ -385,7 +418,7 @@ impl<'a> Parser<'a> {
             if self.parser.parse_keyword(Keyword::CONSTRAINT) {
                 let name = Some(self.parser.parse_identifier()?);
                 if let Some(option) = self.parse_optional_column_option()? {
-                    options.push(ColumnOptionDef { name, option });
+                    options.push(CerseColumnOptionDef { name, option });
                 } else {
                     return self.expected(
                         "constraint details after CONSTRAINT <name>",
@@ -393,12 +426,12 @@ impl<'a> Parser<'a> {
                     );
                 }
             } else if let Some(option) = self.parse_optional_column_option()? {
-                options.push(ColumnOptionDef { name: None, option });
+                options.push(CerseColumnOptionDef { name: None, option });
             } else {
                 break;
             };
         }
-        Ok(ColumnDef {
+        Ok(CerseColumnDef {
             name,
             data_type,
             collation,
@@ -449,31 +482,42 @@ impl<'a> Parser<'a> {
     }
 
     // Copy from sqlparser  by boyan
-    fn parse_optional_column_option(&mut self) -> Result<Option<ColumnOption>> {
+    fn parse_optional_column_option(&mut self) -> Result<Option<CerseColumnOption>> {
         if self.parser.parse_keywords(&[Keyword::NOT, Keyword::NULL]) {
-            Ok(Some(ColumnOption::NotNull))
+            Ok(Some(CerseColumnOption::NotNull))
         } else if self.parser.parse_keyword(Keyword::NULL) {
-            Ok(Some(ColumnOption::Null))
+            Ok(Some(CerseColumnOption::Null))
         } else if self.parser.parse_keyword(Keyword::DEFAULT) {
-            Ok(Some(ColumnOption::Default(self.parser.parse_expr()?)))
+            Ok(Some(CerseColumnOption::Default(self.parser.parse_expr()?)))
         } else if self
             .parser
             .parse_keywords(&[Keyword::PRIMARY, Keyword::KEY])
         {
-            Ok(Some(ColumnOption::Unique { is_primary: true }))
+            Ok(Some(CerseColumnOption::Unique {
+                is_primary: true,
+                is_timestamp: false,
+            }))
+        } else if self
+            .parser
+            .parse_keywords(&[Keyword::TIMESTAMP, Keyword::KEY])
+        {
+            Ok(Some(CerseColumnOption::Unique {
+                is_primary: false,
+                is_timestamp: true,
+            }))
         } else if self.consume_token(TAG) {
             // Support TAG for ceresdb
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(CerseColumnOption::DialectSpecific(vec![
                 Token::make_keyword(TAG),
             ])))
         } else if self.consume_token(UNSIGN) {
             // Support unsign for ceresdb
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(CerseColumnOption::DialectSpecific(vec![
                 Token::make_keyword(UNSIGN),
             ])))
         } else if self.consume_token(COMMENT) {
             let comment = self.parser.parse_literal_string()?;
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(CerseColumnOption::DialectSpecific(vec![
                 Token::make_keyword(COMMENT),
                 Token::SingleQuotedString(comment),
             ])))
@@ -494,7 +538,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::{DataType, Ident, ObjectName, Value};
+    use sqlparser::ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value};
 
     use super::*;
     use crate::ast::TableName;

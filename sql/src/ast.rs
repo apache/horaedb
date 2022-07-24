@@ -2,8 +2,12 @@
 
 //! SQL statement
 
-use sqlparser::ast::{
-    ColumnDef, ObjectName, SqlOption, Statement as SqlStatement, TableConstraint,
+use sqlparser::{
+    ast::{
+        ColumnDef, ColumnOption, ColumnOptionDef, DataType, Expr, Ident, ObjectName,
+        ReferentialAction, SqlOption, Statement as SqlStatement, TableConstraint,
+    },
+    tokenizer::Token,
 };
 
 /// Statement representations
@@ -105,6 +109,141 @@ pub struct ShowCreate {
 #[derive(Debug, PartialEq)]
 pub struct ExistsTable {
     pub table_name: TableName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CerseColumnOptionDef {
+    pub name: Option<Ident>,
+    pub option: CerseColumnOption,
+}
+
+impl From<ColumnOptionDef> for CerseColumnOptionDef {
+    fn from(c: ColumnOptionDef) -> Self {
+        Self {
+            name: c.name,
+            option: c.option.into(),
+        }
+    }
+}
+
+impl From<CerseColumnOptionDef> for ColumnOptionDef {
+    fn from(c: CerseColumnOptionDef) -> Self {
+        Self {
+            name: c.name,
+            option: c.option.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CerseColumnOption {
+    Null,
+    NotNull,
+    Default(Expr),
+    Unique {
+        is_primary: bool,
+        is_timestamp: bool,
+    },
+    ForeignKey {
+        foreign_table: ObjectName,
+        referred_columns: Vec<Ident>,
+        on_delete: Option<ReferentialAction>,
+        on_update: Option<ReferentialAction>,
+    },
+    Check(Expr),
+    DialectSpecific(Vec<Token>),
+    CharacterSet(ObjectName),
+    Comment(String),
+}
+
+impl From<CerseColumnOption> for ColumnOption {
+    fn from(c: CerseColumnOption) -> Self {
+        use CerseColumnOption::*;
+        match c {
+            Null => Self::Null,
+            NotNull => Self::NotNull,
+            Default(e) => Self::Default(e),
+            Unique { is_primary, .. } => Self::Unique { is_primary },
+            ForeignKey {
+                foreign_table,
+                referred_columns,
+                on_delete,
+                on_update,
+            } => Self::ForeignKey {
+                foreign_table,
+                referred_columns,
+                on_delete,
+                on_update,
+            },
+            Check(e) => Self::Check(e),
+            DialectSpecific(v) => Self::DialectSpecific(v),
+            CharacterSet(name) => Self::CharacterSet(name),
+            Comment(s) => Self::Comment(s),
+        }
+    }
+}
+
+impl From<ColumnOption> for CerseColumnOption {
+    fn from(c: ColumnOption) -> Self {
+        use ColumnOption::*;
+        match c {
+            Null => Self::Null,
+            NotNull => Self::NotNull,
+            Default(e) => Self::Default(e),
+            Unique { is_primary } => Self::Unique {
+                is_primary,
+                is_timestamp: false,
+            },
+            ForeignKey {
+                foreign_table,
+                referred_columns,
+                on_delete,
+                on_update,
+            } => Self::ForeignKey {
+                foreign_table,
+                referred_columns,
+                on_delete,
+                on_update,
+            },
+            Check(e) => Self::Check(e),
+            DialectSpecific(v) => Self::DialectSpecific(v),
+            CharacterSet(name) => Self::CharacterSet(name),
+            Comment(s) => Self::Comment(s),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct CerseColumnDef {
+    pub name: Ident,
+    pub data_type: DataType,
+    pub collation: Option<ObjectName>,
+    pub options: Vec<CerseColumnOptionDef>,
+}
+
+impl From<CerseColumnDef> for ColumnDef {
+    fn from(c: CerseColumnDef) -> Self {
+        Self {
+            name: c.name,
+            data_type: c.data_type,
+            collation: c.collation,
+            options: c.options.into_iter().map(|option| option.into()).collect(),
+        }
+    }
+}
+
+impl From<ColumnDef> for CerseColumnDef {
+    fn from(c: ColumnDef) -> Self {
+        Self {
+            name: c.name,
+            data_type: c.data_type,
+            collation: c.collation,
+            options: c.options.into_iter().map(|option| option.into()).collect(),
+        }
+    }
 }
 
 #[cfg(test)]
