@@ -22,12 +22,13 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
+    kv_encoder::{LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch, Payload},
     manager::{
         error::*, BatchLogIteratorAdapter, BlockingLogIterator, LogWriter, ReadContext,
         ReadRequest, RegionId, WalManager, WriteContext, MAX_REGION_ID,
     },
-    rocks_impl::encoding::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
+    rocks_impl::encoding::LogEncoding,
 };
 
 /// Region in the Wal.
@@ -524,7 +525,7 @@ impl RocksLogIterator {
 }
 
 impl BlockingLogIterator for RocksLogIterator {
-    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+    fn next_log_entry(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
         if self.no_more_data {
             return Ok(None);
         }
@@ -552,7 +553,7 @@ impl BlockingLogIterator for RocksLogIterator {
             let payload = self.log_encoding.decode_value(self.iter.value())?;
             let log_entry = LogEntry {
                 sequence: curr_log_key.1,
-                payload,
+                payload: payload.to_owned(),
             };
             Ok(Some(log_entry))
         } else {

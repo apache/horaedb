@@ -23,9 +23,9 @@ use table_kv::{
 use tokio::sync::Mutex;
 
 use crate::{
+    kv_encoder::LogKey,
     log_batch::{LogEntry, LogWriteBatch, Payload},
     manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
-    rocks_impl::encoding::LogKey,
     table_kv_impl::{
         encoding, encoding::LogEncoding, model::RegionEntry, namespace::BucketRef, WalRuntimes,
     },
@@ -52,9 +52,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to do log codec, err:{}.", source))]
-    LogCodec {
-        source: crate::rocks_impl::encoding::Error,
-    },
+    LogCodec { source: crate::kv_encoder::Error },
 
     #[snafu(display("Failed to scan table, err:{}", source))]
     Scan {
@@ -661,7 +659,7 @@ impl<T: TableKv> TableLogIterator<T> {
 }
 
 impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
-    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
+    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<Vec<u8>>>> {
         if self.no_more_data() {
             return Ok(None);
         }
@@ -686,9 +684,14 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             .decode_key(current_iter.key())
             .map_err(|e| Box::new(e) as _)
             .context(manager::Decoding)?;
+        let payload = self
+            .log_encoding
+            .decode_value(current_iter.value())
+            .map_err(|e| Box::new(e) as _)
+            .context(manager::Encoding)?;
         let log_entry = LogEntry {
             sequence: self.current_log_key.1,
-            payload: current_iter.value(),
+            payload: payload.to_owned(),
         };
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None

@@ -223,11 +223,7 @@ pub trait BlockingLogIterator: Send {
     /// Fetch next log entry from the iterator.
     ///
     /// NOTE that this operation may **BLOCK** caller thread now.
-    // fn next_log_entry<D: PayloadDecoder>(
-    //     &mut self,
-    //     decoder: &D,
-    // ) -> Result<Option<LogEntry<D::Target>>>;
-    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>>;
+    fn next_log_entry(&mut self) -> Result<Option<LogEntry<Vec<u8>>>>;
 }
 
 /// Vectorwise log entry iterator.
@@ -245,7 +241,6 @@ pub trait BatchLogIterator {
     ) -> Result<VecDeque<LogEntry<D::Target>>>;
 }
 
-// TODO(xikai): define Error as associate type.
 /// Management of multi-region Wals.
 ///
 /// Every region has its own increasing (and maybe hallow) sequence number
@@ -315,9 +310,9 @@ impl BatchLogIterator for BatchLogIteratorAdapter {
             .spawn_blocking(move || {
                 for _ in 0..batch_size {
                     if let Some(raw_log_entry) = iter.next_log_entry()? {
-                        let mut raw_payload = raw_log_entry.payload;
+                        let raw_payload = raw_log_entry.payload;
                         let payload = decoder
-                            .decode(&mut raw_payload)
+                            .decode(&mut raw_payload.as_slice())
                             .map_err(|e| Box::new(e) as _)
                             .context(manager::Decoding)?;
                         let log_entry = LogEntry {
