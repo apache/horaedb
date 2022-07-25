@@ -1,10 +1,13 @@
+![logo](https://github.com/CeresDB/ceresdb/raw/main/docs/logo/CeresDB.png)
+
+
 [CeresDB](https://github.com/CeresDB/ceresdb) is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
 
 # How to use this image
 
-You can use command below to start a standalone server
+You can use command below to start a standalone server in background:
 ```bash
-docker run --name ceresdb-server \
+docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
@@ -23,7 +26,7 @@ There are some files used by server inside Docker image, the following two are m
 You overwrite those files with this command:
 
 ```bash
-docker run --name ceresdb-server \
+docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
