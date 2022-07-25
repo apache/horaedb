@@ -9,7 +9,7 @@ on:
       - 'docs/user-guide/**'
 
 env:
-  MDBOOK_VERSON: v0.4.20
+  MDBOOK_VERSION: v0.4.20
 
 jobs:
   deploy:
