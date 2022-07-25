@@ -558,6 +558,8 @@ pub struct TableLogIterator<T: TableKv> {
     // The `current_iter` should be either a valid iterator or None.
     current_iter: Option<T::ScanIter>,
     log_encoding: LogEncoding,
+    // TODO(ygf11): Remove this after issue#120 is resolved.
+    values: Vec<u8>,
 }
 
 impl<T: TableKv> TableLogIterator<T> {
@@ -571,6 +573,7 @@ impl<T: TableKv> TableLogIterator<T> {
             current_bucket_index: 0,
             current_iter: None,
             log_encoding: LogEncoding::newest(),
+            values: Vec::default(),
         }
     }
 
@@ -590,6 +593,7 @@ impl<T: TableKv> TableLogIterator<T> {
             current_bucket_index: 0,
             current_iter: None,
             log_encoding: LogEncoding::newest(),
+            values: Vec::default(),
         }
     }
 
@@ -660,7 +664,7 @@ impl<T: TableKv> TableLogIterator<T> {
 }
 
 impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
-    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<Vec<u8>>>> {
+    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data() {
             return Ok(None);
         }
@@ -690,16 +694,22 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
             .decode_value(current_iter.value())
             .map_err(|e| Box::new(e) as _)
             .context(manager::Encoding)?;
-        let log_entry = LogEntry {
-            sequence: self.current_log_key.1,
-            payload: payload.to_owned(),
-        };
+
+        // To unblock pr#119, we use the following to simple resolve borrow-check error.
+        // detail info: https://github.com/CeresDB/ceresdb/issues/120
+        let value_start = self.values.len();
+        self.values.extend_from_slice(payload);
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None
         // and advance `current_bucket_index`.
         self.step_current_iter()
             .map_err(|e| Box::new(e) as _)
             .context(manager::Read)?;
+
+        let log_entry = LogEntry {
+            sequence: self.current_log_key.1,
+            payload: &self.values[value_start..],
+        };
 
         Ok(Some(log_entry))
     }

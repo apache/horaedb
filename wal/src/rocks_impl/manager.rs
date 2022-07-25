@@ -537,7 +537,7 @@ impl RocksLogIterator {
 }
 
 impl BlockingLogIterator for RocksLogIterator {
-    fn next_log_entry(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
+    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data {
             return Ok(None);
         }
@@ -565,7 +565,7 @@ impl BlockingLogIterator for RocksLogIterator {
             let payload = self.log_encoding.decode_value(self.iter.value())?;
             let log_entry = LogEntry {
                 sequence: curr_log_key.1,
-                payload: payload.to_owned(),
+                payload,
             };
             Ok(Some(log_entry))
         } else {
