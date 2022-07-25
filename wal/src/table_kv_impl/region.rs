@@ -559,7 +559,7 @@ pub struct TableLogIterator<T: TableKv> {
     current_iter: Option<T::ScanIter>,
     log_encoding: LogEncoding,
     // TODO(ygf11): Remove this after issue#120 is resolved.
-    values: Vec<u8>,
+    previous_value: Vec<u8>,
 }
 
 impl<T: TableKv> TableLogIterator<T> {
@@ -573,7 +573,7 @@ impl<T: TableKv> TableLogIterator<T> {
             current_bucket_index: 0,
             current_iter: None,
             log_encoding: LogEncoding::newest(),
-            values: Vec::default(),
+            previous_value: Vec::default(),
         }
     }
 
@@ -593,7 +593,7 @@ impl<T: TableKv> TableLogIterator<T> {
             current_bucket_index: 0,
             current_iter: None,
             log_encoding: LogEncoding::newest(),
-            values: Vec::default(),
+            previous_value: Vec::default(),
         }
     }
 
@@ -697,8 +697,7 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
 
         // To unblock pr#119, we use the following to simple resolve borrow-check error.
         // detail info: https://github.com/CeresDB/ceresdb/issues/120
-        let value_start = self.values.len();
-        self.values.extend_from_slice(payload);
+        self.previous_value = payload.to_owned();
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None
         // and advance `current_bucket_index`.
@@ -708,7 +707,7 @@ impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
 
         let log_entry = LogEntry {
             sequence: self.current_log_key.1,
-            payload: &self.values[value_start..],
+            payload: self.previous_value.as_slice(),
         };
 
         Ok(Some(log_entry))
