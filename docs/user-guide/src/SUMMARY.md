@@ -11,7 +11,7 @@
     - [Data Types](model/data_types.md)
     - [Special Columns](model/special_columns.md)
 - [SQL Syntax](sql/README.md)
-    - [Keyword and Identifier](sql/keyword.md)
+    - [Identifier](sql/identifier.md)
     - [Data Definition Statements](sql/ddl/README.md)
         - [CREATE TABLE](sql/ddl/create_table.md)
         - [ALTER TABLE](sql/ddl/alter_table.md)
