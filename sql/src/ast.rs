@@ -113,12 +113,12 @@ pub struct ExistsTable {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CerseColumnOptionDef {
+pub struct CeresColumnOptionDef {
     pub name: Option<Ident>,
-    pub option: CerseColumnOption,
+    pub option: CeresColumnOption,
 }
 
-impl From<ColumnOptionDef> for CerseColumnOptionDef {
+impl From<ColumnOptionDef> for CeresColumnOptionDef {
     fn from(c: ColumnOptionDef) -> Self {
         Self {
             name: c.name,
@@ -127,8 +127,8 @@ impl From<ColumnOptionDef> for CerseColumnOptionDef {
     }
 }
 
-impl From<CerseColumnOptionDef> for ColumnOptionDef {
-    fn from(c: CerseColumnOptionDef) -> Self {
+impl From<CeresColumnOptionDef> for ColumnOptionDef {
+    fn from(c: CeresColumnOptionDef) -> Self {
         Self {
             name: c.name,
             option: c.option.into(),
@@ -138,7 +138,7 @@ impl From<CerseColumnOptionDef> for ColumnOptionDef {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum CerseColumnOption {
+pub enum CeresColumnOption {
     Null,
     NotNull,
     Default(Expr),
@@ -158,9 +158,9 @@ pub enum CerseColumnOption {
     Comment(String),
 }
 
-impl From<CerseColumnOption> for ColumnOption {
-    fn from(c: CerseColumnOption) -> Self {
-        use CerseColumnOption::*;
+impl From<CeresColumnOption> for ColumnOption {
+    fn from(c: CeresColumnOption) -> Self {
+        use CeresColumnOption::*;
         match c {
             Null => Self::Null,
             NotNull => Self::NotNull,
@@ -185,7 +185,7 @@ impl From<CerseColumnOption> for ColumnOption {
     }
 }
 
-impl From<ColumnOption> for CerseColumnOption {
+impl From<ColumnOption> for CeresColumnOption {
     fn from(c: ColumnOption) -> Self {
         use ColumnOption::*;
         match c {
@@ -217,15 +217,15 @@ impl From<ColumnOption> for CerseColumnOption {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CerseColumnDef {
+pub struct CeresColumnDef {
     pub name: Ident,
     pub data_type: DataType,
     pub collation: Option<ObjectName>,
-    pub options: Vec<CerseColumnOptionDef>,
+    pub options: Vec<CeresColumnOptionDef>,
 }
 
-impl From<CerseColumnDef> for ColumnDef {
-    fn from(c: CerseColumnDef) -> Self {
+impl From<CeresColumnDef> for ColumnDef {
+    fn from(c: CeresColumnDef) -> Self {
         Self {
             name: c.name,
             data_type: c.data_type,
@@ -235,7 +235,7 @@ impl From<CerseColumnDef> for ColumnDef {
     }
 }
 
-impl From<ColumnDef> for CerseColumnDef {
+impl From<ColumnDef> for CeresColumnDef {
     fn from(c: ColumnDef) -> Self {
         Self {
             name: c.name,
