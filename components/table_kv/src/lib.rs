@@ -2,7 +2,7 @@
 
 //! Remote key-value api based on table.
 
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 pub mod config;
 pub mod memory;
@@ -121,7 +121,7 @@ pub struct ScanRequest {
 }
 
 /// Iterator to the scan result.
-pub trait ScanIter {
+pub trait ScanIter: fmt::Debug {
     type Error: std::error::Error + Send + Sync + 'static;
 
     /// Returns true if the iterator is valid.
@@ -150,7 +150,7 @@ pub trait TableError: std::error::Error {
 }
 
 /// Kv service provided by a relational database.
-pub trait TableKv: Clone + Send + Sync + 'static {
+pub trait TableKv: Clone + Send + Sync + fmt::Debug + 'static {
     type Error: TableError + Send + Sync + 'static;
     type WriteBatch: WriteBatch + Send;
     type ScanIter: ScanIter + Send;

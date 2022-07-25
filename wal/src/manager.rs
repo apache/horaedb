@@ -219,7 +219,7 @@ pub struct ReadRequest {
 }
 
 /// Blocking Iterator abstraction for log entry.
-pub trait BlockingLogIterator: Send {
+pub trait BlockingLogIterator: Send + fmt::Debug {
     /// Fetch next log entry from the iterator.
     ///
     /// NOTE that this operation may **BLOCK** caller thread now.
@@ -270,7 +270,7 @@ pub trait WalManager: LogWriter + fmt::Debug {
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.
-// #[derive(Debug)]
+#[derive(Debug)]
 pub struct BatchLogIteratorAdapter {
     blocking_iter: Option<Box<dyn BlockingLogIterator>>,
     runtime: Arc<Runtime>,
@@ -279,7 +279,7 @@ pub struct BatchLogIteratorAdapter {
 
 impl BatchLogIteratorAdapter {
     pub fn new(
-        blocking_iter: Box<dyn BlockingLogIterator + Send>,
+        blocking_iter: Box<dyn BlockingLogIterator>,
         runtime: Arc<Runtime>,
         batch_size: usize,
     ) -> Self {

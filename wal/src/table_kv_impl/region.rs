@@ -544,6 +544,7 @@ impl Region {
 
 pub type RegionRef = Arc<Region>;
 
+#[derive(Debug)]
 pub struct TableLogIterator<T: TableKv> {
     buckets: Vec<BucketRef>,
     /// Inclusive max log key.

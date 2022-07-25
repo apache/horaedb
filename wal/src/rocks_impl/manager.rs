@@ -464,6 +464,18 @@ pub struct RocksLogIterator {
     iter: DBIterator<Arc<DB>>,
 }
 
+impl fmt::Debug for RocksLogIterator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RocksLogIterator")
+            .field("log_encoding", &self.log_encoding)
+            .field("no_more_data", &self.no_more_data)
+            .field("min_log_key", &self.min_log_key)
+            .field("max_log_key", &self.max_log_key)
+            .field("seeked", &self.seeked)
+            .finish()
+    }
+}
+
 impl RocksLogIterator {
     /// Create iterator maybe containing data.
     fn with_data(

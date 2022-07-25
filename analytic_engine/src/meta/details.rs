@@ -87,7 +87,7 @@ trait MetaUpdateLogEntryIterator {
 }
 
 /// Implementation of [MetaUpdateReader]
-// #[derive(Debug)]
+#[derive(Debug)]
 pub struct MetaUpdateReaderImpl {
     iter: BatchLogIteratorAdapter,
     has_next: bool,
