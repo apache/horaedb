@@ -22,8 +22,6 @@ jobs:
         echo `pwd`/mdbook >> $GITHUB_PATH
     - name: Deploy GitHub Pages
       run: |
-        # This assumes your book is in the root of your repository.
-        # Just add a `cd` here if you need to change to another directory.
         cd docs/user-guide
         mdbook build
         git worktree add gh-pages gh-pages
@@ -34,6 +32,8 @@ jobs:
         git update-ref -d refs/heads/gh-pages
         rm -rf *
         mv ../book/* .
+        # Add custom domain
+        echo "docs.ceresdb.io" > CNAME
         git add .
         git commit -m "Deploy $GITHUB_SHA to gh-pages"
         git push --force
