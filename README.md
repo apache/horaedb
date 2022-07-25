@@ -45,7 +45,7 @@ Assuming the development environment is Ubuntu20.04, execute the following comma
 apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
-It should be noted that the compilation of the project actually has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
+It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
 
 #### Rust
 `Rust` can be installed by [rustup](https://rustup.rs/). After installing rustup, when entering the CeresDB project, the specified `Rust` version will be automatically downloaded according to the rust-toolchain file.
