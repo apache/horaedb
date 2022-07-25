@@ -18,7 +18,7 @@ See our [RoadMap](./docs/dev/roadmap.md)
 
 ## Get started
 ### Clone the repository
-Clone this repository by `git` and enter it:
+Clone this repository using `git` and enter it:
 ```bash
 git clone git@github.com:CeresDB/ceresdb.git
 cd ceresdb
@@ -37,7 +37,7 @@ docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb
 
 ### Compile and run CeresDB
 #### Install dependencies
-In order to compile CeresDB, some relevant dependencies(including `Rust` toolchain) should be installed.
+In order to compile CeresDB, some relevant dependencies(including the `Rust` toolchain) should be installed.
 
 #### Dependencies(Ubuntu20.04)
 Assuming the development environment is Ubuntu20.04, execute the following command to install the required dependencies:
@@ -45,7 +45,7 @@ Assuming the development environment is Ubuntu20.04, execute the following comma
 apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
-It should be noted that the compilation of the project actually has version requirements for some dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
+It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
 
 #### Rust
 `Rust` can be installed by [rustup](https://rustup.rs/). After installing rustup, when entering the CeresDB project, the specified `Rust` version will be automatically downloaded according to the rust-toolchain file.
