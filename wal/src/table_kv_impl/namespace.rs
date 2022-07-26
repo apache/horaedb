@@ -1315,7 +1315,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        log_batch::LogWriteEntry,
+        log_batch::{LogWriteEntry, PayloadDecoder},
         table_kv_impl::{consts, encoding::LogEncoding},
         tests::util::{TestPayload, TestPayloadDecoder},
     };
@@ -1676,8 +1676,8 @@ mod tests {
         let mut key_values = Vec::new();
         while iter.valid() {
             let decoded_key = log_encoding.decode_key(iter.key()).unwrap();
-            let decoded_value = log_encoding.decode_value(iter.value(), &decoder).unwrap();
-
+            let mut raw_value = log_encoding.decode_value(iter.value()).unwrap();
+            let decoded_value = decoder.decode(&mut raw_value).unwrap();
             key_values.push((decoded_key.1, decoded_value));
 
             iter.next().unwrap();

@@ -11,11 +11,12 @@ use common_util::{
 use table_kv::{KeyBoundary, ScanRequest};
 
 use crate::{
-    log_batch::{Payload, PayloadDecoder},
-    manager::RegionId,
-    rocks_impl::encoding::{
-        self as rocks_encoding, LogKey, LogKeyEncoder, LogValueDecoder, LogValueEncoder, Result,
+    kv_encoder::{
+        LogKey, LogKeyEncoder, LogValueDecoder, LogValueEncoder, Result,
+        NEWEST_LOG_VALUE_ENCODING_VERSION,
     },
+    log_batch::Payload,
+    manager::RegionId,
 };
 
 /// Key prefix for namespace in meta table.
@@ -109,7 +110,7 @@ impl LogEncoding {
         Self {
             key_enc: LogKeyEncoder::newest(),
             value_enc: LogValueEncoder::newest(),
-            value_enc_version: rocks_encoding::NEWEST_LOG_VALUE_ENCODING_VERSION,
+            value_enc_version: NEWEST_LOG_VALUE_ENCODING_VERSION,
         }
     }
 
@@ -138,17 +139,12 @@ impl LogEncoding {
         self.key_enc.decode(&mut buf)
     }
 
-    pub fn decode_value<D: PayloadDecoder>(
-        &self,
-        mut buf: &[u8],
-        decoder: &D,
-    ) -> Result<D::Target> {
+    pub fn decode_value<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8]> {
         let value_dec = LogValueDecoder {
             version: self.value_enc_version,
-            payload_dec: decoder,
         };
 
-        value_dec.decode(&mut buf)
+        value_dec.decode(buf)
     }
 }
 
@@ -158,6 +154,7 @@ mod tests {
 
     use super::*;
     use crate::{
+        log_batch::PayloadDecoder,
         table_kv_impl::namespace,
         tests::util::{TestPayload, TestPayloadDecoder},
     };
@@ -278,7 +275,8 @@ mod tests {
 
             encoding.encode_value(&mut buf, &payload).unwrap();
 
-            let decoded_value = encoding.decode_value(&buf, &decoder).unwrap();
+            let mut value = encoding.decode_value(&buf).unwrap();
+            let decoded_value = decoder.decode(&mut value).unwrap();
 
             assert_eq!(payload, decoded_value);
         }

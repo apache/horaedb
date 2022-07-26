@@ -2,7 +2,7 @@
 
 //! Obkv implementation.
 
-use std::{collections::HashMap, error::Error as StdError};
+use std::{collections::HashMap, error::Error as StdError, fmt};
 
 use common_util::define_result;
 use log::{error, info};
@@ -280,6 +280,17 @@ pub struct ObkvImpl {
     max_create_table_retries: usize,
 }
 
+impl fmt::Debug for ObkvImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObkvImpl")
+            .field("client", &"ObTableClient".to_string())
+            .field("enable_purge_recyclebin", &self.enable_purge_recyclebin)
+            .field("check_batch_result_num", &self.check_batch_result_num)
+            .field("max_create_table_retries", &self.max_create_table_retries)
+            .finish()
+    }
+}
+
 impl ObkvImpl {
     /// Create a new obkv client instance with given `config`.
     pub fn new(config: ObkvConfig) -> Result<Self> {
@@ -492,6 +503,22 @@ pub struct ObkvScanIter {
     result_set_fetched_num: i32,
     /// The iterator has been exhausted.
     eof: bool,
+}
+
+impl fmt::Debug for ObkvScanIter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ObkvScanIter")
+            .field("client", &"ObTableClient".to_string())
+            .field("ctx", &self.ctx)
+            .field("table_name", &self.table_name)
+            .field("request", &self.request)
+            .field("result_set", &self.result_set)
+            .field("current_key", &self.current_key)
+            .field("current_value", &self.current_value)
+            .field("result_set_fetched_num", &self.result_set_fetched_num)
+            .field("eof", &self.eof)
+            .finish()
+    }
 }
 
 impl ObkvScanIter {
