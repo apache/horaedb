@@ -1,4 +1,4 @@
-name: Publish Image to Docker Hub
+name: Build Docker Image and Push to Docker Hub on Tags
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 jobs:
   docker:
+    if: github.repository_owner == 'CeresDB'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,7 +19,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push
+      - name: Build and Push CeresDB Server Docker Image
         uses: docker/build-push-action@v3
         with:
           context: .
