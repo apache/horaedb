@@ -17,7 +17,11 @@
 
 package storage
 
-import "context"
+import (
+	"context"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+)
 
 // KV is an abstract interface for kv storage
 type KV interface {
@@ -25,4 +29,6 @@ type KV interface {
 	Scan(ctx context.Context, key, endKey string, limit int) (keys []string, values []string, err error)
 	Put(ctx context.Context, key, value string) error
 	Delete(ctx context.Context, key string) error
+
+	Txn(ctx context.Context) clientv3.Txn
 }

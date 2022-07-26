@@ -101,3 +101,7 @@ func (kv *etcdKV) Delete(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+func (kv *etcdKV) Txn(ctx context.Context) clientv3.Txn {
+	return kv.client.Txn(ctx)
+}
