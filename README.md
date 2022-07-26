@@ -4,6 +4,7 @@
 [![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
+[![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
 
 [中文](./README-CN.md)
 
@@ -16,25 +17,10 @@ The project is currently under rapid development. This early stage is not produc
 
 See our [RoadMap](./docs/dev/roadmap.md)
 
-## Get started
-### Clone the repository
-Clone this repository using `git` and enter it:
-```bash
-git clone git@github.com:CeresDB/ceresdb.git
-cd ceresdb
-```
+## User Guide
+See https://docs.ceresdb.io/
 
-### Run ceresdb in docker
-Ensure that `docker` is installed in your development environment, and then build the image with the provided Dockerfile:
-```shell
-docker build -t ceresdb .
-```
-
-Start the ceresdb container using the built docker image:
-```shell
-docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb
-```
-
+## Develop
 ### Compile and run CeresDB
 #### Install dependencies
 In order to compile CeresDB, some relevant dependencies(including the `Rust` toolchain) should be installed.
@@ -64,54 +50,6 @@ cargo build --release
 Then you can run CeresDB using the default configuration file provided in the codebase.
 ```bash
 ./target/release/ceresdb-server --config ./docs/example.toml
-```
-
-### Write and read data
-CeresDB supports custom extended SQL protocol. Currently, you can create tables and read/write data with SQL statements through http service.
-
-#### Create table
-```shell
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "query": "CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='\''false'\'')"
-}'
-```
-
-#### Write data
-```shell
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
-}'
-```
-
-#### Read data
-```shell
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "query": "select * from demo"
-}'
-```
-
-#### Show create table
-```shell
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "query": "show create table demo"
-}'
-```
-
-#### Drop table
-```shell
-curl --location --request POST 'http://127.0.0.1:5440/sql' \
---header 'Content-Type: application/json' \
---data-raw '{
-    "query": "DROP TABLE demo"
-}'
 ```
 
 ## Platform Support
