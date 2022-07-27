@@ -3,7 +3,7 @@
 Tables in CeresDB have the following constraints:
 * Primary key is required
 * The primary key must contain a time column, and can only contain one time column
-* The primary key column must be non-null, so the time column must also be non-null
+* The primary key must be non-null, so all columns in primary key must be non-null.
 
 ## Timestamp Column
 
@@ -60,7 +60,7 @@ CREATE TABLE with_timestamp(
 
 ## TSID
 
-If `primary key`is not set, and tag columns is provided, TSID will auto generated from tag columns hash. 
+If `primary key`is not set, and tag columns is provided, TSID will auto generated from hash of tag columns. 
 In essence, this is also a mechanism for automatically generating id.
 
 
