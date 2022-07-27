@@ -14,18 +14,18 @@ type MetaStorage interface {
 	PutCluster(ctx context.Context, clusterID uint32, meta *metapb.Cluster) error
 
 	GetClusterTopology(ctx context.Context, clusterID uint32) (*metapb.ClusterTopology, error)
-	PutClusterTopology(ctx context.Context, clusterID uint32, clusterMetaData *metapb.ClusterTopology) error
+	PutClusterTopology(ctx context.Context, clusterID uint32, latestVersion uint32, clusterMetaData *metapb.ClusterTopology) error
 
 	ListSchemas(ctx context.Context, clusterID uint32) ([]*metapb.Schema, error)
 	PutSchemas(ctx context.Context, clusterID uint32, schemas []*metapb.Schema) error
 
-	ListTables(ctx context.Context, clusterID uint32, schemaID uint32, tableID []uint64) ([]*metapb.Table, error)
+	ListTables(ctx context.Context, clusterID uint32, schemaID uint32, tableIDs []uint64) ([]*metapb.Table, error)
 	PutTables(ctx context.Context, clusterID uint32, schemaID uint32, tables []*metapb.Table) error
 	DeleteTables(ctx context.Context, clusterID uint32, schemaID uint32, tableIDs []uint64) error
 
-	ListShardTopologies(ctx context.Context, clusterID uint32, shardID []uint32) ([]*metapb.ShardTopology, error)
-	PutShardTopologies(ctx context.Context, clusterID uint32, shardID []uint32, topologies []*metapb.ShardTopology) error
+	ListShardTopologies(ctx context.Context, clusterID uint32, shardIDs []uint32) ([]*metapb.ShardTopology, error)
+	PutShardTopologies(ctx context.Context, clusterID uint32, shardIDs []uint32, latestVersion uint32, topologies []*metapb.ShardTopology) error
 
 	ListNodes(ctx context.Context, clusterID uint32) ([]*metapb.Node, error)
-	PutNodes(ctx context.Context, clusterID uint32, node []*metapb.Node) error
+	PutNodes(ctx context.Context, clusterID uint32, nodes []*metapb.Node) error
 }

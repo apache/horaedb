@@ -71,6 +71,7 @@ func (kv *etcdKV) Scan(ctx context.Context, key, endKey string, limit int) ([]st
 	if err != nil {
 		return nil, nil, etcdutil.ErrEtcdKVGet.WithCause(err)
 	}
+
 	keys := make([]string, 0, len(resp.Kvs))
 	values := make([]string, 0, len(resp.Kvs))
 	for _, item := range resp.Kvs {
@@ -85,9 +86,13 @@ func (kv *etcdKV) Put(ctx context.Context, key, value string) error {
 	_, err := kv.client.Put(ctx, key, value)
 	if err != nil {
 		e := etcdutil.ErrEtcdKVPut.WithCause(err)
-		log.Error("save to etcd meet error", zap.String("key", key), zap.String("value", value), zap.Error(e))
+		log.Error("save to etcd meet error",
+			zap.String("key", key),
+			zap.String("value", value),
+			zap.Error(e))
 		return e
 	}
+
 	return nil
 }
 
