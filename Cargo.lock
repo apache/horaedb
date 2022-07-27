@@ -809,12 +809,19 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git#a7db8811a949eb194788eda2125284e9b2ffdd4b"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=ec5404e0f60fc748d3e8b68a592e2926ac1e84de#ec5404e0f60fc748d3e8b68a592e2926ac1e84de"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
  "protobuf",
  "protobuf-builder",
+]
+
+[[package]]
+name = "ceresdbproto_deps"
+version = "0.1.0"
+dependencies = [
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=ec5404e0f60fc748d3e8b68a592e2926ac1e84de)",
 ]
 
 [[package]]
@@ -894,6 +901,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "cluster"
+version = "0.1.0"
+dependencies = [
+ "analytic_engine",
+ "async-trait",
+ "catalog",
+ "common_types 0.1.0",
+ "common_util",
+ "log",
+ "meta_client_v2",
+ "rust-fsm",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "snafu 0.6.10",
+ "tokio 1.19.2",
 ]
 
 [[package]]
@@ -2816,7 +2842,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git)",
+ "ceresdbproto_deps",
  "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
@@ -2829,6 +2855,29 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
+ "tokio 1.19.2",
+ "url 2.2.2",
+]
+
+[[package]]
+name = "meta_client_v2"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "catalog",
+ "ceresdbproto_deps",
+ "common_types 0.1.0",
+ "common_util",
+ "futures 0.3.21",
+ "grpcio 0.1.0",
+ "log",
+ "protobuf",
+ "rand 0.7.3",
+ "reqwest 0.11.11",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "snafu 0.6.10",
  "tokio 1.19.2",
  "url 2.2.2",
 ]
@@ -4393,6 +4442,25 @@ dependencies = [
  "rand 0.3.23",
  "rustc-serialize",
  "time 0.1.44",
+]
+
+[[package]]
+name = "rust-fsm"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b9ee4731a0f53c973772b83c43c57a26e146b6fa024af5aeab972b63d678b65"
+dependencies = [
+ "rust-fsm-dsl",
+]
+
+[[package]]
+name = "rust-fsm-dsl"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44237c429621e3606374941c3061fe95686bdaddb9b4f6524e4edc2d21da9c58"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]

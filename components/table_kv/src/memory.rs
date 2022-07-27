@@ -73,6 +73,7 @@ impl WriteBatch for MemoryWriteBatch {
 
 type KeyValue = (Vec<u8>, Vec<u8>);
 
+#[derive(Debug)]
 pub struct MemoryScanIter {
     /// All key values from the iterator.
     key_values: Vec<KeyValue>,
@@ -115,7 +116,7 @@ impl ScanIter for MemoryScanIter {
 
 type BytesMap = BTreeMap<Vec<u8>, Vec<u8>>;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Table {
     data: Mutex<BytesMap>,
 }
@@ -178,7 +179,7 @@ impl Table {
 type TableRef = Arc<Table>;
 type TableMap = HashMap<String, TableRef>;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct MemoryImpl {
     tables: Arc<Mutex<TableMap>>,
 }

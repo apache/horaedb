@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
-[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw)
+[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 
 [中文](./README-CN.md)
 
@@ -18,7 +18,7 @@ See our [RoadMap](./docs/dev/roadmap.md)
 
 ## Get started
 ### Clone the repository
-Clone this repository by `git` and enter it:
+Clone this repository using `git` and enter it:
 ```bash
 git clone git@github.com:CeresDB/ceresdb.git
 cd ceresdb
@@ -37,7 +37,7 @@ docker run -d -t --name ceresdb -p 5440:5440 -p 8831:8831 ceresdb
 
 ### Compile and run CeresDB
 #### Install dependencies
-In order to compile CeresDB, some relevant dependencies(including `Rust` toolchain) should be installed.
+In order to compile CeresDB, some relevant dependencies(including the `Rust` toolchain) should be installed.
 
 #### Dependencies(Ubuntu20.04)
 Assuming the development environment is Ubuntu20.04, execute the following command to install the required dependencies:
@@ -45,7 +45,7 @@ Assuming the development environment is Ubuntu20.04, execute the following comma
 apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
-It should be noted that the compilation of the project actually has version requirements for some dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
+It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
 
 #### Rust
 `Rust` can be installed by [rustup](https://rustup.rs/). After installing rustup, when entering the CeresDB project, the specified `Rust` version will be automatically downloaded according to the rust-toolchain file.
@@ -140,7 +140,7 @@ CeresDB is under [Apache License 2.0](./LICENSE).
 
 ## Community and support
 - Check our community [roles](docs/community/ROLES.md)
-- Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1au1ihbdy-5huC9J9s2462yBMIWmerTw) 
+- Join the user group on [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 - Contact us via Email: ceresdbservice@gmail.com
-- WeChat group [QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg) 
+- WeChat group [QR code](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
 - Join the user group on DingTalk: 44602802

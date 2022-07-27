@@ -308,12 +308,8 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             catalog_manager: instance.catalog_manager.clone(),
         });
 
-        let meta_client = meta_client::build_meta_client(
-            meta_client_config,
-            runtimes.bg_runtime.clone(),
-            Some(watcher),
-        )
-        .context(BuildMetaClient)?;
+        let meta_client = meta_client::build_meta_client(meta_client_config, Some(watcher))
+            .context(BuildMetaClient)?;
         let router = Arc::new(RuleBasedRouter::new(meta_client.clone(), self.route_rules));
         let storage_service = StorageServiceImpl {
             router,

@@ -13,13 +13,12 @@ use table_kv::TableKv;
 use crate::{
     log_batch::{LogWriteBatch, Payload},
     manager::{
-        self, error::*, BatchLogIteratorAdapter, LogReader, LogWriter, ReadContext, ReadRequest,
-        RegionId, WalManager,
+        self, error::*, BatchLogIteratorAdapter, LogWriter, ReadContext, ReadRequest, RegionId,
+        WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
         namespace::{Namespace, NamespaceRef},
-        region::TableLogIterator,
         WalRuntimes,
     },
 };
@@ -114,27 +113,6 @@ impl<T: TableKv> LogWriter for WalNamespaceImpl<T> {
 }
 
 #[async_trait]
-impl<T: TableKv> LogReader for WalNamespaceImpl<T> {
-    type BatchIter = BatchLogIteratorAdapter<TableLogIterator<T>>;
-
-    async fn read_batch(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<Self::BatchIter> {
-        let blocking_iter = self
-            .namespace
-            .read_log(ctx, req)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Read)?;
-        let runtime = self.namespace.read_runtime().clone();
-
-        Ok(BatchLogIteratorAdapter::new(
-            blocking_iter,
-            runtime,
-            ctx.batch_size,
-        ))
-    }
-}
-
-#[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
         self.namespace
@@ -163,5 +141,25 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         );
 
         self.close_namespace().await
+    }
+
+    async fn read_batch(
+        &self,
+        ctx: &ReadContext,
+        req: &ReadRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        let blocking_iter = self
+            .namespace
+            .read_log(ctx, req)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(Read)?;
+        let runtime = self.namespace.read_runtime().clone();
+
+        Ok(BatchLogIteratorAdapter::new(
+            Box::new(blocking_iter),
+            runtime,
+            ctx.batch_size,
+        ))
     }
 }

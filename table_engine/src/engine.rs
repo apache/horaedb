@@ -273,5 +273,6 @@ pub type TableEngineRef = Arc<dyn TableEngine>;
 pub struct EngineRuntimes {
     pub read_runtime: Arc<Runtime>,
     pub write_runtime: Arc<Runtime>,
+    pub meta_runtime: Arc<Runtime>,
     pub bg_runtime: Arc<Runtime>,
 }
