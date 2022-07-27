@@ -12,10 +12,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Build CeresDB Server Docker Image
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          tags: ceresdb/ceresdb-server:${{github.ref_name}}
+      - name: Build Docker image
+        run: docker build -t ceresdb-server .
+      - name: Test the Built Image
+        run: >-
+          docker run -p 127.0.0.1:5440:5440 -d ceresdb-server &&
+          bash ./tests/basic.sh
