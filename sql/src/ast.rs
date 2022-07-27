@@ -2,12 +2,8 @@
 
 //! SQL statement
 
-use sqlparser::{
-    ast::{
-        ColumnDef, ColumnOption, ColumnOptionDef, DataType, Expr, Ident, ObjectName,
-        ReferentialAction, SqlOption, Statement as SqlStatement, TableConstraint,
-    },
-    tokenizer::Token,
+use sqlparser::ast::{
+    ColumnDef, ObjectName, SqlOption, Statement as SqlStatement, TableConstraint,
 };
 
 /// Statement representations
@@ -109,141 +105,6 @@ pub struct ShowCreate {
 #[derive(Debug, PartialEq)]
 pub struct ExistsTable {
     pub table_name: TableName,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CeresColumnOptionDef {
-    pub name: Option<Ident>,
-    pub option: CeresColumnOption,
-}
-
-impl From<ColumnOptionDef> for CeresColumnOptionDef {
-    fn from(c: ColumnOptionDef) -> Self {
-        Self {
-            name: c.name,
-            option: c.option.into(),
-        }
-    }
-}
-
-impl From<CeresColumnOptionDef> for ColumnOptionDef {
-    fn from(c: CeresColumnOptionDef) -> Self {
-        Self {
-            name: c.name,
-            option: c.option.into(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum CeresColumnOption {
-    Null,
-    NotNull,
-    Default(Expr),
-    Unique {
-        is_primary: bool,
-        is_timestamp: bool,
-    },
-    ForeignKey {
-        foreign_table: ObjectName,
-        referred_columns: Vec<Ident>,
-        on_delete: Option<ReferentialAction>,
-        on_update: Option<ReferentialAction>,
-    },
-    Check(Expr),
-    DialectSpecific(Vec<Token>),
-    CharacterSet(ObjectName),
-    Comment(String),
-}
-
-impl From<CeresColumnOption> for ColumnOption {
-    fn from(c: CeresColumnOption) -> Self {
-        use CeresColumnOption::*;
-        match c {
-            Null => Self::Null,
-            NotNull => Self::NotNull,
-            Default(e) => Self::Default(e),
-            Unique { is_primary, .. } => Self::Unique { is_primary },
-            ForeignKey {
-                foreign_table,
-                referred_columns,
-                on_delete,
-                on_update,
-            } => Self::ForeignKey {
-                foreign_table,
-                referred_columns,
-                on_delete,
-                on_update,
-            },
-            Check(e) => Self::Check(e),
-            DialectSpecific(v) => Self::DialectSpecific(v),
-            CharacterSet(name) => Self::CharacterSet(name),
-            Comment(s) => Self::Comment(s),
-        }
-    }
-}
-
-impl From<ColumnOption> for CeresColumnOption {
-    fn from(c: ColumnOption) -> Self {
-        use ColumnOption::*;
-        match c {
-            Null => Self::Null,
-            NotNull => Self::NotNull,
-            Default(e) => Self::Default(e),
-            Unique { is_primary } => Self::Unique {
-                is_primary,
-                is_timestamp: false,
-            },
-            ForeignKey {
-                foreign_table,
-                referred_columns,
-                on_delete,
-                on_update,
-            } => Self::ForeignKey {
-                foreign_table,
-                referred_columns,
-                on_delete,
-                on_update,
-            },
-            Check(e) => Self::Check(e),
-            DialectSpecific(v) => Self::DialectSpecific(v),
-            CharacterSet(name) => Self::CharacterSet(name),
-            Comment(s) => Self::Comment(s),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CeresColumnDef {
-    pub name: Ident,
-    pub data_type: DataType,
-    pub collation: Option<ObjectName>,
-    pub options: Vec<CeresColumnOptionDef>,
-}
-
-impl From<CeresColumnDef> for ColumnDef {
-    fn from(c: CeresColumnDef) -> Self {
-        Self {
-            name: c.name,
-            data_type: c.data_type,
-            collation: c.collation,
-            options: c.options.into_iter().map(|option| option.into()).collect(),
-        }
-    }
-}
-
-impl From<ColumnDef> for CeresColumnDef {
-    fn from(c: ColumnDef) -> Self {
-        Self {
-            name: c.name,
-            data_type: c.data_type,
-            collation: c.collation,
-            options: c.options.into_iter().map(|option| option.into()).collect(),
-        }
-    }
 }
 
 #[cfg(test)]
