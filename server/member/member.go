@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/metastoragepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"go.etcd.io/etcd/api/v3/mvccpb"
@@ -27,7 +27,7 @@ type Member struct {
 	leaderKey        string
 	etcdCli          *clientv3.Client
 	etcdLeaderGetter etcdutil.EtcdLeaderGetter
-	leader           *metapb.Member
+	leader           *metastoragepb.Member
 	rpcTimeout       time.Duration
 	logger           *zap.Logger
 }
@@ -68,7 +68,7 @@ func (m *Member) GetLeader(ctx context.Context) (*GetLeaderResp, error) {
 		return &GetLeaderResp{}, nil
 	}
 	leaderKv := resp.Kvs[0]
-	leader := &metapb.Member{}
+	leader := &metastoragepb.Member{}
 	err = proto.Unmarshal(leaderKv.Value, leader)
 	if err != nil {
 		return nil, ErrInvalidLeaderValue.WithCause(err)
@@ -204,7 +204,7 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64) e
 }
 
 func (m *Member) Marshal() (string, error) {
-	memPb := &metapb.Member{
+	memPb := &metastoragepb.Member{
 		Name: m.Name,
 		Id:   m.ID,
 	}
@@ -217,6 +217,6 @@ func (m *Member) Marshal() (string, error) {
 }
 
 type GetLeaderResp struct {
-	Leader   *metapb.Member
+	Leader   *metastoragepb.Member
 	Revision int64
 }

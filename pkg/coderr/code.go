@@ -9,6 +9,9 @@ type Code int
 const (
 	InvalidParams Code = http.StatusBadRequest
 	Internal           = http.StatusInternalServerError
+	NotFound           = http.StatusNotFound
+	BadRequest         = http.StatusBadRequest
+
 	// HTTPCodeUpperBound is a bound under which any Code should have the same meaning with the http status code.
 	HTTPCodeUpperBound = Code(1000)
 	PrintHelpUsage     = 1001

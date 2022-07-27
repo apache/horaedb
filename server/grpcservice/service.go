@@ -7,13 +7,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"go.uber.org/zap"
 )
 
 type Service struct {
-	metapb.UnimplementedCeresmetaRpcServiceServer
+	metaservicepb.UnimplementedCeresmetaRpcServiceServer
 
 	opTimeout time.Duration
 	h         Handler
@@ -27,14 +27,14 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 }
 
 type HeartbeatStreamSender interface {
-	Send(response *metapb.NodeHeartbeatResponse) error
+	Send(response *metaservicepb.NodeHeartbeatResponse) error
 }
 
 // Handler is needed by grpc service to process the requests.
 type Handler interface {
 	UnbindHeartbeatStream(ctx context.Context, node string) error
 	BindHeartbeatStream(ctx context.Context, node string, sender HeartbeatStreamSender) error
-	ProcessHeartbeat(ctx context.Context, req *metapb.NodeHeartbeatRequest) error
+	ProcessHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) error
 
 	// TODO: define the methods for handling other grpc requests.
 }
@@ -79,7 +79,7 @@ func (b *streamBinder) unbind(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) NodeHeartbeat(heartbeatSrv metapb.CeresmetaRpcService_NodeHeartbeatServer) error {
+func (s *Service) NodeHeartbeat(heartbeatSrv metaservicepb.CeresmetaRpcService_NodeHeartbeatServer) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

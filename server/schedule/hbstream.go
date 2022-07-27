@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"go.uber.org/zap"
 )
@@ -18,7 +18,7 @@ const (
 type sendReq struct {
 	ctx  context.Context
 	node string
-	msg  *metapb.NodeHeartbeatResponse
+	msg  *metaservicepb.NodeHeartbeatResponse
 }
 
 // HeartbeatStreams manages all the streams connected by ceresdb node.
@@ -54,7 +54,7 @@ func NewHeartbeatStreams(ctx context.Context) *HeartbeatStreams {
 }
 
 type HeartbeatStreamSender interface {
-	Send(response *metapb.NodeHeartbeatResponse) error
+	Send(response *metaservicepb.NodeHeartbeatResponse) error
 }
 
 func (h *HeartbeatStreams) runBgJob() {
@@ -112,7 +112,7 @@ func (h *HeartbeatStreams) Unbind(node string) {
 }
 
 // SendMsgAsync sends messages to node and this procedure is asynchronous.
-func (h *HeartbeatStreams) SendMsgAsync(ctx context.Context, node string, msg *metapb.NodeHeartbeatResponse) error {
+func (h *HeartbeatStreams) SendMsgAsync(ctx context.Context, node string, msg *metaservicepb.NodeHeartbeatResponse) error {
 	req := &sendReq{
 		ctx,
 		node,

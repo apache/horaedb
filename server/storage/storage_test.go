@@ -5,11 +5,13 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"strconv"
 	"testing"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +25,7 @@ func TestCluster(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	meta := &metapb.Cluster{Id: 1, Name: "name", MinNodeCount: 1, ReplicationFactor: 1, ShardTotal: 1}
+	meta := &clusterpb.Cluster{Id: 1, Name: "name", MinNodeCount: 1, ReplicationFactor: 1, ShardTotal: 1}
 	err := s.PutCluster(ctx, 0, meta)
 	re.NoError(err)
 
@@ -46,7 +48,7 @@ func TestClusterTopology(t *testing.T) {
 	err := s.Put(ctx, latestVersionKey, fmtID(uint64(0)))
 	re.NoError(err)
 
-	clusterMetaData := &metapb.ClusterTopology{ClusterId: 1, DataVersion: 1, Cause: "cause", CreatedAt: 1}
+	clusterMetaData := &clusterpb.ClusterTopology{ClusterId: 1, DataVersion: 1, Cause: "cause", CreatedAt: 1}
 	err = s.PutClusterTopology(ctx, 1, 0, clusterMetaData)
 	re.NoError(err)
 
@@ -64,9 +66,9 @@ func TestSchemes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	schemas := make([]*metapb.Schema, 0)
+	schemas := make([]*clusterpb.Schema, 0)
 	for i := 0; i < 10; i++ {
-		schema := &metapb.Schema{Id: uint32(i), ClusterId: uint32(i), Name: "name"}
+		schema := &clusterpb.Schema{Id: uint32(i), ClusterId: uint32(i), Name: "name"}
 		schemas = append(schemas, schema)
 	}
 
@@ -88,9 +90,9 @@ func TestTables(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	tables := make([]*metapb.Table, 0)
+	tables := make([]*clusterpb.Table, 0)
 	for i := 0; i < 10; i++ {
-		table := &metapb.Table{Id: uint64(i), Name: "name", SchemaId: uint32(i), ShardId: uint32(i), Desc: "desc"}
+		table := &clusterpb.Table{Id: uint64(i), Name: "name", SchemaId: uint32(i), ShardId: uint32(i), Desc: "desc"}
 		tables = append(tables, table)
 	}
 
@@ -102,7 +104,7 @@ func TestTables(t *testing.T) {
 		tableID = append(tableID, uint64(i))
 	}
 
-	value, err := s.ListTables(ctx, 0, 0, tableID)
+	value, err := s.ListTables(ctx, 0, 0)
 	re.NoError(err)
 	for i := 0; i < 10; i++ {
 		re.Equal(tables[i].Id, value[i].Id)
@@ -115,7 +117,7 @@ func TestTables(t *testing.T) {
 	err = s.DeleteTables(ctx, 0, 0, tableID)
 	re.NoError(err)
 
-	value, err = s.ListTables(ctx, 0, 0, tableID)
+	value, err = s.ListTables(ctx, 0, 0)
 	re.NoError(err)
 	for i := 0; i < 10; i++ {
 		re.Equal(uint64(0), value[i].Id)
@@ -138,10 +140,10 @@ func TestShardTopologies(t *testing.T) {
 		re.NoError(err)
 	}
 
-	shardTableInfo := make([]*metapb.ShardTopology, 0)
+	shardTableInfo := make([]*clusterpb.ShardTopology, 0)
 	shardID := make([]uint32, 0)
 	for i := 0; i < 10; i++ {
-		shardTableData := &metapb.ShardTopology{Version: 1}
+		shardTableData := &clusterpb.ShardTopology{Version: 1}
 		shardTableInfo = append(shardTableInfo, shardTableData)
 		shardID = append(shardID, uint32(i))
 	}
@@ -162,9 +164,9 @@ func TestNodes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	nodes := make([]*metapb.Node, 0)
+	nodes := make([]*clusterpb.Node, 0)
 	for i := 0; i < 10; i++ {
-		node := &metapb.Node{Id: uint32(i), CreateTime: uint64(i), LastTouchTime: uint64(i)}
+		node := &clusterpb.Node{Name: fmt.Sprint(i), CreateTime: uint64(i), LastTouchTime: uint64(i)}
 		nodes = append(nodes, node)
 	}
 
@@ -174,7 +176,7 @@ func TestNodes(t *testing.T) {
 	value, err := s.ListNodes(ctx, 0)
 	re.NoError(err)
 	for i := 0; i < 10; i++ {
-		re.Equal(nodes[i].Id, value[i].Id)
+		re.Equal(nodes[i].Name, value[i].Name)
 		re.Equal(nodes[i].CreateTime, value[i].CreateTime)
 		re.Equal(nodes[i].LastTouchTime, value[i].LastTouchTime)
 	}

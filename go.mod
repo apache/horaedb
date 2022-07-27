@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto v0.0.0-20220705103012-eba30f7dff73
+	github.com/CeresDB/ceresdbproto v0.0.0-20220719082957-d3d6b78cc02d
 	github.com/axw/gocov v1.1.0
 	github.com/mgechev/revive v1.2.1
 	github.com/pingcap/log v1.1.0
@@ -17,6 +17,7 @@ require (
 	go.uber.org/zap v1.21.0
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/tools v0.1.10
+	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0
 	gotest.tools/gotestsum v1.8.1
 )
@@ -91,7 +92,6 @@ require (
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
-	google.golang.org/grpc v1.47.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

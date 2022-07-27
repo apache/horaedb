@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
@@ -56,7 +56,7 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 
 	grpcService := grpcservice.NewService(cfg.GrpcHandleTimeout(), srv)
 	etcdCfg.ServiceRegister = func(grpcSrv *grpc.Server) {
-		grpcSrv.RegisterService(&metapb.CeresmetaRpcService_ServiceDesc, grpcService)
+		grpcSrv.RegisterService(&metaservicepb.CeresmetaRpcService_ServiceDesc, grpcService)
 	}
 
 	return srv, nil
@@ -192,6 +192,6 @@ func (srv *Server) UnbindHeartbeatStream(_ context.Context, node string) error {
 	return nil
 }
 
-func (*Server) ProcessHeartbeat(_ context.Context, _ *metapb.NodeHeartbeatRequest) error {
+func (*Server) ProcessHeartbeat(_ context.Context, _ *metaservicepb.NodeHeartbeatRequest) error {
 	return nil
 }

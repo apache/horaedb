@@ -18,8 +18,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/toml v1.1.0 h1:ksErzDEI1khOiGPgpwuI7x2ebx/uXQNw7xJpn9Eq1+I=
 github.com/BurntSushi/toml v1.1.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/CeresDB/ceresdbproto v0.0.0-20220705103012-eba30f7dff73 h1:pLAGVMqPAdhIFd3kgp/jvtcouIU9+EeH3tp5o5V7f2s=
-github.com/CeresDB/ceresdbproto v0.0.0-20220705103012-eba30f7dff73/go.mod h1:z2mc3V7rsBcpD1TlRrLtypMfr4G69iGMQi1E3ZWMkGY=
+github.com/CeresDB/ceresdbproto v0.0.0-20220719082957-d3d6b78cc02d h1:erCer6ztSx5Bu6anPTdD3T4R/mF4CK10r+ByZqUqO/s=
+github.com/CeresDB/ceresdbproto v0.0.0-20220719082957-d3d6b78cc02d/go.mod h1:z2mc3V7rsBcpD1TlRrLtypMfr4G69iGMQi1E3ZWMkGY=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
 github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=

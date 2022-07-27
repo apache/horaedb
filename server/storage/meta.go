@@ -5,27 +5,34 @@ package storage
 import (
 	"context"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metapb"
+	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 )
 
 // MetaStorage defines the storage operations on the ceresdb cluster meta info.
 type MetaStorage interface {
-	GetCluster(ctx context.Context, clusterID uint32) (*metapb.Cluster, error)
-	PutCluster(ctx context.Context, clusterID uint32, meta *metapb.Cluster) error
+	ListClusters(ctx context.Context) ([]*clusterpb.Cluster, error)
+	CreateCluster(ctx context.Context, cluster *clusterpb.Cluster) (*clusterpb.Cluster, error)
+	GetCluster(ctx context.Context, clusterID uint32) (*clusterpb.Cluster, error)
+	PutCluster(ctx context.Context, clusterID uint32, meta *clusterpb.Cluster) error
 
-	GetClusterTopology(ctx context.Context, clusterID uint32) (*metapb.ClusterTopology, error)
-	PutClusterTopology(ctx context.Context, clusterID uint32, latestVersion uint32, clusterMetaData *metapb.ClusterTopology) error
+	CreateClusterTopology(ctx context.Context, clusterTopology *clusterpb.ClusterTopology) error
+	GetClusterTopology(ctx context.Context, clusterID uint32) (*clusterpb.ClusterTopology, error)
+	PutClusterTopology(ctx context.Context, clusterID uint32, latestVersion uint32, clusterMetaData *clusterpb.ClusterTopology) error
 
-	ListSchemas(ctx context.Context, clusterID uint32) ([]*metapb.Schema, error)
-	PutSchemas(ctx context.Context, clusterID uint32, schemas []*metapb.Schema) error
+	ListSchemas(ctx context.Context, clusterID uint32) ([]*clusterpb.Schema, error)
+	CreateSchema(ctx context.Context, clusterID uint32, schema *clusterpb.Schema) error
+	PutSchemas(ctx context.Context, clusterID uint32, schemas []*clusterpb.Schema) error
 
-	ListTables(ctx context.Context, clusterID uint32, schemaID uint32, tableIDs []uint64) ([]*metapb.Table, error)
-	PutTables(ctx context.Context, clusterID uint32, schemaID uint32, tables []*metapb.Table) error
+	CreateTable(ctx context.Context, clusterID uint32, schemaID uint32, table *clusterpb.Table) error
+	GetTable(ctx context.Context, clusterID uint32, schemaID uint32, tableName string) (*clusterpb.Table, bool, error)
+	ListTables(ctx context.Context, clusterID uint32, schemaID uint32) ([]*clusterpb.Table, error)
+	PutTables(ctx context.Context, clusterID uint32, schemaID uint32, tables []*clusterpb.Table) error
 	DeleteTables(ctx context.Context, clusterID uint32, schemaID uint32, tableIDs []uint64) error
 
-	ListShardTopologies(ctx context.Context, clusterID uint32, shardIDs []uint32) ([]*metapb.ShardTopology, error)
-	PutShardTopologies(ctx context.Context, clusterID uint32, shardIDs []uint32, latestVersion uint32, topologies []*metapb.ShardTopology) error
+	ListShardTopologies(ctx context.Context, clusterID uint32, shardID []uint32) ([]*clusterpb.ShardTopology, error)
+	PutShardTopologies(ctx context.Context, clusterID uint32, shardIDs []uint32, latestVersion uint32, topologies []*clusterpb.ShardTopology) error
 
-	ListNodes(ctx context.Context, clusterID uint32) ([]*metapb.Node, error)
-	PutNodes(ctx context.Context, clusterID uint32, nodes []*metapb.Node) error
+	ListNodes(ctx context.Context, clusterID uint32) ([]*clusterpb.Node, error)
+	PutNodes(ctx context.Context, clusterID uint32, node []*clusterpb.Node) error
+	CreateOrUpdateNode(ctx context.Context, clusterID uint32, node *clusterpb.Node) (*clusterpb.Node, error)
 }
