@@ -214,23 +214,20 @@ impl LogValueEncoder {
     }
 }
 
-impl<T: Payload> Encoder<T> for LogValueEncoder {
-    type Error = Error;
-
+impl LogValueEncoder {
     /// Value format:
     /// +--------------------+---------+
     /// | version_header(u8) | payload |
     /// +--------------------+---------+
-    fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &T) -> Result<()> {
+    pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &dyn Payload) -> Result<()> {
         buf.write_u8(self.version).context(EncodeLogValueHeader)?;
 
         payload
-            .encode_to(buf)
-            .map_err(|e| Box::new(e) as _)
+            .encode_to(buf as &mut dyn MemBufMut)
             .context(EncodeLogValuePayload)
     }
 
-    fn estimate_encoded_size(&self, payload: &T) -> usize {
+    pub fn estimate_encoded_size(&self, payload: &dyn Payload) -> usize {
         // Refer to value format.
         1 + payload.encode_size()
     }

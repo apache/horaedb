@@ -141,6 +141,12 @@ pub trait MemBufMut: fmt::Debug {
     }
 }
 
+impl MemBufMut for &dyn MemBufMut {
+    fn write_slice(&mut self, src: &[u8]) -> Result<()> {
+        (self as &mut dyn MemBufMut).write_slice(src)
+    }
+}
+
 macro_rules! impl_mem_buf {
     () => {
         #[inline]
@@ -234,6 +240,20 @@ impl<'a, B: MemBufMut> Writer<'a, B> {
 impl<'a, B: MemBufMut> Write for Writer<'a, B> {
     fn write(&mut self, src: &[u8]) -> io::Result<usize> {
         self.buf.write_slice(src).map_err(|e| match &e {
+            Error::UnexpectedEof { .. } => io::Error::new(io::ErrorKind::UnexpectedEof, e),
+            Error::WouldOverflow { .. } => io::Error::new(io::ErrorKind::WriteZero, e),
+        })?;
+        Ok(src.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Write for &mut dyn MemBufMut {
+    fn write(&mut self, src: &[u8]) -> io::Result<usize> {
+        self.write_slice(src).map_err(|e| match &e {
             Error::UnexpectedEof { .. } => io::Error::new(io::ErrorKind::UnexpectedEof, e),
             Error::WouldOverflow { .. } => io::Error::new(io::ErrorKind::WriteZero, e),
         })?;

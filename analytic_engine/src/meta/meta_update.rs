@@ -2,10 +2,13 @@
 
 //! Update to meta
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    io::Write,
+};
 
 use common_types::{
-    bytes::{MemBuf, MemBufMut, Writer},
+    bytes::{MemBuf, MemBufMut},
     schema::{Schema, Version},
     SequenceNumber,
 };
@@ -434,15 +437,24 @@ impl From<&MetaUpdateLogEntry> for MetaUpdatePayload {
 }
 
 impl Payload for MetaUpdatePayload {
-    type Error = Error;
+    // type Error = Error;
 
     fn encode_size(&self) -> usize {
         self.0.compute_size().try_into().unwrap_or(0)
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
-        let mut writer = Writer::new(buf);
-        self.0.write_to_writer(&mut writer).context(EncodePayloadPb)
+    fn encode_to(
+        &self,
+        mut buf: &mut dyn MemBufMut,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // let mut writer = Writer::new(buf);
+        let writer = &mut buf as &mut dyn Write;
+        self.0
+            .write_to_writer(writer)
+            .context(EncodePayloadPb)
+            .map_err(Box::new)?;
+
+        Ok(())
     }
 }
 

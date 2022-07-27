@@ -16,7 +16,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{ScanIter, TableError, TableKv, WriteBatch, WriteContext};
 
 use crate::{
-    log_batch::{LogWriteBatch, Payload},
+    log_batch::LogWriteBatch,
     manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber},
     table_kv_impl::{
         consts, encoding,
@@ -545,10 +545,10 @@ impl<T: TableKv> NamespaceInner<T> {
     }
 
     /// Write log to this namespace.
-    async fn write_log<P: Payload>(
+    async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<P>,
+        batch: &LogWriteBatch<'_>,
     ) -> Result<SequenceNumber> {
         let region_id = batch.region_id;
         let now = Timestamp::now();
@@ -1005,10 +1005,10 @@ impl<T: TableKv> Namespace<T> {
 // Async operations.
 impl<T: TableKv> Namespace<T> {
     /// Write log to this namespace.
-    pub async fn write_log<P: Payload>(
+    pub async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<P>,
+        batch: &LogWriteBatch<'_>,
     ) -> Result<SequenceNumber> {
         self.inner.write_log(ctx, batch).await
     }
@@ -1697,7 +1697,7 @@ mod tests {
         for val in start_sequence..end_sequence {
             let mut wb = LogWriteBatch::new(region_id);
             let payload = TestPayload { val };
-            wb.push(LogWriteEntry { payload });
+            wb.push(LogWriteEntry { payload: &payload });
 
             last_sequence = namespace.write_log(&write_ctx, &wb).await.unwrap();
         }

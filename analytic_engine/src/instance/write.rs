@@ -349,9 +349,8 @@ where
 
         let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
         // Now we only have one request, so no need to use with_capacity
-        log_batch.push(LogWriteEntry {
-            payload: WritePayload::Write(&write_req_pb),
-        });
+        let payload = WritePayload::Write(&write_req_pb);
+        log_batch.push(LogWriteEntry { payload: &payload });
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
