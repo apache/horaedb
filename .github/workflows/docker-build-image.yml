@@ -3,6 +3,7 @@ name: Build Docker Image without Pushing
 on:
   push:
     paths:
+      - '.github/workflows/docker-build-image.yml'
       - 'Dockerfile'
       - 'docker/**'
 
