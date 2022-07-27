@@ -2878,7 +2878,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "snafu 0.6.10",
- "table_engine",
  "tokio 1.19.2",
  "url 2.2.2",
 ]

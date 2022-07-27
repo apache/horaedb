@@ -90,7 +90,8 @@ impl TableManager {
 #[derive(Debug, Default)]
 struct Inner {
     shard_infos: HashMap<ShardId, ShardInfo>,
-    schema_infos: HashMap<String, SchemaInfo>,
+    schema_infos: HashMap<SchemaName, SchemaInfo>,
+    // TODO: maybe another mapping (shard -> table) is necessary.
     tables: BTreeMap<SchemaName, BTreeMap<TableName, ShardTableInfo>>,
 }
 

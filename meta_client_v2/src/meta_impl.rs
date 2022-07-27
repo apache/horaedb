@@ -158,45 +158,42 @@ impl Inner {
 
     // TODO: Store the value in field
     fn error_wait_lease(&self) -> Duration {
-        Duration::from_secs(self.meta_config.lease.as_secs() / 2)
+        self.meta_config.lease.0 / 2
     }
 
-    async fn fetch_action_cmd_loop(&self, mut stop_rx: Receiver<()>) {
+    async fn start_fetch_action_cmd_loop(&self, mut stop_rx: Receiver<()>) {
         info!("Begin fetching action cmd loop");
         loop {
-            debug!("Begin fetching action cmd once");
-            let receiver = match &*self.grpc_client.read().await {
-                Some(client) => client
+            let mut receiver = None;
+            if let Some(client) = &*self.grpc_client.read().await {
+                receiver = client
                     .heartbeat_channel
                     .write()
                     .await
                     .action_cmd_receiver
-                    .take(),
-                None => {
-                    warn!("gRPC client is not inited when starting fetch action cmd");
-                    None
-                }
+                    .take();
             };
 
-            if let Some(v) = receiver {
-                match self.fetch_action_cmd(v).await {
-                    Ok(()) => {
-                        info!(
-                            "Fetch cluster action cmd finished, cluster:{}",
-                            self.get_cluster_name()
-                        );
-                    }
-                    Err(err) => {
-                        error!(
-                            "Failed to get action cmd, cluster:{}, err:{}",
-                            self.get_cluster_name(),
-                            err
-                        );
-                        self.reconnect_heartbeat_channel().await;
-                    }
+            if receiver.is_none() {
+                warn!("gRPC stream is not inited and try to reconnect the stream");
+                self.reconnect_heartbeat_channel().await;
+                continue;
+            }
+
+            match self
+                .fetch_and_handle_cmd(receiver.unwrap(), &mut stop_rx)
+                .await
+            {
+                Ok(true) => {
+                    warn!("Received exit message during fetching action cmd, exit the fetch_action_cmd loop");
+                    return;
                 }
-            } else {
-                warn!("Skip action command fetch because no receiver found");
+                Ok(false) => info!("Heartbeat stream is exhausted and will rebuild another stream"),
+                Err(err) => error!(
+                    "Failed to get action cmd, cluster:{}, err:{}",
+                    self.get_cluster_name(),
+                    err
+                ),
             }
 
             if time::timeout(self.error_wait_lease(), stop_rx.recv())
@@ -204,19 +201,36 @@ impl Inner {
                 .is_ok()
             {
                 warn!("Receive exit message, exit the fetch_action_cmd loop");
-                break;
+                return;
             }
         }
     }
 
-    async fn fetch_action_cmd(
+    /// Fetch and handle the action commands from the heartbeat response.
+    ///
+    /// Tells caller whether the procedure should stop.
+    async fn fetch_and_handle_cmd(
         &self,
         mut receiver: ClientDuplexReceiver<PbNodeHeartbeatResponse>,
-    ) -> Result<()> {
-        info!("Start fetch action cmd loop");
-        while let Some(resp) = receiver.try_next().await.context(FetchActionCmd)? {
+        stop_rx: &mut Receiver<()>,
+    ) -> Result<bool> {
+        info!("Start keep fetch action cmd loop");
+        loop {
+            let fetch_res = tokio::select! {
+                res = receiver.try_next() => Some(res),
+                _ = stop_rx.recv() => None,
+            };
+            if fetch_res.is_none() {
+                warn!("Receive exit message, exit the fetch_and_handle_cmd loop");
+                return Ok(true);
+            }
+            let resp = match fetch_res.unwrap().context(FetchActionCmd)? {
+                Some(resp) => resp,
+                None => return Ok(false),
+            };
+
             info!(
-                "Fetch action cmd from meta, cluster:{}, action_cmd:{:?}",
+                "Fetch action cmd from meta, cluster:{}, heartbeat response:{:?}",
                 self.get_cluster_name(),
                 resp,
             );
@@ -238,8 +252,6 @@ impl Inner {
                 error!("Handler fail to handle event:{:?}, err:{}", event, e);
             }
         }
-
-        Ok(())
     }
 
     pub async fn handle_event(&self, event: &ActionCmd) -> Result<()> {
@@ -293,7 +305,7 @@ impl MetaClient for MetaClientImpl {
         let inner = self.inner.clone();
         let (tx, rx) = mpsc::channel(1);
         let eventloop_handle = self.runtime.spawn(async move {
-            inner.fetch_action_cmd_loop(rx).await;
+            inner.start_fetch_action_cmd_loop(rx).await;
         });
 
         *self.eventloop_handle.lock().unwrap() = Some(eventloop_handle);
@@ -407,7 +419,7 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailDropTable)?;
 
-        debug!(
+        info!(
             "Meta client drop table, req:{:?}, resp:{:?}",
             pb_req, pb_resp
         );

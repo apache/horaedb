@@ -158,6 +158,7 @@ pub enum ShardRole {
     FOLLOWER,
 }
 
+// TODO: now some commands are empty and fill the concret inforamtion into them.
 #[derive(Debug, Clone)]
 pub enum ActionCmd {
     MetaNoneCmd(NoneCmd),
@@ -213,12 +214,6 @@ pub struct MetaClientConfig {
     pub lease: ReadableDuration,
     pub timeout: ReadableDuration,
     pub cq_count: usize,
-
-    /// - If `enable_meta` is true, the client will fetch cluster view from
-    ///   remote meta ndoe.
-    /// - If `enable_meta` is false, the client will try to read cluster view
-    ///   from `cluster_view`.
-    pub enable_meta: bool,
 }
 
 impl Default for MetaClientConfig {
@@ -230,7 +225,6 @@ impl Default for MetaClientConfig {
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
             cq_count: 8,
-            enable_meta: true,
         }
     }
 }

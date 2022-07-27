@@ -7,7 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use meta_client_v2::{
     types::{ActionCmd, GetTablesRequest},
     EventHandler, MetaClient,
@@ -92,7 +92,7 @@ impl ClusterImpl {
     }
 
     fn error_wait_lease(&self) -> Duration {
-        Duration::from_secs(self.config.meta_client_config.lease.as_millis() / 2)
+        self.config.meta_client_config.lease.0 / 2
     }
 }
 
@@ -147,6 +147,7 @@ impl EventHandler for Inner {
                 Ok(())
             }
             ActionCmd::MetaNoneCmd(_)
+            | ActionCmd::MetaCloseCmd(_)
             | ActionCmd::MetaSplitCmd(_)
             | ActionCmd::MetaChangeRoleCmd(_) => {
                 warn!("Nothing to do for cmd:{:?}", cmd);
