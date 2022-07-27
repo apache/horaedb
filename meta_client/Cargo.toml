@@ -11,8 +11,8 @@ async-trait = "0.1.53"
 catalog = { path = "../catalog" }
 common_types = { path = "../common_types" }
 table_engine = { path = "../table_engine" }
+ceresdbproto_deps = { path = "../ceresdbproto_deps" }
 common_util = { path = "../common_util" }
-ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git"}
 futures = "0.3"
 grpcio = { path = "../grpcio" }
 log = "0.4"

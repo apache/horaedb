@@ -5,67 +5,80 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client_v2::{SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo};
+use meta_client_v2::types::{
+    CreateTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
+};
+use snafu::OptionExt;
 
-use super::Result;
-use crate::ShardNotFound;
+use crate::{Result, ShardNotFound};
 
+pub type TableName = String;
+pub type SchemaName = String;
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct SchemaInfo {
-    name: String,
+    name: SchemaName,
     id: SchemaId,
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ShardTableInfo {
+    pub shard_id: ShardId,
+    pub table_info: TableInfo,
+}
+
+impl From<&CreateTableCmd> for ShardTableInfo {
+    fn from(cmd: &CreateTableCmd) -> Self {
+        let table_info = TableInfo {
+            id: cmd.id,
+            name: cmd.name.clone(),
+            schema_id: cmd.schema_id,
+            schema_name: cmd.schema_name.clone(),
+        };
+        ShardTableInfo {
+            shard_id: cmd.shard_id,
+            table_info,
+        }
+    }
+}
+
+/// TableManager manages information about tables, shards, schemas and their
+/// relationships:
+/// * one shard -> multiple tables
+/// * one schema -> multiple tables
+#[derive(Debug, Default)]
 pub struct TableManager {
-    inner: RwLock<TableManagerInner>,
+    inner: RwLock<Inner>,
 }
 
 impl TableManager {
-    pub fn new() -> Self {
-        Self {
-            inner: RwLock::new(TableManagerInner {
-                shards_info: Vec::new(),
-                schemas_info: HashMap::new(),
-                tables: BTreeMap::new(),
-            }),
-        }
+    pub fn get_shards_infos(&self) -> Vec<ShardInfo> {
+        self.inner.read().unwrap().get_shards_infos()
     }
 
-    pub fn get_shards_info(&self) -> Vec<ShardInfo> {
-        self.inner.read().unwrap().get_shards_info()
+    pub fn add_shard_table(&self, shard_table: ShardTableInfo) -> Result<()> {
+        self.inner.write().unwrap().add_shard_table(shard_table)
     }
 
-    pub fn add_table(
-        &self,
-        shard_id: ShardId,
-        schema_name: String,
-        table_name: String,
-        schema_id: SchemaId,
-        table_id: TableId,
-    ) -> Result<()> {
-        self.inner.write().unwrap().add_table(
-            shard_id,
-            schema_name,
-            table_name,
-            schema_id,
-            table_id,
-        )
-    }
-
-    pub fn drop_table(&self, schema_name: String, table_name: String) {
+    pub fn drop_table(&self, schema_name: &str, table_name: &str) {
         self.inner
             .write()
             .unwrap()
             .drop_table(schema_name, table_name)
     }
 
-    pub fn update_table_info(&self, shard_table: HashMap<ShardId, ShardTables>) {
+    pub fn update_table_info(&self, shard_table: &HashMap<ShardId, ShardTables>) {
         self.inner.write().unwrap().update_table_info(shard_table)
     }
 
+    #[allow(dead_code)]
     pub fn get_schema_id(&self, schema_name: &str) -> Option<SchemaId> {
         self.inner.read().unwrap().get_schema_id(schema_name)
     }
 
+    #[allow(dead_code)]
     pub fn get_table_id(&self, schema_name: &str, table_name: &str) -> Option<TableId> {
         self.inner
             .read()
@@ -74,26 +87,28 @@ impl TableManager {
     }
 }
 
-struct TableManagerInner {
-    shards_info: Vec<ShardInfo>,
-    schemas_info: HashMap<String, SchemaInfo>,
-    // schema_name -> table_name -> (shard_info, table_info)
-    tables: BTreeMap<String, BTreeMap<String, (ShardInfo, TableInfo)>>,
+#[derive(Debug, Default)]
+struct Inner {
+    shard_infos: HashMap<ShardId, ShardInfo>,
+    schema_infos: HashMap<SchemaName, SchemaInfo>,
+    // TODO: maybe another mapping (shard -> table) is necessary.
+    tables: BTreeMap<SchemaName, BTreeMap<TableName, ShardTableInfo>>,
 }
 
-impl TableManagerInner {
-    fn get_shards_info(&self) -> Vec<ShardInfo> {
-        self.shards_info.clone()
+impl Inner {
+    fn get_shards_infos(&self) -> Vec<ShardInfo> {
+        self.shard_infos.values().cloned().collect()
     }
 
-    fn update_table_info(&mut self, shard_table: HashMap<ShardId, ShardTables>) {
+    fn update_table_info(&mut self, shard_table: &HashMap<ShardId, ShardTables>) {
         for (shard_id, shard_tables) in shard_table {
             let shard_info = ShardInfo {
-                shard_id,
+                shard_id: *shard_id,
                 role: shard_tables.role,
             };
-            for table in shard_tables.tables {
-                self.schemas_info
+            self.shard_infos.insert(*shard_id, shard_info.clone());
+            for table in &shard_tables.tables {
+                self.schema_infos
                     .entry(table.schema_name.clone())
                     .or_insert(SchemaInfo {
                         name: table.schema_name.clone(),
@@ -102,62 +117,51 @@ impl TableManagerInner {
                 self.tables
                     .entry(table.schema_name.clone())
                     .or_insert_with(BTreeMap::new)
-                    .insert(table.name.clone(), (shard_info.clone(), table));
-            }
-        }
-    }
-
-    fn add_table(
-        &mut self,
-        shard_id: ShardId,
-        schema_name: String,
-        table_name: String,
-        schema_id: SchemaId,
-        table_id: TableId,
-    ) -> Result<()> {
-        let mut shard_info = None;
-        for shard in &self.shards_info {
-            if shard.shard_id == shard_id {
-                shard_info = Some(shard.clone());
-                break;
-            }
-        }
-        match shard_info {
-            None => ShardNotFound { shard_id }.fail(),
-            Some(v) => {
-                self.tables
-                    .entry(schema_name.clone())
-                    .or_insert_with(BTreeMap::new)
                     .insert(
-                        table_name.clone(),
-                        (
-                            v,
-                            TableInfo {
-                                id: table_id,
-                                name: table_name,
-                                schema_id,
-                                schema_name,
-                            },
-                        ),
+                        table.name.clone(),
+                        ShardTableInfo {
+                            shard_id: shard_info.shard_id,
+                            table_info: table.clone(),
+                        },
                     );
-                Ok(())
             }
         }
     }
 
-    fn drop_table(&mut self, schema_name: String, table_name: String) {
+    fn find_shard_info(&self, shard_id: ShardId) -> Option<ShardInfo> {
+        self.shard_infos
+            .values()
+            .find(|info| info.shard_id == shard_id)
+            .cloned()
+    }
+
+    fn add_shard_table(&mut self, shard_table: ShardTableInfo) -> Result<()> {
+        self.find_shard_info(shard_table.shard_id)
+            .context(ShardNotFound {
+                shard_id: shard_table.shard_id,
+            })?;
+
         self.tables
-            .get_mut(&schema_name)
-            .map(|v| v.remove(&table_name));
+            .entry(shard_table.table_info.schema_name.clone())
+            .or_insert_with(BTreeMap::new)
+            .insert(shard_table.table_info.name.clone(), shard_table);
+
+        Ok(())
+    }
+
+    fn drop_table(&mut self, schema_name: &str, table_name: &str) {
+        self.tables
+            .get_mut(schema_name)
+            .map(|v| v.remove(table_name));
     }
 
     fn get_schema_id(&self, schema_name: &str) -> Option<SchemaId> {
-        self.schemas_info.get(schema_name).map(|v| v.id)
+        self.schema_infos.get(schema_name).map(|v| v.id)
     }
 
     fn get_table_id(&self, schema_name: &str, table_name: &str) -> Option<TableId> {
         self.tables
             .get(schema_name)
-            .and_then(|schema| schema.get(table_name).map(|v| v.1.id))
+            .and_then(|schema| schema.get(table_name).map(|v| v.table_info.id))
     }
 }

@@ -1,0 +1,11 @@
+[package]
+name = "ceresdbproto_deps"
+version = "0.1.0"
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies.ceresdbproto]
+git = "https://github.com/CeresDB/ceresdbproto.git"
+rev = "ec5404e0f60fc748d3e8b68a592e2926ac1e84de"
