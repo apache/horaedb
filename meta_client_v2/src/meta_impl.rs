@@ -6,15 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::{
-    meta_service::{
-        AllocSchemaIdRequest as PbAllocSchemaIdRequest,
-        AllocTableIdRequest as PbAllocTableIdRequest, DropTableRequest as PbDropTableRequest,
-        GetTablesRequest as PbGetTablesRequest, NodeHeartbeatRequest as PbNodeHeartbeatRequest,
-        NodeHeartbeatResponse as PbNodeHeartbeatResponse,
-    },
-    meta_service_grpc::CeresmetaRpcServiceClient,
-};
+use ceresdbproto_deps::ceresdbproto::{meta_service, meta_service_grpc::CeresmetaRpcServiceClient};
 use common_util::{
     config::ReadableDuration,
     runtime::{JoinHandle, Runtime},
@@ -69,8 +61,8 @@ impl Default for MetaClientConfig {
 }
 
 struct NodeHeartbeatChannel {
-    heartbeat_sender: ClientDuplexSender<PbNodeHeartbeatRequest>,
-    action_cmd_receiver: Option<ClientDuplexReceiver<PbNodeHeartbeatResponse>>,
+    heartbeat_sender: ClientDuplexSender<meta_service::NodeHeartbeatRequest>,
+    action_cmd_receiver: Option<ClientDuplexReceiver<meta_service::NodeHeartbeatResponse>>,
 }
 
 struct GrpcClient {
@@ -211,7 +203,7 @@ impl Inner {
     /// Tells caller whether the procedure should stop.
     async fn fetch_and_handle_cmd(
         &self,
-        mut receiver: ClientDuplexReceiver<PbNodeHeartbeatResponse>,
+        mut receiver: ClientDuplexReceiver<meta_service::NodeHeartbeatResponse>,
         stop_rx: &mut Receiver<()>,
     ) -> Result<bool> {
         info!("Start keep fetch action cmd loop");
@@ -347,7 +339,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = PbAllocSchemaIdRequest::from(req);
+        let mut pb_req = meta_service::AllocSchemaIdRequest::from(req);
         pb_req.set_header(self.inner.request_header().into());
         let pb_resp = grpc_client
             .client
@@ -373,7 +365,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = PbAllocTableIdRequest::from(req);
+        let mut pb_req = meta_service::AllocTableIdRequest::from(req);
         pb_req.set_header(self.inner.request_header().into());
         let pb_resp = grpc_client
             .client
@@ -408,7 +400,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = PbDropTableRequest::from(req.clone());
+        let mut pb_req = meta_service::DropTableRequest::from(req.clone());
         pb_req.set_header(self.inner.request_header().into());
         let pb_resp = grpc_client
             .client
@@ -440,7 +432,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = PbGetTablesRequest::from(req);
+        let mut pb_req = meta_service::GetTablesRequest::from(req);
         pb_req.set_header(self.inner.request_header().into());
 
         let pb_resp = grpc_client
@@ -473,7 +465,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_request = PbNodeHeartbeatRequest::new();
+        let mut pb_request = meta_service::NodeHeartbeatRequest::new();
         pb_request.set_header(self.inner.request_header().into());
         let node_info = NodeInfo {
             node_meta_info: self.inner.node_meta_info(),

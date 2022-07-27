@@ -5,18 +5,7 @@ use std::collections::HashMap;
 use ceresdbproto_deps::ceresdbproto::{
     cluster::ShardRole as PbShardRole,
     common::ResponseHeader as PbResponseHeader,
-    meta_service::{
-        AllocSchemaIdRequest as PbAllocSchemaIdRequest,
-        AllocSchemaIdResponse as PbAllocSchemaIdResponse,
-        AllocTableIdRequest as PbAllocTableIdRequest,
-        AllocTableIdResponse as PbAllocTableIdResponse, ChangeRoleCmd as PbChangeRoleCmd,
-        CloseCmd as PbCloseCmd, DropTableRequest as PbDropTableRequest,
-        DropTableResponse as PbDropTableResponse, GetTablesRequest as PbGetTablesRequest,
-        GetTablesResponse as PbGetTablesResponse, NodeHeartbeatResponse as PbNodeHeartbeatResponse,
-        NodeHeartbeatResponse_oneof_cmd, NodeInfo as PbNodeInfo, NoneCmd as PbNoneCmd,
-        OpenCmd as PbOpenCmd, RequestHeader as PbRequestHeader, ShardInfo as PbShardInfo,
-        ShardTables as PbShardTables, SplitCmd as PbSplitCmd, TableInfo as PbTableInfo,
-    },
+    meta_service::{self, NodeHeartbeatResponse_oneof_cmd},
 };
 use common_util::config::ReadableDuration;
 use serde_derive::Deserialize;
@@ -229,9 +218,9 @@ impl Default for MetaClientConfig {
     }
 }
 
-impl From<NodeInfo> for PbNodeInfo {
+impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
-        let mut pb_node_info = PbNodeInfo::new();
+        let mut pb_node_info = meta_service::NodeInfo::new();
         pb_node_info.set_node(node_info.node_meta_info.node.to_string());
         pb_node_info.set_zone(node_info.node_meta_info.zone);
         pb_node_info.set_binary_version(node_info.node_meta_info.binary_version);
@@ -246,9 +235,9 @@ impl From<NodeInfo> for PbNodeInfo {
     }
 }
 
-impl From<ShardInfo> for PbShardInfo {
+impl From<ShardInfo> for meta_service::ShardInfo {
     fn from(shard_info: ShardInfo) -> Self {
-        let mut pb_shard_info = PbShardInfo::new();
+        let mut pb_shard_info = meta_service::ShardInfo::new();
         pb_shard_info.set_shard_id(shard_info.shard_id);
         pb_shard_info.set_role(shard_info.role.into());
         pb_shard_info
@@ -273,8 +262,8 @@ impl From<PbShardRole> for ShardRole {
     }
 }
 
-impl From<PbNodeHeartbeatResponse> for NodeHeartbeatResponse {
-    fn from(mut pb: PbNodeHeartbeatResponse) -> Self {
+impl From<meta_service::NodeHeartbeatResponse> for NodeHeartbeatResponse {
+    fn from(mut pb: meta_service::NodeHeartbeatResponse) -> Self {
         let timestamp = pb.get_timestamp();
         NodeHeartbeatResponse {
             header: pb.take_header().into(),
@@ -298,50 +287,50 @@ impl From<NodeHeartbeatResponse_oneof_cmd> for ActionCmd {
     }
 }
 
-impl From<PbNoneCmd> for NoneCmd {
-    fn from(_pb: PbNoneCmd) -> Self {
+impl From<meta_service::NoneCmd> for NoneCmd {
+    fn from(_pb: meta_service::NoneCmd) -> Self {
         Self {}
     }
 }
 
-impl From<PbOpenCmd> for OpenCmd {
-    fn from(mut pb: PbOpenCmd) -> Self {
+impl From<meta_service::OpenCmd> for OpenCmd {
+    fn from(mut pb: meta_service::OpenCmd) -> Self {
         Self {
             shard_ids: pb.take_shard_ids(),
         }
     }
 }
 
-impl From<PbSplitCmd> for SplitCmd {
-    fn from(_pb: PbSplitCmd) -> Self {
+impl From<meta_service::SplitCmd> for SplitCmd {
+    fn from(_pb: meta_service::SplitCmd) -> Self {
         Self {}
     }
 }
 
-impl From<PbCloseCmd> for CloseCmd {
-    fn from(mut pb: PbCloseCmd) -> Self {
+impl From<meta_service::CloseCmd> for CloseCmd {
+    fn from(mut pb: meta_service::CloseCmd) -> Self {
         Self {
             shard_ids: pb.take_shard_ids(),
         }
     }
 }
 
-impl From<PbChangeRoleCmd> for ChangeRoleCmd {
-    fn from(_pb: PbChangeRoleCmd) -> Self {
+impl From<meta_service::ChangeRoleCmd> for ChangeRoleCmd {
+    fn from(_pb: meta_service::ChangeRoleCmd) -> Self {
         Self {}
     }
 }
 
-impl From<GetTablesRequest> for PbGetTablesRequest {
+impl From<GetTablesRequest> for meta_service::GetTablesRequest {
     fn from(req: GetTablesRequest) -> Self {
-        let mut pb = PbGetTablesRequest::new();
+        let mut pb = meta_service::GetTablesRequest::new();
         pb.set_shard_id(req.shard_ids);
         pb
     }
 }
 
-impl From<PbGetTablesResponse> for GetTablesResponse {
-    fn from(mut pb: PbGetTablesResponse) -> Self {
+impl From<meta_service::GetTablesResponse> for GetTablesResponse {
+    fn from(mut pb: meta_service::GetTablesResponse) -> Self {
         Self {
             header: pb.take_header().into(),
             tables_map: pb
@@ -353,8 +342,8 @@ impl From<PbGetTablesResponse> for GetTablesResponse {
     }
 }
 
-impl From<PbShardTables> for ShardTables {
-    fn from(mut pb: PbShardTables) -> Self {
+impl From<meta_service::ShardTables> for ShardTables {
+    fn from(mut pb: meta_service::ShardTables) -> Self {
         Self {
             role: pb.get_role().into(),
             tables: pb.take_tables().into_iter().map(|v| v.into()).collect(),
@@ -362,8 +351,8 @@ impl From<PbShardTables> for ShardTables {
     }
 }
 
-impl From<PbTableInfo> for TableInfo {
-    fn from(mut pb: PbTableInfo) -> Self {
+impl From<meta_service::TableInfo> for TableInfo {
+    fn from(mut pb: meta_service::TableInfo) -> Self {
         TableInfo {
             id: pb.get_id(),
             name: pb.take_name(),
@@ -373,9 +362,9 @@ impl From<PbTableInfo> for TableInfo {
     }
 }
 
-impl From<RequestHeader> for PbRequestHeader {
+impl From<RequestHeader> for meta_service::RequestHeader {
     fn from(req: RequestHeader) -> Self {
-        let mut pb = PbRequestHeader::new();
+        let mut pb = meta_service::RequestHeader::new();
         pb.set_node(req.node);
         pb.set_cluster_name(req.cluster_name);
         pb
@@ -391,16 +380,16 @@ impl From<PbResponseHeader> for ResponseHeader {
     }
 }
 
-impl From<AllocSchemaIdRequest> for PbAllocSchemaIdRequest {
+impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
     fn from(req: AllocSchemaIdRequest) -> Self {
-        let mut pb = PbAllocSchemaIdRequest::new();
+        let mut pb = meta_service::AllocSchemaIdRequest::new();
         pb.set_name(req.name);
         pb
     }
 }
 
-impl From<PbAllocSchemaIdResponse> for AllocSchemaIdResponse {
-    fn from(mut pb: PbAllocSchemaIdResponse) -> Self {
+impl From<meta_service::AllocSchemaIdResponse> for AllocSchemaIdResponse {
+    fn from(mut pb: meta_service::AllocSchemaIdResponse) -> Self {
         Self {
             header: pb.take_header().into(),
             name: pb.take_name(),
@@ -409,17 +398,17 @@ impl From<PbAllocSchemaIdResponse> for AllocSchemaIdResponse {
     }
 }
 
-impl From<AllocTableIdRequest> for PbAllocTableIdRequest {
+impl From<AllocTableIdRequest> for meta_service::AllocTableIdRequest {
     fn from(req: AllocTableIdRequest) -> Self {
-        let mut pb = PbAllocTableIdRequest::new();
+        let mut pb = meta_service::AllocTableIdRequest::new();
         pb.set_schema_name(req.schema_name);
         pb.set_name(req.name);
         pb
     }
 }
 
-impl From<PbAllocTableIdResponse> for AllocTableIdResponse {
-    fn from(mut pb: PbAllocTableIdResponse) -> Self {
+impl From<meta_service::AllocTableIdResponse> for AllocTableIdResponse {
+    fn from(mut pb: meta_service::AllocTableIdResponse) -> Self {
         Self {
             header: pb.take_header().into(),
             schema_name: pb.take_schema_name(),
@@ -431,9 +420,9 @@ impl From<PbAllocTableIdResponse> for AllocTableIdResponse {
     }
 }
 
-impl From<DropTableRequest> for PbDropTableRequest {
+impl From<DropTableRequest> for meta_service::DropTableRequest {
     fn from(req: DropTableRequest) -> Self {
-        let mut pb = PbDropTableRequest::new();
+        let mut pb = meta_service::DropTableRequest::new();
         pb.set_schema_name(req.schema_name);
         pb.set_name(req.name);
         pb.set_id(req.id);
@@ -441,8 +430,8 @@ impl From<DropTableRequest> for PbDropTableRequest {
     }
 }
 
-impl From<PbDropTableResponse> for DropTableResponse {
-    fn from(mut pb: PbDropTableResponse) -> Self {
+impl From<meta_service::DropTableResponse> for DropTableResponse {
+    fn from(mut pb: meta_service::DropTableResponse) -> Self {
         Self {
             header: pb.take_header().into(),
         }
