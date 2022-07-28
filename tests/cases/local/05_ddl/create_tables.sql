@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS `05_create_tables_t`(c1 int, t timestamp NOT NULL, TI
 
 -- TIMESTAMP KEY
 CREATE TABLE `05_create_tables_t5`(c1 int, t timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
+describe table `05_create_tables_t5`;
+show create table `05_create_tables_t5`;
 
 -- table already exist
 CREATE TABLE `05_create_tables_t`(c1 int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;

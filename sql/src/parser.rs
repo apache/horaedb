@@ -352,39 +352,12 @@ impl<'a> Parser<'a> {
                 );
             }
         }
-        let mut cols: Vec<ColumnDef> = vec![];
-        for mut column in columns {
-            let options = column.options;
-            let mut new_opts = vec![];
-            for option in options {
-                match &option.option {
-                    ColumnOption::DialectSpecific(ts) => {
-                        if ts.is_empty() || ts.len() != 1 {
-                            continue;
-                        }
-                        let token = &ts[0];
-                        match token {
-                            Token::Word(w) if w.value.eq(TS_KEY) => {
-                                constraints.push(TableConstraint::Unique {
-                                    name: Some(Ident {
-                                        value: TS_KEY.to_owned(),
-                                        quote_style: None,
-                                    }),
-                                    columns: vec![column.name.clone()],
-                                    is_primary: false,
-                                });
-                            }
-                            t => warn!("Unsupported Keyword in column option: {}", t),
-                        }
-                    }
-                    _ => new_opts.push(option),
-                }
-            }
-            column.options = new_opts;
-            cols.push(column);
+
+        if let Some(constraint) = try_build_tskey_constraint(&columns) {
+            constraints.push(constraint);
         }
 
-        Ok((cols, constraints))
+        Ok((columns, constraints))
     }
 
     /// Parses the set of valid formats
@@ -528,6 +501,39 @@ impl<'a> Parser<'a> {
             false
         }
     }
+}
+
+fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Option<TableConstraint> {
+    for col_def in col_defs {
+        let find_result = col_def
+            .options
+            .iter()
+            .map(|col_def| &col_def.option)
+            .find_map(|col| match col {
+                ColumnOption::DialectSpecific(tokens) => {
+                    if let [Token::Word(token)] = &tokens[..] {
+                        if token.value.eq(TS_KEY) {
+                            return Some(TableConstraint::Unique {
+                                name: Some(Ident {
+                                    value: TS_KEY.to_owned(),
+                                    quote_style: None,
+                                }),
+                                columns: vec![col_def.name.clone()],
+                                is_primary: false,
+                            });
+                        }
+                        warn!("Unsupported Keyword in column option: {}", token);
+                    }
+                    None
+                }
+                _ => None,
+            });
+        if find_result.is_some() {
+            return find_result;
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
