@@ -198,7 +198,7 @@ where
     }
 }
 
-/// A volatile implementation for Catalog.
+/// A volatile implementation for [`Catalog`].
 ///
 /// The schema and table id are allocated (and maybe stored) by other components
 /// so there is no recovering work for all the schemas and tables during
@@ -292,7 +292,7 @@ where
     }
 }
 
-/// volatile schema implementations.
+/// A volatile implementation for [`Schema`].
 ///
 /// The tables belonging to the schema won't be recovered during initialization
 /// and will be opened afterwards.
