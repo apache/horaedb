@@ -56,8 +56,9 @@ pub struct ManagerImpl<S, T> {
     inner: Arc<ManagerImplInner<S, T>>,
 }
 
-// Note: The way deriving Clone doesn't work for type paramenters S&T without
-// Clone trait bound so we need a manual implementation.
+// Note: The way deriving [`Clone`] to make [`ManagerImpl`] clonable doesn't
+// work for the type paramenters `S` and `T` without [`Clone`] trait bound so we
+// need a manual implementation.
 impl<S, T> Clone for ManagerImpl<S, T> {
     fn clone(&self) -> Self {
         Self {
@@ -197,10 +198,10 @@ where
     }
 }
 
-/// volatile implementations for Catalog.
+/// A volatile implementation for Catalog.
 ///
-/// The schema and table id are allocated (and stored) by other components so
-/// there is no recovering work for all the schemas and tables during
+/// The schema and table id are allocated (and maybe stored) by other components
+/// so there is no recovering work for all the schemas and tables during
 /// initialization.
 struct CatalogImpl<S, T> {
     /// Catalog name
