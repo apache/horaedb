@@ -41,7 +41,7 @@ macro_rules! is_custom_column {
             #[inline]
             pub  fn [<is_ $name:lower _column>](opt: &ColumnOption) -> bool {
                 match opt {
-                    ColumnOption::DialectSpecific(tokens) => {
+                    ColumnOption::Comment(tokens) => {
                         if let [Token::Word(word)] = &tokens[..] {
                             return word.value == $name;
                         }
@@ -60,7 +60,7 @@ is_custom_column!(UNSIGN);
 
 /// Get the comment from the [`ColumnOption`] if it is a comment option.
 pub fn get_column_comment(opt: &ColumnOption) -> Option<String> {
-    if let ColumnOption::DialectSpecific(tokens) = opt {
+    if let ColumnOption::Comment(tokens) = opt {
         if let [Token::Word(keyword), Token::SingleQuotedString(comment)] = &tokens[..] {
             if keyword.value == COMMENT {
                 return Some(comment.clone());
@@ -463,17 +463,17 @@ impl<'a> Parser<'a> {
             Ok(Some(ColumnOption::Unique { is_primary: true }))
         } else if self.consume_token(TAG) {
             // Support TAG for ceresdb
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(ColumnOption::Comment(vec![
                 Token::make_keyword(TAG),
             ])))
         } else if self.consume_token(UNSIGN) {
             // Support unsign for ceresdb
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(ColumnOption::Comment(vec![
                 Token::make_keyword(UNSIGN),
             ])))
         } else if self.consume_token(COMMENT) {
             let comment = self.parser.parse_literal_string()?;
-            Ok(Some(ColumnOption::DialectSpecific(vec![
+            Ok(Some(ColumnOption::Comment(vec![
                 Token::make_keyword(COMMENT),
                 Token::SingleQuotedString(comment),
             ])))
@@ -553,7 +553,7 @@ mod tests {
             collation: None,
             options: vec![ColumnOptionDef {
                 name: None,
-                option: ColumnOption::DialectSpecific(vec![Token::make_keyword(TAG)]),
+                option: ColumnOption::Comment(vec![Token::make_keyword(TAG)]),
             }],
         }
     }
