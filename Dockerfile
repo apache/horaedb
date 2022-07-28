@@ -15,6 +15,8 @@ RUN make build
 ## CeresDB
 FROM ubuntu:20.04
 
+RUN useradd -m -s /bin/bash ceres
+
 RUN apt update && \
     apt install --yes curl gdb iotop cron vim less net-tools && \
     apt clean

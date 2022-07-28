@@ -7,9 +7,13 @@ USER="ceres"
 DATA_DIR="/home/${USER}/data"
 DATA_PATH="${DATA_DIR}/ceresdb"
 CONFIG_FILE="/etc/ceresdb/ceresdb.toml"
-LOCAL_IP=`hostname -I`
+
+# use echo to trim spaces
+LOCAL_IP=$(echo -n $(hostname -I))
+
 # enable jemalloc heap profiling
 export MALLOC_CONF="prof:true,prof_active:false,lg_prof_sample:19"
+
 if [ "${CERESDB_HTTP_PORT}" == "" ]; then
     CERESDB_HTTP_PORT="5440"
 fi
@@ -21,10 +25,11 @@ if [ "${CERESDB_ENABLE_DATANODE}" != "true" ]; then
 fi
 
 ## config file
-sed -i 's/${HTTP_PORT}/'${CERESDB_HTTP_PORT}'/g' ${CONFIG_FILE}
-sed -i 's/${GRPC_PORT}/'${CERESDB_GRPC_PORT}'/g' ${CONFIG_FILE}
-sed -i 's/${DATA_PATH}/'${DATA_PATH}'/g' ${CONFIG_FILE}
-sed -i 's/${NODE_ADDR}/'${LOCAL_IP}'/g' ${CONFIG_FILE}
+# Do not use `/` for sed, because there are `/` in path args
+sed -i 's|${HTTP_PORT}|'${CERESDB_HTTP_PORT}'|g' ${CONFIG_FILE}
+sed -i 's|${GRPC_PORT}|'${CERESDB_GRPC_PORT}'|g' ${CONFIG_FILE}
+sed -i 's|${DATA_PATH}|'${DATA_PATH}'|g' ${CONFIG_FILE}
+sed -i 's|${NODE_ADDR}|'${LOCAL_IP}'|g' ${CONFIG_FILE}
 
 ## data dir
 mkdir -p ${DATA_DIR}
