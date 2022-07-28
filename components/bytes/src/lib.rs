@@ -141,12 +141,6 @@ pub trait MemBufMut: fmt::Debug {
     }
 }
 
-impl MemBufMut for &dyn MemBufMut {
-    fn write_slice(&mut self, src: &[u8]) -> Result<()> {
-        (self as &mut dyn MemBufMut).write_slice(src)
-    }
-}
-
 macro_rules! impl_mem_buf {
     () => {
         #[inline]
