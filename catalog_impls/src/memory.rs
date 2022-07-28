@@ -16,7 +16,7 @@ use catalog::{
     schema::{
         self, CatalogMismatch, CloseOptions, CloseTable, CloseTableRequest, CreateOptions,
         CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
-        OpenOptions, OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
+        OpenOptions, OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaName, SchemaRef,
     },
     Catalog, CatalogRef,
 };
@@ -26,7 +26,7 @@ use table_engine::table::{SchemaId, TableId, TableRef};
 use tokio::sync::Mutex;
 
 #[async_trait]
-pub trait SchemaIdGenerator: Send + Sync {
+pub trait SchemaIdAlloc: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     async fn alloc_schema_id(
         &self,
@@ -35,7 +35,7 @@ pub trait SchemaIdGenerator: Send + Sync {
 }
 
 #[async_trait]
-pub trait TableIdGenerator: Send + Sync {
+pub trait TableIdAlloc: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     async fn alloc_table_id(
         &self,
@@ -51,15 +51,7 @@ pub trait TableIdGenerator: Send + Sync {
     ) -> std::result::Result<(), Self::Error>;
 }
 
-struct ManagerImplInner<S, T> {
-    catalogs: HashMap<String, Arc<CatalogImpl<S, T>>>,
-    /// Global schema id generator, Each schema has a unique schema id.
-    schema_id_generator: Arc<S>,
-    /// Global table id generator.
-    table_id_generator: Arc<T>,
-}
-
-/// In-memory catalog manager
+/// ManagerImpl manages multiple volitale catalogs.
 pub struct ManagerImpl<S, T> {
     inner: Arc<ManagerImplInner<S, T>>,
 }
@@ -74,14 +66,14 @@ impl<S, T> Clone for ManagerImpl<S, T> {
 
 impl<S, T> ManagerImpl<S, T>
 where
-    S: SchemaIdGenerator + 'static,
-    T: TableIdGenerator + 'static,
+    S: SchemaIdAlloc + 'static,
+    T: TableIdAlloc + 'static,
 {
-    pub async fn new(schema_id_generator: S, table_id_generator: T) -> Self {
+    pub async fn new(schema_id_alloc: S, table_id_alloc: T) -> Self {
         let mut inner = ManagerImplInner {
             catalogs: HashMap::new(),
-            table_id_generator: Arc::new(table_id_generator),
-            schema_id_generator: Arc::new(schema_id_generator),
+            table_id_alloc: Arc::new(table_id_alloc),
+            schema_id_alloc: Arc::new(schema_id_alloc),
         };
 
         inner.maybe_create_default_catalog().await;
@@ -94,8 +86,8 @@ where
 
 impl<S, T> Manager for ManagerImpl<S, T>
 where
-    S: SchemaIdGenerator + 'static,
-    T: TableIdGenerator + 'static,
+    S: SchemaIdAlloc + 'static,
+    T: TableIdAlloc + 'static,
 {
     fn default_catalog_name(&self) -> NameRef {
         consts::DEFAULT_CATALOG
@@ -124,10 +116,16 @@ where
     }
 }
 
+struct ManagerImplInner<S, T> {
+    catalogs: HashMap<String, Arc<CatalogImpl<S, T>>>,
+    schema_id_alloc: Arc<S>,
+    table_id_alloc: Arc<T>,
+}
+
 impl<S, T> ManagerImplInner<S, T>
 where
-    S: SchemaIdGenerator,
-    T: TableIdGenerator + 'static,
+    S: SchemaIdAlloc,
+    T: TableIdAlloc + 'static,
 {
     async fn maybe_create_default_catalog(&mut self) {
         // Try to get default catalog, create it if not exists.
@@ -144,10 +142,10 @@ where
         };
 
         // Create default schema if not exists.
-        if catalog.find_schema(consts::DEFAULT_SCHEMA).is_none() {
+        if !catalog.schema_exists(consts::DEFAULT_SCHEMA) {
             // Allocate schema id.
             let schema_id = self
-                .schema_id_generator
+                .schema_id_alloc
                 .alloc_schema_id(consts::DEFAULT_SCHEMA)
                 .await
                 .expect("Schema id of default catalog should be valid");
@@ -156,7 +154,7 @@ where
                 consts::DEFAULT_CATALOG.to_string(),
                 consts::DEFAULT_SCHEMA.to_string(),
                 schema_id,
-                self.table_id_generator.clone(),
+                self.table_id_alloc.clone(),
                 &*catalog,
             )
             .await;
@@ -167,8 +165,8 @@ where
         let catalog = Arc::new(CatalogImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
-            schema_id_generator: self.schema_id_generator.clone(),
-            table_id_generator: self.table_id_generator.clone(),
+            schema_id_alloc: self.schema_id_alloc.clone(),
+            table_id_alloc: self.table_id_alloc.clone(),
         });
 
         self.catalogs.insert(catalog_name, catalog.clone());
@@ -181,54 +179,56 @@ where
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        table_id_generator: Arc<T>,
+        table_id_alloc: Arc<T>,
         catalog: &CatalogImpl<S, T>,
     ) -> Arc<SchemaImpl<T>> {
         let schema = Arc::new(SchemaImpl::new(
             catalog_name,
             schema_name,
             schema_id,
-            table_id_generator,
+            table_id_alloc,
         ));
 
-        catalog.insert_schema_into_memory(schema.clone());
+        catalog.add_schema(schema.clone());
 
         schema
     }
 }
 
-/// Volitale
+/// Volitale implementations for Catalog.
+///
+/// The schema and table id are allocated (and stored) by other components so
+/// there is no recovering work for all the schemas and tables during
+/// initialization.
 struct CatalogImpl<S, T> {
     /// Catalog name
     name: String,
-    /// Schemas of catalog
-    schemas: RwLock<HashMap<String, SchemaRef>>,
-    /// Global schema id generator, Each schema has a unique schema id.
-    schema_id_generator: Arc<S>,
-    /// Global table id generator.
-    table_id_generator: Arc<T>,
+    /// All the schemas belonging to the catalog.
+    schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
+    schema_id_alloc: Arc<S>,
+    table_id_alloc: Arc<T>,
 }
 
 impl<S, T> CatalogImpl<S, T>
 where
-    T: TableIdGenerator + 'static,
+    T: TableIdAlloc + 'static,
 {
-    fn insert_schema_into_memory(&self, schema: Arc<SchemaImpl<T>>) {
+    fn add_schema(&self, schema: Arc<SchemaImpl<T>>) {
         let mut schemas = self.schemas.write().unwrap();
         schemas.insert(schema.name().to_string(), schema);
     }
 
-    fn find_schema(&self, schema_name: &str) -> Option<()> {
+    fn schema_exists(&self, schema_name: &str) -> bool {
         let schemas = self.schemas.read().unwrap();
-        schemas.get(schema_name).map(|_| ())
+        schemas.get(schema_name).is_some()
     }
 }
 
 #[async_trait]
 impl<S, T> Catalog for CatalogImpl<S, T>
 where
-    S: SchemaIdGenerator,
-    T: TableIdGenerator + 'static,
+    S: SchemaIdAlloc,
+    T: TableIdAlloc + 'static,
 {
     fn name(&self) -> NameRef {
         &self.name
@@ -249,7 +249,7 @@ where
         }
 
         let schema_id = self
-            .schema_id_generator
+            .schema_id_alloc
             .alloc_schema_id(name)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -267,7 +267,7 @@ where
             self.name.to_string(),
             name.to_string(),
             schema_id,
-            self.table_id_generator.clone(),
+            self.table_id_alloc.clone(),
         ));
 
         schemas.insert(name.to_string(), schema);
@@ -300,7 +300,7 @@ struct SchemaImpl<T> {
     /// Guard for create/drop table
     create_table_mutex: Mutex<()>,
     schema_id: SchemaId,
-    table_id_gen: Arc<T>,
+    table_id_alloc: Arc<T>,
 }
 
 impl<T> SchemaImpl<T> {
@@ -308,7 +308,7 @@ impl<T> SchemaImpl<T> {
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        table_id_gen: Arc<T>,
+        table_id_alloc: Arc<T>,
     ) -> Self {
         Self {
             catalog_name,
@@ -316,7 +316,7 @@ impl<T> SchemaImpl<T> {
             tables: RwLock::new(HashMap::new()),
             create_table_mutex: Mutex::new(()),
             schema_id,
-            table_id_gen,
+            table_id_alloc,
         }
     }
 
@@ -364,7 +364,7 @@ impl<T> SchemaImpl<T> {
 }
 
 #[async_trait]
-impl<T: TableIdGenerator> Schema for SchemaImpl<T> {
+impl<T: TableIdAlloc> Schema for SchemaImpl<T> {
     fn name(&self) -> NameRef {
         &self.schema_name
     }
@@ -404,7 +404,7 @@ impl<T: TableIdGenerator> Schema for SchemaImpl<T> {
         }
 
         let table_id = self
-            .table_id_gen
+            .table_id_alloc
             .alloc_table_id(&request.schema_name, &request.table_name)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -466,7 +466,7 @@ impl<T: TableIdGenerator> Schema for SchemaImpl<T> {
             .context(DropTable)?;
 
         // invalidate the table id after table is dropped in engine.
-        self.table_id_gen
+        self.table_id_alloc
             .invalidate_table_id(&schema_name, &table_name, table.id())
             .await
             .map_err(|e| Box::new(e) as _)
