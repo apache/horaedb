@@ -7,6 +7,10 @@ on:
       - 'Dockerfile'
       - 'docker/**'
 
+env:
+  CERESDB_ADDR: 127.0.0.1
+  CERESDB_PORT: 5440
+
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -17,5 +21,5 @@ jobs:
         run: docker build -t ceresdb-server .
       - name: Test the Built Image
         run: >-
-          docker run -p 127.0.0.1:5440:5440 -d ceresdb-server &&
+          docker run -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -d ceresdb-server &&
           bash ./tests/basic.sh
