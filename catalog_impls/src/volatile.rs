@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! A volitale catalog implementation used for storing informations about table
+//! A volatile catalog implementation used for storing informations about table
 //! and schema at other components.
 
 use std::{
@@ -51,7 +51,7 @@ pub trait TableIdAlloc: Send + Sync {
     ) -> std::result::Result<(), Self::Error>;
 }
 
-/// ManagerImpl manages multiple volitale catalogs.
+/// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl<S, T> {
     inner: Arc<ManagerImplInner<S, T>>,
 }
@@ -197,7 +197,7 @@ where
     }
 }
 
-/// Volitale implementations for Catalog.
+/// volatile implementations for Catalog.
 ///
 /// The schema and table id are allocated (and stored) by other components so
 /// there is no recovering work for all the schemas and tables during
@@ -291,7 +291,7 @@ where
     }
 }
 
-/// Volitale schema implementations.
+/// volatile schema implementations.
 ///
 /// The tables belonging to the schema won't be recovered during initialization
 /// and will be opened afterwards.

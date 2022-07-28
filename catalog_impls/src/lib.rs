@@ -9,7 +9,7 @@ use crate::system_tables::{SystemTables, SystemTablesBuilder};
 
 mod system_tables;
 pub mod table_based;
-pub mod volitale;
+pub mod volatile;
 
 /// CatalogManagerImpl is a wrapper for system and user tables
 #[derive(Clone)]
