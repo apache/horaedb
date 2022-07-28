@@ -7,18 +7,20 @@ PORT=${CERESDB_PORT:-"5440"}
 
 URL="http://${ADDR}:${PORT}/sql"
 
-# temporarily disable error exit
-set -e
-for i in `seq 0 30`;
-do
-    if curl --location ${URL} ; then
-        echo "server ready, start to test"
-        break
-    else
-        sleep 1
-    fi
-done
-set +e
+## sleep 10s currently, until we find a better way to check server ready
+sleep 10
+### temporarily disable error exit
+##set -e
+##for i in `seq 0 30`;
+##do
+##    if curl --location ${URL} ; then
+##        echo "server ready, start to test"
+##        break
+##    else
+##        sleep 1
+##    fi
+##done
+##set +e
 
 curl --location --request POST ${URL} \
      --header 'Content-Type: application/json' \
