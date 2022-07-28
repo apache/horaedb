@@ -2,10 +2,10 @@
 
 //! Payloads to write to wal
 
-use std::{convert::TryInto, io::Write};
+use std::convert::TryInto;
 
 use common_types::{
-    bytes::{MemBuf, MemBufMut},
+    bytes::{MemBuf, MemBufMut, Writer},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -100,12 +100,12 @@ impl<'a> Payload for WritePayload<'a> {
 
     fn encode_to(
         &self,
-        mut buf: &mut dyn MemBufMut,
+        buf: &mut dyn MemBufMut,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self {
             WritePayload::Write(req) => {
                 write_header(Header::Write, buf)?;
-                let mut writer = &mut buf as &mut dyn Write;
+                let mut writer = Writer::new(buf);
                 req.write_to_writer(&mut writer)
                     .context(EncodeBody)
                     .map_err(Box::new)?;

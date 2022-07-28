@@ -2,13 +2,10 @@
 
 //! Update to meta
 
-use std::{
-    convert::{TryFrom, TryInto},
-    io::Write,
-};
+use std::convert::{TryFrom, TryInto};
 
 use common_types::{
-    bytes::{MemBuf, MemBufMut},
+    bytes::{MemBuf, MemBufMut, Writer},
     schema::{Schema, Version},
     SequenceNumber,
 };
@@ -443,11 +440,11 @@ impl Payload for MetaUpdatePayload {
 
     fn encode_to(
         &self,
-        mut buf: &mut dyn MemBufMut,
+        buf: &mut dyn MemBufMut,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let writer = &mut buf as &mut dyn Write;
+        let mut writer = Writer::new(buf);
         self.0
-            .write_to_writer(writer)
+            .write_to_writer(&mut writer)
             .context(EncodePayloadPb)
             .map_err(Box::new)?;
 
