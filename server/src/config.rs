@@ -15,6 +15,8 @@ pub struct RuntimeConfig {
     pub read_thread_num: usize,
     // Runtime for writing data
     pub write_thread_num: usize,
+    // Runtime for communicating with meta cluster
+    pub meta_thread_num: usize,
     // Runtime for background tasks
     pub background_thread_num: usize,
 }
@@ -57,6 +59,7 @@ impl Default for RuntimeConfig {
         Self {
             read_thread_num: 8,
             write_thread_num: 8,
+            meta_thread_num: 2,
             background_thread_num: 8,
         }
     }
