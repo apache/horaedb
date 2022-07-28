@@ -215,8 +215,6 @@ pub struct TestPayload {
 }
 
 impl Payload for TestPayload {
-    // type Error = Error;
-
     fn encode_size(&self) -> usize {
         4
     }

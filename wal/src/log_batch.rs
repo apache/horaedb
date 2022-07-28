@@ -12,7 +12,6 @@ use common_types::{
 use crate::manager::RegionId;
 
 pub trait Payload: Send + Sync + Debug {
-    // type Error: std::error::Error + Send + Sync + 'static;
     /// Compute size of the encoded payload.
     fn encode_size(&self) -> usize;
     /// Append the encoded payload to the `buf`.
@@ -21,19 +20,6 @@ pub trait Payload: Send + Sync + Debug {
         buf: &mut dyn MemBufMut,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
-
-// impl Payload for dyn Payload {
-//     fn encode_size(&self) -> usize {
-//         self.as_ref().encode_size()
-//     }
-
-//     fn encode_to(
-//         &self,
-//         buf: &mut dyn MemBufMut,
-//     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//         self.as_ref().encode_to(buf)
-//     }
-// }
 
 #[derive(Debug)]
 pub struct LogEntry<P> {

@@ -129,19 +129,6 @@ impl Default for WriteContext {
     }
 }
 
-/// Write abstraction for log entries in Wal.
-// #[async_trait]
-// pub trait LogWriter {
-//     /// Write a batch of log entries to log.
-//     ///
-//     /// Returns the max sequence number for the batch of log entries.
-//     async fn write<P: Payload>(
-//         &self,
-//         ctx: &WriteContext,
-//         batch: &LogWriteBatch<P>,
-//     ) -> Result<SequenceNumber>;
-// }
-
 #[derive(Debug, Clone)]
 pub struct ReadContext {
     /// Timeout to read log entries and it only takes effect when reading from a

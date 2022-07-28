@@ -90,8 +90,6 @@ pub enum WritePayload<'a> {
 }
 
 impl<'a> Payload for WritePayload<'a> {
-    // type Error = Error;
-
     fn encode_size(&self) -> usize {
         let body_size = match self {
             WritePayload::Write(req) => req.compute_size(),

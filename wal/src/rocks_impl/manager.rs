@@ -574,18 +574,6 @@ impl BlockingLogIterator for RocksLogIterator {
     }
 }
 
-// #[async_trait]
-// impl LogWriter for RocksImpl {
-//     async fn write<P: Payload>(
-//         &self,
-//         ctx: &WriteContext,
-//         batch: &LogWriteBatch<P>,
-//     ) -> Result<SequenceNumber> {
-//         let region = self.get_or_create_region(batch.region_id);
-//         region.write(ctx, batch).await
-//     }
-// }
-
 #[async_trait]
 impl WalManager for RocksImpl {
     async fn sequence_num(&self, region_id: RegionId) -> Result<u64> {

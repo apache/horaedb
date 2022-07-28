@@ -437,8 +437,6 @@ impl From<&MetaUpdateLogEntry> for MetaUpdatePayload {
 }
 
 impl Payload for MetaUpdatePayload {
-    // type Error = Error;
-
     fn encode_size(&self) -> usize {
         self.0.compute_size().try_into().unwrap_or(0)
     }
@@ -447,7 +445,6 @@ impl Payload for MetaUpdatePayload {
         &self,
         mut buf: &mut dyn MemBufMut,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // let mut writer = Writer::new(buf);
         let writer = &mut buf as &mut dyn Write;
         self.0
             .write_to_writer(writer)

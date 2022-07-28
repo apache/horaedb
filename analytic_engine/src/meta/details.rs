@@ -826,7 +826,6 @@ mod tests {
             manifest: &ManifestImpl<RocksImpl>,
         ) {
             let add_table = self.meta_update_add_table(table_id);
-            println!("after get meta table");
             manifest.store_update(add_table.clone()).await.unwrap();
             manifest_data_builder.apply_update(add_table).unwrap();
         }
@@ -860,10 +859,8 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
         ) {
             let manifest = self.open_manifest().await;
-            println!("after open manifest: {:?}", manifest);
             self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
                 .await;
-            println!("after add manifest: {:?}", manifest);
         }
 
         async fn drop_table(

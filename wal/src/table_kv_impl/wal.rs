@@ -96,21 +96,6 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
     }
 }
 
-// #[async_trait]
-// impl<T: TableKv> LogWriter for WalNamespaceImpl<T> {
-//     async fn write<P: Payload>(
-//         &self,
-//         ctx: &manager::WriteContext,
-//         batch: &LogWriteBatch<P>,
-//     ) -> Result<SequenceNumber> {
-//         self.namespace
-//             .write_log(ctx, batch)
-//             .await
-//             .map_err(|e| Box::new(e) as _)
-//             .context(Write)
-//     }
-// }
-
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
