@@ -56,6 +56,8 @@ pub struct ManagerImpl<S, T> {
     inner: Arc<ManagerImplInner<S, T>>,
 }
 
+// Note: The way deriving Clone doesn't work for type paramenters S&T without
+// Clone trait bound so we need a manual implementation.
 impl<S, T> Clone for ManagerImpl<S, T> {
     fn clone(&self) -> Self {
         Self {
@@ -289,7 +291,10 @@ where
     }
 }
 
-/// In-memory schema
+/// Volitale schema implementations.
+///
+/// The tables belonging to the schema won't be recovered during initialization
+/// and will be opened afterwards.
 struct SchemaImpl<T> {
     /// Catalog name
     catalog_name: String,
@@ -297,7 +302,7 @@ struct SchemaImpl<T> {
     schema_name: String,
     /// Tables of schema
     tables: RwLock<HashMap<String, TableRef>>,
-    /// Guard for create/drop table
+    /// Guard for creating/dropping table
     create_table_mutex: Mutex<()>,
     schema_id: SchemaId,
     table_id_alloc: Arc<T>,
