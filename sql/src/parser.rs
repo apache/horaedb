@@ -353,9 +353,10 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if let Some(constraint) = try_build_tskey_constraint(&columns) {
+        if let Some(constraint) = try_build_tskey_constraint(&columns)? {
             constraints.push(constraint);
         }
+        try_check_constraint(&constraints)?;
 
         Ok((columns, constraints))
     }
@@ -503,7 +504,29 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Option<TableConstraint> {
+fn try_check_constraint(constraints: &[TableConstraint]) -> Result<()> {
+    let ts_count = constraints
+        .iter()
+        .filter(|constraint| match constraint {
+            TableConstraint::Unique { name, .. } => {
+                &Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }) == name
+            }
+            _ => false,
+        })
+        .count();
+    if ts_count < 2 {
+        return Ok(());
+    }
+    Err(ParserError::ParserError(
+        "Failed to parser, not allowed define mutiple tskey constraints.".to_string(),
+    ))
+}
+
+fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Result<Option<TableConstraint>> {
+    let mut constraint = None;
     for col_def in col_defs {
         let find_result = col_def
             .options
@@ -528,12 +551,16 @@ fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Option<TableConstraint>
                 }
                 _ => None,
             });
-        if find_result.is_some() {
-            return find_result;
+        if constraint.is_some() && find_result.is_some() {
+            return Err(ParserError::ParserError(format!(
+                "Failed to parser, not allowed define mutiple tskey constraints in {}",
+                col_def.name
+            )));
         }
+        constraint = find_result;
     }
 
-    None
+    Ok(constraint)
 }
 
 #[cfg(test)]
