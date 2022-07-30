@@ -75,7 +75,7 @@ impl Header {
     }
 }
 
-fn write_header<B: MemBufMut>(header: Header, buf: &mut B) -> Result<()> {
+fn write_header(header: Header, buf: &mut dyn MemBufMut) -> Result<()> {
     buf.write_u8(header.to_u8()).context(EncodeHeader)?;
     Ok(())
 }
@@ -90,8 +90,6 @@ pub enum WritePayload<'a> {
 }
 
 impl<'a> Payload for WritePayload<'a> {
-    type Error = Error;
-
     fn encode_size(&self) -> usize {
         let body_size = match self {
             WritePayload::Write(req) => req.compute_size(),
@@ -100,12 +98,17 @@ impl<'a> Payload for WritePayload<'a> {
         HEADER_SIZE + body_size as usize
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
+    fn encode_to(
+        &self,
+        buf: &mut dyn MemBufMut,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self {
             WritePayload::Write(req) => {
                 write_header(Header::Write, buf)?;
                 let mut writer = Writer::new(buf);
-                req.write_to_writer(&mut writer).context(EncodeBody)?;
+                req.write_to_writer(&mut writer)
+                    .context(EncodeBody)
+                    .map_err(Box::new)?;
             }
         }
 

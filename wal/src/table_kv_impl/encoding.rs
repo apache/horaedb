@@ -125,7 +125,7 @@ impl LogEncoding {
         Ok(())
     }
 
-    pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
+    pub fn encode_value(&self, buf: &mut BytesMut, payload: &dyn Payload) -> Result<()> {
         buf.clear();
         buf.reserve(self.value_enc.estimate_encoded_size(payload));
         self.value_enc.encode(buf, payload)

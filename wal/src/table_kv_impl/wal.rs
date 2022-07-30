@@ -11,10 +11,9 @@ use snafu::ResultExt;
 use table_kv::TableKv;
 
 use crate::{
-    log_batch::{LogWriteBatch, Payload},
+    log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, LogWriter, ReadContext, ReadRequest, RegionId,
-        WalManager,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
@@ -98,21 +97,6 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
 }
 
 #[async_trait]
-impl<T: TableKv> LogWriter for WalNamespaceImpl<T> {
-    async fn write<P: Payload>(
-        &self,
-        ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<P>,
-    ) -> Result<SequenceNumber> {
-        self.namespace
-            .write_log(ctx, batch)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Write)
-    }
-}
-
-#[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
         self.namespace
@@ -161,5 +145,17 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             runtime,
             ctx.batch_size,
         ))
+    }
+
+    async fn write(
+        &self,
+        ctx: &manager::WriteContext,
+        batch: &LogWriteBatch<'_>,
+    ) -> Result<SequenceNumber> {
+        self.namespace
+            .write_log(ctx, batch)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(Write)
     }
 }

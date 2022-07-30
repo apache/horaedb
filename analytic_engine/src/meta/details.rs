@@ -171,9 +171,8 @@ impl<W: WalManager + Send + Sync> ManifestImpl<W> {
 
         let region_id = Self::region_id_of_meta_update(&update);
         let mut log_batch = LogWriteBatch::new(region_id);
-        log_batch.push(LogWriteEntry {
-            payload: MetaUpdatePayload::from(MetaUpdateLogEntry::Normal(update)),
-        });
+        let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
+        log_batch.push(LogWriteEntry { payload: &payload });
 
         let write_ctx = WriteContext::default();
 
@@ -311,10 +310,15 @@ impl<W: WalManager + Send + Sync> MetaUpdateLogStore for RegionWal<W> {
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
         let mut log_batch = LogWriteBatch::new(self.region_id);
+        let mut payload_batch = Vec::with_capacity(log_entries.len());
+
         for entry in log_entries {
-            log_batch.push(LogWriteEntry {
-                payload: MetaUpdatePayload::from(entry),
-            });
+            let payload = MetaUpdatePayload::from(entry);
+            payload_batch.push(payload);
+        }
+
+        for payload in payload_batch.iter() {
+            log_batch.push(LogWriteEntry { payload });
         }
 
         let write_ctx = WriteContext::default();
@@ -855,7 +859,6 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
         ) {
             let manifest = self.open_manifest().await;
-
             self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
                 .await;
         }

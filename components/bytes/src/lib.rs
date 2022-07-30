@@ -220,18 +220,18 @@ impl MemBufMut for Vec<u8> {
 
 /// A `MemBufMut` adapter which implements [std::io::Write] for the inner value
 #[derive(Debug)]
-pub struct Writer<'a, B> {
-    buf: &'a mut B,
+pub struct Writer<'a> {
+    buf: &'a mut dyn MemBufMut,
 }
 
-impl<'a, B: MemBufMut> Writer<'a, B> {
+impl<'a> Writer<'a> {
     /// Create a new Writer from a mut ref to buf
-    pub fn new(buf: &'a mut B) -> Self {
+    pub fn new(buf: &'a mut dyn MemBufMut) -> Self {
         Self { buf }
     }
 }
 
-impl<'a, B: MemBufMut> Write for Writer<'a, B> {
+impl<'a> Write for Writer<'a> {
     fn write(&mut self, src: &[u8]) -> io::Result<usize> {
         self.buf.write_slice(src).map_err(|e| match &e {
             Error::UnexpectedEof { .. } => io::Error::new(io::ErrorKind::UnexpectedEof, e),
