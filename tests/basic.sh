@@ -10,11 +10,11 @@ URL="http://${ADDR}:${PORT}/sql"
 function ceresdb_query {
     sql=${1}
 
-    curl --location --fail-with-body \
+    curl --location --fail \
          --request POST ${URL} \
          --header 'Content-Type: application/json' \
          --data-raw '{
-        "query": "'${sql}'"
+        "query": "'"${sql}"'"
     }'
 }
 
