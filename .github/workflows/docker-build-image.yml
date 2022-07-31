@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - '.github/workflows/docker-build-image.yml'
-      - 'tests/basic.sh'
       - 'Dockerfile'
       - 'docker/**'
 

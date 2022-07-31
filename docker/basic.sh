@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set +exo pipefail
+set -exo pipefail
 
 ADDR=${CERESDB_ADDR:-"127.0.0.1"}
 PORT=${CERESDB_PORT:-"5440"}
