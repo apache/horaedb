@@ -23,4 +23,4 @@ jobs:
         run: >-
           docker run -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -d ceresdb-server &&
           sleep 10 &&
-          bash ./tests/basic.sh
+          bash ./docker/basic.sh
