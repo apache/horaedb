@@ -4,7 +4,7 @@
 //!
 //! Some codes are copied from datafusion: <https://github.com/apache/arrow/blob/9d86440946b8b07e03abb94fad2da278affae08f/rust/datafusion/src/sql/parser.rs#L74>
 
-use log::debug;
+use log::{debug, warn};
 use paste::paste;
 use sqlparser::{
     ast::{ColumnDef, ColumnOption, ColumnOptionDef, Ident, TableConstraint},
@@ -327,7 +327,7 @@ impl<'a> Parser<'a> {
         let mut columns = vec![];
         let mut constraints = vec![];
         if !self.parser.consume_token(&Token::LParen) || self.parser.consume_token(&Token::RParen) {
-            return Ok((columns, constraints));
+            return Ok((Vec::new(), constraints));
         }
 
         loop {
@@ -352,6 +352,11 @@ impl<'a> Parser<'a> {
                 );
             }
         }
+
+        if let Some(constraint) = try_build_tskey_constraint(&columns)? {
+            constraints.push(constraint);
+        }
+        try_check_constraint(&constraints)?;
 
         Ok((columns, constraints))
     }
@@ -461,6 +466,13 @@ impl<'a> Parser<'a> {
             .parse_keywords(&[Keyword::PRIMARY, Keyword::KEY])
         {
             Ok(Some(ColumnOption::Unique { is_primary: true }))
+        } else if self
+            .parser
+            .parse_keywords(&[Keyword::TIMESTAMP, Keyword::KEY])
+        {
+            Ok(Some(ColumnOption::DialectSpecific(vec![
+                Token::make_keyword(TS_KEY),
+            ])))
         } else if self.consume_token(TAG) {
             // Support TAG for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
@@ -492,9 +504,68 @@ impl<'a> Parser<'a> {
     }
 }
 
+fn try_check_constraint(constraints: &[TableConstraint]) -> Result<()> {
+    let ts_count = constraints
+        .iter()
+        .filter(|constraint| match constraint {
+            TableConstraint::Unique { name, .. } => {
+                &Some(Ident {
+                    value: TS_KEY.to_owned(),
+                    quote_style: None,
+                }) == name
+            }
+            _ => false,
+        })
+        .count();
+    if ts_count < 2 {
+        return Ok(());
+    }
+    Err(ParserError::ParserError(
+        "Failed to parser, not allowed define mutiple tskey constraints.".to_string(),
+    ))
+}
+
+fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Result<Option<TableConstraint>> {
+    let mut constraint = None;
+    for col_def in col_defs {
+        let find_result = col_def
+            .options
+            .iter()
+            .map(|col_def| &col_def.option)
+            .find_map(|col| match col {
+                ColumnOption::DialectSpecific(tokens) => {
+                    if let [Token::Word(token)] = &tokens[..] {
+                        if token.value.eq(TS_KEY) {
+                            return Some(TableConstraint::Unique {
+                                name: Some(Ident {
+                                    value: TS_KEY.to_owned(),
+                                    quote_style: None,
+                                }),
+                                columns: vec![col_def.name.clone()],
+                                is_primary: false,
+                            });
+                        }
+                        warn!("Unsupported Keyword in column option: {}", token);
+                    }
+                    None
+                }
+                _ => None,
+            });
+        if constraint.is_some() && find_result.is_some() {
+            return Err(ParserError::ParserError(format!(
+                "Failed to parser, not allowed define mutiple tskey constraints in {}",
+                col_def.name
+            )));
+        }
+        constraint = find_result;
+    }
+
+    Ok(constraint)
+}
+
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::{DataType, Ident, ObjectName, Value};
+    use sqlparser::ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value};
 
     use super::*;
     use crate::ast::TableName;
