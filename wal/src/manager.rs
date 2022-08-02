@@ -233,7 +233,7 @@ pub trait BatchLogIterator {
 /// Every region has its own increasing (and maybe hallow) sequence number
 /// space.
 #[async_trait]
-pub trait WalManager: fmt::Debug {
+pub trait WalManager: Send + Sync + fmt::Debug {
     /// Get current sequence number.
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
@@ -327,3 +327,5 @@ impl BatchLogIterator for BatchLogIteratorAdapter {
         Ok(log_entries)
     }
 }
+
+pub type WalManagerRef = Arc<dyn WalManager>;

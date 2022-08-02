@@ -8,7 +8,6 @@ use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -30,11 +29,7 @@ use crate::{
     table_options,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
         &self,

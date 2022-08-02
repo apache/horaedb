@@ -29,11 +29,11 @@ use object_store::ObjectStoreRef;
 use parquet::{DataCacheRef, MetaCacheRef};
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
-use wal::manager::WalManager;
+use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
-    meta::Manifest,
+    meta::details::ManifestImpl,
     space::{SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::TableDataRef,
@@ -85,13 +85,13 @@ impl Spaces {
     }
 }
 
-pub struct SpaceStore<Wal, Meta> {
+pub struct SpaceStore {
     /// All spaces of the engine.
     spaces: RwLock<Spaces>,
     /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: Meta,
+    manifest: ManifestImpl,
     /// Wal of all tables
-    wal_manager: Wal,
+    wal_manager: WalManagerRef,
     /// Sst storage.
     store: ObjectStoreRef,
     /// Sst factory.
@@ -101,13 +101,13 @@ pub struct SpaceStore<Wal, Meta> {
     data_cache: Option<DataCacheRef>,
 }
 
-impl<Wal, Meta> Drop for SpaceStore<Wal, Meta> {
+impl Drop for SpaceStore {
     fn drop(&mut self) {
         info!("SpaceStore dropped");
     }
 }
 
-impl<Wal, Meta> SpaceStore<Wal, Meta> {
+impl SpaceStore {
     async fn close(&self) -> Result<()> {
         let spaces = self.spaces.read().unwrap().list_all_spaces();
         for space in spaces {
@@ -119,7 +119,7 @@ impl<Wal, Meta> SpaceStore<Wal, Meta> {
     }
 }
 
-impl<Wal, Meta> SpaceStore<Wal, Meta> {
+impl SpaceStore {
     fn store_ref(&self) -> &ObjectStoreRef {
         &self.store
     }
@@ -142,9 +142,9 @@ impl<Wal, Meta> SpaceStore<Wal, Meta> {
 ///
 /// Manages all spaces, also contains needed resources shared across all table
 // TODO(yingwen): Track memory usage of all tables (or tables of space)
-pub struct Instance<Wal, Meta> {
+pub struct Instance {
     /// Space storage
-    space_store: Arc<SpaceStore<Wal, Meta>>,
+    space_store: Arc<SpaceStore>,
     /// Runtime to execute async tasks.
     runtimes: Arc<EngineRuntimes>,
     /// Global table options, overwrite mutable options in each table's
@@ -170,7 +170,7 @@ pub struct Instance<Wal, Meta> {
     pub(crate) replay_batch_size: usize,
 }
 
-impl<Wal, Meta> Instance<Wal, Meta> {
+impl Instance {
     /// Close the instance gracefully.
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
@@ -185,7 +185,7 @@ impl<Wal, Meta> Instance<Wal, Meta> {
 }
 
 // TODO(yingwen): Instance builder
-impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
+impl Instance {
     /// Find space using read lock
     fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
@@ -222,4 +222,4 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
 }
 
 /// Instance reference
-pub type InstanceRef<Wal, Meta> = Arc<Instance<Wal, Meta>>;
+pub type InstanceRef = Arc<Instance>;

@@ -8,7 +8,6 @@ use log::info;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -25,11 +24,7 @@ use crate::{
     table_options,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Create table need to be handled by write worker.
     pub async fn do_create_table(
         &self,

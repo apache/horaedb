@@ -8,7 +8,6 @@ use log::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -24,11 +23,7 @@ use crate::{
     space::SpaceRef,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Drop a table under given space
     pub async fn do_drop_table(
         self: &Arc<Self>,

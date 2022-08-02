@@ -37,7 +37,6 @@ use crate::{
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
     instance::SpaceStore,
-    meta::Manifest,
     table::data::TableDataRef,
     TableOptions,
 };
@@ -219,8 +218,8 @@ pub struct SchedulerImpl {
 }
 
 impl SchedulerImpl {
-    pub fn new<Wal: Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static>(
-        space_store: Arc<SpaceStore<Wal, Meta>>,
+    pub fn new(
+        space_store: Arc<SpaceStore>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
     ) -> Self {
@@ -293,10 +292,10 @@ impl OngoingTask {
     }
 }
 
-struct ScheduleWorker<Wal, Meta> {
+struct ScheduleWorker {
     sender: Sender<ScheduleTask>,
     receiver: Receiver<ScheduleTask>,
-    space_store: Arc<SpaceStore<Wal, Meta>>,
+    space_store: Arc<SpaceStore>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
     picker_manager: PickerManager,
@@ -314,7 +313,7 @@ async fn schedule_table_compaction(sender: Sender<ScheduleTask>, request: TableC
     }
 }
 
-impl<Wal: Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static> ScheduleWorker<Wal, Meta> {
+impl ScheduleWorker {
     async fn schedule_loop(&mut self) {
         while self.running.load(Ordering::Relaxed) {
             // TODO(yingwen): Maybe add a random offset to the interval.
