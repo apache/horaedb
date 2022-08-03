@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! A volatile catalog implementation used for storing informations about table
-//! and schema at other components.
+//! A volatile catalog implementation used for storing information about table
+//! and schema in memory.
 
 use std::{
     collections::HashMap,
@@ -22,34 +22,10 @@ use catalog::{
 };
 use log::{debug, info};
 use snafu::{ensure, ResultExt};
-use table_engine::table::{SchemaId, TableId, TableRef};
+use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
 
-#[async_trait]
-pub trait SchemaIdAlloc: Send + Sync {
-    type Error: std::error::Error + Send + Sync + 'static;
-    async fn alloc_schema_id(
-        &self,
-        schema_name: &str,
-    ) -> std::result::Result<SchemaId, Self::Error>;
-}
-
-#[async_trait]
-pub trait TableIdAlloc: Send + Sync {
-    type Error: std::error::Error + Send + Sync + 'static;
-    async fn alloc_table_id(
-        &self,
-        schema_name: &str,
-        table_name: &str,
-    ) -> std::result::Result<TableId, Self::Error>;
-
-    async fn invalidate_table_id(
-        &self,
-        schema_name: &str,
-        table_name: &str,
-        table_id: TableId,
-    ) -> std::result::Result<(), Self::Error>;
-}
+use crate::{SchemaIdAlloc, TableIdAlloc};
 
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl<S, T> {

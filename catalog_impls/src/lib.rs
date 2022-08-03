@@ -2,8 +2,10 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use catalog::{consts::SYSTEM_CATALOG, manager::Manager, schema::NameRef, CatalogRef};
 use system_catalog::{tables::Tables, SystemTableAdapter};
+use table_engine::table::{SchemaId, TableId};
 
 use crate::system_tables::{SystemTables, SystemTablesBuilder};
 
@@ -49,4 +51,30 @@ impl<M: Manager> Manager for CatalogManagerImpl<M> {
     fn all_catalogs(&self) -> catalog::manager::Result<Vec<CatalogRef>> {
         self.user_catalog_manager.all_catalogs()
     }
+}
+
+#[async_trait]
+pub trait SchemaIdAlloc: Send + Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    async fn alloc_schema_id(
+        &self,
+        schema_name: NameRef,
+    ) -> std::result::Result<SchemaId, Self::Error>;
+}
+
+#[async_trait]
+pub trait TableIdAlloc: Send + Sync {
+    type Error: std::error::Error + Send + Sync + 'static;
+    async fn alloc_table_id(
+        &self,
+        schema_name: NameRef,
+        table_name: NameRef,
+    ) -> std::result::Result<TableId, Self::Error>;
+
+    async fn invalidate_table_id(
+        &self,
+        schema_name: NameRef,
+        table_name: NameRef,
+        table_id: TableId,
+    ) -> std::result::Result<(), Self::Error>;
 }
