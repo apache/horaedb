@@ -359,7 +359,7 @@ pub struct AlterSchemaMeta {
 }
 
 impl AlterSchemaMeta {
-    fn into_pb(self) -> meta_pb::AlterSchemaMeta {
+    pub(crate) fn into_pb(self) -> meta_pb::AlterSchemaMeta {
         let mut target = meta_pb::AlterSchemaMeta::new();
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());

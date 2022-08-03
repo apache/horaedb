@@ -8,13 +8,16 @@ use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
+use wal::{
+    log_batch::{LogWriteBatch, LogWriteEntry},
+    manager::{WalManager, WriteContext},
+};
 
 use crate::{
     instance::{
         engine::{
             AlterDroppedTable, FlushTable, InvalidOptions, InvalidPreVersion, InvalidSchemaVersion,
-            OperateByWriteWorker, Result, WriteManifest,
+            OperateByWriteWorker, Result, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
         write_worker,
@@ -25,6 +28,7 @@ use crate::{
         meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
         Manifest,
     },
+    payload::WritePayload,
     space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
@@ -99,18 +103,25 @@ where
         // Now we can persist and update the schema, since this function is called by
         // write worker, so there is no other concurrent writer altering the
         // schema.
-        let meta_update = MetaUpdate::AlterSchema(AlterSchemaMeta {
+        let meta_update = AlterSchemaMeta {
             space_id: space_table.space().id,
             table_id: table_data.id,
             schema: request.schema.clone(),
             pre_schema_version: request.pre_schema_version,
-        });
+        }
+        .into_pb();
+        let payload = WritePayload::AlterSchema(&meta_update);
+        let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+        log_batch.push(LogWriteEntry { payload: &payload });
+
+        // Write AlterSchema record to WAL
+        let write_ctx = WriteContext::default();
         self.space_store
-            .manifest
-            .store_update(meta_update)
+            .wal_manager
+            .write(&write_ctx, &log_batch)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(WriteManifest {
+            .context(WriteWal {
                 space_id: space_table.space().id,
                 table: &table_data.name,
                 table_id: table_data.id,
