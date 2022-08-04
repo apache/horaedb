@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Alter schema logic of instance
+//! Alter [Schema] and [TableOptions] logic of instance.
 
 use std::{collections::HashMap, sync::Arc};
 
