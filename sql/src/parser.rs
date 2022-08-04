@@ -468,7 +468,9 @@ impl<'a> Parser<'a> {
                 Token::make_keyword(UNSIGN),
             ])))
         } else if self.parser.parse_keyword(Keyword::COMMENT) {
-            Ok(Some(ColumnOption::Comment(self.parser.parse_literal_string()?)))
+            Ok(Some(ColumnOption::Comment(
+                self.parser.parse_literal_string()?,
+            )))
         } else {
             Ok(None)
         }
