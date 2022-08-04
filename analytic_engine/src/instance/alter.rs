@@ -17,7 +17,7 @@ use crate::{
     instance::{
         engine::{
             AlterDroppedTable, FlushTable, InvalidOptions, InvalidPreVersion, InvalidSchemaVersion,
-            OperateByWriteWorker, Result, WriteManifest, WriteWal,
+            OperateByWriteWorker, Result, StoreVersionEdit, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
         write_worker,
@@ -25,7 +25,7 @@ use crate::{
         Instance,
     },
     meta::{
-        meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
+        meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, VersionEditMeta},
         Manifest,
     },
     payload::WritePayload,
@@ -116,7 +116,8 @@ where
 
         // Write AlterSchema record to WAL
         let write_ctx = WriteContext::default();
-        self.space_store
+        let sequence_id = self
+            .space_store
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
@@ -131,6 +132,24 @@ where
             "Instance update table schema, new_schema:{:?}",
             request.schema
         );
+
+        // todo: update Manifest
+
+        // Step sequence id
+        let edit_meta = VersionEditMeta {
+            space_id: table_data.space_id,
+            table_id: table_data.id,
+            flushed_sequence: sequence_id,
+            files_to_add: vec![],
+            files_to_delete: vec![],
+        };
+        let meta_update = MetaUpdate::VersionEdit(edit_meta);
+        self.space_store
+            .manifest
+            .store_update(meta_update)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(StoreVersionEdit)?;
 
         // Update schema in memory.
         table_data.set_schema(request.schema);

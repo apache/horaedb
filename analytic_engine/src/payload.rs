@@ -114,7 +114,7 @@ impl<'a> Payload for WritePayload<'a> {
                     .map_err(Box::new)?;
             }
             WritePayload::AlterSchema(req) => {
-                write_header(Header::Write, buf)?;
+                write_header(Header::AlterSchema, buf)?;
                 let mut writer = Writer::new(buf);
                 req.write_to_writer(&mut writer).context(EncodeBody)?;
             }
@@ -160,7 +160,16 @@ impl ReadPayload {
     }
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
-        todo!()
+        let mut alter_schema_meta_pb: meta_update::AlterSchemaMeta =
+            Message::parse_from_bytes(buf).context(DecodeBody)?;
+
+        // Consume and convert schema in pb
+        let schema: Schema = alter_schema_meta_pb
+            .take_schema()
+            .try_into()
+            .context(DecodeSchema)?;
+
+        Ok(Self::AlterSchema { schema })
     }
 }
 
