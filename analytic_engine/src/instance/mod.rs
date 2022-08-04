@@ -33,7 +33,7 @@ use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
-    meta::details::ManifestImpl,
+    meta::ManifestRef,
     space::{SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::TableDataRef,
@@ -89,7 +89,7 @@ pub struct SpaceStore {
     /// All spaces of the engine.
     spaces: RwLock<Spaces>,
     /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: ManifestImpl,
+    manifest: ManifestRef,
     /// Wal of all tables
     wal_manager: WalManagerRef,
     /// Sst storage.

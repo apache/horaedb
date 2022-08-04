@@ -20,10 +20,7 @@ use crate::{
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
     space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
@@ -104,7 +101,6 @@ impl Instance {
             .manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space_table.space().id,
                 table: &table_data.name,
@@ -237,7 +233,6 @@ impl Instance {
             .manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space_table.space().id,
                 table: &table_data.name,

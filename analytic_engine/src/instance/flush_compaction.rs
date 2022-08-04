@@ -33,10 +33,7 @@ use crate::{
         Instance, SpaceStore,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
-    meta::{
-        meta_update::{AlterOptionsMeta, MetaUpdate, VersionEditMeta},
-        Manifest,
-    },
+    meta::meta_update::{AlterOptionsMeta, MetaUpdate, VersionEditMeta},
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -287,7 +284,6 @@ impl Instance {
                 .manifest
                 .store_update(meta_update)
                 .await
-                .map_err(|e| Box::new(e) as _)
                 .context(StoreVersionEdit)?;
 
             table_data.set_table_options(worker_local, new_table_opts);
@@ -526,7 +522,6 @@ impl Instance {
             .manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
         // Edit table version to remove dumped memtables.
@@ -802,7 +797,6 @@ impl SpaceStore {
         self.manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
         // Apply to the table version.

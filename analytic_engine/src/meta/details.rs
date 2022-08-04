@@ -221,9 +221,10 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    type Error = Error;
-
-    async fn store_update(&self, update: MetaUpdate) -> Result<()> {
+    async fn store_update(
+        &self,
+        update: MetaUpdate,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let table_id = update.table_id();
         self.store_update_to_wal(update).await?;
 
@@ -243,7 +244,8 @@ impl Manifest for ManifestImpl {
         &self,
         table_id: TableId,
         do_snapshot: bool,
-    ) -> Result<Option<TableManifestData>> {
+    ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
+    {
         let region_id = table_id.as_u64();
         if do_snapshot {
             if let Some(snapshot) = self.maybe_do_snapshot(table_id).await? {

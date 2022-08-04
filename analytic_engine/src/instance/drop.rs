@@ -16,10 +16,7 @@ use crate::{
         write_worker::{self, DropTableCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{DropTableMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{DropTableMeta, MetaUpdate},
     space::SpaceRef,
 };
 
@@ -104,7 +101,6 @@ impl Instance {
             .manifest
             .store_update(update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space.id,
                 table: &table_data.name,

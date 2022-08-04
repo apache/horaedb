@@ -25,7 +25,7 @@ use crate::{
     context::OpenContext,
     engine::TableEngineImpl,
     instance::{Instance, InstanceRef},
-    meta::details::ManifestImpl,
+    meta::{details::ManifestImpl, ManifestRef},
     sst::factory::FactoryImpl,
     storage_options::StorageOptions,
     Config,
@@ -94,7 +94,7 @@ pub trait EngineBuilder: Send + Sync + Default {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<(WalManagerRef, ManifestImpl)>;
+    ) -> Result<(WalManagerRef, ManifestRef)>;
 }
 
 /// [RocksEngine] builder.
@@ -107,7 +107,7 @@ impl EngineBuilder for RocksEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<(WalManagerRef, ManifestImpl)> {
+    ) -> Result<(WalManagerRef, ManifestRef)> {
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&config.wal_path);
         let wal_path = data_path.join(WAL_DIR_NAME);
@@ -124,7 +124,7 @@ impl EngineBuilder for RocksEngineBuilder {
             .await
             .context(OpenManifest)?;
 
-        Ok((Arc::new(wal_manager), manifest))
+        Ok((Arc::new(wal_manager), Arc::new(manifest)))
     }
 }
 
@@ -138,7 +138,7 @@ impl EngineBuilder for ReplicatedEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<(WalManagerRef, ManifestImpl)> {
+    ) -> Result<(WalManagerRef, ManifestRef)> {
         // Notice the creation of obkv client may block current thread.
         let obkv_config = config.obkv_wal.obkv.clone();
         let obkv = engine_runtimes
@@ -166,7 +166,7 @@ impl EngineBuilder for MemWalEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<(WalManagerRef, ManifestImpl)> {
+    ) -> Result<(WalManagerRef, ManifestRef)> {
         open_wal_and_manifest_with_table_kv(config, engine_runtimes, self.table_kv.clone()).await
     }
 }
@@ -175,7 +175,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
-) -> Result<(WalManagerRef, ManifestImpl)> {
+) -> Result<(WalManagerRef, ManifestRef)> {
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
         write_runtime: engine_runtimes.write_runtime.clone(),
@@ -203,14 +203,14 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         .await
         .context(OpenManifest)?;
 
-    Ok((Arc::new(wal_manager), manifest))
+    Ok((Arc::new(wal_manager), Arc::new(manifest)))
 }
 
 async fn open_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
-    manifest: ManifestImpl,
+    manifest: ManifestRef,
     store: ObjectStoreRef,
 ) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> =

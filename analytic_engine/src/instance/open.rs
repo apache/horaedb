@@ -32,7 +32,7 @@ use crate::{
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
         Instance, SpaceStore, Spaces,
     },
-    meta::{details::ManifestImpl, meta_data::TableManifestData, Manifest},
+    meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     space::{Space, SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
@@ -43,7 +43,7 @@ impl Instance {
     /// Open a new instance
     pub async fn open(
         ctx: OpenContext,
-        manifest: ManifestImpl,
+        manifest: ManifestRef,
         wal_manager: WalManagerRef,
         store: ObjectStoreRef,
         sst_factory: SstFactoryRef,
@@ -199,7 +199,6 @@ impl Instance {
             .manifest
             .load_data(table_id, true)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(ReadMetaUpdate { table_id })?;
 
         let table_data = if let Some(manifest_data) = manifest_data {

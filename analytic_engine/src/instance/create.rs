@@ -15,10 +15,7 @@ use crate::{
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{AddTableMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{AddTableMeta, MetaUpdate},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,
@@ -109,7 +106,6 @@ impl Instance {
             .manifest
             .store_update(update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space.id,
                 table: &table_data.name,
