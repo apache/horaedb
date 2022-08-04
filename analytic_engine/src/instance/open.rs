@@ -391,7 +391,12 @@ where
                             })?;
                     }
                 }
-                ReadPayload::AlterSchema { .. } => unimplemented!(),
+                ReadPayload::AlterSchema { .. } | ReadPayload::AlterOptions { .. } => {
+                    // Ignore records except Data.
+                    //
+                    // - DDL (AlterSchema and AlterOptions) should be recovered
+                    //   from Manifest on start.
+                }
             }
         }
 

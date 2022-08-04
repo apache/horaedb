@@ -18,6 +18,8 @@ use protobuf::Message;
 use snafu::{Backtrace, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
+use crate::TableOptions;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to encode header, err:{}", source))]
@@ -61,6 +63,7 @@ define_result!(Error);
 enum Header {
     Write = 1,
     AlterSchema = 2,
+    AlterOption = 3,
 }
 
 impl Header {
@@ -89,6 +92,7 @@ const HEADER_SIZE: usize = 1;
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),
     AlterSchema(&'a meta_update::AlterSchemaMeta),
+    AlterOption(&'a meta_update::AlterOptionsMeta),
 }
 
 impl<'a> Payload for WritePayload<'a> {
@@ -96,6 +100,7 @@ impl<'a> Payload for WritePayload<'a> {
         let body_size = match self {
             WritePayload::Write(req) => req.compute_size(),
             WritePayload::AlterSchema(req) => req.compute_size(),
+            WritePayload::AlterOption(req) => req.compute_size(),
         };
 
         HEADER_SIZE + body_size as usize
@@ -118,6 +123,11 @@ impl<'a> Payload for WritePayload<'a> {
                 let mut writer = Writer::new(buf);
                 req.write_to_writer(&mut writer).context(EncodeBody)?;
             }
+            WritePayload::AlterOption(req) => {
+                write_header(Header::AlterOption, buf)?;
+                let mut writer = Writer::new(buf);
+                req.write_to_writer(&mut writer).context(EncodeBody)?;
+            }
         }
 
         Ok(())
@@ -129,6 +139,7 @@ impl<'a> Payload for WritePayload<'a> {
 pub enum ReadPayload {
     Write { row_group: RowGroup },
     AlterSchema { schema: Schema },
+    AlterOptions { options: TableOptions },
 }
 
 impl ReadPayload {
@@ -171,6 +182,16 @@ impl ReadPayload {
 
         Ok(Self::AlterSchema { schema })
     }
+
+    fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
+        let mut alter_option_meta_pb: meta_update::AlterOptionsMeta =
+            Message::parse_from_bytes(buf).context(DecodeBody)?;
+
+        // Consume and convert options in pb
+        let options: TableOptions = alter_option_meta_pb.take_options().into();
+
+        Ok(Self::AlterOptions { options })
+    }
 }
 
 /// Wal payload decoder
@@ -196,6 +217,7 @@ impl PayloadDecoder for WalDecoder {
         let payload = match header {
             Header::Write => ReadPayload::decode_write_from_pb(buf.remaining_slice())?,
             Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(buf.remaining_slice())?,
+            Header::AlterOption => ReadPayload::decode_alter_option_from_pb(buf.remaining_slice())?,
         };
 
         Ok(payload)

@@ -394,7 +394,7 @@ pub struct AlterOptionsMeta {
 }
 
 impl AlterOptionsMeta {
-    fn into_pb(self) -> meta_pb::AlterOptionsMeta {
+    pub(crate) fn into_pb(self) -> meta_pb::AlterOptionsMeta {
         let mut target = meta_pb::AlterOptionsMeta::new();
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());
