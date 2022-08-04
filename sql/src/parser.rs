@@ -353,7 +353,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        try_build_timestamp_key_constraint(&columns, &mut constraints);
+        build_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -502,10 +502,7 @@ impl<'a> Parser<'a> {
 }
 
 // Build the tskey constraint from the column definitions if any.
-fn try_build_timestamp_key_constraint(
-    col_defs: &[ColumnDef],
-    constraints: &mut Vec<TableConstraint>,
-) {
+fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<TableConstraint>) {
     for col_def in col_defs {
         for col in &col_def.options {
             if let ColumnOption::DialectSpecific(tokens) = &col.option {
