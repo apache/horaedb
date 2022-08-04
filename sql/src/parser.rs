@@ -58,6 +58,7 @@ is_custom_column!(TAG);
 is_custom_column!(UNSIGN);
 
 /// Get the comment from the [`ColumnOption`] if it is a comment option.
+#[inline]
 pub fn get_column_comment(opt: &ColumnOption) -> Option<String> {
     if let ColumnOption::Comment(comment) = opt {
         return Some(comment.clone());
