@@ -22,7 +22,7 @@ use log::{error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
-use wal::manager::{RegionId, WalManager};
+use wal::manager::RegionId;
 
 use crate::{
     compaction::{
@@ -33,10 +33,7 @@ use crate::{
         Instance, SpaceStore,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
-    meta::{
-        meta_update::{AlterOptionsMeta, MetaUpdate, VersionEditMeta},
-        Manifest,
-    },
+    meta::meta_update::{AlterOptionsMeta, MetaUpdate, VersionEditMeta},
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -181,11 +178,7 @@ pub enum TableFlushPolicy {
     Purge,
 }
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Flush this table.
     pub async fn flush_table(
         &self,
@@ -291,7 +284,6 @@ where
                 .manifest
                 .store_update(meta_update)
                 .await
-                .map_err(|e| Box::new(e) as _)
                 .context(StoreVersionEdit)?;
 
             table_data.set_table_options(worker_local, new_table_opts);
@@ -530,7 +522,6 @@ where
             .manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
         // Edit table version to remove dumped memtables.
@@ -765,7 +756,7 @@ where
     }
 }
 
-impl<Wal, Meta: Manifest> SpaceStore<Wal, Meta> {
+impl SpaceStore {
     pub(crate) async fn compact_table(
         &self,
         runtime: Arc<Runtime>,
@@ -806,7 +797,6 @@ impl<Wal, Meta: Manifest> SpaceStore<Wal, Meta> {
         self.manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(StoreVersionEdit)?;
 
         // Apply to the table version.

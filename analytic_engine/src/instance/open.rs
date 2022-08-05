@@ -15,7 +15,7 @@ use table_engine::table::TableId;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, WalManager},
+    manager::{BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
 };
 
 use crate::{
@@ -32,23 +32,19 @@ use crate::{
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
         Instance, SpaceStore, Spaces,
     },
-    meta::{meta_data::TableManifestData, Manifest},
+    meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     space::{Space, SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::{TableData, TableDataRef},
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Open a new instance
     pub async fn open(
         ctx: OpenContext,
-        manifest: Meta,
-        wal_manager: Wal,
+        manifest: ManifestRef,
+        wal_manager: WalManagerRef,
         store: ObjectStoreRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
@@ -203,7 +199,6 @@ where
             .manifest
             .load_data(table_id, true)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(ReadMetaUpdate { table_id })?;
 
         let table_data = if let Some(manifest_data) = manifest_data {

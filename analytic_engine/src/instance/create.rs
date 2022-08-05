@@ -8,7 +8,6 @@ use log::info;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -16,20 +15,13 @@ use crate::{
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{AddTableMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{AddTableMeta, MetaUpdate},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Create table need to be handled by write worker.
     pub async fn do_create_table(
         &self,
@@ -114,7 +106,6 @@ where
             .manifest
             .store_update(update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space.id,
                 table: &table_data.name,

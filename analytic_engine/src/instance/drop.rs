@@ -8,7 +8,6 @@ use log::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::DropTableRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -17,18 +16,11 @@ use crate::{
         write_worker::{self, DropTableCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{DropTableMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{DropTableMeta, MetaUpdate},
     space::SpaceRef,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Drop a table under given space
     pub async fn do_drop_table(
         self: &Arc<Self>,
@@ -109,7 +101,6 @@ where
             .manifest
             .store_update(update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space.id,
                 table: &table_data.name,

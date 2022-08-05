@@ -23,11 +23,9 @@ use table_engine::{
     table::ReadRequest,
 };
 use tokio::sync::mpsc::{self, Receiver};
-use wal::manager::WalManager;
 
 use crate::{
     instance::Instance,
-    meta::Manifest,
     row_iter::{
         chain,
         chain::{ChainConfig, ChainIterator},
@@ -75,7 +73,7 @@ fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequ
     table_options.need_dedup() || read_request.order.is_in_order()
 }
 
-impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
+impl Instance {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(

@@ -22,7 +22,7 @@ use wal::{
     log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
-        RegionId, SequenceNumber, WalManager, WriteContext,
+        RegionId, SequenceNumber, WalManagerRef, WriteContext,
     },
 };
 
@@ -140,9 +140,9 @@ impl Default for Options {
 ///    [`Snapshotter`]).
 /// TODO(xikai): it may be better to store the snapshot on object store.
 #[derive(Debug)]
-pub struct ManifestImpl<W> {
+pub struct ManifestImpl {
     opts: Options,
-    wal_manager: Arc<W>,
+    wal_manager: WalManagerRef,
 
     /// Number of updates wrote to wal since last snapshot.
     num_updates_since_snapshot: Arc<AtomicUsize>,
@@ -154,11 +154,11 @@ pub struct ManifestImpl<W> {
     snapshot_write_guard: Arc<Mutex<()>>,
 }
 
-impl<W: WalManager + Send + Sync> ManifestImpl<W> {
-    pub async fn open(wal_manager: W, opts: Options) -> Result<Self> {
+impl ManifestImpl {
+    pub async fn open(wal_manager: WalManagerRef, opts: Options) -> Result<Self> {
         let manifest = Self {
             opts,
-            wal_manager: Arc::new(wal_manager),
+            wal_manager,
             num_updates_since_snapshot: Arc::new(AtomicUsize::new(0)),
             snapshot_write_guard: Arc::new(Mutex::new(())),
         };
@@ -220,10 +220,11 @@ impl<W: WalManager + Send + Sync> ManifestImpl<W> {
 }
 
 #[async_trait]
-impl<W: WalManager + Send + Sync> Manifest for ManifestImpl<W> {
-    type Error = Error;
-
-    async fn store_update(&self, update: MetaUpdate) -> Result<()> {
+impl Manifest for ManifestImpl {
+    async fn store_update(
+        &self,
+        update: MetaUpdate,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let table_id = update.table_id();
         self.store_update_to_wal(update).await?;
 
@@ -243,7 +244,8 @@ impl<W: WalManager + Send + Sync> Manifest for ManifestImpl<W> {
         &self,
         table_id: TableId,
         do_snapshot: bool,
-    ) -> Result<Option<TableManifestData>> {
+    ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
+    {
         let region_id = table_id.as_u64();
         if do_snapshot {
             if let Some(snapshot) = self.maybe_do_snapshot(table_id).await? {
@@ -271,13 +273,13 @@ trait MetaUpdateLogStore: std::fmt::Debug {
 }
 
 #[derive(Debug, Clone)]
-struct RegionWal<W> {
+struct RegionWal {
     region_id: RegionId,
-    wal_manager: Arc<W>,
+    wal_manager: WalManagerRef,
 }
 
-impl<W> RegionWal<W> {
-    fn new(region_id: RegionId, wal_manager: Arc<W>) -> Self {
+impl RegionWal {
+    fn new(region_id: RegionId, wal_manager: WalManagerRef) -> Self {
         Self {
             region_id,
             wal_manager,
@@ -286,7 +288,7 @@ impl<W> RegionWal<W> {
 }
 
 #[async_trait]
-impl<W: WalManager + Send + Sync> MetaUpdateLogStore for RegionWal<W> {
+impl MetaUpdateLogStore for RegionWal {
     type Iter = MetaUpdateReaderImpl;
 
     async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
@@ -649,7 +651,7 @@ mod tests {
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use wal::rocks_impl::manager::{Builder as WalBuilder, RocksImpl};
+    use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;
     use crate::{
@@ -734,13 +736,13 @@ mod tests {
             format!("table_{:?}", table_id)
         }
 
-        async fn open_manifest(&self) -> ManifestImpl<RocksImpl> {
+        async fn open_manifest(&self) -> ManifestImpl {
             let manifest_wal =
                 WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
                     .build()
                     .unwrap();
 
-            ManifestImpl::open(manifest_wal, self.options.clone())
+            ManifestImpl::open(Arc::new(manifest_wal), self.options.clone())
                 .await
                 .unwrap()
         }
@@ -749,7 +751,7 @@ mod tests {
             &self,
             table_id: TableId,
             expected: &Option<TableManifestData>,
-            manifest: &ManifestImpl<RocksImpl>,
+            manifest: &ManifestImpl,
         ) {
             let data = manifest.load_data(table_id, false).await.unwrap();
             assert_eq!(&data, expected);
@@ -823,7 +825,7 @@ mod tests {
             &self,
             table_id: TableId,
             manifest_data_builder: &mut TableManifestDataBuilder,
-            manifest: &ManifestImpl<RocksImpl>,
+            manifest: &ManifestImpl,
         ) {
             let add_table = self.meta_update_add_table(table_id);
             manifest.store_update(add_table.clone()).await.unwrap();
@@ -834,7 +836,7 @@ mod tests {
             &self,
             table_id: TableId,
             manifest_data_builder: &mut TableManifestDataBuilder,
-            manifest: &ManifestImpl<RocksImpl>,
+            manifest: &ManifestImpl,
         ) {
             let drop_table = self.meta_update_drop_table(table_id);
             manifest.store_update(drop_table.clone()).await.unwrap();
@@ -846,7 +848,7 @@ mod tests {
             table_id: TableId,
             flushed_seq: Option<SequenceNumber>,
             manifest_data_builder: &mut TableManifestDataBuilder,
-            manifest: &ManifestImpl<RocksImpl>,
+            manifest: &ManifestImpl,
         ) {
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
             manifest.store_update(version_edit.clone()).await.unwrap();
