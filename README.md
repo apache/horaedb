@@ -35,7 +35,7 @@ It should be noted that the compilation of the project has version requirements 
 
 #### Dependencies(MacOS)
 If the development environment is MacOS, execute the following command to install the required dependencies:
-1.Install XCode from AppStore and install command line tools
+1.Install command line tools
 ```shell
 xcode-select --install
 ```

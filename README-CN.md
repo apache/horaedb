@@ -50,7 +50,7 @@ apt install git curl gcc g++ libssl-dev pkg-config cmake
 
 #### 开发依赖（MacOS）
 开发环境这里以 MacOS Monterey 为例，执行如下的命令，即可安装好所需的依赖：
-1.从AppStore下载并安装XCode，并用以下命令安装命令行工具
+1.安装命令行工具
 ```shell
 xcode-select --install
 ```
