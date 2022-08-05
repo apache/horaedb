@@ -536,7 +536,7 @@ fn build_row_group(
     column_index_in_insert: Vec<InsertMode>,
 ) -> Result<RowGroup> {
     // Build row group by schema
-    match source.body {
+    match *source.body {
         SetExpr::Values(Values(values)) => {
             let mut row_group_builder =
                 RowGroupBuilder::with_capacity(schema.clone(), values.len());
@@ -645,7 +645,10 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
         }
         Value::Boolean(v) => Some(v.to_string()),
         Value::Interval { value, .. } => {
-            return UnsupportedOption { value }.fail();
+            return UnsupportedOption {
+                value: format!("{}", value),
+            }
+            .fail();
         }
         // Ignore this option if value is null.
         Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
