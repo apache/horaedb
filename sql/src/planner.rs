@@ -646,7 +646,7 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
         Value::Boolean(v) => Some(v.to_string()),
         Value::Interval { value, .. } => {
             return UnsupportedOption {
-                value: format!("{}", value),
+                value: value.to_string(),
             }
             .fail();
         }
