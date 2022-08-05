@@ -706,7 +706,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::Value;
+    use sqlparser::ast::{Ident, Value};
 
     use super::*;
     use crate::{
@@ -758,7 +758,10 @@ mod tests {
             (Value::Boolean(true), false, Some("true".to_string())),
             (
                 Value::Interval {
-                    value: test_string,
+                    value: Box::new(Expr::Identifier(Ident {
+                        value: test_string,
+                        quote_style: None,
+                    })),
                     leading_field: None,
                     leading_precision: None,
                     last_field: None,
