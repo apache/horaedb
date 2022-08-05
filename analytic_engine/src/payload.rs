@@ -74,6 +74,8 @@ impl Header {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             value if value == Self::Write as u8 => Some(Self::Write),
+            value if value == Self::AlterSchema as u8 => Some(Self::AlterSchema),
+            value if value == Self::AlterOption as u8 => Some(Self::AlterOption),
             _ => None,
         }
     }
