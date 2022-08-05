@@ -80,12 +80,10 @@ pub trait EngineBuilder: Send + Sync + Default {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<TableEngineRef> {
-        assert!(!config.obkv_wal.enable);
-
-        let store = open_storage(config.storage.clone()).await?;
         let (wal, manifest) = self
             .open_wal_and_manifest(config.clone(), engine_runtimes.clone())
             .await?;
+        let store = open_storage(config.storage.clone()).await?;
         let instance = open_instance(config.clone(), engine_runtimes, wal, manifest, store).await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
     }
@@ -108,6 +106,8 @@ impl EngineBuilder for RocksEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<(WalManagerRef, ManifestRef)> {
+        assert!(!config.obkv_wal.enable);
+
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&config.wal_path);
         let wal_path = data_path.join(WAL_DIR_NAME);
@@ -139,6 +139,8 @@ impl EngineBuilder for ReplicatedEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<(WalManagerRef, ManifestRef)> {
+        assert!(config.obkv_wal.enable);
+
         // Notice the creation of obkv client may block current thread.
         let obkv_config = config.obkv_wal.obkv.clone();
         let obkv = engine_runtimes
