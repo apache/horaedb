@@ -15,24 +15,16 @@ use table_engine::{
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
-use wal::{manager::WalManager, rocks_impl::manager::RocksImpl};
 
-use crate::{
-    context::CommonContext,
-    instance::InstanceRef,
-    meta::{details::ManifestImpl, Manifest},
-    space::SpaceId,
-    table::TableImpl,
-    ObkvWal,
-};
+use crate::{context::CommonContext, instance::InstanceRef, space::SpaceId, table::TableImpl};
 
 /// TableEngine implementation
-pub struct TableEngineImpl<Wal, Meta> {
+pub struct TableEngineImpl {
     /// Instance of the table engine
-    instance: InstanceRef<Wal, Meta>,
+    instance: InstanceRef,
 }
 
-impl<Wal, Meta> Clone for TableEngineImpl<Wal, Meta> {
+impl Clone for TableEngineImpl {
     fn clone(&self) -> Self {
         Self {
             instance: self.instance.clone(),
@@ -40,24 +32,20 @@ impl<Wal, Meta> Clone for TableEngineImpl<Wal, Meta> {
     }
 }
 
-impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static>
-    TableEngineImpl<Wal, Meta>
-{
-    pub fn new(instance: InstanceRef<Wal, Meta>) -> Self {
+impl TableEngineImpl {
+    pub fn new(instance: InstanceRef) -> Self {
         Self { instance }
     }
 }
 
-impl<Wal, Meta> Drop for TableEngineImpl<Wal, Meta> {
+impl Drop for TableEngineImpl {
     fn drop(&mut self) {
         info!("Table engine dropped");
     }
 }
 
 #[async_trait]
-impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static> TableEngine
-    for TableEngineImpl<Wal, Meta>
-{
+impl TableEngine for TableEngineImpl {
     fn engine_type(&self) -> &str {
         ANALYTIC_ENGINE_TYPE
     }
@@ -158,11 +146,6 @@ impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'st
         Ok(())
     }
 }
-
-/// Reference to instance based on rocksdb wal.
-pub(crate) type RocksInstanceRef = InstanceRef<RocksImpl, ManifestImpl<RocksImpl>>;
-/// Reference to instance replicating data by obkv wal.
-pub(crate) type ReplicatedInstanceRef = InstanceRef<ObkvWal, ManifestImpl<ObkvWal>>;
 
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.

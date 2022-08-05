@@ -11,12 +11,10 @@ use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
-use wal::manager::WalManager;
 
 use crate::{
     context::CommonContext,
     instance::{write_worker::WriteGroup, Instance},
-    meta::Manifest,
     space::{Space, SpaceAndTable, SpaceId, SpaceRef},
 };
 
@@ -226,11 +224,7 @@ impl From<Error> for table_engine::engine::Error {
     }
 }
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Find space by name, create if the space is not exists
     pub async fn find_or_create_space(
         self: &Arc<Self>,

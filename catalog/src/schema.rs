@@ -132,6 +132,12 @@ pub enum Error {
 
 define_result!(Error);
 
+/// A name reference.
+pub type NameRef<'a> = &'a str;
+pub type SchemaName = String;
+// TODO: This name is conflict with [table_engine::schema::SchemaRef].
+pub type SchemaRef = Arc<dyn Schema + Send + Sync>;
+
 /// Request of creating table.
 #[derive(Debug, Clone)]
 pub struct CreateTableRequest {
@@ -265,9 +271,3 @@ pub trait Schema {
     /// All tables
     fn all_tables(&self) -> Result<Vec<TableRef>>;
 }
-
-/// A name reference
-pub type NameRef<'a> = &'a str;
-/// A reference counted schema pointer
-// TODO(yingwen): This name is conflict with [table_engine::schema::SchemaRef].
-pub type SchemaRef = Arc<dyn Schema + Send + Sync>;

@@ -10,7 +10,7 @@ use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::{LogWriteBatch, LogWriteEntry},
-    manager::{WalManager, WriteContext},
+    manager::WriteContext,
 };
 
 use crate::{
@@ -24,21 +24,14 @@ use crate::{
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
         Instance,
     },
-    meta::{
-        meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
-        Manifest,
-    },
+    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
     payload::WritePayload,
     space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
         &self,
@@ -139,7 +132,6 @@ where
             .manifest
             .store_update(update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space_table.space().id,
                 table: &table_data.name,
@@ -290,7 +282,6 @@ where
             .manifest
             .store_update(meta_update)
             .await
-            .map_err(|e| Box::new(e) as _)
             .context(WriteManifest {
                 space_id: space_table.space().id,
                 table: &table_data.name,

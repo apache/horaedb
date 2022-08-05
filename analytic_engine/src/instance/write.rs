@@ -18,7 +18,7 @@ use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::{LogWriteBatch, LogWriteEntry},
-    manager::{SequenceNumber, WalManager, WriteContext},
+    manager::{SequenceNumber, WriteContext},
 };
 
 use crate::{
@@ -29,7 +29,6 @@ use crate::{
         Instance,
     },
     memtable::{key::KeySequence, PutContext},
-    meta::Manifest,
     payload::WritePayload,
     space::SpaceAndTable,
     table::{
@@ -140,11 +139,7 @@ impl EncodeContext {
     }
 }
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
         &self,

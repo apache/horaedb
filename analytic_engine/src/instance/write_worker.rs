@@ -27,7 +27,6 @@ use table_engine::{
     },
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
-use wal::manager::WalManager;
 
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
@@ -36,7 +35,6 @@ use crate::{
         flush_compaction::{self, TableFlushOptions},
         write, write_worker, InstanceRef,
     },
-    meta::Manifest,
     space::{SpaceAndTable, SpaceId, SpaceRef},
     table::{data::TableDataRef, metrics::Metrics},
 };
@@ -555,11 +553,7 @@ pub struct WriteGroup {
 }
 
 impl WriteGroup {
-    pub fn new<Wal, Meta>(opts: Options, instance: InstanceRef<Wal, Meta>) -> Self
-    where
-        Wal: WalManager + Send + Sync + 'static,
-        Meta: Manifest + Send + Sync + 'static,
-    {
+    pub fn new(opts: Options, instance: InstanceRef) -> Self {
         let mut worker_datas = Vec::with_capacity(opts.worker_num);
         let mut handles = Vec::with_capacity(opts.worker_num);
         for id in 0..opts.worker_num {
@@ -691,18 +685,16 @@ impl WorkerSharedData {
 ///
 /// The write worker should ensure there is only one flush thread (task) is
 /// running.
-struct WriteWorker<Wal, Meta> {
+struct WriteWorker {
     /// Command receiver
     rx: mpsc::Receiver<Command>,
     /// Engine instance
-    instance: InstanceRef<Wal, Meta>,
+    instance: InstanceRef,
     /// Worker local states
     local: WorkerLocal,
 }
 
-impl<Wal: WalManager + Send + Sync + 'static, Meta: Manifest + Send + Sync + 'static>
-    WriteWorker<Wal, Meta>
-{
+impl WriteWorker {
     /// Runs the write loop until stopped
     async fn run(&mut self) {
         // TODO(yingwen): Maybe batch write tasks to improve performance (group commit)

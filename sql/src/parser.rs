@@ -4,7 +4,7 @@
 //!
 //! Some codes are copied from datafusion: <https://github.com/apache/arrow/blob/9d86440946b8b07e03abb94fad2da278affae08f/rust/datafusion/src/sql/parser.rs#L74>
 
-use log::{debug, warn};
+use log::debug;
 use paste::paste;
 use sqlparser::{
     ast::{ColumnDef, ColumnOption, ColumnOptionDef, Ident, TableConstraint},
@@ -353,10 +353,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        if let Some(constraint) = try_build_tskey_constraint(&columns)? {
-            constraints.push(constraint);
-        }
-        try_check_constraint(&constraints)?;
+        build_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -504,63 +501,27 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn try_check_constraint(constraints: &[TableConstraint]) -> Result<()> {
-    let ts_count = constraints
-        .iter()
-        .filter(|constraint| match constraint {
-            TableConstraint::Unique { name, .. } => {
-                &Some(Ident {
-                    value: TS_KEY.to_owned(),
-                    quote_style: None,
-                }) == name
-            }
-            _ => false,
-        })
-        .count();
-    if ts_count < 2 {
-        return Ok(());
-    }
-    Err(ParserError::ParserError(
-        "Failed to parser, not allowed define mutiple tskey constraints.".to_string(),
-    ))
-}
-
-fn try_build_tskey_constraint(col_defs: &[ColumnDef]) -> Result<Option<TableConstraint>> {
-    let mut constraint = None;
+// Build the tskey constraint from the column definitions if any.
+fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<TableConstraint>) {
     for col_def in col_defs {
-        let find_result = col_def
-            .options
-            .iter()
-            .map(|col_def| &col_def.option)
-            .find_map(|col| match col {
-                ColumnOption::DialectSpecific(tokens) => {
-                    if let [Token::Word(token)] = &tokens[..] {
-                        if token.value.eq(TS_KEY) {
-                            return Some(TableConstraint::Unique {
-                                name: Some(Ident {
-                                    value: TS_KEY.to_owned(),
-                                    quote_style: None,
-                                }),
-                                columns: vec![col_def.name.clone()],
-                                is_primary: false,
-                            });
-                        }
-                        warn!("Unsupported Keyword in column option: {}", token);
+        for col in &col_def.options {
+            if let ColumnOption::DialectSpecific(tokens) = &col.option {
+                if let [Token::Word(token)] = &tokens[..] {
+                    if token.value.eq(TS_KEY) {
+                        let constraint = TableConstraint::Unique {
+                            name: Some(Ident {
+                                value: TS_KEY.to_owned(),
+                                quote_style: None,
+                            }),
+                            columns: vec![col_def.name.clone()],
+                            is_primary: false,
+                        };
+                        constraints.push(constraint);
                     }
-                    None
                 }
-                _ => None,
-            });
-        if constraint.is_some() && find_result.is_some() {
-            return Err(ParserError::ParserError(format!(
-                "Failed to parser, not allowed define mutiple tskey constraints in {}",
-                col_def.name
-            )));
+            };
         }
-        constraint = find_result;
     }
-
-    Ok(constraint)
 }
 
 #[cfg(test)]
