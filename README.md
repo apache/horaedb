@@ -34,12 +34,13 @@ apt install git curl gcc g++ libssl-dev pkg-config cmake
 It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
 
 #### Dependencies(MacOS)
-If the development environment is MacOS, execute the following command to install the required dependencies:
-1.Install command line tools
+If the development environment is MacOS, execute the following command to install the required dependencies.
+
+1. Install command line tools:
 ```shell
 xcode-select --install
 ```
-2. Install cmake via 
+2. Install cmake:
 ```shell
 brew install cmake
 ```

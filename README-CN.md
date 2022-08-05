@@ -49,12 +49,13 @@ apt install git curl gcc g++ libssl-dev pkg-config cmake
 
 
 #### 开发依赖（MacOS）
-开发环境这里以 MacOS Monterey 为例，执行如下的命令，即可安装好所需的依赖：
-1.安装命令行工具
+开发环境这里以 MacOS Monterey 为例，执行如下的命令，即可安装好所需的依赖。
+
+1. 安装命令行工具:
 ```shell
 xcode-select --install
 ```
-2. 通过Brew安装cmake
+2. 通过Brew安装cmake:
 ```shell
 brew install cmake
 ```
