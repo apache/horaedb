@@ -53,7 +53,7 @@ use std::{fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use chrono::MIN_DATETIME;
+use chrono::{DateTime, Utc};
 use futures::{future::try_join_all, lock::Mutex, stream::BoxStream, TryStreamExt};
 use lru::LruCache;
 use serde::Deserialize;
@@ -286,7 +286,7 @@ impl CacheState {
             location.to_string(),
             ObjectMeta {
                 location: location.to_owned(),
-                last_modified: MIN_DATETIME,
+                last_modified: DateTime::<Utc>::MIN_UTC,
                 size,
             },
         );
