@@ -17,6 +17,7 @@ pub mod sst;
 mod storage_options;
 pub mod table;
 pub mod table_options;
+mod wal_replicator;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
