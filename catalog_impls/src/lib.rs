@@ -56,25 +56,25 @@ impl<M: Manager> Manager for CatalogManagerImpl<M> {
 #[async_trait]
 pub trait SchemaIdAlloc: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
-    async fn alloc_schema_id(
-        &self,
-        schema_name: NameRef,
+    async fn alloc_schema_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
     ) -> std::result::Result<SchemaId, Self::Error>;
 }
 
 #[async_trait]
 pub trait TableIdAlloc: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
-    async fn alloc_table_id(
-        &self,
-        schema_name: NameRef,
-        table_name: NameRef,
+    async fn alloc_table_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
+        table_name: NameRef<'a>,
     ) -> std::result::Result<TableId, Self::Error>;
 
-    async fn invalidate_table_id(
-        &self,
-        schema_name: NameRef,
-        table_name: NameRef,
+    async fn invalidate_table_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
+        table_name: NameRef<'a>,
         table_id: TableId,
     ) -> std::result::Result<(), Self::Error>;
 }

@@ -8,18 +8,26 @@ use analytic_engine::{
     self,
     setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
 };
-use catalog_impls::{table_based::TableBasedManager, CatalogManagerImpl};
+use async_trait::async_trait;
+use catalog::schema::NameRef;
+use catalog_impls::{
+    table_based::TableBasedManager, CatalogManagerImpl, SchemaIdAlloc, TableIdAlloc,
+};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use log::info;
 use logger::RuntimeLevel;
+use meta_client_v2::{types::DropTableRequest, MetaClient};
 use query_engine::executor::ExecutorImpl;
 use server::{
     config::{Config, RuntimeConfig},
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
-use table_engine::engine::EngineRuntimes;
+use table_engine::{
+    engine::EngineRuntimes,
+    table::{SchemaId, TableId},
+};
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
@@ -141,4 +149,59 @@ where
 
     // Stop server
     server.stop();
+}
+
+struct SchemaIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);
+
+#[async_trait]
+impl SchemaIdAlloc for SchemaIdAllocWrapper {
+    type Error = meta_client_v2::Error;
+
+    async fn alloc_schema_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
+    ) -> Result<SchemaId, Self::Error> {
+        self.0
+            .alloc_schema_id(cluster::AllocSchemaIdRequest {
+                name: schema_name.to_string(),
+            })
+            .await
+            .map(|resp| SchemaId::from(resp.id))
+    }
+}
+struct TableIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);
+
+#[async_trait]
+impl TableIdAlloc for TableIdAllocWrapper {
+    type Error = meta_client_v2::Error;
+
+    async fn alloc_table_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
+        table_name: NameRef<'a>,
+    ) -> Result<TableId, Self::Error> {
+        self.0
+            .alloc_table_id(cluster::AllocTableIdRequest {
+                schema_name: schema_name.to_string(),
+                name: table_name.to_string(),
+            })
+            .await
+            .map(|v| TableId::from(v.id))
+    }
+
+    async fn invalidate_table_id<'a>(
+        &'a self,
+        schema_name: NameRef<'a>,
+        table_name: NameRef<'a>,
+        table_id: TableId,
+    ) -> Result<(), Self::Error> {
+        self.0
+            .drop_table(DropTableRequest {
+                schema_name: schema_name.to_string(),
+                name: table_name.to_string(),
+                id: table_id.as_u64(),
+            })
+            .await
+            .map(|_| ())
+    }
 }

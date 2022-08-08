@@ -757,13 +757,16 @@ name = "ceresdb"
 version = "0.1.0"
 dependencies = [
  "analytic_engine",
+ "async-trait",
  "catalog",
  "catalog_impls",
  "clap",
+ "cluster",
  "common_util",
  "df_operator",
  "log",
  "logger",
+ "meta_client_v2",
  "query_engine",
  "server",
  "signal-hook",

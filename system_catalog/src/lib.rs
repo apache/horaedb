@@ -2,6 +2,8 @@
 
 //! System catalog implementations
 
+#![feature(const_option)]
+
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -30,21 +32,22 @@ pub mod sys_catalog_table;
 pub mod tables;
 
 /// Schema id of the sys catalog schema (`system/public`).
-pub const SYSTEM_SCHEMA_ID: SchemaId = SchemaId::from_u16(1);
+pub const SYSTEM_SCHEMA_ID: SchemaId = SchemaId::from_u32(1);
 
 /// Table name of the `sys_catalog`.
 pub const SYS_CATALOG_TABLE_NAME: &str = "sys_catalog";
 /// Table sequence of the `sys_catalog` table, always set to 1
 pub const SYS_CATALOG_TABLE_SEQ: TableSeq = TableSeq::from_u32(1);
 /// Table id of the `sys_catalog` table.
-pub const SYS_CATALOG_TABLE_ID: TableId = TableId::new(SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_SEQ);
+pub const SYS_CATALOG_TABLE_ID: TableId =
+    TableId::new(SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_SEQ).unwrap();
 
 /// Table name of the `tables` table.
 pub const TABLES_TABLE_NAME: &str = "tables";
 /// Table sequence of the `tables` table.
 pub const TABLES_TABLE_SEQ: TableSeq = TableSeq::from_u32(2);
 /// Table id of the `tables` table.
-pub const TABLES_TABLE_ID: TableId = TableId::new(SYSTEM_SCHEMA_ID, TABLES_TABLE_SEQ);
+pub const TABLES_TABLE_ID: TableId = TableId::new(SYSTEM_SCHEMA_ID, TABLES_TABLE_SEQ).unwrap();
 
 // NOTE: The MAX_SYSTEM_TABLE_ID should be updated if any new system table is
 // added.

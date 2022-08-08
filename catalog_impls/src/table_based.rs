@@ -13,9 +13,9 @@ use catalog::{
     manager::{self, Manager},
     schema::{
         self, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable, CreateOptions,
-        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
-        OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
-        WriteTableMeta,
+        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest,
+        InvalidSchemaIdAndTableSeq, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch,
+        SchemaRef, TooManyTable, WriteTableMeta,
     },
     Catalog, CatalogRef,
 };
@@ -29,7 +29,8 @@ use system_catalog::sys_catalog_table::{
 use table_engine::{
     engine::{TableEngineRef, TableState},
     table::{
-        ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeqGenerator,
+        ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeq,
+        TableSeqGenerator,
     },
 };
 use tokio::sync::Mutex;
@@ -385,7 +386,7 @@ impl<'a> Visitor for VisitorImpl<'a> {
 
         // Update max table sequence of the schema.
         let table_id = table_info.table_id;
-        let table_seq = table_id.table_seq();
+        let table_seq = TableSeq::from(table_id);
         if table_seq.as_u64() >= schema.table_seq_generator.last_table_seq_u64() {
             schema.table_seq_generator.set_last_table_seq(table_seq);
         }
@@ -640,7 +641,10 @@ impl SchemaImpl {
                 table: name,
             })?;
 
-        Ok(TableId::new(self.schema_id, table_seq))
+        TableId::new(self.schema_id, table_seq).context(InvalidSchemaIdAndTableSeq {
+            schema_id: self.schema_id,
+            table_seq: table_seq,
+        })
     }
 }
 
