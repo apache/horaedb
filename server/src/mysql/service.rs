@@ -2,7 +2,6 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use catalog::manager::Manager as CatalogManager;
 use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
@@ -19,20 +18,20 @@ use crate::{
     },
 };
 
-pub struct MysqlService<C, Q> {
-    instance: InstanceRef<C, Q>,
+pub struct MysqlService<Q> {
+    instance: InstanceRef<Q>,
     runtimes: Arc<EngineRuntimes>,
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
 }
 
-impl<C, Q> MysqlService<C, Q> {
+impl<Q> MysqlService<Q> {
     pub fn new(
-        instance: Arc<Instance<C, Q>>,
+        instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
-    ) -> MysqlService<C, Q> {
+    ) -> MysqlService<Q> {
         Self {
             instance,
             runtimes,
@@ -43,7 +42,7 @@ impl<C, Q> MysqlService<C, Q> {
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlService<C, Q> {
+impl<Q: QueryExecutor + 'static> MysqlService<Q> {
     pub async fn start(&mut self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
 
@@ -66,7 +65,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> MysqlService<C, Q>
     }
 
     async fn loop_accept(
-        instance: InstanceRef<C, Q>,
+        instance: InstanceRef<Q>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
         mut rx: Receiver<()>,

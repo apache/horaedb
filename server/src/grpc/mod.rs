@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use catalog::{consts as catalogConst, manager::Manager as CatalogManager};
+use catalog::{consts as catalogConst, manager::ManagerRef};
 use ceresdbproto::{
     common::ResponseHeader,
     prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
@@ -156,21 +156,21 @@ impl RequestHeader {
     }
 }
 
-pub struct HandlerContext<'a, C, Q> {
+pub struct HandlerContext<'a, Q> {
     #[allow(dead_code)]
     header: RequestHeader,
     router: RouterRef,
-    instance: InstanceRef<C, Q>,
+    instance: InstanceRef<Q>,
     catalog: String,
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
 }
 
-impl<'a, C: CatalogManager, Q> HandlerContext<'a, C, Q> {
+impl<'a, Q> HandlerContext<'a, Q> {
     fn new(
         header: RequestHeader,
         router: Arc<dyn Router + Sync + Send>,
-        instance: InstanceRef<C, Q>,
+        instance: InstanceRef<Q>,
         cluster_view: &'a ClusterViewRef,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
@@ -239,17 +239,17 @@ impl RpcServices {
     }
 }
 
-pub struct Builder<C, Q> {
+pub struct Builder<Q> {
     bind_addr: String,
     port: u16,
     meta_client_config: Option<MetaClientConfig>,
     env: Option<Arc<Environment>>,
     runtimes: Option<Arc<EngineRuntimes>>,
-    instance: Option<InstanceRef<C, Q>>,
+    instance: Option<InstanceRef<Q>>,
     route_rules: RuleList,
 }
 
-impl<C, Q> Builder<C, Q> {
+impl<Q> Builder<Q> {
     pub fn new() -> Self {
         Self {
             bind_addr: String::from("0.0.0.0"),
@@ -287,7 +287,7 @@ impl<C, Q> Builder<C, Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<C, Q>) -> Self {
+    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
         self.instance = Some(instance);
         self
     }
@@ -298,7 +298,7 @@ impl<C, Q> Builder<C, Q> {
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
+impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn build(self) -> Result<RpcServices> {
         let meta_client_config = self.meta_client_config.context(MissingMetaClientConfig)?;
         let runtimes = self.runtimes.context(MissingRuntimes)?;
@@ -334,12 +334,12 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
     }
 }
 
-struct SchemaWatcher<C> {
-    catalog_manager: C,
+struct SchemaWatcher {
+    catalog_manager: ManagerRef,
 }
 
 #[async_trait]
-impl<C: CatalogManager> MetaWatcher for SchemaWatcher<C> {
+impl MetaWatcher for SchemaWatcher {
     async fn on_change(&self, view: ClusterViewRef) -> meta_client::Result<()> {
         for schema in view.schema_shards.keys() {
             let default_catalog = catalogConst::DEFAULT_CATALOG;
@@ -380,14 +380,14 @@ fn build_ok_header() -> ResponseHeader {
     header
 }
 
-struct StorageServiceImpl<C, Q> {
+struct StorageServiceImpl<Q> {
     router: Arc<dyn Router + Send + Sync>,
-    instance: InstanceRef<C, Q>,
+    instance: InstanceRef<Q>,
     runtimes: Arc<EngineRuntimes>,
     meta_client: Arc<dyn MetaClient + Send + Sync>,
 }
 
-impl<C, Q> Clone for StorageServiceImpl<C, Q> {
+impl<Q> Clone for StorageServiceImpl<Q> {
     fn clone(&self) -> Self {
         Self {
             router: self.router.clone(),
@@ -490,9 +490,7 @@ macro_rules! handle_request {
     };
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> StorageService
-    for StorageServiceImpl<C, Q>
-{
+impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
     handle_request!(route, handle_route, RouteRequest, RouteResponse);
 
     handle_request!(write, handle_write, WriteRequest, WriteResponse);
@@ -686,11 +684,8 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> StorageService
 
 /// Create CreateTablePlan from a write metric.
 // The caller must ENSURE that the HandlerContext's schema_config is not None.
-pub fn write_metric_to_create_table_plan<
-    C: CatalogManager + 'static,
-    Q: QueryExecutor + 'static,
->(
-    ctx: &HandlerContext<C, Q>,
+pub fn write_metric_to_create_table_plan<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<Q>,
     write_metric: &WriteMetric,
 ) -> Result<CreateTablePlan> {
     let schema_config = ctx.schema_config.unwrap();

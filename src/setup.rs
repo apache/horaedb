@@ -110,14 +110,13 @@ where
         analytic: analytic.clone(),
     });
 
+    let table_based_manager = TableBasedManager::new(analytic, engine_proxy.clone())
+        .await
+        .unwrap_or_else(|e| {
+            panic!("Failed to create catalog manager, err:{}", e);
+        });
     // Create catalog manager, use analytic table as backend
-    let catalog_manager = CatalogManagerImpl::new(
-        TableBasedManager::new(analytic, engine_proxy.clone())
-            .await
-            .unwrap_or_else(|e| {
-                panic!("Failed to create catalog manager, err:{}", e);
-            }),
-    );
+    let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
 
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();

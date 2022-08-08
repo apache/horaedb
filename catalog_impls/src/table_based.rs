@@ -78,7 +78,13 @@ define_result!(Error);
 /// Table based catalog manager
 #[derive(Clone)]
 pub struct TableBasedManager {
-    inner: Arc<Inner>,
+    /// Sys catalog table
+    catalog_table: Arc<SysCatalogTable>,
+    catalogs: CatalogMap,
+    /// Table engine proxy
+    engine_proxy: TableEngineRef,
+    /// Global schema id generator, Each schema has a unique schema id.
+    schema_id_generator: Arc<SchemaIdGenerator>,
 }
 
 impl Manager for TableBasedManager {
@@ -91,17 +97,12 @@ impl Manager for TableBasedManager {
     }
 
     fn catalog_by_name(&self, name: NameRef) -> manager::Result<Option<CatalogRef>> {
-        let catalog = self.inner.catalogs.get(name).cloned().map(|v| v as _);
+        let catalog = self.catalogs.get(name).cloned().map(|v| v as _);
         Ok(catalog)
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
-        Ok(self
-            .inner
-            .catalogs
-            .iter()
-            .map(|(_, v)| v.clone() as _)
-            .collect())
+        Ok(self.catalogs.iter().map(|(_, v)| v.clone() as _).collect())
     }
 }
 
@@ -115,40 +116,23 @@ impl TableBasedManager {
             .await
             .context(BuildSysCatalog)?;
 
-        let mut inner = Inner {
+        let mut manager = Self {
             catalog_table: Arc::new(catalog_table),
             catalogs: HashMap::new(),
             engine_proxy,
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
         };
 
-        inner.init().await?;
+        manager.init().await?;
 
-        Ok(Self {
-            inner: Arc::new(inner),
-        })
+        Ok(manager)
     }
 
     #[cfg(test)]
     pub fn get_engine_proxy(&self) -> TableEngineRef {
         self.inner.engine_proxy.clone()
     }
-}
 
-type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
-
-/// Inner state of TableBasedManager
-struct Inner {
-    /// Sys catalog table
-    catalog_table: Arc<SysCatalogTable>,
-    catalogs: CatalogMap,
-    /// Table engine proxy
-    engine_proxy: TableEngineRef,
-    /// Global schema id generator, Each schema has a unique schema id.
-    schema_id_generator: Arc<SchemaIdGenerator>,
-}
-
-impl Inner {
     /// Load all data from sys catalog table.
     async fn init(&mut self) -> Result<()> {
         // The system catalog and schema in it is not persisted, so we add it manually.
@@ -307,6 +291,8 @@ impl Inner {
         Ok(schema)
     }
 }
+
+type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
 
 /// Sys catalog visitor implementation, used to load catalog info
 struct VisitorImpl<'a> {

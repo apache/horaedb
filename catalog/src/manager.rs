@@ -2,6 +2,8 @@
 
 //! Catalog manager
 
+use std::sync::Arc;
+
 use snafu::Snafu;
 
 use crate::{schema::NameRef, CatalogRef};
@@ -17,7 +19,7 @@ define_result!(Error);
 // TODO(yingwen): Maybe use async trait?
 // TODO(yingwen): Provide a context
 
-pub trait Manager: Clone + Send + Sync {
+pub trait Manager: Send + Sync {
     /// Get the default catalog name
     fn default_catalog_name(&self) -> NameRef;
 
@@ -30,3 +32,5 @@ pub trait Manager: Clone + Send + Sync {
     /// All catalogs
     fn all_catalogs(&self) -> Result<Vec<CatalogRef>>;
 }
+
+pub type ManagerRef = Arc<dyn Manager>;

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use catalog::manager::Manager as CatalogManager;
+use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
 use grpcio::Environment;
 use query_engine::executor::Executor as QueryExecutor;
@@ -64,13 +64,13 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<C, Q> {
-    http_service: Service<C, Q>,
+pub struct Server<Q> {
+    http_service: Service<Q>,
     rpc_services: RpcServices,
-    mysql_service: mysql::MysqlService<C, Q>,
+    mysql_service: mysql::MysqlService<Q>,
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Server<C, Q> {
+impl<Q: QueryExecutor + 'static> Server<Q> {
     pub fn stop(mut self) {
         self.rpc_services.shutdown();
         self.http_service.stop();
@@ -87,17 +87,17 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Server<C, Q> {
 }
 
 #[must_use]
-pub struct Builder<C, Q> {
+pub struct Builder<Q> {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    catalog_manager: Option<C>,
+    catalog_manager: Option<ManagerRef>,
     query_executor: Option<Q>,
     table_engine: Option<TableEngineRef>,
     function_registry: Option<FunctionRegistryRef>,
     limiter: Limiter,
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
+impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -115,7 +115,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
         self
     }
 
-    pub fn catalog_manager(mut self, val: C) -> Self {
+    pub fn catalog_manager(mut self, val: ManagerRef) -> Self {
         self.catalog_manager = Some(val);
         self
     }
@@ -141,7 +141,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
     }
 
     /// Build and run the server
-    pub fn build(self) -> Result<Server<C, Q>> {
+    pub fn build(self) -> Result<Server<Q>> {
         // Build runtimes
         let runtimes = self.runtimes.context(MissingRuntimes)?;
 

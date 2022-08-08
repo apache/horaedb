@@ -29,18 +29,9 @@ use crate::{SchemaIdAlloc, TableIdAlloc};
 
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl<S, T> {
-    inner: Arc<ManagerImplInner<S, T>>,
-}
-
-// Note: The way deriving [`Clone`] to make [`ManagerImpl`] clonable doesn't
-// work for the type paramenters `S` and `T` without [`Clone`] trait bound so we
-// need a manual implementation.
-impl<S, T> Clone for ManagerImpl<S, T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
+    catalogs: HashMap<String, Arc<CatalogImpl<S, T>>>,
+    schema_id_alloc: Arc<S>,
+    table_id_alloc: Arc<T>,
 }
 
 impl<S, T> ManagerImpl<S, T>
@@ -49,17 +40,15 @@ where
     T: TableIdAlloc + 'static,
 {
     pub async fn new(schema_id_alloc: S, table_id_alloc: T) -> Self {
-        let mut inner = ManagerImplInner {
+        let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
             table_id_alloc: Arc::new(table_id_alloc),
             schema_id_alloc: Arc::new(schema_id_alloc),
         };
 
-        inner.maybe_create_default_catalog().await;
+        manager.maybe_create_default_catalog().await;
 
-        Self {
-            inner: Arc::new(inner),
-        }
+        manager
     }
 }
 
@@ -77,17 +66,12 @@ where
     }
 
     fn catalog_by_name(&self, name: NameRef) -> manager::Result<Option<CatalogRef>> {
-        let catalog = self
-            .inner
-            .catalogs
-            .get(name)
-            .map(|v| v.clone() as CatalogRef);
+        let catalog = self.catalogs.get(name).map(|v| v.clone() as CatalogRef);
         Ok(catalog)
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
         Ok(self
-            .inner
             .catalogs
             .iter()
             .map(|(_, v)| v.clone() as CatalogRef)
@@ -95,13 +79,7 @@ where
     }
 }
 
-struct ManagerImplInner<S, T> {
-    catalogs: HashMap<String, Arc<CatalogImpl<S, T>>>,
-    schema_id_alloc: Arc<S>,
-    table_id_alloc: Arc<T>,
-}
-
-impl<S, T> ManagerImplInner<S, T>
+impl<S, T> ManagerImpl<S, T>
 where
     S: SchemaIdAlloc,
     T: TableIdAlloc + 'static,

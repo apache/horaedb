@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 
-use catalog::manager::Manager;
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
 
 use crate::{
@@ -13,8 +12,8 @@ use crate::{
     router::Router,
 };
 
-pub async fn handle_route<C: Manager, Q>(
-    ctx: &HandlerContext<'_, C, Q>,
+pub async fn handle_route<Q>(
+    ctx: &HandlerContext<'_, Q>,
     req: RouteRequest,
 ) -> Result<RouteResponse> {
     handle_route_sync(ctx.router.clone(), req, ctx.tenant())
