@@ -730,6 +730,7 @@ mod tests {
                 self.schema_id,
                 self.table_seq_gen.alloc_table_seq().unwrap(),
             )
+            .unwrap()
         }
 
         fn table_name_from_id(table_id: TableId) -> String {
@@ -934,7 +935,7 @@ mod tests {
 
     #[test]
     fn test_manifest_add_table() {
-        let ctx = TestContext::new("add_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("add_table", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -944,7 +945,7 @@ mod tests {
 
     #[test]
     fn test_manifest_drop_table() {
-        let ctx = TestContext::new("drop_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("drop_table", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -955,7 +956,7 @@ mod tests {
 
     #[test]
     fn test_manifest_version_edit() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -967,7 +968,7 @@ mod tests {
 
     #[test]
     fn test_manifest_alter_options() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -979,7 +980,7 @@ mod tests {
 
     #[test]
     fn test_manifest_alter_schema() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -991,7 +992,7 @@ mod tests {
 
     #[test]
     fn test_manifest_snapshot_one_table() {
-        let ctx = TestContext::new("snapshot_one_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("snapshot_one_table", SchemaId::from_u32(0));
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
@@ -1020,7 +1021,7 @@ mod tests {
 
     #[test]
     fn test_manifest_snapshot_one_table_massive_logs() {
-        let ctx = TestContext::new("snapshot_one_table_massive_logs", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("snapshot_one_table_massive_logs", SchemaId::from_u32(0));
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
@@ -1207,7 +1208,7 @@ mod tests {
     fn test_no_snapshot_logs_merge() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_no_snapshot",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1262,7 +1263,7 @@ mod tests {
     fn test_multiple_snapshot_merge_normal() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_normal",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1349,7 +1350,7 @@ mod tests {
     fn test_multiple_snapshot_merge_interleaved_snapshot() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_interleaved",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1439,7 +1440,7 @@ mod tests {
     fn test_multiple_snapshot_merge_sneaked_update() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_sneaked_update",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1502,7 +1503,7 @@ mod tests {
     fn test_multiple_snapshot_drop_table() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_drop_table",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![

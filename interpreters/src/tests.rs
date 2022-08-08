@@ -1,5 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use std::sync::Arc;
+
 use analytic_engine::{
     setup::{EngineBuilder, RocksEngineBuilder},
     tests::util::TestEnv,
@@ -56,8 +58,8 @@ impl<M> Env<M>
 where
     M: MetaProvider,
 {
-    async fn build_factory(&self) -> Factory<ExecutorImpl, TableBasedManager> {
-        let catalog_manager = build_catalog_manager(self.engine()).await;
+    async fn build_factory(&self) -> Factory<ExecutorImpl> {
+        let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
         Factory::new(ExecutorImpl::new(), catalog_manager, self.engine())
     }
 

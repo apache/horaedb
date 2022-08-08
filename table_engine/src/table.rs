@@ -137,7 +137,6 @@ pub const DEFAULT_READ_PARALLELISM: usize = 8;
 pub struct SchemaId(u32);
 
 impl SchemaId {
-    pub const MAX: SchemaId = SchemaId(u32::MAX);
     /// Min schema id.
     pub const MIN: SchemaId = SchemaId(0);
 
@@ -583,7 +582,6 @@ mod tests {
     #[test]
     fn test_schema_id() {
         assert_eq!(0, SchemaId::MIN.as_u32());
-        assert_eq!(0xffffff, SchemaId::MAX.as_u32());
     }
 
     #[test]

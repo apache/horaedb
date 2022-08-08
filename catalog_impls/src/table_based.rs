@@ -130,7 +130,7 @@ impl TableBasedManager {
 
     #[cfg(test)]
     pub fn get_engine_proxy(&self) -> TableEngineRef {
-        self.inner.engine_proxy.clone()
+        self.engine_proxy.clone()
     }
 
     /// Load all data from sys catalog table.
@@ -629,7 +629,7 @@ impl SchemaImpl {
 
         TableId::new(self.schema_id, table_seq).context(InvalidSchemaIdAndTableSeq {
             schema_id: self.schema_id,
-            table_seq: table_seq,
+            table_seq,
         })
     }
 }

@@ -25,7 +25,7 @@ use table_engine::{
 use crate::{table_options, tests::row_util};
 
 pub fn new_table_id(schema_id: u16, table_seq: u32) -> TableId {
-    TableId::new(SchemaId::from(schema_id), TableSeq::from(table_seq))
+    TableId::new(SchemaId::from(schema_id), TableSeq::from(table_seq)).unwrap()
 }
 
 pub type RowTuple<'a> = (&'a str, Timestamp, &'a str, f64, f64, &'a str);
@@ -298,7 +298,7 @@ impl Default for Builder {
             create_request: CreateTableRequest {
                 catalog_name: "ceresdb".to_string(),
                 schema_name: "public".to_string(),
-                schema_id: SchemaId::new(2).unwrap(),
+                schema_id: SchemaId::from_u32(2),
                 table_id: new_table_id(2, 1),
                 table_name: "test_table".to_string(),
                 table_schema: FixedSchemaTable::default_schema(),

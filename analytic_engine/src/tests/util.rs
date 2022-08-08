@@ -374,7 +374,7 @@ impl TestEnv {
             runtimes: self.runtimes.clone(),
             builder: T::default(),
             engine: None,
-            schema_id: SchemaId::new(100).unwrap(),
+            schema_id: SchemaId::from_u32(100),
             last_table_seq: 1,
             name_to_tables: HashMap::new(),
         }
