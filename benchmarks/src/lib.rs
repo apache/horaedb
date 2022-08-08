@@ -13,5 +13,6 @@ pub mod scan_memtable_bench;
 pub mod sst_bench;
 pub mod sst_tools;
 pub mod util;
+pub mod wal_write_bench;
 
 pub(crate) const INIT_SEQUENCE: SequenceNumber = 1;

@@ -12,6 +12,7 @@ use benchmarks::{
     parquet_bench::ParquetBench,
     scan_memtable_bench::ScanMemTableBench,
     sst_bench::SstBench,
+    wal_write_bench::WalWriteBench,
 };
 use criterion::*;
 
@@ -196,6 +197,29 @@ fn bench_arrow2(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_wal_write_iter(b: &mut Bencher<'_>, bench: &WalWriteBench) {
+    b.iter(|| bench.run_bench())
+}
+
+fn bench_wal_write(c: &mut Criterion) {
+    let config = init_bench();
+
+    let mut group = c.benchmark_group("wal_write");
+
+    group.measurement_time(config.wal_write_bench.bench_measurement_time.0);
+    group.sample_size(config.wal_write_bench.bench_sample_size);
+
+    let bench = WalWriteBench::new(config.wal_write_bench);
+
+    group.bench_with_input(
+        BenchmarkId::new("wal_write", 0),
+        &bench,
+        bench_wal_write_iter,
+    );
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_read_sst,
@@ -204,5 +228,6 @@ criterion_group!(
     bench_scan_memtable,
     bench_merge_memtable,
     bench_arrow2,
+    bench_wal_write,
 );
 criterion_main!(benches);
