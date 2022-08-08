@@ -448,6 +448,7 @@ mod tests {
             is_nullable: true,
             is_tag: true,
             comment: "Comment of this column".to_string(),
+            escaped_name: "test_column_schema".escape_debug().to_string(),
         };
 
         assert_eq!(&lhs, &rhs);
