@@ -4,13 +4,17 @@
 - [x] Analytical storage format
 - [x] Support SQL
 
-### v0.2.0
-- [ ] Distributed version supports static topology
-- [ ] The underlying storage supports Alibaba Cloud oss
-- [ ] Support Prometheus protocol
-- [ ] WAL implementation based on [OBKV](https://github.com/oceanbase/oceanbase)
+### v0.2.0 (Released)
+- [x] Distributed version supports static topology defined in config file.
+- [x] The underlying storage supports Aliyun oss
+- [x] WAL implementation based on [OBKV](https://github.com/oceanbase/oceanbase)
 
 ### v0.3.0
-- [ ] Time series storage format
+- [ ] Multi-language clients. Include Java, Rust and Python.
+- [ ] Static cluster mode with `CeresMeta`.
+- [ ] Hybrid storage format.
+
+### Afterward
+- [ ] Support Prometheus protocol
 - [ ] Support horizontal scaling
 - [ ] Distributed WAL implementation
