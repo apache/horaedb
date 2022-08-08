@@ -110,6 +110,20 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Failed to persist meta update to WAL, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
+    ))]
+    WriteWal {
+        space_id: SpaceId,
+        table: String,
+        table_id: TableId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
         "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
         space_id,
         table,
@@ -171,6 +185,11 @@ pub enum Error {
         backtrace
     ))]
     AlterDroppedTable { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to store version edit, err:{}", source))]
+    StoreVersionEdit {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 define_result!(Error);
@@ -187,7 +206,8 @@ impl From<Error> for table_engine::engine::Error {
             Error::WriteManifest { .. } => Self::WriteMeta {
                 source: Box::new(err),
             },
-            Error::InvalidSchemaVersion { .. }
+            Error::WriteWal { .. }
+            | Error::InvalidSchemaVersion { .. }
             | Error::InvalidPreVersion { .. }
             | Error::CreateTableData { .. }
             | Error::AlterDroppedTable { .. }
@@ -196,7 +216,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::ReadWal { .. }
             | Error::ApplyMemTable { .. }
             | Error::OperateByWriteWorker { .. }
-            | Error::FlushTable { .. } => Self::Unexpected {
+            | Error::FlushTable { .. }
+            | Error::StoreVersionEdit { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
