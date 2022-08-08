@@ -62,8 +62,8 @@ pub fn to_avro_schema(name: &str, schema: &RecordSchema) -> avro_rs::Schema {
             data_type_to_schema(&column.data_type)
         };
 
-        // In dummy select like select "xxx", column name will be "Utf8("xxx")", which is not a valid json string.
-        // So, escaped name is used here.
+        // In dummy select like select "xxx", column name will be "Utf8("xxx")", which
+        // is not a valid json string. So, escaped name is used here.
         let record_field = RecordField {
             name: column.escaped_name.clone(),
             doc: None,
