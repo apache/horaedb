@@ -9,11 +9,13 @@ import (
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/grpcservice"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/schedule"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
@@ -27,7 +29,8 @@ type Server struct {
 	etcdCfg *embed.Config
 
 	// The fields below are initialized after Run of server is called.
-	hbStreams *schedule.HeartbeatStreams
+	hbStreams      *schedule.HeartbeatStreams
+	clusterManager cluster.Manager
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -134,6 +137,10 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 /// startServer starts involved services.
 func (srv *Server) startServer(ctx context.Context) error {
 	srv.hbStreams = schedule.NewHeartbeatStreams(ctx)
+	storage := storage.NewStorageWithEtcdBackend(srv.etcdCli, srv.cfg.StorageRootPath, storage.Options{
+		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
+	})
+	srv.clusterManager = cluster.NewManagerImpl(storage)
 	return nil
 }
 
@@ -182,6 +189,14 @@ func (ctx *leaderWatchContext) EtcdLeaderID() uint64 {
 	return ctx.srv.etcdSrv.Server.Lead()
 }
 
+func (srv *Server) GetClusterManager() cluster.Manager {
+	return srv.clusterManager
+}
+
+func (srv *Server) GetLeader(ctx context.Context) (*member.GetLeaderResp, error) {
+	return srv.member.GetLeader(ctx)
+}
+
 func (srv *Server) BindHeartbeatStream(_ context.Context, node string, sender grpcservice.HeartbeatStreamSender) error {
 	srv.hbStreams.Bind(node, sender)
 	return nil
@@ -192,6 +207,6 @@ func (srv *Server) UnbindHeartbeatStream(_ context.Context, node string) error {
 	return nil
 }
 
-func (*Server) ProcessHeartbeat(_ context.Context, _ *metaservicepb.NodeHeartbeatRequest) error {
-	return nil
+func (srv *Server) ProcessHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) error {
+	return srv.clusterManager.RegisterNode(ctx, req.GetHeader().GetClusterName(), req.GetInfo().GetNode(), req.GetInfo().GetLease())
 }

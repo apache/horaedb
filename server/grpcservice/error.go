@@ -10,4 +10,7 @@ var (
 	ErrRecvHeartbeat         = coderr.NewCodeError(coderr.Internal, "receive heartbeat")
 	ErrBindHeartbeatStream   = coderr.NewCodeError(coderr.Internal, "bind heartbeat sender")
 	ErrUnbindHeartbeatStream = coderr.NewCodeError(coderr.Internal, "unbind heartbeat sender")
+	ErrParseURL              = coderr.NewCodeError(coderr.Internal, "parse url")
+	ErrGRPCDial              = coderr.NewCodeError(coderr.Internal, "grpc dial")
+	ErrForward               = coderr.NewCodeError(coderr.Internal, "grpc forward")
 )

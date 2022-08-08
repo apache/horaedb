@@ -73,7 +73,8 @@ func (m *Member) GetLeader(ctx context.Context) (*GetLeaderResp, error) {
 	if err != nil {
 		return nil, ErrInvalidLeaderValue.WithCause(err)
 	}
-	return &GetLeaderResp{Leader: leader, Revision: leaderKv.ModRevision}, nil
+
+	return &GetLeaderResp{Leader: leader, Revision: leaderKv.ModRevision, IsLocal: leader.GetId() == m.ID}, nil
 }
 
 func (m *Member) ResetLeader(ctx context.Context) error {
@@ -219,4 +220,5 @@ func (m *Member) Marshal() (string, error) {
 type GetLeaderResp struct {
 	Leader   *metastoragepb.Member
 	Revision int64
+	IsLocal  bool
 }

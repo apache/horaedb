@@ -12,22 +12,22 @@ import (
 )
 
 type TableInfo struct {
-	id         uint64
-	name       string
-	schemaID   uint32
-	schemaName string
+	ID         uint64
+	Name       string
+	SchemaID   uint32
+	SchemaName string
 }
 
 type ShardTables struct {
-	shardRole clusterpb.ShardRole
-	tables    []*TableInfo
-	version   uint64
+	ShardRole clusterpb.ShardRole
+	Tables    []*TableInfo
+	Version   uint64
 }
 
 type Manager interface {
 	CreateCluster(ctx context.Context, clusterName string, nodeCount, replicationFactor, shardTotal uint32) (*Cluster, error)
 	AllocSchemaID(ctx context.Context, clusterName, schemaName string) (uint32, error)
-	AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (uint64, error)
+	AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (*Table, error)
 	GetTables(ctx context.Context, clusterName, nodeName string, shardIDs []uint32) (map[uint32]*ShardTables, error)
 	DropTable(ctx context.Context, clusterName, schemaName, tableName string, tableID uint64) error
 	RegisterNode(ctx context.Context, clusterName, nodeName string, lease uint32) error
@@ -138,37 +138,38 @@ func (m *managerImpl) AllocSchemaID(ctx context.Context, clusterName, schemaName
 	return schemaID, nil
 }
 
-func (m *managerImpl) AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (uint64, error) {
+func (m *managerImpl) AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (*Table, error) {
 	cluster, err := m.getCluster(ctx, clusterName)
 	if err != nil {
-		return 0, errors.Wrap(err, "clusters manager AllocTableID")
+		return nil, errors.Wrap(err, "clusters manager AllocTableID")
 	}
 
 	table, exists, err := cluster.GetTable(ctx, schemaName, tableName)
 	if err != nil {
-		return 0, errors.Wrapf(err, "clusters manager AllocTableID, "+
+		return nil, errors.Wrapf(err, "clusters manager AllocTableID, "+
 			"clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", clusterName, schemaName, tableName, nodeName)
 	}
 	if exists {
-		return table.GetID(), nil
+		return table, nil
 	}
 	// create new schemasCache
 	tableID, err := m.allocTableID(clusterName)
 	if err != nil {
-		return 0, errors.Wrapf(err, "clusters manager AllocTableID, "+
+		return nil, errors.Wrapf(err, "clusters manager AllocTableID, "+
 			"clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", clusterName, schemaName, tableName, nodeName)
 	}
 	shardID, err := m.allocShardID(clusterName, nodeName)
 	if err != nil {
-		return 0, errors.Wrapf(err, "clusters manager AllocTableID, "+
+		return nil, errors.Wrapf(err, "clusters manager AllocTableID, "+
 			"clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", clusterName, schemaName, tableName, nodeName)
 	}
 
-	if _, err := cluster.CreateTable(ctx, schemaName, shardID, tableName, tableID); err != nil {
-		return 0, errors.Wrapf(err, "clusters manager AllocTableID, "+
+	table, err = cluster.CreateTable(ctx, schemaName, shardID, tableName, tableID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "clusters manager AllocTableID, "+
 			"clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", clusterName, schemaName, tableName, nodeName)
 	}
-	return tableID, nil
+	return table, nil
 }
 
 func (m *managerImpl) GetTables(ctx context.Context, clusterName, nodeName string, shardIDs []uint32) (map[uint32]*ShardTables, error) {
@@ -189,11 +190,11 @@ func (m *managerImpl) GetTables(ctx context.Context, clusterName, nodeName strin
 
 		for _, t := range shardTables.tables {
 			tableInfos = append(tableInfos, &TableInfo{
-				id: t.meta.GetId(), name: t.meta.GetName(),
-				schemaID: t.schema.GetId(), schemaName: t.schema.GetName(),
+				ID: t.meta.GetId(), Name: t.meta.GetName(),
+				SchemaID: t.schema.GetId(), SchemaName: t.schema.GetName(),
 			})
 		}
-		ret[shardID] = &ShardTables{shardRole: shardTables.shardRole, tables: tableInfos, version: shardTables.version}
+		ret[shardID] = &ShardTables{ShardRole: shardTables.shardRole, Tables: tableInfos, Version: shardTables.version}
 	}
 	return ret, nil
 }

@@ -48,6 +48,7 @@ type Config struct {
 	NodeName            string `toml:"node-name" json:"node-name"`
 	DataDir             string `toml:"data-dir" json:"data-dir"`
 	WalDir              string `toml:"wal-dir" json:"wal-dir"`
+	StorageRootPath     string `toml:"storage-root-path" json:"storage-root-path"`
 	InitialCluster      string `toml:"initial-cluster" json:"initial-cluster"`
 	InitialClusterState string `toml:"initial-cluster-state" json:"initial-cluster-state"`
 	InitialClusterToken string `toml:"initial-cluster-token" json:"initial-cluster-token"`
@@ -67,6 +68,8 @@ type Config struct {
 	// Before etcd v3.3.x, the type of retention is int. We add 'v2' suffix to make it backward compatible.
 	AutoCompactionRetention string `toml:"auto-compaction-retention" json:"auto-compaction-retention-v2"`
 	MaxRequestBytes         uint   `toml:"max-request-bytes" json:"max-request-bytes"`
+	MaxScanLimit            int    `toml:"max-scan-limit" json:"max-scan-limit"`
+	MinScanLimit            int    `toml:"min-scan-limit" json:"min-scan-limit"`
 
 	ClientUrls          string `toml:"client-urls" json:"client-urls"`
 	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`

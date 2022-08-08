@@ -107,11 +107,11 @@ func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Mana
 }
 
 func testAllocTableID(ctx context.Context, re *require.Assertions, manager Manager,
-	node, cluster, schema, table string, tableID uint64,
+	node, cluster, schema, tableName string, tableID uint64,
 ) {
-	id, err := manager.AllocTableID(ctx, node, cluster, schema, table)
+	table, err := manager.AllocTableID(ctx, cluster, schema, tableName, node)
 	re.NoError(err)
-	re.Equal(tableID, id)
+	re.Equal(tableID, table.GetID())
 }
 
 func testGetTables(ctx context.Context, re *require.Assertions, manager Manager, node, cluster string) {
@@ -123,8 +123,8 @@ func testGetTables(ctx context.Context, re *require.Assertions, manager Manager,
 
 	tableNum := 0
 	for _, tables := range shardTables {
-		re.Equal(clusterpb.ShardRole_LEADER, tables.shardRole)
-		tableNum += len(tables.tables)
+		re.Equal(clusterpb.ShardRole_LEADER, tables.ShardRole)
+		tableNum += len(tables.Tables)
 	}
 	re.Equal(2, tableNum)
 }
