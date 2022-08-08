@@ -505,6 +505,7 @@ mod test {
                 is_nullable: false,
                 is_tag: false,
                 comment: String::new(),
+                escaped_name: TIMESTAMP_COLUMN_NAME.escape_debug().to_string(),
             })
             .unwrap()
             .add_key_column(ColumnSchema {
@@ -514,6 +515,7 @@ mod test {
                 is_nullable: false,
                 is_tag: true,
                 comment: String::new(),
+                escaped_name: TAG_K.escape_debug().to_string(),
             })
             .unwrap()
             .add_normal_column(ColumnSchema {
@@ -523,6 +525,7 @@ mod test {
                 is_nullable: false,
                 is_tag: true,
                 comment: String::new(),
+                escaped_name: TAG_K1.escape_debug().to_string(),
             })
             .unwrap()
             .add_normal_column(ColumnSchema {
@@ -532,6 +535,7 @@ mod test {
                 is_nullable: true,
                 is_tag: false,
                 comment: String::new(),
+                escaped_name: FIELD_NAME.escape_debug().to_string(),
             })
             .unwrap()
             .add_normal_column(ColumnSchema {
@@ -541,6 +545,7 @@ mod test {
                 is_nullable: true,
                 is_tag: false,
                 comment: String::new(),
+                escaped_name: FIELD_NAME1.escape_debug().to_string(),
             })
             .unwrap()
             .build()
