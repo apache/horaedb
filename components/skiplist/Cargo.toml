@@ -2,7 +2,6 @@
 name = "skiplist"
 version = "0.1.0"
 authors = ["Jay Lee <busyjaylee@gmail.com>"]
-edition = "2021"
 
 [dependencies]
 rand = "0.7"
