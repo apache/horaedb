@@ -16,6 +16,7 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{
+    bytes::MemBufMut,
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
@@ -24,6 +25,7 @@ use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
+use wal::log_batch::Payload;
 
 pub fn new_runtime(thread_num: usize) -> Runtime {
     runtime::Builder::default()
@@ -141,4 +143,47 @@ pub async fn file_handles_from_ssts(
     }
 
     file_handles
+}
+
+/// Header size in bytes
+const HEADER_SIZE: usize = 1;
+
+/// Wal entry header
+#[derive(Clone, Copy)]
+enum Header {
+    Write = 1,
+}
+
+impl Header {
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
+}
+
+fn write_header(
+    header: Header,
+    buf: &mut dyn MemBufMut,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    buf.write_u8(header.to_u8())
+        .expect("should succeed to write u8");
+    Ok(())
+}
+
+#[derive(Debug)]
+pub struct WritePayload<'a>(pub &'a [u8]);
+
+impl<'a> Payload for WritePayload<'a> {
+    fn encode_size(&self) -> usize {
+        let body_size = self.0.len();
+        HEADER_SIZE + body_size as usize
+    }
+
+    fn encode_to(
+        &self,
+        buf: &mut dyn MemBufMut,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        write_header(Header::Write, buf).unwrap();
+        buf.write_slice(self.0).unwrap();
+        Ok(())
+    }
 }

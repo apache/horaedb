@@ -377,10 +377,13 @@ dependencies = [
  "log",
  "object_store 0.1.0",
  "parquet 0.1.0",
+ "rand 0.7.3",
  "serde",
  "serde_derive",
  "table_engine",
+ "table_kv",
  "tokio 1.20.1",
+ "wal",
 ]
 
 [[package]]

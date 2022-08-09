@@ -1,4 +1,4 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+# Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 [sst_bench]
 store_path = "/path/to/data/1/1"
@@ -48,3 +48,9 @@ sst_file_ids = [ 37 ]
 runtime_thread_num = 1
 max_projections = 5
 arena_block_size = "64M"
+
+[wal_write_bench]
+bench_measurement_time = "60s"
+bench_sample_size = 60
+batch_size = 512
+value_size = 1024
