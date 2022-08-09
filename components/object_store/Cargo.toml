@@ -2,7 +2,9 @@
 name = "object_store"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-edition = "2018"
+
+[package.edition]
+workspace = true
 
 [dependencies]
 async-trait = "0.1.53"

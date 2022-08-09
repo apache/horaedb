@@ -133,7 +133,7 @@ impl ToString for ArrowFieldMetaKey {
 }
 
 /// Schema of column
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnSchema {
     /// Id of column
     pub id: ColumnId,

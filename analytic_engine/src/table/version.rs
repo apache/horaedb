@@ -622,12 +622,14 @@ impl TableVersion {
         schema_version: schema::Version,
     ) -> Result<Option<MemTableForWrite>> {
         // Find memtable by timestamp
-        let mutable = {
-            let inner = self.inner.read().unwrap();
-            match inner.memtable_for_write(write_lock, timestamp) {
-                Some(v) => v,
-                None => return Ok(None),
-            }
+        let memtable = self
+            .inner
+            .read()
+            .unwrap()
+            .memtable_for_write(write_lock, timestamp);
+        let mutable = match memtable {
+            Some(v) => v,
+            None => return Ok(None),
         };
 
         // We consider the schemas are same if they have the same version.

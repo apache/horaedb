@@ -241,7 +241,7 @@ impl Instance {
             options
         );
         let mut table_opts =
-            table_options::merge_table_options_for_alter(&options, &*current_table_options)
+            table_options::merge_table_options_for_alter(&options, &current_table_options)
                 .map_err(|e| Box::new(e) as _)
                 .context(InvalidOptions {
                     space_id: space_table.space().id,

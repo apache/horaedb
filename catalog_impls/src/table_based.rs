@@ -224,13 +224,10 @@ impl Inner {
                 assert_eq!(1, self.catalogs.len());
 
                 // Default catalog is not exists, create and store it.
-                let default_catalog = self
-                    .create_catalog(CreateCatalogRequest {
-                        catalog_name: consts::DEFAULT_CATALOG.to_string(),
-                    })
-                    .await?;
-
-                default_catalog
+                self.create_catalog(CreateCatalogRequest {
+                    catalog_name: consts::DEFAULT_CATALOG.to_string(),
+                })
+                .await?
             }
         };
 
@@ -248,7 +245,7 @@ impl Inner {
                     schema_name: consts::DEFAULT_SCHEMA.to_string(),
                     schema_id,
                 },
-                &*catalog,
+                &catalog,
             )
             .await?;
         }

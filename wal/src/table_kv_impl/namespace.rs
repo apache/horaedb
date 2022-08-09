@@ -924,7 +924,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Has ttl, we need to periodically create/purge buckets.
             monitor_handle = Some(start_bucket_monitor(
-                &*runtimes.bg_runtime,
+                &runtimes.bg_runtime,
                 BUCKET_MONITOR_PERIOD,
                 inner.clone(),
             ));
@@ -933,7 +933,7 @@ impl<T: TableKv> Namespace<T> {
 
             // Start a cleaner if wal has no ttl.
             cleaner_handle = Some(start_log_cleaner(
-                &*runtimes.bg_runtime,
+                &runtimes.bg_runtime,
                 LOG_CLEANER_PERIOD,
                 inner.clone(),
             ));
