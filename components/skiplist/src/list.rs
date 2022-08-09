@@ -255,7 +255,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
         let mut level = self.height();
         loop {
             // Assume cursor.key < key
-            let next_ptr = (&*cursor).next_ptr(level);
+            let next_ptr = (*cursor).next_ptr(level);
             if next_ptr.is_null() {
                 // cursor.key < key < END OF LIST
                 if level > 0 {
@@ -329,7 +329,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     ) -> (*mut Node, *mut Node) {
         loop {
             // Assume before.key < key
-            let next_ptr = (&*before).next_ptr(level);
+            let next_ptr = (*before).next_ptr(level);
             if next_ptr.is_null() {
                 return (before, ptr::null_mut());
             }
@@ -439,7 +439,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     /// Returns if the skiplist is empty
     pub fn is_empty(&self) -> bool {
         let node = self.core.head.as_ptr();
-        let next_ptr = unsafe { (&*node).next_ptr(0) };
+        let next_ptr = unsafe { (*node).next_ptr(0) };
         next_ptr.is_null()
     }
 
@@ -448,7 +448,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
         let mut node = self.core.head.as_ptr();
         let mut count = 0;
         loop {
-            let next_ptr = unsafe { (&*node).next_ptr(0) };
+            let next_ptr = unsafe { (*node).next_ptr(0) };
             if !next_ptr.is_null() {
                 count += 1;
                 node = next_ptr;
@@ -464,7 +464,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
         let mut node = self.core.head.as_ptr();
         let mut level = self.height();
         loop {
-            let next_ptr = unsafe { (&*node).next_ptr(level) };
+            let next_ptr = unsafe { (*node).next_ptr(level) };
             if !next_ptr.is_null() {
                 node = next_ptr;
                 continue;
@@ -570,7 +570,7 @@ impl<T: AsRef<Skiplist<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + 
     pub fn next(&mut self) {
         assert!(self.valid());
         unsafe {
-            self.cursor = (&*self.cursor).next_ptr(0);
+            self.cursor = (*self.cursor).next_ptr(0);
         }
     }
 
@@ -595,7 +595,7 @@ impl<T: AsRef<Skiplist<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + 
 
     pub fn seek_to_first(&mut self) {
         unsafe {
-            self.cursor = (&*self.list.as_ref().core.head.as_ptr()).next_ptr(0);
+            self.cursor = (*self.list.as_ref().core.head.as_ptr()).next_ptr(0);
         }
     }
 

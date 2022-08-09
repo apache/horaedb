@@ -251,6 +251,7 @@ struct ProjectAndFilterReader {
 }
 
 impl ProjectAndFilterReader {
+    #[allow(clippy::type_complexity)]
     fn build_row_group_predicate(&self) -> Box<dyn Fn(&RowGroupMetaData, usize) -> bool + 'static> {
         assert!(self.file_reader.is_some());
 

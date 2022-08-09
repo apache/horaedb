@@ -103,6 +103,7 @@ impl<M: Manager> Tables<M> {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_table(&self, catalog: CatalogRef, schema: SchemaRef, table: TableRef) -> Row {
         let mut datums = Vec::with_capacity(self.schema.num_columns());
         datums.push(Datum::Timestamp(ENTRY_TIMESTAMP));

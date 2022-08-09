@@ -90,7 +90,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
 }
 
 /// Meta data of the file to delete.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteFile {
     /// The level of the file intended to delete.
     pub level: u16,

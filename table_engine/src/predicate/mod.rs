@@ -446,7 +446,7 @@ impl<'a> TimeRangeExtractor<'a> {
             } => {
                 if let Expr::Column(column) = expr.as_ref() {
                     if column.name == self.timestamp_column_name {
-                        return Self::time_range_from_between_expr(&*low, &*high, *negated);
+                        return Self::time_range_from_between_expr(low, high, *negated);
                     }
                 }
 

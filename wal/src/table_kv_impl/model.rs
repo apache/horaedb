@@ -150,7 +150,7 @@ fn encode_json<T: serde::Serialize>(value: &T) -> Result<Vec<u8>> {
 }
 
 /// Data of wal shards.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct WalShardEntry {
     /// Whether ttl of wal shard is enabled.
@@ -172,7 +172,7 @@ impl Default for WalShardEntry {
 }
 
 /// Data of region meta tables.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct RegionMetaEntry {
     /// Hash shard num of region meta tables.
@@ -188,7 +188,7 @@ impl Default for RegionMetaEntry {
 }
 
 /// Data of a wal namespace, which is similar to a wal directory.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct NamespaceEntry {
     /// Name of namespace.
@@ -325,7 +325,7 @@ impl Default for NamespaceConfig {
 
 /// Contains all wal shards of given time range, region is routed to a specific
 /// shard by its region id.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct BucketEntry {
     /// Shard number of the bucket.
@@ -431,7 +431,7 @@ impl BucketEntry {
 }
 
 /// Meta data of a region.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct RegionEntry {
     #[serde(with = "format_string")]

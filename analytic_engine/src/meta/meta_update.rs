@@ -250,7 +250,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
 }
 
 /// Meta data for dropping a table
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropTableMeta {
     /// Space id of the table
     pub space_id: SpaceId,

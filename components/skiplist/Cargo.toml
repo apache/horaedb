@@ -2,7 +2,9 @@
 name = "skiplist"
 version = "0.1.0"
 authors = ["Jay Lee <busyjaylee@gmail.com>"]
-edition = "2018"
+
+[package.edition]
+workspace = true
 
 [dependencies]
 rand = "0.7"

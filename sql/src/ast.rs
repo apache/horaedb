@@ -7,7 +7,7 @@ use sqlparser::ast::{
 };
 
 /// Statement representations
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Statement {
     /// ANSI SQL AST node
     Standard(Box<SqlStatement>),
@@ -26,7 +26,7 @@ pub enum Statement {
     Exists(ExistsTable),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TableName(ObjectName);
 
 impl TableName {
@@ -58,7 +58,7 @@ pub enum ShowCreateObject {
     Table,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CreateTable {
     /// Create if not exists
     pub if_not_exists: bool,
@@ -71,7 +71,7 @@ pub struct CreateTable {
     pub options: Vec<SqlOption>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DropTable {
     /// Table name
     pub table_name: TableName,
@@ -79,30 +79,30 @@ pub struct DropTable {
     pub engine: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DescribeTable {
     pub table_name: TableName,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AlterModifySetting {
     pub table_name: TableName,
     pub options: Vec<SqlOption>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AlterAddColumn {
     pub table_name: TableName,
     pub columns: Vec<ColumnDef>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ShowCreate {
     pub obj_type: ShowCreateObject,
     pub table_name: TableName,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ExistsTable {
     pub table_name: TableName,
 }
