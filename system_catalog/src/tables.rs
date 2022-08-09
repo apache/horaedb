@@ -138,8 +138,8 @@ impl<M: Manager> SystemTable for Tables<M> {
             .all_catalogs()
             .map_err(|e| Box::new(e) as _)
             .context(table_engine::table::Scan { table: self.name() })?;
-        let record_schema_key = request.projected_schema.to_record_schema_with_key();
-        let mut builder = RecordBatchWithKeyBuilder::new(record_schema_key);
+        let projected_record_schema = request.projected_schema.to_record_schema_with_key();
+        let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
 
         let projector = request
             .projected_schema
