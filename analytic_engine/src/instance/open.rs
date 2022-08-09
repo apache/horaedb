@@ -70,7 +70,7 @@ impl Instance {
         let file_purger = FilePurger::start(&bg_runtime, store);
 
         let mut wal_replicator = WalReplicator::new(WalReplicatorConfig::default(), wal_manager);
-        wal_replicator.start(&*bg_runtime).await;
+        wal_replicator.start(&bg_runtime).await;
 
         let instance = Arc::new(Instance {
             space_store,

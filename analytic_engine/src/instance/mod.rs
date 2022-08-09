@@ -41,6 +41,7 @@ use crate::{
     TableOptions,
 };
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to stop file purger, err:{}", source))]

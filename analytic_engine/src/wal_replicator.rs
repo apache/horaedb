@@ -209,7 +209,7 @@ impl WalReplicatorInner {
                 }
 
                 // read logs from iterator
-                if let Err(e) = self.consume_iter(&mut iter, &state).await {
+                if let Err(e) = self.consume_iter(&mut iter, state).await {
                     error!("Failed to consume WAL, error: {:?}", e);
                 }
             }
@@ -217,16 +217,10 @@ impl WalReplicatorInner {
             drop(tables);
             self.purge_invalid_region(&mut invalid_regions).await;
 
-            // select
-            match time::timeout(self.config.interval, stop_listener.recv()).await {
-                Ok(_) => {
-                    info!("WAL Replicator stopped");
-                    break;
-                }
-                Err(_) => {}
+            if time::timeout(self.config.interval, stop_listener.recv()).await.is_ok(){
+                info!("WAL Replicator stopped");
+                break;
             }
-
-            // sleep(self.config.interval).await;
         }
     }
 
