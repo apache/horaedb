@@ -381,7 +381,7 @@ impl ScheduleWorker {
         let table_options = table_data.table_options();
         let compaction_strategy = table_options.compaction_strategy;
         let picker = self.picker_manager.get_picker(compaction_strategy);
-        let picker_ctx = match new_picker_context(&*table_options) {
+        let picker_ctx = match new_picker_context(&table_options) {
             Some(v) => v,
             None => {
                 warn!("No valid context can be created, compaction request will be ignored, table_id:{}, table_name:{}",

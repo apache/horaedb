@@ -60,10 +60,8 @@ impl Runner {
                 }
 
                 println!(
-                    "Takes {:?}. Diff: {}. Test case {:?} finished.",
-                    elapsed,
-                    is_different,
-                    case.to_string()
+                    "Takes {:?}. Diff: {}. Test case {} finished.",
+                    elapsed, is_different, case
                 );
             };
 

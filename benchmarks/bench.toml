@@ -42,3 +42,9 @@ arena_block_size = "64M"
 [wal_row_bench]
 rows_num = 100_0000
 test_num = 3
+
+[wal_write_bench]
+bench_measurement_time = "60s"
+bench_sample_size = 60
+batch_size = 512
+value_size = 1024

@@ -67,7 +67,8 @@ impl Instance {
             scheduler_config,
         ));
 
-        let file_purger = FilePurger::start(&*bg_runtime, store);
+        let file_purger = FilePurger::start(&bg_runtime, store);
+
         let mut wal_replicator = WalReplicator::new(WalReplicatorConfig::default(), wal_manager);
         wal_replicator.start(&*bg_runtime).await;
 

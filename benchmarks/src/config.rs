@@ -24,6 +24,7 @@ pub struct BenchConfig {
     pub merge_sst_bench: MergeSstBenchConfig,
     pub scan_memtable_bench: ScanMemTableBenchConfig,
     pub merge_memtable_bench: MergeMemTableBenchConfig,
+    pub wal_write_bench: WalWriteBenchConfig,
 }
 
 // TODO(yingwen): Maybe we can use layze static to load config first.
@@ -125,4 +126,12 @@ pub struct MergeMemTableBenchConfig {
     pub max_projections: usize,
 
     pub arena_block_size: ReadableSize,
+}
+
+#[derive(Deserialize)]
+pub struct WalWriteBenchConfig {
+    pub bench_measurement_time: ReadableDuration,
+    pub bench_sample_size: usize,
+    pub batch_size: usize,
+    pub value_size: usize,
 }

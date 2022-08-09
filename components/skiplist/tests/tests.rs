@@ -54,14 +54,14 @@ fn test_basic() {
     ];
 
     for (key, value) in &table {
-        list.put(&key_with_ts(*key, 0), value);
+        list.put(&key_with_ts(key, 0), value);
     }
 
     assert_eq!(list.get(&key_with_ts("key", 0)), None);
     assert_eq!(list.len(), 5);
     assert!(!list.is_empty());
     for (key, value) in &table {
-        let get_key = key_with_ts(*key, 0);
+        let get_key = key_with_ts(key, 0);
         assert_eq!(list.get(&get_key), Some(&value[..]), "{}", key);
     }
 }

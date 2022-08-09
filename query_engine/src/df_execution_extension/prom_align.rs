@@ -75,7 +75,7 @@ impl fmt::Display for ExtractTsidExpr {
 
 impl PhysicalExpr for ExtractTsidExpr {
     fn as_any(&self) -> &dyn Any {
-        &*self
+        self
     }
 
     fn data_type(&self, _input_schema: &ArrowSchema) -> ArrowResult<DataType> {

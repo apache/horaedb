@@ -464,12 +464,7 @@ impl Instance {
         // process sampling memtable and frozen memtable
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
-                .dump_sampling_memtable(
-                    &*table_data,
-                    request_id,
-                    sampling_mem,
-                    &mut files_to_level0,
-                )
+                .dump_sampling_memtable(table_data, request_id, sampling_mem, &mut files_to_level0)
                 .await?
             {
                 flushed_sequence = seq;
@@ -481,7 +476,7 @@ impl Instance {
         }
         for mem in &mems_to_flush.memtables {
             let file = self
-                .dump_normal_memtable(&*table_data, request_id, mem)
+                .dump_normal_memtable(table_data, request_id, mem)
                 .await?;
             if let Some(file) = file {
                 let sst_size = file.meta.size;
@@ -883,10 +878,9 @@ impl SpaceStore {
             builder
                 .mut_ssts_of_level(input.level)
                 .extend_from_slice(&input.files);
-            let merge_iter = builder.build().await.context(BuildMergeIterator {
+            builder.build().await.context(BuildMergeIterator {
                 table: table_data.name.clone(),
-            })?;
-            merge_iter
+            })?
         };
 
         let record_batch_stream = if table_options.need_dedup() {

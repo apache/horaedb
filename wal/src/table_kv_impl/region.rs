@@ -265,7 +265,7 @@ impl Region {
         let mut writer = self.writer.lock().await;
         writer
             .write_log(
-                &*self.runtimes.write_runtime,
+                &self.runtimes.write_runtime,
                 table_kv,
                 &self.state,
                 bucket,
@@ -328,7 +328,7 @@ impl Region {
         let mut writer = self.writer.lock().await;
         writer
             .delete_entries_up_to(
-                &*self.runtimes.write_runtime,
+                &self.runtimes.write_runtime,
                 table_kv,
                 &self.state,
                 region_meta_table,

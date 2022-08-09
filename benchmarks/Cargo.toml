@@ -1,7 +1,9 @@
 [package]
 name = "benchmarks"
 version = "0.1.0"
-edition = "2018"
+
+[package.edition]
+workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,10 +20,13 @@ futures = "0.3"
 log = "0.4"
 object_store = { path = "../components/object_store" }
 parquet = { path = "../components/parquet"}
+rand = "0.7"
 serde = "1.0"
 serde_derive = "1.0"
 table_engine = { path = "../table_engine" }
+table_kv = { path = "../components/table_kv" }
 tokio = { version = "1.0", features = ["sync"] }
+wal = {path = "../wal"}
 
 [dev-dependencies]
 criterion = "0.3"
