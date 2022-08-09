@@ -1,0 +1,33 @@
+name: Bug Report
+labels: ["bug"]
+description: Report to help us improve
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe this problem
+      description: What this problem is and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: Steps to reproduce
+      description: How to reproduce this problem.
+      placeholder: Paste the command you've typed and logs you get here.
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: Expected behavior
+      description: What is your expected behavior.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Information
+      description: If possible, please attach other context you think may relate to this problem. Like *runtime environment*, *modified config*, *error log* etc.
