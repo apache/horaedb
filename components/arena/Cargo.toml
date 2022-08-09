@@ -2,7 +2,9 @@
 name = "arena"
 version = "0.1.0"
 authors = ["Ruihang Xia <xrh262829@antgroup.com>"]
-edition = "2021"
+
+[package.edition]
+workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
