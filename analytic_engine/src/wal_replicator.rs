@@ -1,5 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! WAL Replicator implementation.
+
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{
@@ -61,6 +63,7 @@ define_result!(Error);
 pub struct WalReplicatorConfig {
     /// Interval between two syncs
     interval: Duration,
+    /// Used as WAL's read batch size
     batch_size: usize,
 }
 
@@ -73,6 +76,26 @@ impl Default for WalReplicatorConfig {
     }
 }
 
+/// A background replicator that keep polling WAL update.
+///
+/// This [WalReplicator] has a queue of [RegionId]s that need replication.
+/// Others can register new region with [register_table] method. And invalid
+/// table will be removed automatically. The workflow looks like:
+///
+/// ```plaintext
+///            register IDs
+///           need replication
+///      ┌─────────────────────┐
+///      │                     │
+///      │              ┌──────▼───────┐
+/// ┌────┴─────┐        │  background  │
+/// │Role Table│        │WAL Replicator│
+/// └────▲─────┘        └──────┬───────┘
+///      │                     │
+///      └─────────────────────┘
+///           replicate log
+///             to table
+/// ```
 pub struct WalReplicator {
     inner: Arc<WalReplicatorInner>,
     stop_sender: Sender<()>,
