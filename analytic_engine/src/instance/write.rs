@@ -194,7 +194,7 @@ impl Instance {
         } = encode_ctx;
 
         let sequence = self
-            .write_to_wal(worker_local, &**table_data, encoded_rows)
+            .write_to_wal(worker_local, table_data, encoded_rows)
             .await?;
 
         Self::write_to_memtable(

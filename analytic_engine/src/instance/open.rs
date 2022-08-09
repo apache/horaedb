@@ -66,7 +66,7 @@ impl Instance {
             scheduler_config,
         ));
 
-        let file_purger = FilePurger::start(&*bg_runtime, store);
+        let file_purger = FilePurger::start(&bg_runtime, store);
 
         let instance = Arc::new(Instance {
             space_store,

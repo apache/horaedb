@@ -49,7 +49,7 @@ fn duration_to_ms(d: Duration) -> u64 {
     d.as_secs() * 1_000 + (nanos / 1_000_000)
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TimeUnit {
     Nanoseconds,
@@ -126,7 +126,7 @@ impl fmt::Display for TimeUnit {
     }
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, PartialOrd)]
 pub struct ReadableSize(pub u64);
 
 impl ReadableSize {

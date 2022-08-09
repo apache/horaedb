@@ -101,7 +101,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub enum UpdateMode {
     Overwrite,
     Append,
@@ -128,7 +128,7 @@ impl ToString for UpdateMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 pub enum Compression {
     Uncompressed,
     Lz4,

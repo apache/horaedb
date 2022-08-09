@@ -21,7 +21,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// String using [crate::bytes::Bytes] as storage so it can be cast into `Bytes`
 /// and clone like `Bytes`.
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct StringBytes(Bytes);
 
 impl StringBytes {

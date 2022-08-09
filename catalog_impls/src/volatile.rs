@@ -112,11 +112,8 @@ where
             Some(v) => v.clone(),
             None => {
                 // Default catalog is not exists, create and store it.
-                let default_catalog = self
-                    .create_catalog(consts::DEFAULT_CATALOG.to_string())
-                    .await;
-
-                default_catalog
+                self.create_catalog(consts::DEFAULT_CATALOG.to_string())
+                    .await
             }
         };
 

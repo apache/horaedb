@@ -66,7 +66,7 @@ impl ObkvConfig {
 }
 
 /// Obkv server log level.
-#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ObLogLevel {
     None = 7,

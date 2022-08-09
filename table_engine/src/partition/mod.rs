@@ -6,7 +6,7 @@ mod expression;
 pub mod rule;
 
 /// Partition type of table
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PartitionType {
     None = 0,
     Hash = 1,
