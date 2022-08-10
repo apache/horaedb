@@ -2230,7 +2230,7 @@ dependencies = [
  "slab",
  "tokio 1.20.1",
  "tokio-util 0.7.3",
- "tracing 0.1.36",
+ "tracing",
 ]
 
 [[package]]
@@ -2425,7 +2425,7 @@ dependencies = [
  "socket2",
  "tokio 1.20.1",
  "tower-service",
- "tracing 0.1.36",
+ "tracing",
  "want 0.3.0",
 ]
 
@@ -3466,7 +3466,7 @@ dependencies = [
  "percent-encoding 2.1.0",
  "snafu 0.7.1",
  "tokio 1.20.1",
- "tracing 0.1.36",
+ "tracing",
  "url 2.2.2",
  "walkdir",
 ]
@@ -5811,7 +5811,7 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio 1.20.1",
- "tracing 0.1.36",
+ "tracing",
 ]
 
 [[package]]
@@ -5828,21 +5828,6 @@ name = "tower-service"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
-
-[[package]]
-name = "trace_examples"
-version = "0.1.0"
-dependencies = [
- "tracing 0.1.0",
- "tracing_util",
-]
-
-[[package]]
-name = "tracing"
-version = "0.1.0"
-dependencies = [
- "tracing 0.1.36",
-]
 
 [[package]]
 name = "tracing"
@@ -5926,7 +5911,7 @@ dependencies = [
  "sharded-slab",
  "smallvec 1.9.0",
  "thread_local",
- "tracing 0.1.36",
+ "tracing",
  "tracing-core",
  "tracing-log",
  "tracing-serde",
@@ -5937,7 +5922,7 @@ name = "tracing_util"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
- "tracing 0.1.36",
+ "tracing",
  "tracing-appender",
  "tracing-subscriber",
 ]
@@ -6252,7 +6237,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util 0.6.10",
  "tower-service",
- "tracing 0.1.36",
+ "tracing",
 ]
 
 [[package]]
