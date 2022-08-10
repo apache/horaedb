@@ -44,3 +44,4 @@ common_types = { path = "../common_types", features = ["test"] }
 common_util = { path = "../common_util", features = ["test"] }
 env_logger = "0.6"
 tempfile = "3.1.0"
+wal = { path = "../wal", features = ["test"] }

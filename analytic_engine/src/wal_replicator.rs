@@ -217,7 +217,10 @@ impl WalReplicatorInner {
             drop(tables);
             self.purge_invalid_region(&mut invalid_regions).await;
 
-            if time::timeout(self.config.interval, stop_listener.recv()).await.is_ok(){
+            if time::timeout(self.config.interval, stop_listener.recv())
+                .await
+                .is_ok()
+            {
                 info!("WAL Replicator stopped");
                 break;
             }
@@ -341,5 +344,37 @@ mod role_table {
         pub fn check_state(&self) -> bool {
             true
         }
+    }
+}
+
+#[cfg(all(test))]
+mod test {
+    use tokio::time::sleep;
+    use wal::tests::util::{MemoryTableWalBuilder, TableKvTestEnv};
+
+    use super::*;
+
+    fn build_env() -> TableKvTestEnv {
+        TableKvTestEnv::new(1, MemoryTableWalBuilder::default())
+    }
+
+    fn build_replicator(env: &TableKvTestEnv) -> WalReplicator {
+        env.runtime.block_on(async {
+            let wal = env.build_wal().await;
+            WalReplicator::new(WalReplicatorConfig::default(), wal)
+        })
+    }
+
+    #[test]
+    fn replicator_start_stop() {
+        let env = build_env();
+        let runtime = env.runtime.clone();
+        let mut replicator = build_replicator(&env);
+
+        runtime.clone().block_on(async move {
+            replicator.start(&runtime).await;
+            sleep(Duration::from_secs(1)).await;
+            replicator.stop().await.unwrap();
+        });
     }
 }
