@@ -59,12 +59,12 @@ The current RPC supports multiple protocols including HTTP, gRPC, MySQL.
 
 Basically, HTTP and MySQL are used to debug CeresDB, query manually and perform DDL operations (such as creating, deleting tables, etc.). And gRPC protocol can be regarded as a customized protocol for high-performance, which is suitable for massive reading and writing operations.
 
-### SQL Layer 
+### SQL Layer
 module path: https://github.com/CeresDB/ceresdb/tree/main/sql
 
 SQL layer takes responsibilities for parsing sql and generating the plan.
 
-Based on [sqlparser](https://github.com/sqlparser-rs/sqlparser-rs) a sql dialect, which introduces some key concepts including `Tag` and `Timestamp`, is provided for processing timeseries data. And by utilizing [DataFusion](https://github.com/apache/arrow-datafusion) the planner can generate not only normal logical plans but also custom ones, such as plans for `PromQL`. 
+Based on [sqlparser](https://github.com/sqlparser-rs/sqlparser-rs) a sql dialect, which introduces some key concepts including `Tag` and `Timestamp`, is provided for processing timeseries data. And by utilizing [DataFusion](https://github.com/apache/arrow-datafusion) the planner can generate not only normal logical plans but also custom ones, such as plans for `PromQL`.
 
 ### Interpreter
 module path: https://github.com/CeresDB/ceresdb/tree/main/interpreters
@@ -177,33 +177,33 @@ After a brief introduction to some important modules of CeresDB, we will give a 
 
 ### Query
 ```plaintext
-┌───────┐      ┌───────┐      ┌───────┐ 
-│       │──1──▶│       │──2──▶│       │ 
-│Server │      │  SQL  │      │Catalog│ 
-│       │◀─10──│       │◀─3───│       │ 
-└───────┘      └───────┘      └───────┘ 
-                │    ▲                  
-               4│   9│                  
-                │    │                  
-                ▼    │                  
-┌─────────────────────────────────────┐ 
-│                                     │ 
-│             Interpreter             │ 
-│                                     │ 
-└─────────────────────────────────────┘ 
-                           │    ▲       
-                          5│   8│       
-                           │    │       
-                           ▼    │       
-                   ┌──────────────────┐ 
-                   │                  │ 
-                   │   Query Engine   │ 
-                   │                  │ 
-                   └──────────────────┘ 
-                           │    ▲       
-                          6│   7│       
-                           │    │       
-                           ▼    │       
+┌───────┐      ┌───────┐      ┌───────┐
+│       │──1──▶│       │──2──▶│       │
+│Server │      │  SQL  │      │Catalog│
+│       │◀─10──│       │◀─3───│       │
+└───────┘      └───────┘      └───────┘
+                │    ▲
+               4│   9│
+                │    │
+                ▼    │
+┌─────────────────────────────────────┐
+│                                     │
+│             Interpreter             │
+│                                     │
+└─────────────────────────────────────┘
+                           │    ▲
+                          5│   8│
+                           │    │
+                           ▼    │
+                   ┌──────────────────┐
+                   │                  │
+                   │   Query Engine   │
+                   │                  │
+                   └──────────────────┘
+                           │    ▲
+                          6│   7│
+                           │    │
+                           ▼    │
  ┌─────────────────────────────────────┐
  │                                     │
  │            Table Engine             │
@@ -232,33 +232,33 @@ Here are the details:
 
 ### Write
 ```plaintext
-┌───────┐      ┌───────┐      ┌───────┐ 
-│       │──1──▶│       │──2──▶│       │ 
-│Server │      │  SQL  │      │Catalog│ 
-│       │◀─8───│       │◀─3───│       │ 
-└───────┘      └───────┘      └───────┘ 
-                │    ▲                  
-               4│   7│                  
-                │    │                  
-                ▼    │                  
-┌─────────────────────────────────────┐ 
-│                                     │ 
-│             Interpreter             │ 
-│                                     │ 
-└─────────────────────────────────────┘ 
-      │    ▲                            
-      │    │                            
-      │    │                            
-      │    │                            
-      │    │       ┌──────────────────┐ 
-      │    │       │                  │ 
-     5│   6│       │   Query Engine   │ 
-      │    │       │                  │ 
-      │    │       └──────────────────┘ 
-      │    │                            
-      │    │                            
-      │    │                            
-      ▼    │                            
+┌───────┐      ┌───────┐      ┌───────┐
+│       │──1──▶│       │──2──▶│       │
+│Server │      │  SQL  │      │Catalog│
+│       │◀─8───│       │◀─3───│       │
+└───────┘      └───────┘      └───────┘
+                │    ▲
+               4│   7│
+                │    │
+                ▼    │
+┌─────────────────────────────────────┐
+│                                     │
+│             Interpreter             │
+│                                     │
+└─────────────────────────────────────┘
+      │    ▲
+      │    │
+      │    │
+      │    │
+      │    │       ┌──────────────────┐
+      │    │       │                  │
+     5│   6│       │   Query Engine   │
+      │    │       │                  │
+      │    │       └──────────────────┘
+      │    │
+      │    │
+      │    │
+      ▼    │
  ┌─────────────────────────────────────┐
  │                                     │
  │            Table Engine             │
@@ -281,4 +281,3 @@ Here are the details:
     - Delete the corresponding `WAL` entries;
     - Updates the manifest for the new `SST`s and the sequence number of `WAL`;
 - Server module responds to the client with the execution result.
-

@@ -22,9 +22,14 @@
 - [Analytic Engine](analytic_engine/README.md)
     - [Options](analytic_engine/options.md)
 - [Deployment](deploy/README.md)
+    - [Supported Platform](deploy/platform.md)
     - [Static Routing](deploy/static_routing.md)
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
+
+# Technical and Design
+- [Architecture](architecture.md)
+
 
 -----
 
