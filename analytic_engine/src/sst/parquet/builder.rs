@@ -2,9 +2,12 @@
 
 //! Sst builder implementation based on parquet.
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    convert::TryFrom,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use arrow_deps::{
@@ -13,7 +16,10 @@ use arrow_deps::{
     parquet::{arrow::ArrowWriter, file::properties::WriterProperties},
 };
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
+use common_types::{
+    request_id::RequestId,
+    schema::{Schema, StorageFormat},
+};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
@@ -149,9 +155,18 @@ impl RecordBytesReader {
         }
 
         let arrow_schema = arrow_record_batch_vec[0].schema();
-        let record_batch = ArrowRecordBatch::concat(&arrow_schema, &arrow_record_batch_vec)
+        let schema = Schema::try_from(arrow_schema.clone())
             .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+            .context(Schema)?;
+
+        let record_batch = match schema.storage_format() {
+            StorageFormat::Hybrid => todo!(),
+            StorageFormat::Columnar => {
+                ArrowRecordBatch::concat(&arrow_schema, &arrow_record_batch_vec)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(EncodeRecordBatch)?
+            }
+        };
 
         arrow_writer
             .write(&record_batch)

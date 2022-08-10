@@ -35,6 +35,11 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[snafu(display("Invalid schema, err:{}", source))]
+        Schema {
+            source: Box<dyn std::error::Error + Send + Sync>,
+        },
+
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch {
             source: Box<dyn std::error::Error + Send + Sync>,

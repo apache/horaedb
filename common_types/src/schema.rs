@@ -445,6 +445,11 @@ pub fn compare_row<LR: RowView, RR: RowView>(
     Ordering::Equal
 }
 
+pub enum StorageFormat {
+    Columnar,
+    Hybrid,
+}
+
 // TODO(yingwen): Maybe rename to TableSchema.
 /// Schema of a table
 ///
@@ -744,6 +749,12 @@ impl Schema {
     #[inline]
     pub fn string_buffer_offset(&self) -> usize {
         self.column_schemas.string_buffer_offset
+    }
+
+    /// Data format in storage
+    // TODO: parse it from table options
+    pub fn storage_format(&self) -> StorageFormat {
+        StorageFormat::Columnar
     }
 }
 
