@@ -8,7 +8,7 @@ This page shows you how to get started with CeresDB quickly. You'll start a stan
 
 You can use command below to start a standalone server
 ```bash
-docker run --name ceresdb-server \
+docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \

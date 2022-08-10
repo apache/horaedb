@@ -142,6 +142,7 @@ impl Query {
             .fold(String::new(), |query, str| query + " " + str)
     }
 
+    #[allow(clippy::unused_io_amount)]
     async fn write_result<W>(&self, writer: &mut W, result: String) -> Result<()>
     where
         W: AsyncWrite + Unpin,

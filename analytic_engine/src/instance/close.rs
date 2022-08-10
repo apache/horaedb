@@ -8,7 +8,6 @@ use log::{info, warn};
 use snafu::ResultExt;
 use table_engine::engine::CloseTableRequest;
 use tokio::sync::oneshot;
-use wal::manager::WalManager;
 
 use crate::{
     instance::{
@@ -17,15 +16,10 @@ use crate::{
         write_worker::{self, CloseTableCommand, WorkerLocal},
         Instance,
     },
-    meta::Manifest,
     space::SpaceRef,
 };
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Close table need to be handled by write worker.
     pub async fn do_close_table(&self, space: SpaceRef, request: CloseTableRequest) -> Result<()> {
         info!("Instance close table, request:{:?}", request);

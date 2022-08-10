@@ -4,6 +4,7 @@
 [![CI](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/ceresdb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/ceresdb)](https://github.com/CeresDB/ceresdb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
+[![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
 
 [English](./README.md)
 
@@ -45,6 +46,19 @@ apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
 需要注意的是，项目的编译对 cmake、gcc、g++ 等实际上都是有版本要求的，如果开发环境使用的是较老的 Linux 发行版的话，一般需要手动安装较高版本的这些依赖。
+
+
+#### 开发依赖（MacOS）
+开发环境这里以 MacOS Monterey 为例，执行如下的命令，即可安装好所需的依赖。
+
+1. 安装命令行工具:
+```shell
+xcode-select --install
+```
+2. 通过Brew安装cmake:
+```shell
+brew install cmake
+```
 
 #### Rust
 Rust 的安装建议通过 [rustup](https://rustup.rs/)，安装了 rustup 之后，进入到 CeresDB 项目的时候，会自动根据 rust-toolchain 文件下载指定的 Rust 版本。

@@ -23,10 +23,10 @@ use tokio::sync::Mutex;
 
 use crate::{
     kv_encoder::{LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
-    log_batch::{LogEntry, LogWriteBatch, Payload},
+    log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, BlockingLogIterator, LogWriter, ReadContext,
-        ReadRequest, RegionId, WalManager, WriteContext, MAX_REGION_ID,
+        error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
+        WalManager, WriteContext, MAX_REGION_ID,
     },
     rocks_impl::encoding::LogEncoding,
 };
@@ -160,7 +160,7 @@ impl Region {
         Ok(log_iter)
     }
 
-    async fn write<P: Payload>(&self, ctx: &WriteContext, batch: &LogWriteBatch<P>) -> Result<u64> {
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<u64> {
         debug!(
             "Wal region begin writing, ctx:{:?}, log_entries_num:{}",
             ctx,
@@ -178,7 +178,7 @@ impl Region {
                 self.log_encoding
                     .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))?;
                 self.log_encoding
-                    .encode_value(&mut value_buf, &entry.payload)?;
+                    .encode_value(&mut value_buf, entry.payload)?;
                 wb.put(&key_buf, &value_buf)
                     .map_err(|e| e.into())
                     .context(Write)?;
@@ -575,18 +575,6 @@ impl BlockingLogIterator for RocksLogIterator {
 }
 
 #[async_trait]
-impl LogWriter for RocksImpl {
-    async fn write<P: Payload>(
-        &self,
-        ctx: &WriteContext,
-        batch: &LogWriteBatch<P>,
-    ) -> Result<SequenceNumber> {
-        let region = self.get_or_create_region(batch.region_id);
-        region.write(ctx, batch).await
-    }
-}
-
-#[async_trait]
 impl WalManager for RocksImpl {
     async fn sequence_num(&self, region_id: RegionId) -> Result<u64> {
         if let Some(region) = self.region(region_id) {
@@ -614,7 +602,6 @@ impl WalManager for RocksImpl {
         Ok(())
     }
 
-    /// Provide iterator on necessary entries according to `ReadRequest`.
     async fn read_batch(
         &self,
         ctx: &ReadContext,
@@ -633,6 +620,11 @@ impl WalManager for RocksImpl {
             runtime,
             ctx.batch_size,
         ))
+    }
+
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<SequenceNumber> {
+        let region = self.get_or_create_region(batch.region_id);
+        region.write(ctx, batch).await
     }
 }
 

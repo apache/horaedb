@@ -18,7 +18,7 @@ use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::{LogWriteBatch, LogWriteEntry},
-    manager::{SequenceNumber, WalManager, WriteContext},
+    manager::{SequenceNumber, WriteContext},
 };
 
 use crate::{
@@ -29,7 +29,6 @@ use crate::{
         Instance,
     },
     memtable::{key::KeySequence, PutContext},
-    meta::Manifest,
     payload::WritePayload,
     space::SpaceAndTable,
     table::{
@@ -140,11 +139,7 @@ impl EncodeContext {
     }
 }
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
         &self,
@@ -199,7 +194,7 @@ where
         } = encode_ctx;
 
         let sequence = self
-            .write_to_wal(worker_local, &**table_data, encoded_rows)
+            .write_to_wal(worker_local, table_data, encoded_rows)
             .await?;
 
         Self::write_to_memtable(
@@ -349,9 +344,8 @@ where
 
         let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
         // Now we only have one request, so no need to use with_capacity
-        log_batch.push(LogWriteEntry {
-            payload: WritePayload::Write(&write_req_pb),
-        });
+        let payload = WritePayload::Write(&write_req_pb);
+        log_batch.push(LogWriteEntry { payload: &payload });
 
         // Write to wal manager
         let write_ctx = WriteContext::default();

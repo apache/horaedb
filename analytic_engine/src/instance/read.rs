@@ -23,11 +23,9 @@ use table_engine::{
     table::ReadRequest,
 };
 use tokio::sync::mpsc::{self, Receiver};
-use wal::manager::WalManager;
 
 use crate::{
     instance::Instance,
-    meta::Manifest,
     row_iter::{
         chain,
         chain::{ChainConfig, ChainIterator},
@@ -75,7 +73,7 @@ fn need_merge_sort_streams(table_options: &TableOptions, read_request: &ReadRequ
     table_options.need_dedup() || read_request.order.is_in_order()
 }
 
-impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
+impl Instance {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(
@@ -101,12 +99,12 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
 
         if need_merge_sort_streams(&table_data.table_options(), &request) {
             let merge_iters = self
-                .build_merge_iters(table_data, &request, iter_options, &*table_options)
+                .build_merge_iters(table_data, &request, iter_options, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, &*table_options)
+                .build_chain_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -167,7 +165,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
 
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
-        let read_views = self.partition_ssts_and_memtables(time_range, version, &*table_options);
+        let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
         for read_view in read_views {
@@ -228,7 +226,7 @@ impl<Wal: WalManager + Send + Sync, Meta: Manifest> Instance<Wal, Meta> {
 
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
-        let read_views = self.partition_ssts_and_memtables(time_range, version, &*table_options);
+        let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
         for read_view in read_views {

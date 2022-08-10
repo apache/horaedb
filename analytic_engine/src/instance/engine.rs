@@ -11,12 +11,10 @@ use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
-use wal::manager::WalManager;
 
 use crate::{
     context::CommonContext,
     instance::{write_worker::WriteGroup, Instance},
-    meta::Manifest,
     space::{Space, SpaceAndTable, SpaceId, SpaceRef},
 };
 
@@ -112,6 +110,20 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Failed to persist meta update to WAL, space_id:{}, table:{}, table_id:{}, err:{}",
+        space_id,
+        table,
+        table_id,
+        source
+    ))]
+    WriteWal {
+        space_id: SpaceId,
+        table: String,
+        table_id: TableId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
         "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
         space_id,
         table,
@@ -173,6 +185,11 @@ pub enum Error {
         backtrace
     ))]
     AlterDroppedTable { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Failed to store version edit, err:{}", source))]
+    StoreVersionEdit {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 define_result!(Error);
@@ -189,7 +206,8 @@ impl From<Error> for table_engine::engine::Error {
             Error::WriteManifest { .. } => Self::WriteMeta {
                 source: Box::new(err),
             },
-            Error::InvalidSchemaVersion { .. }
+            Error::WriteWal { .. }
+            | Error::InvalidSchemaVersion { .. }
             | Error::InvalidPreVersion { .. }
             | Error::CreateTableData { .. }
             | Error::AlterDroppedTable { .. }
@@ -198,18 +216,15 @@ impl From<Error> for table_engine::engine::Error {
             | Error::ReadWal { .. }
             | Error::ApplyMemTable { .. }
             | Error::OperateByWriteWorker { .. }
-            | Error::FlushTable { .. } => Self::Unexpected {
+            | Error::FlushTable { .. }
+            | Error::StoreVersionEdit { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
     }
 }
 
-impl<Wal, Meta> Instance<Wal, Meta>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+impl Instance {
     /// Find space by name, create if the space is not exists
     pub async fn find_or_create_space(
         self: &Arc<Self>,

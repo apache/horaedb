@@ -133,7 +133,7 @@ impl ToString for ArrowFieldMetaKey {
 }
 
 /// Schema of column
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnSchema {
     /// Id of column
     pub id: ColumnId,
@@ -148,6 +148,8 @@ pub struct ColumnSchema {
     pub is_tag: bool,
     /// Comment of the column
     pub comment: String,
+    /// Column name in response
+    pub escaped_name: String,
 }
 
 impl ColumnSchema {
@@ -250,6 +252,7 @@ impl ColumnSchema {
 
 impl From<common_pb::ColumnSchema> for ColumnSchema {
     fn from(column_schema: common_pb::ColumnSchema) -> Self {
+        let escaped_name = column_schema.name.escape_debug().to_string();
         Self {
             id: column_schema.id,
             name: column_schema.name,
@@ -257,6 +260,7 @@ impl From<common_pb::ColumnSchema> for ColumnSchema {
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
             comment: column_schema.comment,
+            escaped_name,
         }
     }
 }
@@ -285,6 +289,7 @@ impl TryFrom<&Field> for ColumnSchema {
             is_nullable: field.is_nullable(),
             is_tag,
             comment,
+            escaped_name: field.name().escape_debug().to_string(),
         })
     }
 }
@@ -404,7 +409,7 @@ impl Builder {
 
     pub fn build(self) -> Result<ColumnSchema> {
         self.validate()?;
-
+        let escaped_name = self.name.escape_debug().to_string();
         Ok(ColumnSchema {
             id: self.id,
             name: self.name,
@@ -412,6 +417,7 @@ impl Builder {
             is_nullable: self.is_nullable,
             is_tag: self.is_tag,
             comment: self.comment,
+            escaped_name,
         })
     }
 }
@@ -442,6 +448,7 @@ mod tests {
             is_nullable: true,
             is_tag: true,
             comment: "Comment of this column".to_string(),
+            escaped_name: "test_column_schema".escape_debug().to_string(),
         };
 
         assert_eq!(&lhs, &rhs);

@@ -10,7 +10,7 @@ use common_util::runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
+    log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     manager,
 };
 
@@ -129,19 +129,6 @@ impl Default for WriteContext {
     }
 }
 
-/// Write abstraction for log entries in Wal.
-#[async_trait]
-pub trait LogWriter {
-    /// Write a batch of log entries to log.
-    ///
-    /// Returns the max sequence number for the batch of log entries.
-    async fn write<P: Payload>(
-        &self,
-        ctx: &WriteContext,
-        batch: &LogWriteBatch<P>,
-    ) -> Result<SequenceNumber>;
-}
-
 #[derive(Debug, Clone)]
 pub struct ReadContext {
     /// Timeout to read log entries and it only takes effect when reading from a
@@ -246,7 +233,7 @@ pub trait BatchLogIterator {
 /// Every region has its own increasing (and maybe hallow) sequence number
 /// space.
 #[async_trait]
-pub trait WalManager: LogWriter + fmt::Debug {
+pub trait WalManager: Send + Sync + fmt::Debug {
     /// Get current sequence number.
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
@@ -267,6 +254,11 @@ pub trait WalManager: LogWriter + fmt::Debug {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter>;
+
+    /// Write a batch of log entries to log.
+    ///
+    /// Returns the max sequence number for the batch of log entries.
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<SequenceNumber>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.
@@ -335,3 +327,5 @@ impl BatchLogIterator for BatchLogIteratorAdapter {
         Ok(log_entries)
     }
 }
+
+pub type WalManagerRef = Arc<dyn WalManager>;

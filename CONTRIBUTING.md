@@ -71,6 +71,10 @@ To enable logging to stderr during a run of `cargo test` set the Rust
 RUST_LOG=info cargo test --workspace
 ```
 
+### Integration tests
+
+We have integration test suits in the SQL level so any change that may have influence on the user-facing query execution should be covered by the integration test. Refer to [this document](./tests/README.md) for more information.
+
 ## Running `rustfmt` and `clippy`
 
 CI will check the code formatting with [`rustfmt`](https://github.com/rust-lang/rustfmt) and Rust best practices with [`clippy`](https://github.com/rust-lang/rust-clippy).

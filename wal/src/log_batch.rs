@@ -12,11 +12,13 @@ use common_types::{
 use crate::manager::RegionId;
 
 pub trait Payload: Send + Sync + Debug {
-    type Error: std::error::Error + Send + Sync + 'static;
     /// Compute size of the encoded payload.
     fn encode_size(&self) -> usize;
     /// Append the encoded payload to the `buf`.
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error>;
+    fn encode_to(
+        &self,
+        buf: &mut dyn MemBufMut,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[derive(Debug)]
@@ -31,18 +33,18 @@ pub struct LogEntry<P> {
 /// `PayloadEncoder`. `region_id` is a logically region and set it as 0 if
 /// unnecessary.
 #[derive(Debug)]
-pub struct LogWriteEntry<P> {
-    pub payload: P,
+pub struct LogWriteEntry<'a> {
+    pub payload: &'a dyn Payload,
 }
 
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
-pub struct LogWriteBatch<P> {
+pub struct LogWriteBatch<'a> {
     pub(crate) region_id: RegionId,
-    pub(crate) entries: Vec<LogWriteEntry<P>>,
+    pub(crate) entries: Vec<LogWriteEntry<'a>>,
 }
 
-impl<P: Payload> LogWriteBatch<P> {
+impl<'a> LogWriteBatch<'a> {
     pub fn new(region_id: RegionId) -> Self {
         Self::with_capacity(region_id, 0)
     }
@@ -55,7 +57,7 @@ impl<P: Payload> LogWriteBatch<P> {
     }
 
     #[inline]
-    pub fn push(&mut self, entry: LogWriteEntry<P>) {
+    pub fn push(&mut self, entry: LogWriteEntry<'a>) {
         self.entries.push(entry)
     }
 
@@ -75,7 +77,7 @@ impl<P: Payload> LogWriteBatch<P> {
     }
 }
 
-impl<P: Payload> Default for LogWriteBatch<P> {
+impl Default for LogWriteBatch<'_> {
     fn default() -> Self {
         Self::new(0)
     }

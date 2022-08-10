@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     kv_encoder::LogKey,
-    log_batch::{LogEntry, LogWriteBatch, Payload},
+    log_batch::{LogEntry, LogWriteBatch},
     manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
     table_kv_impl::{
         encoding, encoding::LogEncoding, model::RegionEntry, namespace::BucketRef, WalRuntimes,
@@ -255,17 +255,17 @@ impl Region {
         .context(RuntimeExec)?
     }
 
-    pub async fn write_log<T: TableKv, P: Payload>(
+    pub async fn write_log<T: TableKv>(
         &self,
         table_kv: &T,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<P>,
+        log_batch: &LogWriteBatch<'_>,
     ) -> Result<SequenceNumber> {
         let mut writer = self.writer.lock().await;
         writer
             .write_log(
-                &*self.runtimes.write_runtime,
+                &self.runtimes.write_runtime,
                 table_kv,
                 &self.state,
                 bucket,
@@ -328,7 +328,7 @@ impl Region {
         let mut writer = self.writer.lock().await;
         writer
             .delete_entries_up_to(
-                &*self.runtimes.write_runtime,
+                &self.runtimes.write_runtime,
                 table_kv,
                 &self.state,
                 region_meta_table,
@@ -789,14 +789,14 @@ impl RegionWriter {
 }
 
 impl RegionWriter {
-    async fn write_log<T: TableKv, P: Payload>(
+    async fn write_log<T: TableKv>(
         &mut self,
         runtime: &Runtime,
         table_kv: &T,
         region_state: &RegionState,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<P>,
+        log_batch: &LogWriteBatch<'_>,
     ) -> Result<SequenceNumber> {
         debug!(
             "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
@@ -818,7 +818,7 @@ impl RegionWriter {
                     .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
                     .context(LogCodec)?;
                 log_encoding
-                    .encode_value(&mut value_buf, &entry.payload)
+                    .encode_value(&mut value_buf, entry.payload)
                     .context(LogCodec)?;
                 wb.insert(&key_buf, &value_buf);
 

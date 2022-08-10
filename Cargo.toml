@@ -2,10 +2,12 @@
 name = "ceresdb"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-edition = "2018"
-resolver = "2"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace.package]
+edition = "2021"
 
 [workspace]
 # In alphabetical order
@@ -15,6 +17,7 @@ members = [
     "benchmarks",
     "catalog",
     "catalog_impls",
+    "cluster",
     "common_types",
     "common_util",
     "components/arena",
@@ -25,13 +28,12 @@ members = [
     "components/profile",
     "components/skiplist",
     "components/table_kv",
-    "components/tracing",
     "components/tracing_util",
-    "components/tracing_examples",
     "df_operator",
     "grpcio",
     "interpreters",
     "meta_client",
+    "meta_client_v2",
     "proto",
     "query_engine",
     "server",

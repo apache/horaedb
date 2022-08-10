@@ -536,7 +536,7 @@ fn build_row_group(
     column_index_in_insert: Vec<InsertMode>,
 ) -> Result<RowGroup> {
     // Build row group by schema
-    match source.body {
+    match *source.body {
         SetExpr::Values(Values(values)) => {
             let mut row_group_builder =
                 RowGroupBuilder::with_capacity(schema.clone(), values.len());
@@ -645,7 +645,10 @@ pub fn parse_for_option(value: Value) -> Result<Option<String>> {
         }
         Value::Boolean(v) => Some(v.to_string()),
         Value::Interval { value, .. } => {
-            return UnsupportedOption { value }.fail();
+            return UnsupportedOption {
+                value: value.to_string(),
+            }
+            .fail();
         }
         // Ignore this option if value is null.
         Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
@@ -703,7 +706,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::Value;
+    use sqlparser::ast::{Ident, Value};
 
     use super::*;
     use crate::{
@@ -755,7 +758,10 @@ mod tests {
             (Value::Boolean(true), false, Some("true".to_string())),
             (
                 Value::Interval {
-                    value: test_string,
+                    value: Box::new(Expr::Identifier(Ident {
+                        value: test_string,
+                        quote_style: None,
+                    })),
                     leading_field: None,
                     leading_precision: None,
                     last_field: None,
@@ -801,6 +807,7 @@ mod tests {
                         is_nullable: false,
                         is_tag: true,
                         comment: "",
+                        escaped_name: "c1",
                     },
                     ColumnSchema {
                         id: 2,
@@ -809,6 +816,7 @@ mod tests {
                         is_nullable: false,
                         is_tag: false,
                         comment: "",
+                        escaped_name: "ts",
                     },
                     ColumnSchema {
                         id: 3,
@@ -817,6 +825,7 @@ mod tests {
                         is_nullable: true,
                         is_tag: false,
                         comment: "",
+                        escaped_name: "c3",
                     },
                 ],
             },
@@ -874,6 +883,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key1",
                         },
                         ColumnSchema {
                             id: 2,
@@ -882,6 +892,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key2",
                         },
                         ColumnSchema {
                             id: 3,
@@ -890,6 +901,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field1",
                         },
                         ColumnSchema {
                             id: 4,
@@ -898,6 +910,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field2",
                         },
                     ],
                 },
@@ -919,6 +932,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key1",
                         },
                         ColumnSchema {
                             id: 2,
@@ -927,6 +941,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key2",
                         },
                         ColumnSchema {
                             id: 3,
@@ -935,6 +950,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field1",
                         },
                         ColumnSchema {
                             id: 4,
@@ -943,6 +959,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field2",
                         },
                     ],
                 },
@@ -1042,6 +1059,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key1",
                         },
                         ColumnSchema {
                             id: 2,
@@ -1050,6 +1068,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key2",
                         },
                         ColumnSchema {
                             id: 3,
@@ -1058,6 +1077,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field1",
                         },
                         ColumnSchema {
                             id: 4,
@@ -1066,6 +1086,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field2",
                         },
                     ],
                 },
@@ -1105,6 +1126,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key1",
                         },
                         ColumnSchema {
                             id: 2,
@@ -1113,6 +1135,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key2",
                         },
                         ColumnSchema {
                             id: 3,
@@ -1121,6 +1144,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field1",
                         },
                         ColumnSchema {
                             id: 4,
@@ -1129,6 +1153,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field2",
                         },
                     ],
                 },
@@ -1144,6 +1169,7 @@ mod tests {
                     is_nullable: true,
                     is_tag: false,
                     comment: "",
+                    escaped_name: "add_col",
                 },
             ],
         ),
@@ -1180,6 +1206,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key1",
                         },
                         ColumnSchema {
                             id: 2,
@@ -1188,6 +1215,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "key2",
                         },
                         ColumnSchema {
                             id: 3,
@@ -1196,6 +1224,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field1",
                         },
                         ColumnSchema {
                             id: 4,
@@ -1204,6 +1233,7 @@ mod tests {
                             is_nullable: false,
                             is_tag: false,
                             comment: "",
+                            escaped_name: "field2",
                         },
                     ],
                 },
@@ -1249,6 +1279,7 @@ mod tests {
                                 is_nullable: false,
                                 is_tag: false,
                                 comment: "",
+                                escaped_name: "key1",
                             },
                             ColumnSchema {
                                 id: 2,
@@ -1257,6 +1288,7 @@ mod tests {
                                 is_nullable: false,
                                 is_tag: false,
                                 comment: "",
+                                escaped_name: "key2",
                             },
                             ColumnSchema {
                                 id: 3,
@@ -1265,6 +1297,7 @@ mod tests {
                                 is_nullable: false,
                                 is_tag: false,
                                 comment: "",
+                                escaped_name: "field1",
                             },
                             ColumnSchema {
                                 id: 4,
@@ -1273,6 +1306,7 @@ mod tests {
                                 is_nullable: false,
                                 is_tag: false,
                                 comment: "",
+                                escaped_name: "field2",
                             },
                         ],
                     },

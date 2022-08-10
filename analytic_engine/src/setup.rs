@@ -16,16 +16,16 @@ use snafu::{ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
-    manager::{self, WalManager},
+    manager::{self, WalManagerRef},
     rocks_impl::manager::Builder as WalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
 };
 
 use crate::{
     context::OpenContext,
-    engine::{ReplicatedInstanceRef, RocksInstanceRef, TableEngineImpl},
+    engine::TableEngineImpl,
     instance::{Instance, InstanceRef},
-    meta::{details::ManifestImpl, Manifest},
+    meta::{details::ManifestImpl, ManifestRef},
     sst::factory::FactoryImpl,
     storage_options::StorageOptions,
     Config,
@@ -71,17 +71,28 @@ const WAL_DIR_NAME: &str = "wal";
 const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 
-type InstanceRefOnTableKv<T> = InstanceRef<WalNamespaceImpl<T>, ManifestImpl<WalNamespaceImpl<T>>>;
-
 /// Analytic engine builder.
 #[async_trait]
-pub trait EngineBuilder: Default {
+pub trait EngineBuilder: Send + Sync + Default {
     /// Build the analytic engine from `config` and `engine_runtimes`.
     async fn build(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<TableEngineRef>;
+    ) -> Result<TableEngineRef> {
+        let (wal, manifest) = self
+            .open_wal_and_manifest(config.clone(), engine_runtimes.clone())
+            .await?;
+        let store = open_storage(config.storage.clone()).await?;
+        let instance = open_instance(config.clone(), engine_runtimes, wal, manifest, store).await?;
+        Ok(Arc::new(TableEngineImpl::new(instance)))
+    }
+
+    async fn open_wal_and_manifest(
+        &self,
+        config: Config,
+        engine_runtimes: Arc<EngineRuntimes>,
+    ) -> Result<(WalManagerRef, ManifestRef)>;
 }
 
 /// [RocksEngine] builder.
@@ -90,16 +101,30 @@ pub struct RocksEngineBuilder;
 
 #[async_trait]
 impl EngineBuilder for RocksEngineBuilder {
-    async fn build(
+    async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<TableEngineRef> {
+    ) -> Result<(WalManagerRef, ManifestRef)> {
         assert!(!config.obkv_wal.enable);
 
-        let store = open_storage(config.storage.clone()).await?;
-        let instance = open_rocks_instance(config, engine_runtimes, store).await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
+        let write_runtime = engine_runtimes.write_runtime.clone();
+        let data_path = Path::new(&config.wal_path);
+        let wal_path = data_path.join(WAL_DIR_NAME);
+        let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
+            .build()
+            .context(OpenWal)?;
+
+        let manifest_path = data_path.join(MANIFEST_DIR_NAME);
+        let manifest_wal = WalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
+            .build()
+            .context(OpenManifestWal)?;
+
+        let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
+            .await
+            .context(OpenManifest)?;
+
+        Ok((Arc::new(wal_manager), Arc::new(manifest)))
     }
 }
 
@@ -109,16 +134,22 @@ pub struct ReplicatedEngineBuilder;
 
 #[async_trait]
 impl EngineBuilder for ReplicatedEngineBuilder {
-    async fn build(
+    async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<TableEngineRef> {
+    ) -> Result<(WalManagerRef, ManifestRef)> {
         assert!(config.obkv_wal.enable);
 
-        let store = open_storage(config.storage.clone()).await?;
-        let instance = open_replicated_instance(config, engine_runtimes, store).await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
+        // Notice the creation of obkv client may block current thread.
+        let obkv_config = config.obkv_wal.obkv.clone();
+        let obkv = engine_runtimes
+            .write_runtime
+            .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
+            .await
+            .context(RuntimeExec)??;
+
+        open_wal_and_manifest_with_table_kv(config, engine_runtimes, obkv).await
     }
 }
 
@@ -133,70 +164,20 @@ pub struct MemWalEngineBuilder {
 
 #[async_trait]
 impl EngineBuilder for MemWalEngineBuilder {
-    async fn build(
+    async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<TableEngineRef> {
-        let store = open_storage(config.storage.clone()).await?;
-        let instance =
-            open_instance_with_table_kv(config, engine_runtimes, self.table_kv.clone(), store)
-                .await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
+    ) -> Result<(WalManagerRef, ManifestRef)> {
+        open_wal_and_manifest_with_table_kv(config, engine_runtimes, self.table_kv.clone()).await
     }
 }
 
-async fn open_rocks_instance(
-    config: Config,
-    engine_runtimes: Arc<EngineRuntimes>,
-    store: ObjectStoreRef,
-) -> Result<RocksInstanceRef> {
-    let write_runtime = engine_runtimes.write_runtime.clone();
-    let data_path = Path::new(&config.wal_path);
-    let wal_path = data_path.join(WAL_DIR_NAME);
-    let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
-        .build()
-        .context(OpenWal)?;
-
-    let manifest_path = data_path.join(MANIFEST_DIR_NAME);
-    let manifest_wal = WalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
-        .build()
-        .context(OpenManifestWal)?;
-
-    let manifest = ManifestImpl::open(manifest_wal, config.manifest.clone())
-        .await
-        .context(OpenManifest)?;
-
-    let instance =
-        open_with_wal_manifest(config, engine_runtimes, wal_manager, manifest, store).await?;
-
-    Ok(instance)
-}
-
-async fn open_replicated_instance(
-    config: Config,
-    engine_runtimes: Arc<EngineRuntimes>,
-    store: ObjectStoreRef,
-) -> Result<ReplicatedInstanceRef> {
-    assert!(config.obkv_wal.enable);
-
-    // Notice the creation of obkv client may block current thread.
-    let obkv_config = config.obkv_wal.obkv.clone();
-    let obkv = engine_runtimes
-        .write_runtime
-        .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
-        .await
-        .context(RuntimeExec)??;
-
-    open_instance_with_table_kv(config, engine_runtimes, obkv, store).await
-}
-
-async fn open_instance_with_table_kv<T: TableKv>(
+async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
-    store: ObjectStoreRef,
-) -> Result<InstanceRefOnTableKv<T>> {
+) -> Result<(WalManagerRef, ManifestRef)> {
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
         write_runtime: engine_runtimes.write_runtime.clone(),
@@ -214,32 +195,26 @@ async fn open_instance_with_table_kv<T: TableKv>(
 
     let manifest_wal = WalNamespaceImpl::open(
         table_kv,
-        runtimes.clone(),
+        runtimes,
         MANIFEST_DIR_NAME,
         config.obkv_wal.manifest.clone(),
     )
     .await
     .context(OpenManifestWal)?;
-    let manifest = ManifestImpl::open(manifest_wal, config.manifest.clone())
+    let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
         .await
         .context(OpenManifest)?;
 
-    let instance =
-        open_with_wal_manifest(config, engine_runtimes, wal_manager, manifest, store).await?;
-    Ok(instance)
+    Ok((Arc::new(wal_manager), Arc::new(manifest)))
 }
 
-async fn open_with_wal_manifest<Wal, Meta>(
+async fn open_instance(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
-    wal_manager: Wal,
-    manifest: Meta,
+    wal_manager: WalManagerRef,
+    manifest: ManifestRef,
     store: ObjectStoreRef,
-) -> Result<InstanceRef<Wal, Meta>>
-where
-    Wal: WalManager + Send + Sync + 'static,
-    Meta: Manifest + Send + Sync + 'static,
-{
+) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> =
         if let Some(sst_meta_cache_cap) = &config.sst_meta_cache_cap {
             Some(Arc::new(LruMetaCache::new(*sst_meta_cache_cap)))

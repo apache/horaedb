@@ -330,7 +330,7 @@ mod tests {
 
         let rule = OrderByPrimaryKeyRule;
         let optimized_plan = rule
-            .do_optimize(&*plan)
+            .do_optimize(&plan)
             .expect("Optimize plan")
             .expect("Succeed to optimize plan");
         let expected_plan = {
@@ -394,7 +394,7 @@ mod tests {
         };
 
         let rule = OrderByPrimaryKeyRule;
-        let optimized_plan = rule.do_optimize(&*plan).expect("Optimize plan");
+        let optimized_plan = rule.do_optimize(&plan).expect("Optimize plan");
         assert!(optimized_plan.is_none());
     }
 
@@ -411,7 +411,7 @@ mod tests {
         };
 
         let rule = OrderByPrimaryKeyRule;
-        let optimized_plan = rule.do_optimize(&*plan).expect("Optimize plan");
+        let optimized_plan = rule.do_optimize(&plan).expect("Optimize plan");
         assert!(optimized_plan.is_none());
     }
 }

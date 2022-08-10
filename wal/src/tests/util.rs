@@ -136,15 +136,21 @@ impl<B: WalBuilder> TestEnv<B> {
     }
 
     /// Build the log batch with [TestPayload].val range [start, end).
-    pub fn build_log_batch(
+    pub fn build_log_batch<'a>(
         &self,
         region_id: RegionId,
         start: u32,
         end: u32,
-    ) -> LogWriteBatch<TestPayload> {
+        payload_batch: &'a mut Vec<TestPayload>,
+    ) -> LogWriteBatch<'a> {
         let mut write_batch = LogWriteBatch::new(region_id);
+
         for val in start..end {
             let payload = TestPayload { val };
+            payload_batch.push(payload);
+        }
+
+        for payload in payload_batch.iter() {
             write_batch.entries.push(LogWriteEntry { payload });
         }
 
@@ -156,7 +162,7 @@ impl<B: WalBuilder> TestEnv<B> {
     pub async fn check_log_entries(
         &self,
         max_seq: SequenceNumber,
-        write_batch: &LogWriteBatch<TestPayload>,
+        write_batch: &LogWriteBatch<'_>,
         mut iter: BatchLogIteratorAdapter,
     ) {
         let mut log_entries = VecDeque::with_capacity(write_batch.entries.len());
@@ -182,8 +188,22 @@ impl<B: WalBuilder> TestEnv<B> {
             .rev()
             .enumerate()
         {
+            // sequence
             assert_eq!(max_seq - idx as u64, log_entry.sequence);
-            assert_eq!(expect_log_write_entry.payload, log_entry.payload);
+
+            // payload
+            let (mut expected_buf, mut buf) = (Vec::new(), Vec::new());
+            expect_log_write_entry
+                .payload
+                .encode_to(&mut expected_buf)
+                .unwrap();
+            log_entry.payload.encode_to(&mut buf).unwrap();
+
+            assert_eq!(
+                expect_log_write_entry.payload.encode_size(),
+                log_entry.payload.encode_size()
+            );
+            assert_eq!(expected_buf, buf);
         }
     }
 }
@@ -195,13 +215,14 @@ pub struct TestPayload {
 }
 
 impl Payload for TestPayload {
-    type Error = Error;
-
     fn encode_size(&self) -> usize {
         4
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
+    fn encode_to(
+        &self,
+        buf: &mut dyn MemBufMut,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         buf.write_u32(self.val).expect("must write");
         Ok(())
     }

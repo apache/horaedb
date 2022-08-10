@@ -6,10 +6,9 @@ use common_types::SequenceNumber;
 
 use crate::{
     log_batch::LogWriteBatch,
-    manager::{LogWriter, ReadBoundary, ReadRequest, RegionId, WalManager},
+    manager::{ReadBoundary, ReadRequest, RegionId, WalManager},
     tests::util::{
-        MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, TestPayload,
-        WalBuilder,
+        MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, WalBuilder,
     },
 };
 
@@ -18,7 +17,7 @@ async fn check_write_batch_with_read_request<B: WalBuilder>(
     wal: Arc<B::Wal>,
     read_req: ReadRequest,
     max_seq: SequenceNumber,
-    write_batch: &LogWriteBatch<TestPayload>,
+    write_batch: &LogWriteBatch<'_>,
 ) {
     let iter = wal
         .read_batch(&env.read_ctx, &read_req)
@@ -32,7 +31,7 @@ async fn check_write_batch<B: WalBuilder>(
     wal: Arc<B::Wal>,
     region_id: RegionId,
     max_seq: SequenceNumber,
-    write_batch: &LogWriteBatch<TestPayload>,
+    write_batch: &LogWriteBatch<'_>,
 ) {
     let read_req = ReadRequest {
         region_id,
@@ -47,7 +46,8 @@ async fn simple_read_write_with_wal<B: WalBuilder>(
     wal: Arc<B::Wal>,
     region_id: RegionId,
 ) {
-    let write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
@@ -74,7 +74,8 @@ async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, region_id: RegionId)
 async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     let wal = env.build_wal().await;
     let region_id = 0;
-    let write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     let end_seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
@@ -114,7 +115,8 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Included(end_seq),
         };
-        let write_batch = env.build_log_batch(region_id, 1, 10);
+        let mut payload_batch = Vec::default();
+        let write_batch = env.build_log_batch(region_id, 1, 10, &mut payload_batch);
         check_write_batch_with_read_request(env, wal.clone(), read_req, end_seq, &write_batch)
             .await;
     }
@@ -126,7 +128,8 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
             start: ReadBoundary::Included(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
-        let write_batch = env.build_log_batch(region_id, 0, 9);
+        let mut payload_batch = Vec::default();
+        let write_batch = env.build_log_batch(region_id, 0, 9, &mut payload_batch);
         check_write_batch_with_read_request(env, wal.clone(), read_req, end_seq - 1, &write_batch)
             .await;
     }
@@ -138,7 +141,8 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
-        let write_batch = env.build_log_batch(region_id, 1, 9);
+        let mut payload_batch = Vec::default();
+        let write_batch = env.build_log_batch(region_id, 1, 9, &mut payload_batch);
         check_write_batch_with_read_request(env, wal.clone(), read_req, end_seq - 1, &write_batch)
             .await;
     }
@@ -173,9 +177,10 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
 /// Test whether the written logs can be read after reopen.
 async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
+    let mut payload_batch = Vec::default();
     let (write_batch, seq) = {
         let wal = env.build_wal().await;
-        let write_batch = env.build_log_batch(region_id, 0, 10);
+        let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
         let seq = wal
             .write(&env.write_ctx, &write_batch)
             .await
@@ -216,13 +221,14 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
 
     // write two batches
+    let (mut payload_batch1, mut payload_batch2) = (Vec::default(), Vec::default());
     let (start_val, mid_val, end_val) = (0, 10, 50);
-    let write_batch_1 = env.build_log_batch(region_id, start_val, mid_val);
+    let write_batch_1 = env.build_log_batch(region_id, start_val, mid_val, &mut payload_batch1);
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch_1)
         .await
         .expect("should succeed to write");
-    let write_batch_2 = env.build_log_batch(region_id, mid_val, end_val);
+    let write_batch_2 = env.build_log_batch(region_id, mid_val, end_val, &mut payload_batch2);
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch_2)
         .await
@@ -234,15 +240,23 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
     check_write_batch(env, wal.clone(), region_id, seq_2, &write_batch_2).await;
 
     // read the whole batch
-    let (seq_3, write_batch_3) = (seq_2, env.build_log_batch(region_id, start_val, end_val));
+    let mut payload_batch3 = Vec::default();
+    let (seq_3, write_batch_3) = (
+        seq_2,
+        env.build_log_batch(region_id, start_val, end_val, &mut payload_batch3),
+    );
     check_write_batch(env, wal.clone(), region_id, seq_3, &write_batch_3).await;
 
     // read the part of batch1 and batch2
+    let mut payload_batch4 = Vec::default();
     let (seq_4, write_batch_4) = {
         let new_start = (start_val + mid_val) / 2;
         let new_end = (mid_val + end_val) / 2;
         let seq = seq_2 - (end_val - new_end) as u64;
-        (seq, env.build_log_batch(region_id, new_start, new_end))
+        (
+            seq,
+            env.build_log_batch(region_id, new_start, new_end, &mut payload_batch4),
+        )
     };
     check_write_batch(env, wal.clone(), region_id, seq_4, &write_batch_4).await;
 
@@ -253,7 +267,8 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
 async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
     let wal = env.build_wal().await;
-    let mut write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let mut write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
@@ -290,7 +305,8 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
 async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
     let wal = env.build_wal().await;
-    let mut write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let mut write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
@@ -324,13 +340,15 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
 async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
     let (region_id_1, region_id_2) = (1, 2);
     let wal = env.build_wal().await;
-    let mut write_batch_1 = env.build_log_batch(region_id_1, 0, 10);
+    let mut payload_batch1 = Vec::default();
+    let mut write_batch_1 = env.build_log_batch(region_id_1, 0, 10, &mut payload_batch1);
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch_1)
         .await
         .expect("should succeed to write");
 
-    let write_batch_2 = env.build_log_batch(region_id_2, 10, 20);
+    let mut payload_batch2 = Vec::default();
+    let write_batch_2 = env.build_log_batch(region_id_2, 10, 20, &mut payload_batch2);
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch_2)
         .await
@@ -361,7 +379,8 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
 async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
     let wal = env.build_wal().await;
-    let write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch)
         .await
@@ -386,7 +405,8 @@ async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &Te
 async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
     let wal = env.build_wal().await;
-    let write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     // write
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch)
@@ -415,7 +435,8 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
 async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env: &TestEnv<B>) {
     let region_id = 0;
     let wal = env.build_wal().await;
-    let write_batch = env.build_log_batch(region_id, 0, 10);
+    let mut payload_batch = Vec::default();
+    let write_batch = env.build_log_batch(region_id, 0, 10, &mut payload_batch);
     // write
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch)

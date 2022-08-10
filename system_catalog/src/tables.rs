@@ -103,6 +103,7 @@ impl<M: Manager> Tables<M> {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_table(&self, catalog: CatalogRef, schema: SchemaRef, table: TableRef) -> Row {
         let mut datums = Vec::with_capacity(self.schema.num_columns());
         datums.push(Datum::Timestamp(ENTRY_TIMESTAMP));
@@ -138,8 +139,8 @@ impl<M: Manager> SystemTable for Tables<M> {
             .all_catalogs()
             .map_err(|e| Box::new(e) as _)
             .context(table_engine::table::Scan { table: self.name() })?;
-        let mut builder =
-            RecordBatchWithKeyBuilder::new(self.schema.clone().to_record_schema_with_key());
+        let projected_record_schema = request.projected_schema.to_record_schema_with_key();
+        let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
 
         let projector = request
             .projected_schema

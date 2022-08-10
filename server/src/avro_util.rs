@@ -62,8 +62,10 @@ pub fn to_avro_schema(name: &str, schema: &RecordSchema) -> avro_rs::Schema {
             data_type_to_schema(&column.data_type)
         };
 
+        // In dummy select like select "xxx", column name will be "Utf8("xxx")", which
+        // is not a valid json string. So, escaped name is used here.
         let record_field = RecordField {
-            name: column.name.clone(),
+            name: column.escaped_name.clone(),
             doc: None,
             default,
             schema: field_schema,
@@ -72,7 +74,7 @@ pub fn to_avro_schema(name: &str, schema: &RecordSchema) -> avro_rs::Schema {
         };
 
         avro_fields.push(record_field);
-        lookup.insert(column.name.clone(), pos);
+        lookup.insert(column.escaped_name.clone(), pos);
     }
 
     avro_rs::Schema::Record {
@@ -122,7 +124,7 @@ pub fn record_batch_to_avro(
             let column = record_batch.column(col_idx);
             let value = column_to_value(column, row_idx, column_schema.is_nullable);
 
-            record.put(&column_schema.name, value);
+            record.put(&column_schema.escaped_name, value);
         }
 
         let row_bytes = avro_rs::to_avro_datum(schema, record).context(WriteAvroRecord)?;

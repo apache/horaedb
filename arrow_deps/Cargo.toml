@@ -2,7 +2,9 @@
 name = "arrow_deps"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-edition = "2021"
+
+[package.edition]
+workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -16,8 +18,8 @@ rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
 git = "https://github.com/waynexia/arrow-datafusion.git"
-rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
+rev = "d8184e71589e95b27db0e2c0ce0a8c51a6564c7a"
 
 [dependencies.datafusion-expr]
 git = "https://github.com/waynexia/arrow-datafusion.git"
-rev = "bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
+rev = "d8184e71589e95b27db0e2c0ce0a8c51a6564c7a"

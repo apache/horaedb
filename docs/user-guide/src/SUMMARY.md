@@ -1,8 +1,8 @@
 # Summary
 
-# About CeresDB
+# Introduction
 
-- [About CeresDB](about.md)
+- [What is CeresDB](about.md)
 - [Quick Start](quick_start.md)
 
 # User Guide

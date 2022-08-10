@@ -250,7 +250,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
 }
 
 /// Meta data for dropping a table
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DropTableMeta {
     /// Space id of the table
     pub space_id: SpaceId,
@@ -359,7 +359,7 @@ pub struct AlterSchemaMeta {
 }
 
 impl AlterSchemaMeta {
-    fn into_pb(self) -> meta_pb::AlterSchemaMeta {
+    pub(crate) fn into_pb(self) -> meta_pb::AlterSchemaMeta {
         let mut target = meta_pb::AlterSchemaMeta::new();
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());
@@ -394,7 +394,7 @@ pub struct AlterOptionsMeta {
 }
 
 impl AlterOptionsMeta {
-    fn into_pb(self) -> meta_pb::AlterOptionsMeta {
+    pub(crate) fn into_pb(self) -> meta_pb::AlterOptionsMeta {
         let mut target = meta_pb::AlterOptionsMeta::new();
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());
@@ -434,15 +434,21 @@ impl From<&MetaUpdateLogEntry> for MetaUpdatePayload {
 }
 
 impl Payload for MetaUpdatePayload {
-    type Error = Error;
-
     fn encode_size(&self) -> usize {
         self.0.compute_size().try_into().unwrap_or(0)
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
+    fn encode_to(
+        &self,
+        buf: &mut dyn MemBufMut,
+    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut writer = Writer::new(buf);
-        self.0.write_to_writer(&mut writer).context(EncodePayloadPb)
+        self.0
+            .write_to_writer(&mut writer)
+            .context(EncodePayloadPb)
+            .map_err(Box::new)?;
+
+        Ok(())
     }
 }
 

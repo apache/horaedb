@@ -323,7 +323,7 @@ impl<'a> Parser<'a> {
         let mut columns = vec![];
         let mut constraints = vec![];
         if !self.parser.consume_token(&Token::LParen) || self.parser.consume_token(&Token::RParen) {
-            return Ok((columns, constraints));
+            return Ok((Vec::new(), constraints));
         }
 
         loop {
@@ -348,6 +348,8 @@ impl<'a> Parser<'a> {
                 );
             }
         }
+
+        build_timestamp_key_constraint(&columns, &mut constraints);
 
         Ok((columns, constraints))
     }
@@ -457,6 +459,13 @@ impl<'a> Parser<'a> {
             .parse_keywords(&[Keyword::PRIMARY, Keyword::KEY])
         {
             Ok(Some(ColumnOption::Unique { is_primary: true }))
+        } else if self
+            .parser
+            .parse_keywords(&[Keyword::TIMESTAMP, Keyword::KEY])
+        {
+            Ok(Some(ColumnOption::DialectSpecific(vec![
+                Token::make_keyword(TS_KEY),
+            ])))
         } else if self.consume_token(TAG) {
             // Support TAG for ceresdb
             Ok(Some(ColumnOption::DialectSpecific(vec![
@@ -486,9 +495,32 @@ impl<'a> Parser<'a> {
     }
 }
 
+// Build the tskey constraint from the column definitions if any.
+fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<TableConstraint>) {
+    for col_def in col_defs {
+        for col in &col_def.options {
+            if let ColumnOption::DialectSpecific(tokens) = &col.option {
+                if let [Token::Word(token)] = &tokens[..] {
+                    if token.value.eq(TS_KEY) {
+                        let constraint = TableConstraint::Unique {
+                            name: Some(Ident {
+                                value: TS_KEY.to_owned(),
+                                quote_style: None,
+                            }),
+                            columns: vec![col_def.name.clone()],
+                            is_primary: false,
+                        };
+                        constraints.push(constraint);
+                    }
+                }
+            };
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::{DataType, Ident, ObjectName, Value};
+    use sqlparser::ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value};
 
     use super::*;
     use crate::ast::TableName;
