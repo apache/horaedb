@@ -12,7 +12,6 @@ use crate::limiter::Limiter;
 
 /// A cluster instance. Usually there is only one instance per cluster
 ///
-/// C: catalog::manager::Manager
 /// Q: query_engine::executor::Executor
 pub struct Instance<Q> {
     pub catalog_manager: ManagerRef,

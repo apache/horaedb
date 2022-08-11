@@ -9,24 +9,33 @@ use analytic_engine::{
     setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
 };
 use async_trait::async_trait;
-use catalog::schema::NameRef;
-use catalog_impls::{
-    table_based::TableBasedManager, CatalogManagerImpl, SchemaIdAlloc, TableIdAlloc,
+use catalog::{
+    manager::ManagerRef as CatalogManagerRef,
+    schema::{CloseOptions, CloseTableRequest, NameRef, OpenOptions, OpenTableRequest, SchemaRef},
 };
-use common_util::runtime;
+use catalog_impls::{
+    table_based::TableBasedManager, volatile, CatalogManagerImpl, SchemaIdAlloc, TableIdAlloc,
+};
+use cluster::{cluster_impl::ClusterImpl, ClusterRef, TableManipulator};
+use common_util::runtime::{self, Runtime};
 use df_operator::registry::FunctionRegistryImpl;
-use log::info;
+use log::{debug, info};
 use logger::RuntimeLevel;
-use meta_client_v2::{types::DropTableRequest, MetaClient};
+use meta_client_v2::{
+    meta_impl,
+    types::{DropTableRequest, Node, NodeMetaInfo},
+    MetaClient,
+};
 use query_engine::executor::ExecutorImpl;
 use server::{
-    config::{Config, RuntimeConfig},
+    config::{Config, DeployMode, RuntimeConfig},
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
 use table_engine::{
-    engine::EngineRuntimes,
+    engine::{EngineRuntimes, TableEngineRef},
     table::{SchemaId, TableId},
+    ANALYTIC_ENGINE_TYPE,
 };
 use tracing_util::{
     self,
@@ -110,13 +119,21 @@ where
         analytic: analytic.clone(),
     });
 
-    let table_based_manager = TableBasedManager::new(analytic, engine_proxy.clone())
-        .await
-        .unwrap_or_else(|e| {
-            panic!("Failed to create catalog manager, err:{}", e);
-        });
-    // Create catalog manager, use analytic table as backend
-    let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
+    let meta_client = build_meta_client(&config, runtimes.meta_runtime.clone());
+    let catalog_manager = build_catalog_manager(
+        &config,
+        analytic.clone(),
+        engine_proxy.clone(),
+        meta_client.clone(),
+    )
+    .await;
+    let cluster = build_cluster(
+        &config,
+        meta_client.clone(),
+        catalog_manager.clone(),
+        engine_proxy.clone(),
+        runtimes.meta_runtime.clone(),
+    );
 
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
@@ -135,6 +152,7 @@ where
         .query_executor(query_executor)
         .table_engine(engine_proxy)
         .function_registry(function_registry)
+        .cluster(cluster)
         .build()
         .unwrap_or_else(|e| {
             panic!("Failed to create server, err:{}", e);
@@ -147,7 +165,88 @@ where
     signal_handler::wait_for_signal();
 
     // Stop server
-    server.stop();
+    server.stop().await;
+}
+
+fn build_meta_client(
+    config: &Config,
+    runtime: Arc<Runtime>,
+) -> Option<Arc<dyn MetaClient + Send + Sync>> {
+    match config.deploy_mode {
+        DeployMode::Standalone => None,
+        DeployMode::Cluster => {
+            let node = Node {
+                addr: config.cluster.node.clone(),
+                port: config.cluster.port,
+            };
+            let node_meta_info = NodeMetaInfo {
+                node,
+                zone: config.cluster.zone.clone(),
+                idc: config.cluster.idc.clone(),
+                binary_version: config.cluster.binary_version.clone(),
+            };
+            let meta_client = meta_impl::build_meta_client(
+                config.cluster.meta_client_config.clone(),
+                node_meta_info,
+                runtime,
+            )
+            .unwrap();
+            Some(meta_client)
+        }
+    }
+}
+
+async fn build_catalog_manager(
+    config: &Config,
+    table_engine: TableEngineRef,
+    engine_proxy: TableEngineRef,
+    meta_client: Option<Arc<dyn MetaClient + Send + Sync>>,
+) -> CatalogManagerRef {
+    match config.deploy_mode {
+        DeployMode::Standalone => {
+            let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("Failed to create catalog manager, err:{}", e);
+                });
+            // Create catalog manager, use analytic table as backend
+            Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)))
+        }
+        DeployMode::Cluster => {
+            let meta_client = meta_client.expect("Expect meta client if deploy mode is cluster");
+            let schema_id_alloc = SchemaIdAllocWrapper(meta_client.clone());
+            let table_id_alloc = TableIdAllocWrapper(meta_client);
+            Arc::new(volatile::ManagerImpl::new(schema_id_alloc, table_id_alloc).await)
+        }
+    }
+}
+
+fn build_cluster(
+    config: &Config,
+    meta_client: Option<Arc<dyn MetaClient + Send + Sync>>,
+    catalog_manager: CatalogManagerRef,
+    engine_proxy: TableEngineRef,
+    runtime: Arc<Runtime>,
+) -> Option<ClusterRef> {
+    match config.deploy_mode {
+        DeployMode::Standalone => None,
+        DeployMode::Cluster => {
+            let meta_client = meta_client.unwrap();
+            let table_manipulator = Arc::new(TableManipulatorImpl {
+                catalog_manager,
+                table_engine: engine_proxy,
+            });
+            Some(Arc::new(
+                ClusterImpl::new(
+                    meta_client,
+                    table_manipulator,
+                    config.cluster.clone(),
+                    runtime,
+                )
+                .unwrap(),
+            ))
+        }
+    }
 }
 
 struct SchemaIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);
@@ -202,5 +301,89 @@ impl TableIdAlloc for TableIdAllocWrapper {
             })
             .await
             .map(|_| ())
+    }
+}
+
+struct TableManipulatorImpl {
+    catalog_manager: CatalogManagerRef,
+    table_engine: TableEngineRef,
+}
+impl TableManipulatorImpl {
+    fn catalog_schema_by_name(
+        &self,
+        schema_name: &str,
+    ) -> Result<(NameRef, Option<SchemaRef>), Box<dyn std::error::Error + Send + Sync>> {
+        let default_catalog_name = self.catalog_manager.default_catalog_name();
+        let default_catalog = self
+            .catalog_manager
+            .catalog_by_name(default_catalog_name)
+            .map_err(Box::new)?
+            .unwrap();
+        let schema = default_catalog
+            .schema_by_name(schema_name)
+            .map_err(Box::new)?;
+        Ok((default_catalog_name, schema))
+    }
+}
+#[async_trait]
+impl TableManipulator for TableManipulatorImpl {
+    async fn open_table(
+        &self,
+        schema_name: &str,
+        table_name: &str,
+        table_id: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (default_catalog_name, schema) = self.catalog_schema_by_name(schema_name)?;
+        let schema = schema.unwrap();
+        let table_id = TableId::from(table_id);
+        let req = OpenTableRequest {
+            catalog_name: default_catalog_name.to_string(),
+            schema_name: schema_name.to_string(),
+            schema_id: schema.id(),
+            table_name: table_name.to_string(),
+            table_id,
+            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+        };
+        let opts = OpenOptions {
+            table_engine: self.table_engine.clone(),
+        };
+        let table = schema.open_table(req, opts).await.map_err(Box::new)?;
+        debug!(
+            "Finish opening table:{}-{}, catalog:{}, schema:{}, really_opened:{}",
+            table_name,
+            table_id,
+            default_catalog_name,
+            schema_name,
+            table.is_some()
+        );
+        Ok(())
+    }
+
+    async fn close_table(
+        &self,
+        schema_name: &str,
+        table_name: &str,
+        table_id: u64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (default_catalog_name, schema) = self.catalog_schema_by_name(schema_name)?;
+        let schema = schema.unwrap();
+        let table_id = TableId::from(table_id);
+        let req = CloseTableRequest {
+            catalog_name: default_catalog_name.to_string(),
+            schema_name: schema_name.to_string(),
+            schema_id: schema.id(),
+            table_name: table_name.to_string(),
+            table_id,
+            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+        };
+        let opts = CloseOptions {
+            table_engine: self.table_engine.clone(),
+        };
+        schema.close_table(req, opts).await.map_err(Box::new)?;
+        debug!(
+            "Finish closing table:{}-{}, catalog:{}, schema:{}",
+            table_name, table_id, default_catalog_name, schema_name
+        );
+        Ok(())
     }
 }

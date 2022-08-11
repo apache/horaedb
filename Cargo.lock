@@ -4835,6 +4835,7 @@ dependencies = [
  "avro-rs",
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
+ "cluster",
  "common_types 0.1.0",
  "common_util",
  "df_operator",

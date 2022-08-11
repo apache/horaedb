@@ -15,6 +15,7 @@ async-trait = "0.1.53"
 avro-rs = "0.13"
 catalog = { path = "../catalog" }
 ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git", rev= "2c10152d021cd5a26b9c870cdede6a0317adca3d" }
+cluster = { path = "../cluster" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 df_operator = { path = "../df_operator" }

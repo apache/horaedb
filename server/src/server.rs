@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use catalog::manager::ManagerRef;
+use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use grpcio::Environment;
 use query_engine::executor::Executor as QueryExecutor;
@@ -58,6 +59,9 @@ pub enum Error {
 
     #[snafu(display("Failed to start grpc service, err:{}", source))]
     StartGrpcService { source: crate::grpc::Error },
+
+    #[snafu(display("Failed to start clsuter, err:{}", source))]
+    StartCluster { source: cluster::Error },
 }
 
 define_result!(Error);
@@ -68,13 +72,18 @@ pub struct Server<Q> {
     http_service: Service<Q>,
     rpc_services: RpcServices,
     mysql_service: mysql::MysqlService<Q>,
+    cluster: Option<ClusterRef>,
 }
 
 impl<Q: QueryExecutor + 'static> Server<Q> {
-    pub fn stop(mut self) {
+    pub async fn stop(mut self) {
         self.rpc_services.shutdown();
         self.http_service.stop();
         self.mysql_service.shutdown();
+
+        if let Some(cluster) = &self.cluster {
+            cluster.stop().await.unwrap();
+        }
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -82,7 +91,12 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
             .start()
             .await
             .context(StartMysqlService)?;
-        self.rpc_services.start().await.context(StartGrpcService)
+        self.rpc_services.start().await.context(StartGrpcService)?;
+        if let Some(cluster) = &self.cluster {
+            cluster.start().await.context(StartCluster)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -95,6 +109,7 @@ pub struct Builder<Q> {
     table_engine: Option<TableEngineRef>,
     function_registry: Option<FunctionRegistryRef>,
     limiter: Limiter,
+    cluster: Option<ClusterRef>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -107,6 +122,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             table_engine: None,
             function_registry: None,
             limiter: Limiter::default(),
+            cluster: None,
         }
     }
 
@@ -137,6 +153,12 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
     pub fn limiter(mut self, val: Limiter) -> Self {
         self.limiter = val;
+        self
+    }
+
+    pub fn cluster(mut self, cluster: Option<ClusterRef>) -> Self {
+        self.cluster = cluster;
+
         self
     }
 
@@ -200,6 +222,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             http_service,
             rpc_services,
             mysql_service,
+            cluster: self.cluster,
         };
         Ok(server)
     }
