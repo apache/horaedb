@@ -1315,8 +1315,9 @@ mod tests {
 
     use super::*;
     use crate::{
+        kv_encoder::LogEncoding,
         log_batch::{LogWriteEntry, PayloadDecoder},
-        table_kv_impl::{consts, encoding::LogEncoding},
+        table_kv_impl::consts,
         tests::util::{TestPayload, TestPayloadDecoder},
     };
 

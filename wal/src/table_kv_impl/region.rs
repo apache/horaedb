@@ -23,12 +23,10 @@ use table_kv::{
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::LogKey,
+    kv_encoder::{LogEncoding, LogKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
-    table_kv_impl::{
-        encoding, encoding::LogEncoding, model::RegionEntry, namespace::BucketRef, WalRuntimes,
-    },
+    table_kv_impl::{encoding, model::RegionEntry, namespace::BucketRef, WalRuntimes},
 };
 
 #[derive(Debug, Snafu)]

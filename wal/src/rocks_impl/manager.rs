@@ -22,13 +22,12 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::{LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
+    kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
         WalManager, WriteContext, MAX_REGION_ID,
     },
-    rocks_impl::encoding::LogEncoding,
 };
 
 /// Region in the Wal.
@@ -105,9 +104,13 @@ impl Region {
             };
             let (mut start_key_buf, mut end_key_buf) = (BytesMut::new(), BytesMut::new());
             self.log_encoding
-                .encode_key(&mut start_key_buf, &start_log_key)?;
+                .encode_key(&mut start_key_buf, &start_log_key)
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
             self.log_encoding
-                .encode_key(&mut end_key_buf, &end_log_key)?;
+                .encode_key(&mut end_key_buf, &end_log_key)
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
             wb.delete_range(&start_key_buf, &end_key_buf)
                 .map_err(|e| e.into())
                 .context(Delete)?;
@@ -176,9 +179,13 @@ impl Region {
 
             for entry in &batch.entries {
                 self.log_encoding
-                    .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))?;
+                    .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))
+                    .map_err(|e| Box::new(e) as _)
+                    .context(Encoding)?;
                 self.log_encoding
-                    .encode_value(&mut value_buf, entry.payload)?;
+                    .encode_value(&mut value_buf, entry.payload)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(Encoding)?;
                 wb.put(&key_buf, &value_buf)
                     .map_err(|e| e.into())
                     .context(Write)?;
@@ -269,7 +276,9 @@ impl RocksImpl {
         loop {
             let log_key = (current_region_id, MAX_SEQUENCE_NUMBER);
             self.log_encoding
-                .encode_key(&mut end_boundary_key_buf, &log_key)?;
+                .encode_key(&mut end_boundary_key_buf, &log_key)
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
             let mut iter = self.db.iter();
             let seek_key = SeekKey::Key(&end_boundary_key_buf);
 
@@ -283,12 +292,21 @@ impl RocksImpl {
                 break;
             }
 
-            if !self.log_encoding.is_log_key(iter.key())? {
+            if !self
+                .log_encoding
+                .is_log_key(iter.key())
+                .map_err(|e| Box::new(e) as _)
+                .context(Decoding)?
+            {
                 debug!("RocksImpl find region pairs stop scanning, because log keys are exhausted");
                 break;
             }
 
-            let log_key = self.log_encoding.decode_key(iter.key())?;
+            let log_key = self
+                .log_encoding
+                .decode_key(iter.key())
+                .map_err(|e| Box::new(e) as _)
+                .context(Decoding)?;
             region_max_seqs.insert(log_key.0, log_key.1);
 
             if log_key.0 == 0 {
@@ -525,7 +543,9 @@ impl RocksLogIterator {
 
         let mut seek_key_buf = BytesMut::new();
         self.log_encoding
-            .encode_key(&mut seek_key_buf, &self.min_log_key)?;
+            .encode_key(&mut seek_key_buf, &self.min_log_key)
+            .map_err(|e| Box::new(e) as _)
+            .context(Encoding)?;
         let seek_key = SeekKey::Key(&seek_key_buf);
         self.iter
             .seek(seek_key)
@@ -558,11 +578,19 @@ impl BlockingLogIterator for RocksLogIterator {
             }
         }
 
-        let curr_log_key = self.log_encoding.decode_key(self.iter.key())?;
+        let curr_log_key = self
+            .log_encoding
+            .decode_key(self.iter.key())
+            .map_err(|e| Box::new(e) as _)
+            .context(Decoding)?;
         self.no_more_data = self.is_end_reached(&curr_log_key);
 
         if self.is_valid_log_key(&curr_log_key) {
-            let payload = self.log_encoding.decode_value(self.iter.value())?;
+            let payload = self
+                .log_encoding
+                .decode_value(self.iter.value())
+                .map_err(|e| Box::new(e) as _)
+                .context(Decoding)?;
             let log_entry = LogEntry {
                 sequence: curr_log_key.1,
                 payload,
