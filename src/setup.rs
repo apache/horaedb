@@ -17,15 +17,11 @@ use catalog_impls::{
     table_based::TableBasedManager, volatile, CatalogManagerImpl, SchemaIdAlloc, TableIdAlloc,
 };
 use cluster::{cluster_impl::ClusterImpl, TableManipulator};
-use common_util::runtime::{self, Runtime};
+use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use log::{debug, info};
 use logger::RuntimeLevel;
-use meta_client_v2::{
-    meta_impl,
-    types::{DropTableRequest, Node, NodeMetaInfo},
-    MetaClient,
-};
+use meta_client_v2::{meta_impl, types::DropTableRequest, MetaClientRef};
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},
@@ -163,7 +159,12 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     runtimes: &EngineRuntimes,
     engine_proxy: TableEngineRef,
 ) -> Builder<Q> {
-    let meta_client = build_meta_client(config, runtimes.meta_runtime.clone());
+    let meta_client = meta_impl::build_meta_client(
+        config.cluster.meta_client.clone(),
+        config.cluster.node.clone(),
+        runtimes.meta_runtime.clone(),
+    )
+    .unwrap();
 
     let catalog_manager = {
         let schema_id_alloc = SchemaIdAllocWrapper(meta_client.clone());
@@ -176,15 +177,14 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
             catalog_manager: catalog_manager.clone(),
             table_engine: engine_proxy,
         });
-        Arc::new(
-            ClusterImpl::new(
-                meta_client,
-                table_manipulator,
-                config.cluster.clone(),
-                runtimes.meta_runtime.clone(),
-            )
-            .unwrap(),
+        let cluster_impl = ClusterImpl::new(
+            meta_client,
+            table_manipulator,
+            config.cluster.clone(),
+            runtimes.meta_runtime.clone(),
         )
+        .unwrap();
+        Arc::new(cluster_impl)
     };
 
     builder.catalog_manager(catalog_manager).cluster(cluster)
@@ -206,26 +206,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     builder.catalog_manager(catalog_manager)
 }
 
-fn build_meta_client(config: &Config, runtime: Arc<Runtime>) -> Arc<dyn MetaClient + Send + Sync> {
-    let node = Node {
-        addr: config.cluster.node.clone(),
-        port: config.cluster.port,
-    };
-    let node_meta_info = NodeMetaInfo {
-        node,
-        zone: config.cluster.zone.clone(),
-        idc: config.cluster.idc.clone(),
-        binary_version: config.cluster.binary_version.clone(),
-    };
-    meta_impl::build_meta_client(
-        config.cluster.meta_client_config.clone(),
-        node_meta_info,
-        runtime,
-    )
-    .unwrap()
-}
-
-struct SchemaIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);
+struct SchemaIdAllocWrapper(MetaClientRef);
 
 #[async_trait]
 impl SchemaIdAlloc for SchemaIdAllocWrapper {
@@ -243,7 +224,7 @@ impl SchemaIdAlloc for SchemaIdAllocWrapper {
             .map(|resp| SchemaId::from(resp.id))
     }
 }
-struct TableIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);
+struct TableIdAllocWrapper(MetaClientRef);
 
 #[async_trait]
 impl TableIdAlloc for TableIdAllocWrapper {
@@ -284,6 +265,7 @@ struct TableManipulatorImpl {
     catalog_manager: CatalogManagerRef,
     table_engine: TableEngineRef,
 }
+
 impl TableManipulatorImpl {
     fn catalog_schema_by_name(
         &self,

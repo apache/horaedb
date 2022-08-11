@@ -105,7 +105,7 @@ pub trait EventHandler {
 /// MetaClient is the abstraction of client used to communicate with CeresMeta
 /// cluster.
 #[async_trait]
-pub trait MetaClient {
+pub trait MetaClient: Send + Sync {
     /// Start the meta client and the events will occur afterwards.
     async fn start(&self) -> Result<()>;
     /// Stop the meta client and release all the resources.
@@ -126,3 +126,5 @@ pub trait MetaClient {
 
     async fn send_heartbeat(&self, req: Vec<ShardInfo>) -> Result<()>;
 }
+
+pub type MetaClientRef = Arc<dyn MetaClient>;

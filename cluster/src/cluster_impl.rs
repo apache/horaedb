@@ -88,11 +88,11 @@ impl ClusterImpl {
 
     // Register node every 2/3 lease
     fn heartbeat_interval(&self) -> Duration {
-        Duration::from_secs(self.config.meta_client_config.lease.as_millis() * 2 / 3)
+        Duration::from_secs(self.config.meta_client.lease.as_millis() * 2 / 3)
     }
 
     fn error_wait_lease(&self) -> Duration {
-        self.config.meta_client_config.lease.0 / 2
+        self.config.meta_client.lease.0 / 2
     }
 }
 
