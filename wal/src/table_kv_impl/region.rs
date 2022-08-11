@@ -258,7 +258,7 @@ impl Region {
         table_kv: &T,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<'_>,
+        log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         let mut writer = self.writer.lock().await;
         writer
@@ -344,6 +344,12 @@ impl Region {
     pub fn last_sequence(&self) -> SequenceNumber {
         self.state.last_sequence()
     }
+
+    pub async fn alloc_sequence_num(&self, entries_num: u64) -> SequenceNumber {
+        let mut writer = self.writer.lock().await;
+        writer.alloc_sequence_num(&self.state, entries_num).unwrap()
+    }
+    
 }
 
 // Blocking operations:
@@ -794,7 +800,7 @@ impl RegionWriter {
         region_state: &RegionState,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<'_>,
+        log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         debug!(
             "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
@@ -812,13 +818,15 @@ impl RegionWriter {
             let mut value_buf = BytesMut::new();
 
             for entry in &log_batch.entries {
-                log_encoding
-                    .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
-                    .context(LogCodec)?;
-                log_encoding
-                    .encode_value(&mut value_buf, entry.payload)
-                    .context(LogCodec)?;
-                wb.insert(&key_buf, &value_buf);
+                // log_encoding
+                //     .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
+                //     .context(LogCodec)?;
+                // log_encoding
+                //     .encode_value(&mut value_buf, entry.payload)
+                //     .context(LogCodec)?;
+                let key_buf = &entry.payload.0;
+                let value_buf = &entry.payload.1;
+                wb.insert(key_buf, value_buf);
 
                 next_sequence_num += 1;
             }

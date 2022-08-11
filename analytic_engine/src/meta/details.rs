@@ -170,9 +170,15 @@ impl ManifestImpl {
         info!("Manifest store update, update:{:?}", update);
 
         let region_id = Self::region_id_of_meta_update(&update);
-        let mut log_batch = LogWriteBatch::new(region_id);
+        // let mut log_batch = LogWriteBatch::new(region_id);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
-        log_batch.push(LogWriteEntry { payload: &payload });
+        // log_batch.push(LogWriteEntry { payload: &payload });
+        let log_batch = self
+            .wal_manager
+            .encoder(region_id, 1)
+            .await
+            .encode(&[payload])
+            .unwrap();
 
         let write_ctx = WriteContext::default();
 
@@ -311,7 +317,7 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        let mut log_batch = LogWriteBatch::new(self.region_id);
+        // let mut log_batch = LogWriteBatch::new(self.region_id);
         let mut payload_batch = Vec::with_capacity(log_entries.len());
 
         for entry in log_entries {
@@ -319,9 +325,15 @@ impl MetaUpdateLogStore for RegionWal {
             payload_batch.push(payload);
         }
 
-        for payload in payload_batch.iter() {
-            log_batch.push(LogWriteEntry { payload });
-        }
+        // for payload in payload_batch.iter() {
+        //     log_batch.push(LogWriteEntry { payload });
+        // }
+        let log_batch = self
+            .wal_manager
+            .encoder(self.region_id, payload_batch.len() as u64)
+            .await
+            .encode(&payload_batch)
+            .unwrap();
 
         let write_ctx = WriteContext::default();
 

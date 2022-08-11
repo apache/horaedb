@@ -107,8 +107,16 @@ impl Instance {
         // Write AlterSchema to Data Wal
         let alter_schema_pb = manifest_update.clone().into_pb();
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
-        let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
-        log_batch.push(LogWriteEntry { payload: &payload });
+
+        let region_id = space_table.table_data().wal_region_id();
+        let log_batch = self
+            .space_store
+            .wal_manager
+            .encoder(region_id, 1).await
+            .encode(&[payload]).unwrap();
+        // let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+
+        // log_batch.push(LogWriteEntry { payload: &payload });
         let write_ctx = WriteContext::default();
         self.space_store
             .wal_manager
@@ -262,8 +270,15 @@ impl Instance {
         // Write AlterOptions to Data Wal
         let alter_options_pb = manifest_update.clone().into_pb();
         let payload = WritePayload::AlterOption(&alter_options_pb);
-        let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
-        log_batch.push(LogWriteEntry { payload: &payload });
+        let region_id = space_table.table_data().wal_region_id();
+        let log_batch = self
+            .space_store
+            .wal_manager
+            .encoder(region_id, 1).await
+            .encode(&[payload]).unwrap();
+
+        // let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+        // log_batch.push(LogWriteEntry { payload: &payload });
         let write_ctx = WriteContext::default();
         self.space_store
             .wal_manager

@@ -10,6 +10,7 @@ use common_util::runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
+    kv_encoder::WalEncoder,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     manager,
 };
@@ -255,10 +256,13 @@ pub trait WalManager: Send + Sync + fmt::Debug {
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter>;
 
+    /// Provide the encoder for encoding payloads.
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> WalEncoder;
+
     /// Write a batch of log entries to log.
     ///
     /// Returns the max sequence number for the batch of log entries.
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<SequenceNumber>;
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.

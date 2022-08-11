@@ -13,7 +13,7 @@ use common_util::{
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
-    log_batch::Payload,
+    log_batch::{LogWriteBatch, LogWriteEntry, Payload},
     manager::{self, RegionId},
 };
 
@@ -219,7 +219,7 @@ impl LogValueEncoder {
     /// +--------------------+---------+
     /// | version_header(u8) | payload |
     /// +--------------------+---------+
-    pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &dyn Payload) -> Result<()> {
+    pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &impl Payload) -> Result<()> {
         buf.write_u8(self.version).context(EncodeLogValueHeader)?;
 
         payload
@@ -227,7 +227,7 @@ impl LogValueEncoder {
             .context(EncodeLogValuePayload)
     }
 
-    pub fn estimate_encoded_size(&self, payload: &dyn Payload) -> usize {
+    pub fn estimate_encoded_size(&self, payload: &impl Payload) -> usize {
         // Refer to value format.
         1 + payload.encode_size()
     }
@@ -492,7 +492,7 @@ impl LogEncoding {
         Ok(())
     }
 
-    pub fn encode_value(&self, buf: &mut BytesMut, payload: &dyn Payload) -> Result<()> {
+    pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
         buf.clear();
         buf.reserve(self.value_enc.estimate_encoded_size(payload));
         self.value_enc.encode(buf, payload)
@@ -553,5 +553,45 @@ mod tests {
 
             assert_eq!(payload, decoded_value);
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct WalEncoder {
+    region_id: RegionId,
+    min_sequence_num: SequenceNumber,
+    // TODO(ygf11): maybe a reference
+    log_encoding: LogEncoding,
+}
+
+impl WalEncoder {
+    pub fn create_wal_encoder(region_id: RegionId, min_sequence_num: SequenceNumber) -> Self {
+        Self {
+            region_id,
+            min_sequence_num,
+            log_encoding: LogEncoding::newest(),
+        }
+    }
+
+    pub fn encode<P: Payload>(&self, payloads: &[P]) -> Result<LogWriteBatch> {
+        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut next_sequence_num = self.min_sequence_num;
+        let mut key_buf = BytesMut::new();
+        let mut value_buf = BytesMut::new();
+        payloads.iter().for_each(|payload| {
+            self.log_encoding
+                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))
+                .unwrap();
+            self.log_encoding
+                .encode_value(&mut value_buf, payload)
+                .unwrap();
+            write_batch.push(LogWriteEntry {
+                payload: (key_buf.to_vec(), value_buf.to_vec()),
+            });
+
+            next_sequence_num += 1;
+        });
+
+        Ok(write_batch)
     }
 }

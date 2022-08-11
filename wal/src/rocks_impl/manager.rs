@@ -22,7 +22,7 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
+    kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey, WalEncoder},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
@@ -163,7 +163,7 @@ impl Region {
         Ok(log_iter)
     }
 
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<u64> {
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<u64> {
         debug!(
             "Wal region begin writing, ctx:{:?}, log_entries_num:{}",
             ctx,
@@ -178,15 +178,17 @@ impl Region {
             let mut value_buf = BytesMut::new();
 
             for entry in &batch.entries {
-                self.log_encoding
-                    .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))
-                    .map_err(|e| Box::new(e) as _)
-                    .context(Encoding)?;
-                self.log_encoding
-                    .encode_value(&mut value_buf, entry.payload)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(Encoding)?;
-                wb.put(&key_buf, &value_buf)
+                // self.log_encoding
+                //     .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))
+                //     .map_err(|e| Box::new(e) as _)
+                //     .context(Encoding)?;
+                // self.log_encoding
+                //     .encode_value(&mut value_buf, entry.payload)
+                //     .map_err(|e| Box::new(e) as _)
+                //     .context(Encoding)?;
+                let key_buf = &entry.payload.0;
+                let value_buf = &entry.payload.1;
+                wb.put(key_buf, value_buf)
                     .map_err(|e| e.into())
                     .context(Write)?;
 
@@ -650,7 +652,13 @@ impl WalManager for RocksImpl {
         ))
     }
 
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<SequenceNumber> {
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> WalEncoder {
+        let region = self.get_or_create_region(region_id);
+        let mut next_sequence_num = region.alloc_sequence_num(entries_num);
+        WalEncoder::create_wal_encoder(region_id, next_sequence_num)
+    }
+
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         let region = self.get_or_create_region(batch.region_id);
         region.write(ctx, batch).await
     }

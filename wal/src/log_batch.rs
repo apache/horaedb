@@ -33,18 +33,18 @@ pub struct LogEntry<P> {
 /// `PayloadEncoder`. `region_id` is a logically region and set it as 0 if
 /// unnecessary.
 #[derive(Debug)]
-pub struct LogWriteEntry<'a> {
-    pub payload: &'a dyn Payload,
+pub struct LogWriteEntry {
+    pub payload: (Vec<u8>, Vec<u8>),
 }
 
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
-pub struct LogWriteBatch<'a> {
+pub struct LogWriteBatch {
     pub(crate) region_id: RegionId,
-    pub(crate) entries: Vec<LogWriteEntry<'a>>,
+    pub(crate) entries: Vec<LogWriteEntry>,
 }
 
-impl<'a> LogWriteBatch<'a> {
+impl LogWriteBatch {
     pub fn new(region_id: RegionId) -> Self {
         Self::with_capacity(region_id, 0)
     }
@@ -57,7 +57,7 @@ impl<'a> LogWriteBatch<'a> {
     }
 
     #[inline]
-    pub fn push(&mut self, entry: LogWriteEntry<'a>) {
+    pub fn push(&mut self, entry: LogWriteEntry) {
         self.entries.push(entry)
     }
 
@@ -77,7 +77,7 @@ impl<'a> LogWriteBatch<'a> {
     }
 }
 
-impl Default for LogWriteBatch<'_> {
+impl Default for LogWriteBatch {
     fn default() -> Self {
         Self::new(0)
     }

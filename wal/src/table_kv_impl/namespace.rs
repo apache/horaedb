@@ -548,7 +548,7 @@ impl<T: TableKv> NamespaceInner<T> {
     async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<'_>,
+        batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         let region_id = batch.region_id;
         let now = Timestamp::now();
@@ -1008,7 +1008,7 @@ impl<T: TableKv> Namespace<T> {
     pub async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<'_>,
+        batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         self.inner.write_log(ctx, batch).await
     }
@@ -1059,6 +1059,13 @@ impl<T: TableKv> Namespace<T> {
 
         Ok(())
     }
+
+    /// Allocate sequence num for write request.
+    pub async fn alloc_sequence_num(&self, region_id: RegionId, entries_num:u64) -> SequenceNumber {
+        let region = self.inner.get_or_create_region(region_id).await.unwrap();
+        region.alloc_sequence_num(entries_num).await
+    }
+    
 }
 
 pub type NamespaceRef<T> = Arc<Namespace<T>>;

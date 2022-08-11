@@ -342,10 +342,16 @@ impl Instance {
         write_req_pb.set_schema(table_data.schema().into());
         write_req_pb.set_rows(encoded_rows.into());
 
-        let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
+        // let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
         // Now we only have one request, so no need to use with_capacity
         let payload = WritePayload::Write(&write_req_pb);
-        log_batch.push(LogWriteEntry { payload: &payload });
+        // log_batch.push(LogWriteEntry { payload: &payload });
+        let region_id = table_data.wal_region_id();
+        let log_batch = self
+            .space_store
+            .wal_manager
+            .encoder(region_id, 1).await
+            .encode(&[payload]).unwrap();
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
