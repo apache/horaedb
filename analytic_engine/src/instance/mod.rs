@@ -14,7 +14,7 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
-mod write;
+pub(crate) mod write;
 pub mod write_worker;
 
 use std::{

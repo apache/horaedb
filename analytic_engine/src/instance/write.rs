@@ -107,14 +107,14 @@ define_result!(Error);
 /// Max rows in a write request, must less than [u32::MAX]
 const MAX_ROWS_TO_WRITE: usize = 10_000_000;
 
-pub struct EncodeContext {
-    row_group: RowGroup,
-    index_in_writer: IndexInWriterSchema,
-    encoded_rows: Vec<ByteVec>,
+pub(crate) struct EncodeContext {
+    pub row_group: RowGroup,
+    pub index_in_writer: IndexInWriterSchema,
+    pub encoded_rows: Vec<ByteVec>,
 }
 
 impl EncodeContext {
-    fn new(row_group: RowGroup) -> Self {
+    pub fn new(row_group: RowGroup) -> Self {
         Self {
             row_group,
             index_in_writer: IndexInWriterSchema::default(),
@@ -122,7 +122,7 @@ impl EncodeContext {
         }
     }
 
-    fn encode_rows(&mut self, table_schema: &Schema) -> Result<()> {
+    pub fn encode_rows(&mut self, table_schema: &Schema) -> Result<()> {
         // Encode the row group into the buffer, which can be reused to write to
         // memtable
         row::encode_row_group_for_wal(
