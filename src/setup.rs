@@ -16,7 +16,7 @@ use catalog::{
 use catalog_impls::{
     table_based::TableBasedManager, volatile, CatalogManagerImpl, SchemaIdAlloc, TableIdAlloc,
 };
-use cluster::{cluster_impl::ClusterImpl, ClusterRef, TableManipulator};
+use cluster::{cluster_impl::ClusterImpl, TableManipulator};
 use common_util::runtime::{self, Runtime};
 use df_operator::registry::FunctionRegistryImpl;
 use log::{debug, info};
@@ -26,7 +26,7 @@ use meta_client_v2::{
     types::{DropTableRequest, Node, NodeMetaInfo},
     MetaClient,
 };
-use query_engine::executor::ExecutorImpl;
+use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},
     server::Builder,
@@ -119,22 +119,6 @@ where
         analytic: analytic.clone(),
     });
 
-    let meta_client = build_meta_client(&config, runtimes.meta_runtime.clone());
-    let catalog_manager = build_catalog_manager(
-        &config,
-        analytic.clone(),
-        engine_proxy.clone(),
-        meta_client.clone(),
-    )
-    .await;
-    let cluster = build_cluster(
-        &config,
-        meta_client.clone(),
-        catalog_manager.clone(),
-        engine_proxy.clone(),
-        runtimes.meta_runtime.clone(),
-    );
-
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
     function_registry.load_functions().unwrap_or_else(|e| {
@@ -145,18 +129,23 @@ where
     // Create query executor
     let query_executor = ExecutorImpl::new();
 
-    // Build and start server
-    let mut server = Builder::new(config)
+    let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())
-        .catalog_manager(catalog_manager)
         .query_executor(query_executor)
-        .table_engine(engine_proxy)
-        .function_registry(function_registry)
-        .cluster(cluster)
-        .build()
-        .unwrap_or_else(|e| {
-            panic!("Failed to create server, err:{}", e);
-        });
+        .table_engine(engine_proxy.clone())
+        .function_registry(function_registry);
+
+    let builder = match config.deploy_mode {
+        DeployMode::Standalone => build_in_standalone_mode(builder, analytic, engine_proxy).await,
+        DeployMode::Cluster => {
+            build_in_cluster_mode(&config, builder, &runtimes, engine_proxy).await
+        }
+    };
+
+    // Build and start server
+    let mut server = builder.build().unwrap_or_else(|e| {
+        panic!("Failed to create server, err:{}", e);
+    });
     server.start().await.unwrap_or_else(|e| {
         panic!("Failed to start server,, err:{}", e);
     });
@@ -168,85 +157,72 @@ where
     server.stop().await;
 }
 
-fn build_meta_client(
+async fn build_in_cluster_mode<Q: Executor + 'static>(
     config: &Config,
-    runtime: Arc<Runtime>,
-) -> Option<Arc<dyn MetaClient + Send + Sync>> {
-    match config.deploy_mode {
-        DeployMode::Standalone => None,
-        DeployMode::Cluster => {
-            let node = Node {
-                addr: config.cluster.node.clone(),
-                port: config.cluster.port,
-            };
-            let node_meta_info = NodeMetaInfo {
-                node,
-                zone: config.cluster.zone.clone(),
-                idc: config.cluster.idc.clone(),
-                binary_version: config.cluster.binary_version.clone(),
-            };
-            let meta_client = meta_impl::build_meta_client(
-                config.cluster.meta_client_config.clone(),
-                node_meta_info,
-                runtime,
+    builder: Builder<Q>,
+    runtimes: &EngineRuntimes,
+    engine_proxy: TableEngineRef,
+) -> Builder<Q> {
+    let meta_client = build_meta_client(config, runtimes.meta_runtime.clone());
+
+    let catalog_manager = {
+        let schema_id_alloc = SchemaIdAllocWrapper(meta_client.clone());
+        let table_id_alloc = TableIdAllocWrapper(meta_client.clone());
+        Arc::new(volatile::ManagerImpl::new(schema_id_alloc, table_id_alloc).await)
+    };
+
+    let cluster = {
+        let table_manipulator = Arc::new(TableManipulatorImpl {
+            catalog_manager: catalog_manager.clone(),
+            table_engine: engine_proxy,
+        });
+        Arc::new(
+            ClusterImpl::new(
+                meta_client,
+                table_manipulator,
+                config.cluster.clone(),
+                runtimes.meta_runtime.clone(),
             )
-            .unwrap();
-            Some(meta_client)
-        }
-    }
+            .unwrap(),
+        )
+    };
+
+    builder.catalog_manager(catalog_manager).cluster(cluster)
 }
 
-async fn build_catalog_manager(
-    config: &Config,
+async fn build_in_standalone_mode<Q: Executor + 'static>(
+    builder: Builder<Q>,
     table_engine: TableEngineRef,
     engine_proxy: TableEngineRef,
-    meta_client: Option<Arc<dyn MetaClient + Send + Sync>>,
-) -> CatalogManagerRef {
-    match config.deploy_mode {
-        DeployMode::Standalone => {
-            let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
-                .await
-                .unwrap_or_else(|e| {
-                    panic!("Failed to create catalog manager, err:{}", e);
-                });
-            // Create catalog manager, use analytic table as backend
-            Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)))
-        }
-        DeployMode::Cluster => {
-            let meta_client = meta_client.expect("Expect meta client if deploy mode is cluster");
-            let schema_id_alloc = SchemaIdAllocWrapper(meta_client.clone());
-            let table_id_alloc = TableIdAllocWrapper(meta_client);
-            Arc::new(volatile::ManagerImpl::new(schema_id_alloc, table_id_alloc).await)
-        }
-    }
+) -> Builder<Q> {
+    let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
+        .await
+        .unwrap_or_else(|e| {
+            panic!("Failed to create catalog manager, err:{}", e);
+        });
+
+    // Create catalog manager, use analytic table as backend
+    let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
+    builder.catalog_manager(catalog_manager)
 }
 
-fn build_cluster(
-    config: &Config,
-    meta_client: Option<Arc<dyn MetaClient + Send + Sync>>,
-    catalog_manager: CatalogManagerRef,
-    engine_proxy: TableEngineRef,
-    runtime: Arc<Runtime>,
-) -> Option<ClusterRef> {
-    match config.deploy_mode {
-        DeployMode::Standalone => None,
-        DeployMode::Cluster => {
-            let meta_client = meta_client.unwrap();
-            let table_manipulator = Arc::new(TableManipulatorImpl {
-                catalog_manager,
-                table_engine: engine_proxy,
-            });
-            Some(Arc::new(
-                ClusterImpl::new(
-                    meta_client,
-                    table_manipulator,
-                    config.cluster.clone(),
-                    runtime,
-                )
-                .unwrap(),
-            ))
-        }
-    }
+fn build_meta_client(config: &Config, runtime: Arc<Runtime>) -> Arc<dyn MetaClient + Send + Sync> {
+    let node = Node {
+        addr: config.cluster.node.clone(),
+        port: config.cluster.port,
+    };
+    let node_meta_info = NodeMetaInfo {
+        node,
+        zone: config.cluster.zone.clone(),
+        idc: config.cluster.idc.clone(),
+        binary_version: config.cluster.binary_version.clone(),
+    };
+    meta_impl::build_meta_client(
+        config.cluster.meta_client_config.clone(),
+        node_meta_info,
+        runtime,
+    )
+    .unwrap()
 }
 
 struct SchemaIdAllocWrapper(Arc<dyn MetaClient + Send + Sync>);

@@ -15,7 +15,7 @@ pub enum DeployMode {
     Cluster,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
     // Runtime for reading data
@@ -29,7 +29,7 @@ pub struct RuntimeConfig {
 }
 
 // TODO(yingwen): Split config into several sub configs.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// The address to listen.

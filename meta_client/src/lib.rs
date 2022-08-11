@@ -127,7 +127,7 @@ impl From<SchemaShardView> for SchemaConfig {
     }
 }
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ClusterView {
     pub schema_shards: HashMap<String, ShardViewMap>,
     pub schema_configs: HashMap<String, SchemaConfig>,
@@ -135,7 +135,7 @@ pub struct ClusterView {
 
 pub type ClusterViewRef = Arc<ClusterView>;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct MetaClientConfig {
     pub cluster: String,

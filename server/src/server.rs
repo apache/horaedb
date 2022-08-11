@@ -156,8 +156,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
-    pub fn cluster(mut self, cluster: Option<ClusterRef>) -> Self {
-        self.cluster = cluster;
+    pub fn cluster(mut self, cluster: ClusterRef) -> Self {
+        self.cluster = Some(cluster);
 
         self
     }

@@ -24,7 +24,7 @@ pub trait Router {
     fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>>;
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct PrefixRule {
     /// Schema name of the prefix.
     pub schema: String,
@@ -34,7 +34,7 @@ pub struct PrefixRule {
     pub shard: ShardId,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct HashRule {
     /// Schema name of the prefix.
     pub schema: String,
@@ -42,7 +42,7 @@ pub struct HashRule {
     pub shards: Vec<ShardId>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct RuleList {
     pub prefix_rules: Vec<PrefixRule>,
     pub hash_rules: Vec<HashRule>,
