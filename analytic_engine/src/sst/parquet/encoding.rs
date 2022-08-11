@@ -1,15 +1,26 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, io::Write};
 
-use arrow_deps::parquet::file::metadata::KeyValue;
-use common_types::bytes::{BytesMut, MemBufMut, Writer};
+use arrow_deps::{
+    arrow::record_batch::RecordBatch as ArrowRecordBatch,
+    parquet::{
+        arrow::ArrowWriter,
+        basic::Compression,
+        file::{metadata::KeyValue, properties::WriterProperties},
+    },
+};
+use common_types::{
+    bytes::{BytesMut, MemBufMut, Writer},
+    schema::{ArrowSchemaRef, Schema, StorageFormat},
+};
 use common_util::define_result;
+use log::info;
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::sst::file::SstMetaData;
+use crate::sst::{file::SstMetaData, parquet::hybrid};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -92,6 +103,16 @@ pub enum Error {
 
     #[snafu(display("Failed to convert sst meta data from protobuf, err:{}", source))]
     ConvertSstMetaData { source: crate::sst::file::Error },
+
+    #[snafu(display(
+        "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    EncodeRecordBatch {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -149,4 +170,86 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
         Message::parse_from_bytes(&raw_bytes[1..]).context(DecodeFromPb { meta_value })?;
 
     SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
+}
+
+pub struct ParquetEncoder<W: Write> {
+    writer: ArrowWriter<W>,
+    format: StorageFormat,
+    arrow_schema: ArrowSchemaRef,
+    schema: Schema,
+}
+
+impl<W: Write> ParquetEncoder<W> {
+    pub fn try_new(
+        writer: W,
+        num_rows_per_row_group: usize,
+        compression: Compression,
+        meta_data: &SstMetaData,
+    ) -> Result<Self> {
+        let write_props = WriterProperties::builder()
+            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data.clone())?]))
+            .set_max_row_group_size(num_rows_per_row_group)
+            .set_compression(compression)
+            .build();
+        let format = meta_data.schema.storage_format();
+        let arrow_schema = match format {
+            StorageFormat::Hybrid => hybrid::build_hybrid_arrow_schema(&meta_data.schema),
+            StorageFormat::Columnar => meta_data.schema.as_arrow_schema_ref().clone(),
+        };
+        let writer = ArrowWriter::try_new(writer, arrow_schema.clone(), Some(write_props))
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+        Ok(ParquetEncoder {
+            writer,
+            format,
+            arrow_schema,
+            schema: meta_data.schema.clone(),
+        })
+    }
+
+    /// Encode the record batch with [ArrowWriter] and the encoded contents is
+    /// written to the buffer.
+    pub fn encode_record_batch(
+        &mut self,
+        arrow_record_batch_vec: Vec<ArrowRecordBatch>,
+    ) -> Result<usize> {
+        if arrow_record_batch_vec.is_empty() {
+            return Ok(0);
+        }
+
+        let record_batch = match self.format {
+            StorageFormat::Hybrid => hybrid::convert_to_hybrid(
+                &self.schema,
+                self.arrow_schema.clone(),
+                arrow_record_batch_vec,
+            )
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?,
+            StorageFormat::Columnar => {
+                ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(EncodeRecordBatch)?
+            }
+        };
+
+        info!(
+            "----------------arrow_schema:\n{:?},\nrecord_schema:{:?}",
+            self.arrow_schema,
+            record_batch.schema()
+        );
+        self.writer
+            .write(&record_batch)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        Ok(record_batch.num_rows())
+    }
+
+    pub fn close(self) -> Result<()> {
+        self.writer
+            .close()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+        Ok(())
+    }
 }

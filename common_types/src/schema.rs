@@ -752,9 +752,18 @@ impl Schema {
     }
 
     /// Data format in storage
-    // TODO: parse it from table options
     pub fn storage_format(&self) -> StorageFormat {
-        StorageFormat::Columnar
+        // TODO: parse it from table options
+        match std::env::var("CERESDB_TABLE_FORMAT") {
+            Ok(format) => {
+                if format == "HYBRID" {
+                    StorageFormat::Hybrid
+                } else {
+                    StorageFormat::Columnar
+                }
+            }
+            Err(_) => StorageFormat::Columnar,
+        }
     }
 }
 
