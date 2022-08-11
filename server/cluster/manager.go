@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 )
@@ -39,11 +40,12 @@ type managerImpl struct {
 	lock     sync.RWMutex
 	clusters map[string]*Cluster
 
-	storage storage.Storage
+	storage   storage.Storage
+	hbstreams *schedule.HeartbeatStreams
 }
 
-func NewManagerImpl(storage storage.Storage) Manager {
-	return &managerImpl{storage: storage, clusters: make(map[string]*Cluster, 0)}
+func NewManagerImpl(storage storage.Storage, hbstream *schedule.HeartbeatStreams) Manager {
+	return &managerImpl{storage: storage, clusters: make(map[string]*Cluster, 0), hbstreams: hbstream}
 }
 
 func (m *managerImpl) Load(ctx context.Context) error {
@@ -57,7 +59,7 @@ func (m *managerImpl) Load(ctx context.Context) error {
 
 	m.clusters = make(map[string]*Cluster, len(clusters))
 	for _, clusterPb := range clusters {
-		cluster := NewCluster(clusterPb, m.storage)
+		cluster := NewCluster(clusterPb, m.storage, m.hbstreams)
 		if err := cluster.Load(ctx); err != nil {
 			return errors.Wrapf(err, "clusters manager Load, clusters:%v", cluster)
 		}
@@ -103,7 +105,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, nod
 		return nil, errors.Wrapf(err, "clusters manager CreateCluster, clusterTopology:%v", clusterTopologyPb)
 	}
 
-	cluster := NewCluster(clusterPb, m.storage)
+	cluster := NewCluster(clusterPb, m.storage, m.hbstreams)
 	m.clusters[clusterName] = cluster
 
 	m.lock.Unlock()
@@ -224,7 +226,7 @@ func (m *managerImpl) RegisterNode(ctx context.Context, clusterName, nodeName st
 	}
 
 	// TODO: refactor coordinator
-	if err := cluster.coordinator.Run(ctx); err != nil {
+	if err := cluster.coordinator.scatterShard(ctx); err != nil {
 		return errors.Wrap(err, "RegisterNode")
 	}
 	return nil

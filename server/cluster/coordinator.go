@@ -5,25 +5,66 @@ package cluster
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
+
+// TODO: heartbeatInterval should be set in config
+const DefaultHeartbeatInterval = time.Second * 3
 
 // coordinator is used to decide if the shards need to be scheduled.
 type coordinator struct {
 	// Mutex is to ensure only one coordinator can run at the same time.
-	sync.Mutex
+	lock    sync.Mutex
 	cluster *Cluster
+
+	ctx          context.Context
+	cancel       context.CancelFunc
+	bgJobWg      *sync.WaitGroup
+	eventHandler *schedule.EventHandler
 }
 
-func (c *coordinator) Run(ctx context.Context) error {
-	c.Lock()
-	defer c.Unlock()
-	if err := c.scatterShard(ctx); err != nil {
-		return errors.Wrap(err, "coordinator Run")
+func newCoordinator(cluster *Cluster, hbstreams *schedule.HeartbeatStreams) *coordinator {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &coordinator{
+		cluster: cluster,
+
+		ctx:          ctx,
+		cancel:       cancel,
+		eventHandler: schedule.NewEventHandler(hbstreams),
 	}
-	return nil
+}
+
+func (c *coordinator) runBgJob() {
+	c.bgJobWg.Add(1)
+	defer c.bgJobWg.Done()
+
+	for {
+		t := time.After(DefaultHeartbeatInterval)
+		select {
+		case <-t:
+			for nodeName := range c.cluster.nodesCache {
+				err := c.eventHandler.Dispatch(c.ctx, nodeName, &schedule.NoneEvent{})
+				if err != nil {
+					log.Error("fail to send node event msg", zap.Error(err), zap.String("node", nodeName))
+				}
+			}
+
+		case <-c.ctx.Done():
+			log.Warn("exit from background jobs")
+			return
+		}
+	}
+}
+
+func (c *coordinator) Close() {
+	c.cancel()
+	c.bgJobWg.Wait()
 }
 
 // TODO: consider ReplicationFactor
@@ -34,8 +75,8 @@ func (c *coordinator) scatterShard(ctx context.Context) error {
 	}
 
 	// TODO: consider data race
-	c.Lock()
-	defer c.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
 
 	shardTotal := int(c.cluster.metaData.cluster.ShardTotal)
 	minNodeCount := int(c.cluster.metaData.cluster.MinNodeCount)
@@ -68,6 +109,12 @@ func (c *coordinator) scatterShard(ctx context.Context) error {
 	}
 	if err := c.cluster.Load(ctx); err != nil {
 		return errors.Wrap(err, "coordinator scatterShard")
+	}
+
+	for nodeName, node := range c.cluster.nodesCache {
+		if err := c.eventHandler.Dispatch(ctx, nodeName, &schedule.OpenEvent{ShardIDs: node.shardIDs}); err != nil {
+			return errors.Wrap(err, "coordinator scatterShard")
+		}
 	}
 	return nil
 }

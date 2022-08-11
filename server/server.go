@@ -140,7 +140,7 @@ func (srv *Server) startServer(ctx context.Context) error {
 	storage := storage.NewStorageWithEtcdBackend(srv.etcdCli, srv.cfg.StorageRootPath, storage.Options{
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
-	srv.clusterManager = cluster.NewManagerImpl(storage)
+	srv.clusterManager = cluster.NewManagerImpl(storage, srv.hbStreams)
 	return nil
 }
 

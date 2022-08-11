@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 )
@@ -22,17 +23,20 @@ type Cluster struct {
 	nodesCache   map[string]*Node   // node_name -> node
 
 	storage     storage.Storage
+	hbstream    *schedule.HeartbeatStreams
 	coordinator *coordinator
 }
 
-func NewCluster(cluster *clusterpb.Cluster, storage storage.Storage) *Cluster {
+func NewCluster(cluster *clusterpb.Cluster, storage storage.Storage, hbstream *schedule.HeartbeatStreams) *Cluster {
 	return &Cluster{
 		clusterID:    cluster.GetId(),
-		storage:      storage,
 		metaData:     &metaData{cluster: cluster},
 		shardsCache:  make(map[uint32]*Shard),
 		schemasCache: make(map[string]*Schema),
 		nodesCache:   make(map[string]*Node),
+
+		storage:  storage,
+		hbstream: hbstream,
 	}
 }
 
@@ -43,6 +47,11 @@ func (c *Cluster) Name() string {
 func (c *Cluster) Load(ctx context.Context) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	if c.coordinator == nil {
+		c.coordinator = newCoordinator(c, c.hbstream)
+		go c.coordinator.runBgJob()
+	}
 
 	shards, shardIDs, err := c.loadClusterTopologyLocked(ctx)
 	if err != nil {
