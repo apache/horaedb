@@ -158,6 +158,20 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Failed to allocate sequence number, namespace:{}, region_id:{}, entries_num:{}, err:{}",
+        namespace,
+        region_id,
+        entries_num,
+        source
+    ))]
+    AllocateSequenceNumber {
+        namespace: String,
+        region_id: RegionId,
+        entries_num: u64,
+        source: crate::table_kv_impl::region::Error,
+    },
+
+    #[snafu(display(
         "Failed to delete entries, namespace:{}, region_id:{}, err:{}",
         namespace,
         region_id,
@@ -1061,11 +1075,21 @@ impl<T: TableKv> Namespace<T> {
     }
 
     /// Allocate sequence num for write request.
-    pub async fn alloc_sequence_num(&self, region_id: RegionId, entries_num:u64) -> SequenceNumber {
-        let region = self.inner.get_or_create_region(region_id).await.unwrap();
-        region.alloc_sequence_num(entries_num).await
+    pub async fn alloc_sequence_num(
+        &self,
+        region_id: RegionId,
+        entries_num: u64,
+    ) -> Result<SequenceNumber> {
+        let region = self.inner.get_or_create_region(region_id).await?;
+        region
+            .alloc_sequence_num(entries_num)
+            .await
+            .context(AllocateSequenceNumber {
+                namespace: self.name(),
+                region_id,
+                entries_num,
+            })
     }
-    
 }
 
 pub type NamespaceRef<T> = Arc<Namespace<T>>;
@@ -1322,8 +1346,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        kv_encoder::LogEncoding,
-        log_batch::{LogWriteEntry, PayloadDecoder},
+        kv_encoder::{LogEncoding, WalEncoder},
+        log_batch::PayloadDecoder,
         table_kv_impl::consts,
         tests::util::{TestPayload, TestPayloadDecoder},
     };
@@ -1700,16 +1724,24 @@ mod tests {
         start_sequence: u32,
         end_sequence: u32,
     ) -> SequenceNumber {
-        let write_ctx = manager::WriteContext::default();
-        let mut last_sequence = 0;
+        let mut payload_batch = Vec::with_capacity((end_sequence - start_sequence) as usize);
         for val in start_sequence..end_sequence {
-            let mut wb = LogWriteBatch::new(region_id);
             let payload = TestPayload { val };
-            wb.push(LogWriteEntry { payload: &payload });
-
-            last_sequence = namespace.write_log(&write_ctx, &wb).await.unwrap();
+            payload_batch.push(payload);
         }
 
-        last_sequence
+        let min_sequence_number = namespace
+            .alloc_sequence_num(region_id, payload_batch.len() as u64)
+            .await
+            .expect("should succeed to allocate sequence number");
+        let wal_encoder = WalEncoder::create_wal_encoder(region_id, min_sequence_number);
+        let log_batch = wal_encoder
+            .encode(&payload_batch)
+            .expect("should succeed to encode payload batch");
+        let write_ctx = manager::WriteContext::default();
+        namespace
+            .write_log(&write_ctx, &log_batch)
+            .await
+            .expect("should succeed to write log batch")
     }
 }

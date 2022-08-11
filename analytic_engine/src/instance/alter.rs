@@ -8,16 +8,14 @@ use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
-use wal::{
-    log_batch::{LogWriteBatch, LogWriteEntry},
-    manager::WriteContext,
-};
+use wal::manager::WriteContext;
 
 use crate::{
     instance::{
         engine::{
-            AlterDroppedTable, FlushTable, InvalidOptions, InvalidPreVersion, InvalidSchemaVersion,
-            OperateByWriteWorker, Result, WriteManifest, WriteWal,
+            AlterDroppedTable, EncodePayloads, FlushTable, GetWalEncoder, InvalidOptions,
+            InvalidPreVersion, InvalidSchemaVersion, OperateByWriteWorker, Result, WriteManifest,
+            WriteWal,
         },
         flush_compaction::TableFlushOptions,
         write_worker,
@@ -109,12 +107,23 @@ impl Instance {
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         let region_id = space_table.table_data().wal_region_id();
-        let log_batch = self
+        let wal_encoder = self
             .space_store
             .wal_manager
-            .encoder(region_id, 1).await
-            .encode(&[payload]).unwrap();
-        // let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+            .encoder(region_id, 1)
+            .await
+            .context(GetWalEncoder {
+                table: &table_data.name,
+                region_id: table_data.wal_region_id(),
+                entries_num: 1u64,
+            })?;
+
+        let log_batch = wal_encoder.encode(&[payload]).context(EncodePayloads {
+            table: &table_data.name,
+            region_id: table_data.wal_region_id(),
+        })?;
+        // let mut log_batch =
+        // LogWriteBatch::new(space_table.table_data().wal_region_id());
 
         // log_batch.push(LogWriteEntry { payload: &payload });
         let write_ctx = WriteContext::default();
@@ -271,13 +280,24 @@ impl Instance {
         let alter_options_pb = manifest_update.clone().into_pb();
         let payload = WritePayload::AlterOption(&alter_options_pb);
         let region_id = space_table.table_data().wal_region_id();
-        let log_batch = self
+        let wal_encoder = self
             .space_store
             .wal_manager
-            .encoder(region_id, 1).await
-            .encode(&[payload]).unwrap();
+            .encoder(region_id, 1)
+            .await
+            .context(GetWalEncoder {
+                table: &table_data.name,
+                region_id: table_data.wal_region_id(),
+                entries_num: 1u64,
+            })?;
 
-        // let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+        let log_batch = wal_encoder.encode(&[payload]).context(EncodePayloads {
+            table: &table_data.name,
+            region_id: table_data.wal_region_id(),
+        })?;
+
+        // let mut log_batch =
+        // LogWriteBatch::new(space_table.table_data().wal_region_id());
         // log_batch.push(LogWriteEntry { payload: &payload });
         let write_ctx = WriteContext::default();
         self.space_store

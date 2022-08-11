@@ -11,6 +11,7 @@ use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
+use wal::manager::RegionId;
 
 use crate::{
     context::CommonContext,
@@ -190,6 +191,32 @@ pub enum Error {
     StoreVersionEdit {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display(
+        "Failed to get to wal encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        table,
+        region_id,
+        entries_num,
+        source
+    ))]
+    GetWalEncoder {
+        table: String,
+        region_id: RegionId,
+        entries_num: u64,
+        source: wal::manager::Error,
+    },
+
+    #[snafu(display(
+        "Failed to encode payloads, table:{},region_id:{}, err:{}",
+        table,
+        region_id,
+        source
+    ))]
+    EncodePayloads {
+        table: String,
+        region_id: RegionId,
+        source: wal::kv_encoder::Error,
+    },
 }
 
 define_result!(Error);
@@ -217,7 +244,9 @@ impl From<Error> for table_engine::engine::Error {
             | Error::ApplyMemTable { .. }
             | Error::OperateByWriteWorker { .. }
             | Error::FlushTable { .. }
-            | Error::StoreVersionEdit { .. } => Self::Unexpected {
+            | Error::StoreVersionEdit { .. }
+            | Error::GetWalEncoder { .. }
+            | Error::EncodePayloads { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

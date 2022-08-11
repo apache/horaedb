@@ -19,7 +19,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
-    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
+    log_batch::LogEntry,
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
         RegionId, SequenceNumber, WalManagerRef, WriteContext,
@@ -36,6 +36,23 @@ use crate::meta::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display(
+        "Failed to get to wal encoder, region_id:{}, entries_num:{}, err:{}",
+        region_id,
+        entries_num,
+        source
+    ))]
+    GetWalEncoder {
+        region_id: RegionId,
+        entries_num: u64,
+        source: wal::manager::Error,
+    },
+
+    #[snafu(display("Failed to encode payloads, region_id:{}, err:{}", region_id, source))]
+    EncodePayloads {
+        region_id: RegionId,
+        source: wal::kv_encoder::Error,
+    },
     #[snafu(display("Failed to write update to wal, err:{}", source))]
     WriteWal { source: wal::manager::Error },
 
@@ -173,12 +190,17 @@ impl ManifestImpl {
         // let mut log_batch = LogWriteBatch::new(region_id);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
         // log_batch.push(LogWriteEntry { payload: &payload });
-        let log_batch = self
+        let wal_encoder = self
             .wal_manager
             .encoder(region_id, 1)
             .await
+            .context(GetWalEncoder {
+                region_id,
+                entries_num: 1u64,
+            })?;
+        let log_batch = wal_encoder
             .encode(&[payload])
-            .unwrap();
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 
@@ -328,12 +350,18 @@ impl MetaUpdateLogStore for RegionWal {
         // for payload in payload_batch.iter() {
         //     log_batch.push(LogWriteEntry { payload });
         // }
-        let log_batch = self
+        let region_id = self.region_id;
+        let wal_encoder = self
             .wal_manager
             .encoder(self.region_id, payload_batch.len() as u64)
             .await
+            .context(GetWalEncoder {
+                region_id,
+                entries_num: 1u64,
+            })?;
+        let log_batch = wal_encoder
             .encode(&payload_batch)
-            .unwrap();
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 

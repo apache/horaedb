@@ -148,12 +148,15 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         ))
     }
 
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> WalEncoder {
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<WalEncoder> {
         let min_sequence_num = self
             .namespace
             .alloc_sequence_num(region_id, entries_num)
-            .await;
-        WalEncoder::create_wal_encoder(region_id, min_sequence_num)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(CreateWalEncoder)?;
+
+        Ok(WalEncoder::create_wal_encoder(region_id, min_sequence_num))
     }
 
     async fn write(

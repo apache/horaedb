@@ -18,9 +18,10 @@ use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
 
 use crate::{
-    log_batch::{LogWriteBatch, LogWriteEntry, Payload, PayloadDecoder},
+    log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, RegionId, WalManager, WriteContext,
+        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, RegionId, WalManager,
+        WalManagerRef, WriteContext,
     },
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
@@ -30,7 +31,7 @@ use crate::{
 pub enum Error {}
 
 #[async_trait]
-pub trait WalBuilder: Send + Sync {
+pub trait WalBuilder: Send + Sync + 'static {
     type Wal: WalManager + Send + Sync;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal>;
@@ -129,32 +130,36 @@ impl<B: WalBuilder> TestEnv<B> {
         }
     }
 
-    pub async fn build_wal(&self) -> Arc<B::Wal> {
+    pub async fn build_wal(&self) -> WalManagerRef {
         self.builder
             .build(self.dir.path(), self.runtime.clone())
             .await
     }
 
+    pub fn build_payload_batch(&self, start: u32, end: u32) -> Vec<TestPayload> {
+        (start..end).map(|val| TestPayload { val }).collect()
+    }
+
     /// Build the log batch with [TestPayload].val range [start, end).
-    pub fn build_log_batch<'a>(
+    pub async fn build_log_batch(
         &self,
+        wal: WalManagerRef,
         region_id: RegionId,
         start: u32,
         end: u32,
-        payload_batch: &'a mut Vec<TestPayload>,
-    ) -> LogWriteBatch<'a> {
-        let mut write_batch = LogWriteBatch::new(region_id);
+    ) -> (Vec<TestPayload>, LogWriteBatch) {
+        let payload_batch = self.build_payload_batch(start, end);
 
-        for val in start..end {
-            let payload = TestPayload { val };
-            payload_batch.push(payload);
-        }
+        let log_batch_encoder = wal
+            .encoder(region_id, payload_batch.len() as u64)
+            .await
+            .expect("should succeed to create log batch encoder");
 
-        for payload in payload_batch.iter() {
-            write_batch.entries.push(LogWriteEntry { payload });
-        }
+        let log_batch = log_batch_encoder
+            .encode(&payload_batch)
+            .expect("should succeed to encode payloads");
 
-        write_batch
+        (payload_batch, log_batch)
     }
 
     /// Check whether the log entries from the iterator equals the
@@ -162,10 +167,10 @@ impl<B: WalBuilder> TestEnv<B> {
     pub async fn check_log_entries(
         &self,
         max_seq: SequenceNumber,
-        write_batch: &LogWriteBatch<'_>,
+        payload_batch: &[TestPayload],
         mut iter: BatchLogIteratorAdapter,
     ) {
-        let mut log_entries = VecDeque::with_capacity(write_batch.entries.len());
+        let mut log_entries = VecDeque::with_capacity(payload_batch.len());
         let mut buffer = VecDeque::new();
         loop {
             let dec = TestPayloadDecoder;
@@ -180,9 +185,8 @@ impl<B: WalBuilder> TestEnv<B> {
             log_entries.append(&mut buffer);
         }
 
-        assert_eq!(write_batch.entries.len(), log_entries.len());
-        for (idx, (expect_log_write_entry, log_entry)) in write_batch
-            .entries
+        assert_eq!(payload_batch.len(), log_entries.len());
+        for (idx, (expect_log_write_entry, log_entry)) in payload_batch
             .iter()
             .zip(log_entries.iter())
             .rev()
@@ -192,18 +196,7 @@ impl<B: WalBuilder> TestEnv<B> {
             assert_eq!(max_seq - idx as u64, log_entry.sequence);
 
             // payload
-            let (mut expected_buf, mut buf) = (Vec::new(), Vec::new());
-            expect_log_write_entry
-                .payload
-                .encode_to(&mut expected_buf)
-                .unwrap();
-            log_entry.payload.encode_to(&mut buf).unwrap();
-
-            assert_eq!(
-                expect_log_write_entry.payload.encode_size(),
-                log_entry.payload.encode_size()
-            );
-            assert_eq!(expected_buf, buf);
+            assert_eq!(expect_log_write_entry, &log_entry.payload);
         }
     }
 }
@@ -215,14 +208,13 @@ pub struct TestPayload {
 }
 
 impl Payload for TestPayload {
+    type Error = Error;
+
     fn encode_size(&self) -> usize {
         4
     }
 
-    fn encode_to(
-        &self,
-        buf: &mut dyn MemBufMut,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
         buf.write_u32(self.val).expect("must write");
         Ok(())
     }

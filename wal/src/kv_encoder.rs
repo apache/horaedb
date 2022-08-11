@@ -214,24 +214,47 @@ impl LogValueEncoder {
     }
 }
 
-impl LogValueEncoder {
+impl<T: Payload> Encoder<T> for LogValueEncoder {
+    type Error = Error;
+
     /// Value format:
     /// +--------------------+---------+
     /// | version_header(u8) | payload |
     /// +--------------------+---------+
-    pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &impl Payload) -> Result<()> {
+    fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &T) -> Result<()> {
         buf.write_u8(self.version).context(EncodeLogValueHeader)?;
 
         payload
-            .encode_to(buf as &mut dyn MemBufMut)
+            .encode_to(buf)
+            .map_err(|e| Box::new(e) as _)
             .context(EncodeLogValuePayload)
     }
 
-    pub fn estimate_encoded_size(&self, payload: &impl Payload) -> usize {
+    fn estimate_encoded_size(&self, payload: &T) -> usize {
         // Refer to value format.
         1 + payload.encode_size()
     }
 }
+
+// impl LogValueEncoder {
+//     /// Value format:
+//     /// +--------------------+---------+
+//     /// | version_header(u8) | payload |
+//     /// +--------------------+---------+
+//     pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &impl Payload)
+// -> Result<()> {         buf.write_u8(self.version).
+// context(EncodeLogValueHeader)?;
+
+//         payload
+//             .encode_to(buf as &mut dyn MemBufMut)
+//             .context(EncodeLogValuePayload)
+//     }
+
+//     pub fn estimate_encoded_size(&self, payload: &impl Payload) -> usize {
+//         // Refer to value format.
+//         1 + payload.encode_size()
+//     }
+// }
 
 pub struct LogValueDecoder {
     pub version: u8,
@@ -574,23 +597,21 @@ impl WalEncoder {
     }
 
     pub fn encode<P: Payload>(&self, payloads: &[P]) -> Result<LogWriteBatch> {
-        let mut write_batch = LogWriteBatch::new(self.region_id);
         let mut next_sequence_num = self.min_sequence_num;
+        let mut write_batch = LogWriteBatch::new(self.region_id, next_sequence_num);
         let mut key_buf = BytesMut::new();
         let mut value_buf = BytesMut::new();
-        payloads.iter().for_each(|payload| {
+        for payload in payloads.iter() {
             self.log_encoding
-                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))
-                .unwrap();
-            self.log_encoding
-                .encode_value(&mut value_buf, payload)
-                .unwrap();
+                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))?;
+            self.log_encoding.encode_value(&mut value_buf, payload)?;
+
             write_batch.push(LogWriteEntry {
                 payload: (key_buf.to_vec(), value_buf.to_vec()),
             });
 
             next_sequence_num += 1;
-        });
+        }
 
         Ok(write_batch)
     }

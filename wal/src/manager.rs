@@ -55,6 +55,16 @@ pub mod error {
         },
 
         #[snafu(display(
+            "Failed to create wal encoder, err:{}.\nBacktrace:\n{}",
+            source,
+            backtrace
+        ))]
+        CreateWalEncoder {
+            source: Box<dyn std::error::Error + Send + Sync>,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display(
             "Failed to write log entries, err:{}.\nBacktrace:\n{}",
             source,
             backtrace
@@ -234,7 +244,7 @@ pub trait BatchLogIterator {
 /// Every region has its own increasing (and maybe hallow) sequence number
 /// space.
 #[async_trait]
-pub trait WalManager: Send + Sync + fmt::Debug {
+pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
@@ -257,7 +267,7 @@ pub trait WalManager: Send + Sync + fmt::Debug {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> WalEncoder;
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<WalEncoder>;
 
     /// Write a batch of log entries to log.
     ///

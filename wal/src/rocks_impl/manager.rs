@@ -170,13 +170,9 @@ impl Region {
             batch.entries.len()
         );
 
-        let entries_num = batch.len() as u64;
         let (wb, max_sequence_num) = {
             let wb = WriteBatch::default();
-            let mut next_sequence_num = self.alloc_sequence_num(entries_num);
-            let mut key_buf = BytesMut::new();
-            let mut value_buf = BytesMut::new();
-
+            let mut next_sequence_num = batch.min_sequence_num();
             for entry in &batch.entries {
                 // self.log_encoding
                 //     .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))
@@ -652,10 +648,10 @@ impl WalManager for RocksImpl {
         ))
     }
 
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> WalEncoder {
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<WalEncoder> {
         let region = self.get_or_create_region(region_id);
-        let mut next_sequence_num = region.alloc_sequence_num(entries_num);
-        WalEncoder::create_wal_encoder(region_id, next_sequence_num)
+        let next_sequence_num = region.alloc_sequence_num(entries_num);
+        Ok(WalEncoder::create_wal_encoder(region_id, next_sequence_num))
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {

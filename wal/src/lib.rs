@@ -2,7 +2,7 @@
 
 //! Write Ahead Log
 
-mod kv_encoder;
+pub mod kv_encoder;
 pub mod log_batch;
 pub mod manager;
 pub mod rocks_impl;

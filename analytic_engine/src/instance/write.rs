@@ -16,10 +16,7 @@ use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
-use wal::{
-    log_batch::{LogWriteBatch, LogWriteEntry},
-    manager::{SequenceNumber, WriteContext},
-};
+use wal::manager::{RegionId, SequenceNumber, WriteContext};
 
 use crate::{
     instance::{
@@ -39,6 +36,32 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display(
+        "Failed to get to wal encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        table,
+        region_id,
+        entries_num,
+        source
+    ))]
+    GetWalEncoder {
+        table: String,
+        region_id: RegionId,
+        entries_num: u64,
+        source: wal::manager::Error,
+    },
+
+    #[snafu(display(
+        "Failed to encode payloads, table:{},region_id:{}, err:{}",
+        table,
+        region_id,
+        source
+    ))]
+    EncodePayloads {
+        table: String,
+        region_id: RegionId,
+        source: wal::kv_encoder::Error,
+    },
+
     #[snafu(display("Failed to write to wal, table:{}, err:{}", table, source))]
     WriteLogBatch {
         table: String,
@@ -347,11 +370,20 @@ impl Instance {
         let payload = WritePayload::Write(&write_req_pb);
         // log_batch.push(LogWriteEntry { payload: &payload });
         let region_id = table_data.wal_region_id();
-        let log_batch = self
+        let wal_encoder = self
             .space_store
             .wal_manager
-            .encoder(region_id, 1).await
-            .encode(&[payload]).unwrap();
+            .encoder(region_id, 1)
+            .await
+            .context(GetWalEncoder {
+                table: &table_data.name,
+                region_id: table_data.wal_region_id(),
+                entries_num: 1u64,
+            })?;
+        let log_batch = wal_encoder.encode(&[payload]).context(EncodePayloads {
+            table: &table_data.name,
+            region_id: table_data.wal_region_id(),
+        })?;
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
