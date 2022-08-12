@@ -14,7 +14,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload},
-    manager::{self, RegionId},
+    manager::{self, Encoding, RegionId},
 };
 
 pub const LOG_KEY_ENCODING_V0: u8 = 0;
@@ -235,26 +235,6 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
         1 + payload.encode_size()
     }
 }
-
-// impl LogValueEncoder {
-//     /// Value format:
-//     /// +--------------------+---------+
-//     /// | version_header(u8) | payload |
-//     /// +--------------------+---------+
-//     pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &impl Payload)
-// -> Result<()> {         buf.write_u8(self.version).
-// context(EncodeLogValueHeader)?;
-
-//         payload
-//             .encode_to(buf as &mut dyn MemBufMut)
-//             .context(EncodeLogValuePayload)
-//     }
-
-//     pub fn estimate_encoded_size(&self, payload: &impl Payload) -> usize {
-//         // Refer to value format.
-//         1 + payload.encode_size()
-//     }
-// }
 
 pub struct LogValueDecoder {
     pub version: u8,
@@ -538,6 +518,57 @@ impl LogEncoding {
     }
 }
 
+/// Encoder which are used to encode given region and count payloads.
+#[derive(Debug)]
+pub struct LogBatchEncoder {
+    region_id: RegionId,
+    entries_num: u64,
+    min_sequence_num: SequenceNumber,
+    log_encoding: LogEncoding,
+}
+
+impl LogBatchEncoder {
+    pub fn create(region_id: RegionId, entries_num: u64, min_sequence_num: SequenceNumber) -> Self {
+        Self {
+            region_id,
+            entries_num,
+            min_sequence_num,
+            log_encoding: LogEncoding::newest(),
+        }
+    }
+
+    pub fn encode<P: Payload>(self, payload_batch: &[P]) -> manager::Result<LogWriteBatch> {
+        assert_eq!(
+            self.entries_num,
+            payload_batch.len() as u64,
+            "len of payload_batch is not as expected"
+        );
+
+        let mut next_sequence_num = self.min_sequence_num;
+        let mut write_batch = LogWriteBatch::new(self.region_id, next_sequence_num);
+        let mut key_buf = BytesMut::new();
+        let mut value_buf = BytesMut::new();
+        for payload in payload_batch.iter() {
+            self.log_encoding
+                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
+            self.log_encoding
+                .encode_value(&mut value_buf, payload)
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
+
+            write_batch.push(LogWriteEntry {
+                payload: (key_buf.to_vec(), value_buf.to_vec()),
+            });
+
+            next_sequence_num += 1;
+        }
+
+        Ok(write_batch)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use common_types::bytes::BytesMut;
@@ -576,43 +607,5 @@ mod tests {
 
             assert_eq!(payload, decoded_value);
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct WalEncoder {
-    region_id: RegionId,
-    min_sequence_num: SequenceNumber,
-    // TODO(ygf11): maybe a reference
-    log_encoding: LogEncoding,
-}
-
-impl WalEncoder {
-    pub fn create_wal_encoder(region_id: RegionId, min_sequence_num: SequenceNumber) -> Self {
-        Self {
-            region_id,
-            min_sequence_num,
-            log_encoding: LogEncoding::newest(),
-        }
-    }
-
-    pub fn encode<P: Payload>(&self, payloads: &[P]) -> Result<LogWriteBatch> {
-        let mut next_sequence_num = self.min_sequence_num;
-        let mut write_batch = LogWriteBatch::new(self.region_id, next_sequence_num);
-        let mut key_buf = BytesMut::new();
-        let mut value_buf = BytesMut::new();
-        for payload in payloads.iter() {
-            self.log_encoding
-                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))?;
-            self.log_encoding.encode_value(&mut value_buf, payload)?;
-
-            write_batch.push(LogWriteEntry {
-                payload: (key_buf.to_vec(), value_buf.to_vec()),
-            });
-
-            next_sequence_num += 1;
-        }
-
-        Ok(write_batch)
     }
 }

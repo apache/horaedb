@@ -37,12 +37,12 @@ use crate::meta::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to wal encoder, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to get log batch encoder, region_id:{}, entries_num:{}, err:{}",
         region_id,
         entries_num,
         source
     ))]
-    GetWalEncoder {
+    GetLogBatchEncoder {
         region_id: RegionId,
         entries_num: u64,
         source: wal::manager::Error,
@@ -51,7 +51,7 @@ pub enum Error {
     #[snafu(display("Failed to encode payloads, region_id:{}, err:{}", region_id, source))]
     EncodePayloads {
         region_id: RegionId,
-        source: wal::kv_encoder::Error,
+        source: wal::manager::Error,
     },
     #[snafu(display("Failed to write update to wal, err:{}", source))]
     WriteWal { source: wal::manager::Error },
@@ -187,18 +187,16 @@ impl ManifestImpl {
         info!("Manifest store update, update:{:?}", update);
 
         let region_id = Self::region_id_of_meta_update(&update);
-        // let mut log_batch = LogWriteBatch::new(region_id);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
-        // log_batch.push(LogWriteEntry { payload: &payload });
-        let wal_encoder = self
-            .wal_manager
-            .encoder(region_id, 1)
-            .await
-            .context(GetWalEncoder {
-                region_id,
-                entries_num: 1u64,
-            })?;
-        let log_batch = wal_encoder
+        let log_batch_encoder =
+            self.wal_manager
+                .encoder(region_id, 1)
+                .await
+                .context(GetLogBatchEncoder {
+                    region_id,
+                    entries_num: 1u64,
+                })?;
+        let log_batch = log_batch_encoder
             .encode(&[payload])
             .context(EncodePayloads { region_id })?;
 
@@ -339,27 +337,24 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        // let mut log_batch = LogWriteBatch::new(self.region_id);
         let mut payload_batch = Vec::with_capacity(log_entries.len());
 
+        // TODO(ygf11): maybe we can build payload in encode loop.
         for entry in log_entries {
             let payload = MetaUpdatePayload::from(entry);
             payload_batch.push(payload);
         }
 
-        // for payload in payload_batch.iter() {
-        //     log_batch.push(LogWriteEntry { payload });
-        // }
         let region_id = self.region_id;
-        let wal_encoder = self
+        let log_batch_encoder = self
             .wal_manager
             .encoder(self.region_id, payload_batch.len() as u64)
             .await
-            .context(GetWalEncoder {
+            .context(GetLogBatchEncoder {
                 region_id,
                 entries_num: 1u64,
             })?;
-        let log_batch = wal_encoder
+        let log_batch = log_batch_encoder
             .encode(&payload_batch)
             .context(EncodePayloads { region_id })?;
 

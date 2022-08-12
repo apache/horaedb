@@ -11,7 +11,7 @@ use snafu::ResultExt;
 use table_kv::TableKv;
 
 use crate::{
-    kv_encoder::WalEncoder,
+    kv_encoder::LogBatchEncoder,
     log_batch::LogWriteBatch,
     manager::{
         self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, WalManager,
@@ -148,7 +148,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         ))
     }
 
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<WalEncoder> {
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<LogBatchEncoder> {
         let min_sequence_num = self
             .namespace
             .alloc_sequence_num(region_id, entries_num)
@@ -156,7 +156,11 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .map_err(|e| Box::new(e) as _)
             .context(CreateWalEncoder)?;
 
-        Ok(WalEncoder::create_wal_encoder(region_id, min_sequence_num))
+        Ok(LogBatchEncoder::create(
+            region_id,
+            entries_num,
+            min_sequence_num,
+        ))
     }
 
     async fn write(

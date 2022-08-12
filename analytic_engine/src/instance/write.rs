@@ -37,13 +37,13 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to wal encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
         table,
         region_id,
         entries_num,
         source
     ))]
-    GetWalEncoder {
+    GetLogBatchEncoder {
         table: String,
         region_id: RegionId,
         entries_num: u64,
@@ -59,7 +59,7 @@ pub enum Error {
     EncodePayloads {
         table: String,
         region_id: RegionId,
-        source: wal::kv_encoder::Error,
+        source: wal::manager::Error,
     },
 
     #[snafu(display("Failed to write to wal, table:{}, err:{}", table, source))]
@@ -365,25 +365,25 @@ impl Instance {
         write_req_pb.set_schema(table_data.schema().into());
         write_req_pb.set_rows(encoded_rows.into());
 
-        // let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
-        // Now we only have one request, so no need to use with_capacity
+        // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
-        // log_batch.push(LogWriteEntry { payload: &payload });
         let region_id = table_data.wal_region_id();
-        let wal_encoder = self
+        let log_batch_encoeer = self
             .space_store
             .wal_manager
             .encoder(region_id, 1)
             .await
-            .context(GetWalEncoder {
+            .context(GetLogBatchEncoder {
                 table: &table_data.name,
                 region_id: table_data.wal_region_id(),
                 entries_num: 1u64,
             })?;
-        let log_batch = wal_encoder.encode(&[payload]).context(EncodePayloads {
-            table: &table_data.name,
-            region_id: table_data.wal_region_id(),
-        })?;
+        let log_batch = log_batch_encoeer
+            .encode(&[payload])
+            .context(EncodePayloads {
+                table: &table_data.name,
+                region_id: table_data.wal_region_id(),
+            })?;
 
         // Write to wal manager
         let write_ctx = WriteContext::default();

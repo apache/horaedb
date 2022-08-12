@@ -10,7 +10,7 @@ use common_util::runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
-    kv_encoder::WalEncoder,
+    kv_encoder::LogBatchEncoder,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     manager,
 };
@@ -267,7 +267,7 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<WalEncoder>;
+    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<LogBatchEncoder>;
 
     /// Write a batch of log entries to log.
     ///

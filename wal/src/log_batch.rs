@@ -86,12 +86,6 @@ impl LogWriteBatch {
     }
 }
 
-// impl Default for LogWriteBatch {
-//     fn default() -> Self {
-//         Self::new(0)
-//     }
-// }
-
 pub trait PayloadDecoder: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     type Target: Send + Sync;

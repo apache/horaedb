@@ -811,12 +811,6 @@ impl RegionWriter {
             let mut next_sequence_num = log_batch.min_sequence_num();
 
             for entry in &log_batch.entries {
-                // log_encoding
-                //     .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
-                //     .context(LogCodec)?;
-                // log_encoding
-                //     .encode_value(&mut value_buf, entry.payload)
-                //     .context(LogCodec)?;
                 let key_buf = &entry.payload.0;
                 let value_buf = &entry.payload.1;
                 wb.insert(key_buf, value_buf);

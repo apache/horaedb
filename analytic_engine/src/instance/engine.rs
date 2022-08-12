@@ -193,13 +193,13 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get to wal encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
         table,
         region_id,
         entries_num,
         source
     ))]
-    GetWalEncoder {
+    GetLogBatchEncoder {
         table: String,
         region_id: RegionId,
         entries_num: u64,
@@ -215,7 +215,7 @@ pub enum Error {
     EncodePayloads {
         table: String,
         region_id: RegionId,
-        source: wal::kv_encoder::Error,
+        source: wal::manager::Error,
     },
 }
 
@@ -245,7 +245,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OperateByWriteWorker { .. }
             | Error::FlushTable { .. }
             | Error::StoreVersionEdit { .. }
-            | Error::GetWalEncoder { .. }
+            | Error::GetLogBatchEncoder { .. }
             | Error::EncodePayloads { .. } => Self::Unexpected {
                 source: Box::new(err),
             },

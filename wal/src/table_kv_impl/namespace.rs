@@ -1346,7 +1346,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        kv_encoder::{LogEncoding, WalEncoder},
+        kv_encoder::{LogBatchEncoder, LogEncoding},
         log_batch::PayloadDecoder,
         table_kv_impl::consts,
         tests::util::{TestPayload, TestPayloadDecoder},
@@ -1734,7 +1734,8 @@ mod tests {
             .alloc_sequence_num(region_id, payload_batch.len() as u64)
             .await
             .expect("should succeed to allocate sequence number");
-        let wal_encoder = WalEncoder::create_wal_encoder(region_id, min_sequence_number);
+        let wal_encoder =
+            LogBatchEncoder::create(region_id, payload_batch.len() as u64, min_sequence_number);
         let log_batch = wal_encoder
             .encode(&payload_batch)
             .expect("should succeed to encode payload batch");
