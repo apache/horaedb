@@ -71,7 +71,7 @@ impl WalWriteBench {
                 NamespaceConfig::default(),
             )
             .await
-            .unwrap();
+            .expect("should succeed to open WalNamespaceImpl(Memory)");
 
             let values = self.build_value_vec();
             let payloads = values
