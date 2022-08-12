@@ -10,7 +10,7 @@ use crate::sst::file::SstMetaData;
 
 pub mod error {
     use common_util::define_result;
-    use snafu::Snafu;
+    use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub))]
@@ -25,9 +25,14 @@ pub mod error {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
 
-        #[snafu(display("Failed to encode record batch into sst, err:{}.", source,))]
+        #[snafu(display(
+            "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
+            source,
+            backtrace
+        ))]
         EncodeRecordBatch {
             source: Box<dyn std::error::Error + Send + Sync>,
+            backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to poll record batch, err:{}", source))]

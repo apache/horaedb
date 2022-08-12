@@ -176,6 +176,28 @@ impl DatumKind {
     pub fn into_u8(self) -> u8 {
         self as u8
     }
+
+    /// Return None for variable-length type
+    pub fn size(&self) -> Option<usize> {
+        let size = match self {
+            DatumKind::Null => 1,
+            DatumKind::Timestamp => 8,
+            DatumKind::Double => 8,
+            DatumKind::Float => 8,
+            DatumKind::Varbinary => return None,
+            DatumKind::String => return None,
+            DatumKind::UInt64 => 8,
+            DatumKind::UInt32 => 4,
+            DatumKind::UInt16 => 2,
+            DatumKind::UInt8 => 1,
+            DatumKind::Int64 => 8,
+            DatumKind::Int32 => 4,
+            DatumKind::Int16 => 8,
+            DatumKind::Int8 => 8,
+            DatumKind::Boolean => 1,
+        };
+        Some(size)
+    }
 }
 
 impl TryFrom<&SqlDataType> for DatumKind {
