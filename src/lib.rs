@@ -2,5 +2,6 @@
 
 //! ceresdb
 
+mod adapter;
 pub mod setup;
-mod signal_handler;
+pub(crate) mod signal_handler;

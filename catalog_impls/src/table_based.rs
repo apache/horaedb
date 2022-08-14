@@ -76,7 +76,6 @@ pub enum Error {
 define_result!(Error);
 
 /// Table based catalog manager
-#[derive(Clone)]
 pub struct TableBasedManager {
     /// Sys catalog table
     catalog_table: Arc<SysCatalogTable>,
