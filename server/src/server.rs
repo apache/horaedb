@@ -8,6 +8,7 @@ use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use grpcio::Environment;
+use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -72,6 +73,7 @@ pub struct Server<Q> {
     http_service: Service<Q>,
     rpc_services: RpcServices,
     mysql_service: mysql::MysqlService<Q>,
+    instance: InstanceRef<Q>,
     cluster: Option<ClusterRef>,
 }
 
@@ -96,7 +98,29 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
             cluster.start().await.context(StartCluster)?;
         }
 
+        self.create_default_schema_if_not_exists().await;
+
         Ok(())
+    }
+
+    async fn create_default_schema_if_not_exists(&self) {
+        let catalog_mgr = &self.instance.catalog_manager;
+        let default_catalog = catalog_mgr
+            .catalog_by_name(catalog_mgr.default_catalog_name())
+            .expect("Fail to retreive default catalog")
+            .expect("Default catalog doesn't exist");
+
+        if default_catalog
+            .schema_by_name(catalog_mgr.default_schema_name())
+            .expect("Fail to retreive default schema")
+            .is_none()
+        {
+            warn!("Deafult schema doesn't exist and create it");
+            default_catalog
+                .create_schema(catalog_mgr.default_schema_name())
+                .await
+                .expect("Fail to create default schema");
+        }
     }
 }
 
@@ -213,7 +237,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .meta_client_config(meta_client_config)
             .env(env)
             .runtimes(runtimes)
-            .instance(instance)
+            .instance(instance.clone())
             .route_rules(self.config.route_rules)
             .build()
             .context(BuildGrpcService)?;
@@ -222,6 +246,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             http_service,
             rpc_services,
             mysql_service,
+            instance,
             cluster: self.cluster,
         };
         Ok(server)

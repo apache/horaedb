@@ -86,33 +86,11 @@ where
 {
     async fn maybe_create_default_catalog(&mut self) {
         // Try to get default catalog, create it if not exists.
-        let catalog = match self.catalogs.get(consts::DEFAULT_CATALOG) {
-            Some(v) => v.clone(),
-            None => {
-                // Default catalog is not exists, create and store it.
-                self.create_catalog(consts::DEFAULT_CATALOG.to_string())
-                    .await
-            }
+        if self.catalogs.get(consts::DEFAULT_CATALOG).is_none() {
+            // Default catalog is not exists, create and store it.
+            self.create_catalog(consts::DEFAULT_CATALOG.to_string())
+                .await;
         };
-
-        // Create default schema if not exists.
-        if !catalog.schema_exists(consts::DEFAULT_SCHEMA) {
-            // Allocate schema id.
-            let schema_id = self
-                .schema_id_alloc
-                .alloc_schema_id(consts::DEFAULT_SCHEMA)
-                .await
-                .expect("Schema id of default catalog should be valid");
-
-            self.add_schema_to_catalog(
-                consts::DEFAULT_CATALOG.to_string(),
-                consts::DEFAULT_SCHEMA.to_string(),
-                schema_id,
-                self.table_id_alloc.clone(),
-                &*catalog,
-            )
-            .await;
-        }
     }
 
     async fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl<S, T>> {
@@ -126,26 +104,6 @@ where
         self.catalogs.insert(catalog_name, catalog.clone());
 
         catalog
-    }
-
-    async fn add_schema_to_catalog(
-        &mut self,
-        catalog_name: String,
-        schema_name: String,
-        schema_id: SchemaId,
-        table_id_alloc: Arc<T>,
-        catalog: &CatalogImpl<S, T>,
-    ) -> Arc<SchemaImpl<T>> {
-        let schema = Arc::new(SchemaImpl::new(
-            catalog_name,
-            schema_name,
-            schema_id,
-            table_id_alloc,
-        ));
-
-        catalog.add_schema(schema.clone());
-
-        schema
     }
 }
 
@@ -161,21 +119,6 @@ struct CatalogImpl<S, T> {
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
     schema_id_alloc: Arc<S>,
     table_id_alloc: Arc<T>,
-}
-
-impl<S, T> CatalogImpl<S, T>
-where
-    T: TableIdAlloc + 'static,
-{
-    fn add_schema(&self, schema: Arc<SchemaImpl<T>>) {
-        let mut schemas = self.schemas.write().unwrap();
-        schemas.insert(schema.name().to_string(), schema);
-    }
-
-    fn schema_exists(&self, schema_name: &str) -> bool {
-        let schemas = self.schemas.read().unwrap();
-        schemas.get(schema_name).is_some()
-    }
 }
 
 #[async_trait]
