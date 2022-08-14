@@ -49,10 +49,10 @@ jobs:
           path: |
             ~/.cargo
             ./target
-          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.toml') }}
+          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.toml') }}
-            rust-debug-${{ runner.os }}
+            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            rust-debug-${{ runner.os }}-
             rust-
       - name: Setup Build Environment
         run: |
@@ -88,10 +88,10 @@ jobs:
           path: |
             ~/.cargo
             ./target
-          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.toml') }}
+          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.toml') }}
-            rust-debug-${{ runner.os }}
+            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            rust-debug-${{ runner.os }}-
             rust-
       - name: Setup Build Environment
         run: |
