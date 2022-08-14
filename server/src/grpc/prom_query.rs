@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use ceresdbproto::{
+use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
     prometheus::{Label, PrometheusQueryRequest, PrometheusQueryResponse, Sample, TimeSeries},
 };

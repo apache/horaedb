@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use ceresdbproto::storage::{Endpoint, Route, RouteRequest};
+use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
 use log::info;
 use meta_client::{MetaClient, ShardId};
 use serde_derive::Deserialize;

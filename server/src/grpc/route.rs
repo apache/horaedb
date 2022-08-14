@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use ceresdbproto::storage::{RouteRequest, RouteResponse};
+use ceresdbproto_deps::ceresdbproto::storage::{RouteRequest, RouteResponse};
 
 use crate::{
     error::Result,

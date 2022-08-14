@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use ceresdbproto::storage::{
+use ceresdbproto_deps::ceresdbproto::storage::{
     Value_oneof_value, WriteEntry, WriteMetric, WriteRequest, WriteResponse,
 };
 use common_types::{

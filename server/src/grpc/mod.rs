@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::{consts as catalogConst, manager::ManagerRef};
-use ceresdbproto::{
+use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
     prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
     storage::{
@@ -507,8 +507,8 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
     fn stream_write(
         &mut self,
         ctx: RpcContext<'_>,
-        mut stream_req: RequestStream<ceresdbproto::storage::WriteRequest>,
-        sink: ClientStreamingSink<ceresdbproto::storage::WriteResponse>,
+        mut stream_req: RequestStream<WriteRequest>,
+        sink: ClientStreamingSink<WriteResponse>,
     ) {
         let begin_instant = Instant::now();
         let router = self.router.clone();
