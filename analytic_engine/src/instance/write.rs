@@ -30,7 +30,7 @@ use crate::{
     },
     memtable::{key::KeySequence, PutContext},
     payload::WritePayload,
-    space::SpaceAndTable,
+    space::{SpaceAndTable, SpaceRef},
     table::{
         data::{TableData, TableDataRef},
         version::MemTableForWrite,
@@ -139,6 +139,20 @@ impl EncodeContext {
     }
 }
 
+/// Policy of how to perform flush operation.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TableWritePolicy {
+    /// Unknown policy, this is the default value.
+    #[default]
+    Unknown,
+    /// A full write operation. Write to both memtable and WAL.
+    Full,
+    // TODO: use this policy and remove "allow(dead_code)"
+    /// Only write to memtable.
+    #[allow(dead_code)]
+    MemOnly,
+}
+
 impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -154,7 +168,9 @@ impl Instance {
         // Create a oneshot channel to send/receive write result.
         let (tx, rx) = oneshot::channel();
         let cmd = WriteTableCommand {
-            space_table: space_table.clone(),
+            // space_table: space_table.clone(),
+            space: space_table.space().clone(),
+            table_data: space_table.table_data().clone(),
             request,
             tx,
         };
@@ -175,15 +191,18 @@ impl Instance {
     pub(crate) async fn process_write_table_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
+        // space_table: &SpaceAndTable,
+        space: &SpaceRef,
+        table_data: &TableDataRef,
         request: WriteRequest,
+        policy: TableWritePolicy,
     ) -> Result<usize> {
         let mut encode_ctx = EncodeContext::new(request.row_group);
 
-        self.preprocess_write(worker_local, space_table, &mut encode_ctx)
+        self.preprocess_write(worker_local, space, table_data, &mut encode_ctx)
             .await?;
 
-        let table_data = space_table.table_data();
+        // let table_data = space_table.table_data();
         let schema = table_data.schema();
         encode_ctx.encode_rows(&schema)?;
 
@@ -206,8 +225,8 @@ impl Instance {
         )
         .map_err(|e| {
             error!(
-                "Failed to write to memtable, space_table:{:?}, err:{}",
-                space_table, e
+                "Failed to write to memtable, table:{}, table_id:{}, err:{}",
+                table_data.name, table_data.id, e
             );
             e
         })?;
@@ -215,16 +234,16 @@ impl Instance {
         // Failure of writing memtable may cause inconsecutive sequence.
         if table_data.last_sequence() + 1 != sequence {
             warn!(
-                "Sequence must be consecutive, space_table:{:?}, last_sequence:{}, wal_sequence:{}",
-                space_table,
+                "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
+                table_data.name,table_data.id,
                 table_data.last_sequence(),
                 sequence
             );
         }
 
         debug!(
-            "Instance write finished, update sequence, space_table:{:?}, last_sequence:{}",
-            space_table, sequence
+            "Instance write finished, update sequence, table:{}, table_id:{} last_sequence:{}",
+            table_data.name, table_data.id, sequence
         );
 
         table_data.set_last_sequence(sequence);
@@ -262,11 +281,14 @@ impl Instance {
     async fn preprocess_write(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
+        // space_table: &SpaceAndTable,
+        space: &SpaceRef,
+        table_data: &TableDataRef,
         encode_ctx: &mut EncodeContext,
     ) -> Result<()> {
-        let space = space_table.space();
-        let table_data = space_table.table_data();
+        // let space = space_table.space();
+        // let space = table_data.sp
+        // let table_data = space_table.table_data();
 
         ensure!(
             !table_data.is_dropped(),
@@ -275,7 +297,7 @@ impl Instance {
             }
         );
 
-        // Checks schema compability.
+        // Checks schema compatibility.
         table_data
             .schema()
             .compatible_for_write(
@@ -285,7 +307,7 @@ impl Instance {
             .context(IncompatSchema)?;
 
         // TODO(yingwen): Allow write and retry flush.
-        // Check background status, if background error occured, not allow to write
+        // Check background status, if background error occurred, not allow to write
         // again.
         match &*worker_local.background_status() {
             // Compaction error is ignored now.

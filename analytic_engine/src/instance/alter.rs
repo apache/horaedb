@@ -31,6 +31,20 @@ use crate::{
     table_options,
 };
 
+/// Policy of how to perform flush operation.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TableAlterSchemaPolicy {
+    /// Unknown flush policy, this is the default value.
+    #[default]
+    Unknown,
+    /// Perform Alter Schema operation.
+    Alter,
+    // TODO: use this policy and remove "allow(dead_code)"
+    /// Ignore this operation.
+    #[allow(dead_code)]
+    Noop,
+}
+
 impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
@@ -46,7 +60,8 @@ impl Instance {
         // Create a oneshot channel to send/receive alter schema result.
         let (tx, rx) = oneshot::channel();
         let cmd = AlterSchemaCommand {
-            space_table: space_table.clone(),
+            // space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             request,
             tx,
         };
@@ -71,10 +86,12 @@ impl Instance {
     pub(crate) async fn process_alter_schema_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
+        // space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         request: AlterSchemaRequest,
+        policy: TableAlterSchemaPolicy,
     ) -> Result<()> {
-        let table_data = space_table.table_data();
+        // let table_data = space_table.table_data();
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;
 
@@ -91,14 +108,14 @@ impl Instance {
         self.flush_table_in_worker(worker_local, table_data, opts)
             .await
             .context(FlushTable {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
 
         // Build alter op
         let manifest_update = AlterSchemaMeta {
-            space_id: space_table.space().id,
+            space_id: table_data.space_id,
             table_id: table_data.id,
             schema: request.schema.clone(),
             pre_schema_version: request.pre_schema_version,
@@ -107,7 +124,7 @@ impl Instance {
         // Write AlterSchema to Data Wal
         let alter_schema_pb = manifest_update.clone().into_pb();
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
-        let mut log_batch = LogWriteBatch::new(space_table.table_data().wal_region_id());
+        let mut log_batch = LogWriteBatch::new(table_data.wal_region_id());
         log_batch.push(LogWriteEntry { payload: &payload });
         let write_ctx = WriteContext::default();
         self.space_store
@@ -116,7 +133,7 @@ impl Instance {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(WriteWal {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
@@ -133,7 +150,7 @@ impl Instance {
             .store_update(update)
             .await
             .context(WriteManifest {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;

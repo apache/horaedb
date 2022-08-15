@@ -5,7 +5,7 @@
 //! The root mod only contains common functions of instance, other logics are
 //! divided into the sub crates
 
-mod alter;
+pub(crate) mod alter;
 mod close;
 mod create;
 mod drop;

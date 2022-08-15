@@ -2,19 +2,19 @@ use std::sync::{atomic::AtomicU8, Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
-use snafu::{ensure, Snafu};
-use table_engine::{
-    stream::PartitionedStreams,
-    table::{ReadRequest, WriteRequest},
-};
+use snafu::Snafu;
+use table_engine::table::{AlterSchemaRequest, WriteRequest};
 
 use crate::{
     instance::{
-        flush_compaction::{TableFlushOptions, TableFlushPolicy, TableFlushRequest},
-        write::EncodeContext,
-        write_worker::{BackgroundStatus, WorkerLocal},
+        alter::TableAlterSchemaPolicy,
+        flush_compaction::{TableFlushOptions, TableFlushPolicy},
+        write::TableWritePolicy,
+        write_worker::WorkerLocal,
+        Instance,
     },
-    table::data::{TableData, TableDataRef},
+    space::SpaceRef,
+    table::data::TableDataRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -35,9 +35,11 @@ pub trait RoleTable {
 
     async fn write(&self, request: WriteRequest) -> Result<usize>;
 
-    async fn read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
+    // async fn read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
 
     async fn flush(&self, flush_opts: TableFlushOptions) -> Result<()>;
+
+    async fn alter(&self) -> Result<()>;
 
     // async fn alter
 
@@ -69,53 +71,67 @@ struct LeaderTableInner {
     table_data: TableDataRef,
 }
 
+// todo: handle `Result`
 impl LeaderTableInner {
     const ROLE: u8 = TableRole::Leader as u8;
 
-    // this method is intend to be called by WriteWorker
-    async fn write(&self, request: WriteRequest) -> Result<usize> {
-        let mut encode_ctx = EncodeContext::new(request.row_group);
-
-        todo!()
-    }
-
-    async fn preprocess_write(
+    /// This method is expected to be called by [Instance]
+    async fn write(
         &self,
+        request: WriteRequest,
+        instance: &Arc<Instance>,
+        space: &SpaceRef,
         worker_local: &mut WorkerLocal,
-        encode_ctx: &mut EncodeContext,
-    ) -> Result<()> {
-        // Check schema compatibility
-        self.table_data
-            .schema()
-            .compatible_for_write(
-                encode_ctx.row_group.schema(),
-                &mut encode_ctx.index_in_writer,
+    ) -> Result<usize> {
+        let res = instance
+            .process_write_table_command(
+                worker_local,
+                space,
+                &self.table_data,
+                request,
+                TableWritePolicy::Full,
             )
+            .await
             .unwrap();
 
-        // TODO(yingwen): Allow write and retry flush.
-        // Check background status, if background error occured, not allow to write
-        // again.
-        match &*worker_local.background_status() {
-            // Compaction error is ignored now.
-            BackgroundStatus::Ok | BackgroundStatus::CompactionFailed(_) => (),
-            BackgroundStatus::FlushFailed(e) => {
-                // return BackgroundFlushFailed { msg: e.to_string() }.fail();
-                todo!()
-            }
-        }
-
-        todo!()
+        Ok(res)
     }
 
-    // this method is intend to be called by WriteWorker
-    async fn flush(&self, flush_opts: TableFlushOptions) -> Result<()> {
-        let flush_req = TableFlushRequest {
-            table_data: self.table_data.clone(),
-            max_sequence: self.table_data.last_sequence(),
-            policy: TableFlushPolicy::Dump,
-        };
+    /// This method is expected to be called by [Instance]
+    async fn flush(
+        &self,
+        mut flush_opts: TableFlushOptions,
+        instance: &Arc<Instance>,
+        worker_local: &mut WorkerLocal,
+    ) -> Result<()> {
+        // Leader Table will dump memtable to storage.
+        flush_opts.policy = TableFlushPolicy::Dump;
 
-        todo!("call flush_memtables")
+        let res = instance
+            .flush_table_in_worker(worker_local, &self.table_data, flush_opts)
+            .await
+            .unwrap();
+
+        Ok(res)
+    }
+
+    /// This method is expected to be called by [Instance]
+    async fn alter_schema(
+        &self,
+        instance: &Arc<Instance>,
+        worker_local: &mut WorkerLocal,
+        request: AlterSchemaRequest,
+    ) -> Result<()> {
+        let res = instance
+            .process_alter_schema_command(
+                worker_local,
+                &self.table_data,
+                request,
+                TableAlterSchemaPolicy::Alter,
+            )
+            .await
+            .unwrap();
+
+        Ok(res)
     }
 }

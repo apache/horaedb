@@ -28,6 +28,7 @@ use table_engine::{
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
 
+use super::alter::TableAlterSchemaPolicy;
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
@@ -288,7 +289,9 @@ impl WorkerLocal {
 
 /// Write table command.
 pub struct WriteTableCommand {
-    pub space_table: SpaceAndTable,
+    // pub space_table: SpaceAndTable,
+    pub space: SpaceRef,
+    pub table_data: TableDataRef,
     pub request: WriteRequest,
     /// Sender for the worker to return result of write
     pub tx: oneshot::Sender<write::Result<usize>>,
@@ -368,7 +371,8 @@ impl CreateTableCommand {
 
 /// Alter table command.
 pub struct AlterSchemaCommand {
-    pub space_table: SpaceAndTable,
+    // pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub request: AlterSchemaRequest,
     /// Sender for the worker to return result of alter schema
     pub tx: oneshot::Sender<write_worker::Result<()>>,
@@ -759,14 +763,21 @@ impl WriteWorker {
 
     async fn handle_write_table(&mut self, cmd: WriteTableCommand) {
         let WriteTableCommand {
-            space_table,
+            space,
+            table_data,
             request,
             tx,
         } = cmd;
 
         let write_res = self
             .instance
-            .process_write_table_command(&mut self.local, &space_table, request)
+            .process_write_table_command(
+                &mut self.local,
+                &space,
+                &table_data,
+                request,
+                write::TableWritePolicy::Unknown,
+            )
             .await;
         if let Err(res) = tx.send(write_res) {
             error!(
@@ -848,14 +859,19 @@ impl WriteWorker {
 
     async fn handle_alter_schema(&mut self, cmd: AlterSchemaCommand) {
         let AlterSchemaCommand {
-            space_table,
+            table_data,
             request,
             tx,
         } = cmd;
 
         let alter_res = self
             .instance
-            .process_alter_schema_command(&mut self.local, &space_table, request)
+            .process_alter_schema_command(
+                &mut self.local,
+                &table_data,
+                request,
+                TableAlterSchemaPolicy::Unknown,
+            )
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             .context(Channel);
