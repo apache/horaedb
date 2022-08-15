@@ -89,16 +89,17 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        self.mysql_service
-            .start()
-            .await
-            .context(StartMysqlService)?;
-        self.rpc_services.start().await.context(StartGrpcService)?;
         if let Some(cluster) = &self.cluster {
             cluster.start().await.context(StartCluster)?;
         }
 
         self.create_default_schema_if_not_exists().await;
+
+        self.mysql_service
+            .start()
+            .await
+            .context(StartMysqlService)?;
+        self.rpc_services.start().await.context(StartGrpcService)?;
 
         Ok(())
     }

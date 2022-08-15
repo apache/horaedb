@@ -102,6 +102,7 @@ pub struct ShardTables {
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
 pub struct NodeMetaInfo {
     pub addr: String,
     pub port: u16,
