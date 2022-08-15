@@ -113,7 +113,7 @@ pub struct NodeMetaInfo {
 
 impl NodeMetaInfo {
     pub fn endpoint(&self) -> String {
-        return format!("{}:{}", self.addr, self.port);
+        format!("{}:{}", self.addr, self.port)
     }
 }
 
