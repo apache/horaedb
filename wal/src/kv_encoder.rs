@@ -518,7 +518,8 @@ impl LogEncoding {
     }
 }
 
-/// Encoder which are used to encode specified and count payloads(Region and Count of Entry).
+/// LogBatchEncoder which are used to encode specify payloads(Region and Count
+/// of Entry).
 #[derive(Debug)]
 pub struct LogBatchEncoder {
     region_id: RegionId,
