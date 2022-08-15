@@ -884,7 +884,9 @@ fn try_get_data_type_from_value(value: &Value_oneof_value) -> Result<DatumKind> 
 
 #[cfg(test)]
 mod tests {
-    use ceresdbproto::storage::{Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric};
+    use ceresdbproto_deps::ceresdbproto::storage::{
+        Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
+    };
     use common_types::datum::DatumKind;
     use meta_client::SchemaConfig;
 

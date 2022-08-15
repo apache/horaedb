@@ -431,6 +431,7 @@ fn convert_proto_value_to_datum(
 
 #[cfg(test)]
 mod test {
+    use ceresdbproto_deps::ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
     use common_types::{
         column_schema::{self, ColumnSchema},
         schema::Builder,

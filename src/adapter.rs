@@ -19,10 +19,7 @@ pub struct SchemaIdAllocAdpater(pub MetaClientRef);
 impl SchemaIdAlloc for SchemaIdAllocAdpater {
     type Error = meta_client_v2::Error;
 
-    async fn alloc_schema_id<'a>(
-        &'a self,
-        schema_name: NameRef<'a>,
-    ) -> Result<SchemaId, Self::Error> {
+    async fn alloc_schema_id<'a>(&self, schema_name: NameRef<'a>) -> Result<SchemaId, Self::Error> {
         self.0
             .alloc_schema_id(cluster::AllocSchemaIdRequest {
                 name: schema_name.to_string(),
@@ -38,7 +35,7 @@ impl TableIdAlloc for TableIdAllocAdapter {
     type Error = meta_client_v2::Error;
 
     async fn alloc_table_id<'a>(
-        &'a self,
+        &self,
         schema_name: NameRef<'a>,
         table_name: NameRef<'a>,
     ) -> Result<TableId, Self::Error> {
@@ -52,7 +49,7 @@ impl TableIdAlloc for TableIdAllocAdapter {
     }
 
     async fn invalidate_table_id<'a>(
-        &'a self,
+        &self,
         schema_name: NameRef<'a>,
         table_name: NameRef<'a>,
         table_id: TableId,
