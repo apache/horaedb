@@ -204,7 +204,7 @@ impl Default for MetaClientConfig {
     fn default() -> Self {
         Self {
             cluster_name: String::new(),
-            meta_addr: "http://127.0.0.1:8080".to_string(),
+            meta_addr: "127.0.0.1:8080".to_string(),
             meta_members_url: "ceresmeta/members".to_string(),
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
