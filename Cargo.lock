@@ -116,9 +116,9 @@ checksum = "c91f1f46651137be86f3a2b9a8359f9ab421d04d941c62b5982e1ca21113adf9"
 
 [[package]]
 name = "arc-swap"
-version = "0.3.11"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc4662175ead9cd84451d5c35070517777949a2ed84551764129cedb88384841"
+checksum = "dabe5a181f83789739c194cbe5a897dde195078fac08568d09221fd6137a7ba8"
 
 [[package]]
 name = "arc-swap"
@@ -999,7 +999,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "slog",
- "slog-global 0.1.0 (git+https://github.com/breezewish/slog-global.git?rev=0e23a5baff302a9d7bccd85f8f31e43339c2f2c1)",
+ "slog-global",
  "snafu 0.6.10",
  "tempfile",
  "time 0.1.44",
@@ -2877,7 +2877,7 @@ dependencies = [
  "log",
  "slog",
  "slog-async",
- "slog-global 0.1.0 (git+https://github.com/breeswish/slog-global.git?rev=0e23a5baff302a9d7bccd85f8f31e43339c2f2c1)",
+ "slog-global",
  "slog-term",
  "slog_derive",
 ]
@@ -5019,20 +5019,9 @@ dependencies = [
 [[package]]
 name = "slog-global"
 version = "0.1.0"
-source = "git+https://github.com/breeswish/slog-global.git?rev=0e23a5baff302a9d7bccd85f8f31e43339c2f2c1#0e23a5baff302a9d7bccd85f8f31e43339c2f2c1"
+source = "git+https://github.com/tikv/slog-global.git?rev=d592f88e4dbba5eb439998463054f1a44fbf17b9#d592f88e4dbba5eb439998463054f1a44fbf17b9"
 dependencies = [
- "arc-swap 0.3.11",
- "lazy_static",
- "log",
- "slog",
-]
-
-[[package]]
-name = "slog-global"
-version = "0.1.0"
-source = "git+https://github.com/breezewish/slog-global.git?rev=0e23a5baff302a9d7bccd85f8f31e43339c2f2c1#0e23a5baff302a9d7bccd85f8f31e43339c2f2c1"
-dependencies = [
- "arc-swap 0.3.11",
+ "arc-swap 0.4.8",
  "lazy_static",
  "log",
  "slog",
