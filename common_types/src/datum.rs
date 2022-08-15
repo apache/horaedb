@@ -505,6 +505,12 @@ impl Datum {
             (DatumKind::String, Value::SingleQuotedString(s)) => {
                 Ok(Datum::String(StringBytes::from(s)))
             }
+            (DatumKind::Varbinary, Value::DoubleQuotedString(s)) => {
+                Ok(Datum::Varbinary(Bytes::from(s)))
+            }
+            (DatumKind::String, Value::DoubleQuotedString(s)) => {
+                Ok(Datum::String(StringBytes::from(s)))
+            }
             (DatumKind::UInt64, Value::Number(n, _long)) => {
                 let n = n.parse::<u64>().context(InvalidInt)?;
                 Ok(Datum::UInt64(n))

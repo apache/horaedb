@@ -6,6 +6,10 @@ INSERT INTO demo(t, name, value) VALUES(1651737067000, 'ceresdb', 100);
 
 affected_rows: 1
 
+INSERT INTO demo(t, name, value) VALUES(1651737067000, "ceresdb", 100);
+
+affected_rows: 1
+
 SELECT * FROM demo;
 
 t,tsid,name,value,
