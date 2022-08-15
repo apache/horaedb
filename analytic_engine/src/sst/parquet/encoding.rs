@@ -15,7 +15,6 @@ use common_types::{
     schema::{ArrowSchemaRef, Schema, StorageFormat},
 };
 use common_util::define_result;
-use log::info;
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -232,11 +231,6 @@ impl<W: Write> ParquetEncoder<W> {
             }
         };
 
-        info!(
-            "----------------arrow_schema:\n{:?},\nrecord_schema:{:?}",
-            self.arrow_schema,
-            record_batch.schema()
-        );
         self.writer
             .write(&record_batch)
             .map_err(|e| Box::new(e) as _)

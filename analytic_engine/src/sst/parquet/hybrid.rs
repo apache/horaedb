@@ -1,10 +1,14 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use arrow_deps::arrow::{
     array::{Array, ArrayData, ArrayRef, ListArray, StringArray, UInt64Array},
+    bitmap::Bitmap,
     buffer::MutableBuffer,
     datatypes::Schema as ArrowSchema,
     record_batch::RecordBatch as ArrowRecordBatch,
+    util::bit_util,
 };
 use common_types::{
     datum::DatumKind,
@@ -49,8 +53,12 @@ impl ArrayHandle {
     }
 
     // Note: this require primitive array
-    fn buffer_slice(&self) -> &[u8] {
+    fn data_slice(&self) -> &[u8] {
         self.array.data().buffers()[0].as_slice()
+    }
+
+    fn null_bitmap(&self) -> Option<&Bitmap> {
+        self.array.data().null_bitmap()
     }
 }
 
@@ -149,13 +157,28 @@ fn merge_array_vec_to_list(
     let total_value_num = list_of_arrays.iter().map(|handle| handle.len()).sum();
     let value_total_bytes = total_value_num * data_type_size;
     let mut values = MutableBuffer::new(value_total_bytes);
+    let mut null_buffer = MutableBuffer::new_null(total_value_num);
+    let null_slice = null_buffer.as_slice_mut();
     let mut offsets = MutableBuffer::new(list_of_arrays.len() * std::mem::size_of::<i32>());
     let mut length_so_far: i32 = 0;
     offsets.push(length_so_far);
 
     for array_handle in list_of_arrays {
-        let shared_buffer = array_handle.buffer_slice();
+        let shared_buffer = array_handle.data_slice();
+        let null_bitmap = array_handle.null_bitmap();
+
         for (offset, length) in &array_handle.positions {
+            if let Some(bitmap) = null_bitmap {
+                for i in 0..*length {
+                    if bitmap.is_set(i + *offset) {
+                        bit_util::set_bit(null_slice, length_so_far as usize + i);
+                    }
+                }
+            } else {
+                for i in 0..*length {
+                    bit_util::set_bit(null_slice, length_so_far as usize + i);
+                }
+            }
             length_so_far += *length as i32;
             values.extend_from_slice(
                 &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
@@ -172,6 +195,7 @@ fn merge_array_vec_to_list(
     let values_array_data = ArrayData::builder(data_type.clone())
         .len(total_value_num)
         .add_buffer(values.into())
+        .null_bit_buffer(Some(null_buffer.into()))
         .build()
         .map_err(|e| Box::new(e) as _)
         .context(EncodeRecordBatch)?;
@@ -380,7 +404,7 @@ pub fn convert_to_hybrid(
 mod tests {
     use arrow_deps::arrow::{
         array::{TimestampMillisecondArray, UInt16Array},
-        datatypes::{TimeUnit, TimestampMillisecondType},
+        datatypes::{TimeUnit, TimestampMillisecondType, UInt16Type},
     };
 
     use super::*;
@@ -403,8 +427,8 @@ mod tests {
         ];
 
         let data = vec![
-            Some(vec![Some(1), Some(2), Some(10), Some(11), Some(12)]),
-            Some(vec![Some(100), Some(101), Some(110), Some(111), Some(112)]),
+            Some(vec![Some(2), Some(3), Some(11), Some(12), Some(13)]),
+            Some(vec![Some(101), Some(102), Some(110), Some(111), Some(112)]),
         ];
         let expected = ListArray::from_iter_primitive::<TimestampMillisecondType, _, _>(data);
         let list_array = merge_array_vec_to_list(
@@ -413,8 +437,7 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: null bitmaps is not equals now
-        assert_eq!(list_array.data().buffers(), expected.data().buffers());
+        assert_eq!(list_array, expected);
     }
 
     #[test]
@@ -433,10 +456,9 @@ mod tests {
         )];
 
         let data = vec![Some(vec![Some(2), None, Some(3), Some(4)])];
-        let expected = ListArray::from_iter_primitive::<TimestampMillisecondType, _, _>(data);
+        let expected = ListArray::from_iter_primitive::<UInt16Type, _, _>(data);
         let list_array = merge_array_vec_to_list(DataType::UInt16, list_of_arrays).unwrap();
 
-        // TODO: null bitmaps is not equals now
-        assert_eq!(list_array.data().buffers(), expected.data().buffers());
+        assert_eq!(list_array, expected);
     }
 }
