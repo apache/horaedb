@@ -18,8 +18,8 @@ rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
 git = "https://github.com/waynexia/arrow-datafusion.git"
-rev = "d8184e71589e95b27db0e2c0ce0a8c51a6564c7a"
+rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"
 
 [dependencies.datafusion-expr]
 git = "https://github.com/waynexia/arrow-datafusion.git"
-rev = "d8184e71589e95b27db0e2c0ce0a8c51a6564c7a"
+rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"
