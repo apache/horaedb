@@ -96,7 +96,7 @@ impl Inner {
 
     fn request_header(&self) -> RequestHeader {
         RequestHeader {
-            node: self.node_meta_info.node.to_string(),
+            node: self.node_meta_info.endpoint(),
             cluster_name: self.meta_config.cluster_name.clone(),
         }
     }

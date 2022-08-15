@@ -101,24 +101,19 @@ pub struct ShardTables {
     pub tables: Vec<TableInfo>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Node {
-    pub addr: String,
-    pub port: u16,
-}
-
-impl ToString for Node {
-    fn to_string(&self) -> String {
-        format!("{}:{}", self.addr, self.port)
-    }
-}
-
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct NodeMetaInfo {
-    pub node: Node,
+    pub addr: String,
+    pub port: u16,
     pub zone: String,
     pub idc: String,
     pub binary_version: String,
+}
+
+impl NodeMetaInfo {
+    pub fn endpoint(&self) -> String {
+        return format!("{}:{}", self.addr, self.addr);
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -221,7 +216,7 @@ impl Default for MetaClientConfig {
 impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
         let mut pb_node_info = meta_service::NodeInfo::new();
-        pb_node_info.set_node(node_info.node_meta_info.node.to_string());
+        pb_node_info.set_node(node_info.node_meta_info.endpoint());
         pb_node_info.set_zone(node_info.node_meta_info.zone);
         pb_node_info.set_binary_version(node_info.node_meta_info.binary_version);
         pb_node_info.set_shardsInfo(protobuf::RepeatedField::from_vec(
