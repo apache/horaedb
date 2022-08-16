@@ -497,7 +497,7 @@ fn check_response_header(header: &ResponseHeader) -> Result<()> {
     } else {
         MetaRpc {
             code: header.code,
-            msg: header.get_error().clone(),
+            msg: header.get_error(),
         }
         .fail()
     }

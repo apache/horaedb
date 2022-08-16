@@ -638,7 +638,7 @@ impl SchemaImpl {
                 table: name,
             })?;
 
-        TableId::new(self.schema_id, table_seq)
+        TableId::with_seq(self.schema_id, table_seq)
             .context(InvalidSchemaIdAndTableSeq {
                 schema_id: self.schema_id,
                 table_seq,

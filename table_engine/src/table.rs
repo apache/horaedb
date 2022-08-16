@@ -232,14 +232,14 @@ impl TableId {
     pub const MIN: TableId = TableId(0);
 
     /// Create table id from raw u64 number.
-    pub const fn from_raw(id: u64) -> Self {
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
     /// Create a new table id from `schema_id` and `table_seq`.
     ///
     /// Return `None` If `schema_id` is not invalid.
-    pub const fn new(schema_id: SchemaId, table_seq: TableSeq) -> Option<Self> {
+    pub const fn with_seq(schema_id: SchemaId, table_seq: TableSeq) -> Option<Self> {
         let schema_id_data = schema_id.0 as u64;
         let schema_id_part = schema_id_data << TableSeq::BITS;
         if (schema_id_part >> TableSeq::BITS) != schema_id_data {

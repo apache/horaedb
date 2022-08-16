@@ -726,7 +726,7 @@ mod tests {
         }
 
         fn alloc_table_id(&self) -> TableId {
-            TableId::new(
+            TableId::with_seq(
                 self.schema_id,
                 self.table_seq_gen.alloc_table_seq().unwrap(),
             )

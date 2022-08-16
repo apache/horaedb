@@ -25,7 +25,7 @@ use table_engine::{
 use crate::{table_options, tests::row_util};
 
 pub fn new_table_id(schema_id: u16, table_seq: u32) -> TableId {
-    TableId::new(SchemaId::from(schema_id), TableSeq::from(table_seq)).unwrap()
+    TableId::with_seq(SchemaId::from(schema_id), TableSeq::from(table_seq)).unwrap()
 }
 
 pub type RowTuple<'a> = (&'a str, Timestamp, &'a str, f64, f64, &'a str);
