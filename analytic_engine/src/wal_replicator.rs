@@ -97,7 +97,7 @@ impl Default for WalReplicatorConfig {
 ///             to table
 /// ```
 pub struct WalReplicator {
-    inner: Arc<WalReplicatorInner>,
+    inner: Arc<Inner>,
     stop_sender: Sender<()>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
     stop_receiver: Option<Receiver<()>>,
@@ -106,7 +106,7 @@ pub struct WalReplicator {
 impl WalReplicator {
     pub fn new(config: WalReplicatorConfig, wal: WalManagerRef) -> Self {
         let (tx, rx) = mpsc::channel(1);
-        let inner = WalReplicatorInner {
+        let inner = Inner {
             wal,
             config,
             tables: RwLock::default(),
@@ -146,13 +146,13 @@ impl WalReplicator {
     }
 }
 
-pub struct WalReplicatorInner {
+pub struct Inner {
     wal: WalManagerRef,
     config: WalReplicatorConfig,
     tables: RwLock<BTreeMap<RegionId, ReplicateState>>,
 }
 
-impl WalReplicatorInner {
+impl Inner {
     #[allow(dead_code)]
     pub async fn register_table(&self, region_id: RegionId, table: ReaderTable) {
         let state = ReplicateState {
@@ -209,7 +209,7 @@ impl WalReplicatorInner {
                 }
 
                 // read logs from iterator
-                if let Err(e) = self.consume_iter(&mut iter, state).await {
+                if let Err(e) = self.consume_logs(&mut iter, state).await {
                     error!("Failed to consume WAL, error: {:?}", e);
                 }
             }
@@ -227,7 +227,7 @@ impl WalReplicatorInner {
         }
     }
 
-    async fn consume_iter(
+    async fn consume_logs(
         &self,
         iter: &mut BatchLogIteratorAdapter,
         replicate_state: &ReplicateState,
@@ -253,7 +253,7 @@ impl WalReplicatorInner {
                     .unwrap_or(SequenceNumber::MIN),
             );
 
-            self.replay_log(&mut buf, replicate_state).await?;
+            self.replay_logs(&mut buf, replicate_state).await?;
         }
 
         // update sequence number in state
@@ -264,12 +264,12 @@ impl WalReplicatorInner {
         Ok(())
     }
 
-    async fn replay_log(
+    async fn replay_logs(
         &self,
-        log: &mut VecDeque<LogEntry<ReadPayload>>,
+        logs: &mut VecDeque<LogEntry<ReadPayload>>,
         replicate_state: &ReplicateState,
     ) -> Result<()> {
-        for entry in log.drain(..) {
+        for entry in logs.drain(..) {
             match entry.payload {
                 ReadPayload::Write { row_group } => {
                     let write_req = WriteRequest { row_group };
