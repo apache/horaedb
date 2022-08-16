@@ -258,7 +258,7 @@ impl TableId {
 
 impl From<u64> for TableId {
     fn from(id: u64) -> TableId {
-        TableId(id)
+        TableId::new(id)
     }
 }
 
