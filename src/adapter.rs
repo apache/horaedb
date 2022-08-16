@@ -13,10 +13,10 @@ use table_engine::{
     ANALYTIC_ENGINE_TYPE,
 };
 
-pub struct SchemaIdAllocAdpater(pub MetaClientRef);
+pub struct SchemaIdAllocAdapter(pub MetaClientRef);
 
 #[async_trait]
-impl SchemaIdAlloc for SchemaIdAllocAdpater {
+impl SchemaIdAlloc for SchemaIdAllocAdapter {
     type Error = meta_client_v2::Error;
 
     async fn alloc_schema_id<'a>(&self, schema_name: NameRef<'a>) -> Result<SchemaId, Self::Error> {

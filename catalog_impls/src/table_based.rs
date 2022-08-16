@@ -12,10 +12,10 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable, CreateOptions,
-        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest,
-        InvalidSchemaIdAndTableSeq, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch,
-        SchemaRef, TooManyTable, WriteTableMeta,
+        self, AllocateTableId, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable,
+        CreateOptions, CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest,
+        NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
+        WriteTableMeta,
     },
     Catalog, CatalogRef,
 };
@@ -70,6 +70,18 @@ pub enum Error {
         catalog: String,
         schema: String,
         source: system_catalog::sys_catalog_table::Error,
+    },
+
+    #[snafu(display(
+        "Invalid schema id and table seq, schema_id:{:?}, table_seq:{:?}.\nBacktrace:\n{}",
+        schema_id,
+        table_seq,
+        backtrace,
+    ))]
+    InvalidSchemaIdAndTableSeq {
+        schema_id: SchemaId,
+        table_seq: TableSeq,
+        backtrace: Backtrace,
     },
 }
 
@@ -617,7 +629,7 @@ impl SchemaImpl {
             .cloned()
     }
 
-    async fn alloc_table_id<'a>(&'a self, name: NameRef<'a>) -> schema::Result<TableId> {
+    async fn alloc_table_id<'a>(&self, name: NameRef<'a>) -> schema::Result<TableId> {
         let table_seq = self
             .table_seq_generator
             .alloc_table_seq()
@@ -626,10 +638,16 @@ impl SchemaImpl {
                 table: name,
             })?;
 
-        TableId::new(self.schema_id, table_seq).context(InvalidSchemaIdAndTableSeq {
-            schema_id: self.schema_id,
-            table_seq,
-        })
+        TableId::new(self.schema_id, table_seq)
+            .context(InvalidSchemaIdAndTableSeq {
+                schema_id: self.schema_id,
+                table_seq,
+            })
+            .map_err(|e| Box::new(e) as _)
+            .context(AllocateTableId {
+                schema: &self.schema_name,
+                table: name,
+            })
     }
 }
 

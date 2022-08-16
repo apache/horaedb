@@ -84,7 +84,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.mysql_service.shutdown();
 
         if let Some(cluster) = &self.cluster {
-            cluster.stop().await.unwrap();
+            cluster.stop().await.expect("fail to stop cluster");
         }
     }
 
@@ -183,7 +183,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
     pub fn cluster(mut self, cluster: ClusterRef) -> Self {
         self.cluster = Some(cluster);
-
         self
     }
 

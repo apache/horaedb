@@ -28,7 +28,7 @@ use tracing_util::{
 };
 
 use crate::{
-    adapter::{SchemaIdAllocAdpater, TableIdAllocAdapter, TableManipulatorImpl},
+    adapter::{SchemaIdAllocAdapter, TableIdAllocAdapter, TableManipulatorImpl},
     signal_handler,
 };
 
@@ -155,7 +155,7 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     .unwrap();
 
     let catalog_manager = {
-        let schema_id_alloc = SchemaIdAllocAdpater(meta_client.clone());
+        let schema_id_alloc = SchemaIdAllocAdapter(meta_client.clone());
         let table_id_alloc = TableIdAllocAdapter(meta_client.clone());
         Arc::new(volatile::ManagerImpl::new(schema_id_alloc, table_id_alloc).await)
     };

@@ -9,7 +9,7 @@ use common_types::column_schema::ColumnSchema;
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},
-    table::{SchemaId, TableId, TableRef, TableSeq},
+    table::{SchemaId, TableId, TableRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -126,18 +126,6 @@ pub enum Error {
     TooManyTable {
         schema: String,
         table: String,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Invalid schema id and table seq, schema_id:{:?}, table_seq:{:?}.\nBacktrace:\n{}",
-        schema_id,
-        table_seq,
-        backtrace,
-    ))]
-    InvalidSchemaIdAndTableSeq {
-        schema_id: SchemaId,
-        table_seq: TableSeq,
         backtrace: Backtrace,
     },
 }
