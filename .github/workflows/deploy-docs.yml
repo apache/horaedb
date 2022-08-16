@@ -1,4 +1,4 @@
-name: Deploy Use Guide
+name: Deploy Documentation
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'docs/user-guide/**'
+      - 'docs/guides/**'
 
 env:
   MDBOOK_VERSION: v0.4.20
@@ -25,7 +25,7 @@ jobs:
         echo `pwd`/mdbook >> $GITHUB_PATH
     - name: Deploy GitHub Pages
       run: |
-        cd docs/user-guide
+        cd docs/guides
         mdbook build
         git worktree add gh-pages gh-pages
         git config user.name "Deploy from CI"
