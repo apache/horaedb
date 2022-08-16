@@ -61,7 +61,6 @@ impl TableIdAlloc for TableIdAllocAdapter {
                 id: table_id.as_u64(),
             })
             .await
-            .map(|_| ())
     }
 }
 

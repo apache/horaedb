@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use ceresdbproto_deps::ceresdbproto::{
     cluster::ShardRole as PbShardRole,
-    common::ResponseHeader as PbResponseHeader,
     meta_service::{self, NodeHeartbeatResponse_oneof_cmd},
 };
 use common_util::config::ReadableDuration;
@@ -20,19 +19,6 @@ pub struct RequestHeader {
     pub cluster_name: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ResponseHeader {
-    pub code: u32,
-    pub err_msg: String,
-}
-
-impl ResponseHeader {
-    #[inline]
-    pub fn is_success(&self) -> bool {
-        self.code == 0
-    }
-}
-
 #[derive(Debug)]
 pub struct AllocSchemaIdRequest {
     pub name: String,
@@ -40,8 +26,6 @@ pub struct AllocSchemaIdRequest {
 
 #[derive(Debug)]
 pub struct AllocSchemaIdResponse {
-    pub header: ResponseHeader,
-
     pub name: String,
     pub id: SchemaId,
 }
@@ -54,8 +38,6 @@ pub struct AllocTableIdRequest {
 
 #[derive(Debug)]
 pub struct AllocTableIdResponse {
-    pub header: ResponseHeader,
-
     pub schema_name: String,
     pub name: String,
     pub shard_id: ShardId,
@@ -70,11 +52,6 @@ pub struct DropTableRequest {
     pub id: TableId,
 }
 
-#[derive(Debug)]
-pub struct DropTableResponse {
-    pub header: ResponseHeader,
-}
-
 #[derive(Clone, Debug)]
 pub struct GetTablesRequest {
     pub shard_ids: Vec<ShardId>,
@@ -82,8 +59,6 @@ pub struct GetTablesRequest {
 
 #[derive(Clone, Debug)]
 pub struct GetTablesResponse {
-    pub header: ResponseHeader,
-
     pub tables_map: HashMap<ShardId, ShardTables>,
 }
 
@@ -125,8 +100,6 @@ pub struct NodeInfo {
 
 #[derive(Debug)]
 pub struct NodeHeartbeatResponse {
-    pub header: ResponseHeader,
-
     pub timestamp: u64,
     pub action_cmd: Option<ActionCmd>,
 }
@@ -259,10 +232,9 @@ impl From<PbShardRole> for ShardRole {
 }
 
 impl From<meta_service::NodeHeartbeatResponse> for NodeHeartbeatResponse {
-    fn from(mut pb: meta_service::NodeHeartbeatResponse) -> Self {
+    fn from(pb: meta_service::NodeHeartbeatResponse) -> Self {
         let timestamp = pb.get_timestamp();
         NodeHeartbeatResponse {
-            header: pb.take_header().into(),
             timestamp,
             action_cmd: pb.cmd.map(|v| v.into()),
         }
@@ -328,7 +300,6 @@ impl From<GetTablesRequest> for meta_service::GetTablesRequest {
 impl From<meta_service::GetTablesResponse> for GetTablesResponse {
     fn from(mut pb: meta_service::GetTablesResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
             tables_map: pb
                 .take_tables_map()
                 .into_iter()
@@ -367,15 +338,6 @@ impl From<RequestHeader> for meta_service::RequestHeader {
     }
 }
 
-impl From<PbResponseHeader> for ResponseHeader {
-    fn from(mut pb: PbResponseHeader) -> Self {
-        Self {
-            code: pb.get_code(),
-            err_msg: pb.take_error(),
-        }
-    }
-}
-
 impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
     fn from(req: AllocSchemaIdRequest) -> Self {
         let mut pb = meta_service::AllocSchemaIdRequest::new();
@@ -387,7 +349,6 @@ impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
 impl From<meta_service::AllocSchemaIdResponse> for AllocSchemaIdResponse {
     fn from(mut pb: meta_service::AllocSchemaIdResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
             name: pb.take_name(),
             id: pb.get_id(),
         }
@@ -406,7 +367,6 @@ impl From<AllocTableIdRequest> for meta_service::AllocTableIdRequest {
 impl From<meta_service::AllocTableIdResponse> for AllocTableIdResponse {
     fn from(mut pb: meta_service::AllocTableIdResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
             schema_name: pb.take_schema_name(),
             name: pb.take_name(),
             shard_id: pb.get_shard_id(),
@@ -423,13 +383,5 @@ impl From<DropTableRequest> for meta_service::DropTableRequest {
         pb.set_name(req.name);
         pb.set_id(req.id);
         pb
-    }
-}
-
-impl From<meta_service::DropTableResponse> for DropTableResponse {
-    fn from(mut pb: meta_service::DropTableResponse) -> Self {
-        Self {
-            header: pb.take_header().into(),
-        }
     }
 }

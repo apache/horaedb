@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use common_util::define_result;
 pub use meta_client_v2::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
-    DropTableRequest, DropTableResponse, GetTablesRequest,
+    DropTableRequest, GetTablesRequest,
 };
 use meta_client_v2::types::{ShardId, TableId};
 use snafu::{Backtrace, Snafu};
