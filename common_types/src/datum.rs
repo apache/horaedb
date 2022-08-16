@@ -777,6 +777,26 @@ pub mod arrow_convert {
                 | DataType::Map(_, _) => None,
             }
         }
+
+        pub fn to_arrow_data_type(&self) -> DataType {
+            match self {
+                DatumKind::Null => DataType::Null,
+                DatumKind::Timestamp => DataType::Timestamp(TimeUnit::Millisecond, None),
+                DatumKind::Double => DataType::Float64,
+                DatumKind::Float => DataType::Float32,
+                DatumKind::Varbinary => DataType::Binary,
+                DatumKind::String => DataType::Utf8,
+                DatumKind::UInt64 => DataType::UInt64,
+                DatumKind::UInt32 => DataType::UInt32,
+                DatumKind::UInt16 => DataType::UInt16,
+                DatumKind::UInt8 => DataType::UInt8,
+                DatumKind::Int64 => DataType::Int64,
+                DatumKind::Int32 => DataType::Int32,
+                DatumKind::Int16 => DataType::Int16,
+                DatumKind::Int8 => DataType::Int8,
+                DatumKind::Boolean => DataType::Boolean,
+            }
+        }
     }
 
     impl Datum {

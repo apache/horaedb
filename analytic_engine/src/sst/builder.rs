@@ -45,16 +45,6 @@ pub mod error {
             backtrace: Backtrace,
         },
 
-        #[snafu(display(
-            "Not suppored arrow type. type:{}.\nBacktrace:\n{}",
-            type_str,
-            backtrace
-        ))]
-        NotSupportedArrowType {
-            type_str: String,
-            backtrace: Backtrace,
-        },
-
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch {
             source: Box<dyn std::error::Error + Send + Sync>,

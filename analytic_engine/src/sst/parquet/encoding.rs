@@ -112,6 +112,9 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Tsid is required for hybrid format.\nBacktrace:\n{}", backtrace))]
+    TsidRequired { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -174,7 +177,8 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
 pub struct ParquetEncoder<W: Write> {
     writer: ArrowWriter<W>,
     format: StorageFormat,
-    arrow_schema: ArrowSchemaRef,
+    origin_arrow_schema: ArrowSchemaRef,
+    hybrid_arrow_schema: Option<ArrowSchemaRef>,
     schema: Schema,
 }
 
@@ -190,18 +194,29 @@ impl<W: Write> ParquetEncoder<W> {
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
-        let format = meta_data.schema.storage_format();
+        let mut format = meta_data.schema.storage_format();
+        // TODO: remove this overwrite when we can set format via table options
+        if matches!(format, StorageFormat::Hybrid) && meta_data.schema.index_of_tsid().is_none() {
+            format = StorageFormat::Columnar;
+        }
+        let mut hybrid_arrow_schema = None;
         let arrow_schema = match format {
-            StorageFormat::Hybrid => hybrid::build_hybrid_arrow_schema(&meta_data.schema),
+            StorageFormat::Hybrid => {
+                let tsid_idx = meta_data.schema.index_of_tsid().context(TsidRequired)?;
+                let schema = hybrid::build_hybrid_arrow_schema(tsid_idx, &meta_data.schema);
+                hybrid_arrow_schema = Some(schema.clone());
+                schema
+            }
             StorageFormat::Columnar => meta_data.schema.as_arrow_schema_ref().clone(),
         };
-        let writer = ArrowWriter::try_new(writer, arrow_schema.clone(), Some(write_props))
+        let writer = ArrowWriter::try_new(writer, arrow_schema, Some(write_props))
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
         Ok(ParquetEncoder {
             writer,
             format,
-            arrow_schema,
+            origin_arrow_schema: meta_data.schema.as_arrow_schema_ref().clone(),
+            hybrid_arrow_schema,
             schema: meta_data.schema.clone(),
         })
     }
@@ -219,13 +234,14 @@ impl<W: Write> ParquetEncoder<W> {
         let record_batch = match self.format {
             StorageFormat::Hybrid => hybrid::convert_to_hybrid(
                 &self.schema,
-                self.arrow_schema.clone(),
+                self.hybrid_arrow_schema.clone().unwrap(),
+                self.schema.index_of_tsid().expect("checked in try_new"),
                 arrow_record_batch_vec,
             )
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?,
             StorageFormat::Columnar => {
-                ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+                ArrowRecordBatch::concat(&self.origin_arrow_schema, &arrow_record_batch_vec)
                     .map_err(|e| Box::new(e) as _)
                     .context(EncodeRecordBatch)?
             }
