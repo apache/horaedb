@@ -27,9 +27,13 @@
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
 
+# Dev Guide
+- [Supported Platform](dev/platform.md)
+- [Style guide](dev/style_guide.md)
+- [Roadmap](dev/roadmap.md)
+
 # Technical and Design
 - [Architecture](architecture.md)
-
 
 -----
 
