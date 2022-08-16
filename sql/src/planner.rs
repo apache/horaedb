@@ -868,7 +868,7 @@ mod tests {
     InsertPlan {
         table: MemoryTable {
             name: "test_table",
-            id: TableId(100, 0, 100),
+            id: TableId(100),
             schema: Schema {
                 num_key_columns: 2,
                 timestamp_index: 1,
@@ -1044,7 +1044,7 @@ mod tests {
     DescribeTablePlan {
         table: MemoryTable {
             name: "test_table",
-            id: TableId(100, 0, 100),
+            id: TableId(100),
             schema: Schema {
                 num_key_columns: 2,
                 timestamp_index: 1,
@@ -1111,7 +1111,7 @@ mod tests {
     AlterTablePlan {
         table: MemoryTable {
             name: "test_table",
-            id: TableId(100, 0, 100),
+            id: TableId(100),
             schema: Schema {
                 num_key_columns: 2,
                 timestamp_index: 1,
@@ -1191,7 +1191,7 @@ mod tests {
     AlterTablePlan {
         table: MemoryTable {
             name: "test_table",
-            id: TableId(100, 0, 100),
+            id: TableId(100),
             schema: Schema {
                 num_key_columns: 2,
                 timestamp_index: 1,
@@ -1264,7 +1264,7 @@ mod tests {
         ShowCreatePlan {
             table: MemoryTable {
                 name: "test_table",
-                id: TableId(100, 0, 100),
+                id: TableId(100),
                 schema: Schema {
                     num_key_columns: 2,
                     timestamp_index: 1,
