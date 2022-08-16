@@ -28,9 +28,10 @@
 - [Protocol](protocol.md)
 
 # Dev Guide
-- [Style guide](dev/style_guide.md)
 - [Supported Platform](dev/platform.md)
+- [Compile and Running](dev/compile_run.md)
 - [Conventional Commit](dev/conventional_commit.md)
+- [Style guide](dev/style_guide.md)
 - [Roadmap](dev/roadmap.md)
 
 # Technical and Design
