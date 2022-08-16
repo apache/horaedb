@@ -53,10 +53,7 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
         .thread_name(name)
         .enable_all()
         .build()
-        .unwrap_or_else(|e| {
-            //TODO(yingwen) replace panic with fatal
-            panic!("Failed to create runtime, err:{}", e);
-        })
+        .expect("Failed to create runtime")
 }
 
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
@@ -97,9 +94,7 @@ where
     let analytic = analytic_engine_builder
         .build(analytic_config, runtimes.clone())
         .await
-        .unwrap_or_else(|e| {
-            panic!("Failed to setup analytic engine, err:{}", e);
-        });
+        .expect("Failed to setup analytic engine");
 
     // Create table engine proxy
     let engine_proxy = Arc::new(TableEngineProxy {
@@ -109,9 +104,9 @@ where
 
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
-    function_registry.load_functions().unwrap_or_else(|e| {
-        panic!("Failed to create function registry, err:{}", e);
-    });
+    function_registry
+        .load_functions()
+        .expect("Failed to create function registry");
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
@@ -152,7 +147,7 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         config.cluster.node.clone(),
         runtimes.meta_runtime.clone(),
     )
-    .unwrap();
+    .expect("fail to build meta client");
 
     let catalog_manager = {
         let schema_id_alloc = SchemaIdAllocAdapter(meta_client.clone());
@@ -185,9 +180,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
 ) -> Builder<Q> {
     let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
         .await
-        .unwrap_or_else(|e| {
-            panic!("Failed to create catalog manager, err:{}", e);
-        });
+        .expect("Failed to create catalog manager");
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));

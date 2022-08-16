@@ -900,9 +900,7 @@ mod tests {
         // Create catalog manager, use analytic table as backend
         TableBasedManager::new(analytic.clone(), engine_proxy.clone())
             .await
-            .unwrap_or_else(|e| {
-                panic!("Failed to create catalog manager, err:{}", e);
-            })
+            .expect("Failed to create catalog manager")
     }
 
     async fn build_default_schema_with_catalog(catalog_manager: &TableBasedManager) -> SchemaRef {

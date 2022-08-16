@@ -25,9 +25,7 @@ async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
     // Create catalog manager, use analytic table as backend
     TableBasedManager::new(analytic.clone(), analytic)
         .await
-        .unwrap_or_else(|e| {
-            panic!("Failed to create catalog manager, err:{}", e);
-        })
+        .expect("Failed to create catalog manager")
 }
 
 fn sql_to_plan<M: MetaProvider>(meta_provider: &M, sql: &str) -> Plan {

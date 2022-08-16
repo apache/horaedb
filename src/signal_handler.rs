@@ -12,10 +12,8 @@ mod details {
     use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
 
     pub fn wait_for_signal() {
-        let mut sigs = Signals::new(TERM_SIGNALS).unwrap_or_else(|e| {
-            // TODO(yingwen): Log here
-            panic!("Failed to register signal handlers, err:{}", e);
-        });
+        let mut sigs = Signals::new(TERM_SIGNALS).expect("Failed to register signal handlers");
+
         for signal in &mut sigs {
             if TERM_SIGNALS.contains(&signal) {
                 info!("Received signal {}, stopping server...", signal);

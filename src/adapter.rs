@@ -86,6 +86,7 @@ impl TableManipulatorImpl {
         Ok((default_catalog_name, schema))
     }
 }
+
 #[async_trait]
 impl TableManipulator for TableManipulatorImpl {
     async fn open_table(

@@ -9,7 +9,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-trait = "0.1.53"
+async-trait = "0.1.41"
 common_util = {path = "../common_util"}
 common_types = {path = "../common_types"}
 chrono = "0.4"
