@@ -13,4 +13,6 @@ var (
 	ErrTableNotFound           = coderr.NewCodeError(coderr.NotFound, "Table not found")
 	ErrShardNotFound           = coderr.NewCodeError(coderr.NotFound, "shard not found")
 	ErrNodeNotFound            = coderr.NewCodeError(coderr.NotFound, "node not found")
+	ErrNodeShardsIsEmpty       = coderr.NewCodeError(coderr.Internal, "node's shard list is empty")
+	ErrGetShardTopology        = coderr.NewCodeError(coderr.Internal, "get shard topology")
 )

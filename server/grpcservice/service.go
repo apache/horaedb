@@ -224,35 +224,26 @@ func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetTablesReq
 		return &metaservicepb.GetTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
 	}
 
-	tableMap := make(map[uint32]*metaservicepb.ShardTables, len(tables))
+	tablesPb := make(map[uint32]*metaservicepb.ShardTables, len(tables))
 	for shardID, shardTables := range tables {
+		tablesOfShardPb := make([]*metaservicepb.TableInfo, 0, len(shardTables.Tables))
 		for _, table := range shardTables.Tables {
-			shardTablesPb, ok := tableMap[shardID]
-			if ok {
-				shardTablesPb.Tables = append(shardTablesPb.Tables, &metaservicepb.TableInfo{
-					Id:         table.ID,
-					Name:       table.Name,
-					SchemaId:   table.SchemaID,
-					SchemaName: table.SchemaName,
-				})
-			} else {
-				tableMap[shardID] = &metaservicepb.ShardTables{
-					Tables: []*metaservicepb.TableInfo{
-						{
-							Id:         table.ID,
-							Name:       table.Name,
-							SchemaId:   table.SchemaID,
-							SchemaName: table.SchemaName,
-						},
-					},
-				}
-			}
+			tablesOfShardPb = append(tablesOfShardPb, &metaservicepb.TableInfo{
+				Id:         table.ID,
+				Name:       table.Name,
+				SchemaId:   table.SchemaID,
+				SchemaName: table.SchemaName,
+			})
+		}
+		tablesPb[shardID] = &metaservicepb.ShardTables{
+			Role:   shardTables.ShardRole,
+			Tables: tablesOfShardPb,
 		}
 	}
 
 	return &metaservicepb.GetTablesResponse{
 		Header:    okResponseHeader(),
-		TablesMap: tableMap,
+		TablesMap: tablesPb,
 	}, nil
 }
 

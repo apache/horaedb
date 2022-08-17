@@ -8,4 +8,5 @@ var (
 	ErrCreateEtcdClient = coderr.NewCodeError(coderr.Internal, "create etcd etcdCli")
 	ErrStartEtcd        = coderr.NewCodeError(coderr.Internal, "start embed etcd")
 	ErrStartEtcdTimeout = coderr.NewCodeError(coderr.Internal, "start etcd server timeout")
+	ErrStartServer      = coderr.NewCodeError(coderr.Internal, "start server")
 )
