@@ -3,7 +3,7 @@
 //! Interpreter for drop statements
 
 use async_trait::async_trait;
-use catalog::{manager::Manager, schema::DropOptions};
+use catalog::{manager::ManagerRef, schema::DropOptions};
 use log::warn;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::DropTablePlan;
@@ -50,18 +50,18 @@ pub enum Error {
 define_result!(Error);
 
 /// Drop interpreter
-pub struct DropInterpreter<C> {
+pub struct DropInterpreter {
     ctx: Context,
     plan: DropTablePlan,
-    catalog_manager: C,
+    catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
 }
 
-impl<C: Manager + 'static> DropInterpreter<C> {
+impl DropInterpreter {
     pub fn create(
         ctx: Context,
         plan: DropTablePlan,
-        catalog_manager: C,
+        catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
     ) -> InterpreterPtr {
         Box::new(Self {
@@ -73,7 +73,7 @@ impl<C: Manager + 'static> DropInterpreter<C> {
     }
 }
 
-impl<C: Manager> DropInterpreter<C> {
+impl DropInterpreter {
     async fn execute_drop(self: Box<Self>) -> Result<Output> {
         let default_catalog = self.ctx.default_catalog();
         let catalog = self
@@ -124,7 +124,7 @@ impl<C: Manager> DropInterpreter<C> {
 // TODO(yingwen): Wrap a method that returns self::Result, simplify some code to
 // converting self::Error to super::Error
 #[async_trait]
-impl<C: Manager> Interpreter for DropInterpreter<C> {
+impl Interpreter for DropInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         self.execute_drop().await.context(Drop)
     }

@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
 use table_engine::engine::TableEngineRef;
 
@@ -11,10 +12,9 @@ use crate::limiter::Limiter;
 
 /// A cluster instance. Usually there is only one instance per cluster
 ///
-/// C: catalog::manager::Manager
 /// Q: query_engine::executor::Executor
-pub struct Instance<C, Q> {
-    pub catalog_manager: C,
+pub struct Instance<Q> {
+    pub catalog_manager: ManagerRef,
     pub query_executor: Q,
     pub table_engine: TableEngineRef,
     // User defined functions registry.
@@ -23,4 +23,4 @@ pub struct Instance<C, Q> {
 }
 
 /// A reference counted instance pointer
-pub type InstanceRef<C, Q> = Arc<Instance<C, Q>>;
+pub type InstanceRef<Q> = Arc<Instance<Q>>;

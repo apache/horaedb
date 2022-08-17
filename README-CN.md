@@ -14,7 +14,7 @@ CeresDB 是一款高性能、分布式、Schema-less 的云原生时序数据库
 项目目前在快速迭代中，早期版本可能存在数据不兼容问题，因此不推荐生产使用及性能测试。
 
 ## RoadMap
-项目 [Roadmap](./docs/dev/roadmap-CN.md)。
+项目 [Roadmap](https://docs.ceresdb.io/dev/roadmap.html)。
 
 ## 快速开始
 ### 获取代码

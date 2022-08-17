@@ -13,7 +13,6 @@ use table_engine::{
 };
 
 use crate::{
-    context::CommonContext,
     instance::{write_worker::WriteGroup, Instance},
     space::{Space, SpaceAndTable, SpaceId, SpaceRef},
 };
@@ -226,11 +225,7 @@ impl From<Error> for table_engine::engine::Error {
 
 impl Instance {
     /// Find space by name, create if the space is not exists
-    pub async fn find_or_create_space(
-        self: &Arc<Self>,
-        _ctx: &CommonContext,
-        space_id: SpaceId,
-    ) -> Result<SpaceRef> {
+    pub async fn find_or_create_space(self: &Arc<Self>, space_id: SpaceId) -> Result<SpaceRef> {
         // Find space first
         if let Some(space) = self.get_space_by_read_lock(space_id) {
             return Ok(space);
@@ -262,7 +257,7 @@ impl Instance {
     }
 
     /// Find space by id
-    pub fn find_space(&self, _ctx: &CommonContext, space_id: SpaceId) -> Option<SpaceRef> {
+    pub fn find_space(&self, space_id: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
         spaces.get_by_id(space_id).cloned()
     }
@@ -270,11 +265,10 @@ impl Instance {
     /// Create a table under given space
     pub async fn create_table(
         self: &Arc<Self>,
-        ctx: &CommonContext,
         space_id: SpaceId,
         request: CreateTableRequest,
     ) -> Result<SpaceAndTable> {
-        let space = self.find_or_create_space(ctx, space_id).await?;
+        let space = self.find_or_create_space(space_id).await?;
         let table_data = self.do_create_table(space.clone(), request).await?;
 
         Ok(SpaceAndTable::new(space, table_data))
@@ -286,11 +280,10 @@ impl Instance {
     /// Return None if space or table is not found
     pub async fn find_table(
         &self,
-        ctx: &CommonContext,
         space_id: SpaceId,
         table: &str,
     ) -> Result<Option<SpaceAndTable>> {
-        let space = match self.find_space(ctx, space_id) {
+        let space = match self.find_space(space_id) {
             Some(s) => s,
             None => return Ok(None),
         };
@@ -307,11 +300,10 @@ impl Instance {
     /// Return None if space or table is not found
     pub async fn open_table(
         self: &Arc<Self>,
-        ctx: &CommonContext,
         space_id: SpaceId,
         request: &OpenTableRequest,
     ) -> Result<Option<SpaceAndTable>> {
-        let space = self.find_or_create_space(ctx, space_id).await?;
+        let space = self.find_or_create_space(space_id).await?;
 
         let table_data = self.do_open_table(space.clone(), request.table_id).await?;
 
@@ -321,11 +313,10 @@ impl Instance {
     /// Drop a table under given space
     pub async fn drop_table(
         self: &Arc<Self>,
-        ctx: &CommonContext,
         space_id: SpaceId,
         request: DropTableRequest,
     ) -> Result<bool> {
-        let space = self.find_space(ctx, space_id).context(SpaceNotExist {
+        let space = self.find_space(space_id).context(SpaceNotExist {
             space_id,
             table: &request.table_name,
         })?;
@@ -336,11 +327,10 @@ impl Instance {
     /// Close the table under given space by its table name
     pub async fn close_table(
         self: &Arc<Self>,
-        ctx: &CommonContext,
         space_id: SpaceId,
         request: CloseTableRequest,
     ) -> Result<()> {
-        let space = self.find_space(ctx, space_id).context(SpaceNotExist {
+        let space = self.find_space(space_id).context(SpaceNotExist {
             space_id,
             table: &request.table_name,
         })?;

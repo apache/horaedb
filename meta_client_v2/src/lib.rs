@@ -7,8 +7,7 @@ use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-    AllocTableIdResponse, DropTableRequest, DropTableResponse, GetTablesRequest, GetTablesResponse,
-    ResponseHeader, ShardInfo,
+    AllocTableIdResponse, DropTableRequest, GetTablesRequest, GetTablesResponse, ShardInfo,
 };
 
 pub mod meta_impl;
@@ -69,9 +68,15 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Meta rpc error, resp header:{:?}.\nBacktrace:\n{}", header, backtrace))]
+    #[snafu(display(
+        "Meta rpc error, resp code:{}, msg:{}.\nBacktrace:\n{}",
+        code,
+        msg,
+        backtrace
+    ))]
     MetaRpc {
-        header: ResponseHeader,
+        code: u32,
+        msg: String,
         backtrace: Backtrace,
     },
 
@@ -105,7 +110,7 @@ pub trait EventHandler {
 /// MetaClient is the abstraction of client used to communicate with CeresMeta
 /// cluster.
 #[async_trait]
-pub trait MetaClient {
+pub trait MetaClient: Send + Sync {
     /// Start the meta client and the events will occur afterwards.
     async fn start(&self) -> Result<()>;
     /// Stop the meta client and release all the resources.
@@ -120,9 +125,11 @@ pub trait MetaClient {
 
     async fn alloc_table_id(&self, req: AllocTableIdRequest) -> Result<AllocTableIdResponse>;
 
-    async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse>;
+    async fn drop_table(&self, req: DropTableRequest) -> Result<()>;
 
     async fn get_tables(&self, req: GetTablesRequest) -> Result<GetTablesResponse>;
 
     async fn send_heartbeat(&self, req: Vec<ShardInfo>) -> Result<()>;
 }
+
+pub type MetaClientRef = Arc<dyn MetaClient>;

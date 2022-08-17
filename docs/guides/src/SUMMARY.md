@@ -22,9 +22,20 @@
 - [Analytic Engine](analytic_engine/README.md)
     - [Options](analytic_engine/options.md)
 - [Deployment](deploy/README.md)
+    - [Supported Platform](deploy/platform.md)
     - [Static Routing](deploy/static_routing.md)
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
+
+# Dev Guide
+- [Supported Platform](dev/platform.md)
+- [Compile and Running](dev/compile_run.md)
+- [Conventional Commit](dev/conventional_commit.md)
+- [Style guide](dev/style_guide.md)
+- [Roadmap](dev/roadmap.md)
+
+# Technical and Design
+- [Architecture](architecture.md)
 
 -----
 

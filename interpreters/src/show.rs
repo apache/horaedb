@@ -8,7 +8,7 @@ use arrow_deps::arrow::{
     record_batch::RecordBatch,
 };
 use async_trait::async_trait;
-use catalog::{manager::Manager, schema::Schema, Catalog};
+use catalog::{manager::ManagerRef, schema::Schema, Catalog};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
@@ -83,14 +83,14 @@ impl From<crate::create::Error> for Error {
     }
 }
 
-pub struct ShowInterpreter<C> {
+pub struct ShowInterpreter {
     ctx: Context,
     plan: ShowPlan,
-    catalog_manager: C,
+    catalog_manager: ManagerRef,
 }
 
-impl<C: Manager + 'static> ShowInterpreter<C> {
-    pub fn create(ctx: Context, plan: ShowPlan, catalog_manager: C) -> InterpreterPtr {
+impl ShowInterpreter {
+    pub fn create(ctx: Context, plan: ShowPlan, catalog_manager: ManagerRef) -> InterpreterPtr {
         Box::new(Self {
             ctx,
             plan,
@@ -99,13 +99,13 @@ impl<C: Manager + 'static> ShowInterpreter<C> {
     }
 }
 
-impl<C: Manager> ShowInterpreter<C> {
+impl ShowInterpreter {
     fn show_create(plan: ShowCreatePlan) -> Result<Output> {
         let show_create = ShowCreateInterpreter::create(plan);
         show_create.execute_show_create()
     }
 
-    fn show_tables(ctx: Context, catalog_manager: C) -> Result<Output> {
+    fn show_tables(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
         let tables_names = schema
@@ -131,7 +131,7 @@ impl<C: Manager> ShowInterpreter<C> {
         Ok(Output::Records(vec![record_batch]))
     }
 
-    fn show_databases(ctx: Context, catalog_manager: C) -> Result<Output> {
+    fn show_databases(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
         let catalog = get_default_catalog(&ctx, &catalog_manager)?;
         let schema_names = catalog
             .all_schemas()
@@ -158,7 +158,7 @@ impl<C: Manager> ShowInterpreter<C> {
 }
 
 #[async_trait]
-impl<C: Manager> Interpreter for ShowInterpreter<C> {
+impl Interpreter for ShowInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         match self.plan {
             ShowPlan::ShowCreatePlan(t) => Self::show_create(t).context(ShowCreateTable),
@@ -172,9 +172,9 @@ impl<C: Manager> Interpreter for ShowInterpreter<C> {
     }
 }
 
-fn get_default_catalog<C: Manager>(
+fn get_default_catalog(
     ctx: &Context,
-    catalog_manager: &C,
+    catalog_manager: &ManagerRef,
 ) -> Result<Arc<dyn Catalog + Send + Sync>> {
     let default_catalog = ctx.default_catalog();
     let catalog = catalog_manager
@@ -188,9 +188,9 @@ fn get_default_catalog<C: Manager>(
     Ok(catalog)
 }
 
-fn get_default_schema<C: Manager>(
+fn get_default_schema(
     ctx: &Context,
-    catalog_manager: &C,
+    catalog_manager: &ManagerRef,
 ) -> Result<Arc<dyn Schema + Send + Sync>> {
     let catalog = get_default_catalog(ctx, catalog_manager)?;
 

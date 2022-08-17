@@ -9,12 +9,6 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::Config;
 
-/// Common context for instance
-pub struct CommonContext {
-    pub db_write_buffer_size: usize,
-    pub space_write_buffer_size: usize,
-}
-
 /// Context for instance open
 pub struct OpenContext {
     /// Engine config

@@ -5,7 +5,7 @@
 use std::fmt::{Debug, Formatter};
 
 use async_trait::async_trait;
-use catalog::{manager::Manager, schema::SchemaRef, CatalogRef};
+use catalog::{manager::ManagerRef, schema::SchemaRef, CatalogRef};
 use common_types::{
     column_schema,
     datum::{Datum, DatumKind},
@@ -82,12 +82,12 @@ fn tables_schema() -> Schema {
         .unwrap()
 }
 
-pub struct Tables<M> {
+pub struct Tables {
     schema: Schema,
-    catalog_manager: M,
+    catalog_manager: ManagerRef,
 }
 
-impl<M> Debug for Tables<M> {
+impl Debug for Tables {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SysTables")
             .field("schema", &self.schema)
@@ -95,8 +95,8 @@ impl<M> Debug for Tables<M> {
     }
 }
 
-impl<M: Manager> Tables<M> {
-    pub fn new(catalog_manager: M) -> Self {
+impl Tables {
+    pub fn new(catalog_manager: ManagerRef) -> Self {
         Self {
             schema: tables_schema(),
             catalog_manager,
@@ -117,7 +117,7 @@ impl<M: Manager> Tables<M> {
 }
 
 #[async_trait]
-impl<M: Manager> SystemTable for Tables<M> {
+impl SystemTable for Tables {
     fn name(&self) -> &str {
         TABLES_TABLE_NAME
     }
@@ -139,8 +139,8 @@ impl<M: Manager> SystemTable for Tables<M> {
             .all_catalogs()
             .map_err(|e| Box::new(e) as _)
             .context(table_engine::table::Scan { table: self.name() })?;
-        let mut builder =
-            RecordBatchWithKeyBuilder::new(self.schema.clone().to_record_schema_with_key());
+        let projected_record_schema = request.projected_schema.to_record_schema_with_key();
+        let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
 
         let projector = request
             .projected_schema

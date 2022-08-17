@@ -15,6 +15,7 @@ test = []
 # In alphabetical order
 arrow_deps = { path = "../arrow_deps" }
 catalog = { path = "../catalog" }
+ceresdbproto_deps = { path = "../ceresdbproto_deps" }
 common_types = { path = "../common_types"}
 common_util = { path = "../common_util" }
 df_operator = { path = "../df_operator" }
@@ -23,7 +24,6 @@ paste = "1.0"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 sqlparser = "0.19.0"
 table_engine = { path = "../table_engine" }
-ceresdbproto = { git = "https://github.com/CeresDB/ceresdbproto.git", rev = "2c10152d021cd5a26b9c870cdede6a0317adca3d" }
 regex = "1"
 
 [dev-dependencies]
