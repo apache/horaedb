@@ -43,8 +43,8 @@ pub struct TableImpl {
     space_id: SpaceId,
     table_id: TableId,
 
-    /// Holds a strong reference to prevent the underlying table being dropped
-    /// when this handle exist.
+    /// Holds a strong reference to prevent the underlying table from being
+    /// dropped when this handle exist.
     table_data: TableDataRef,
 }
 
