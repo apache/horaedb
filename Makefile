@@ -35,7 +35,7 @@ test-ut:
 	echo $(RUSTDOCFLAGS)
 #	cd $(DIR); cargo test --workspace -- -Z unstable-options --format json | tee results.json; \
 # 	cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
-	cd $(DIR); cargo test --workspace
+	cd $(DIR); RUST_BACKTRACE=1 cargo test --workspace
 
 fmt:
 	cd $(DIR); cargo fmt -- --check
