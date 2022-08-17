@@ -21,11 +21,20 @@ pub mod toml;
 pub mod tests {
     use std::sync::Once;
 
+    use env_logger::Env;
+
     static INIT_LOG: Once = Once::new();
 
     pub fn init_log_for_test() {
         INIT_LOG.call_once(|| {
             env_logger::init();
+        });
+    }
+
+    pub fn init_log_for_test_with_level(level: &str) {
+        INIT_LOG.call_once(|| {
+            let env = Env::default().default_filter_or(level);
+            env_logger::init_from_env(env);
         });
     }
 }

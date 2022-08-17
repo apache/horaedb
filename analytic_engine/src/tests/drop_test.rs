@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use common_types::{column_schema, datum::DatumKind, time::Timestamp};
+use common_util::tests::init_log_for_test_with_level;
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
@@ -26,6 +27,7 @@ fn test_drop_table_once_mem_wal() {
 }
 
 fn test_drop_table_once<T: EngineBuilder>() {
+    init_log_for_test_with_level("debug");
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context::<T>();
 
