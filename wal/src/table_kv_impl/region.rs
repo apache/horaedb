@@ -265,6 +265,7 @@ impl Region {
             .write_log(
                 &self.runtimes.write_runtime,
                 table_kv,
+                &self.state,
                 bucket,
                 ctx,
                 log_batch,
@@ -342,11 +343,6 @@ impl Region {
     #[inline]
     pub fn last_sequence(&self) -> SequenceNumber {
         self.state.last_sequence()
-    }
-
-    pub async fn alloc_sequence_num(&self, entries_num: u64) -> Result<SequenceNumber> {
-        let mut writer = self.writer.lock().await;
-        writer.alloc_sequence_num(&self.state, entries_num)
     }
 }
 
@@ -795,6 +791,7 @@ impl RegionWriter {
         &mut self,
         runtime: &Runtime,
         table_kv: &T,
+        region_state: &RegionState,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
         log_batch: &LogWriteBatch,
@@ -806,14 +803,18 @@ impl RegionWriter {
             log_batch.entries.len()
         );
 
+        let log_encoding = LogEncoding::newest();
+        let entries_num = log_batch.len() as u64;
         let (wb, max_sequence_num) = {
             let mut wb = T::WriteBatch::with_capacity(log_batch.len());
-            let mut next_sequence_num = log_batch.min_sequence_num();
+            let mut next_sequence_num = self.alloc_sequence_num(region_state, entries_num)?;
+            let mut key_buf = BytesMut::new();
 
             for entry in &log_batch.entries {
-                let key_buf = &entry.payload.0;
-                let value_buf = &entry.payload.1;
-                wb.insert(key_buf, value_buf);
+                log_encoding
+                    .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
+                    .context(LogCodec)?;
+                wb.insert(&key_buf, &entry.payload);
 
                 next_sequence_num += 1;
             }

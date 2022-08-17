@@ -37,14 +37,12 @@ use crate::meta::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to get log batch encoder, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to get log batch encoder, region_id:{}, err:{}",
         region_id,
-        entries_num,
         source
     ))]
     GetLogBatchEncoder {
         region_id: RegionId,
-        entries_num: u64,
         source: wal::manager::Error,
     },
 
@@ -188,14 +186,10 @@ impl ManifestImpl {
 
         let region_id = Self::region_id_of_meta_update(&update);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
-        let log_batch_encoder =
-            self.wal_manager
-                .encoder(region_id, 1)
-                .await
-                .context(GetLogBatchEncoder {
-                    region_id,
-                    entries_num: 1u64,
-                })?;
+        let log_batch_encoder = self
+            .wal_manager
+            .encoder(region_id)
+            .context(GetLogBatchEncoder { region_id })?;
         let log_batch = log_batch_encoder
             .encode(&[payload])
             .context(EncodePayloads { region_id })?;
@@ -348,12 +342,8 @@ impl MetaUpdateLogStore for RegionWal {
         let region_id = self.region_id;
         let log_batch_encoder = self
             .wal_manager
-            .encoder(self.region_id, payload_batch.len() as u64)
-            .await
-            .context(GetLogBatchEncoder {
-                region_id,
-                entries_num: 1u64,
-            })?;
+            .encoder(self.region_id)
+            .context(GetLogBatchEncoder { region_id })?;
         let log_batch = log_batch_encoder
             .encode(&payload_batch)
             .context(EncodePayloads { region_id })?;

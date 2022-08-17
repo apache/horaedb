@@ -26,37 +26,27 @@ pub struct LogEntry<P> {
     pub payload: P,
 }
 
-/// An entry to be written into the Wal.
-///
-/// Generally, the `payload` is a lazily encoder whose constraint is
-/// `PayloadEncoder`. `region_id` is a logically region and set it as 0 if
-/// unnecessary.
+/// An encoded entry to be written into the Wal.
 #[derive(Debug)]
 pub struct LogWriteEntry {
-    pub payload: (Vec<u8>, Vec<u8>),
+    pub payload: Vec<u8>,
 }
 
 /// A batch Encoded of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
     pub(crate) region_id: RegionId,
-    pub(crate) min_sequence_num: SequenceNumber,
     pub(crate) entries: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {
-    pub fn new(region_id: RegionId, min_sequence_num: SequenceNumber) -> Self {
-        Self::with_capacity(region_id, min_sequence_num, 0)
+    pub fn new(region_id: RegionId) -> Self {
+        Self::with_capacity(region_id, 0)
     }
 
-    pub fn with_capacity(
-        region_id: RegionId,
-        min_sequence_num: SequenceNumber,
-        cap: usize,
-    ) -> Self {
+    pub fn with_capacity(region_id: RegionId, cap: usize) -> Self {
         Self {
             region_id,
-            min_sequence_num,
             entries: Vec::with_capacity(cap),
         }
     }
@@ -80,9 +70,11 @@ impl LogWriteBatch {
     pub fn clear(&mut self) {
         self.entries.clear()
     }
+}
 
-    pub fn min_sequence_num(&self) -> SequenceNumber {
-        self.min_sequence_num
+impl Default for LogWriteBatch {
+    fn default() -> Self {
+        Self::new(0)
     }
 }
 

@@ -151,8 +151,7 @@ impl<B: WalBuilder> TestEnv<B> {
         let payload_batch = self.build_payload_batch(start, end);
 
         let log_batch_encoder = wal
-            .encoder(region_id, payload_batch.len() as u64)
-            .await
+            .encoder(region_id)
             .expect("should succeed to create log batch encoder");
 
         let log_batch = log_batch_encoder

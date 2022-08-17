@@ -484,9 +484,10 @@ impl LogEncoding {
         }
     }
 
-    // Encode [LogKey] into `buf` and caller should knows that the keys are ordered
-    // by ([RegionId], [SequenceNum]) so the caller can use this method to
-    // generate min/max key in specific scope(global or in some region).
+    /// Encode [LogKey] into `buf` and caller should knows that the keys are
+    /// ordered by ([RegionId], [SequenceNum]) so the caller can use this
+    /// method to generate min/max key in specific scope(global or in some
+    /// region).
     pub fn encode_key(&self, buf: &mut BytesMut, log_key: &LogKey) -> Result<()> {
         buf.clear();
         buf.reserve(self.key_enc.estimate_encoded_size(log_key));
@@ -518,52 +519,33 @@ impl LogEncoding {
     }
 }
 
-/// LogBatchEncoder which are used to encode specify payloads(Region and Count
-/// of Entry).
+/// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
     region_id: RegionId,
-    entries_num: u64,
-    min_sequence_num: SequenceNumber,
     log_encoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
-    pub fn create(region_id: RegionId, entries_num: u64, min_sequence_num: SequenceNumber) -> Self {
+    pub fn create(region_id: RegionId) -> Self {
         Self {
             region_id,
-            entries_num,
-            min_sequence_num,
             log_encoding: LogEncoding::newest(),
         }
     }
 
     pub fn encode<P: Payload>(self, payload_batch: &[P]) -> manager::Result<LogWriteBatch> {
-        assert_eq!(
-            self.entries_num,
-            payload_batch.len() as u64,
-            "len of payload_batch is not as expected"
-        );
-
-        let mut next_sequence_num = self.min_sequence_num;
-        let mut write_batch = LogWriteBatch::new(self.region_id, next_sequence_num);
-        let mut key_buf = BytesMut::new();
-        let mut value_buf = BytesMut::new();
+        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut buf = BytesMut::new();
         for payload in payload_batch.iter() {
             self.log_encoding
-                .encode_key(&mut key_buf, &(self.region_id, next_sequence_num))
-                .map_err(|e| Box::new(e) as _)
-                .context(Encoding)?;
-            self.log_encoding
-                .encode_value(&mut value_buf, payload)
+                .encode_value(&mut buf, payload)
                 .map_err(|e| Box::new(e) as _)
                 .context(Encoding)?;
 
             write_batch.push(LogWriteEntry {
-                payload: (key_buf.to_vec(), value_buf.to_vec()),
+                payload: buf.to_vec(),
             });
-
-            next_sequence_num += 1;
         }
 
         Ok(write_batch)

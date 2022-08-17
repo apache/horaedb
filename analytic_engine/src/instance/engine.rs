@@ -193,16 +193,14 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, region_id:{}, err:{}",
         table,
         region_id,
-        entries_num,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
         region_id: RegionId,
-        entries_num: u64,
         source: wal::manager::Error,
     },
 

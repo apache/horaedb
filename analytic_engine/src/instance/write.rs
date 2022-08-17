@@ -368,17 +368,16 @@ impl Instance {
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
         let region_id = table_data.wal_region_id();
-        let log_batch_encoeer = self
-            .space_store
-            .wal_manager
-            .encoder(region_id, 1)
-            .await
-            .context(GetLogBatchEncoder {
-                table: &table_data.name,
-                region_id: table_data.wal_region_id(),
-                entries_num: 1u64,
-            })?;
-        let log_batch = log_batch_encoeer
+        let log_batch_encoder =
+            self.space_store
+                .wal_manager
+                .encoder(region_id)
+                .context(GetLogBatchEncoder {
+                    table: &table_data.name,
+                    region_id: table_data.wal_region_id(),
+                    entries_num: 1u64,
+                })?;
+        let log_batch = log_batch_encoder
             .encode(&[payload])
             .context(EncodePayloads {
                 table: &table_data.name,

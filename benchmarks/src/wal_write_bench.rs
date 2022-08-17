@@ -80,8 +80,7 @@ impl WalWriteBench {
                 .collect::<Vec<_>>();
 
             let wal_encoder = wal
-                .encoder(1, payloads.len() as u64)
-                .await
+                .encoder(1)
                 .expect("should succeed to create wal encoder");
             let log_batch = wal_encoder
                 .encode(&payloads)

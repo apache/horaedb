@@ -1073,23 +1073,6 @@ impl<T: TableKv> Namespace<T> {
 
         Ok(())
     }
-
-    /// Allocate sequence num for write request.
-    pub async fn alloc_sequence_num(
-        &self,
-        region_id: RegionId,
-        entries_num: u64,
-    ) -> Result<SequenceNumber> {
-        let region = self.inner.get_or_create_region(region_id).await?;
-        region
-            .alloc_sequence_num(entries_num)
-            .await
-            .context(AllocateSequenceNumber {
-                namespace: self.name(),
-                region_id,
-                entries_num,
-            })
-    }
 }
 
 pub type NamespaceRef<T> = Arc<Namespace<T>>;
@@ -1730,12 +1713,7 @@ mod tests {
             payload_batch.push(payload);
         }
 
-        let min_sequence_number = namespace
-            .alloc_sequence_num(region_id, payload_batch.len() as u64)
-            .await
-            .expect("should succeed to allocate sequence number");
-        let wal_encoder =
-            LogBatchEncoder::create(region_id, payload_batch.len() as u64, min_sequence_number);
+        let wal_encoder = LogBatchEncoder::create(region_id);
         let log_batch = wal_encoder
             .encode(&payload_batch)
             .expect("should succeed to encode payload batch");

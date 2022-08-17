@@ -267,7 +267,9 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    async fn encoder(&self, region_id: RegionId, entries_num: u64) -> Result<LogBatchEncoder>;
+    fn encoder(&self, region_id: RegionId) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(region_id))
+    }
 
     /// Write a batch of log entries to log.
     ///
