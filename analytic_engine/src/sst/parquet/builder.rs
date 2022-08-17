@@ -50,7 +50,6 @@ impl<'a> ParquetSstBuilder<'a> {
 struct RecordBytesReader {
     request_id: RequestId,
     record_stream: RecordBatchStream,
-    encoding_buffer: Vec<u8>,
     num_rows_per_row_group: usize,
     compression: Compression,
     meta_data: SstMetaData,
@@ -64,7 +63,6 @@ impl RecordBytesReader {
         let mut arrow_record_batch_vec = Vec::new();
 
         let mut parquet_encoder = ParquetEncoder::try_new(
-            &mut self.encoding_buffer,
             self.num_rows_per_row_group,
             self.compression,
             &self.meta_data,
@@ -106,12 +104,11 @@ impl RecordBytesReader {
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
         }
 
-        parquet_encoder
-            .close()
+        let bytes = parquet_encoder
+            .into_bytes()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
-
-        Ok(self.encoding_buffer)
+        Ok(bytes)
     }
 }
 
@@ -132,7 +129,6 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
         let reader = RecordBytesReader {
             request_id,
             record_stream,
-            encoding_buffer: vec![],
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
             total_row_num: total_row_num.clone(),

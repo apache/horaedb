@@ -1,6 +1,10 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{convert::TryFrom, io::Write};
+use std::{
+    convert::TryFrom,
+    io::Write,
+    sync::{Arc, Mutex},
+};
 
 use arrow_deps::{
     arrow::record_batch::RecordBatch as ArrowRecordBatch,
@@ -19,7 +23,8 @@ use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::sst::{file::SstMetaData, parquet::hybrid};
+use super::hybrid::IndexedType;
+use crate::sst::{builder::VariableLengthType, file::SstMetaData, parquet::hybrid};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -174,17 +179,213 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
     SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }
 
-pub struct ParquetEncoder<W: Write> {
-    writer: ArrowWriter<W>,
-    format: StorageFormat,
-    origin_arrow_schema: ArrowSchemaRef,
-    hybrid_arrow_schema: Option<ArrowSchemaRef>,
-    schema: Schema,
+/// RecordEncoder is used for encoding ArrowBatch
+///
+/// TODO: allow pre-allocate buffer
+trait RecordEncoder {
+    /// Encode vector of arrow batch, return encoded row number
+    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
+
+    /// Return already encoded bytes
+    /// Note: trait method cannot receive `self`, so take a &mut self here to
+    /// indicate this encoder is already consumed
+    fn into_bytes(&mut self) -> Result<Vec<u8>>;
 }
 
-impl<W: Write> ParquetEncoder<W> {
+/// EncodingWriter implements `Write` trait, useful when Writer need shared
+/// ownership
+///
+/// TODO: This is a temp workaround for [ArrowWriter](https://docs.rs/parquet/20.0.0/parquet/arrow/arrow_writer/struct.ArrowWriter.html), since it has no method to get underlying Writer
+/// We can fix this by add `into_inner` method to it, or just replace it with
+/// parquet2, which already have this method
+/// https://github.com/CeresDB/ceresdb/issues/53
+#[derive(Clone)]
+struct EncodingWriter(Arc<Mutex<Vec<u8>>>);
+
+impl EncodingWriter {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl Write for EncodingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut inner = self.0.lock().unwrap();
+        inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut inner = self.0.lock().unwrap();
+        inner.flush()
+    }
+}
+
+struct ColumnarRecordEncoder {
+    buf: EncodingWriter,
+    // wrap in Option so ownership can be take out behind `&mut self`
+    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_schema: ArrowSchemaRef,
+}
+
+impl ColumnarRecordEncoder {
+    fn try_new(write_props: WriterProperties, schema: &Schema) -> Result<Self> {
+        let arrow_schema = schema.to_arrow_schema_ref();
+
+        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
+        let arrow_writer =
+            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+                .map_err(|e| Box::new(e) as _)
+                .context(EncodeRecordBatch)?;
+
+        Ok(Self {
+            buf,
+            arrow_writer: Some(arrow_writer),
+            arrow_schema,
+        })
+    }
+}
+
+impl RecordEncoder for ColumnarRecordEncoder {
+    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+        assert!(self.arrow_writer.is_some());
+
+        let record_batch = ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .write(&record_batch)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        Ok(record_batch.num_rows())
+    }
+
+    fn into_bytes(&mut self) -> Result<Vec<u8>> {
+        assert!(self.arrow_writer.is_some());
+
+        let arrow_writer = self.arrow_writer.take().unwrap();
+        arrow_writer
+            .close()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        Ok(self.buf.clone().into_bytes())
+    }
+}
+
+struct HybridRecordEncoder {
+    buf: EncodingWriter,
+    // wrap in Option so ownership can be take out behind `&mut self`
+    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_schema: ArrowSchemaRef,
+    tsid_type: IndexedType,
+    timestamp_type: IndexedType,
+    tag_types: Vec<IndexedType>,
+    field_types: Vec<IndexedType>,
+}
+
+impl HybridRecordEncoder {
+    fn try_new(write_props: WriterProperties, schema: &Schema) -> Result<Self> {
+        let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
+        let timestamp_type = IndexedType {
+            idx: schema.timestamp_index(),
+            kind: schema.column(schema.timestamp_index()).data_type,
+        };
+        let tsid_type = IndexedType {
+            idx: tsid_idx,
+            kind: schema.column(tsid_idx).data_type,
+        };
+
+        let mut tag_types = Vec::new();
+        let mut field_types = Vec::new();
+        for (idx, col) in schema.columns().iter().enumerate() {
+            if col.is_tag {
+                tag_types.push(IndexedType {
+                    idx,
+                    kind: schema.column(idx).data_type,
+                });
+            } else if idx != timestamp_type.idx && idx != tsid_type.idx {
+                let data_type = schema.column(idx).data_type;
+                let _ = data_type
+                    .size()
+                    .context(VariableLengthType {
+                        type_str: data_type.to_string(),
+                    })
+                    .map_err(|e| Box::new(e) as _)
+                    .context(EncodeRecordBatch)?;
+
+                field_types.push(IndexedType {
+                    idx,
+                    kind: schema.column(idx).data_type,
+                });
+            }
+        }
+
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(tsid_idx, &schema);
+
+        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
+        let arrow_writer =
+            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+                .map_err(|e| Box::new(e) as _)
+                .context(EncodeRecordBatch)?;
+        Ok(Self {
+            buf,
+            arrow_writer: Some(arrow_writer),
+            arrow_schema,
+            tsid_type,
+            timestamp_type,
+            tag_types,
+            field_types,
+        })
+    }
+}
+
+impl RecordEncoder for HybridRecordEncoder {
+    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+        assert!(self.arrow_writer.is_some());
+
+        let record_batch = hybrid::convert_to_hybrid_record(
+            &self.tsid_type,
+            &self.timestamp_type,
+            &self.tag_types,
+            &self.field_types,
+            self.arrow_schema.clone(),
+            arrow_record_batch_vec,
+        )
+        .map_err(|e| Box::new(e) as _)
+        .context(EncodeRecordBatch)?;
+
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .write(&record_batch)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        Ok(record_batch.num_rows())
+    }
+
+    fn into_bytes(&mut self) -> Result<Vec<u8>> {
+        assert!(self.arrow_writer.is_some());
+
+        let arrow_writer = self.arrow_writer.take().unwrap();
+        arrow_writer
+            .close()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+        Ok(self.buf.clone().into_bytes())
+    }
+}
+
+pub struct ParquetEncoder {
+    record_encoder: Box<dyn RecordEncoder + Send>,
+}
+
+impl ParquetEncoder {
     pub fn try_new(
-        writer: W,
         num_rows_per_row_group: usize,
         compression: Compression,
         meta_data: &SstMetaData,
@@ -195,30 +396,24 @@ impl<W: Write> ParquetEncoder<W> {
             .set_compression(compression)
             .build();
         let mut format = meta_data.schema.storage_format();
+
         // TODO: remove this overwrite when we can set format via table options
         if matches!(format, StorageFormat::Hybrid) && meta_data.schema.index_of_tsid().is_none() {
             format = StorageFormat::Columnar;
         }
-        let mut hybrid_arrow_schema = None;
-        let arrow_schema = match format {
-            StorageFormat::Hybrid => {
-                let tsid_idx = meta_data.schema.index_of_tsid().context(TsidRequired)?;
-                let schema = hybrid::build_hybrid_arrow_schema(tsid_idx, &meta_data.schema);
-                hybrid_arrow_schema = Some(schema.clone());
-                schema
-            }
-            StorageFormat::Columnar => meta_data.schema.as_arrow_schema_ref().clone(),
+
+        let record_encoder: Box<dyn RecordEncoder + Send> = match format {
+            StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
+                write_props,
+                &meta_data.schema,
+            )?),
+            StorageFormat::Columnar => Box::new(ColumnarRecordEncoder::try_new(
+                write_props,
+                &meta_data.schema,
+            )?),
         };
-        let writer = ArrowWriter::try_new(writer, arrow_schema, Some(write_props))
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
-        Ok(ParquetEncoder {
-            writer,
-            format,
-            origin_arrow_schema: meta_data.schema.as_arrow_schema_ref().clone(),
-            hybrid_arrow_schema,
-            schema: meta_data.schema.clone(),
-        })
+
+        Ok(ParquetEncoder { record_encoder })
     }
 
     /// Encode the record batch with [ArrowWriter] and the encoded contents is
@@ -231,35 +426,10 @@ impl<W: Write> ParquetEncoder<W> {
             return Ok(0);
         }
 
-        let record_batch = match self.format {
-            StorageFormat::Hybrid => hybrid::convert_to_hybrid(
-                &self.schema,
-                self.hybrid_arrow_schema.clone().unwrap(),
-                self.schema.index_of_tsid().expect("checked in try_new"),
-                arrow_record_batch_vec,
-            )
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?,
-            StorageFormat::Columnar => {
-                ArrowRecordBatch::concat(&self.origin_arrow_schema, &arrow_record_batch_vec)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(EncodeRecordBatch)?
-            }
-        };
-
-        self.writer
-            .write(&record_batch)
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
-
-        Ok(record_batch.num_rows())
+        self.record_encoder.encode(arrow_record_batch_vec)
     }
 
-    pub fn close(self) -> Result<()> {
-        self.writer
-            .close()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
-        Ok(())
+    pub fn into_bytes(mut self) -> Result<Vec<u8>> {
+        self.record_encoder.into_bytes()
     }
 }

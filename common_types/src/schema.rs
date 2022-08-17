@@ -445,8 +445,35 @@ pub fn compare_row<LR: RowView, RR: RowView>(
     Ordering::Equal
 }
 
+/// StorageFormat specify how records are saved in persistent storage
 pub enum StorageFormat {
+    /// Traditional columnar format, every column is saved in one exact one
+    /// column, for example:
+    ///
+    ///```plaintext
+    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
+    /// | --------- |---------- | ----------- | ----- | ----- |
+    /// | 12:01     | A         | 0           | v1    | v1    |
+    /// | 12:01     | B         | 0           | v2    | v2    |
+    /// | 12:02     | A         | 0           | v1    | v1    |
+    /// | 12:02     | B         | 1           | v2    | v2    |
+    /// | 12:03     | A         | 0           | v1    | v1    |
+    /// | 12:03     | B         | 0           | v2    | v2    |
+    /// | .....     |           |             |       |       |
+    /// ```
     Columnar,
+
+    /// Design for time-series data
+    /// Timestamp and fields columns within same tsid are collapsed
+    /// into list, ID/Tags are the same with columar's.
+    ///
+    ///```plaintext
+    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
+    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
+    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
+    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
+    /// | ...       |                     |             |       |       |         |         |
+    /// ```
     Hybrid,
 }
 
