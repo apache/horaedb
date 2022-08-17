@@ -80,9 +80,10 @@ impl TableEngine for TableEngineImpl {
         let space_table = self.instance.create_table(&ctx, space_id, request).await?;
 
         let table_impl = Arc::new(TableImpl::new(
-            space_table,
             self.instance.clone(),
             ANALYTIC_ENGINE_TYPE.to_string(),
+            space_id,
+            space_table.table_data().id,
         ));
 
         Ok(table_impl)
@@ -121,9 +122,10 @@ impl TableEngine for TableEngineImpl {
         };
 
         let table_impl = Arc::new(TableImpl::new(
-            space_table,
             self.instance.clone(),
             ANALYTIC_ENGINE_TYPE.to_string(),
+            space_id,
+            space_table.table_data().id,
         ));
 
         Ok(Some(table_impl))

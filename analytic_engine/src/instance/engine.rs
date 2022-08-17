@@ -262,7 +262,7 @@ impl Instance {
     }
 
     /// Find space by id
-    pub fn find_space(&self, _ctx: &CommonContext, space_id: SpaceId) -> Option<SpaceRef> {
+    pub fn find_space(&self, space_id: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
         spaces.get_by_id(space_id).cloned()
     }
@@ -290,7 +290,7 @@ impl Instance {
         space_id: SpaceId,
         table: &str,
     ) -> Result<Option<SpaceAndTable>> {
-        let space = match self.find_space(ctx, space_id) {
+        let space = match self.find_space(space_id) {
             Some(s) => s,
             None => return Ok(None),
         };
@@ -325,7 +325,7 @@ impl Instance {
         space_id: SpaceId,
         request: DropTableRequest,
     ) -> Result<bool> {
-        let space = self.find_space(ctx, space_id).context(SpaceNotExist {
+        let space = self.find_space(space_id).context(SpaceNotExist {
             space_id,
             table: &request.table_name,
         })?;
@@ -340,7 +340,7 @@ impl Instance {
         space_id: SpaceId,
         request: CloseTableRequest,
     ) -> Result<()> {
-        let space = self.find_space(ctx, space_id).context(SpaceNotExist {
+        let space = self.find_space(space_id).context(SpaceNotExist {
             space_id,
             table: &request.table_name,
         })?;
