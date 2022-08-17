@@ -32,10 +32,9 @@ pub mod sst_util;
 pub mod version;
 pub mod version_edit;
 
-// TODO(yingwen): How to handle drop table?
-
 /// Table trait implementation
 pub struct TableImpl {
+    space_table: SpaceAndTable,
     /// Instance
     instance: InstanceRef,
     /// Engine type
@@ -43,6 +42,10 @@ pub struct TableImpl {
 
     space_id: SpaceId,
     table_id: TableId,
+
+    /// Holds a strong reference to prevent the underlying table being dropped
+    /// when this handle exist.
+    table_data: TableDataRef,
 }
 
 impl TableImpl {
@@ -51,21 +54,17 @@ impl TableImpl {
         engine_type: String,
         space_id: SpaceId,
         table_id: TableId,
+        table_data: TableDataRef,
+        space_table: SpaceAndTable,
     ) -> Self {
         Self {
+            space_table,
             instance,
             engine_type,
             space_id,
             table_id,
+            table_data,
         }
-    }
-
-    fn get_table_data(&self) -> TableDataRef {
-        self.instance
-            .find_space(self.space_id)
-            .unwrap()
-            .find_table_by_id(self.table_id)
-            .unwrap()
     }
 }
 
@@ -81,20 +80,19 @@ impl fmt::Debug for TableImpl {
 #[async_trait]
 impl Table for TableImpl {
     fn name(&self) -> &str {
-        // &self.space_table.table_data().name
-        &self.get_table_data().name
+        &self.table_data.name
     }
 
     fn id(&self) -> TableId {
-        self.get_table_data().id
+        self.table_data.id
     }
 
     fn schema(&self) -> Schema {
-        self.get_table_data().schema()
+        self.table_data.schema()
     }
 
     fn options(&self) -> HashMap<String, String> {
-        self.get_table_data().table_options().to_raw_map()
+        self.table_data.table_options().to_raw_map()
     }
 
     fn engine_type(&self) -> &str {
@@ -102,7 +100,7 @@ impl Table for TableImpl {
     }
 
     fn stats(&self) -> TableStats {
-        let metrics = &self.get_table_data().metrics;
+        let metrics = &self.table_data.metrics;
 
         TableStats {
             num_write: metrics.write_request_counter.get(),

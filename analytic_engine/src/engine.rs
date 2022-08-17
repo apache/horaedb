@@ -16,7 +16,7 @@ use table_engine::{
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::{context::CommonContext, instance::InstanceRef, space::SpaceId, table::TableImpl};
+use crate::{instance::InstanceRef, space::SpaceId, table::TableImpl};
 
 /// TableEngine implementation
 pub struct TableEngineImpl {
@@ -73,17 +73,15 @@ impl TableEngine for TableEngineImpl {
             space_id, request
         );
 
-        let ctx = CommonContext {
-            db_write_buffer_size: self.instance.db_write_buffer_size,
-            space_write_buffer_size: self.instance.space_write_buffer_size,
-        };
-        let space_table = self.instance.create_table(&ctx, space_id, request).await?;
+        let space_table = self.instance.create_table(space_id, request).await?;
 
         let table_impl = Arc::new(TableImpl::new(
             self.instance.clone(),
             ANALYTIC_ENGINE_TYPE.to_string(),
             space_id,
             space_table.table_data().id,
+            space_table.table_data().clone(),
+            space_table,
         ));
 
         Ok(table_impl)
@@ -97,11 +95,7 @@ impl TableEngine for TableEngineImpl {
             space_id, request
         );
 
-        let ctx = CommonContext {
-            db_write_buffer_size: self.instance.db_write_buffer_size,
-            space_write_buffer_size: self.instance.space_write_buffer_size,
-        };
-        let dropped = self.instance.drop_table(&ctx, space_id, request).await?;
+        let dropped = self.instance.drop_table(space_id, request).await?;
         Ok(dropped)
     }
 
@@ -112,11 +106,7 @@ impl TableEngine for TableEngineImpl {
             "Table engine impl open table, space_id:{}, request:{:?}",
             space_id, request
         );
-        let ctx = CommonContext {
-            db_write_buffer_size: self.instance.db_write_buffer_size,
-            space_write_buffer_size: self.instance.space_write_buffer_size,
-        };
-        let space_table = match self.instance.open_table(&ctx, space_id, &request).await? {
+        let space_table = match self.instance.open_table(space_id, &request).await? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -126,6 +116,8 @@ impl TableEngine for TableEngineImpl {
             ANALYTIC_ENGINE_TYPE.to_string(),
             space_id,
             space_table.table_data().id,
+            space_table.table_data().clone(),
+            space_table,
         ));
 
         Ok(Some(table_impl))
@@ -139,11 +131,7 @@ impl TableEngine for TableEngineImpl {
             space_id, request,
         );
 
-        let ctx = CommonContext {
-            db_write_buffer_size: self.instance.db_write_buffer_size,
-            space_write_buffer_size: self.instance.space_write_buffer_size,
-        };
-        self.instance.close_table(&ctx, space_id, request).await?;
+        self.instance.close_table(space_id, request).await?;
 
         Ok(())
     }
