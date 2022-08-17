@@ -71,7 +71,6 @@ module path: https://github.com/CeresDB/ceresdb/tree/main/interpreters
 
 The `Interpreter` module encapsulates the SQL `CRUD` operations. Actually, a sql received by CeresDB will be parsed, converted into the query plan and then executed in some specific interpreter, such as `SelectInterpreter`, `InsertInterpreter` and etc.
 
-Interpreter
 ### Catalog
 module path: https://github.com/CeresDB/ceresdb/tree/main/catalog_impls
 
