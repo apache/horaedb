@@ -186,10 +186,10 @@ trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
     fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
 
-    /// Return already encoded bytes
+    /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
     /// indicate this encoder is already consumed
-    fn into_bytes(&mut self) -> Result<Vec<u8>>;
+    fn close(&mut self) -> Result<Vec<u8>>;
 }
 
 /// EncodingWriter implements `Write` trait, useful when Writer need shared
@@ -263,7 +263,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
         Ok(record_batch.num_rows())
     }
 
-    fn into_bytes(&mut self) -> Result<Vec<u8>> {
+    fn close(&mut self) -> Result<Vec<u8>> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
@@ -324,7 +324,7 @@ impl HybridRecordEncoder {
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(tsid_idx, &schema);
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(tsid_idx, schema);
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -368,7 +368,7 @@ impl RecordEncoder for HybridRecordEncoder {
         Ok(record_batch.num_rows())
     }
 
-    fn into_bytes(&mut self) -> Result<Vec<u8>> {
+    fn close(&mut self) -> Result<Vec<u8>> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
@@ -429,7 +429,7 @@ impl ParquetEncoder {
         self.record_encoder.encode(arrow_record_batch_vec)
     }
 
-    pub fn into_bytes(mut self) -> Result<Vec<u8>> {
-        self.record_encoder.into_bytes()
+    pub fn close(mut self) -> Result<Vec<u8>> {
+        self.record_encoder.close()
     }
 }

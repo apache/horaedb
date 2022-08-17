@@ -105,7 +105,7 @@ impl RecordBytesReader {
         }
 
         let bytes = parquet_encoder
-            .into_bytes()
+            .close()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
         Ok(bytes)
