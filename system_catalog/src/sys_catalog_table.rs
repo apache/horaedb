@@ -873,19 +873,15 @@ impl CreateSchemaRequest {
     }
 }
 
-impl TryFrom<SchemaEntry> for CreateSchemaRequest {
-    type Error = Error;
+impl From<SchemaEntry> for CreateSchemaRequest {
+    fn from(entry: SchemaEntry) -> Self {
+        let schema_id = SchemaId::from(entry.schema_id);
 
-    fn try_from(entry: SchemaEntry) -> Result<Self> {
-        let schema_id = SchemaId::new(entry.schema_id).context(InvalidSchemaId {
-            id: entry.schema_id,
-        })?;
-
-        Ok(Self {
+        Self {
             catalog_name: entry.catalog_name,
             schema_name: entry.schema_name,
             schema_id,
-        })
+        }
     }
 }
 
@@ -1002,7 +998,7 @@ fn decode_one_request(key: &[u8], value: &[u8]) -> Result<DecodedRequest> {
         }
         KeyType::CreateSchema => {
             let entry = SchemaEntry::parse_from_bytes(value).context(DecodeEntryPb)?;
-            DecodedRequest::CreateSchema(CreateSchemaRequest::try_from(entry)?)
+            DecodedRequest::CreateSchema(CreateSchemaRequest::from(entry))
         }
         KeyType::TableEntry => {
             let entry = TableEntry::parse_from_bytes(value).context(DecodeEntryPb)?;

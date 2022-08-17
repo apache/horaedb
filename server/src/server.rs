@@ -4,9 +4,11 @@
 
 use std::sync::Arc;
 
-use catalog::manager::Manager as CatalogManager;
+use catalog::manager::ManagerRef;
+use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use grpcio::Environment;
+use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -58,46 +60,84 @@ pub enum Error {
 
     #[snafu(display("Failed to start grpc service, err:{}", source))]
     StartGrpcService { source: crate::grpc::Error },
+
+    #[snafu(display("Failed to start clsuter, err:{}", source))]
+    StartCluster { source: cluster::Error },
 }
 
 define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<C, Q> {
-    http_service: Service<C, Q>,
+pub struct Server<Q> {
+    http_service: Service<Q>,
     rpc_services: RpcServices,
-    mysql_service: mysql::MysqlService<C, Q>,
+    mysql_service: mysql::MysqlService<Q>,
+    instance: InstanceRef<Q>,
+    cluster: Option<ClusterRef>,
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Server<C, Q> {
-    pub fn stop(mut self) {
+impl<Q: QueryExecutor + 'static> Server<Q> {
+    pub async fn stop(mut self) {
         self.rpc_services.shutdown();
         self.http_service.stop();
         self.mysql_service.shutdown();
+
+        if let Some(cluster) = &self.cluster {
+            cluster.stop().await.expect("fail to stop cluster");
+        }
     }
 
     pub async fn start(&mut self) -> Result<()> {
+        if let Some(cluster) = &self.cluster {
+            cluster.start().await.context(StartCluster)?;
+        }
+
+        self.create_default_schema_if_not_exists().await;
+
         self.mysql_service
             .start()
             .await
             .context(StartMysqlService)?;
-        self.rpc_services.start().await.context(StartGrpcService)
+        self.rpc_services.start().await.context(StartGrpcService)?;
+
+        Ok(())
+    }
+
+    async fn create_default_schema_if_not_exists(&self) {
+        let catalog_mgr = &self.instance.catalog_manager;
+        let default_catalog = catalog_mgr
+            .catalog_by_name(catalog_mgr.default_catalog_name())
+            .expect("Fail to retreive default catalog")
+            .expect("Default catalog doesn't exist");
+
+        if default_catalog
+            .schema_by_name(catalog_mgr.default_schema_name())
+            .expect("Fail to retreive default schema")
+            .is_none()
+        {
+            warn!("Deafult schema doesn't exist and create it");
+            default_catalog
+                .create_schema(catalog_mgr.default_schema_name())
+                .await
+                .expect("Fail to create default schema");
+        }
     }
 }
 
 #[must_use]
-pub struct Builder<C, Q> {
+pub struct Builder<Q> {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    catalog_manager: Option<C>,
+    catalog_manager: Option<ManagerRef>,
     query_executor: Option<Q>,
     table_engine: Option<TableEngineRef>,
     function_registry: Option<FunctionRegistryRef>,
     limiter: Limiter,
+    cluster: Option<ClusterRef>,
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
+impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -107,6 +147,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             table_engine: None,
             function_registry: None,
             limiter: Limiter::default(),
+            cluster: None,
         }
     }
 
@@ -115,7 +156,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
         self
     }
 
-    pub fn catalog_manager(mut self, val: C) -> Self {
+    pub fn catalog_manager(mut self, val: ManagerRef) -> Self {
         self.catalog_manager = Some(val);
         self
     }
@@ -140,8 +181,13 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
         self
     }
 
+    pub fn cluster(mut self, cluster: ClusterRef) -> Self {
+        self.cluster = Some(cluster);
+        self
+    }
+
     /// Build and run the server
-    pub fn build(self) -> Result<Server<C, Q>> {
+    pub fn build(self) -> Result<Server<Q>> {
         // Build runtimes
         let runtimes = self.runtimes.context(MissingRuntimes)?;
 
@@ -191,7 +237,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             .meta_client_config(meta_client_config)
             .env(env)
             .runtimes(runtimes)
-            .instance(instance)
+            .instance(instance.clone())
             .route_rules(self.config.route_rules)
             .build()
             .context(BuildGrpcService)?;
@@ -200,6 +246,8 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
             http_service,
             rpc_services,
             mysql_service,
+            instance,
+            cluster: self.cluster,
         };
         Ok(server)
     }

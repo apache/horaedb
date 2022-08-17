@@ -4,7 +4,7 @@
 
 use std::{convert::TryInto, sync::Arc};
 
-use ceresdbproto::prometheus::PrometheusQueryRequest;
+use ceresdbproto_deps::ceresdbproto::prometheus::PrometheusQueryRequest;
 use common_types::request_id::RequestId;
 use snafu::{ResultExt, Snafu};
 use table_engine::table;

@@ -2,7 +2,7 @@
 
 //! Interpreter factory
 
-use catalog::manager::Manager as CatalogManager;
+use catalog::manager::ManagerRef;
 use query_engine::executor::Executor;
 use sql::plan::Plan;
 use table_engine::engine::TableEngineRef;
@@ -15,14 +15,18 @@ use crate::{
 };
 
 /// A factory to create interpreters
-pub struct Factory<Q, C> {
+pub struct Factory<Q> {
     query_executor: Q,
-    catalog_manager: C,
+    catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
 }
 
-impl<Q: Executor + 'static, C: CatalogManager + 'static> Factory<Q, C> {
-    pub fn new(query_executor: Q, catalog_manager: C, table_engine: TableEngineRef) -> Self {
+impl<Q: Executor + 'static> Factory<Q> {
+    pub fn new(
+        query_executor: Q,
+        catalog_manager: ManagerRef,
+        table_engine: TableEngineRef,
+    ) -> Self {
         Self {
             query_executor,
             catalog_manager,

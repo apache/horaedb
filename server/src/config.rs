@@ -3,12 +3,19 @@
 //! Server configs
 
 use analytic_engine;
+use cluster::config::ClusterConfig;
 use meta_client::MetaClientConfig;
 use serde_derive::Deserialize;
 
 use crate::router::RuleList;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum DeployMode {
+    Standalone,
+    Cluster,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
     // Runtime for reading data
@@ -22,7 +29,7 @@ pub struct RuntimeConfig {
 }
 
 // TODO(yingwen): Split config into several sub configs.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// The address to listen.
@@ -52,6 +59,8 @@ pub struct Config {
 
     // Analytic engine configs:
     pub analytic: analytic_engine::Config,
+    pub cluster: ClusterConfig,
+    pub deploy_mode: DeployMode,
 }
 
 impl Default for RuntimeConfig {
@@ -88,6 +97,8 @@ impl Default for Config {
             },
             route_rules: RuleList::default(),
             analytic: analytic_engine::Config::default(),
+            cluster: ClusterConfig::default(),
+            deploy_mode: DeployMode::Standalone,
         }
     }
 }
