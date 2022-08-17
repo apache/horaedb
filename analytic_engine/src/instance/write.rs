@@ -37,21 +37,19 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, region_id:{}, entries_num:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, region_id:{}, err:{}",
         table,
         region_id,
-        entries_num,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
         region_id: RegionId,
-        entries_num: u64,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{},region_id:{}, err:{}",
+        "Failed to encode payloads, table:{}, region_id:{}, err:{}",
         table,
         region_id,
         source
@@ -375,7 +373,6 @@ impl Instance {
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
                     region_id: table_data.wal_region_id(),
-                    entries_num: 1u64,
                 })?;
         let log_batch = log_batch_encoder
             .encode(&[payload])

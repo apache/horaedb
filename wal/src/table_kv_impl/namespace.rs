@@ -158,20 +158,6 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to allocate sequence number, namespace:{}, region_id:{}, entries_num:{}, err:{}",
-        namespace,
-        region_id,
-        entries_num,
-        source
-    ))]
-    AllocateSequenceNumber {
-        namespace: String,
-        region_id: RegionId,
-        entries_num: u64,
-        source: crate::table_kv_impl::region::Error,
-    },
-
-    #[snafu(display(
         "Failed to delete entries, namespace:{}, region_id:{}, err:{}",
         namespace,
         region_id,

@@ -32,7 +32,7 @@ pub struct LogWriteEntry {
     pub payload: Vec<u8>,
 }
 
-/// A batch Encoded of `LogWriteEntry`s.
+/// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
     pub(crate) region_id: RegionId,
