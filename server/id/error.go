@@ -4,4 +4,7 @@ package id
 
 import "github.com/CeresDB/ceresmeta/pkg/coderr"
 
-var ErrTxnPutEndID = coderr.NewCodeError(coderr.Internal, "put end id in txn")
+var (
+	ErrTxnPutEndID = coderr.NewCodeError(coderr.Internal, "put end id in txn")
+	ErrAllocID     = coderr.NewCodeError(coderr.Internal, "alloc id")
+)

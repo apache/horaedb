@@ -35,8 +35,9 @@ const (
 
 	defaultMaxRequestBytes uint = 2 * 1024 * 1024 // 2MB
 
-	defaultMaxScanLimit int = 100
-	defaultMinScanLimit int = 20
+	defaultMaxScanLimit    int = 100
+	defaultMinScanLimit    int = 20
+	defaultIDAllocatorStep int = 20
 )
 
 type Config struct {
@@ -74,6 +75,7 @@ type Config struct {
 	MaxRequestBytes         uint   `toml:"max-request-bytes" json:"max-request-bytes"`
 	MaxScanLimit            int    `toml:"max-scan-limit" json:"max-scan-limit"`
 	MinScanLimit            int    `toml:"min-scan-limit" json:"min-scan-limit"`
+	IDAllocatorStep         uint   `toml:"id-allocator-step" json:"id-allocator-step"`
 
 	ClientUrls          string `toml:"client-urls" json:"client-urls"`
 	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`
@@ -223,5 +225,6 @@ func MakeConfigParser() (*Parser, error) {
 	fs.UintVar(&cfg.MaxRequestBytes, "max-request-bytes", defaultMaxRequestBytes, "max bytes of requests received by etcd server")
 	fs.IntVar(&cfg.MaxScanLimit, "max-scan-limit", defaultMaxScanLimit, "max kv storage scan limit")
 	fs.IntVar(&cfg.MinScanLimit, "min-scan-limit", defaultMinScanLimit, "min kv storage scan limit")
+	fs.IntVar(&cfg.MinScanLimit, "id-allocator-step", defaultIDAllocatorStep, "id allocator step")
 	return builder, nil
 }

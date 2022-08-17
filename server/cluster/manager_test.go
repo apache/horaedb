@@ -38,6 +38,7 @@ const (
 	testRootPath                    = "/rootPath"
 	num1                            = 0
 	num2                            = 1
+	defaultIDAllocatorStep          = 20
 )
 
 func prepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, func()) {
@@ -60,30 +61,30 @@ func prepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, fu
 	return etcd, client, clean
 }
 
-func newTestStorage(t *testing.T) storage.Storage {
+func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV) {
 	_, client, _ := prepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
 		MaxScanLimit: 100, MinScanLimit: 10,
 	})
-	return storage
+	return storage, client
 }
 
-func newClusterManagerWithStorage(storage storage.Storage) (Manager, error) {
-	return NewManagerImpl(context.Background(), storage, schedule.NewHeartbeatStreams(context.Background()), testRootPath)
+func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
+	return NewManagerImpl(context.Background(), storage, kv, schedule.NewHeartbeatStreams(context.Background()), testRootPath, defaultIDAllocatorStep)
 }
 
 func newTestClusterManager(t *testing.T) Manager {
 	re := require.New(t)
-	storage := newTestStorage(t)
-	manager, err := newClusterManagerWithStorage(storage)
+	storage, kv := newTestStorage(t)
+	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 	return manager
 }
 
 func TestManagerSingleThread(t *testing.T) {
 	re := require.New(t)
-	storage := newTestStorage(t)
-	manager, err := newClusterManagerWithStorage(storage)
+	storage, kv := newTestStorage(t)
+	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
 	ctx := context.Background()
@@ -109,7 +110,7 @@ func TestManagerSingleThread(t *testing.T) {
 	testGetTables(ctx, re, manager, node1, cluster1, num2)
 	testGetTables(ctx, re, manager, node2, cluster1, num2)
 
-	manager, err = newClusterManagerWithStorage(storage)
+	manager, err = newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 	testGetTables(ctx, re, manager, node1, cluster1, num2)
 	testGetTables(ctx, re, manager, node2, cluster1, num2)

@@ -5,97 +5,132 @@ package id
 import (
 	"context"
 	"fmt"
-	"path"
 	"strconv"
 	"sync"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
-	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/clientv3util"
 	"go.uber.org/zap"
 )
 
-const defaultAllocStep = uint64(1000)
-
-// When a process performs ID allocation,
-// the lock will lock the shared resource area,
-// so that other processes cannot temporarily perform ID allocation
-var lock sync.Mutex
-
 type AllocatorImpl struct {
-	base     uint64
-	end      uint64
-	kv       storage.KV
-	rootPath string
-	key      string
+	// RWMutex is used to protect following fields.
+	lock sync.Mutex
+	base uint64
+	end  uint64
+
+	kv            clientv3.KV
+	key           string
+	allocStep     uint
+	isInitialized bool
 }
 
-func NewAllocatorImpl(kv storage.KV, rootPath string, key string) *AllocatorImpl {
-	return &AllocatorImpl{kv: kv, rootPath: rootPath, key: key}
+func NewAllocatorImpl(kv clientv3.KV, key string, allocStep uint) *AllocatorImpl {
+	return &AllocatorImpl{kv: kv, key: key, allocStep: allocStep}
 }
 
-func (alloc *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
-	lock.Lock()
-	defer lock.Unlock()
+func (a *AllocatorImpl) isExhausted() bool {
+	return a.base == a.end
+}
 
-	if alloc.base == alloc.end {
-		if err := alloc.fastRebaseLocked(ctx); err != nil {
-			log.Info("fast rebase failed", zap.Error(err))
+func (a *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
 
-			if err := alloc.rebaseLocked(ctx); err != nil {
-				return 0, err
+	if !a.isInitialized {
+		if err := a.slowRebaseLocked(ctx); err != nil {
+			return 0, errors.Wrap(err, "alloc id")
+		}
+		a.isInitialized = true
+	}
+
+	if a.isExhausted() {
+		if err := a.fastRebaseLocked(ctx); err != nil {
+			log.Warn("fast rebase failed", zap.Error(err))
+
+			if err = a.slowRebaseLocked(ctx); err != nil {
+				return 0, errors.Wrap(err, "alloc id")
 			}
 		}
 	}
 
-	alloc.base++
-	return alloc.base, nil
+	ret := a.base
+	a.base++
+	return ret, nil
 }
 
-func (alloc *AllocatorImpl) rebaseLocked(ctx context.Context) error {
-	currEnd, err := alloc.kv.Get(ctx, alloc.key)
+func (a *AllocatorImpl) slowRebaseLocked(ctx context.Context) error {
+	resp, err := a.kv.Get(ctx, a.key)
 	if err != nil {
-		return errors.Wrapf(err, "get end id failed, key:%v", alloc.key)
+		return errors.Wrapf(err, "get end id failed, key:%s", a.key)
 	}
 
-	if currEnd != "" {
-		return alloc.doRebase(ctx, decodeID(currEnd))
+	if n := len(resp.Kvs); n > 1 {
+		return etcdutil.ErrEtcdKVGetResponse.WithCausef("%v", resp.Kvs)
 	}
 
-	return alloc.doRebase(ctx, 0)
+	// Key is not exist, create key in kv storage.
+	if len(resp.Kvs) == 0 {
+		return a.firstDoRebaseLocked(ctx)
+	}
+
+	currEnd := string(resp.Kvs[0].Value)
+	return a.doRebaseLocked(ctx, decodeID(currEnd))
 }
 
-func (alloc *AllocatorImpl) fastRebaseLocked(ctx context.Context) error {
-	return alloc.doRebase(ctx, alloc.end)
+func (a *AllocatorImpl) fastRebaseLocked(ctx context.Context) error {
+	return a.doRebaseLocked(ctx, a.end)
 }
 
-func (alloc *AllocatorImpl) doRebase(ctx context.Context, currEnd uint64) error {
-	newEnd := currEnd + defaultAllocStep
-	key := path.Join(alloc.rootPath, alloc.key)
+func (a *AllocatorImpl) firstDoRebaseLocked(ctx context.Context) error {
+	newEnd := a.allocStep
 
-	var cmp clientv3.Cmp
-	if currEnd == 0 {
-		cmp = clientv3.Compare(clientv3.CreateRevision(key), "=", 0)
-	} else {
-		cmp = clientv3.Compare(clientv3.Value(key), "=", encodeID(currEnd))
-	}
-	opPutEndID := clientv3.OpPut(key, encodeID(newEnd))
+	keyMissing := clientv3util.KeyMissing(a.key)
+	opPutEnd := clientv3.OpPut(a.key, encodeID(uint64(newEnd)))
 
-	resp, err := alloc.kv.Txn(ctx).
-		If(cmp).
-		Then(opPutEndID).
+	resp, err := a.kv.Txn(ctx).
+		If(keyMissing).
+		Then(opPutEnd).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "put end id failed, key:%v", key)
+		return errors.Wrapf(err, "put end id failed, key:%s", a.key)
 	} else if !resp.Succeeded {
-		return ErrTxnPutEndID.WithCausef("txn put end id failed, resp:%v", resp)
+		return ErrTxnPutEndID.WithCausef("txn put end id failed, key is exist, key:%s, resp:%v", a.key, resp)
 	}
 
-	log.Info("Allocator allocates a new id", zap.Uint64("alloc-id", newEnd))
+	a.end = uint64(newEnd)
 
-	alloc.end = newEnd
-	alloc.base = newEnd - defaultAllocStep
+	log.Info("Allocator allocates a new base id", zap.String("key", a.key), zap.Uint64("id", a.base))
+	return nil
+}
+
+func (a *AllocatorImpl) doRebaseLocked(ctx context.Context, currEnd uint64) error {
+	if currEnd < a.base {
+		return ErrAllocID.WithCausef("ID in storage can't less than memory, base:%d, end:%d", a.base, currEnd)
+	}
+
+	newEnd := currEnd + uint64(a.allocStep)
+
+	endEquals := clientv3.Compare(clientv3.Value(a.key), "=", encodeID(currEnd))
+	opPutEnd := clientv3.OpPut(a.key, encodeID(newEnd))
+
+	resp, err := a.kv.Txn(ctx).
+		If(endEquals).
+		Then(opPutEnd).
+		Commit()
+	if err != nil {
+		return errors.Wrapf(err, "put end id failed, key:%s, old value:%d, new value:%d", a.key, currEnd, newEnd)
+	} else if !resp.Succeeded {
+		return ErrTxnPutEndID.WithCausef("txn put end id failed, endEquals failed, key:%s, value:%d, resp:%v", a.key, currEnd, resp)
+	}
+
+	a.base = currEnd
+	a.end = newEnd
+
+	log.Info("Allocator allocates a new base id", zap.String("key", a.key), zap.Uint64("id", a.base))
 
 	return nil
 }
@@ -107,7 +142,7 @@ func encodeID(value uint64) string {
 func decodeID(value string) uint64 {
 	res, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
-		log.Error("convert string to int failed", zap.Error(err))
+		log.Error("convert string to int failed", zap.Error(err), zap.String("val", value))
 	}
 	return res
 }

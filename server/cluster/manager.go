@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"path"
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
@@ -12,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -49,16 +51,25 @@ type managerImpl struct {
 	lock     sync.RWMutex
 	clusters map[string]*Cluster
 
-	storage   storage.Storage
-	alloc     id.Allocator
-	hbstreams *schedule.HeartbeatStreams
-	rootPath  string
+	storage         storage.Storage
+	kv              clientv3.KV
+	alloc           id.Allocator
+	hbstreams       *schedule.HeartbeatStreams
+	rootPath        string
+	idAllocatorStep uint
 }
 
-func NewManagerImpl(ctx context.Context, storage storage.Storage, hbstream *schedule.HeartbeatStreams, rootPath string) (Manager, error) {
-	alloc := id.NewAllocatorImpl(storage, rootPath, AllocClusterIDPrefix)
+func NewManagerImpl(ctx context.Context, storage storage.Storage, kv clientv3.KV, hbstream *schedule.HeartbeatStreams, rootPath string, idAllocatorStep uint) (Manager, error) {
+	alloc := id.NewAllocatorImpl(kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
 
-	manager := &managerImpl{storage: storage, alloc: alloc, clusters: make(map[string]*Cluster, 0), hbstreams: hbstream, rootPath: rootPath}
+	manager := &managerImpl{
+		storage:         storage,
+		alloc:           alloc,
+		clusters:        make(map[string]*Cluster, 0),
+		hbstreams:       hbstream,
+		rootPath:        rootPath,
+		idAllocatorStep: idAllocatorStep,
+	}
 
 	clusters, err := manager.storage.ListClusters(ctx)
 	if err != nil {
@@ -71,7 +82,7 @@ func NewManagerImpl(ctx context.Context, storage storage.Storage, hbstream *sche
 
 	manager.clusters = make(map[string]*Cluster, len(clusters))
 	for _, clusterPb := range clusters {
-		cluster := NewCluster(clusterPb, manager.storage, manager.hbstreams, manager.rootPath)
+		cluster := NewCluster(clusterPb, manager.storage, manager.kv, manager.hbstreams, manager.rootPath, idAllocatorStep)
 		if err := cluster.Load(ctx); err != nil {
 			log.Error("new clusters manager failed, fail to load cluster", zap.Error(err))
 			return nil, errors.Wrapf(err, "clusters manager Load, clusters:%v", cluster)
@@ -118,7 +129,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, ini
 		return nil, errors.Wrapf(err, "clusters manager CreateCluster, clusters:%v", clusterPb)
 	}
 
-	cluster := NewCluster(clusterPb, m.storage, m.hbstreams, m.rootPath)
+	cluster := NewCluster(clusterPb, m.storage, m.kv, m.hbstreams, m.rootPath, m.idAllocatorStep)
 
 	if err = cluster.init(ctx); err != nil {
 		log.Error("fail to init cluster", zap.Error(err))

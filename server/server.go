@@ -147,7 +147,7 @@ func (srv *Server) startServer(ctx context.Context) error {
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
 
-	manager, err := cluster.NewManagerImpl(ctx, storage, srv.hbStreams, srv.cfg.StorageRootPath)
+	manager, err := cluster.NewManagerImpl(ctx, storage, srv.etcdCli, srv.hbStreams, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
 	if err != nil {
 		return errors.Wrap(err, "start server")
 	}

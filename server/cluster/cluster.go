@@ -9,11 +9,11 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
-
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 type Cluster struct {
@@ -27,23 +27,25 @@ type Cluster struct {
 	nodesCache   map[string]*Node   // node_name -> node
 
 	storage       storage.Storage
+	kv            clientv3.KV
 	hbstream      *schedule.HeartbeatStreams
 	coordinator   *coordinator
 	schemaIDAlloc id.Allocator
 	tableIDAlloc  id.Allocator
 }
 
-func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, hbstream *schedule.HeartbeatStreams, rootPath string) *Cluster {
+func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV, hbstream *schedule.HeartbeatStreams, rootPath string, idAllocatorStep uint) *Cluster {
 	cluster := &Cluster{
 		clusterID:     meta.GetId(),
 		metaData:      &metaData{cluster: meta},
 		shardsCache:   make(map[uint32]*Shard),
 		schemasCache:  make(map[string]*Schema),
 		nodesCache:    make(map[string]*Node),
-		schemaIDAlloc: id.NewAllocatorImpl(storage, rootPath, path.Join(meta.Name, AllocSchemaIDPrefix)),
-		tableIDAlloc:  id.NewAllocatorImpl(storage, rootPath, path.Join(meta.Name, AllocTableIDPrefix)),
+		schemaIDAlloc: id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocSchemaIDPrefix), idAllocatorStep),
+		tableIDAlloc:  id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocTableIDPrefix), idAllocatorStep),
 
 		storage:  storage,
+		kv:       kv,
 		hbstream: hbstream,
 	}
 
