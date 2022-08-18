@@ -16,6 +16,7 @@ use arrow_deps::{
 };
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
+    datum::DatumKind,
     schema::{ArrowSchemaRef, Schema, StorageFormat},
 };
 use common_util::define_result;
@@ -120,6 +121,16 @@ pub enum Error {
 
     #[snafu(display("Tsid is required for hybrid format.\nBacktrace:\n{}", backtrace))]
     TsidRequired { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Key column must be string type. type:{}\nBacktrace:\n{}",
+        type_str,
+        backtrace
+    ))]
+    StringKeyColumnRequired {
+        type_str: String,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -283,8 +294,9 @@ struct HybridRecordEncoder {
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     timestamp_type: IndexedType,
-    tag_types: Vec<IndexedType>,
-    field_types: Vec<IndexedType>,
+    key_types: Vec<IndexedType>,
+    // columns that can be collpased into list
+    non_key_types: Vec<IndexedType>,
 }
 
 impl HybridRecordEncoder {
@@ -292,39 +304,49 @@ impl HybridRecordEncoder {
         let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
         let timestamp_type = IndexedType {
             idx: schema.timestamp_index(),
-            kind: schema.column(schema.timestamp_index()).data_type,
+            data_type: schema.column(schema.timestamp_index()).data_type,
         };
         let tsid_type = IndexedType {
             idx: tsid_idx,
-            kind: schema.column(tsid_idx).data_type,
+            data_type: schema.column(tsid_idx).data_type,
         };
 
-        let mut tag_types = Vec::new();
-        let mut field_types = Vec::new();
+        let mut key_types = Vec::new();
+        let mut non_key_types = Vec::new();
         for (idx, col) in schema.columns().iter().enumerate() {
-            if col.is_tag {
-                tag_types.push(IndexedType {
-                    idx,
-                    kind: schema.column(idx).data_type,
-                });
-            } else if idx != timestamp_type.idx && idx != tsid_type.idx {
-                let data_type = schema.column(idx).data_type;
-                let _ = data_type
+            if schema.non_key_column(idx) {
+                let _ = col
+                    .data_type
                     .size()
                     .context(VariableLengthType {
-                        type_str: data_type.to_string(),
+                        type_str: col.data_type.to_string(),
                     })
                     .map_err(|e| Box::new(e) as _)
                     .context(EncodeRecordBatch)?;
 
-                field_types.push(IndexedType {
+                non_key_types.push(IndexedType {
                     idx,
-                    kind: schema.column(idx).data_type,
+                    data_type: schema.column(idx).data_type,
+                });
+            } else if idx != timestamp_type.idx && idx != tsid_idx {
+                if !matches!(col.data_type, DatumKind::String) {
+                    return StringKeyColumnRequired {
+                        type_str: col.data_type.to_string(),
+                    }
+                    .fail();
+                }
+                key_types.push(IndexedType {
+                    idx,
+                    data_type: col.data_type,
                 });
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(tsid_idx, schema);
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(
+            timestamp_type.idx,
+            non_key_types.iter().map(|c| c.idx).collect(),
+            &schema,
+        );
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -337,8 +359,8 @@ impl HybridRecordEncoder {
             arrow_schema,
             tsid_type,
             timestamp_type,
-            tag_types,
-            field_types,
+            key_types,
+            non_key_types,
         })
     }
 }
@@ -350,8 +372,8 @@ impl RecordEncoder for HybridRecordEncoder {
         let record_batch = hybrid::convert_to_hybrid_record(
             &self.tsid_type,
             &self.timestamp_type,
-            &self.tag_types,
-            &self.field_types,
+            &self.key_types,
+            &self.non_key_types,
             self.arrow_schema.clone(),
             arrow_record_batch_vec,
         )

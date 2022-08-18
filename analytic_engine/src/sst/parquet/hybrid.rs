@@ -65,23 +65,26 @@ impl ArrayHandle {
 /// `TsidBatch` is used to collect column data for the same TSID
 #[derive(Debug)]
 struct TsidBatch {
-    tag_values: Vec<String>,
-    timestamp_handle: ArrayHandle,
-    field_handles: Vec<ArrayHandle>,
+    key_values: Vec<String>,
+    timestamp_array: ArrayHandle,
+    non_key_arrays: Vec<ArrayHandle>,
 }
 
 impl TsidBatch {
-    fn new(tag_values: Vec<String>, timestamp: ArrayRef, fields: Vec<ArrayRef>) -> Self {
+    fn new(key_values: Vec<String>, timestamp: ArrayRef, non_key_arrays: Vec<ArrayRef>) -> Self {
         Self {
-            tag_values,
-            timestamp_handle: ArrayHandle::new(timestamp),
-            field_handles: fields.into_iter().map(|f| ArrayHandle::new(f)).collect(),
+            key_values,
+            timestamp_array: ArrayHandle::new(timestamp),
+            non_key_arrays: non_key_arrays
+                .into_iter()
+                .map(|f| ArrayHandle::new(f))
+                .collect(),
         }
     }
 
     fn append_postition(&mut self, offset: usize, length: usize) {
-        self.timestamp_handle.append_pos(offset, length);
-        for handle in &mut self.field_handles {
+        self.timestamp_array.append_pos(offset, length);
+        for handle in &mut self.non_key_arrays {
             handle.append_pos(offset, length);
         }
     }
@@ -90,7 +93,7 @@ impl TsidBatch {
 #[derive(Debug)]
 pub struct IndexedType {
     pub idx: usize,
-    pub kind: DatumKind,
+    pub data_type: DatumKind,
 }
 
 struct IndexedArray {
@@ -98,23 +101,19 @@ struct IndexedArray {
     array: ArrayRef,
 }
 
-/// Convert timestamp/fields column to list type
-pub fn build_hybrid_arrow_schema(tsid_idx: usize, schema: &Schema) -> ArrowSchemaRef {
-    let mut tag_idxes = Vec::new();
-    for (idx, col) in schema.columns().iter().enumerate() {
-        if col.is_tag {
-            tag_idxes.push(idx)
-        }
-    }
+/// Convert timestamp/non key columns to list type
+pub fn build_hybrid_arrow_schema(
+    timestamp_idx: usize,
+    non_key_column_idxes: Vec<usize>,
+    schema: &Schema,
+) -> ArrowSchemaRef {
     let arrow_schema = schema.to_arrow_schema_ref();
     let new_fields = arrow_schema
         .fields()
         .iter()
         .enumerate()
         .map(|(idx, field)| {
-            if idx == tsid_idx || tag_idxes.contains(&idx) {
-                field.clone()
-            } else {
+            if idx == timestamp_idx || non_key_column_idxes.contains(&idx) {
                 Field::new(
                     field.name(),
                     DataType::List(Box::new(Field::new(
@@ -124,6 +123,8 @@ pub fn build_hybrid_arrow_schema(tsid_idx: usize, schema: &Schema) -> ArrowSchem
                     ))),
                     true,
                 )
+            } else {
+                field.clone()
             }
         })
         .collect::<Vec<_>>();
@@ -229,48 +230,49 @@ impl ListArrayBuilder {
     }
 }
 
-/// Builds hybrid record by concat timestamp/fields into `ListArray`
+/// Builds hybrid record by concat timestamp and non key columns into
+/// `ListArray`
 fn build_hybrid_record(
     arrow_schema: ArrowSchemaRef,
     tsid_type: &IndexedType,
     timestamp_type: &IndexedType,
-    tag_types: &[IndexedType],
-    field_types: &[IndexedType],
+    key_types: &[IndexedType],
+    non_key_types: &[IndexedType],
     batch_by_tsid: BTreeMap<u64, TsidBatch>,
 ) -> Result<ArrowRecordBatch> {
-    let tsid_col = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
-    let mut timestamp_handle = Vec::new();
-    let mut field_handles = vec![Vec::new(); field_types.len()];
-    let mut tag_handles = vec![Vec::new(); tag_types.len()];
+    let tsid_array = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
+    let mut timestamp_array = Vec::new();
+    let mut non_key_column_arrays = vec![Vec::new(); non_key_types.len()];
+    let mut key_column_arrays = vec![Vec::new(); key_types.len()];
 
     for batch in batch_by_tsid.into_values() {
-        timestamp_handle.push(batch.timestamp_handle);
-        for (idx, handle) in batch.field_handles.into_iter().enumerate() {
-            field_handles[idx].push(handle);
+        timestamp_array.push(batch.timestamp_array);
+        for (idx, handle) in batch.non_key_arrays.into_iter().enumerate() {
+            non_key_column_arrays[idx].push(handle);
         }
-        for (idx, tagv) in batch.tag_values.into_iter().enumerate() {
-            tag_handles[idx].push(tagv);
+        for (idx, tagv) in batch.key_values.into_iter().enumerate() {
+            key_column_arrays[idx].push(tagv);
         }
     }
     let tsid_array = IndexedArray {
         idx: tsid_type.idx,
-        array: Arc::new(tsid_col),
+        array: Arc::new(tsid_array),
     };
     let timestamp_array = IndexedArray {
         idx: timestamp_type.idx,
-        array: Arc::new(ListArrayBuilder::new(timestamp_type.kind, timestamp_handle).build()?),
+        array: Arc::new(ListArrayBuilder::new(timestamp_type.data_type, timestamp_array).build()?),
     };
-    let tag_arrays = tag_handles
+    let key_column_arrays = key_column_arrays
         .into_iter()
-        .zip(tag_types.iter().map(|n| n.idx))
+        .zip(key_types.iter().map(|n| n.idx))
         .map(|(c, idx)| IndexedArray {
             idx,
             array: Arc::new(StringArray::from(c)) as ArrayRef,
         })
         .collect::<Vec<_>>();
-    let field_arrays = field_handles
+    let non_key_column_arrays = non_key_column_arrays
         .into_iter()
-        .zip(field_types.iter().map(|n| (n.idx, n.kind)))
+        .zip(non_key_types.iter().map(|n| (n.idx, n.data_type)))
         .map(|(handle, (idx, datum_type))| {
             Ok(IndexedArray {
                 idx,
@@ -278,13 +280,17 @@ fn build_hybrid_record(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let all_columns = vec![vec![tsid_array, timestamp_array], tag_arrays, field_arrays]
-        .into_iter()
-        .flatten()
-        .map(|indexed_array| (indexed_array.idx, indexed_array.array))
-        .collect::<BTreeMap<_, _>>()
-        .into_values()
-        .collect::<Vec<_>>();
+    let all_columns = vec![
+        vec![tsid_array, timestamp_array],
+        key_column_arrays,
+        non_key_column_arrays,
+    ]
+    .into_iter()
+    .flatten()
+    .map(|indexed_array| (indexed_array.idx, indexed_array.array))
+    .collect::<BTreeMap<_, _>>()
+    .into_values()
+    .collect::<Vec<_>>();
 
     ArrowRecordBatch::try_new(arrow_schema, all_columns)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -296,8 +302,8 @@ fn build_hybrid_record(
 pub fn convert_to_hybrid_record(
     tsid_type: &IndexedType,
     timestamp_type: &IndexedType,
-    tag_types: &[IndexedType],
-    field_types: &[IndexedType],
+    key_types: &[IndexedType],
+    non_key_types: &[IndexedType],
     hybrid_arrow_schema: ArrowSchemaRef,
     arrow_record_batch_vec: Vec<ArrowRecordBatch>,
 ) -> Result<ArrowRecordBatch> {
@@ -314,14 +320,14 @@ pub fn convert_to_hybrid_record(
             continue;
         }
 
-        let tagv_columns = tag_types
+        let key_values = key_types
             .iter()
-            .map(|indexed_name| {
+            .map(|col| {
                 record_batch
-                    .column(indexed_name.idx)
+                    .column(col.idx)
                     .as_any()
                     .downcast_ref::<StringArray>()
-                    .expect("checked when create table")
+                    .expect("checked in HybridRecordEncoder::try_new")
             })
             .collect::<Vec<_>>();
         let mut previous_tsid = tsid_array.value(0);
@@ -344,22 +350,16 @@ pub fn convert_to_hybrid_record(
                 duplicated_tsids[i + 1].1 - offset
             };
 
-            let mut field_columns = Vec::with_capacity(field_types.len());
-            for indexed_type in field_types {
-                let fields_in_one_tsid =
-                    record_batch.column(indexed_type.idx).slice(offset, length);
-                field_columns.push(fields_in_one_tsid)
-            }
             let batch = batch_by_tsid.entry(tsid).or_insert_with(|| {
                 TsidBatch::new(
-                    tagv_columns
+                    key_values
                         .iter()
                         .map(|col| col.value(offset).to_string())
                         .collect(),
                     record_batch.column(timestamp_type.idx).clone(),
-                    field_types
+                    non_key_types
                         .iter()
-                        .map(|indexed_name| record_batch.column(indexed_name.idx).clone())
+                        .map(|col| record_batch.column(col.idx).clone())
                         .collect(),
                 )
             });
@@ -371,8 +371,8 @@ pub fn convert_to_hybrid_record(
         hybrid_arrow_schema,
         tsid_type,
         timestamp_type,
-        tag_types,
-        field_types,
+        key_types,
+        non_key_types,
         batch_by_tsid,
     )
 }

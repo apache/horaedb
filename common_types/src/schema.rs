@@ -464,8 +464,11 @@ pub enum StorageFormat {
     Columnar,
 
     /// Design for time-series data
-    /// Timestamp and fields columns within same tsid are collapsed
-    /// into list, ID/Tags are the same with columar's.
+    /// Timestamp and non key columns within same primary key are collapsed
+    /// into list, other columns are the same format with columar's.
+    ///
+    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
+    /// for time-range pushdown filter
     ///
     ///```plaintext
     /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
@@ -625,6 +628,15 @@ impl Schema {
     #[inline]
     pub fn timestamp_index(&self) -> usize {
         self.timestamp_index
+    }
+
+    /// Whether i-nth column is key column
+    /// TODO: should tag column be key columns?
+    pub fn non_key_column(&self, i: usize) -> bool {
+        if self.column(i).is_tag {
+            return false;
+        }
+        return i >= self.num_key_columns;
     }
 
     /// Get the version of this schema
