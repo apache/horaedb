@@ -20,12 +20,21 @@ use common_types::{
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
-use common_util::runtime::{self, Runtime};
+use common_util::{
+    define_result,
+    runtime::{self, Runtime},
+};
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
+use snafu::Snafu;
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
+
+#[derive(Debug, Snafu)]
+pub enum Error {}
+
+define_result!(Error);
 
 pub fn new_runtime(thread_num: usize) -> Runtime {
     runtime::Builder::default()
@@ -160,10 +169,7 @@ impl Header {
     }
 }
 
-fn write_header(
-    header: Header,
-    buf: &mut dyn MemBufMut,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn write_header(header: Header, buf: &mut dyn MemBufMut) -> Result<()> {
     buf.write_u8(header.to_u8())
         .expect("should succeed to write u8");
     Ok(())
@@ -173,15 +179,14 @@ fn write_header(
 pub struct WritePayload<'a>(pub &'a [u8]);
 
 impl<'a> Payload for WritePayload<'a> {
+    type Error = Error;
+
     fn encode_size(&self) -> usize {
         let body_size = self.0.len();
         HEADER_SIZE + body_size as usize
     }
 
-    fn encode_to(
-        &self,
-        buf: &mut dyn MemBufMut,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
         write_header(Header::Write, buf).unwrap();
         buf.write_slice(self.0).unwrap();
         Ok(())

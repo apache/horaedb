@@ -17,9 +17,9 @@ git = "https://github.com/matklad/uncover.git"
 rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
-git = "https://github.com/waynexia/arrow-datafusion.git"
+git = "https://github.com/CeresDB/arrow-datafusion.git"
 rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"
 
 [dependencies.datafusion-expr]
-git = "https://github.com/waynexia/arrow-datafusion.git"
+git = "https://github.com/CeresDB/arrow-datafusion.git"
 rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"

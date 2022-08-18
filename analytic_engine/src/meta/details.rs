@@ -19,7 +19,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
-    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
+    log_batch::LogEntry,
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
         RegionId, SequenceNumber, WalManagerRef, WriteContext,
@@ -36,6 +36,21 @@ use crate::meta::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display(
+        "Failed to get to get log batch encoder, region_id:{}, err:{}",
+        region_id,
+        source
+    ))]
+    GetLogBatchEncoder {
+        region_id: RegionId,
+        source: wal::manager::Error,
+    },
+
+    #[snafu(display("Failed to encode payloads, region_id:{}, err:{}", region_id, source))]
+    EncodePayloads {
+        region_id: RegionId,
+        source: wal::manager::Error,
+    },
     #[snafu(display("Failed to write update to wal, err:{}", source))]
     WriteWal { source: wal::manager::Error },
 
@@ -170,9 +185,14 @@ impl ManifestImpl {
         info!("Manifest store update, update:{:?}", update);
 
         let region_id = Self::region_id_of_meta_update(&update);
-        let mut log_batch = LogWriteBatch::new(region_id);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
-        log_batch.push(LogWriteEntry { payload: &payload });
+        let log_batch_encoder = self
+            .wal_manager
+            .encoder(region_id)
+            .context(GetLogBatchEncoder { region_id })?;
+        let log_batch = log_batch_encoder
+            .encode(&[payload])
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 
@@ -311,17 +331,22 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        let mut log_batch = LogWriteBatch::new(self.region_id);
         let mut payload_batch = Vec::with_capacity(log_entries.len());
 
+        // TODO(ygf11): maybe we can build payload in encode loop.
         for entry in log_entries {
             let payload = MetaUpdatePayload::from(entry);
             payload_batch.push(payload);
         }
 
-        for payload in payload_batch.iter() {
-            log_batch.push(LogWriteEntry { payload });
-        }
+        let region_id = self.region_id;
+        let log_batch_encoder = self
+            .wal_manager
+            .encoder(self.region_id)
+            .context(GetLogBatchEncoder { region_id })?;
+        let log_batch = log_batch_encoder
+            .encode(&payload_batch)
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 

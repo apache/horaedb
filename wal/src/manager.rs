@@ -10,6 +10,7 @@ use common_util::runtime::Runtime;
 use snafu::ResultExt;
 
 use crate::{
+    kv_encoder::LogBatchEncoder,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     manager,
 };
@@ -50,6 +51,16 @@ pub mod error {
         ))]
         RegionNotFound {
             region_id: RegionId,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display(
+            "Failed to create wal encoder, err:{}.\nBacktrace:\n{}",
+            source,
+            backtrace
+        ))]
+        CreateWalEncoder {
+            source: Box<dyn std::error::Error + Send + Sync>,
             backtrace: Backtrace,
         },
 
@@ -233,7 +244,7 @@ pub trait BatchLogIterator {
 /// Every region has its own increasing (and maybe hallow) sequence number
 /// space.
 #[async_trait]
-pub trait WalManager: Send + Sync + fmt::Debug {
+pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
     async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
 
@@ -255,10 +266,15 @@ pub trait WalManager: Send + Sync + fmt::Debug {
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter>;
 
+    /// Provide the encoder for encoding payloads.
+    fn encoder(&self, region_id: RegionId) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(region_id))
+    }
+
     /// Write a batch of log entries to log.
     ///
     /// Returns the max sequence number for the batch of log entries.
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch<'_>) -> Result<SequenceNumber>;
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.
