@@ -180,10 +180,10 @@ impl DatumKind {
     /// Return None for variable-length type
     pub fn size(&self) -> Option<usize> {
         let size = match self {
-            DatumKind::Null => 1,
+            DatumKind::Null => 0,
             DatumKind::Timestamp => 8,
             DatumKind::Double => 8,
-            DatumKind::Float => 8,
+            DatumKind::Float => 4,
             DatumKind::Varbinary => return None,
             DatumKind::String => return None,
             DatumKind::UInt64 => 8,

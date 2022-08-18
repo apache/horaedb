@@ -630,8 +630,9 @@ impl Schema {
         self.timestamp_index
     }
 
-    /// Whether i-nth column is key column
-    /// TODO: should tag column be key columns?
+    /// Whether i-nth column is non-key column
+    ///
+    /// Non-key means not timestamp/tag/primary key
     pub fn non_key_column(&self, i: usize) -> bool {
         if self.column(i).is_tag {
             return false;
