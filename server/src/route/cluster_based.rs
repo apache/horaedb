@@ -7,7 +7,7 @@
 use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 
-use crate::{error::Result, router::Router};
+use crate::{error::Result, route::Router};
 
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,

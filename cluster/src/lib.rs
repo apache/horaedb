@@ -47,7 +47,7 @@ pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
 
 pub type TableManipulatorRef = Arc<dyn TableManipulator + Send + Sync>;
 
-pub type ClusterViewRef = Arc<ClusterView>;
+pub type ClusterTopologyRef = Arc<ClusterTopology>;
 
 pub type TableLocs = HashMap<String, ShardView>;
 
@@ -72,7 +72,7 @@ impl Default for SchemaConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Node {
     pub addr: String,
-    pub port: u32,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +82,7 @@ pub struct ShardView {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ClusterView {
+pub struct ClusterTopology {
     pub schema_tables: HashMap<String, TableLocs>,
     pub schema_configs: HashMap<String, SchemaConfig>,
 }
@@ -109,6 +109,5 @@ pub trait TableManipulator {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn fetch_view(&self) -> Result<ClusterViewRef>;
-    // TODO: add more methods, such as provide the topology of the cluster.
+    async fn fetch_topology(&self) -> Result<ClusterTopologyRef>;
 }

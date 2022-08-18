@@ -16,7 +16,7 @@ use twox_hash::XxHash64;
 
 use crate::{
     error::{ErrNoCause, Result, StatusCode},
-    router::Router,
+    route::Router,
 };
 
 /// Hash seed to build hasher. Modify the seed will result in different route
@@ -182,7 +182,7 @@ impl Router for RuleBasedRouter {
                 if let Some(shard_view) = shard_view_map.get(&shard_id) {
                     let node = &shard_view.node;
                     endpoint.set_ip(node.addr.clone());
-                    endpoint.set_port(node.port);
+                    endpoint.set_port(node.port as u32);
                 } else {
                     return ErrNoCause {
                         code: StatusCode::NotFound,

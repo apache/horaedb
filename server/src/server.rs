@@ -21,7 +21,7 @@ use crate::{
     limiter::Limiter,
     mysql,
     mysql::error::Error as MysqlError,
-    router::RouterRef,
+    route::RouterRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
 

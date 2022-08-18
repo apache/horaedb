@@ -10,8 +10,14 @@ use common_types::schema::TIMESTAMP_COLUMN;
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::router::rule_based::{ClusterView, RuleList, ShardView};
+use crate::route::rule_based::{ClusterView, RuleList, ShardView};
 
+/// The deployment mode decides how to start up the CeresDB.
+///
+/// [DeployMode::Standalone] means to start CeresDB alone without CeresMeta
+/// cluster.
+/// [DeployMode::Cluster] means to start CeresDB under the control of
+/// CeresMeta cluster.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub enum DeployMode {
     Standalone,
@@ -129,9 +135,10 @@ pub struct Config {
 
     // Analytic engine configs:
     pub analytic: analytic_engine::Config,
+
+    // Deployment configs:
     pub deploy_mode: DeployMode,
     pub cluster: ClusterConfig,
-    pub static_topology: StaticTopologyConfig,
 }
 
 impl Default for RuntimeConfig {
@@ -165,7 +172,6 @@ impl Default for Config {
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
-            static_topology: StaticTopologyConfig::default(),
         }
     }
 }

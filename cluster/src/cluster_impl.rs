@@ -21,7 +21,7 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
-    Cluster, ClusterViewRef, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterTopologyRef, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -222,7 +222,7 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn fetch_view(&self) -> Result<ClusterViewRef> {
+    async fn fetch_topology(&self) -> Result<ClusterTopologyRef> {
         todo!("fetch the view from the meta")
     }
 }

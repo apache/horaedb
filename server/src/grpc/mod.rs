@@ -41,7 +41,7 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError, StatusCode},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
-    router::{Router, RouterRef},
+    route::{Router, RouterRef},
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 

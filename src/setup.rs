@@ -18,7 +18,7 @@ use meta_client_v2::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},
-    router::{cluster_based::ClusterBasedRouter, rule_based::RuleBasedRouter},
+    route::{cluster_based::ClusterBasedRouter, rule_based::RuleBasedRouter},
     schema_config_provider::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
