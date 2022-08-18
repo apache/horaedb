@@ -226,8 +226,8 @@ name = "arrow_deps"
 version = "0.1.0"
 dependencies = [
  "arrow",
- "datafusion 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "parquet 15.0.0",
  "uncover",
 ]
@@ -1312,19 +1312,19 @@ dependencies = [
 [[package]]
 name = "datafusion"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "ahash 0.7.6",
  "arrow",
  "async-trait",
  "chrono",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-data-access 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-optimizer 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-physical-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-row 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-sql 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-data-access 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-optimizer 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-physical-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-row 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-sql 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "futures 0.3.21",
  "glob",
  "hashbrown",
@@ -1388,7 +1388,7 @@ dependencies = [
 [[package]]
 name = "datafusion-common"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "arrow",
  "ordered-float 3.0.0",
@@ -1410,7 +1410,7 @@ dependencies = [
 [[package]]
 name = "datafusion-data-access"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1436,11 +1436,11 @@ dependencies = [
 [[package]]
 name = "datafusion-expr"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "ahash 0.7.6",
  "arrow",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "sqlparser 0.19.0",
 ]
 
@@ -1458,14 +1458,14 @@ dependencies = [
 [[package]]
 name = "datafusion-optimizer"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "arrow",
  "async-trait",
  "chrono",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-physical-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-physical-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "hashbrown",
  "log",
 ]
@@ -1488,16 +1488,16 @@ dependencies = [
 [[package]]
 name = "datafusion-physical-expr"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "ahash 0.7.6",
  "arrow",
  "blake2",
  "blake3",
  "chrono",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-row 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-row 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "hashbrown",
  "lazy_static",
  "md-5",
@@ -1536,10 +1536,10 @@ dependencies = [
 [[package]]
 name = "datafusion-row"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "arrow",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "paste 1.0.8",
  "rand 0.8.5",
 ]
@@ -1558,12 +1558,12 @@ dependencies = [
 [[package]]
 name = "datafusion-sql"
 version = "9.0.0"
-source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4#8330a40519b0cb32c04a24a540511cd4638ac9b4"
 dependencies = [
  "ahash 0.7.6",
  "arrow",
- "datafusion-common 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
- "datafusion-expr 9.0.0 (git+https://github.com/waynexia/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-common 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
+ "datafusion-expr 9.0.0 (git+https://github.com/CeresDB/arrow-datafusion.git?rev=8330a40519b0cb32c04a24a540511cd4638ac9b4)",
  "hashbrown",
  "sqlparser 0.19.0",
  "tokio 1.20.1",
