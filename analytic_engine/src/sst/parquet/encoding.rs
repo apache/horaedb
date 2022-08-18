@@ -345,7 +345,7 @@ impl HybridRecordEncoder {
         let arrow_schema = hybrid::build_hybrid_arrow_schema(
             timestamp_type.idx,
             non_key_types.iter().map(|c| c.idx).collect(),
-            &schema,
+            schema,
         );
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));

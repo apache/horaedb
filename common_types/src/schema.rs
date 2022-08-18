@@ -636,7 +636,8 @@ impl Schema {
         if self.column(i).is_tag {
             return false;
         }
-        return i >= self.num_key_columns;
+
+        i >= self.num_key_columns
     }
 
     /// Get the version of this schema
