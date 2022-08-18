@@ -35,16 +35,6 @@ pub mod error {
             backtrace: Backtrace,
         },
 
-        #[snafu(display(
-            "Hybrid format don't support variable length type, type:{}.\nBacktrace:\n{}",
-            type_str,
-            backtrace
-        ))]
-        VariableLengthType {
-            type_str: String,
-            backtrace: Backtrace,
-        },
-
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch {
             source: Box<dyn std::error::Error + Send + Sync>,

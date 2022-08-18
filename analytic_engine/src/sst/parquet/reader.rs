@@ -336,7 +336,7 @@ impl ProjectAndFilterReader {
                     let arrow_schema = record_batch.schema();
                     let schema = Schema::try_from(arrow_schema).context(InvalidSchema)?;
                     let record_batch = match schema.storage_format() {
-                        StorageFormat::Hybrid => todo!(),
+                        StorageFormat::Hybrid => todo!("Will implement this in PR 207"),
                         StorageFormat::Columnar => record_batch,
                     };
 

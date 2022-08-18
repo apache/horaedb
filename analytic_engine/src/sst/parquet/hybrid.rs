@@ -15,15 +15,15 @@ use common_types::{
     schema::{ArrowSchemaRef, DataType, Field, Schema},
 };
 use log::debug;
-use snafu::{OptionExt, ResultExt};
+use snafu::ResultExt;
 
-use crate::sst::builder::{EncodeRecordBatch, Result, VariableLengthType};
+use crate::sst::builder::{EncodeRecordBatch, Result};
 
 //  hard coded in https://github.com/apache/arrow-rs/blob/20.0.0/arrow/src/array/array_list.rs#L185
 const LIST_ITEM_NAME: &str = "item";
 
-/// ArrayHandle is used to keep different offsets of array, which can be concat
-/// together.
+/// ArrayHandle is used to keep different offsets of array, which can be
+/// concatenated together.
 ///
 /// Note:
 /// 1. Array.slice(offset, length) don't work as expected, since the
@@ -101,6 +101,10 @@ struct IndexedArray {
     array: ArrayRef,
 }
 
+fn is_collapsable_column(idx: usize, timestamp_idx: usize, non_key_column_idxes: &[usize]) -> bool {
+    idx == timestamp_idx || non_key_column_idxes.contains(&idx)
+}
+
 /// Convert timestamp/non key columns to list type
 pub fn build_hybrid_arrow_schema(
     timestamp_idx: usize,
@@ -113,16 +117,13 @@ pub fn build_hybrid_arrow_schema(
         .iter()
         .enumerate()
         .map(|(idx, field)| {
-            if idx == timestamp_idx || non_key_column_idxes.contains(&idx) {
-                Field::new(
-                    field.name(),
-                    DataType::List(Box::new(Field::new(
-                        LIST_ITEM_NAME,
-                        field.data_type().clone(),
-                        true,
-                    ))),
+            if is_collapsable_column(idx, timestamp_idx, &non_key_column_idxes) {
+                let field_type = DataType::List(Box::new(Field::new(
+                    LIST_ITEM_NAME,
+                    field.data_type().clone(),
                     true,
-                )
+                )));
+                Field::new(field.name(), field_type, true)
             } else {
                 field.clone()
             }
@@ -150,9 +151,10 @@ impl ListArrayBuilder {
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
-        let data_type_size = self.datum_kind.size().context(VariableLengthType {
-            type_str: self.datum_kind.to_string(),
-        })?;
+        let data_type_size = self
+            .datum_kind
+            .size()
+            .expect("checked in HybridRecordEncoder::try_new");
         let values_num = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
         let mut values = MutableBuffer::new(values_num * data_type_size);
         let mut null_buffer = MutableBuffer::new_null(values_num);
@@ -200,10 +202,8 @@ impl ListArrayBuilder {
         Ok(values_array_data)
     }
 
-    /// This function is an translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
+    /// This function is a translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
     fn build(self) -> Result<ListArray> {
-        assert!(!self.list_of_arrays.is_empty());
-
         let array_len = self.list_of_arrays.len();
         let mut offsets =
             MutableBuffer::new(self.list_of_arrays.len() * std::mem::size_of::<i32>());
@@ -280,7 +280,7 @@ fn build_hybrid_record(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let all_columns = vec![
+    let all_columns = [
         vec![tsid_array, timestamp_array],
         key_column_arrays,
         non_key_column_arrays,
@@ -293,7 +293,7 @@ fn build_hybrid_record(
     .collect::<Vec<_>>();
 
     ArrowRecordBatch::try_new(arrow_schema, all_columns)
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        .map_err(|e| Box::new(e) as _)
         .context(EncodeRecordBatch)
 }
 
@@ -305,11 +305,11 @@ pub fn convert_to_hybrid_record(
     key_types: &[IndexedType],
     non_key_types: &[IndexedType],
     hybrid_arrow_schema: ArrowSchemaRef,
-    arrow_record_batch_vec: Vec<ArrowRecordBatch>,
+    arrow_record_batchs: Vec<ArrowRecordBatch>,
 ) -> Result<ArrowRecordBatch> {
     // TODO: should keep tsid ordering here?
     let mut batch_by_tsid = BTreeMap::new();
-    for record_batch in arrow_record_batch_vec {
+    for record_batch in arrow_record_batchs {
         let tsid_array = record_batch
             .column(tsid_type.idx)
             .as_any()

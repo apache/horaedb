@@ -24,8 +24,10 @@ use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use super::hybrid::IndexedType;
-use crate::sst::{builder::VariableLengthType, file::SstMetaData, parquet::hybrid};
+use crate::sst::{
+    file::SstMetaData,
+    parquet::hybrid::{self, IndexedType},
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -124,11 +126,21 @@ pub enum Error {
 
     #[snafu(display(
         "Key column must be string type. type:{}\nBacktrace:\n{}",
-        type_str,
+        type_name,
         backtrace
     ))]
     StringKeyColumnRequired {
-        type_str: String,
+        type_name: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Hybrid format doesn't support variable length type, type:{}.\nBacktrace:\n{}",
+        type_name,
+        backtrace
+    ))]
+    VariableLengthType {
+        type_name: String,
         backtrace: Backtrace,
     },
 }
@@ -190,7 +202,7 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
     SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }
 
-/// RecordEncoder is used for encoding ArrowBatch
+/// RecordEncoder is used for encoding ArrowBatch.
 ///
 /// TODO: allow pre-allocate buffer
 trait RecordEncoder {
@@ -204,7 +216,7 @@ trait RecordEncoder {
 }
 
 /// EncodingWriter implements `Write` trait, useful when Writer need shared
-/// ownership
+/// ownership.
 ///
 /// TODO: This is a temp workaround for [ArrowWriter](https://docs.rs/parquet/20.0.0/parquet/arrow/arrow_writer/struct.ArrowWriter.html), since it has no method to get underlying Writer
 /// We can fix this by add `into_inner` method to it, or just replace it with
@@ -226,14 +238,13 @@ impl Write for EncodingWriter {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        let mut inner = self.0.lock().unwrap();
-        inner.flush()
+        Ok(())
     }
 }
 
 struct ColumnarRecordEncoder {
     buf: EncodingWriter,
-    // wrap in Option so ownership can be take out behind `&mut self`
+    // wrap in Option so ownership can be taken out behind `&mut self`
     arrow_writer: Option<ArrowWriter<EncodingWriter>>,
     arrow_schema: ArrowSchemaRef,
 }
@@ -289,7 +300,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
 
 struct HybridRecordEncoder {
     buf: EncodingWriter,
-    // wrap in Option so ownership can be take out behind `&mut self`
+    // wrap in Option so ownership can be taken out behind `&mut self`
     arrow_writer: Option<ArrowWriter<EncodingWriter>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
@@ -301,6 +312,8 @@ struct HybridRecordEncoder {
 
 impl HybridRecordEncoder {
     fn try_new(write_props: WriterProperties, schema: &Schema) -> Result<Self> {
+        // TODO: What we really want here is a unique ID, tsid is one case
+        // Maybe support other cases later.
         let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
         let timestamp_type = IndexedType {
             idx: schema.timestamp_index(),
@@ -314,27 +327,31 @@ impl HybridRecordEncoder {
         let mut key_types = Vec::new();
         let mut non_key_types = Vec::new();
         for (idx, col) in schema.columns().iter().enumerate() {
+            if idx != timestamp_type.idx && idx != tsid_idx {
+                continue;
+            }
+
             if schema.non_key_column(idx) {
-                let _ = col
-                    .data_type
-                    .size()
-                    .context(VariableLengthType {
-                        type_str: col.data_type.to_string(),
-                    })
-                    .map_err(|e| Box::new(e) as _)
-                    .context(EncodeRecordBatch)?;
+                // TODO: support variable length type
+                ensure!(
+                    col.data_type.size().is_some(),
+                    VariableLengthType {
+                        type_name: col.data_type.to_string(),
+                    }
+                );
 
                 non_key_types.push(IndexedType {
                     idx,
                     data_type: schema.column(idx).data_type,
                 });
-            } else if idx != timestamp_type.idx && idx != tsid_idx {
-                if !matches!(col.data_type, DatumKind::String) {
-                    return StringKeyColumnRequired {
-                        type_str: col.data_type.to_string(),
+            } else {
+                // TODO: support non-string key columns
+                ensure!(
+                    matches!(col.data_type, DatumKind::String),
+                    StringKeyColumnRequired {
+                        type_name: col.data_type.to_string(),
                     }
-                    .fail();
-                }
+                );
                 key_types.push(IndexedType {
                     idx,
                     data_type: col.data_type,
