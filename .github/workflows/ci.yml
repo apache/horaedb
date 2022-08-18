@@ -110,5 +110,5 @@ jobs:
           files: |
             **/Cargo.lock
       - name: Fail Due To Dirty Lock File
-        if: steps.changed-files-specific.outputs.any_changed == 'true'
+        if: steps.changed-files-specific.outputs.any_modified == 'true'
         run: exit 1
