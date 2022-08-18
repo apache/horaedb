@@ -5,11 +5,11 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::define_result;
-pub use meta_client_v2::types::{
+pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, GetTablesRequest,
 };
-use meta_client_v2::types::{ShardId, ShardInfo, TableId};
+use meta_client::types::{ShardId, ShardInfo, TableId};
 use serde::Deserialize;
 use snafu::{Backtrace, Snafu};
 use table_engine::ANALYTIC_ENGINE_TYPE;
@@ -22,13 +22,13 @@ mod table_manager;
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Build meta client failed, err:{}.", source))]
-    BuildMetaClient { source: meta_client_v2::Error },
+    BuildMetaClient { source: meta_client::Error },
 
     #[snafu(display("Meta client start failed, err:{}.", source))]
-    StartMetaClient { source: meta_client_v2::Error },
+    StartMetaClient { source: meta_client::Error },
 
     #[snafu(display("Meta client execute failed, err:{}.", source))]
-    MetaClientFailure { source: meta_client_v2::Error },
+    MetaClientFailure { source: meta_client::Error },
 
     #[snafu(display(
         "Shard not found in current node, shard_id:{}.\nBacktrace:\n{}",

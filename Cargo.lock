@@ -766,7 +766,7 @@ dependencies = [
  "df_operator",
  "log",
  "logger",
- "meta_client_v2",
+ "meta_client",
  "query_engine",
  "server",
  "signal-hook",
@@ -917,7 +917,7 @@ dependencies = [
  "common_types 0.1.0",
  "common_util",
  "log",
- "meta_client_v2",
+ "meta_client",
  "rust-fsm",
  "serde",
  "serde_derive",
@@ -2970,7 +2970,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "meta_client_v2"
+name = "meta_client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -4824,7 +4824,7 @@ dependencies = [
  "lazy_static",
  "log",
  "logger",
- "meta_client_v2",
+ "meta_client",
  "opensrv-mysql",
  "profile",
  "prometheus 0.12.0",

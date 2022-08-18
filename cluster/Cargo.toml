@@ -14,7 +14,7 @@ catalog = { path = "../catalog" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 log = "0.4"
-meta_client_v2 = { path = "../meta_client_v2" }
+meta_client = { path = "../meta_client" }
 rust-fsm = "0.6.0"
 serde = "1.0"
 serde_derive = "1.0"

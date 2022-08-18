@@ -6,7 +6,7 @@ use catalog::{
 use catalog_impls::{SchemaIdAlloc, TableIdAlloc};
 use cluster::TableManipulator;
 use log::debug;
-use meta_client_v2::{types::DropTableRequest, MetaClientRef};
+use meta_client::{types::DropTableRequest, MetaClientRef};
 use table_engine::{
     engine::TableEngineRef,
     table::{SchemaId, TableId},
@@ -17,7 +17,7 @@ pub struct SchemaIdAllocAdapter(pub MetaClientRef);
 
 #[async_trait]
 impl SchemaIdAlloc for SchemaIdAllocAdapter {
-    type Error = meta_client_v2::Error;
+    type Error = meta_client::Error;
 
     async fn alloc_schema_id<'a>(&self, schema_name: NameRef<'a>) -> Result<SchemaId, Self::Error> {
         self.0
@@ -32,7 +32,7 @@ pub struct TableIdAllocAdapter(pub MetaClientRef);
 
 #[async_trait]
 impl TableIdAlloc for TableIdAllocAdapter {
-    type Error = meta_client_v2::Error;
+    type Error = meta_client::Error;
 
     async fn alloc_table_id<'a>(
         &self,

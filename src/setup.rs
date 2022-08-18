@@ -14,7 +14,7 @@ use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use log::info;
 use logger::RuntimeLevel;
-use meta_client_v2::meta_impl;
+use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},

@@ -1,5 +1,5 @@
 [package]
-name = "meta_client_v2"
+name = "meta_client"
 version = "0.1.0"
 
 [package.edition]

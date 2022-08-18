@@ -159,27 +159,27 @@
 <path fill="none" stroke="black" d="M819.16,-294.26C813.8,-292.16 808.21,-289.98 802.95,-288 758.76,-271.31 742.27,-278.17 702.95,-252 684.88,-239.97 685.56,-231.08 669.95,-216 658.64,-205.08 645.47,-193.66 634.19,-184.23"/>
 <polygon fill="black" stroke="black" points="636.3,-181.43 626.36,-177.75 631.84,-186.82 636.3,-181.43"/>
 </g>
-<!-- meta_client_v2 -->
+<!-- meta_client -->
 <g id="node10" class="node">
-<title>meta_client_v2</title>
+<title>meta_client</title>
 <ellipse fill="none" stroke="black" cx="777.95" cy="-234" rx="65.79" ry="18"/>
-<text text-anchor="middle" x="777.95" y="-230.3" font-family="Times,serif" font-size="14.00">meta_client_v2</text>
+<text text-anchor="middle" x="777.95" y="-230.3" font-family="Times,serif" font-size="14.00">meta_client</text>
 </g>
-<!-- cluster&#45;&gt;meta_client_v2 -->
+<!-- cluster&#45;&gt;meta_client -->
 <g id="edge11" class="edge">
-<title>cluster&#45;&gt;meta_client_v2</title>
+<title>cluster&#45;&gt;meta_client</title>
 <path fill="none" stroke="black" d="M830.86,-289.46C822.13,-280.48 810.96,-268.98 801.13,-258.87"/>
 <polygon fill="black" stroke="black" points="803.42,-256.2 793.95,-251.47 798.4,-261.08 803.42,-256.2"/>
 </g>
-<!-- meta_client_v2&#45;&gt;table_engine -->
+<!-- meta_client&#45;&gt;table_engine -->
 <g id="edge21" class="edge">
-<title>meta_client_v2&#45;&gt;table_engine</title>
+<title>meta_client&#45;&gt;table_engine</title>
 <path fill="none" stroke="black" d="M758.45,-216.71C728.09,-191.35 669.45,-142.37 635.01,-113.6"/>
 <polygon fill="black" stroke="black" points="637.14,-110.82 627.22,-107.1 632.65,-116.2 637.14,-110.82"/>
 </g>
-<!-- meta_client_v2&#45;&gt;catalog -->
+<!-- meta_client&#45;&gt;catalog -->
 <g id="edge20" class="edge">
-<title>meta_client_v2&#45;&gt;catalog</title>
+<title>meta_client&#45;&gt;catalog</title>
 <path fill="none" stroke="black" d="M743.14,-218.67C714.42,-206.84 673.81,-190.12 644.6,-178.09"/>
 <polygon fill="black" stroke="black" points="645.75,-174.78 635.17,-174.21 643.08,-181.25 645.75,-174.78"/>
 </g>

@@ -10,7 +10,7 @@ use std::{
 use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
 use cluster::{Node, SchemaConfig};
 use log::info;
-use meta_client_v2::types::ShardId;
+use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use twox_hash::XxHash64;
 

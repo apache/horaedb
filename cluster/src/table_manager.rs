@@ -5,7 +5,7 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client_v2::types::{
+use meta_client::types::{
     CreateTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
 };
 use snafu::OptionExt;

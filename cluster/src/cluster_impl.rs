@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
-use meta_client_v2::{
+use meta_client::{
     types::{ActionCmd, GetTablesRequest},
     EventHandler, MetaClient,
 };
