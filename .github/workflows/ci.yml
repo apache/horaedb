@@ -103,3 +103,12 @@ jobs:
           make test-ut
         env:
           RUST_BACKTRACE: "1"
+      - name: Check Lock File
+        id: changed-files-specific
+        uses: tj-actions/verify-changed-files@v10.1
+        with:
+          files: |
+            **/Cargo.lock
+      - name: Fail Due To Dirty Lock File
+        if: steps.changed-files-specific.outputs.any_changed == 'true'
+        run: exit 1
