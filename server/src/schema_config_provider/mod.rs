@@ -17,6 +17,7 @@ pub enum Error {}
 define_result!(Error);
 
 pub type SchemaConfigProviderRef = Arc<dyn SchemaConfigProvider + Send + Sync>;
+
 pub trait SchemaConfigProvider {
     fn schema_config(&self, schema_name: &str) -> Result<Option<&SchemaConfig>>;
 }

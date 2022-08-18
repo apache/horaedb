@@ -223,6 +223,6 @@ impl Cluster for ClusterImpl {
     }
 
     async fn fetch_topology(&self) -> Result<ClusterTopologyRef> {
-        todo!("fetch the view from the meta")
+        todo!("fetch topology from the meta")
     }
 }

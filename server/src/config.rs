@@ -14,10 +14,11 @@ use crate::route::rule_based::{ClusterView, RuleList, ShardView};
 
 /// The deployment mode decides how to start up the CeresDB.
 ///
-/// [DeployMode::Standalone] means to start CeresDB alone without CeresMeta
-/// cluster.
-/// [DeployMode::Cluster] means to start CeresDB under the control of
-/// CeresMeta cluster.
+/// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
+/// alone without CeresMeta.
+///
+/// [DeployMode::Cluster] means to start one or multiple CeresDB instance(s)
+/// under the control of CeresMeta.
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub enum DeployMode {
     Standalone,
@@ -82,12 +83,12 @@ pub struct StaticTopologyConfig {
     schema_shards: Vec<SchemaShardView>,
 }
 
-impl StaticTopologyConfig {
-    pub fn to_cluster_view(&self) -> ClusterView {
-        let mut schema_configs = HashMap::with_capacity(self.schema_shards.len());
-        let mut schema_shards = HashMap::with_capacity(self.schema_shards.len());
+impl From<&StaticTopologyConfig> for ClusterView {
+    fn from(config: &StaticTopologyConfig) -> Self {
+        let mut schema_configs = HashMap::with_capacity(config.schema_shards.len());
+        let mut schema_shards = HashMap::with_capacity(config.schema_shards.len());
 
-        for schema_shard_view in self.schema_shards.clone() {
+        for schema_shard_view in config.schema_shards.clone() {
             let schema = schema_shard_view.schema.clone();
             schema_shards.insert(
                 schema.clone(),

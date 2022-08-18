@@ -18,7 +18,10 @@ use meta_client_v2::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},
-    route::{cluster_based::ClusterBasedRouter, rule_based::RuleBasedRouter},
+    route::{
+        cluster_based::ClusterBasedRouter,
+        rule_based::{ClusterView, RuleBasedRouter},
+    },
     schema_config_provider::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
@@ -199,7 +202,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
 
     // Build static router and schema config provider
-    let cluster_view = config.static_route.topology.to_cluster_view();
+    let cluster_view = ClusterView::from(&config.static_route.topology);
     let schema_configs = cluster_view.schema_configs.clone();
     let router = Arc::new(RuleBasedRouter::new(
         cluster_view,
