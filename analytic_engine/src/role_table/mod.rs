@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicU8, Ordering},
-    Arc,
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
 };
 
 use async_trait::async_trait;
@@ -30,6 +33,7 @@ pub enum Error {
 
 define_result!(Error);
 
+/// Those methods are expected to be called by [Instance]
 #[async_trait]
 pub trait RoleTable {
     fn check_state(&self) -> bool;
@@ -100,7 +104,6 @@ impl LeaderTableInner {
         todo!()
     }
 
-    /// This method is expected to be called by [Instance]
     async fn write(
         &self,
         request: WriteRequest,
@@ -122,7 +125,6 @@ impl LeaderTableInner {
         Ok(res)
     }
 
-    /// This method is expected to be called by [Instance]
     async fn flush(
         &self,
         mut flush_opts: TableFlushOptions,
@@ -140,7 +142,6 @@ impl LeaderTableInner {
         Ok(res)
     }
 
-    /// This method is expected to be called by [Instance]
     async fn alter_schema(
         &self,
         instance: &Arc<Instance>,
@@ -154,6 +155,20 @@ impl LeaderTableInner {
                 request,
                 TableAlterSchemaPolicy::Alter,
             )
+            .await
+            .unwrap();
+
+        Ok(res)
+    }
+
+    async fn alter_option(
+        &self,
+        instance: &Arc<Instance>,
+        worker_local: &mut WorkerLocal,
+        options: HashMap<String, String>,
+    ) -> Result<()> {
+        let res = instance
+            .process_alter_options_command(worker_local, &self.table_data, options)
             .await
             .unwrap();
 

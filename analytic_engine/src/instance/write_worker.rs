@@ -387,7 +387,7 @@ impl AlterSchemaCommand {
 
 /// Alter table options command.
 pub struct AlterOptionsCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub options: HashMap<String, String>,
     /// Sender for the worker to return result of alter schema
     pub tx: oneshot::Sender<engine::Result<()>>,
@@ -885,14 +885,14 @@ impl WriteWorker {
 
     async fn handle_alter_options(&mut self, cmd: AlterOptionsCommand) {
         let AlterOptionsCommand {
-            space_table,
+            table_data,
             options,
             tx,
         } = cmd;
 
         let alter_res = self
             .instance
-            .process_alter_options_command(&mut self.local, &space_table, options)
+            .process_alter_options_command(&mut self.local, &table_data, options)
             .await;
         if let Err(res) = tx.send(alter_res) {
             error!(
