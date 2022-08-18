@@ -21,12 +21,20 @@ use crate::{
     limiter::Limiter,
     mysql,
     mysql::error::Error as MysqlError,
+    router::RouterRef,
+    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Missing runtimes.\nBacktrace:\n{}", backtrace))]
     MissingRuntimes { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
+    MissingSchemaConfigProvider { backtrace: Backtrace },
 
     #[snafu(display("Missing catalog manager.\nBacktrace:\n{}", backtrace))]
     MissingCatalogManager { backtrace: Backtrace },
@@ -61,7 +69,7 @@ pub enum Error {
     #[snafu(display("Failed to start grpc service, err:{}", source))]
     StartGrpcService { source: crate::grpc::Error },
 
-    #[snafu(display("Failed to start clsuter, err:{}", source))]
+    #[snafu(display("Failed to start cluster, err:{}", source))]
     StartCluster { source: cluster::Error },
 }
 
@@ -108,15 +116,15 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         let catalog_mgr = &self.instance.catalog_manager;
         let default_catalog = catalog_mgr
             .catalog_by_name(catalog_mgr.default_catalog_name())
-            .expect("Fail to retreive default catalog")
+            .expect("Fail to retrieve default catalog")
             .expect("Default catalog doesn't exist");
 
         if default_catalog
             .schema_by_name(catalog_mgr.default_schema_name())
-            .expect("Fail to retreive default schema")
+            .expect("Fail to retrieve default schema")
             .is_none()
         {
-            warn!("Deafult schema doesn't exist and create it");
+            warn!("Default schema doesn't exist and create it");
             default_catalog
                 .create_schema(catalog_mgr.default_schema_name())
                 .await
@@ -135,6 +143,8 @@ pub struct Builder<Q> {
     function_registry: Option<FunctionRegistryRef>,
     limiter: Limiter,
     cluster: Option<ClusterRef>,
+    router: Option<RouterRef>,
+    schema_config_provider: Option<SchemaConfigProviderRef>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -148,6 +158,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             function_registry: None,
             limiter: Limiter::default(),
             cluster: None,
+            router: None,
+            schema_config_provider: None,
         }
     }
 
@@ -186,11 +198,21 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    pub fn schema_config_provider(
+        mut self,
+        schema_config_provider: SchemaConfigProviderRef,
+    ) -> Self {
+        self.schema_config_provider = Some(schema_config_provider);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server<Q>> {
-        // Build runtimes
-        let runtimes = self.runtimes.context(MissingRuntimes)?;
-
         // Build instance
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
         let query_executor = self.query_executor.context(MissingQueryExecutor)?;
@@ -212,6 +234,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         // Start http service
+        let runtimes = self.runtimes.context(MissingRuntimes)?;
         let http_service = http::Builder::new(http_config)
             .runtimes(runtimes.clone())
             .instance(instance.clone())
@@ -229,16 +252,19 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildMysqlService)?;
 
-        let meta_client_config = self.config.meta_client;
+        let router = self.router.context(MissingRouter)?;
+        let provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
         let env = Arc::new(Environment::new(self.config.grpc_server_cq_count));
         let rpc_services = grpc::Builder::new()
             .bind_addr(self.config.bind_addr)
             .port(self.config.grpc_port)
-            .meta_client_config(meta_client_config)
             .env(env)
             .runtimes(runtimes)
             .instance(instance.clone())
-            .route_rules(self.config.route_rules)
+            .router(router)
+            .schema_config_provider(provider)
             .build()
             .context(BuildGrpcService)?;
 

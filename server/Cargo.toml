@@ -26,7 +26,7 @@ interpreters = { path = "../interpreters" }
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "../components/logger" }
-meta_client = { path = "../meta_client" }
+meta_client_v2 = { path = "../meta_client_v2" }
 opensrv-mysql = "0.1.0"
 profile = { path = "../components/profile" }
 protobuf = "2.20"

@@ -21,7 +21,7 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
-    Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterViewRef, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -190,7 +190,7 @@ impl Cluster for ClusterImpl {
             .await
             .context(StartMetaClient)?;
 
-        // start the backgroud loop for sending heartbeat.
+        // start the background loop for sending heartbeat.
         self.start_heartbeat_loop();
 
         info!("Cluster has started");
@@ -220,5 +220,9 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    async fn fetch_view(&self) -> Result<ClusterViewRef> {
+        todo!("fetch the view from the meta")
     }
 }

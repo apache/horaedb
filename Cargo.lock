@@ -923,6 +923,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "snafu 0.6.10",
+ "table_engine",
  "tokio 1.20.1",
 ]
 
@@ -2969,29 +2970,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "meta_client"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "catalog",
- "ceresdbproto_deps",
- "common_types 0.1.0",
- "common_util",
- "futures 0.3.21",
- "grpcio 0.1.0",
- "log",
- "rand 0.7.3",
- "reqwest 0.11.11",
- "serde",
- "serde_derive",
- "serde_json",
- "snafu 0.6.10",
- "table_engine",
- "tokio 1.20.1",
- "url 2.2.2",
-]
-
-[[package]]
 name = "meta_client_v2"
 version = "0.1.0"
 dependencies = [
@@ -4846,7 +4824,7 @@ dependencies = [
  "lazy_static",
  "log",
  "logger",
- "meta_client",
+ "meta_client_v2",
  "opensrv-mysql",
  "profile",
  "prometheus 0.12.0",

@@ -32,7 +32,6 @@ members = [
     "df_operator",
     "grpcio",
     "interpreters",
-    "meta_client",
     "meta_client_v2",
     "proto",
     "query_engine",

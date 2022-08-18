@@ -89,7 +89,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
 }
 
 fn make_column_by_field(column: &ResponseColumn) -> Column {
-    let column_type = conver_datum_kind_type(&column.data_type);
+    let column_type = convert_datum_kind_type(&column.data_type);
     Column {
         table: "".to_string(),
         column: column.name.clone(),
@@ -98,7 +98,7 @@ fn make_column_by_field(column: &ResponseColumn) -> Column {
     }
 }
 
-fn conver_datum_kind_type(data_type: &DatumKind) -> ColumnType {
+fn convert_datum_kind_type(data_type: &DatumKind) -> ColumnType {
     match data_type {
         DatumKind::Timestamp => ColumnType::MYSQL_TYPE_LONG,
         DatumKind::Double => ColumnType::MYSQL_TYPE_DOUBLE,

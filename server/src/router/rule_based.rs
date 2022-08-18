@@ -1,27 +1,40 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! A router based on rules.
+
 use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
-    sync::Arc,
 };
 
 use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
+use cluster::{Node, SchemaConfig};
 use log::info;
-use meta_client::{MetaClient, ShardId};
+use meta_client_v2::types::ShardId;
 use serde_derive::Deserialize;
 use twox_hash::XxHash64;
 
-use crate::error::{ErrNoCause, Result, StatusCode};
+use crate::{
+    error::{ErrNoCause, Result, StatusCode},
+    router::Router,
+};
 
 /// Hash seed to build hasher. Modify the seed will result in different route
 /// result!
 const HASH_SEED: u64 = 0;
 
-pub type RouterRef = Arc<dyn Router + Sync + Send>;
+pub type ShardViews = HashMap<ShardId, ShardView>;
 
-pub trait Router {
-    fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>>;
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShardView {
+    pub shard_id: ShardId,
+    pub node: Node,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ClusterView {
+    pub schema_shards: HashMap<String, ShardViews>,
+    pub schema_configs: HashMap<String, SchemaConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -43,6 +56,7 @@ pub struct HashRule {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
 pub struct RuleList {
     pub prefix_rules: Vec<PrefixRule>,
     pub hash_rules: Vec<HashRule>,
@@ -82,19 +96,22 @@ impl RuleList {
 type SchemaRules = HashMap<String, RuleList>;
 
 pub struct RuleBasedRouter {
-    meta_client: Arc<dyn MetaClient + Send + Sync>,
+    cluster_view: ClusterView,
     schema_rules: SchemaRules,
 }
 
 impl RuleBasedRouter {
-    pub fn new(meta_client: Arc<dyn MetaClient + Send + Sync>, rules: RuleList) -> Self {
+    pub fn new(cluster_view: ClusterView, rules: RuleList) -> Self {
         let schema_rules = rules.split_by_schema();
 
-        info!("RuleBasedRouter init with rules, rules:{:?}", schema_rules);
+        info!(
+            "RuleBasedRouter init with rules, rules:{:?}, cluster_view:{:?}",
+            schema_rules, cluster_view
+        );
 
         Self {
-            meta_client,
             schema_rules,
+            cluster_view,
         }
     }
 
@@ -140,8 +157,7 @@ impl RuleBasedRouter {
 
 impl Router for RuleBasedRouter {
     fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
-        let cluster_view = self.meta_client.get_cluster_view();
-        if let Some(shard_view_map) = cluster_view.schema_shards.get(schema) {
+        if let Some(shard_view_map) = self.cluster_view.schema_shards.get(schema) {
             if shard_view_map.is_empty() {
                 return ErrNoCause {
                     code: StatusCode::NotFound,

@@ -4,7 +4,7 @@
 
 // TODO(yingwen): ceresdb-server is a legacy name, maybe use a new name
 
-use std::env;
+use std::{env, net::SocketAddr};
 
 use ceresdb::setup;
 use clap::{App, Arg};
@@ -26,6 +26,12 @@ fn fetch_version() -> String {
         "\nCeresDB Version: {}\nGit branch: {}\nGit commit: {}\nBuild: {}",
         build_version, git_branch, git_commit_id, build_time
     )
+}
+
+// Parse the raw addr and panic if it is invalid.
+fn parse_node_addr_or_fail(raw_addr: &str) -> (String, u16) {
+    let socket_addr: SocketAddr = raw_addr.parse().expect("invalid node addr");
+    (socket_addr.ip().to_string(), socket_addr.port())
 }
 
 fn main() {
@@ -51,10 +57,12 @@ fn main() {
     };
 
     if let Ok(node_addr) = env::var(NODE_ADDR) {
-        config.meta_client.node = node_addr;
+        let (ip, port) = parse_node_addr_or_fail(&node_addr);
+        config.cluster.node.addr = ip;
+        config.cluster.node.port = port;
     }
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
-        config.meta_client.cluster = cluster;
+        config.cluster.meta_client.cluster_name = cluster;
     }
 
     // Setup log.

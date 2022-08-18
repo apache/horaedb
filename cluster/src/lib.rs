@@ -1,15 +1,18 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::define_result;
 pub use meta_client_v2::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, GetTablesRequest,
 };
-use meta_client_v2::types::{ShardId, TableId};
+use meta_client_v2::types::{ShardId, ShardInfo, TableId};
+use serde::Deserialize;
 use snafu::{Backtrace, Snafu};
+use table_engine::ANALYTIC_ENGINE_TYPE;
 
 pub mod cluster_impl;
 pub mod config;
@@ -44,6 +47,46 @@ pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
 
 pub type TableManipulatorRef = Arc<dyn TableManipulator + Send + Sync>;
 
+pub type ClusterViewRef = Arc<ClusterView>;
+
+pub type TableLocs = HashMap<String, ShardView>;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SchemaConfig {
+    pub auto_create_tables: bool,
+    pub default_engine_type: String,
+    pub default_timestamp_column_name: String,
+}
+
+impl Default for SchemaConfig {
+    fn default() -> Self {
+        Self {
+            auto_create_tables: false,
+            default_engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
+            default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Node {
+    pub addr: String,
+    pub port: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShardView {
+    pub shard: ShardInfo,
+    pub node: Node,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ClusterView {
+    pub schema_tables: HashMap<String, TableLocs>,
+    pub schema_configs: HashMap<String, SchemaConfig>,
+}
+
 #[async_trait]
 pub trait TableManipulator {
     async fn open_table(
@@ -66,5 +109,6 @@ pub trait TableManipulator {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+    async fn fetch_view(&self) -> Result<ClusterViewRef>;
     // TODO: add more methods, such as provide the topology of the cluster.
 }
