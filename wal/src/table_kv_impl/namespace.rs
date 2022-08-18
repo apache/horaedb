@@ -548,7 +548,7 @@ impl<T: TableKv> NamespaceInner<T> {
     async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<'_>,
+        batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         let region_id = batch.region_id;
         let now = Timestamp::now();
@@ -1008,7 +1008,7 @@ impl<T: TableKv> Namespace<T> {
     pub async fn write_log(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<'_>,
+        batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         self.inner.write_log(ctx, batch).await
     }
@@ -1315,8 +1315,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        log_batch::{LogWriteEntry, PayloadDecoder},
-        table_kv_impl::{consts, encoding::LogEncoding},
+        kv_encoder::{LogBatchEncoder, LogEncoding},
+        log_batch::PayloadDecoder,
+        table_kv_impl::consts,
         tests::util::{TestPayload, TestPayloadDecoder},
     };
 
@@ -1692,16 +1693,20 @@ mod tests {
         start_sequence: u32,
         end_sequence: u32,
     ) -> SequenceNumber {
-        let write_ctx = manager::WriteContext::default();
-        let mut last_sequence = 0;
+        let mut payload_batch = Vec::with_capacity((end_sequence - start_sequence) as usize);
         for val in start_sequence..end_sequence {
-            let mut wb = LogWriteBatch::new(region_id);
             let payload = TestPayload { val };
-            wb.push(LogWriteEntry { payload: &payload });
-
-            last_sequence = namespace.write_log(&write_ctx, &wb).await.unwrap();
+            payload_batch.push(payload);
         }
 
-        last_sequence
+        let wal_encoder = LogBatchEncoder::create(region_id);
+        let log_batch = wal_encoder
+            .encode(&payload_batch)
+            .expect("should succeed to encode payload batch");
+        let write_ctx = manager::WriteContext::default();
+        namespace
+            .write_log(&write_ctx, &log_batch)
+            .await
+            .expect("should succeed to write log batch")
     }
 }

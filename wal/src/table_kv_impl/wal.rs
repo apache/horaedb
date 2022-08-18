@@ -150,7 +150,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
     async fn write(
         &self,
         ctx: &manager::WriteContext,
-        batch: &LogWriteBatch<'_>,
+        batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         self.namespace
             .write_log(ctx, batch)
