@@ -200,7 +200,7 @@ impl Instance {
         // Create a oneshot channel to send/receive flush result.
         let (tx, rx) = oneshot::channel();
         let cmd = FlushTableCommand {
-            space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             flush_opts,
             tx,
         };
@@ -224,7 +224,7 @@ impl Instance {
         let (compact_tx, compact_rx) = oneshot::channel();
         // Create a oneshot channel to send/receive compaction result.
         let cmd = CompactTableCommand {
-            space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             waiter: Some(compact_tx),
             tx,
         };

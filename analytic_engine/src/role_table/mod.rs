@@ -65,8 +65,16 @@ pub trait RoleTable {
         worker_local: &mut WorkerLocal,
         request: AlterSchemaRequest,
     ) -> Result<()>;
+
+    async fn alter_options(
+        &self,
+        instance: &Arc<Instance>,
+        worker_local: &mut WorkerLocal,
+        options: HashMap<String, String>,
+    ) -> Result<()>;
 }
 
+#[allow(dead_code)]
 #[repr(u8)]
 pub enum TableRole {
     Invalid = 0,
@@ -161,7 +169,7 @@ impl LeaderTableInner {
         Ok(res)
     }
 
-    async fn alter_option(
+    async fn alter_options(
         &self,
         instance: &Arc<Instance>,
         worker_local: &mut WorkerLocal,
@@ -218,6 +226,17 @@ impl RoleTable for LeaderTable {
     ) -> Result<()> {
         self.inner
             .alter_schema(instance, worker_local, request)
+            .await
+    }
+
+    async fn alter_options(
+        &self,
+        instance: &Arc<Instance>,
+        worker_local: &mut WorkerLocal,
+        options: HashMap<String, String>,
+    ) -> Result<()> {
+        self.inner
+            .alter_options(instance, worker_local, options)
             .await
     }
 }

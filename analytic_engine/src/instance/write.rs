@@ -195,7 +195,7 @@ impl Instance {
         space: &SpaceRef,
         table_data: &TableDataRef,
         request: WriteRequest,
-        policy: TableWritePolicy,
+        #[allow(unused_variables)] policy: TableWritePolicy,
     ) -> Result<usize> {
         let mut encode_ctx = EncodeContext::new(request.row_group);
 

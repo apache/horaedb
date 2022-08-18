@@ -36,7 +36,7 @@ use crate::{
         flush_compaction::{self, TableFlushOptions},
         write, write_worker, InstanceRef,
     },
-    space::{SpaceAndTable, SpaceId, SpaceRef},
+    space::{SpaceId, SpaceRef},
     table::{data::TableDataRef, metrics::Metrics},
 };
 
@@ -289,7 +289,6 @@ impl WorkerLocal {
 
 /// Write table command.
 pub struct WriteTableCommand {
-    // pub space_table: SpaceAndTable,
     pub space: SpaceRef,
     pub table_data: TableDataRef,
     pub request: WriteRequest,
@@ -371,7 +370,6 @@ impl CreateTableCommand {
 
 /// Alter table command.
 pub struct AlterSchemaCommand {
-    // pub space_table: SpaceAndTable,
     pub table_data: TableDataRef,
     pub request: AlterSchemaRequest,
     /// Sender for the worker to return result of alter schema
@@ -402,7 +400,7 @@ impl AlterOptionsCommand {
 
 /// Flush table request.
 pub struct FlushTableCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub flush_opts: TableFlushOptions,
     pub tx: oneshot::Sender<flush_compaction::Result<()>>,
 }
@@ -416,7 +414,7 @@ impl FlushTableCommand {
 
 /// Compact table request.
 pub struct CompactTableCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
     pub tx: oneshot::Sender<flush_compaction::Result<()>>,
 }
@@ -904,14 +902,14 @@ impl WriteWorker {
 
     async fn handle_flush_table(&mut self, cmd: FlushTableCommand) {
         let FlushTableCommand {
-            space_table,
+            table_data,
             flush_opts,
             tx,
         } = cmd;
 
         let flush_res = self
             .instance
-            .flush_table_in_worker(&mut self.local, space_table.table_data(), flush_opts)
+            .flush_table_in_worker(&mut self.local, &table_data, flush_opts)
             .await;
         if let Err(res) = tx.send(flush_res) {
             error!(
@@ -923,13 +921,13 @@ impl WriteWorker {
 
     async fn handle_compact_table(&mut self, cmd: CompactTableCommand) {
         let CompactTableCommand {
-            space_table,
+            table_data,
             waiter,
             tx,
         } = cmd;
 
         let request = TableCompactionRequest {
-            table_data: space_table.table_data().clone(),
+            table_data,
             compaction_notifier: self.local.compaction_notifier(),
             waiter,
         };
