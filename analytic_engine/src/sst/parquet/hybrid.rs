@@ -152,7 +152,11 @@ impl ListArrayBuilder {
             .expect("checked in HybridRecordEncoder::try_new");
         let values_num = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
         let mut values = MutableBuffer::new(values_num * data_type_size);
-        let mut null_buffer = MutableBuffer::new_null(values_num);
+        // Initialize null_buffer with all 1, so we don't need to set it when array's
+        // null_bitmap is None
+        //
+        // Note: bit set to 1 means value is not null.
+        let mut null_buffer = MutableBuffer::new_null(values_num).with_bitset(values_num, true);
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
@@ -165,14 +169,13 @@ impl ListArrayBuilder {
                 let offset = slice_arg.offset;
                 let length = slice_arg.length;
                 if let Some(bitmap) = null_bitmap {
+                    // TODO: We now set bitmap one by one, a more complicated but efficient way is
+                    // to operate on bitmap buffer bits directly, like what we do
+                    // with values(slice and shift)
                     for i in 0..length {
-                        if bitmap.is_set(i + offset) {
-                            bit_util::set_bit(null_slice, length_so_far as usize + i);
+                        if !bitmap.is_set(i + offset) {
+                            bit_util::unset_bit(null_slice, length_so_far as usize + i);
                         }
-                    }
-                } else {
-                    for i in 0..length {
-                        bit_util::set_bit(null_slice, length_so_far as usize + i);
                     }
                 }
                 length_so_far += length as i32;
@@ -182,6 +185,7 @@ impl ListArrayBuilder {
             }
             offsets.push(length_so_far);
         }
+
         debug!(
             "build_child_data offsets:{:?}, values:{:?}",
             offsets.as_slice(),
