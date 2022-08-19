@@ -176,6 +176,28 @@ impl DatumKind {
     pub fn into_u8(self) -> u8 {
         self as u8
     }
+
+    /// Return None for variable-length type
+    pub fn size(&self) -> Option<usize> {
+        let size = match self {
+            DatumKind::Null => 0,
+            DatumKind::Timestamp => 8,
+            DatumKind::Double => 8,
+            DatumKind::Float => 4,
+            DatumKind::Varbinary => return None,
+            DatumKind::String => return None,
+            DatumKind::UInt64 => 8,
+            DatumKind::UInt32 => 4,
+            DatumKind::UInt16 => 2,
+            DatumKind::UInt8 => 1,
+            DatumKind::Int64 => 8,
+            DatumKind::Int32 => 4,
+            DatumKind::Int16 => 8,
+            DatumKind::Int8 => 8,
+            DatumKind::Boolean => 1,
+        };
+        Some(size)
+    }
 }
 
 impl TryFrom<&SqlDataType> for DatumKind {
@@ -753,6 +775,26 @@ pub mod arrow_convert {
                 | DataType::Dictionary(_, _)
                 | DataType::Decimal(_, _)
                 | DataType::Map(_, _) => None,
+            }
+        }
+
+        pub fn to_arrow_data_type(&self) -> DataType {
+            match self {
+                DatumKind::Null => DataType::Null,
+                DatumKind::Timestamp => DataType::Timestamp(TimeUnit::Millisecond, None),
+                DatumKind::Double => DataType::Float64,
+                DatumKind::Float => DataType::Float32,
+                DatumKind::Varbinary => DataType::Binary,
+                DatumKind::String => DataType::Utf8,
+                DatumKind::UInt64 => DataType::UInt64,
+                DatumKind::UInt32 => DataType::UInt32,
+                DatumKind::UInt16 => DataType::UInt16,
+                DatumKind::UInt8 => DataType::UInt8,
+                DatumKind::Int64 => DataType::Int64,
+                DatumKind::Int32 => DataType::Int32,
+                DatumKind::Int16 => DataType::Int16,
+                DatumKind::Int8 => DataType::Int8,
+                DatumKind::Boolean => DataType::Boolean,
             }
         }
     }
