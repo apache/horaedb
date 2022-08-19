@@ -649,9 +649,8 @@ impl Schema {
             return false;
         }
 
-        return self
-            .tsid_index
-            .map_or_else(|| true, |tsid_idx| tsid_idx != i);
+        self.tsid_index
+            .map_or_else(|| true, |tsid_idx| tsid_idx != i)
     }
 
     /// Get the version of this schema
