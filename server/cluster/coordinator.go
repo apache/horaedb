@@ -41,6 +41,11 @@ func newCoordinator(cluster *Cluster, hbstreams *schedule.HeartbeatStreams) *coo
 	}
 }
 
+func (c *coordinator) stop() {
+	c.cancel()
+	c.bgJobWg.Wait()
+}
+
 func (c *coordinator) runBgJob() {
 	c.bgJobWg.Add(1)
 	defer c.bgJobWg.Done()

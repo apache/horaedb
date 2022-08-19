@@ -59,6 +59,10 @@ func (c *Cluster) Name() string {
 	return c.metaData.cluster.Name
 }
 
+func (c *Cluster) stop() {
+	c.coordinator.stop()
+}
+
 // Initialize the cluster topology and shard topology of the cluster.
 // It will be used when we create the cluster.
 func (c *Cluster) init(ctx context.Context) error {

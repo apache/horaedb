@@ -5,6 +5,7 @@ package cluster
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
@@ -17,6 +18,7 @@ import (
 )
 
 const (
+	defaultTimeout                  = time.Second * 10
 	cluster1                        = "ceresdbCluster1"
 	cluster2                        = "ceresdbCluster2"
 	defaultSchema                   = "ceresdbSchema"
@@ -30,11 +32,11 @@ const (
 	table2                          = "table2"
 	table3                          = "table3"
 	table4                          = "table4"
-	defaultSchemaID          uint32 = 1
-	tableID1                 uint64 = 1
-	tableID2                 uint64 = 2
-	tableID3                 uint64 = 3
-	tableID4                 uint64 = 4
+	defaultSchemaID          uint32 = 0
+	tableID1                 uint64 = 0
+	tableID2                 uint64 = 1
+	tableID3                 uint64 = 2
+	tableID4                 uint64 = 3
 	testRootPath                    = "/rootPath"
 	num1                            = 0
 	num2                            = 1
@@ -70,7 +72,7 @@ func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV) {
 }
 
 func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
-	return NewManagerImpl(context.Background(), storage, kv, schedule.NewHeartbeatStreams(context.Background()), testRootPath, defaultIDAllocatorStep)
+	return NewManagerImpl(storage, kv, schedule.NewHeartbeatStreams(context.Background()), testRootPath, defaultIDAllocatorStep)
 }
 
 func newTestClusterManager(t *testing.T) Manager {
@@ -78,16 +80,27 @@ func newTestClusterManager(t *testing.T) Manager {
 	storage, kv := newTestStorage(t)
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
+	err = manager.Start(ctx)
+	re.NoError(err)
+
 	return manager
 }
 
 func TestManagerSingleThread(t *testing.T) {
 	re := require.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
+
 	storage, kv := newTestStorage(t)
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
-	ctx := context.Background()
+	re.NoError(manager.Start(ctx))
+
 	testCreateCluster(ctx, re, manager, cluster1)
 
 	testRegisterNode(ctx, re, manager, cluster1, node1, defaultLease)
@@ -110,17 +123,26 @@ func TestManagerSingleThread(t *testing.T) {
 	testGetTables(ctx, re, manager, node1, cluster1, num2)
 	testGetTables(ctx, re, manager, node2, cluster1, num2)
 
+	re.NoError(manager.Stop(ctx))
+
 	manager, err = newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
+
+	re.NoError(manager.Start(ctx))
+
 	testGetTables(ctx, re, manager, node1, cluster1, num2)
 	testGetTables(ctx, re, manager, node2, cluster1, num2)
+
+	re.NoError(manager.Stop(ctx))
 }
 
 func TestManagerMultiThread(t *testing.T) {
 	re := require.New(t)
-	manager := newTestClusterManager(t)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
 
-	ctx := context.Background()
+	manager := newTestClusterManager(t)
+	defer re.NoError(manager.Stop(ctx))
 
 	go testCluster(ctx, re, manager, cluster1)
 	testCluster(ctx, re, manager, cluster2)
