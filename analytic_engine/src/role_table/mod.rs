@@ -142,12 +142,12 @@ impl LeaderTableInner {
         // Leader Table will dump memtable to storage.
         flush_opts.policy = TableFlushPolicy::Dump;
 
-        let res = instance
+        instance
             .flush_table_in_worker(worker_local, &self.table_data, flush_opts)
             .await
             .unwrap();
 
-        Ok(res)
+        Ok(())
     }
 
     async fn alter_schema(
@@ -156,7 +156,7 @@ impl LeaderTableInner {
         worker_local: &mut WorkerLocal,
         request: AlterSchemaRequest,
     ) -> Result<()> {
-        let res = instance
+        instance
             .process_alter_schema_command(
                 worker_local,
                 &self.table_data,
@@ -166,7 +166,7 @@ impl LeaderTableInner {
             .await
             .unwrap();
 
-        Ok(res)
+        Ok(())
     }
 
     async fn alter_options(
@@ -175,12 +175,12 @@ impl LeaderTableInner {
         worker_local: &mut WorkerLocal,
         options: HashMap<String, String>,
     ) -> Result<()> {
-        let res = instance
+        instance
             .process_alter_options_command(worker_local, &self.table_data, options)
             .await
             .unwrap();
 
-        Ok(res)
+        Ok(())
     }
 }
 

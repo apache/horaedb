@@ -251,7 +251,7 @@ impl Table for TableImpl {
             } else {
                 None
             },
-            policy: TableFlushPolicy::Unknown,
+            policy: TableFlushPolicy::Dump,
         };
 
         self.instance

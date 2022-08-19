@@ -158,7 +158,7 @@ impl Default for TableFlushOptions {
             res_sender: None,
             compact_after_flush: true,
             block_on_write_thread: false,
-            policy: TableFlushPolicy::Unknown,
+            policy: TableFlushPolicy::Dump,
         }
     }
 }
@@ -175,9 +175,10 @@ pub struct TableFlushRequest {
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TableFlushPolicy {
     /// Unknown flush policy, this is the default value.
-    #[default]
     Unknown,
     /// Dump memtable to sst file.
+    // todo: the default value should be [Unknown].
+    #[default]
     Dump,
     // TODO: use this policy and remove "allow(dead_code)"
     /// Drop memtables.
