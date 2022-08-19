@@ -304,10 +304,9 @@ struct HybridRecordEncoder {
     arrow_writer: Option<ArrowWriter<EncodingWriter>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
-    timestamp_type: IndexedType,
-    key_types: Vec<IndexedType>,
+    non_collapsible_col_types: Vec<IndexedType>,
     // columns that can be collpased into list
-    non_key_types: Vec<IndexedType>,
+    collapsible_col_types: Vec<IndexedType>,
 }
 
 impl HybridRecordEncoder {
@@ -315,23 +314,19 @@ impl HybridRecordEncoder {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
         let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
-        let timestamp_type = IndexedType {
-            idx: schema.timestamp_index(),
-            data_type: schema.column(schema.timestamp_index()).data_type,
-        };
         let tsid_type = IndexedType {
             idx: tsid_idx,
             data_type: schema.column(tsid_idx).data_type,
         };
 
-        let mut key_types = Vec::new();
-        let mut non_key_types = Vec::new();
+        let mut non_collapsible_col_types = Vec::new();
+        let mut collapsible_col_types = Vec::new();
         for (idx, col) in schema.columns().iter().enumerate() {
-            if idx != timestamp_type.idx && idx != tsid_idx {
+            if idx == tsid_idx {
                 continue;
             }
 
-            if schema.non_key_column(idx) {
+            if schema.is_collapsible_column(idx) {
                 // TODO: support variable length type
                 ensure!(
                     col.data_type.size().is_some(),
@@ -340,7 +335,7 @@ impl HybridRecordEncoder {
                     }
                 );
 
-                non_key_types.push(IndexedType {
+                collapsible_col_types.push(IndexedType {
                     idx,
                     data_type: schema.column(idx).data_type,
                 });
@@ -352,18 +347,14 @@ impl HybridRecordEncoder {
                         type_name: col.data_type.to_string(),
                     }
                 );
-                key_types.push(IndexedType {
+                non_collapsible_col_types.push(IndexedType {
                     idx,
                     data_type: col.data_type,
                 });
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(
-            timestamp_type.idx,
-            non_key_types.iter().map(|c| c.idx).collect(),
-            schema,
-        );
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(schema);
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -375,9 +366,8 @@ impl HybridRecordEncoder {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             tsid_type,
-            timestamp_type,
-            key_types,
-            non_key_types,
+            non_collapsible_col_types,
+            collapsible_col_types,
         })
     }
 }
@@ -388,9 +378,8 @@ impl RecordEncoder for HybridRecordEncoder {
 
         let record_batch = hybrid::convert_to_hybrid_record(
             &self.tsid_type,
-            &self.timestamp_type,
-            &self.key_types,
-            &self.non_key_types,
+            &self.non_collapsible_col_types,
+            &self.collapsible_col_types,
             self.arrow_schema.clone(),
             arrow_record_batch_vec,
         )

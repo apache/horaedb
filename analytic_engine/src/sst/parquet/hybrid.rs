@@ -22,6 +22,12 @@ use crate::sst::builder::{EncodeRecordBatch, Result};
 //  hard coded in https://github.com/apache/arrow-rs/blob/20.0.0/arrow/src/array/array_list.rs#L185
 const LIST_ITEM_NAME: &str = "item";
 
+#[derive(Debug, Clone, Copy)]
+struct SliceArg {
+    offset: usize,
+    length: usize,
+}
+
 /// ArrayHandle is used to keep different offsets of array, which can be
 /// concatenated together.
 ///
@@ -32,24 +38,24 @@ const LIST_ITEM_NAME: &str = "item";
 #[derive(Debug, Clone)]
 struct ArrayHandle {
     array: ArrayRef,
-    positions: Vec<(usize, usize)>, // (offset ,length)
+    slice_args: Vec<SliceArg>,
 }
 
 impl ArrayHandle {
     fn new(array: ArrayRef) -> Self {
-        Self::with_positions(array, Vec::new())
+        Self::with_slice_args(array, Vec::new())
     }
 
-    fn with_positions(array: ArrayRef, positions: Vec<(usize, usize)>) -> Self {
-        Self { array, positions }
+    fn with_slice_args(array: ArrayRef, slice_args: Vec<SliceArg>) -> Self {
+        Self { array, slice_args }
     }
 
-    fn append_pos(&mut self, offset: usize, length: usize) {
-        self.positions.push((offset, length))
+    fn append_slice_arg(&mut self, arg: SliceArg) {
+        self.slice_args.push(arg)
     }
 
     fn len(&self) -> usize {
-        self.positions.iter().map(|(_, len)| len).sum()
+        self.slice_args.iter().map(|arg| arg.length).sum()
     }
 
     // Note: this require primitive array
@@ -65,27 +71,24 @@ impl ArrayHandle {
 /// `TsidBatch` is used to collect column data for the same TSID
 #[derive(Debug)]
 struct TsidBatch {
-    key_values: Vec<String>,
-    timestamp_array: ArrayHandle,
-    non_key_arrays: Vec<ArrayHandle>,
+    non_collapsible_col_values: Vec<String>,
+    collapsible_col_arrays: Vec<ArrayHandle>,
 }
 
 impl TsidBatch {
-    fn new(key_values: Vec<String>, timestamp: ArrayRef, non_key_arrays: Vec<ArrayRef>) -> Self {
+    fn new(non_collapsible_col_values: Vec<String>, collapsible_col_arrays: Vec<ArrayRef>) -> Self {
         Self {
-            key_values,
-            timestamp_array: ArrayHandle::new(timestamp),
-            non_key_arrays: non_key_arrays
+            non_collapsible_col_values,
+            collapsible_col_arrays: collapsible_col_arrays
                 .into_iter()
                 .map(|f| ArrayHandle::new(f))
                 .collect(),
         }
     }
 
-    fn append_postition(&mut self, offset: usize, length: usize) {
-        self.timestamp_array.append_pos(offset, length);
-        for handle in &mut self.non_key_arrays {
-            handle.append_pos(offset, length);
+    fn append_slice_arg(&mut self, arg: SliceArg) {
+        for handle in &mut self.collapsible_col_arrays {
+            handle.append_slice_arg(arg);
         }
     }
 }
@@ -101,23 +104,15 @@ struct IndexedArray {
     array: ArrayRef,
 }
 
-fn is_collapsable_column(idx: usize, timestamp_idx: usize, non_key_column_idxes: &[usize]) -> bool {
-    idx == timestamp_idx || non_key_column_idxes.contains(&idx)
-}
-
-/// Convert timestamp/non key columns to list type
-pub fn build_hybrid_arrow_schema(
-    timestamp_idx: usize,
-    non_key_column_idxes: Vec<usize>,
-    schema: &Schema,
-) -> ArrowSchemaRef {
+/// Convert collapsible columns to list type
+pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
     let arrow_schema = schema.to_arrow_schema_ref();
     let new_fields = arrow_schema
         .fields()
         .iter()
         .enumerate()
         .map(|(idx, field)| {
-            if is_collapsable_column(idx, timestamp_idx, &non_key_column_idxes) {
+            if schema.is_collapsible_column(idx) {
                 let field_type = DataType::List(Box::new(Field::new(
                     LIST_ITEM_NAME,
                     field.data_type().clone(),
@@ -166,19 +161,21 @@ impl ListArrayBuilder {
             let shared_buffer = array_handle.data_slice();
             let null_bitmap = array_handle.null_bitmap();
 
-            for (offset, length) in &array_handle.positions {
+            for slice_arg in &array_handle.slice_args {
+                let offset = slice_arg.offset;
+                let length = slice_arg.length;
                 if let Some(bitmap) = null_bitmap {
-                    for i in 0..*length {
-                        if bitmap.is_set(i + *offset) {
+                    for i in 0..length {
+                        if bitmap.is_set(i + offset) {
                             bit_util::set_bit(null_slice, length_so_far as usize + i);
                         }
                     }
                 } else {
-                    for i in 0..*length {
+                    for i in 0..length {
                         bit_util::set_bit(null_slice, length_so_far as usize + i);
                     }
                 }
-                length_so_far += *length as i32;
+                length_so_far += length as i32;
                 values.extend_from_slice(
                     &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
                 );
@@ -235,44 +232,37 @@ impl ListArrayBuilder {
 fn build_hybrid_record(
     arrow_schema: ArrowSchemaRef,
     tsid_type: &IndexedType,
-    timestamp_type: &IndexedType,
-    key_types: &[IndexedType],
-    non_key_types: &[IndexedType],
+    non_collapsible_col_types: &[IndexedType],
+    collapsible_col_types: &[IndexedType],
     batch_by_tsid: BTreeMap<u64, TsidBatch>,
 ) -> Result<ArrowRecordBatch> {
     let tsid_array = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
-    let mut timestamp_array = Vec::new();
-    let mut non_key_column_arrays = vec![Vec::new(); non_key_types.len()];
-    let mut key_column_arrays = vec![Vec::new(); key_types.len()];
+    let mut collapsible_col_arrays = vec![Vec::new(); collapsible_col_types.len()];
+    let mut non_collapsible_col_arrays = vec![Vec::new(); non_collapsible_col_types.len()];
 
     for batch in batch_by_tsid.into_values() {
-        timestamp_array.push(batch.timestamp_array);
-        for (idx, handle) in batch.non_key_arrays.into_iter().enumerate() {
-            non_key_column_arrays[idx].push(handle);
+        for (idx, arr) in batch.collapsible_col_arrays.into_iter().enumerate() {
+            collapsible_col_arrays[idx].push(arr);
         }
-        for (idx, tagv) in batch.key_values.into_iter().enumerate() {
-            key_column_arrays[idx].push(tagv);
+        for (idx, arr) in batch.non_collapsible_col_values.into_iter().enumerate() {
+            non_collapsible_col_arrays[idx].push(arr);
         }
     }
     let tsid_array = IndexedArray {
         idx: tsid_type.idx,
         array: Arc::new(tsid_array),
     };
-    let timestamp_array = IndexedArray {
-        idx: timestamp_type.idx,
-        array: Arc::new(ListArrayBuilder::new(timestamp_type.data_type, timestamp_array).build()?),
-    };
-    let key_column_arrays = key_column_arrays
+    let non_collapsible_col_arrays = non_collapsible_col_arrays
         .into_iter()
-        .zip(key_types.iter().map(|n| n.idx))
+        .zip(non_collapsible_col_types.iter().map(|n| n.idx))
         .map(|(c, idx)| IndexedArray {
             idx,
             array: Arc::new(StringArray::from(c)) as ArrayRef,
         })
         .collect::<Vec<_>>();
-    let non_key_column_arrays = non_key_column_arrays
+    let collapsible_col_arrays = collapsible_col_arrays
         .into_iter()
-        .zip(non_key_types.iter().map(|n| (n.idx, n.data_type)))
+        .zip(collapsible_col_types.iter().map(|n| (n.idx, n.data_type)))
         .map(|(handle, (idx, datum_type))| {
             Ok(IndexedArray {
                 idx,
@@ -281,9 +271,9 @@ fn build_hybrid_record(
         })
         .collect::<Result<Vec<_>>>()?;
     let all_columns = [
-        vec![tsid_array, timestamp_array],
-        key_column_arrays,
-        non_key_column_arrays,
+        vec![tsid_array],
+        non_collapsible_col_arrays,
+        collapsible_col_arrays,
     ]
     .into_iter()
     .flatten()
@@ -301,9 +291,8 @@ fn build_hybrid_record(
 /// `StorageFormat::Hybrid`
 pub fn convert_to_hybrid_record(
     tsid_type: &IndexedType,
-    timestamp_type: &IndexedType,
-    key_types: &[IndexedType],
-    non_key_types: &[IndexedType],
+    non_collapsible_col_types: &[IndexedType],
+    collapsible_col_types: &[IndexedType],
     hybrid_arrow_schema: ArrowSchemaRef,
     arrow_record_batchs: Vec<ArrowRecordBatch>,
 ) -> Result<ArrowRecordBatch> {
@@ -320,7 +309,7 @@ pub fn convert_to_hybrid_record(
             continue;
         }
 
-        let key_values = key_types
+        let non_collapsible_col_values = non_collapsible_col_types
             .iter()
             .map(|col| {
                 record_batch
@@ -352,27 +341,25 @@ pub fn convert_to_hybrid_record(
 
             let batch = batch_by_tsid.entry(tsid).or_insert_with(|| {
                 TsidBatch::new(
-                    key_values
+                    non_collapsible_col_values
                         .iter()
                         .map(|col| col.value(offset).to_string())
                         .collect(),
-                    record_batch.column(timestamp_type.idx).clone(),
-                    non_key_types
+                    collapsible_col_types
                         .iter()
                         .map(|col| record_batch.column(col.idx).clone())
                         .collect(),
                 )
             });
-            batch.append_postition(offset, length);
+            batch.append_slice_arg(SliceArg { offset, length });
         }
     }
 
     build_hybrid_record(
         hybrid_arrow_schema,
         tsid_type,
-        timestamp_type,
-        key_types,
-        non_key_types,
+        non_collapsible_col_types,
+        collapsible_col_types,
         batch_by_tsid,
     )
 }
@@ -385,6 +372,15 @@ mod tests {
     };
 
     use super::*;
+
+    impl From<(usize, usize)> for SliceArg {
+        fn from(offset_length: (usize, usize)) -> Self {
+            Self {
+                offset: offset_length.0,
+                length: offset_length.1,
+            }
+        }
+    }
 
     fn timestamp_array(start: i64, end: i64) -> ArrayRef {
         Arc::new(TimestampMillisecondArray::from_iter_values(start..end))
@@ -399,8 +395,14 @@ mod tests {
     #[test]
     fn merge_timestamp_array_to_list() {
         let list_of_arrays = vec![
-            ArrayHandle::with_positions(timestamp_array(1, 20), vec![(1, 2), (10, 3)]),
-            ArrayHandle::with_positions(timestamp_array(100, 120), vec![(1, 2), (10, 3)]),
+            ArrayHandle::with_slice_args(
+                timestamp_array(1, 20),
+                vec![(1, 2).into(), (10, 3).into()],
+            ),
+            ArrayHandle::with_slice_args(
+                timestamp_array(100, 120),
+                vec![(1, 2).into(), (10, 3).into()],
+            ),
         ];
 
         let data = vec![
@@ -417,7 +419,7 @@ mod tests {
 
     #[test]
     fn merge_u16_array_with_none_to_list() {
-        let list_of_arrays = vec![ArrayHandle::with_positions(
+        let list_of_arrays = vec![ArrayHandle::with_slice_args(
             uint16_array(vec![
                 Some(1),
                 Some(2),
@@ -427,7 +429,7 @@ mod tests {
                 Some(5),
                 Some(6),
             ]),
-            vec![(1, 3), (4, 1)],
+            vec![(1, 3).into(), (4, 1).into()],
         )];
 
         let data = vec![Some(vec![Some(2), None, Some(3), Some(4)])];

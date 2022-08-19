@@ -464,8 +464,11 @@ pub enum StorageFormat {
     Columnar,
 
     /// Design for time-series data
-    /// Timestamp and non key columns within same primary key are collapsed
+    /// Collapsible Columns within same primary key are collapsed
     /// into list, other columns are the same format with columar's.
+    ///
+    /// Wether a column is collapsible is decided by
+    /// `Schema::is_collapsible_column`
     ///
     /// Note: minTime/maxTime is optional and not implemented yet, mainly used
     /// for time-range pushdown filter
@@ -630,15 +633,25 @@ impl Schema {
         self.timestamp_index
     }
 
-    /// Whether i-nth column is non-key column
-    ///
-    /// Non-key means not timestamp/tag/primary key
-    pub fn non_key_column(&self, i: usize) -> bool {
-        if self.column(i).is_tag {
+    /// Whether i-nth column is tag column
+    pub fn is_tag_column(&self, i: usize) -> bool {
+        self.column(i).is_tag
+    }
+
+    /// Whether i-nth column can be collapsed to List describe in
+    /// `StorageFormat::Hybrid`
+    pub fn is_collapsible_column(&self, i: usize) -> bool {
+        if self.timestamp_index == i {
+            return true;
+        }
+
+        if self.is_tag_column(i) {
             return false;
         }
 
-        i >= self.num_key_columns
+        return self
+            .tsid_index
+            .map_or_else(|| true, |tsid_idx| tsid_idx != i);
     }
 
     /// Get the version of this schema
