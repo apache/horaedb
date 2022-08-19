@@ -22,8 +22,8 @@ const (
 	defaultDataDir                 = "/tmp/ceresmeta/data"
 	defaultWalDir                  = "/tmp/ceresmeta/wal"
 	defaultRootPath                = "/rootPath"
-	defaultClientUrls              = "http://127.0.0.1:2379"
-	defaultPeerUrls                = "http://127.0.0.1:2380"
+	defaultClientUrls              = "http://0.0.0.0:2379"
+	defaultPeerUrls                = "http://0.0.0.0:2380"
 	defaultInitialClusterState     = embed.ClusterStateFlagNew
 	defaultInitialClusterToken     = "ceresmeta-cluster" //#nosec G101
 	defaultCompactionMode          = "periodic"
@@ -35,9 +35,14 @@ const (
 
 	defaultMaxRequestBytes uint = 2 * 1024 * 1024 // 2MB
 
-	defaultMaxScanLimit    int = 100
-	defaultMinScanLimit    int = 20
-	defaultIDAllocatorStep int = 20
+	defaultMaxScanLimit    int  = 100
+	defaultMinScanLimit    int  = 20
+	defaultIDAllocatorStep uint = 20
+
+	defaultClusterName              = "defaultCluster"
+	defaultClusterNodeCount         = 2
+	defaultClusterReplicationFactor = 1
+	defaultClusterShardTotal        = 8
 )
 
 type Config struct {
@@ -76,6 +81,12 @@ type Config struct {
 	MaxScanLimit            int    `toml:"max-scan-limit" json:"max-scan-limit"`
 	MinScanLimit            int    `toml:"min-scan-limit" json:"min-scan-limit"`
 	IDAllocatorStep         uint   `toml:"id-allocator-step" json:"id-allocator-step"`
+
+	// Following fields are the settings for the default cluster.
+	DefaultClusterName              string `toml:"default-cluster-name" json:"default-cluster-name"`
+	DefaultClusterNodeCount         int    `toml:"default-cluster-node-count" json:"default-cluster-node-count"`
+	DefaultClusterReplicationFactor int    `toml:"default-cluster-replication-factor" json:"default-cluster-replication-factor"`
+	DefaultClusterShardTotal        int    `toml:"default-cluster-shard-total" json:"default-cluster-shard-total"`
 
 	ClientUrls          string `toml:"client-urls" json:"client-urls"`
 	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`
@@ -225,6 +236,12 @@ func MakeConfigParser() (*Parser, error) {
 	fs.UintVar(&cfg.MaxRequestBytes, "max-request-bytes", defaultMaxRequestBytes, "max bytes of requests received by etcd server")
 	fs.IntVar(&cfg.MaxScanLimit, "max-scan-limit", defaultMaxScanLimit, "max kv storage scan limit")
 	fs.IntVar(&cfg.MinScanLimit, "min-scan-limit", defaultMinScanLimit, "min kv storage scan limit")
-	fs.IntVar(&cfg.MinScanLimit, "id-allocator-step", defaultIDAllocatorStep, "id allocator step")
+	fs.UintVar(&cfg.IDAllocatorStep, "id-allocator-step", defaultIDAllocatorStep, "id allocator step")
+
+	fs.StringVar(&cfg.DefaultClusterName, "default-cluster", defaultClusterName, "name of the default cluster")
+	fs.IntVar(&cfg.DefaultClusterNodeCount, "default-cluster-node-count", defaultClusterNodeCount, "node count of the default cluster")
+	fs.IntVar(&cfg.DefaultClusterReplicationFactor, "default-cluster-replication-factor", defaultClusterReplicationFactor, "replication factor of the default cluster")
+	fs.IntVar(&cfg.DefaultClusterShardTotal, "default-cluster-shard-total", defaultClusterShardTotal, "shard total of the default cluster")
+
 	return builder, nil
 }

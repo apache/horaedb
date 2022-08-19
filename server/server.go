@@ -190,6 +190,24 @@ func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {
 	defer srv.bgJobWg.Done()
 }
 
+//nolint
+func (srv *Server) createDefaultCluster(ctx context.Context) {
+	leaderResp, err := srv.member.GetLeader(ctx)
+	if err != nil {
+		log.Warn("get leader failed", zap.Error(err))
+	}
+
+	// Create default cluster by the leader.
+	if leaderResp.IsLocal {
+		cluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName, uint32(srv.cfg.DefaultClusterNodeCount), uint32(srv.cfg.DefaultClusterReplicationFactor), uint32(srv.cfg.DefaultClusterShardTotal))
+		if err != nil {
+			log.Warn("create default cluster failed", zap.Error(err))
+		} else {
+			log.Info("create default cluster succeed", zap.Any("cluster", cluster))
+		}
+	}
+}
+
 type leaderWatchContext struct {
 	srv *Server
 }
