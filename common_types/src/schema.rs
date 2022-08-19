@@ -177,11 +177,66 @@ pub enum CompatError {
 }
 
 /// Meta data of the arrow schema
-struct ArrowSchemaMeta {
+pub struct ArrowSchemaMeta {
     num_key_columns: usize,
     timestamp_index: usize,
     enable_tsid_primary_key: bool,
     version: u32,
+}
+
+impl ArrowSchemaMeta {
+    pub fn storage_format(&self) -> StorageFormat {
+        // TODO: parse it from table options
+        match std::env::var("CERESDB_TABLE_FORMAT") {
+            Ok(format) => {
+                if format == "HYBRID" {
+                    StorageFormat::Hybrid
+                } else {
+                    StorageFormat::Columnar
+                }
+            }
+            Err(_) => StorageFormat::Columnar,
+        }
+    }
+
+    fn parse_arrow_schema_meta_value<T>(
+        meta: &HashMap<String, String>,
+        key: ArrowSchemaMetaKey,
+    ) -> Result<T>
+    where
+        T: FromStr,
+        T::Err: std::error::Error + Send + Sync + 'static,
+    {
+        let raw_value = meta
+            .get(key.as_str())
+            .context(ArrowSchemaMetaKeyNotFound { key })?;
+        T::from_str(raw_value.as_str())
+            .map_err(|e| Box::new(e) as _)
+            .context(InvalidArrowSchemaMetaValue { key, raw_value })
+    }
+}
+
+/// Parse the necessary meta information from the arrow schema's meta data.
+impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
+    type Error = Error;
+
+    fn try_from(meta: &HashMap<String, String>) -> Result<Self> {
+        Ok(ArrowSchemaMeta {
+            num_key_columns: Self::parse_arrow_schema_meta_value(
+                meta,
+                ArrowSchemaMetaKey::NumKeyColumns,
+            )?,
+            timestamp_index: Self::parse_arrow_schema_meta_value(
+                meta,
+                ArrowSchemaMetaKey::TimestampIndex,
+            )?,
+            enable_tsid_primary_key: Self::parse_arrow_schema_meta_value(
+                meta,
+                ArrowSchemaMetaKey::EnableTsidPrimaryKey,
+            )?,
+            version: Self::parse_arrow_schema_meta_value(meta, ArrowSchemaMetaKey::Version)?,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1053,27 +1108,11 @@ impl Builder {
         })
     }
 
-    fn parse_arrow_schema_meta_value<T>(
-        meta: &HashMap<String, String>,
-        key: ArrowSchemaMetaKey,
-    ) -> Result<T>
-    where
-        T: FromStr,
-        T::Err: std::error::Error + Send + Sync + 'static,
-    {
-        let raw_value = meta
-            .get(key.as_str())
-            .context(ArrowSchemaMetaKeyNotFound { key })?;
-        T::from_str(raw_value.as_str())
-            .map_err(|e| Box::new(e) as _)
-            .context(InvalidArrowSchemaMetaValue { key, raw_value })
-    }
-
     /// Parse the necessary meta information from the arrow schema's meta data.
     fn parse_arrow_schema_meta_or_default(
         meta: &HashMap<String, String>,
     ) -> Result<ArrowSchemaMeta> {
-        match Self::parse_arrow_schema_meta(meta) {
+        match ArrowSchemaMeta::try_from(meta) {
             Ok(v) => Ok(v),
             Err(Error::ArrowSchemaMetaKeyNotFound { .. }) => Ok(ArrowSchemaMeta {
                 num_key_columns: 0,
@@ -1083,25 +1122,6 @@ impl Builder {
             }),
             Err(e) => Err(e),
         }
-    }
-
-    /// Parse the necessary meta information from the arrow schema's meta data.
-    fn parse_arrow_schema_meta(meta: &HashMap<String, String>) -> Result<ArrowSchemaMeta> {
-        Ok(ArrowSchemaMeta {
-            num_key_columns: Self::parse_arrow_schema_meta_value(
-                meta,
-                ArrowSchemaMetaKey::NumKeyColumns,
-            )?,
-            timestamp_index: Self::parse_arrow_schema_meta_value(
-                meta,
-                ArrowSchemaMetaKey::TimestampIndex,
-            )?,
-            enable_tsid_primary_key: Self::parse_arrow_schema_meta_value(
-                meta,
-                ArrowSchemaMetaKey::EnableTsidPrimaryKey,
-            )?,
-            version: Self::parse_arrow_schema_meta_value(meta, ArrowSchemaMetaKey::Version)?,
-        })
     }
 
     /// Build arrow schema meta data.

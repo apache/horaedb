@@ -23,7 +23,7 @@ use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::{Schema, StorageFormat},
+    schema::{ArrowSchemaMeta, Schema, StorageFormat},
 };
 use common_util::runtime::Runtime;
 use futures::Stream;
@@ -334,9 +334,11 @@ impl ProjectAndFilterReader {
             {
                 Ok(record_batch) => {
                     let arrow_schema = record_batch.schema();
-                    let schema = Schema::try_from(arrow_schema).context(InvalidSchema)?;
-                    let record_batch = match schema.storage_format() {
-                        StorageFormat::Hybrid => todo!("Will implement this in PR 207"),
+                    let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
+                        .map_err(|e| Box::new(e) as _)
+                        .context(DecodeSstMeta)?;
+                    let record_batch = match arrow_schema_meta.storage_format() {
+                        StorageFormat::Hybrid => todo!(),
                         StorageFormat::Columnar => record_batch,
                     };
 
