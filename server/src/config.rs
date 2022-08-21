@@ -12,7 +12,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::route::rule_based::{ClusterView, RuleList, ShardView};
 
-/// The deployment mode decides how to start up the CeresDB.
+/// The deployment mode decides how to start the CeresDB.
 ///
 /// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
 /// alone without CeresMeta.

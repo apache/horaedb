@@ -10,10 +10,7 @@ use meta_client::types::{
 };
 use snafu::OptionExt;
 
-use crate::{Result, ShardNotFound};
-
-pub type TableName = String;
-pub type SchemaName = String;
+use crate::{Result, SchemaName, ShardNotFound, TableName};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

@@ -2,8 +2,6 @@
 
 //! The main entry point to start the server
 
-// TODO(yingwen): ceresdb-server is a legacy name, maybe use a new name
-
 use std::{env, net::SocketAddr};
 
 use ceresdb::setup;

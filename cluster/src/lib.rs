@@ -43,13 +43,12 @@ pub enum Error {
 
 define_result!(Error);
 
+pub type TableName = String;
+pub type SchemaName = String;
+
 pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
-
 pub type TableManipulatorRef = Arc<dyn TableManipulator + Send + Sync>;
-
 pub type ClusterTopologyRef = Arc<ClusterTopology>;
-
-pub type TableLocs = HashMap<String, ShardView>;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -76,15 +75,21 @@ pub struct Node {
 }
 
 #[derive(Debug, Clone)]
-pub struct ShardView {
+pub struct TableNodeShards {
+    pub table_id: TableId,
+    pub node_shards: Vec<NodeShard>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeShard {
     pub shard: ShardInfo,
     pub node: Node,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct ClusterTopology {
-    pub schema_tables: HashMap<String, TableLocs>,
-    pub schema_configs: HashMap<String, SchemaConfig>,
+    pub schema_tables: HashMap<SchemaName, HashMap<TableName, TableNodeShards>>,
+    pub schema_configs: HashMap<SchemaName, SchemaConfig>,
 }
 
 #[async_trait]

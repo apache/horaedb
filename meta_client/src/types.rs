@@ -116,7 +116,8 @@ pub enum ShardRole {
     FOLLOWER,
 }
 
-// TODO: now some commands are empty and fill the concret inforamtion into them.
+// TODO: now some commands are empty and fill the concrete information into
+// them.
 #[derive(Debug, Clone)]
 pub enum ActionCmd {
     MetaNoneCmd(NoneCmd),
