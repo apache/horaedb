@@ -36,6 +36,7 @@ use crate::{
         flush_compaction::{self, TableFlushOptions},
         write, write_worker, InstanceRef,
     },
+    role_table::RoleTableRef,
     space::{SpaceId, SpaceRef},
     table::{data::TableDataRef, metrics::Metrics},
 };
@@ -307,7 +308,7 @@ impl WriteTableCommand {
 pub struct RecoverTableCommand {
     pub space: SpaceRef,
     /// Table to recover
-    pub table_data: TableDataRef,
+    pub role_table: RoleTableRef,
     /// Sender for the worker to return result of recover
     pub tx: oneshot::Sender<engine::Result<Option<TableDataRef>>>,
 
@@ -357,7 +358,7 @@ impl DropTableCommand {
 pub struct CreateTableCommand {
     /// The space of the table to drop
     pub space: SpaceRef,
-    pub table_data: TableDataRef,
+    pub role_table: RoleTableRef,
     pub tx: oneshot::Sender<engine::Result<TableDataRef>>,
 }
 
@@ -788,14 +789,14 @@ impl WriteWorker {
     async fn handle_recover_table(&mut self, cmd: RecoverTableCommand) {
         let RecoverTableCommand {
             space,
-            table_data,
+            role_table,
             tx,
             replay_batch_size,
         } = cmd;
 
         let open_res = self
             .instance
-            .process_recover_table_command(&mut self.local, space, table_data, replay_batch_size)
+            .process_recover_table_command(&mut self.local, space, role_table, replay_batch_size)
             .await;
 
         if let Err(open_res) = tx.send(open_res) {
@@ -824,13 +825,13 @@ impl WriteWorker {
     async fn handle_create_table(&mut self, cmd: CreateTableCommand) {
         let CreateTableCommand {
             space,
-            table_data,
+            role_table,
             tx,
         } = cmd;
 
         let create_res = self
             .instance
-            .process_create_table_command(&mut self.local, space, table_data)
+            .process_create_table_command(&mut self.local, space, role_table)
             .await;
         if let Err(create_res) = tx.send(create_res) {
             error!(

@@ -16,17 +16,21 @@ use crate::{
         Instance,
     },
     meta::meta_update::{AddTableMeta, MetaUpdate},
+    role_table::{self, RoleTableRef, TableRole},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,
 };
 
 impl Instance {
+    // TODO: this function should not return [TableDataRef], and [TableImpl::new()]
+    // should require that as well.
     /// Create table need to be handled by write worker.
     pub async fn do_create_table(
         &self,
         space: SpaceRef,
         request: CreateTableRequest,
+        role: TableRole,
     ) -> Result<TableDataRef> {
         info!("Instance create table, request:{:?}", request);
 
@@ -64,12 +68,13 @@ impl Instance {
                 table_id,
             })?,
         );
+        let role_table = role_table::create_role_table(table_data.clone(), role);
 
         let space_id = space.id;
         let (tx, rx) = oneshot::channel();
         let cmd = CreateTableCommand {
             space,
-            table_data: table_data.clone(),
+            role_table,
             tx,
         };
         write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
@@ -87,8 +92,9 @@ impl Instance {
         self: &Arc<Self>,
         _worker_local: &mut WorkerLocal,
         space: SpaceRef,
-        table_data: TableDataRef,
+        role_table: RoleTableRef,
     ) -> Result<TableDataRef> {
+        let table_data = role_table.table_data();
         if let Some(table_data) = space.find_table_by_id(table_data.id) {
             // Use the table data from the space instead of the table_data in params.
             return Ok(table_data);
@@ -112,7 +118,7 @@ impl Instance {
                 table_id: table_data.id,
             })?;
 
-        space.insert_table(table_data.clone());
+        space.insert_table(role_table);
         Ok(table_data)
     }
 }

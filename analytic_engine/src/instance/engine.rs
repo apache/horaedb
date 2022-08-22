@@ -15,6 +15,7 @@ use wal::manager::RegionId;
 
 use crate::{
     instance::{write_worker::WriteGroup, Instance},
+    role_table::TableRole,
     space::{Space, SpaceAndTable, SpaceId, SpaceRef},
 };
 
@@ -294,9 +295,11 @@ impl Instance {
         self: &Arc<Self>,
         space_id: SpaceId,
         request: CreateTableRequest,
+        // TODO: move this param into [CreateTableRequest].
+        role: TableRole,
     ) -> Result<SpaceAndTable> {
         let space = self.find_or_create_space(space_id).await?;
-        let table_data = self.do_create_table(space.clone(), request).await?;
+        let table_data = self.do_create_table(space.clone(), request, role).await?;
 
         Ok(SpaceAndTable::new(space, table_data))
     }

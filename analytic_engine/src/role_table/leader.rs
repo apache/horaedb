@@ -17,13 +17,31 @@ use crate::{
         write_worker::WorkerLocal,
         Instance,
     },
-    role_table::{Result, RoleTable, TableRole},
+    role_table::{Result, RoleTable, RoleTableRef, TableRole},
     space::SpaceRef,
     table::data::TableDataRef,
 };
 
 pub struct LeaderTable {
     inner: Arc<LeaderTableInner>,
+}
+
+impl LeaderTable {
+    pub fn new(table_data: TableDataRef) -> RoleTableRef {
+        let inner = Arc::new(LeaderTableInner {
+            state: AtomicU8::new(LeaderTableInner::ROLE),
+            table_data,
+        });
+        Arc::new(Self { inner }) as _
+    }
+}
+
+impl std::fmt::Debug for LeaderTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LeaderTable")
+            .field("table_id", &self.inner.table_data.id)
+            .finish()
+    }
 }
 
 impl Drop for LeaderTable {
@@ -177,5 +195,9 @@ impl RoleTable for LeaderTable {
         self.inner
             .alter_options(instance, worker_local, options)
             .await
+    }
+
+    fn table_data(&self) -> TableDataRef {
+        self.inner.table_data.clone()
     }
 }

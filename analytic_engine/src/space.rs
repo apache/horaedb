@@ -15,6 +15,7 @@ use table_engine::table::TableId;
 
 use crate::{
     instance::{mem_collector::MemUsageCollector, write_worker::WriteGroup},
+    role_table::RoleTableRef,
     table::data::{TableDataRef, TableDataSet},
 };
 
@@ -136,12 +137,12 @@ impl Space {
     /// absent. For internal use only
     ///
     /// Panic if the table is already exists
-    pub(crate) fn insert_table(&self, table_data: TableDataRef) {
+    pub(crate) fn insert_table(&self, role_table: RoleTableRef) {
         let success = self
             .table_datas
             .write()
             .unwrap()
-            .insert_if_absent(table_data);
+            .insert_if_absent(role_table);
         assert!(success);
     }
 

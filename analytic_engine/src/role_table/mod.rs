@@ -5,9 +5,11 @@ use common_util::define_result;
 use snafu::Snafu;
 use table_engine::table::{AlterSchemaRequest, WriteRequest};
 
+pub use self::leader::LeaderTable;
 use crate::{
     instance::{flush_compaction::TableFlushOptions, write_worker::WorkerLocal, Instance},
     space::SpaceRef,
+    table::data::TableDataRef,
 };
 
 mod leader;
@@ -22,9 +24,20 @@ pub enum Error {
 
 define_result!(Error);
 
+pub type RoleTableRef = Arc<dyn RoleTable + Send + Sync + 'static>;
+
+pub fn create_role_table(table_data: TableDataRef, role: TableRole) -> RoleTableRef {
+    match role {
+        TableRole::Invalid => todo!(),
+        TableRole::Leader => LeaderTable::new(table_data),
+        TableRole::InSync => todo!(),
+        TableRole::NoSync => todo!(),
+    }
+}
+
 /// Those methods are expected to be called by [Instance]
 #[async_trait]
-pub trait RoleTable {
+pub trait RoleTable: std::fmt::Debug + 'static {
     fn check_state(&self) -> bool;
 
     async fn change_role(&self) -> Result<()>;
@@ -61,6 +74,9 @@ pub trait RoleTable {
         worker_local: &mut WorkerLocal,
         options: HashMap<String, String>,
     ) -> Result<()>;
+
+    // TODO: do we need to expose this?
+    fn table_data(&self) -> TableDataRef;
 }
 
 #[allow(dead_code)]

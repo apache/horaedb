@@ -16,7 +16,7 @@ use table_engine::{
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::{instance::InstanceRef, space::SpaceId, table::TableImpl};
+use crate::{instance::InstanceRef, role_table::TableRole, space::SpaceId, table::TableImpl};
 
 /// TableEngine implementation
 pub struct TableEngineImpl {
@@ -73,7 +73,9 @@ impl TableEngine for TableEngineImpl {
             space_id, request
         );
 
-        let space_table = self.instance.create_table(space_id, request).await?;
+        // TODO: remove this hardcode, add it to [CreateTableRequest].
+        let role = TableRole::Leader;
+        let space_table = self.instance.create_table(space_id, request, role).await?;
 
         let table_impl = Arc::new(TableImpl::new(
             self.instance.clone(),

@@ -35,6 +35,7 @@ use crate::{
         skiplist::factory::SkiplistMemTableFactory,
     },
     meta::meta_update::AddTableMeta,
+    role_table::RoleTableRef,
     space::SpaceId,
     sst::{factory::SstType, file::FilePurger, manager::FileId},
     table::{
@@ -478,6 +479,8 @@ pub struct TableDataSet {
     table_datas: HashMap<String, TableDataRef>,
     /// Id to table data
     id_to_tables: HashMap<TableId, TableDataRef>,
+    /// Id to [RoleTable]
+    id_to_roles: HashMap<TableId, RoleTableRef>,
 }
 
 impl TableDataSet {
@@ -486,19 +489,23 @@ impl TableDataSet {
         Self {
             table_datas: HashMap::new(),
             id_to_tables: HashMap::new(),
+            id_to_roles: HashMap::new(),
         }
     }
 
     /// Insert if absent, if successfully inserted, return true and return
     /// false if the data already exists
-    pub fn insert_if_absent(&mut self, table_data_ref: TableDataRef) -> bool {
-        let table_name = &table_data_ref.name;
+    pub fn insert_if_absent(&mut self, role_table: RoleTableRef) -> bool {
+        let table_name = &role_table.table_data().name;
         if self.table_datas.contains_key(table_name) {
             return false;
         }
         self.table_datas
-            .insert(table_name.to_string(), table_data_ref.clone());
-        self.id_to_tables.insert(table_data_ref.id, table_data_ref);
+            .insert(table_name.to_string(), role_table.table_data());
+        self.id_to_tables
+            .insert(role_table.table_data().id, role_table.table_data());
+        self.id_to_roles
+            .insert(role_table.table_data().id, role_table);
         true
     }
 

@@ -34,6 +34,7 @@ use crate::{
     },
     meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
+    role_table::{LeaderTable, RoleTableRef},
     space::{Space, SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::{TableData, TableDataRef},
@@ -132,17 +133,19 @@ impl Instance {
             Some(v) => v,
             None => return Ok(None),
         };
+        let role_table = LeaderTable::new(table_data);
 
         let (tx, rx) = oneshot::channel();
         let cmd = RecoverTableCommand {
             space,
-            table_data: table_data.clone(),
+            role_table: role_table.clone(),
             tx,
             replay_batch_size: self.replay_batch_size,
         };
 
         // Send recover request to write worker, actual works done in
         // Self::recover_table_from_wal()
+        let table_data = role_table.table_data();
         write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
             .await
             .context(OperateByWriteWorker {
@@ -159,9 +162,10 @@ impl Instance {
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
         space: SpaceRef,
-        table_data: TableDataRef,
+        role_table: RoleTableRef,
         replay_batch_size: usize,
     ) -> Result<Option<TableDataRef>> {
+        let table_data = role_table.table_data();
         if let Some(exist_table_data) = space.find_table_by_id(table_data.id) {
             warn!("Open a opened table, table:{}", table_data.name);
             return Ok(Some(exist_table_data));
@@ -180,7 +184,7 @@ impl Instance {
         )
         .await?;
 
-        space.insert_table(table_data.clone());
+        space.insert_table(role_table);
         Ok(Some(table_data))
     }
 
