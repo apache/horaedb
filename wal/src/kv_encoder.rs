@@ -527,6 +527,7 @@ pub struct LogBatchEncoder {
 }
 
 impl LogBatchEncoder {
+    /// Create LogBatchEncoder with specific region_id.
     pub fn create(region_id: RegionId) -> Self {
         Self {
             region_id,
@@ -534,12 +535,37 @@ impl LogBatchEncoder {
         }
     }
 
-    pub fn encode<P: Payload>(self, payload_batch: &[P]) -> manager::Result<LogWriteBatch> {
+    /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
+    pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
         let mut write_batch = LogWriteBatch::new(self.region_id);
         let mut buf = BytesMut::new();
-        for payload in payload_batch.iter() {
+        self.log_encoding
+            .encode_value(&mut buf, payload)
+            .map_err(|e| Box::new(e) as _)
+            .context(Encoding)?;
+
+        write_batch.push(LogWriteEntry {
+            payload: buf.to_vec(),
+        });
+
+        Ok(write_batch)
+    }
+
+    /// Consume LogBatchEncoder and encode raw payload batch to LogWriteBatch.
+    /// Note: To build payload from raw payload in `encode_batch`, raw payload
+    /// need implement From trait.
+    pub fn encode_batch<'a, P: Payload, I>(
+        self,
+        raw_payload_batch: &'a [I],
+    ) -> manager::Result<LogWriteBatch>
+    where
+        &'a I: Into<P>,
+    {
+        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut buf = BytesMut::new();
+        for raw_payload in raw_payload_batch.iter() {
             self.log_encoding
-                .encode_value(&mut buf, payload)
+                .encode_value(&mut buf, &raw_payload.into())
                 .map_err(|e| Box::new(e) as _)
                 .context(Encoding)?;
 

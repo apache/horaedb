@@ -117,12 +117,10 @@ impl Instance {
                     region_id: table_data.wal_region_id(),
                 })?;
 
-        let log_batch = log_batch_encoder
-            .encode(&[payload])
-            .context(EncodePayloads {
-                table: &table_data.name,
-                region_id: table_data.wal_region_id(),
-            })?;
+        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+            table: &table_data.name,
+            region_id: table_data.wal_region_id(),
+        })?;
 
         // Write log batch
         let write_ctx = WriteContext::default();
@@ -290,12 +288,10 @@ impl Instance {
                     region_id: table_data.wal_region_id(),
                 })?;
 
-        let log_batch = log_batch_encoder
-            .encode(&[payload])
-            .context(EncodePayloads {
-                table: &table_data.name,
-                region_id: table_data.wal_region_id(),
-            })?;
+        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+            table: &table_data.name,
+            region_id: table_data.wal_region_id(),
+        })?;
 
         // Write log batch
         let write_ctx = WriteContext::default();

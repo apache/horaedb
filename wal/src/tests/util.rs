@@ -148,16 +148,17 @@ impl<B: WalBuilder> TestEnv<B> {
         start: u32,
         end: u32,
     ) -> (Vec<TestPayload>, LogWriteBatch) {
-        let payload_batch = self.build_payload_batch(start, end);
+        let log_entries = (start..end).collect::<Vec<_>>();
 
         let log_batch_encoder = wal
             .encoder(region_id)
             .expect("should succeed to create log batch encoder");
 
         let log_batch = log_batch_encoder
-            .encode(&payload_batch)
+            .encode_batch::<TestPayload, u32>(&log_entries)
             .expect("should succeed to encode payloads");
 
+        let payload_batch = self.build_payload_batch(start, end);
         (payload_batch, log_batch)
     }
 
@@ -216,6 +217,12 @@ impl Payload for TestPayload {
     fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
         buf.write_u32(self.val).expect("must write");
         Ok(())
+    }
+}
+
+impl From<&u32> for TestPayload {
+    fn from(v: &u32) -> Self {
+        Self { val: *v }
     }
 }
 

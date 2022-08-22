@@ -74,16 +74,11 @@ impl WalWriteBench {
             .expect("should succeed to open WalNamespaceImpl(Memory)");
 
             let values = self.build_value_vec();
-            let payloads = values
-                .iter()
-                .map(|value| WritePayload(value))
-                .collect::<Vec<_>>();
-
             let wal_encoder = wal
                 .encoder(1)
                 .expect("should succeed to create wal encoder");
             let log_batch = wal_encoder
-                .encode(&payloads)
+                .encode_batch::<WritePayload, Vec<u8>>(values.as_slice())
                 .expect("should succeed to encode payload batch");
 
             // Write to wal manager

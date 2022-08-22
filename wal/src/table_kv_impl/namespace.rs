@@ -1699,9 +1699,10 @@ mod tests {
             payload_batch.push(payload);
         }
 
+        let log_entries = (start_sequence..end_sequence).collect::<Vec<_>>();
         let wal_encoder = LogBatchEncoder::create(region_id);
         let log_batch = wal_encoder
-            .encode(&payload_batch)
+            .encode_batch::<TestPayload, u32>(&log_entries)
             .expect("should succeed to encode payload batch");
         let write_ctx = manager::WriteContext::default();
         namespace

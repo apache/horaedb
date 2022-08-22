@@ -131,6 +131,12 @@ impl<'a> Payload for WritePayload<'a> {
     }
 }
 
+impl<'a> From<&'a table_requests::WriteRequest> for WritePayload<'a> {
+    fn from(write_request: &'a table_requests::WriteRequest) -> Self {
+        Self::Write(write_request)
+    }
+}
+
 /// Payload decoded from wal
 #[derive(Debug)]
 pub enum ReadPayload {
