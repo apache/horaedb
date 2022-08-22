@@ -5,12 +5,13 @@
 use std::collections::HashMap;
 
 use analytic_engine;
-use cluster::{config::ClusterConfig, SchemaConfig};
+use cluster::{config::ClusterConfig, Node, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
+use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::route::rule_based::{ClusterView, RuleList, ShardView};
+use crate::route::rule_based::{ClusterView, RuleList};
 
 /// The deployment mode decides how to start the CeresDB.
 ///
@@ -43,6 +44,12 @@ pub struct RuntimeConfig {
 pub struct StaticRouteConfig {
     pub rule_list: RuleList,
     pub topology: StaticTopologyConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShardView {
+    pub shard_id: ShardId,
+    pub node: Node,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -95,7 +102,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
                 schema_shard_view
                     .shard_views
                     .iter()
-                    .map(|shard| (shard.shard_id, shard.clone()))
+                    .map(|shard| (shard.shard_id, shard.node.clone()))
                     .collect(),
             );
             schema_configs.insert(schema, SchemaConfig::from(schema_shard_view));

@@ -23,17 +23,11 @@ use crate::{
 /// result!
 const HASH_SEED: u64 = 0;
 
-pub type ShardViews = HashMap<ShardId, ShardView>;
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ShardView {
-    pub shard_id: ShardId,
-    pub node: Node,
-}
+pub type ShardNodes = HashMap<ShardId, Node>;
 
 #[derive(Clone, Debug, Default)]
 pub struct ClusterView {
-    pub schema_shards: HashMap<String, ShardViews>,
+    pub schema_shards: HashMap<String, ShardNodes>,
     pub schema_configs: HashMap<String, SchemaConfig>,
 }
 
@@ -157,11 +151,11 @@ impl RuleBasedRouter {
 
 impl Router for RuleBasedRouter {
     fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
-        if let Some(shard_view_map) = self.cluster_view.schema_shards.get(schema) {
-            if shard_view_map.is_empty() {
+        if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
+            if shard_nodes.is_empty() {
                 return ErrNoCause {
                     code: StatusCode::NotFound,
-                    msg: "shards from meta is empty",
+                    msg: "No valid shard is found",
                 }
                 .fail();
             }
@@ -170,7 +164,7 @@ impl Router for RuleBasedRouter {
             let rule_list_opt = self.schema_rules.get(schema);
 
             // TODO(yingwen): Better way to get total shard number
-            let total_shards = shard_view_map.len();
+            let total_shards = shard_nodes.len();
             let mut route_vec = Vec::with_capacity(req.metrics.len());
             for metric in req.metrics {
                 let mut route = Route::new();
@@ -179,8 +173,7 @@ impl Router for RuleBasedRouter {
                 let shard_id = Self::route_metric(route.get_metric(), rule_list_opt, total_shards);
 
                 let mut endpoint = Endpoint::new();
-                if let Some(shard_view) = shard_view_map.get(&shard_id) {
-                    let node = &shard_view.node;
+                if let Some(node) = shard_nodes.get(&shard_id) {
                     endpoint.set_ip(node.addr.clone());
                     endpoint.set_port(node.port as u32);
                 } else {

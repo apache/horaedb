@@ -5,9 +5,8 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client::types::{
-    CreateTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
-};
+use common_types::{schema::SchemaId, table::TableId};
+use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
 use snafu::OptionExt;
 
 use crate::{Result, SchemaName, ShardNotFound, TableName};

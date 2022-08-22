@@ -3,13 +3,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::schema::TIMESTAMP_COLUMN;
+use common_types::{schema::TIMESTAMP_COLUMN, table::TableId};
 use common_util::define_result;
 pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, GetTablesRequest,
 };
-use meta_client::types::{ShardId, ShardInfo, TableId};
+use meta_client::types::{ShardId, ShardInfo};
 use serde::Deserialize;
 use snafu::{Backtrace, Snafu};
 use table_engine::ANALYTIC_ENGINE_TYPE;
