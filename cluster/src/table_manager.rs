@@ -5,15 +5,11 @@ use std::{
     sync::RwLock,
 };
 
-use meta_client_v2::types::{
-    CreateTableCmd, SchemaId, ShardId, ShardInfo, ShardTables, TableId, TableInfo,
-};
+use common_types::{schema::SchemaId, table::TableId};
+use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
 use snafu::OptionExt;
 
-use crate::{Result, ShardNotFound};
-
-pub type TableName = String;
-pub type SchemaName = String;
+use crate::{Result, SchemaName, ShardNotFound, TableName};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]

@@ -21,6 +21,7 @@ pub mod limiter;
 pub mod logger;
 mod metrics;
 mod mysql;
-mod router;
+pub mod route;
+pub mod schema_config_provider;
 pub mod server;
 pub mod table_engine;

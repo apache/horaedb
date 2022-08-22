@@ -14,10 +14,17 @@ use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use log::info;
 use logger::RuntimeLevel;
-use meta_client_v2::meta_impl;
+use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig},
+    route::{
+        cluster_based::ClusterBasedRouter,
+        rule_based::{ClusterView, RuleBasedRouter},
+    },
+    schema_config_provider::{
+        cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
+    },
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
@@ -119,7 +126,9 @@ where
         .function_registry(function_registry);
 
     let builder = match config.deploy_mode {
-        DeployMode::Standalone => build_in_standalone_mode(builder, analytic, engine_proxy).await,
+        DeployMode::Standalone => {
+            build_in_standalone_mode(&config, builder, analytic, engine_proxy).await
+        }
         DeployMode::Cluster => {
             build_in_cluster_mode(&config, builder, &runtimes, engine_proxy).await
         }
@@ -170,10 +179,17 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         Arc::new(cluster_impl)
     };
 
-    builder.catalog_manager(catalog_manager).cluster(cluster)
+    let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
+    let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
+    builder
+        .catalog_manager(catalog_manager)
+        .cluster(cluster)
+        .router(router)
+        .schema_config_provider(schema_config_provider)
 }
 
 async fn build_in_standalone_mode<Q: Executor + 'static>(
+    config: &Config,
     builder: Builder<Q>,
     table_engine: TableEngineRef,
     engine_proxy: TableEngineRef,
@@ -184,5 +200,18 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
-    builder.catalog_manager(catalog_manager)
+
+    // Build static router and schema config provider
+    let cluster_view = ClusterView::from(&config.static_route.topology);
+    let schema_configs = cluster_view.schema_configs.clone();
+    let router = Arc::new(RuleBasedRouter::new(
+        cluster_view,
+        config.static_route.rule_list.clone(),
+    ));
+    let schema_config_provider = Arc::new(ConfigBasedProvider::new(schema_configs));
+
+    builder
+        .catalog_manager(catalog_manager)
+        .router(router)
+        .schema_config_provider(schema_config_provider)
 }

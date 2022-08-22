@@ -8,8 +8,6 @@ use std::{
     time::Instant,
 };
 
-use async_trait::async_trait;
-use catalog::{consts as catalogConst, manager::ManagerRef};
 use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
     prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
@@ -19,6 +17,7 @@ use ceresdbproto_deps::ceresdbproto::{
     },
     storage_grpc::{self, StorageService},
 };
+use cluster::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -31,10 +30,6 @@ use grpcio::{
     ServerStreamingSink, UnarySink, WriteFlags,
 };
 use log::{error, info};
-use meta_client::{
-    ClusterViewRef, FailGetCatalog, FailOnChangeView, MetaClient, MetaClientConfig, MetaWatcher,
-    SchemaConfig,
-};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
@@ -46,7 +41,8 @@ use crate::{
     error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError, StatusCode},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
-    router::{Router, RouterRef, RuleBasedRouter, RuleList},
+    route::{Router, RouterRef},
+    schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
 mod metrics;
@@ -67,12 +63,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to build meta client, err:{}", source))]
-    BuildMetaClient { source: meta_client::Error },
-
-    #[snafu(display("Failed to start meta client, err:{}", source))]
-    StartMetaClient { source: meta_client::Error },
-
     #[snafu(display("Missing meta client config.\nBacktrace:\n{}", backtrace))]
     MissingMetaClientConfig { backtrace: Backtrace },
 
@@ -84,6 +74,12 @@ pub enum Error {
 
     #[snafu(display("Missing instance.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
+    MissingSchemaConfigProvider { backtrace: Backtrace },
 
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
@@ -126,6 +122,11 @@ pub enum Error {
     GrpcSink {
         source: grpcio::Error,
         backtrace: Backtrace,
+    },
+
+    #[snafu(display("Get schema config failed, err:{}", source))]
+    GetSchemaConfig {
+        source: schema_config_provider::Error,
     },
 }
 
@@ -171,7 +172,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         header: RequestHeader,
         router: Arc<dyn Router + Sync + Send>,
         instance: InstanceRef<Q>,
-        cluster_view: &'a ClusterViewRef,
+        schema_config_provider: &'a SchemaConfigProviderRef,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -190,7 +191,9 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .context(ParseSchemaName)?
             .unwrap_or_else(|| default_schema.to_string());
 
-        let schema_config = cluster_view.schema_configs.get(&schema);
+        let schema_config = schema_config_provider
+            .schema_config(&schema)
+            .context(GetSchemaConfig)?;
 
         Ok(Self {
             header,
@@ -217,15 +220,11 @@ impl<'a, Q> HandlerContext<'a, Q> {
 pub struct RpcServices {
     /// The grpc server
     rpc_server: Server,
-    /// Meta client
-    meta_client: Arc<dyn MetaClient + Send + Sync>,
 }
 
 impl RpcServices {
     /// Start the rpc services
     pub async fn start(&mut self) -> Result<()> {
-        self.meta_client.start().await.context(StartMetaClient)?;
-
         self.rpc_server.start();
         for (host, port) in self.rpc_server.bind_addrs() {
             info!("Grpc server listening on {}:{}", host, port);
@@ -242,11 +241,11 @@ impl RpcServices {
 pub struct Builder<Q> {
     bind_addr: String,
     port: u16,
-    meta_client_config: Option<MetaClientConfig>,
     env: Option<Arc<Environment>>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
-    route_rules: RuleList,
+    router: Option<RouterRef>,
+    schema_config_provider: Option<SchemaConfigProviderRef>,
 }
 
 impl<Q> Builder<Q> {
@@ -254,11 +253,11 @@ impl<Q> Builder<Q> {
         Self {
             bind_addr: String::from("0.0.0.0"),
             port: 38081,
-            meta_client_config: None,
             env: None,
             runtimes: None,
             instance: None,
-            route_rules: RuleList::default(),
+            router: None,
+            schema_config_provider: None,
         }
     }
 
@@ -269,11 +268,6 @@ impl<Q> Builder<Q> {
 
     pub fn port(mut self, port: u16) -> Self {
         self.port = port;
-        self
-    }
-
-    pub fn meta_client_config(mut self, config: MetaClientConfig) -> Self {
-        self.meta_client_config = Some(config);
         self
     }
 
@@ -292,30 +286,31 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn route_rules(mut self, route_rules: RuleList) -> Self {
-        self.route_rules = route_rules;
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
+        self.schema_config_provider = Some(provider);
         self
     }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn build(self) -> Result<RpcServices> {
-        let meta_client_config = self.meta_client_config.context(MissingMetaClientConfig)?;
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
+        let router = self.router.context(MissingRouter)?;
+        let schema_config_provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
 
-        let watcher = Box::new(SchemaWatcher {
-            catalog_manager: instance.catalog_manager.clone(),
-        });
-
-        let meta_client = meta_client::build_meta_client(meta_client_config, Some(watcher))
-            .context(BuildMetaClient)?;
-        let router = Arc::new(RuleBasedRouter::new(meta_client.clone(), self.route_rules));
         let storage_service = StorageServiceImpl {
             router,
             instance,
             runtimes,
-            meta_client: meta_client.clone(),
+            schema_config_provider,
         };
         let rpc_service = storage_grpc::create_storage_service(storage_service);
 
@@ -327,41 +322,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .build()
             .context(BuildRpcServer)?;
 
-        Ok(RpcServices {
-            rpc_server,
-            meta_client,
-        })
-    }
-}
-
-struct SchemaWatcher {
-    catalog_manager: ManagerRef,
-}
-
-#[async_trait]
-impl MetaWatcher for SchemaWatcher {
-    async fn on_change(&self, view: ClusterViewRef) -> meta_client::Result<()> {
-        for schema in view.schema_shards.keys() {
-            let default_catalog = catalogConst::DEFAULT_CATALOG;
-            if let Some(catalog) = self
-                .catalog_manager
-                .catalog_by_name(default_catalog)
-                .map_err(|e| Box::new(e) as _)
-                .context(FailGetCatalog {
-                    catalog: default_catalog,
-                })?
-            {
-                catalog
-                    .create_schema(schema)
-                    .await
-                    .map_err(|e| Box::new(e) as _)
-                    .context(FailOnChangeView {
-                        schema,
-                        catalog: default_catalog,
-                    })?;
-            }
-        }
-        Ok(())
+        Ok(RpcServices { rpc_server })
     }
 }
 
@@ -384,7 +345,7 @@ struct StorageServiceImpl<Q> {
     router: Arc<dyn Router + Send + Sync>,
     instance: InstanceRef<Q>,
     runtimes: Arc<EngineRuntimes>,
-    meta_client: Arc<dyn MetaClient + Send + Sync>,
+    schema_config_provider: SchemaConfigProviderRef,
 }
 
 impl<Q> Clone for StorageServiceImpl<Q> {
@@ -393,7 +354,7 @@ impl<Q> Clone for StorageServiceImpl<Q> {
             router: self.router.clone(),
             instance: self.instance.clone(),
             runtimes: self.runtimes.clone(),
-            meta_client: self.meta_client.clone(),
+            schema_config_provider: self.schema_config_provider.clone(),
         }
     }
 }
@@ -416,16 +377,17 @@ macro_rules! handle_request {
                 _ => &self.runtimes.bg_runtime,
             };
 
-            let cluster_view = self.meta_client.get_cluster_view();
+            let schema_config_provider = self.schema_config_provider.clone();
             // we need to pass the result via channel
             runtime.spawn(
                 async move {
-                    let handler_ctx = HandlerContext::new(header, router, instance, &cluster_view)
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ErrWithCause {
-                            code: StatusCode::InvalidArgument,
-                            msg: "Invalid header",
-                        })?;
+                    let handler_ctx =
+                        HandlerContext::new(header, router, instance, &schema_config_provider)
+                            .map_err(|e| Box::new(e) as _)
+                            .context(ErrWithCause {
+                                code: StatusCode::InvalidArgument,
+                                msg: "Invalid header",
+                            })?;
                     $mod_name::$handle_fn(&handler_ctx, req).await.map_err(|e| {
                         error!(
                             "Failed to handle request, mod:{}, handler:{}, err:{}",
@@ -514,11 +476,11 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let router = self.router.clone();
         let header = RequestHeader::from(ctx.request_headers());
         let instance = self.instance.clone();
-        let cluster_view = self.meta_client.get_cluster_view();
+        let schema_config_provider = self.schema_config_provider.clone();
 
         let (tx, rx) = oneshot::channel();
         self.runtimes.write_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &cluster_view)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::InvalidArgument,
@@ -610,10 +572,10 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let router = self.router.clone();
         let header = RequestHeader::from(ctx.request_headers());
         let instance = self.instance.clone();
-        let cluster_view = self.meta_client.get_cluster_view();
+        let schema_config_provider = self.schema_config_provider.clone();
         let (tx, mut rx) = tokio::sync::mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &cluster_view)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::InvalidArgument,
@@ -887,8 +849,8 @@ mod tests {
     use ceresdbproto_deps::ceresdbproto::storage::{
         Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
     };
+    use cluster::SchemaConfig;
     use common_types::datum::DatumKind;
-    use meta_client::SchemaConfig;
 
     use super::*;
 

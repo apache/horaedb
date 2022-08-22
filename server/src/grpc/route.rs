@@ -9,7 +9,7 @@ use ceresdbproto_deps::ceresdbproto::storage::{RouteRequest, RouteResponse};
 use crate::{
     error::Result,
     grpc::{self, HandlerContext},
-    router::Router,
+    route::Router,
 };
 
 pub async fn handle_route<Q>(
