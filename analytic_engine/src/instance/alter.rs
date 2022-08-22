@@ -88,7 +88,6 @@ impl Instance {
         request: AlterSchemaRequest,
         #[allow(unused_variables)] policy: TableAlterSchemaPolicy,
     ) -> Result<()> {
-        // let table_data = space_table.table_data();
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;
 

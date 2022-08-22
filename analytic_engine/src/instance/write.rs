@@ -189,7 +189,6 @@ impl Instance {
         // Create a oneshot channel to send/receive write result.
         let (tx, rx) = oneshot::channel();
         let cmd = WriteTableCommand {
-            // space_table: space_table.clone(),
             space: space_table.space().clone(),
             table_data: space_table.table_data().clone(),
             request,
@@ -212,7 +211,6 @@ impl Instance {
     pub(crate) async fn process_write_table_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        // space_table: &SpaceAndTable,
         space: &SpaceRef,
         table_data: &TableDataRef,
         request: WriteRequest,
@@ -307,10 +305,6 @@ impl Instance {
         table_data: &TableDataRef,
         encode_ctx: &mut EncodeContext,
     ) -> Result<()> {
-        // let space = space_table.space();
-        // let space = table_data.sp
-        // let table_data = space_table.table_data();
-
         ensure!(
             !table_data.is_dropped(),
             WriteDroppedTable {
