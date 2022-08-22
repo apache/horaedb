@@ -19,7 +19,7 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use log::{error, info};
-use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
 use wal::manager::RegionId;
@@ -395,9 +395,7 @@ impl Instance {
 
         match policy {
             TableFlushPolicy::Unknown => {
-                return Err(Error::UnknownPolicy {
-                    backtrace: Backtrace::generate(),
-                })
+                return UnknownPolicy {}.fail();
             }
             TableFlushPolicy::Dump => {
                 self.dump_memtables(table_data, request_id, &mems_to_flush)
