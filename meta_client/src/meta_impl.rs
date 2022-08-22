@@ -429,7 +429,7 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = meta_service::GetTablesRequest::from(req);
+        let mut pb_req = meta_service::GetShardTablesRequest::from(req);
         pb_req.set_header(self.inner.request_header().into());
 
         let pb_resp = grpc_client

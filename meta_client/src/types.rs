@@ -190,10 +190,10 @@ impl Default for MetaClientConfig {
 impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
         let mut pb_node_info = meta_service::NodeInfo::new();
-        pb_node_info.set_node(node_info.node_meta_info.endpoint());
+        pb_node_info.set_endpoint(node_info.node_meta_info.endpoint());
         pb_node_info.set_zone(node_info.node_meta_info.zone);
         pb_node_info.set_binary_version(node_info.node_meta_info.binary_version);
-        pb_node_info.set_shardsInfo(protobuf::RepeatedField::from_vec(
+        pb_node_info.set_shard_infos(protobuf::RepeatedField::from_vec(
             node_info
                 .shards_info
                 .into_iter()
@@ -289,19 +289,19 @@ impl From<meta_service::ChangeRoleCmd> for ChangeRoleCmd {
     }
 }
 
-impl From<GetTablesRequest> for meta_service::GetTablesRequest {
+impl From<GetTablesRequest> for meta_service::GetShardTablesRequest {
     fn from(req: GetTablesRequest) -> Self {
-        let mut pb = meta_service::GetTablesRequest::new();
-        pb.set_shard_id(req.shard_ids);
+        let mut pb = meta_service::GetShardTablesRequest::new();
+        pb.set_shard_ids(req.shard_ids);
         pb
     }
 }
 
-impl From<meta_service::GetTablesResponse> for GetTablesResponse {
-    fn from(mut pb: meta_service::GetTablesResponse) -> Self {
+impl From<meta_service::GetShardTablesResponse> for GetTablesResponse {
+    fn from(mut pb: meta_service::GetShardTablesResponse) -> Self {
         Self {
             tables_map: pb
-                .take_tables_map()
+                .take_shard_tables()
                 .into_iter()
                 .map(|(k, v)| (k, v.into()))
                 .collect(),
