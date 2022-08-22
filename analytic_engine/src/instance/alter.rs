@@ -29,6 +29,20 @@ use crate::{
     table_options,
 };
 
+/// Policy of how to perform flush operation.
+#[derive(Default, Debug, Clone, Copy)]
+pub enum TableAlterSchemaPolicy {
+    /// Unknown flush policy, this is the default value.
+    #[default]
+    Unknown,
+    /// Perform Alter Schema operation.
+    Alter,
+    // TODO: use this policy and remove "allow(dead_code)"
+    /// Ignore this operation.
+    #[allow(dead_code)]
+    Noop,
+}
+
 impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
@@ -44,7 +58,8 @@ impl Instance {
         // Create a oneshot channel to send/receive alter schema result.
         let (tx, rx) = oneshot::channel();
         let cmd = AlterSchemaCommand {
-            space_table: space_table.clone(),
+            // space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             request,
             tx,
         };
@@ -69,10 +84,10 @@ impl Instance {
     pub(crate) async fn process_alter_schema_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         request: AlterSchemaRequest,
+        #[allow(unused_variables)] policy: TableAlterSchemaPolicy,
     ) -> Result<()> {
-        let table_data = space_table.table_data();
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;
 
@@ -89,14 +104,14 @@ impl Instance {
         self.flush_table_in_worker(worker_local, table_data, opts)
             .await
             .context(FlushTable {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
 
         // Build alter op
         let manifest_update = AlterSchemaMeta {
-            space_id: space_table.space().id,
+            space_id: table_data.space_id,
             table_id: table_data.id,
             schema: request.schema.clone(),
             pre_schema_version: request.pre_schema_version,
@@ -107,7 +122,7 @@ impl Instance {
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
-        let region_id = space_table.table_data().wal_region_id();
+        let region_id = table_data.wal_region_id();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
@@ -130,7 +145,7 @@ impl Instance {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(WriteWal {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
@@ -147,7 +162,7 @@ impl Instance {
             .store_update(update)
             .await
             .context(WriteManifest {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
@@ -197,6 +212,7 @@ impl Instance {
     pub async fn alter_options_of_table(
         &self,
         space_table: &SpaceAndTable,
+        // todo: encapsulate this into a struct like other functions.
         options: HashMap<String, String>,
     ) -> Result<()> {
         info!(
@@ -207,7 +223,7 @@ impl Instance {
         // Create a oneshot channel to send/receive alter options result.
         let (tx, rx) = oneshot::channel();
         let cmd = AlterOptionsCommand {
-            space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             options,
             tx,
         };
@@ -232,10 +248,9 @@ impl Instance {
     pub(crate) async fn process_alter_options_command(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         options: HashMap<String, String>,
     ) -> Result<()> {
-        let table_data = space_table.table_data();
         ensure!(
             !table_data.is_dropped(),
             AlterDroppedTable {
@@ -249,22 +264,19 @@ impl Instance {
         let current_table_options = table_data.table_options();
         info!(
             "Instance alter options, space_id:{}, tables:{:?}, old_table_opts:{:?}, options:{:?}",
-            space_table.space().id,
-            space_table.table_data().name,
-            current_table_options,
-            options
+            table_data.space_id, table_data.name, current_table_options, options
         );
         let mut table_opts =
             table_options::merge_table_options_for_alter(&options, &current_table_options)
                 .map_err(|e| Box::new(e) as _)
                 .context(InvalidOptions {
-                    space_id: space_table.space().id,
+                    space_id: table_data.space_id,
                     table: &table_data.name,
                     table_id: table_data.id,
                 })?;
         table_opts.sanitize();
         let manifest_update = AlterOptionsMeta {
-            space_id: space_table.space().id,
+            space_id: table_data.space_id,
             table_id: table_data.id,
             options: table_opts.clone(),
         };
@@ -278,7 +290,7 @@ impl Instance {
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload
-        let region_id = space_table.table_data().wal_region_id();
+        let region_id = table_data.wal_region_id();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
@@ -301,7 +313,7 @@ impl Instance {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(WriteWal {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;
@@ -313,7 +325,7 @@ impl Instance {
             .store_update(meta_update)
             .await
             .context(WriteManifest {
-                space_id: space_table.space().id,
+                space_id: table_data.space_id,
                 table: &table_data.name,
                 table_id: table_data.id,
             })?;

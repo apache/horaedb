@@ -28,6 +28,7 @@ use table_engine::{
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
 
+use super::alter::TableAlterSchemaPolicy;
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
@@ -35,7 +36,7 @@ use crate::{
         flush_compaction::{self, TableFlushOptions},
         write, write_worker, InstanceRef,
     },
-    space::{SpaceAndTable, SpaceId, SpaceRef},
+    space::{SpaceId, SpaceRef},
     table::{data::TableDataRef, metrics::Metrics},
 };
 
@@ -288,7 +289,8 @@ impl WorkerLocal {
 
 /// Write table command.
 pub struct WriteTableCommand {
-    pub space_table: SpaceAndTable,
+    pub space: SpaceRef,
+    pub table_data: TableDataRef,
     pub request: WriteRequest,
     /// Sender for the worker to return result of write
     pub tx: oneshot::Sender<write::Result<usize>>,
@@ -368,7 +370,7 @@ impl CreateTableCommand {
 
 /// Alter table command.
 pub struct AlterSchemaCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub request: AlterSchemaRequest,
     /// Sender for the worker to return result of alter schema
     pub tx: oneshot::Sender<write_worker::Result<()>>,
@@ -383,7 +385,7 @@ impl AlterSchemaCommand {
 
 /// Alter table options command.
 pub struct AlterOptionsCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub options: HashMap<String, String>,
     /// Sender for the worker to return result of alter schema
     pub tx: oneshot::Sender<engine::Result<()>>,
@@ -398,7 +400,7 @@ impl AlterOptionsCommand {
 
 /// Flush table request.
 pub struct FlushTableCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub flush_opts: TableFlushOptions,
     pub tx: oneshot::Sender<flush_compaction::Result<()>>,
 }
@@ -412,7 +414,7 @@ impl FlushTableCommand {
 
 /// Compact table request.
 pub struct CompactTableCommand {
-    pub space_table: SpaceAndTable,
+    pub table_data: TableDataRef,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
     pub tx: oneshot::Sender<flush_compaction::Result<()>>,
 }
@@ -759,14 +761,21 @@ impl WriteWorker {
 
     async fn handle_write_table(&mut self, cmd: WriteTableCommand) {
         let WriteTableCommand {
-            space_table,
+            space,
+            table_data,
             request,
             tx,
         } = cmd;
 
         let write_res = self
             .instance
-            .process_write_table_command(&mut self.local, &space_table, request)
+            .process_write_table_command(
+                &mut self.local,
+                &space,
+                &table_data,
+                request,
+                write::TableWritePolicy::Unknown,
+            )
             .await;
         if let Err(res) = tx.send(write_res) {
             error!(
@@ -848,14 +857,19 @@ impl WriteWorker {
 
     async fn handle_alter_schema(&mut self, cmd: AlterSchemaCommand) {
         let AlterSchemaCommand {
-            space_table,
+            table_data,
             request,
             tx,
         } = cmd;
 
         let alter_res = self
             .instance
-            .process_alter_schema_command(&mut self.local, &space_table, request)
+            .process_alter_schema_command(
+                &mut self.local,
+                &table_data,
+                request,
+                TableAlterSchemaPolicy::Unknown,
+            )
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             .context(Channel);
@@ -869,14 +883,14 @@ impl WriteWorker {
 
     async fn handle_alter_options(&mut self, cmd: AlterOptionsCommand) {
         let AlterOptionsCommand {
-            space_table,
+            table_data,
             options,
             tx,
         } = cmd;
 
         let alter_res = self
             .instance
-            .process_alter_options_command(&mut self.local, &space_table, options)
+            .process_alter_options_command(&mut self.local, &table_data, options)
             .await;
         if let Err(res) = tx.send(alter_res) {
             error!(
@@ -888,14 +902,14 @@ impl WriteWorker {
 
     async fn handle_flush_table(&mut self, cmd: FlushTableCommand) {
         let FlushTableCommand {
-            space_table,
+            table_data,
             flush_opts,
             tx,
         } = cmd;
 
         let flush_res = self
             .instance
-            .flush_table_in_worker(&mut self.local, space_table.table_data(), flush_opts)
+            .flush_table_in_worker(&mut self.local, &table_data, flush_opts)
             .await;
         if let Err(res) = tx.send(flush_res) {
             error!(
@@ -907,13 +921,13 @@ impl WriteWorker {
 
     async fn handle_compact_table(&mut self, cmd: CompactTableCommand) {
         let CompactTableCommand {
-            space_table,
+            table_data,
             waiter,
             tx,
         } = cmd;
 
         let request = TableCompactionRequest {
-            table_data: space_table.table_data().clone(),
+            table_data,
             compaction_notifier: self.local.compaction_notifier(),
             waiter,
         };

@@ -126,6 +126,9 @@ pub enum Error {
 
     #[snafu(display("Runtime join error, source:{}", source))]
     RuntimeJoin { source: common_util::runtime::Error },
+
+    #[snafu(display("Unknown flush policy"))]
+    UnknownPolicy { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -145,6 +148,8 @@ pub struct TableFlushOptions {
     ///
     /// Default is false.
     pub block_on_write_thread: bool,
+    /// Flush policy
+    pub policy: TableFlushPolicy,
 }
 
 impl Default for TableFlushOptions {
@@ -153,6 +158,7 @@ impl Default for TableFlushOptions {
             res_sender: None,
             compact_after_flush: true,
             block_on_write_thread: false,
+            policy: TableFlushPolicy::Dump,
         }
     }
 }
@@ -163,14 +169,18 @@ pub struct TableFlushRequest {
     pub table_data: TableDataRef,
     /// Max sequence number to flush (inclusive).
     pub max_sequence: SequenceNumber,
-    /// Flush policy.
-    pub policy: TableFlushPolicy,
 }
 
 /// Policy of how to perform flush operation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum TableFlushPolicy {
+    /// Unknown policy, this is the default value and operation will report
+    /// error for it. Others except `RoleTable` should set policy to this
+    /// variant.
+    Unknown,
     /// Dump memtable to sst file.
+    // todo: the default value should be [Unknown].
+    #[default]
     Dump,
     // TODO: use this policy and remove "allow(dead_code)"
     /// Drop memtables.
@@ -193,7 +203,7 @@ impl Instance {
         // Create a oneshot channel to send/receive flush result.
         let (tx, rx) = oneshot::channel();
         let cmd = FlushTableCommand {
-            space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             flush_opts,
             tx,
         };
@@ -217,7 +227,7 @@ impl Instance {
         let (compact_tx, compact_rx) = oneshot::channel();
         // Create a oneshot channel to send/receive compaction result.
         let cmd = CompactTableCommand {
-            space_table: space_table.clone(),
+            table_data: space_table.table_data().clone(),
             waiter: Some(compact_tx),
             tx,
         };
@@ -240,7 +250,7 @@ impl Instance {
     }
 
     /// Flush given table in write worker thread.
-    pub async fn flush_table_in_worker(
+    pub(crate) async fn flush_table_in_worker(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
@@ -300,7 +310,6 @@ impl Instance {
         Ok(TableFlushRequest {
             table_data: table_data.clone(),
             max_sequence: last_sequence,
-            policy: TableFlushPolicy::Dump,
         })
     }
 
@@ -317,7 +326,7 @@ impl Instance {
         let table = table_data.name.clone();
 
         let instance = self.clone();
-        let flush_job = async move { instance.flush_memtables(&flush_req).await };
+        let flush_job = async move { instance.flush_memtables(&flush_req, opts.policy).await };
 
         let compact_req = TableCompactionRequest::no_waiter(
             table_data.clone(),
@@ -358,11 +367,14 @@ impl Instance {
     }
 
     /// Each table can only have one running flush job.
-    async fn flush_memtables(&self, flush_req: &TableFlushRequest) -> Result<()> {
+    async fn flush_memtables(
+        &self,
+        flush_req: &TableFlushRequest,
+        policy: TableFlushPolicy,
+    ) -> Result<()> {
         let TableFlushRequest {
             table_data,
             max_sequence,
-            policy,
         } = flush_req;
 
         let current_version = table_data.current_version();
@@ -384,6 +396,9 @@ impl Instance {
         let _timer = local_metrics.flush_duration_histogram.start_timer();
 
         match policy {
+            TableFlushPolicy::Unknown => {
+                return UnknownPolicy {}.fail();
+            }
             TableFlushPolicy::Dump => {
                 self.dump_memtables(table_data, request_id, &mems_to_flush)
                     .await?

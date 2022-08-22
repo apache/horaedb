@@ -22,7 +22,10 @@ use tokio::sync::oneshot;
 
 use self::data::TableDataRef;
 use crate::{
-    instance::{flush_compaction::TableFlushOptions, InstanceRef},
+    instance::{
+        flush_compaction::{TableFlushOptions, TableFlushPolicy},
+        InstanceRef,
+    },
     space::{SpaceAndTable, SpaceId},
 };
 
@@ -248,6 +251,7 @@ impl Table for TableImpl {
             } else {
                 None
             },
+            policy: TableFlushPolicy::Dump,
         };
 
         self.instance
