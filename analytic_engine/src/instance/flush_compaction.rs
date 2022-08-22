@@ -174,7 +174,9 @@ pub struct TableFlushRequest {
 /// Policy of how to perform flush operation.
 #[derive(Default, Debug, Clone, Copy)]
 pub enum TableFlushPolicy {
-    /// Unknown flush policy, this is the default value.
+    /// Unknown policy, this is the default value and operation will report
+    /// error for it. Others except `RoleTable` should set policy to this
+    /// variant.
     Unknown,
     /// Dump memtable to sst file.
     // todo: the default value should be [Unknown].
