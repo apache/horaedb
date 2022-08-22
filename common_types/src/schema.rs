@@ -152,7 +152,8 @@ pub enum Error {
     },
 }
 
-// TODO(boyan)  make these constants configurable
+pub type SchemaId = u32;
+// TODO: make these constants configurable
 pub const TSID_COLUMN: &str = "tsid";
 pub const TIMESTAMP_COLUMN: &str = "timestamp";
 

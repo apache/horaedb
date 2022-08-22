@@ -46,12 +46,6 @@ digraph G {
     interpreters -> query_engine
     interpreters -> arrow_deps
 
-    meta_client -> catalog
-    meta_client -> table_engine
-
-    meta_client -> catalog
-    meta_client -> table_engine
-
     query_engine -> arrow_deps
     query_engine -> sql
     query_engine -> table_engine

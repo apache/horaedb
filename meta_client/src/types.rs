@@ -6,12 +6,11 @@ use ceresdbproto_deps::ceresdbproto::{
     cluster::ShardRole as PbShardRole,
     meta_service::{self, NodeHeartbeatResponse_oneof_cmd},
 };
+use common_types::{schema::SchemaId, table::TableId};
 use common_util::config::ReadableDuration;
 use serde_derive::Deserialize;
 
-pub type TableId = u64;
 pub type ShardId = u32;
-pub type SchemaId = u32;
 
 #[derive(Debug, Clone)]
 pub struct RequestHeader {
