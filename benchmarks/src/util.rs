@@ -192,3 +192,9 @@ impl<'a> Payload for WritePayload<'a> {
         Ok(())
     }
 }
+
+impl<'a> From<&'a Vec<u8>> for WritePayload<'a> {
+    fn from(data: &'a Vec<u8>) -> Self {
+        Self(data)
+    }
+}

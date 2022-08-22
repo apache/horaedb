@@ -191,7 +191,7 @@ impl ManifestImpl {
             .encoder(region_id)
             .context(GetLogBatchEncoder { region_id })?;
         let log_batch = log_batch_encoder
-            .encode(&[payload])
+            .encode(&payload)
             .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
@@ -331,21 +331,13 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        let mut payload_batch = Vec::with_capacity(log_entries.len());
-
-        // TODO(ygf11): maybe we can build payload in encode loop.
-        for entry in log_entries {
-            let payload = MetaUpdatePayload::from(entry);
-            payload_batch.push(payload);
-        }
-
         let region_id = self.region_id;
         let log_batch_encoder = self
             .wal_manager
             .encoder(self.region_id)
             .context(GetLogBatchEncoder { region_id })?;
         let log_batch = log_batch_encoder
-            .encode(&payload_batch)
+            .encode_batch::<MetaUpdatePayload, MetaUpdateLogEntry>(log_entries)
             .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
