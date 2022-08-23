@@ -15,10 +15,9 @@ use crate::{
         flush_compaction::{TableFlushOptions, TableFlushPolicy},
         write::TableWritePolicy,
         write_worker::WorkerLocal,
-        Instance,
+        Instance, InstanceRef,
     },
     role_table::{Result, RoleTable, RoleTableRef, TableRole},
-    space::SpaceRef,
     table::data::TableDataRef,
 };
 
@@ -69,21 +68,11 @@ impl LeaderTableInner {
         todo!()
     }
 
-    async fn write(
-        &self,
-        request: WriteRequest,
-        instance: &Arc<Instance>,
-        space: &SpaceRef,
-        worker_local: &mut WorkerLocal,
-    ) -> Result<usize> {
+    async fn write(&self, request: WriteRequest, instance: &Arc<Instance>) -> Result<usize> {
+        let policy = TableWritePolicy::Full;
+
         let res = instance
-            .process_write_table_command(
-                worker_local,
-                space,
-                &self.table_data,
-                request,
-                TableWritePolicy::Full,
-            )
+            .write_to_table(self.table_data.clone(), request, policy)
             .await
             .unwrap();
 
@@ -151,17 +140,8 @@ impl RoleTable for LeaderTable {
         self.inner.change_role().await
     }
 
-    /// This method is expected to be called by [Instance]
-    async fn write(
-        &self,
-        request: WriteRequest,
-        instance: &Arc<Instance>,
-        space: &SpaceRef,
-        worker_local: &mut WorkerLocal,
-    ) -> Result<usize> {
-        self.inner
-            .write(request, instance, space, worker_local)
-            .await
+    async fn write(&self, request: WriteRequest, instance: &InstanceRef) -> Result<usize> {
+        self.inner.write(request, instance).await
     }
 
     /// This method is expected to be called by [Instance]

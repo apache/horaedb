@@ -26,6 +26,7 @@ use crate::{
         flush_compaction::{TableFlushOptions, TableFlushPolicy},
         InstanceRef,
     },
+    role_table::RoleTableRef,
     space::{SpaceAndTable, SpaceId},
 };
 
@@ -68,6 +69,12 @@ impl TableImpl {
             table_id,
             table_data,
         }
+    }
+
+    fn get_table(&self) -> Option<RoleTableRef> {
+        self.instance
+            .find_space(self.space_id)?
+            .find_role_table_by_id(self.table_id)
     }
 }
 
@@ -114,8 +121,9 @@ impl Table for TableImpl {
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         let num_rows = self
-            .instance
-            .write_to_table(&self.space_table, request)
+            .get_table()
+            .expect("todo: remove this expect")
+            .write(request, &self.instance)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Write { table: self.name() })?;

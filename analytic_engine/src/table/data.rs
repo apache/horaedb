@@ -519,6 +519,10 @@ impl TableDataSet {
         self.id_to_tables.get(&table_id).cloned()
     }
 
+    pub fn find_role_table_by_id(&self, table_id: TableId) -> Option<RoleTableRef> {
+        self.id_to_roles.get(&table_id).cloned()
+    }
+
     /// Remove table by table name
     pub fn remove_table(&mut self, table_name: &str) -> Option<TableDataRef> {
         let table = self.table_datas.remove(table_name)?;

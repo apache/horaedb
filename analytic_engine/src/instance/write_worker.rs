@@ -28,7 +28,7 @@ use table_engine::{
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
 
-use super::alter::TableAlterSchemaPolicy;
+use super::{alter::TableAlterSchemaPolicy, write::TableWritePolicy};
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
@@ -293,6 +293,7 @@ pub struct WriteTableCommand {
     pub space: SpaceRef,
     pub table_data: TableDataRef,
     pub request: WriteRequest,
+    pub policy: TableWritePolicy,
     /// Sender for the worker to return result of write
     pub tx: oneshot::Sender<write::Result<usize>>,
 }
@@ -765,18 +766,13 @@ impl WriteWorker {
             space,
             table_data,
             request,
+            policy,
             tx,
         } = cmd;
 
         let write_res = self
             .instance
-            .process_write_table_command(
-                &mut self.local,
-                &space,
-                &table_data,
-                request,
-                write::TableWritePolicy::Unknown,
-            )
+            .process_write_table_command(&mut self.local, &space, &table_data, request, policy)
             .await;
         if let Err(res) = tx.send(write_res) {
             error!(

@@ -156,6 +156,13 @@ impl Space {
         self.table_datas.read().unwrap().find_table_by_id(table_id)
     }
 
+    pub fn find_role_table_by_id(&self, table_id: TableId) -> Option<RoleTableRef> {
+        self.table_datas
+            .read()
+            .unwrap()
+            .find_role_table_by_id(table_id)
+    }
+
     /// Remove table under this space by table name
     pub fn remove_table(&self, table_name: &str) -> Option<TableDataRef> {
         self.table_datas.write().unwrap().remove_table(table_name)

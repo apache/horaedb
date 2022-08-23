@@ -7,8 +7,9 @@ use table_engine::table::{AlterSchemaRequest, WriteRequest};
 
 pub use self::leader::LeaderTable;
 use crate::{
-    instance::{flush_compaction::TableFlushOptions, write_worker::WorkerLocal, Instance},
-    space::SpaceRef,
+    instance::{
+        flush_compaction::TableFlushOptions, write_worker::WorkerLocal, Instance, InstanceRef,
+    },
     table::data::TableDataRef,
 };
 
@@ -44,13 +45,7 @@ pub trait RoleTable: std::fmt::Debug + 'static {
 
     // async fn close(&self) -> Result<()>;
 
-    async fn write(
-        &self,
-        request: WriteRequest,
-        instance: &Arc<Instance>,
-        space: &SpaceRef,
-        worker_local: &mut WorkerLocal,
-    ) -> Result<usize>;
+    async fn write(&self, request: WriteRequest, instance: &InstanceRef) -> Result<usize>;
 
     // async fn read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
 

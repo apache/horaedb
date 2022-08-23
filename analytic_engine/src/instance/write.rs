@@ -27,7 +27,7 @@ use crate::{
     },
     memtable::{key::KeySequence, PutContext},
     payload::WritePayload,
-    space::{SpaceAndTable, SpaceRef},
+    space::SpaceRef,
     table::{
         data::{TableData, TableDataRef},
         version::MemTableForWrite,
@@ -176,34 +176,35 @@ pub enum TableWritePolicy {
 
 impl Instance {
     /// Write data to the table under give space.
-    pub async fn write_to_table(
+    pub(crate) async fn write_to_table(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: TableDataRef,
         request: WriteRequest,
+        policy: TableWritePolicy,
     ) -> Result<usize> {
         // Collect metrics.
-        space_table.table_data().metrics.on_write_request_begin();
+        table_data.metrics.on_write_request_begin();
 
-        self.validate_before_write(space_table, &request)?;
+        self.validate_before_write(&table_data, &request)?;
 
         // Create a oneshot channel to send/receive write result.
         let (tx, rx) = oneshot::channel();
+        let space = self
+            .get_space_by_read_lock(table_data.space_id)
+            .expect("Table should belongs to an exist Space");
         let cmd = WriteTableCommand {
-            space: space_table.space().clone(),
-            table_data: space_table.table_data().clone(),
+            space,
+            table_data: table_data.clone(),
+            policy,
             request,
             tx,
         };
 
         // Send write request to write worker, actual works done in
         // Self::process_write_table_command().
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(Write)
+        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
+            .await
+            .context(Write)
     }
 
     /// Do the actual write, must called by write worker in write thread
@@ -278,13 +279,13 @@ impl Instance {
     /// write thread.
     fn validate_before_write(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         request: &WriteRequest,
     ) -> Result<()> {
         ensure!(
             request.row_group.num_rows() < MAX_ROWS_TO_WRITE,
             TooManyRows {
-                table: &space_table.table_data().name,
+                table: &table_data.name,
                 rows: request.row_group.num_rows(),
             }
         );
@@ -300,7 +301,6 @@ impl Instance {
     async fn preprocess_write(
         self: &Arc<Self>,
         worker_local: &mut WorkerLocal,
-        // space_table: &SpaceAndTable,
         space: &SpaceRef,
         table_data: &TableDataRef,
         encode_ctx: &mut EncodeContext,
