@@ -29,7 +29,7 @@ pub struct LeaderTable {
 }
 
 impl LeaderTable {
-    pub fn new(table_data: TableDataRef) -> RoleTableRef {
+    pub fn open(table_data: TableDataRef) -> RoleTableRef {
         let inner = Arc::new(LeaderTableInner {
             state: AtomicU8::new(LeaderTableInner::ROLE),
             table_data,

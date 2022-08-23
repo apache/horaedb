@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use common_util::define_result;
 use snafu::Snafu;
-use table_engine::{table::{AlterSchemaRequest, ReadRequest, WriteRequest}, stream::PartitionedStreams};
+use table_engine::{
+    stream::PartitionedStreams,
+    table::{AlterSchemaRequest, ReadRequest, WriteRequest},
+};
 
 pub use self::leader::LeaderTable;
 use crate::{
@@ -33,7 +36,7 @@ pub type RoleTableRef = Arc<dyn RoleTable + Send + Sync + 'static>;
 pub fn create_role_table(table_data: TableDataRef, role: TableRole) -> RoleTableRef {
     match role {
         TableRole::Invalid => todo!(),
-        TableRole::Leader => LeaderTable::new(table_data),
+        TableRole::Leader => LeaderTable::open(table_data),
         TableRole::InSync => todo!(),
         TableRole::NoSync => todo!(),
     }
@@ -45,8 +48,6 @@ pub trait RoleTable: std::fmt::Debug + 'static {
     fn check_state(&self) -> bool;
 
     async fn change_role(&self) -> Result<()>;
-
-    // async fn close(&self) -> Result<()>;
 
     async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize>;
 

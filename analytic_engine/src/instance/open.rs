@@ -133,7 +133,7 @@ impl Instance {
             Some(v) => v,
             None => return Ok(None),
         };
-        let role_table = LeaderTable::new(table_data);
+        let role_table = LeaderTable::open(table_data);
 
         let (tx, rx) = oneshot::channel();
         let cmd = RecoverTableCommand {
