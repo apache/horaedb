@@ -999,10 +999,10 @@ mod tests {
     #[test]
     fn test_to_overflow_negative_value() {
         let cases = [
-            Datum::Int64(i64::MAX),
-            Datum::Int32(i32::MAX),
-            Datum::Int16(i16::MAX),
-            Datum::Int8(i8::MAX),
+            Datum::Int64(i64::MIN),
+            Datum::Int32(i32::MIN),
+            Datum::Int16(i16::MIN),
+            Datum::Int8(i8::MIN),
         ];
 
         for source in cases {
