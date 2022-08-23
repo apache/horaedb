@@ -327,7 +327,7 @@ impl SynchronizeState {
     }
 }
 
-// mock mod
+// todo: remove this mock mod
 #[allow(unused)]
 mod role_table {
     use std::convert::Infallible;
@@ -347,7 +347,7 @@ mod role_table {
     }
 }
 
-#[cfg(all(test))]
+#[cfg(test)]
 mod test {
     use tokio::time::sleep;
     use wal::tests::util::{MemoryTableWalBuilder, TableKvTestEnv};
