@@ -10,4 +10,4 @@ workspace = true
 
 [dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "ac3f2aca263d6f2e64822d2a476d8bda1d3893df"
+rev = "ad6c1031bb8288445397b37670b3d4bdee0caa88"

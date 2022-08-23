@@ -31,12 +31,13 @@ use tokio::{
 use crate::{
     types::{
         ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest, GetTablesRequest,
-        GetTablesResponse, NodeHeartbeatResponse, NodeInfo, NodeMetaInfo, RequestHeader, ShardInfo,
+        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest,
+        GetShardTablesRequest, GetShardTablesResponse, NodeHeartbeatResponse, NodeInfo,
+        NodeMetaInfo, RequestHeader, RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     EventHandler, EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailDropTable,
-    FailGetGrpcClient, FailGetTables, FailHandleEvent, FailSendHeartbeat, FetchActionCmd,
-    InitHeartBeatStream, MetaClient, MetaRpc, Result,
+    FailGetGrpcClient, FailGetTables, FailHandleEvent, FailRouteTables, FailSendHeartbeat,
+    FetchActionCmd, InitHeartBeatStream, MetaClient, MetaRpc, Result,
 };
 
 #[derive(Debug, Deserialize, Clone)]
@@ -425,7 +426,7 @@ impl MetaClient for MetaClientImpl {
         self.inner.handle_event(&drop_table_cmd).await
     }
 
-    async fn get_tables(&self, req: GetTablesRequest) -> Result<GetTablesResponse> {
+    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse> {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
@@ -448,7 +449,28 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(pb_resp.get_header())?;
 
-        Ok(GetTablesResponse::from(pb_resp))
+        Ok(GetShardTablesResponse::from(pb_resp))
+    }
+
+    async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse> {
+        // TODO: maybe we can define a macro to avoid these boilerplate codes.
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = meta_service::RouteTablesRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+
+        let pb_resp = grpc_client
+            .client
+            .route_tables_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?;
+
+        check_response_header(pb_resp.get_header())?;
+        Ok(RouteTablesResponse::from(pb_resp))
     }
 
     async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
