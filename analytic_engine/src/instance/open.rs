@@ -37,6 +37,7 @@ use crate::{
     space::{Space, SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::{TableData, TableDataRef},
+    wal_synchronizer::{WalSynchronizer, WalSynchronizerConfig},
 };
 
 impl Instance {
@@ -51,7 +52,7 @@ impl Instance {
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
             manifest,
-            wal_manager,
+            wal_manager: wal_manager.clone(),
             store: store.clone(),
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
@@ -68,6 +69,10 @@ impl Instance {
 
         let file_purger = FilePurger::start(&bg_runtime, store);
 
+        let mut wal_synchronizer =
+            WalSynchronizer::new(WalSynchronizerConfig::default(), wal_manager);
+        wal_synchronizer.start(&bg_runtime).await;
+
         let instance = Arc::new(Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
@@ -76,6 +81,7 @@ impl Instance {
             write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
             file_purger,
+            wal_synchronizer,
             meta_cache: ctx.meta_cache.clone(),
             data_cache: ctx.data_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
