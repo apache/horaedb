@@ -15,7 +15,6 @@ use crate::{
         alter::TableAlterPolicy,
         flush_compaction::{TableFlushOptions, TableFlushPolicy},
         write::TableWritePolicy,
-        write_worker::WorkerLocal,
         Instance, InstanceRef,
     },
     role_table::{AlterTable, Result, RoleTable, RoleTableRef, TableRole},
@@ -83,15 +82,14 @@ impl LeaderTableInner {
 
     async fn flush(
         &self,
-        mut flush_opts: TableFlushOptions,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
+        mut flush_opts: TableFlushOptions,
     ) -> Result<()> {
         // Leader Table will dump memtable to storage.
         flush_opts.policy = TableFlushPolicy::Dump;
 
         instance
-            .flush_table_in_worker(worker_local, &self.table_data, flush_opts)
+            .flush_table(&self.table_data, flush_opts)
             .await
             .unwrap();
 
@@ -148,13 +146,8 @@ impl RoleTable for LeaderTable {
     }
 
     /// This method is expected to be called by [Instance]
-    async fn flush(
-        &self,
-        flush_opts: TableFlushOptions,
-        instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
-    ) -> Result<()> {
-        self.inner.flush(flush_opts, instance, worker_local).await
+    async fn flush(&self, instance: &Arc<Instance>, flush_opts: TableFlushOptions) -> Result<()> {
+        self.inner.flush(instance, flush_opts).await
     }
 
     /// This method is expected to be called by [Instance]

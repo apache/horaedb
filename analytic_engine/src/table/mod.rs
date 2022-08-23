@@ -261,14 +261,16 @@ impl Table for TableImpl {
             } else {
                 None
             },
-            policy: TableFlushPolicy::Dump,
+            policy: TableFlushPolicy::Unknown,
         };
 
-        self.instance
-            .flush_table(&self.space_table, flush_opts)
+        self.get_table()
+            .expect("todo: remove this expect")
+            .flush(&self.instance, flush_opts)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Flush { table: self.name() })?;
+
         if let Some(rx) = rx_opt {
             rx.await
                 .map_err(|e| Box::new(e) as _)
