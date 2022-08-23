@@ -37,7 +37,7 @@ use crate::{
     space::{SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::TableDataRef,
-    wal_replicator::WalReplicator,
+    wal_synchronizer::WalSynchronizer,
     TableOptions,
 };
 
@@ -52,9 +52,9 @@ pub enum Error {
         source: crate::compaction::scheduler::Error,
     },
 
-    #[snafu(display("Failed to stop WAL Replicator, err:{}", source))]
-    StopWalReplicator {
-        source: crate::wal_replicator::Error,
+    #[snafu(display("Failed to stop WAL Synchronizer, err:{}", source))]
+    StopWalSynchronizer {
+        source: crate::wal_synchronizer::Error,
     },
 }
 
@@ -163,7 +163,7 @@ pub struct Instance {
     // End of write group options.
     compaction_scheduler: CompactionSchedulerRef,
     file_purger: FilePurger,
-    wal_replicator: WalReplicator,
+    wal_synchronizer: WalSynchronizer,
 
     meta_cache: Option<MetaCacheRef>,
     data_cache: Option<DataCacheRef>,
@@ -182,10 +182,10 @@ impl Instance {
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
 
-        self.wal_replicator
+        self.wal_synchronizer
             .stop()
             .await
-            .context(StopWalReplicator)?;
+            .context(StopWalSynchronizer)?;
 
         self.space_store.close().await?;
 

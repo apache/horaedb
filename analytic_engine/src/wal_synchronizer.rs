@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! WAL Replicator implementation.
+//! WAL Synchronizer implementation.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -52,22 +52,22 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
-    #[snafu(display("Failed to stop replicator, err:{}", source))]
-    StopReplicator {
+    #[snafu(display("Failed to stop synchronizer, err:{}", source))]
+    StopSynchronizer {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 }
 
 define_result!(Error);
 
-pub struct WalReplicatorConfig {
+pub struct WalSynchronizerConfig {
     /// Interval between two syncs
     interval: Duration,
     /// Used as WAL's read batch size
     batch_size: usize,
 }
 
-impl Default for WalReplicatorConfig {
+impl Default for WalSynchronizerConfig {
     fn default() -> Self {
         Self {
             interval: Duration::from_secs(30),
@@ -76,35 +76,35 @@ impl Default for WalReplicatorConfig {
     }
 }
 
-/// A background replicator that keep polling WAL update.
+/// A background synchronizer that keep polling WAL update.
 ///
-/// This [WalReplicator] has a queue of [RegionId]s that need replication.
+/// This [WalSynchronizer] has a queue of [RegionId]s that need synchronization.
 /// Others can register new region with [register_table] method. And invalid
 /// table will be removed automatically. The workflow looks like:
 ///
 /// ```plaintext
 ///            register IDs
-///           need replication
+///           need synchronization
 ///      ┌─────────────────────┐
 ///      │                     │
-///      │              ┌──────▼───────┐
-/// ┌────┴─────┐        │  background  │
-/// │Role Table│        │WAL Replicator│
-/// └────▲─────┘        └──────┬───────┘
+///      │              ┌──────▼─────────┐
+/// ┌────┴─────┐        │  background    │
+/// │Role Table│        │WAL Synchronizer│
+/// └────▲─────┘        └──────┬─────────┘
 ///      │                     │
 ///      └─────────────────────┘
-///           replicate log
+///           synchronize log
 ///             to table
 /// ```
-pub struct WalReplicator {
+pub struct WalSynchronizer {
     inner: Arc<Inner>,
     stop_sender: Sender<()>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
     stop_receiver: Option<Receiver<()>>,
 }
 
-impl WalReplicator {
-    pub fn new(config: WalReplicatorConfig, wal: WalManagerRef) -> Self {
+impl WalSynchronizer {
+    pub fn new(config: WalSynchronizerConfig, wal: WalManagerRef) -> Self {
         let (tx, rx) = mpsc::channel(1);
         let inner = Inner {
             wal,
@@ -125,7 +125,7 @@ impl WalReplicator {
             handle
                 .await
                 .map_err(|e| Box::new(e) as _)
-                .context(StopReplicator)?;
+                .context(StopSynchronizer)?;
         }
 
         Ok(())
@@ -140,7 +140,7 @@ impl WalReplicator {
         let join_handle = runtime.spawn(
             self.inner
                 .clone()
-                .start_replicate(self.stop_receiver.take().unwrap()),
+                .start_synchronize(self.stop_receiver.take().unwrap()),
         );
         *self.join_handle.lock().await = Some(join_handle);
     }
@@ -148,14 +148,14 @@ impl WalReplicator {
 
 pub struct Inner {
     wal: WalManagerRef,
-    config: WalReplicatorConfig,
-    tables: RwLock<BTreeMap<RegionId, ReplicateState>>,
+    config: WalSynchronizerConfig,
+    tables: RwLock<BTreeMap<RegionId, SynchronizeState>>,
 }
 
 impl Inner {
     #[allow(dead_code)]
     pub async fn register_table(&self, region_id: RegionId, table: ReaderTable) {
-        let state = ReplicateState {
+        let state = SynchronizeState {
             region_id,
             table,
             last_synced_seq: AtomicU64::new(SequenceNumber::MIN),
@@ -163,8 +163,8 @@ impl Inner {
         self.tables.write().await.insert(region_id, state);
     }
 
-    pub async fn start_replicate(self: Arc<Self>, mut stop_listener: Receiver<()>) {
-        info!("Wal Replicator Started");
+    pub async fn start_synchronize(self: Arc<Self>, mut stop_listener: Receiver<()>) {
+        info!("Wal Synchronizer Started");
 
         // constants
         let read_context = ReadContext {
@@ -175,7 +175,7 @@ impl Inner {
         loop {
             let mut invalid_regions = vec![];
             let tables = self.tables.read().await;
-            // todo: consider clone [ReplicateState] out to release the read lock.
+            // todo: consider clone [SynchronizeState] out to release the read lock.
             let states = tables.values().collect::<Vec<_>>();
 
             // Poll WAL region by region.
@@ -221,7 +221,7 @@ impl Inner {
                 .await
                 .is_ok()
             {
-                info!("WAL Replicator stopped");
+                info!("WAL Synchronizer stopped");
                 break;
             }
         }
@@ -230,7 +230,7 @@ impl Inner {
     async fn consume_logs(
         &self,
         iter: &mut BatchLogIteratorAdapter,
-        replicate_state: &ReplicateState,
+        synchronize_state: &SynchronizeState,
     ) -> Result<()> {
         let mut buf = VecDeque::with_capacity(self.config.batch_size);
         let mut should_continue = true;
@@ -253,11 +253,11 @@ impl Inner {
                     .unwrap_or(SequenceNumber::MIN),
             );
 
-            self.replay_logs(&mut buf, replicate_state).await?;
+            self.replay_logs(&mut buf, synchronize_state).await?;
         }
 
         // update sequence number in state
-        replicate_state
+        synchronize_state
             .last_synced_seq
             .fetch_max(max_seq, Ordering::Relaxed);
 
@@ -267,13 +267,13 @@ impl Inner {
     async fn replay_logs(
         &self,
         logs: &mut VecDeque<LogEntry<ReadPayload>>,
-        replicate_state: &ReplicateState,
+        synchronize_state: &SynchronizeState,
     ) -> Result<()> {
         for entry in logs.drain(..) {
             match entry.payload {
                 ReadPayload::Write { row_group } => {
                     let write_req = WriteRequest { row_group };
-                    replicate_state
+                    synchronize_state
                         .table
                         .write(write_req)
                         .await
@@ -294,7 +294,7 @@ impl Inner {
             return;
         }
         debug!(
-            "Removing invalid region from WAL Replicator: {:?}",
+            "Removing invalid region from WAL Synchronizer: {:?}",
             invalid_regions
         );
 
@@ -305,14 +305,14 @@ impl Inner {
     }
 }
 
-struct ReplicateState {
+struct SynchronizeState {
     region_id: RegionId,
     table: ReaderTable,
     /// Atomic version of [SequenceNumber]
     last_synced_seq: AtomicU64,
 }
 
-impl ReplicateState {
+impl SynchronizeState {
     pub fn read_req(&self) -> ReadRequest {
         ReadRequest {
             region_id: self.region_id,
@@ -358,23 +358,23 @@ mod test {
         TableKvTestEnv::new(1, MemoryTableWalBuilder::default())
     }
 
-    fn build_replicator(env: &TableKvTestEnv) -> WalReplicator {
+    fn build_synchronizer(env: &TableKvTestEnv) -> WalSynchronizer {
         env.runtime.block_on(async {
             let wal = env.build_wal().await;
-            WalReplicator::new(WalReplicatorConfig::default(), wal)
+            WalSynchronizer::new(WalSynchronizerConfig::default(), wal)
         })
     }
 
     #[test]
-    fn replicator_start_stop() {
+    fn synchronizer_start_stop() {
         let env = build_env();
         let runtime = env.runtime.clone();
-        let mut replicator = build_replicator(&env);
+        let mut synchronizer = build_synchronizer(&env);
 
         runtime.clone().block_on(async move {
-            replicator.start(&runtime).await;
+            synchronizer.start(&runtime).await;
             sleep(Duration::from_secs(1)).await;
-            replicator.stop().await.unwrap();
+            synchronizer.stop().await.unwrap();
         });
     }
 }
