@@ -802,7 +802,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=12a0ee8e45883056f275c707518fa9ed508676d1#12a0ee8e45883056f275c707518fa9ed508676d1"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
@@ -813,7 +813,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=ad6c1031bb8288445397b37670b3d4bdee0caa88#ad6c1031bb8288445397b37670b3d4bdee0caa88"
 dependencies = [
  "futures 0.3.21",
  "grpcio 0.9.1",
@@ -825,7 +825,7 @@ dependencies = [
 name = "ceresdbproto_deps"
 version = "0.1.0"
 dependencies = [
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=12a0ee8e45883056f275c707518fa9ed508676d1)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=ad6c1031bb8288445397b37670b3d4bdee0caa88)",
 ]
 
 [[package]]

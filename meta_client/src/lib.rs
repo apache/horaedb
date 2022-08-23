@@ -7,7 +7,8 @@ use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-    AllocTableIdResponse, DropTableRequest, GetTablesRequest, GetTablesResponse, ShardInfo,
+    AllocTableIdResponse, DropTableRequest, GetShardTablesRequest, GetShardTablesResponse,
+    RouteTablesRequest, RouteTablesResponse, ShardInfo,
 };
 
 pub mod meta_impl;
@@ -65,6 +66,11 @@ pub enum Error {
 
     #[snafu(display("Failed to get tables, err:{}", source))]
     FailGetTables {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to route tables, err:{}", source))]
+    FailRouteTables {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
@@ -127,7 +133,9 @@ pub trait MetaClient: Send + Sync {
 
     async fn drop_table(&self, req: DropTableRequest) -> Result<()>;
 
-    async fn get_tables(&self, req: GetTablesRequest) -> Result<GetTablesResponse>;
+    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse>;
+
+    async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse>;
 
     async fn send_heartbeat(&self, req: Vec<ShardInfo>) -> Result<()>;
 }

@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{ActionCmd, GetTablesRequest},
+    types::{ActionCmd, GetShardTablesRequest},
     EventHandler, MetaClient,
 };
 use snafu::ResultExt;
@@ -118,21 +118,21 @@ impl EventHandler for Inner {
             ActionCmd::MetaOpenCmd(open_cmd) => {
                 let resp = self
                     .meta_client
-                    .get_tables(GetTablesRequest {
+                    .get_tables(GetShardTablesRequest {
                         shard_ids: open_cmd.shard_ids.clone(),
                     })
                     .await
                     .context(MetaClientFailure)
                     .map_err(Box::new)?;
 
-                for shard_tables in resp.tables_map.values() {
+                for shard_tables in resp.shard_tables.values() {
                     for table in &shard_tables.tables {
                         self.table_manipulator
                             .open_table(&table.schema_name, &table.name, table.id)
                             .await?;
                     }
                 }
-                self.table_manager.update_table_info(&resp.tables_map);
+                self.table_manager.update_table_info(&resp.shard_tables);
 
                 Ok(())
             }
