@@ -444,7 +444,7 @@ impl From<meta_service::RouteEntry> for RouteEntry {
         let node_shards: Vec<_> = pb_entry
             .take_node_shards()
             .into_iter()
-            .map(|v| NodeShard::from(v))
+            .map(NodeShard::from)
             .collect();
 
         RouteEntry {
