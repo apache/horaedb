@@ -28,7 +28,7 @@ use table_engine::{
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
 
-use super::{alter::TableAlterSchemaPolicy, write::TableWritePolicy};
+use super::{alter::TableAlterPolicy, write::TableWritePolicy};
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
@@ -865,7 +865,7 @@ impl WriteWorker {
                 &mut self.local,
                 &table_data,
                 request,
-                TableAlterSchemaPolicy::Unknown,
+                TableAlterPolicy::Unknown,
             )
             .await
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

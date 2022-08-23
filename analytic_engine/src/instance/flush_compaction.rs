@@ -190,7 +190,7 @@ pub enum TableFlushPolicy {
 
 impl Instance {
     /// Flush this table.
-    pub async fn flush_table(
+    pub(crate) async fn flush_table(
         &self,
         space_table: &SpaceAndTable,
         flush_opts: TableFlushOptions,

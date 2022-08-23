@@ -21,6 +21,11 @@ pub enum Error {
     WriteTable {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+
+    #[snafu(display("Failed to alter table, err:{}", source))]
+    AlterTable {
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
 }
 
 define_result!(Error);
@@ -45,7 +50,7 @@ pub trait RoleTable: std::fmt::Debug + 'static {
 
     // async fn close(&self) -> Result<()>;
 
-    async fn write(&self, request: WriteRequest, instance: &InstanceRef) -> Result<usize>;
+    async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize>;
 
     // async fn read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
 
@@ -59,14 +64,12 @@ pub trait RoleTable: std::fmt::Debug + 'static {
     async fn alter_schema(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         request: AlterSchemaRequest,
     ) -> Result<()>;
 
     async fn alter_options(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         options: HashMap<String, String>,
     ) -> Result<()>;
 

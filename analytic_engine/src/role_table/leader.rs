@@ -7,17 +7,18 @@ use std::{
 };
 
 use async_trait::async_trait;
+use snafu::ResultExt;
 use table_engine::table::{AlterSchemaRequest, WriteRequest};
 
 use crate::{
     instance::{
-        alter::TableAlterSchemaPolicy,
+        alter::TableAlterPolicy,
         flush_compaction::{TableFlushOptions, TableFlushPolicy},
         write::TableWritePolicy,
         write_worker::WorkerLocal,
         Instance, InstanceRef,
     },
-    role_table::{Result, RoleTable, RoleTableRef, TableRole},
+    role_table::{AlterTable, Result, RoleTable, RoleTableRef, TableRole},
     table::data::TableDataRef,
 };
 
@@ -69,6 +70,7 @@ impl LeaderTableInner {
     }
 
     async fn write(&self, request: WriteRequest, instance: &Arc<Instance>) -> Result<usize> {
+        // Leader table should write to both WAL and memtable
         let policy = TableWritePolicy::Full;
 
         let res = instance
@@ -99,18 +101,16 @@ impl LeaderTableInner {
     async fn alter_schema(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         request: AlterSchemaRequest,
     ) -> Result<()> {
+        // Leader table can alter schema.
+        let policy = TableAlterPolicy::Alter;
+
         instance
-            .process_alter_schema_command(
-                worker_local,
-                &self.table_data,
-                request,
-                TableAlterSchemaPolicy::Alter,
-            )
+            .alter_schema_of_table(&self.table_data, request, policy)
             .await
-            .unwrap();
+            .map_err(|e| Box::new(e) as _)
+            .context(AlterTable)?;
 
         Ok(())
     }
@@ -118,13 +118,16 @@ impl LeaderTableInner {
     async fn alter_options(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         options: HashMap<String, String>,
     ) -> Result<()> {
+        // Leader table can alter option.
+        let policy = TableAlterPolicy::Alter;
+
         instance
-            .process_alter_options_command(worker_local, &self.table_data, options)
+            .alter_options_of_table(&self.table_data, options, policy)
             .await
-            .unwrap();
+            .map_err(|e| Box::new(e) as _)
+            .context(AlterTable)?;
 
         Ok(())
     }
@@ -140,7 +143,7 @@ impl RoleTable for LeaderTable {
         self.inner.change_role().await
     }
 
-    async fn write(&self, request: WriteRequest, instance: &InstanceRef) -> Result<usize> {
+    async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize> {
         self.inner.write(request, instance).await
     }
 
@@ -158,23 +161,17 @@ impl RoleTable for LeaderTable {
     async fn alter_schema(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         request: AlterSchemaRequest,
     ) -> Result<()> {
-        self.inner
-            .alter_schema(instance, worker_local, request)
-            .await
+        self.inner.alter_schema(instance, request).await
     }
 
     async fn alter_options(
         &self,
         instance: &Arc<Instance>,
-        worker_local: &mut WorkerLocal,
         options: HashMap<String, String>,
     ) -> Result<()> {
-        self.inner
-            .alter_options(instance, worker_local, options)
-            .await
+        self.inner.alter_options(instance, options).await
     }
 
     fn table_data(&self) -> TableDataRef {

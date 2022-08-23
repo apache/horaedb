@@ -24,14 +24,13 @@ use crate::{
     },
     meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
     payload::WritePayload,
-    space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
 };
 
-/// Policy of how to perform flush operation.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum TableAlterSchemaPolicy {
+/// Policy of how to perform alter (schema and option) operations.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableAlterPolicy {
     /// Unknown flush policy, this is the default value.
     #[default]
     Unknown,
@@ -47,36 +46,36 @@ impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         request: AlterSchemaRequest,
+        policy: TableAlterPolicy,
     ) -> Result<()> {
+        if policy == TableAlterPolicy::Noop {
+            return Ok(());
+        }
+
         info!(
-            "Instance alter schema, space_table:{:?}, request:{:?}",
-            space_table, request
+            "Instance alter schema, space_id:{:?}, table_id:{:?}, request:{:?}",
+            table_data.space_id, table_data.id, request
         );
 
         // Create a oneshot channel to send/receive alter schema result.
         let (tx, rx) = oneshot::channel();
         let cmd = AlterSchemaCommand {
-            // space_table: space_table.clone(),
-            table_data: space_table.table_data().clone(),
+            table_data: table_data.clone(),
             request,
             tx,
         };
 
         // Send alter schema request to write worker, actual works done in
         // Self::process_alter_schema_command()
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(OperateByWriteWorker {
-            space_id: space_table.space().id,
-            table: &space_table.table_data().name,
-            table_id: space_table.table_data().id,
-        })
+        write_worker::process_command_in_write_worker(cmd.into_command(), table_data, rx)
+            .await
+            .context(OperateByWriteWorker {
+                space_id: table_data.space_id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })
     }
 
     /// Do the actual alter schema job, must called by write worker in write
@@ -86,7 +85,7 @@ impl Instance {
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
         request: AlterSchemaRequest,
-        #[allow(unused_variables)] policy: TableAlterSchemaPolicy,
+        #[allow(unused_variables)] policy: TableAlterPolicy,
     ) -> Result<()> {
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;
@@ -211,36 +210,37 @@ impl Instance {
 
     pub async fn alter_options_of_table(
         &self,
-        space_table: &SpaceAndTable,
+        table_data: &TableDataRef,
         // todo: encapsulate this into a struct like other functions.
         options: HashMap<String, String>,
+        policy: TableAlterPolicy,
     ) -> Result<()> {
+        if policy == TableAlterPolicy::Noop {
+            return Ok(());
+        }
+
         info!(
-            "Instance alter options of table, space_table:{:?}, options:{:?}",
-            space_table, options
+            "Instance alter options of table, space_id:{:?}, table_id:{:?}, options:{:?}",
+            table_data.space_id, table_data.id, options
         );
 
         // Create a oneshot channel to send/receive alter options result.
         let (tx, rx) = oneshot::channel();
         let cmd = AlterOptionsCommand {
-            table_data: space_table.table_data().clone(),
+            table_data: table_data.clone(),
             options,
             tx,
         };
 
         // Send alter options request to write worker, actual works done in
         // Self::process_alter_options_command()
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(OperateByWriteWorker {
-            space_id: space_table.space().id,
-            table: &space_table.table_data().name,
-            table_id: space_table.table_data().id,
-        })
+        write_worker::process_command_in_write_worker(cmd.into_command(), table_data, rx)
+            .await
+            .context(OperateByWriteWorker {
+                space_id: table_data.space_id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })
     }
 
     /// Do the actual alter options job, must called by write worker in write

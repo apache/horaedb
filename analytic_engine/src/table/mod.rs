@@ -123,7 +123,7 @@ impl Table for TableImpl {
         let num_rows = self
             .get_table()
             .expect("todo: remove this expect")
-            .write(request, &self.instance)
+            .write(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Write { table: self.name() })?;
@@ -229,8 +229,9 @@ impl Table for TableImpl {
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
-        self.instance
-            .alter_schema_of_table(&self.space_table, request)
+        self.get_table()
+            .expect("todo: remove this expect")
+            .alter_schema(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(AlterSchema { table: self.name() })?;
@@ -238,8 +239,9 @@ impl Table for TableImpl {
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
-        self.instance
-            .alter_options_of_table(&self.space_table, options)
+        self.get_table()
+            .expect("todo: remove this expect")
+            .alter_options(&self.instance, options)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(AlterOptions { table: self.name() })?;
