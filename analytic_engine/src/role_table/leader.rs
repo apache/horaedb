@@ -8,7 +8,10 @@ use std::{
 
 use async_trait::async_trait;
 use snafu::ResultExt;
-use table_engine::table::{AlterSchemaRequest, WriteRequest};
+use table_engine::{
+    stream::PartitionedStreams,
+    table::{AlterSchemaRequest, ReadRequest, WriteRequest},
+};
 
 use crate::{
     instance::{
@@ -68,12 +71,25 @@ impl LeaderTableInner {
         todo!()
     }
 
-    async fn write(&self, request: WriteRequest, instance: &Arc<Instance>) -> Result<usize> {
+    async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize> {
         // Leader table should write to both WAL and memtable
         let policy = TableWritePolicy::Full;
 
         let res = instance
             .write_to_table(self.table_data.clone(), request, policy)
+            .await
+            .unwrap();
+
+        Ok(res)
+    }
+
+    async fn read(
+        &self,
+        instance: &InstanceRef,
+        request: ReadRequest,
+    ) -> Result<PartitionedStreams> {
+        let res = instance
+            .partitioned_read_from_table(&self.table_data, request)
             .await
             .unwrap();
 
@@ -142,7 +158,15 @@ impl RoleTable for LeaderTable {
     }
 
     async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize> {
-        self.inner.write(request, instance).await
+        self.inner.write(instance, request).await
+    }
+
+    async fn read(
+        &self,
+        instance: &InstanceRef,
+        request: ReadRequest,
+    ) -> Result<PartitionedStreams> {
+        self.inner.read(instance, request).await
     }
 
     /// This method is expected to be called by [Instance]

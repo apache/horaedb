@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use common_util::define_result;
 use snafu::Snafu;
-use table_engine::table::{AlterSchemaRequest, WriteRequest};
+use table_engine::{table::{AlterSchemaRequest, ReadRequest, WriteRequest}, stream::PartitionedStreams};
 
 pub use self::leader::LeaderTable;
 use crate::{
@@ -50,7 +50,11 @@ pub trait RoleTable: std::fmt::Debug + 'static {
 
     async fn write(&self, instance: &InstanceRef, request: WriteRequest) -> Result<usize>;
 
-    // async fn read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
+    async fn read(
+        &self,
+        instance: &InstanceRef,
+        request: ReadRequest,
+    ) -> Result<PartitionedStreams>;
 
     async fn flush(&self, instance: &Arc<Instance>, flush_opts: TableFlushOptions) -> Result<()>;
 

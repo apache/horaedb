@@ -133,8 +133,9 @@ impl Table for TableImpl {
     async fn read(&self, mut request: ReadRequest) -> Result<SendableRecordBatchStream> {
         request.opts.read_parallelism = 1;
         let mut streams = self
-            .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .get_table()
+            .expect("todo: remove this expect")
+            .read(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Scan { table: self.name() })?;
@@ -219,8 +220,9 @@ impl Table for TableImpl {
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let streams = self
-            .instance
-            .partitioned_read_from_table(&self.space_table, request)
+            .get_table()
+            .expect("todo: remove this expect")
+            .read(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Scan { table: self.name() })?;
