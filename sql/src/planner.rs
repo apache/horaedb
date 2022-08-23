@@ -21,7 +21,7 @@ use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
     ColumnDef, ColumnOption, Expr, ObjectName, Query, SetExpr, SqlOption,
-    Statement as SqlStatement, TableConstraint, Value, Values,
+    Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
 };
 use table_engine::table::TableRef;
 
@@ -122,8 +122,25 @@ pub enum Error {
     #[snafu(display("Invalid insert stmt, source should be a set"))]
     InsertSourceBodyNotSet,
 
-    #[snafu(display("Invalid insert stmt, source expr is not value"))]
-    InsertExprNotValue,
+    #[snafu(display(
+        "Invalid insert stmt, source expr is not value, source_expr:{:?}.\nBacktrace:\n{}",
+        source_expr,
+        backtrace,
+    ))]
+    InsertExprNotValue {
+        source_expr: Expr,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Invalid insert stmt, source expr has no valid negative value, source_expr:{:?}.\nBacktrace:\n{}",
+        source_expr,
+        backtrace,
+    ))]
+    InsertExprNoNegativeValue {
+        source_expr: Expr,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Insert Failed to convert value, err:{}", source))]
     InsertConvertValue { source: common_types::datum::Error },
@@ -529,6 +546,45 @@ enum InsertMode {
     Auto,
 }
 
+/// Parse [Datum] from the [Expr].
+fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<Datum> {
+    match expr {
+        Expr::Value(value) => {
+            Datum::try_from_sql_value(&data_type, mem::replace(value, Value::Null))
+                .context(InsertConvertValue)
+        }
+        Expr::UnaryOp {
+            op,
+            expr: child_expr,
+        } => {
+            let is_negative = match op {
+                UnaryOperator::Minus => true,
+                UnaryOperator::Plus => false,
+                _ => InsertExprNotValue {
+                    source_expr: Expr::UnaryOp {
+                        op: op.clone(),
+                        expr: child_expr.clone(),
+                    },
+                }
+                .fail()?,
+            };
+            let mut datum = parse_data_value_from_expr(data_type, child_expr)?;
+            if is_negative {
+                datum = datum
+                    .to_negative()
+                    .with_context(|| InsertExprNoNegativeValue {
+                        source_expr: expr.clone(),
+                    })?;
+            }
+            Ok(datum)
+        }
+        _ => InsertExprNotValue {
+            source_expr: expr.clone(),
+        }
+        .fail(),
+    }
+}
+
 /// Build RowGroup
 fn build_row_group(
     schema: Schema,
@@ -556,20 +612,8 @@ fn build_row_group(
                                 index: *index,
                             })?;
 
-                            match expr {
-                                Expr::Value(value) => {
-                                    let datum = Datum::try_from_sql_value(
-                                        &column_schema.data_type,
-                                        mem::replace(value, Value::Null),
-                                    )
-                                    .context(InsertConvertValue)?;
-                                    row_builder =
-                                        row_builder.append_datum(datum).context(BuildRow)?;
-                                }
-                                _ => {
-                                    InsertExprNotValue.fail()?;
-                                }
-                            }
+                            let datum = parse_data_value_from_expr(column_schema.data_type, expr)?;
+                            row_builder = row_builder.append_datum(datum).context(BuildRow)?;
                         }
                         InsertMode::Null => {
                             // This is a null column
@@ -1353,5 +1397,49 @@ mod tests {
 )"#,
         )
         .unwrap();
+    }
+
+    fn make_test_number_expr(val: &str, sign: Option<bool>) -> Expr {
+        let expr_val = Expr::Value(Value::Number(val.to_string(), false));
+        match sign {
+            Some(true) => Expr::UnaryOp {
+                op: UnaryOperator::Plus,
+                expr: Box::new(expr_val),
+            },
+            Some(false) => Expr::UnaryOp {
+                op: UnaryOperator::Minus,
+                expr: Box::new(expr_val),
+            },
+            None => expr_val,
+        }
+    }
+
+    #[test]
+    fn test_parse_data_value() {
+        // normal cases
+        let mut cases = vec![
+            (make_test_number_expr("10", None), Datum::Int32(10)),
+            (make_test_number_expr("10", Some(true)), Datum::Int32(10)),
+            (make_test_number_expr("10", Some(false)), Datum::Int32(-10)),
+        ];
+
+        // recursive cases
+        {
+            let source = {
+                let num_expr = make_test_number_expr("10", Some(false));
+                Expr::UnaryOp {
+                    op: UnaryOperator::Minus,
+                    expr: Box::new(num_expr),
+                }
+            };
+            let expect = Datum::Int32(10);
+            cases.push((source, expect));
+        }
+
+        for (mut source, expect) in cases {
+            let parsed = parse_data_value_from_expr(expect.kind(), &mut source)
+                .expect("Fail to parse data value");
+            assert_eq!(parsed, expect);
+        }
     }
 }

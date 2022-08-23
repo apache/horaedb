@@ -485,6 +485,31 @@ impl Datum {
         }
     }
 
+    /// Generate a negative datum if possible.
+    ///
+    /// It will return `None` if:
+    /// - The data type has no negative value;
+    /// - The negative value overflows;
+    pub fn to_negative(self) -> Option<Self> {
+        match self {
+            Datum::Null => None,
+            Datum::Timestamp(_) => None,
+            Datum::Double(v) => Some(Datum::Double(-v)),
+            Datum::Float(v) => Some(Datum::Float(-v)),
+            Datum::Varbinary(_) => None,
+            Datum::String(_) => None,
+            Datum::UInt64(_) => None,
+            Datum::UInt32(_) => None,
+            Datum::UInt16(_) => None,
+            Datum::UInt8(_) => None,
+            Datum::Int64(v) => 0i64.checked_sub(v).map(Datum::Int64),
+            Datum::Int32(v) => 0i32.checked_sub(v).map(Datum::Int32),
+            Datum::Int16(v) => 0i16.checked_sub(v).map(Datum::Int16),
+            Datum::Int8(v) => 0i8.checked_sub(v).map(Datum::Int8),
+            Datum::Boolean(v) => Some(Datum::Boolean(!v)),
+        }
+    }
+
     pub fn display_string(&self) -> String {
         match self {
             Datum::Null => "null".to_string(),
@@ -945,5 +970,43 @@ mod tests {
         assert_eq!(12, DatumKind::Int16.into_u8());
         assert_eq!(13, DatumKind::Int8.into_u8());
         assert_eq!(14, DatumKind::Boolean.into_u8());
+    }
+
+    #[test]
+    fn test_to_negative_value() {
+        let cases = [
+            (Datum::Null, None),
+            (Datum::Timestamp(Timestamp::ZERO), None),
+            (Datum::Double(1.0), Some(Datum::Double(-1.0))),
+            (Datum::Float(1.0), Some(Datum::Float(-1.0))),
+            (Datum::Varbinary(Bytes::new()), None),
+            (Datum::String(StringBytes::new()), None),
+            (Datum::UInt64(10), None),
+            (Datum::UInt32(10), None),
+            (Datum::UInt16(10), None),
+            (Datum::UInt8(10), None),
+            (Datum::Int64(10), Some(Datum::Int64(-10))),
+            (Datum::Int32(10), Some(Datum::Int32(-10))),
+            (Datum::Int16(10), Some(Datum::Int16(-10))),
+            (Datum::Int8(10), Some(Datum::Int8(-10))),
+        ];
+
+        for (source, negative) in cases {
+            assert_eq!(negative, source.to_negative());
+        }
+    }
+
+    #[test]
+    fn test_to_overflow_negative_value() {
+        let cases = [
+            Datum::Int64(i64::MAX),
+            Datum::Int32(i32::MAX),
+            Datum::Int16(i16::MAX),
+            Datum::Int8(i8::MAX),
+        ];
+
+        for source in cases {
+            assert!(source.to_negative().is_none());
+        }
     }
 }
