@@ -3,6 +3,7 @@
 use snafu::{Backtrace, Snafu};
 
 #[derive(Debug, Snafu)]
+#[allow(clippy::large_enum_variant)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Missing runtimes to build service.\nBacktrace:\n{}", backtrace))]
