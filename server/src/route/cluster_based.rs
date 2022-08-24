@@ -30,8 +30,8 @@ impl ClusterBasedRouter {
 //
 // Returns `None` if fail to parse.
 fn try_parse_endpoint(raw: &str) -> Option<Endpoint> {
-    let (domain, raw_port) = raw.split_once(":")?;
-    let port: u16 = raw_port.parse().map(|p| Some(p)).unwrap_or(None)?;
+    let (domain, raw_port) = raw.split_once(':')?;
+    let port: u16 = raw_port.parse().map(Some).unwrap_or(None)?;
 
     let mut endpoint = Endpoint::default();
     endpoint.set_ip(domain.to_string());

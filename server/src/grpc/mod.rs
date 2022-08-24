@@ -849,7 +849,7 @@ mod tests {
     use ceresdbproto_deps::ceresdbproto::storage::{
         Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
     };
-    use cluster::SchemaConfig;
+    use cluster::topology::SchemaConfig;
     use common_types::datum::DatumKind;
 
     use super::*;

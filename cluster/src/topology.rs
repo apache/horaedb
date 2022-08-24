@@ -71,7 +71,7 @@ impl ClusterTopology {
     /// Any update on the topology should ensure the version is valid: the
     /// target version must be not older than the current version.
     pub fn is_outdated_version(&self, version: u64) -> bool {
-        return version >= self.version;
+        version >= self.version
     }
 
     pub fn route_tables(&self, schema_name: &str, tables: &[TableName]) -> RouteTablesResult {
