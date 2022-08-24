@@ -23,8 +23,18 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
+    #[snafu(display("Failed to read table, err:{}", source))]
+    ReadTable {
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
+
     #[snafu(display("Failed to alter table, err:{}", source))]
     AlterTable {
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
+
+    #[snafu(display("Failed to flush table, err:{}", source))]
+    FlushTable {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 }

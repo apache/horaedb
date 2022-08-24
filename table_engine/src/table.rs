@@ -84,6 +84,9 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display("Table {:?} not found.\nBacktrace:\n{}", table, backtrace))]
+    TableNotFound { table: String, backtrace: Backtrace },
+
     #[snafu(display("Failed to write table, table:{}, err:{}", table, source))]
     Write {
         table: String,

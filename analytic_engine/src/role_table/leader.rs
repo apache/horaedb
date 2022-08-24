@@ -20,7 +20,9 @@ use crate::{
         write::TableWritePolicy,
         Instance, InstanceRef,
     },
-    role_table::{AlterTable, Result, RoleTable, RoleTableRef, TableRole},
+    role_table::{
+        AlterTable, FlushTable, ReadTable, Result, RoleTable, RoleTableRef, TableRole, WriteTable,
+    },
     table::data::TableDataRef,
 };
 
@@ -59,7 +61,6 @@ struct LeaderTableInner {
     table_data: TableDataRef,
 }
 
-// TODO: handle `Result`
 impl LeaderTableInner {
     const ROLE: u8 = TableRole::Leader as u8;
 
@@ -75,12 +76,11 @@ impl LeaderTableInner {
         // Leader table should write to both WAL and memtable
         let policy = TableWritePolicy::Full;
 
-        let res = instance
+        instance
             .write_to_table(self.table_data.clone(), request, policy)
             .await
-            .unwrap();
-
-        Ok(res)
+            .map_err(|e| Box::new(e) as _)
+            .context(WriteTable)
     }
 
     async fn read(
@@ -88,12 +88,13 @@ impl LeaderTableInner {
         instance: &InstanceRef,
         request: ReadRequest,
     ) -> Result<PartitionedStreams> {
-        let res = instance
+        // TODO: add policy for read operation
+
+        instance
             .partitioned_read_from_table(&self.table_data, request)
             .await
-            .unwrap();
-
-        Ok(res)
+            .map_err(|e| Box::new(e) as _)
+            .context(ReadTable)
     }
 
     async fn flush(
@@ -107,9 +108,8 @@ impl LeaderTableInner {
         instance
             .flush_table(&self.table_data, flush_opts)
             .await
-            .unwrap();
-
-        Ok(())
+            .map_err(|e| Box::new(e) as _)
+            .context(FlushTable)
     }
 
     async fn alter_schema(
@@ -124,9 +124,7 @@ impl LeaderTableInner {
             .alter_schema_of_table(&self.table_data, request, policy)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(AlterTable)?;
-
-        Ok(())
+            .context(AlterTable)
     }
 
     async fn alter_options(
@@ -141,9 +139,7 @@ impl LeaderTableInner {
             .alter_options_of_table(&self.table_data, options, policy)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(AlterTable)?;
-
-        Ok(())
+            .context(AlterTable)
     }
 }
 
@@ -169,12 +165,10 @@ impl RoleTable for LeaderTable {
         self.inner.read(instance, request).await
     }
 
-    /// This method is expected to be called by [Instance]
     async fn flush(&self, instance: &Arc<Instance>, flush_opts: TableFlushOptions) -> Result<()> {
         self.inner.flush(instance, flush_opts).await
     }
 
-    /// This method is expected to be called by [Instance]
     async fn alter_schema(
         &self,
         instance: &Arc<Instance>,

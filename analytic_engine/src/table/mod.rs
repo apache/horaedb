@@ -15,7 +15,7 @@ use table_engine::{
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
         GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, ReadOptions, ReadOrder, ReadRequest,
-        Result, Scan, Table, TableId, TableStats, Write, WriteRequest,
+        Result, Scan, Table, TableId, TableNotFound, TableStats, Write, WriteRequest,
     },
 };
 use tokio::sync::oneshot;
@@ -71,10 +71,15 @@ impl TableImpl {
         }
     }
 
-    fn get_table(&self) -> Option<RoleTableRef> {
-        self.instance
-            .find_space(self.space_id)?
-            .find_role_table_by_id(self.table_id)
+    fn get_table(&self) -> Result<RoleTableRef> {
+        let table: Option<RoleTableRef> = try {
+            self.instance
+                .find_space(self.space_id)?
+                .find_role_table_by_id(self.table_id)?
+        };
+        table.with_context(|| TableNotFound {
+            table: self.table_data.name.clone(),
+        })
     }
 }
 
@@ -121,8 +126,7 @@ impl Table for TableImpl {
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         let num_rows = self
-            .get_table()
-            .expect("todo: remove this expect")
+            .get_table()?
             .write(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -133,8 +137,7 @@ impl Table for TableImpl {
     async fn read(&self, mut request: ReadRequest) -> Result<SendableRecordBatchStream> {
         request.opts.read_parallelism = 1;
         let mut streams = self
-            .get_table()
-            .expect("todo: remove this expect")
+            .get_table()?
             .read(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -220,8 +223,7 @@ impl Table for TableImpl {
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let streams = self
-            .get_table()
-            .expect("todo: remove this expect")
+            .get_table()?
             .read(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -231,8 +233,7 @@ impl Table for TableImpl {
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
-        self.get_table()
-            .expect("todo: remove this expect")
+        self.get_table()?
             .alter_schema(&self.instance, request)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -241,8 +242,7 @@ impl Table for TableImpl {
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
-        self.get_table()
-            .expect("todo: remove this expect")
+        self.get_table()?
             .alter_options(&self.instance, options)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -266,8 +266,7 @@ impl Table for TableImpl {
             policy: TableFlushPolicy::Unknown,
         };
 
-        self.get_table()
-            .expect("todo: remove this expect")
+        self.get_table()?
             .flush(&self.instance, flush_opts)
             .await
             .map_err(|e| Box::new(e) as _)
