@@ -182,7 +182,7 @@ func (srv *Server) watchLeader(ctx context.Context) {
 	}
 	watcher := member.NewLeaderWatcher(watchCtx, srv.member, srv.cfg.LeaseTTLSec)
 
-	watcher.Watch(ctx)
+	watcher.Watch(ctx, nil)
 }
 
 func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {

@@ -66,7 +66,7 @@ func TestWatchLeaderSingle(t *testing.T) {
 	ctx, cancelWatch := context.WithCancel(context.Background())
 	watchedDone := make(chan struct{}, 1)
 	go func() {
-		leaderWatcher.Watch(ctx)
+		leaderWatcher.Watch(ctx, nil)
 		watchedDone <- struct{}{}
 	}()
 
