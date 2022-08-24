@@ -153,6 +153,7 @@ pub enum Error {
 }
 
 pub type SchemaId = u32;
+pub type SchemaName = String;
 // TODO: make these constants configurable
 pub const TSID_COLUMN: &str = "tsid";
 pub const TIMESTAMP_COLUMN: &str = "timestamp";

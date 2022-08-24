@@ -7,14 +7,16 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
-use cluster::{Node, SchemaConfig};
+use cluster::topology::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use twox_hash::XxHash64;
 
 use crate::{
+    config::Node,
     error::{ErrNoCause, Result, StatusCode},
     route::Router,
 };
@@ -149,8 +151,9 @@ impl RuleBasedRouter {
     }
 }
 
+#[async_trait]
 impl Router for RuleBasedRouter {
-    fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             if shard_nodes.is_empty() {
                 return ErrNoCause {

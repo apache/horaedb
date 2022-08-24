@@ -17,7 +17,7 @@ use ceresdbproto_deps::ceresdbproto::{
     },
     storage_grpc::{self, StorageService},
 };
-use cluster::SchemaConfig;
+use cluster::topology::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,

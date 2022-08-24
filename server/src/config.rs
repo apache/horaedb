@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use analytic_engine;
-use cluster::{config::ClusterConfig, Node, SchemaConfig};
+use cluster::{config::ClusterConfig, topology::SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
@@ -44,6 +44,12 @@ pub struct RuntimeConfig {
 pub struct StaticRouteConfig {
     pub rule_list: RuleList,
     pub topology: StaticTopologyConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Node {
+    pub addr: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Deserialize)]

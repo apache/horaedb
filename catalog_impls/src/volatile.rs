@@ -16,10 +16,11 @@ use catalog::{
     schema::{
         self, CatalogMismatch, CloseOptions, CloseTable, CloseTableRequest, CreateOptions,
         CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
-        OpenOptions, OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaName, SchemaRef,
+        OpenOptions, OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
     },
     Catalog, CatalogRef,
 };
+use common_types::schema::SchemaName;
 use log::{debug, info};
 use snafu::{ensure, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
