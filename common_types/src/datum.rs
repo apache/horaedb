@@ -488,8 +488,8 @@ impl Datum {
     /// Generate a negative datum if possible.
     ///
     /// It will return `None` if:
-    /// - The data type has no negative value;
-    /// - The negative value overflows;
+    /// - The data type has no negative value.
+    /// - The negative value overflows.
     pub fn to_negative(self) -> Option<Self> {
         match self {
             Datum::Null => None,
