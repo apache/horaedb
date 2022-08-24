@@ -37,7 +37,7 @@ digraph G {
 
     cluster -> analytic_engine
     cluster -> catalog
-    cluster -> meta_client_v2
+    cluster -> meta_client
 
     interpreters -> catalog
     interpreters -> sql
@@ -45,12 +45,6 @@ digraph G {
     interpreters -> df_operator
     interpreters -> query_engine
     interpreters -> arrow_deps
-
-    meta_client -> catalog
-    meta_client -> table_engine
-
-    meta_client_v2 -> catalog
-    meta_client_v2 -> table_engine
 
     query_engine -> arrow_deps
     query_engine -> sql

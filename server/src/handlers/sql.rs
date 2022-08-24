@@ -95,9 +95,9 @@ impl From<String> for Request {
     }
 }
 
-pub async fn handle_sql<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
+pub async fn handle_sql<Q: QueryExecutor + 'static>(
     ctx: RequestContext,
-    instance: InstanceRef<C, Q>,
+    instance: InstanceRef<Q>,
     request: Request,
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
@@ -110,7 +110,7 @@ pub async fn handle_sql<C: CatalogManager + 'static, Q: QueryExecutor + 'static>
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
-        manager: &instance.catalog_manager,
+        manager: instance.catalog_manager.clone(),
         default_catalog: &ctx.catalog,
         default_schema: &ctx.tenant,
         function_registry: &*instance.function_registry,

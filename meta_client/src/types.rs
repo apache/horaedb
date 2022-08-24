@@ -2,35 +2,22 @@
 
 use std::collections::HashMap;
 
+use catalog::schema::SchemaName;
 use ceresdbproto_deps::ceresdbproto::{
-    cluster::ShardRole as PbShardRole,
-    common::ResponseHeader as PbResponseHeader,
+    cluster,
     meta_service::{self, NodeHeartbeatResponse_oneof_cmd},
 };
+use common_types::{schema::SchemaId, table::TableId};
 use common_util::config::ReadableDuration;
+use protobuf::RepeatedField;
 use serde_derive::Deserialize;
 
-pub type TableId = u64;
 pub type ShardId = u32;
-pub type SchemaId = u32;
 
 #[derive(Debug, Clone)]
 pub struct RequestHeader {
     pub node: String,
     pub cluster_name: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResponseHeader {
-    pub code: u32,
-    pub err_msg: String,
-}
-
-impl ResponseHeader {
-    #[inline]
-    pub fn is_success(&self) -> bool {
-        self.code == 0
-    }
 }
 
 #[derive(Debug)]
@@ -40,8 +27,6 @@ pub struct AllocSchemaIdRequest {
 
 #[derive(Debug)]
 pub struct AllocSchemaIdResponse {
-    pub header: ResponseHeader,
-
     pub name: String,
     pub id: SchemaId,
 }
@@ -54,8 +39,6 @@ pub struct AllocTableIdRequest {
 
 #[derive(Debug)]
 pub struct AllocTableIdResponse {
-    pub header: ResponseHeader,
-
     pub schema_name: String,
     pub name: String,
     pub shard_id: ShardId,
@@ -70,21 +53,14 @@ pub struct DropTableRequest {
     pub id: TableId,
 }
 
-#[derive(Debug)]
-pub struct DropTableResponse {
-    pub header: ResponseHeader,
-}
-
 #[derive(Clone, Debug)]
-pub struct GetTablesRequest {
+pub struct GetShardTablesRequest {
     pub shard_ids: Vec<ShardId>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GetTablesResponse {
-    pub header: ResponseHeader,
-
-    pub tables_map: HashMap<ShardId, ShardTables>,
+pub struct GetShardTablesResponse {
+    pub shard_tables: HashMap<ShardId, ShardTables>,
 }
 
 #[derive(Clone, Debug)]
@@ -95,30 +71,37 @@ pub struct TableInfo {
     pub schema_name: String,
 }
 
+impl From<meta_service::TableInfo> for TableInfo {
+    fn from(mut pb_table_info: meta_service::TableInfo) -> Self {
+        TableInfo {
+            id: pb_table_info.get_id(),
+            name: pb_table_info.take_name(),
+            schema_id: pb_table_info.get_schema_id(),
+            schema_name: pb_table_info.take_schema_name(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ShardTables {
     pub role: ShardRole,
     pub tables: Vec<TableInfo>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Node {
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct NodeMetaInfo {
     pub addr: String,
     pub port: u16,
-}
-
-impl ToString for Node {
-    fn to_string(&self) -> String {
-        format!("{}:{}", self.addr, self.port)
-    }
-}
-
-#[derive(Debug, Default, Clone, Deserialize)]
-pub struct NodeMetaInfo {
-    pub node: Node,
     pub zone: String,
     pub idc: String,
     pub binary_version: String,
+}
+
+impl NodeMetaInfo {
+    pub fn endpoint(&self) -> String {
+        format!("{}:{}", self.addr, self.port)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -129,8 +112,6 @@ pub struct NodeInfo {
 
 #[derive(Debug)]
 pub struct NodeHeartbeatResponse {
-    pub header: ResponseHeader,
-
     pub timestamp: u64,
     pub action_cmd: Option<ActionCmd>,
 }
@@ -147,7 +128,8 @@ pub enum ShardRole {
     FOLLOWER,
 }
 
-// TODO: now some commands are empty and fill the concret inforamtion into them.
+// TODO: now some commands are empty and fill the concrete information into
+// them.
 #[derive(Debug, Clone)]
 pub enum ActionCmd {
     MetaNoneCmd(NoneCmd),
@@ -209,7 +191,7 @@ impl Default for MetaClientConfig {
     fn default() -> Self {
         Self {
             cluster_name: String::new(),
-            meta_addr: "http://127.0.0.1:8080".to_string(),
+            meta_addr: "127.0.0.1:8080".to_string(),
             meta_members_url: "ceresmeta/members".to_string(),
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
@@ -221,15 +203,11 @@ impl Default for MetaClientConfig {
 impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
         let mut pb_node_info = meta_service::NodeInfo::new();
-        pb_node_info.set_node(node_info.node_meta_info.node.to_string());
+        pb_node_info.set_endpoint(node_info.node_meta_info.endpoint());
         pb_node_info.set_zone(node_info.node_meta_info.zone);
         pb_node_info.set_binary_version(node_info.node_meta_info.binary_version);
-        pb_node_info.set_shardsInfo(protobuf::RepeatedField::from_vec(
-            node_info
-                .shards_info
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
+        pb_node_info.set_shard_infos(RepeatedField::from_iter(
+            node_info.shards_info.into_iter().map(|v| v.into()),
         ));
         pb_node_info
     }
@@ -244,38 +222,46 @@ impl From<ShardInfo> for meta_service::ShardInfo {
     }
 }
 
-impl From<ShardRole> for PbShardRole {
-    fn from(shard_role: ShardRole) -> Self {
-        match shard_role {
-            ShardRole::LEADER => PbShardRole::LEADER,
-            ShardRole::FOLLOWER => PbShardRole::FOLLOWER,
+impl From<meta_service::ShardInfo> for ShardInfo {
+    fn from(pb_shard_info: meta_service::ShardInfo) -> Self {
+        ShardInfo {
+            shard_id: pb_shard_info.shard_id,
+            role: pb_shard_info.role.into(),
         }
     }
 }
 
-impl From<PbShardRole> for ShardRole {
-    fn from(pb: PbShardRole) -> Self {
-        match pb {
-            PbShardRole::LEADER => ShardRole::LEADER,
-            PbShardRole::FOLLOWER => ShardRole::FOLLOWER,
+impl From<ShardRole> for cluster::ShardRole {
+    fn from(shard_role: ShardRole) -> Self {
+        match shard_role {
+            ShardRole::LEADER => cluster::ShardRole::LEADER,
+            ShardRole::FOLLOWER => cluster::ShardRole::FOLLOWER,
+        }
+    }
+}
+
+impl From<cluster::ShardRole> for ShardRole {
+    fn from(pb_role: cluster::ShardRole) -> Self {
+        match pb_role {
+            cluster::ShardRole::LEADER => ShardRole::LEADER,
+            cluster::ShardRole::FOLLOWER => ShardRole::FOLLOWER,
         }
     }
 }
 
 impl From<meta_service::NodeHeartbeatResponse> for NodeHeartbeatResponse {
-    fn from(mut pb: meta_service::NodeHeartbeatResponse) -> Self {
-        let timestamp = pb.get_timestamp();
+    fn from(pb_resp: meta_service::NodeHeartbeatResponse) -> Self {
+        let timestamp = pb_resp.get_timestamp();
         NodeHeartbeatResponse {
-            header: pb.take_header().into(),
             timestamp,
-            action_cmd: pb.cmd.map(|v| v.into()),
+            action_cmd: pb_resp.cmd.map(|v| v.into()),
         }
     }
 }
 
 impl From<NodeHeartbeatResponse_oneof_cmd> for ActionCmd {
-    fn from(pb: NodeHeartbeatResponse_oneof_cmd) -> Self {
-        match pb {
+    fn from(pb_cmd: NodeHeartbeatResponse_oneof_cmd) -> Self {
+        match pb_cmd {
             NodeHeartbeatResponse_oneof_cmd::none_cmd(_) => ActionCmd::MetaNoneCmd(NoneCmd {}),
             NodeHeartbeatResponse_oneof_cmd::open_cmd(v) => ActionCmd::MetaOpenCmd(v.into()),
             NodeHeartbeatResponse_oneof_cmd::split_cmd(v) => ActionCmd::MetaSplitCmd(v.into()),
@@ -288,53 +274,52 @@ impl From<NodeHeartbeatResponse_oneof_cmd> for ActionCmd {
 }
 
 impl From<meta_service::NoneCmd> for NoneCmd {
-    fn from(_pb: meta_service::NoneCmd) -> Self {
+    fn from(_: meta_service::NoneCmd) -> Self {
         Self {}
     }
 }
 
 impl From<meta_service::OpenCmd> for OpenCmd {
-    fn from(mut pb: meta_service::OpenCmd) -> Self {
+    fn from(mut pb_cmd: meta_service::OpenCmd) -> Self {
         Self {
-            shard_ids: pb.take_shard_ids(),
+            shard_ids: pb_cmd.take_shard_ids(),
         }
     }
 }
 
 impl From<meta_service::SplitCmd> for SplitCmd {
-    fn from(_pb: meta_service::SplitCmd) -> Self {
+    fn from(_: meta_service::SplitCmd) -> Self {
         Self {}
     }
 }
 
 impl From<meta_service::CloseCmd> for CloseCmd {
-    fn from(mut pb: meta_service::CloseCmd) -> Self {
+    fn from(mut pb_cmd: meta_service::CloseCmd) -> Self {
         Self {
-            shard_ids: pb.take_shard_ids(),
+            shard_ids: pb_cmd.take_shard_ids(),
         }
     }
 }
 
 impl From<meta_service::ChangeRoleCmd> for ChangeRoleCmd {
-    fn from(_pb: meta_service::ChangeRoleCmd) -> Self {
+    fn from(_: meta_service::ChangeRoleCmd) -> Self {
         Self {}
     }
 }
 
-impl From<GetTablesRequest> for meta_service::GetTablesRequest {
-    fn from(req: GetTablesRequest) -> Self {
-        let mut pb = meta_service::GetTablesRequest::new();
-        pb.set_shard_id(req.shard_ids);
-        pb
+impl From<GetShardTablesRequest> for meta_service::GetShardTablesRequest {
+    fn from(req: GetShardTablesRequest) -> Self {
+        let mut pb_req = meta_service::GetShardTablesRequest::new();
+        pb_req.set_shard_ids(req.shard_ids);
+        pb_req
     }
 }
 
-impl From<meta_service::GetTablesResponse> for GetTablesResponse {
-    fn from(mut pb: meta_service::GetTablesResponse) -> Self {
+impl From<meta_service::GetShardTablesResponse> for GetShardTablesResponse {
+    fn from(mut pb_resp: meta_service::GetShardTablesResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
-            tables_map: pb
-                .take_tables_map()
+            shard_tables: pb_resp
+                .take_shard_tables()
                 .into_iter()
                 .map(|(k, v)| (k, v.into()))
                 .collect(),
@@ -343,79 +328,61 @@ impl From<meta_service::GetTablesResponse> for GetTablesResponse {
 }
 
 impl From<meta_service::ShardTables> for ShardTables {
-    fn from(mut pb: meta_service::ShardTables) -> Self {
+    fn from(mut pb_shard_tables: meta_service::ShardTables) -> Self {
         Self {
-            role: pb.get_role().into(),
-            tables: pb.take_tables().into_iter().map(|v| v.into()).collect(),
-        }
-    }
-}
-
-impl From<meta_service::TableInfo> for TableInfo {
-    fn from(mut pb: meta_service::TableInfo) -> Self {
-        TableInfo {
-            id: pb.get_id(),
-            name: pb.take_name(),
-            schema_id: pb.get_schema_id(),
-            schema_name: pb.take_schema_name(),
+            role: pb_shard_tables.get_role().into(),
+            tables: pb_shard_tables
+                .take_tables()
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
         }
     }
 }
 
 impl From<RequestHeader> for meta_service::RequestHeader {
     fn from(req: RequestHeader) -> Self {
-        let mut pb = meta_service::RequestHeader::new();
-        pb.set_node(req.node);
-        pb.set_cluster_name(req.cluster_name);
-        pb
-    }
-}
-
-impl From<PbResponseHeader> for ResponseHeader {
-    fn from(mut pb: PbResponseHeader) -> Self {
-        Self {
-            code: pb.get_code(),
-            err_msg: pb.take_error(),
-        }
+        let mut pb_header = meta_service::RequestHeader::new();
+        pb_header.set_node(req.node);
+        pb_header.set_cluster_name(req.cluster_name);
+        pb_header
     }
 }
 
 impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
     fn from(req: AllocSchemaIdRequest) -> Self {
-        let mut pb = meta_service::AllocSchemaIdRequest::new();
-        pb.set_name(req.name);
-        pb
+        let mut pb_req = meta_service::AllocSchemaIdRequest::new();
+        pb_req.set_name(req.name);
+        pb_req
     }
 }
 
 impl From<meta_service::AllocSchemaIdResponse> for AllocSchemaIdResponse {
-    fn from(mut pb: meta_service::AllocSchemaIdResponse) -> Self {
+    fn from(mut pb_resp: meta_service::AllocSchemaIdResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
-            name: pb.take_name(),
-            id: pb.get_id(),
+            name: pb_resp.take_name(),
+            id: pb_resp.get_id(),
         }
     }
 }
 
 impl From<AllocTableIdRequest> for meta_service::AllocTableIdRequest {
     fn from(req: AllocTableIdRequest) -> Self {
-        let mut pb = meta_service::AllocTableIdRequest::new();
-        pb.set_schema_name(req.schema_name);
-        pb.set_name(req.name);
-        pb
+        let mut pb_req = meta_service::AllocTableIdRequest::new();
+        pb_req.set_schema_name(req.schema_name);
+        pb_req.set_name(req.name);
+        pb_req
     }
 }
 
 impl From<meta_service::AllocTableIdResponse> for AllocTableIdResponse {
-    fn from(mut pb: meta_service::AllocTableIdResponse) -> Self {
+    fn from(mut pb_resp: meta_service::AllocTableIdResponse) -> Self {
         Self {
-            header: pb.take_header().into(),
-            schema_name: pb.take_schema_name(),
-            name: pb.take_name(),
-            shard_id: pb.get_shard_id(),
-            schema_id: pb.get_schema_id(),
-            id: pb.get_id(),
+            schema_name: pb_resp.take_schema_name(),
+            name: pb_resp.take_name(),
+            shard_id: pb_resp.get_shard_id(),
+            schema_id: pb_resp.get_schema_id(),
+            id: pb_resp.get_id(),
         }
     }
 }
@@ -430,10 +397,74 @@ impl From<DropTableRequest> for meta_service::DropTableRequest {
     }
 }
 
-impl From<meta_service::DropTableResponse> for DropTableResponse {
-    fn from(mut pb: meta_service::DropTableResponse) -> Self {
-        Self {
-            header: pb.take_header().into(),
+#[derive(Debug, Clone)]
+pub struct RouteTablesRequest {
+    pub schema_name: SchemaName,
+    pub table_names: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeShard {
+    pub endpoint: String,
+    pub shard_info: ShardInfo,
+}
+
+#[derive(Debug, Clone)]
+pub struct RouteEntry {
+    pub table: TableInfo,
+    pub node_shards: Vec<NodeShard>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RouteTablesResponse {
+    pub cluster_topology_version: u64,
+    pub entries: HashMap<String, RouteEntry>,
+}
+
+impl From<RouteTablesRequest> for meta_service::RouteTablesRequest {
+    fn from(req: RouteTablesRequest) -> Self {
+        let mut pb_req = meta_service::RouteTablesRequest::default();
+        pb_req.set_schema_name(req.schema_name);
+        pb_req.set_table_names(RepeatedField::from(req.table_names));
+        pb_req
+    }
+}
+
+impl From<meta_service::NodeShard> for NodeShard {
+    fn from(mut pb: meta_service::NodeShard) -> Self {
+        NodeShard {
+            endpoint: pb.take_endpoint(),
+            shard_info: ShardInfo::from(pb.take_shard_info()),
+        }
+    }
+}
+
+impl From<meta_service::RouteEntry> for RouteEntry {
+    fn from(mut pb_entry: meta_service::RouteEntry) -> Self {
+        let node_shards: Vec<_> = pb_entry
+            .take_node_shards()
+            .into_iter()
+            .map(NodeShard::from)
+            .collect();
+
+        RouteEntry {
+            table: TableInfo::from(pb_entry.take_table()),
+            node_shards,
+        }
+    }
+}
+
+impl From<meta_service::RouteTablesResponse> for RouteTablesResponse {
+    fn from(mut pb_resp: meta_service::RouteTablesResponse) -> Self {
+        let entries: HashMap<_, _> = pb_resp
+            .take_entries()
+            .into_iter()
+            .map(|(table_name, entry)| (table_name, RouteEntry::from(entry)))
+            .collect();
+
+        RouteTablesResponse {
+            cluster_topology_version: pb_resp.cluster_topology_version,
+            entries,
         }
     }
 }

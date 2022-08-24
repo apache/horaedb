@@ -176,6 +176,28 @@ impl DatumKind {
     pub fn into_u8(self) -> u8 {
         self as u8
     }
+
+    /// Return None for variable-length type
+    pub fn size(&self) -> Option<usize> {
+        let size = match self {
+            DatumKind::Null => 0,
+            DatumKind::Timestamp => 8,
+            DatumKind::Double => 8,
+            DatumKind::Float => 4,
+            DatumKind::Varbinary => return None,
+            DatumKind::String => return None,
+            DatumKind::UInt64 => 8,
+            DatumKind::UInt32 => 4,
+            DatumKind::UInt16 => 2,
+            DatumKind::UInt8 => 1,
+            DatumKind::Int64 => 8,
+            DatumKind::Int32 => 4,
+            DatumKind::Int16 => 8,
+            DatumKind::Int8 => 8,
+            DatumKind::Boolean => 1,
+        };
+        Some(size)
+    }
 }
 
 impl TryFrom<&SqlDataType> for DatumKind {
@@ -463,6 +485,31 @@ impl Datum {
         }
     }
 
+    /// Generate a negative datum if possible.
+    ///
+    /// It will return `None` if:
+    /// - The data type has no negative value.
+    /// - The negative value overflows.
+    pub fn to_negative(self) -> Option<Self> {
+        match self {
+            Datum::Null => None,
+            Datum::Timestamp(_) => None,
+            Datum::Double(v) => Some(Datum::Double(-v)),
+            Datum::Float(v) => Some(Datum::Float(-v)),
+            Datum::Varbinary(_) => None,
+            Datum::String(_) => None,
+            Datum::UInt64(_) => None,
+            Datum::UInt32(_) => None,
+            Datum::UInt16(_) => None,
+            Datum::UInt8(_) => None,
+            Datum::Int64(v) => 0i64.checked_sub(v).map(Datum::Int64),
+            Datum::Int32(v) => 0i32.checked_sub(v).map(Datum::Int32),
+            Datum::Int16(v) => 0i16.checked_sub(v).map(Datum::Int16),
+            Datum::Int8(v) => 0i8.checked_sub(v).map(Datum::Int8),
+            Datum::Boolean(v) => Some(Datum::Boolean(!v)),
+        }
+    }
+
     pub fn display_string(&self) -> String {
         match self {
             Datum::Null => "null".to_string(),
@@ -503,6 +550,12 @@ impl Datum {
                 Ok(Datum::Varbinary(Bytes::from(s)))
             }
             (DatumKind::String, Value::SingleQuotedString(s)) => {
+                Ok(Datum::String(StringBytes::from(s)))
+            }
+            (DatumKind::Varbinary, Value::DoubleQuotedString(s)) => {
+                Ok(Datum::Varbinary(Bytes::from(s)))
+            }
+            (DatumKind::String, Value::DoubleQuotedString(s)) => {
                 Ok(Datum::String(StringBytes::from(s)))
             }
             (DatumKind::UInt64, Value::Number(n, _long)) => {
@@ -749,6 +802,26 @@ pub mod arrow_convert {
                 | DataType::Map(_, _) => None,
             }
         }
+
+        pub fn to_arrow_data_type(&self) -> DataType {
+            match self {
+                DatumKind::Null => DataType::Null,
+                DatumKind::Timestamp => DataType::Timestamp(TimeUnit::Millisecond, None),
+                DatumKind::Double => DataType::Float64,
+                DatumKind::Float => DataType::Float32,
+                DatumKind::Varbinary => DataType::Binary,
+                DatumKind::String => DataType::Utf8,
+                DatumKind::UInt64 => DataType::UInt64,
+                DatumKind::UInt32 => DataType::UInt32,
+                DatumKind::UInt16 => DataType::UInt16,
+                DatumKind::UInt8 => DataType::UInt8,
+                DatumKind::Int64 => DataType::Int64,
+                DatumKind::Int32 => DataType::Int32,
+                DatumKind::Int16 => DataType::Int16,
+                DatumKind::Int8 => DataType::Int8,
+                DatumKind::Boolean => DataType::Boolean,
+            }
+        }
     }
 
     impl Datum {
@@ -897,5 +970,43 @@ mod tests {
         assert_eq!(12, DatumKind::Int16.into_u8());
         assert_eq!(13, DatumKind::Int8.into_u8());
         assert_eq!(14, DatumKind::Boolean.into_u8());
+    }
+
+    #[test]
+    fn test_to_negative_value() {
+        let cases = [
+            (Datum::Null, None),
+            (Datum::Timestamp(Timestamp::ZERO), None),
+            (Datum::Double(1.0), Some(Datum::Double(-1.0))),
+            (Datum::Float(1.0), Some(Datum::Float(-1.0))),
+            (Datum::Varbinary(Bytes::new()), None),
+            (Datum::String(StringBytes::new()), None),
+            (Datum::UInt64(10), None),
+            (Datum::UInt32(10), None),
+            (Datum::UInt16(10), None),
+            (Datum::UInt8(10), None),
+            (Datum::Int64(10), Some(Datum::Int64(-10))),
+            (Datum::Int32(10), Some(Datum::Int32(-10))),
+            (Datum::Int16(10), Some(Datum::Int16(-10))),
+            (Datum::Int8(10), Some(Datum::Int8(-10))),
+        ];
+
+        for (source, negative) in cases {
+            assert_eq!(negative, source.to_negative());
+        }
+    }
+
+    #[test]
+    fn test_to_overflow_negative_value() {
+        let cases = [
+            Datum::Int64(i64::MIN),
+            Datum::Int32(i32::MIN),
+            Datum::Int16(i16::MIN),
+            Datum::Int8(i8::MIN),
+        ];
+
+        for source in cases {
+            assert!(source.to_negative().is_none());
+        }
     }
 }

@@ -16,6 +16,7 @@ There are three parts. `type` is used to classify which kind of work this commit
 Here we list some common `type`s and their meanings.
 
 - `feat`: Implement a new feature.
+- `fix`: Patch a bug.
 - `docs`: Add document or comment.
 - `build`: Change the build script or configuration.
 - `style`: Style change (only). No logic involved.
@@ -30,7 +31,7 @@ The `scope` is more flexible than `type`. And it may have different values under
 For example, In a `feat` or `build` commit we may use the code module to define scope, like
 
 ```
-feat(cluster): 
+feat(cluster):
 feat(server):
 
 build(ci):

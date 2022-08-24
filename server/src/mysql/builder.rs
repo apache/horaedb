@@ -2,7 +2,6 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use catalog::manager::Manager as CatalogManager;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
@@ -15,10 +14,10 @@ use crate::{
     },
 };
 
-pub struct Builder<C, Q> {
+pub struct Builder<Q> {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    instance: Option<InstanceRef<C, Q>>,
+    instance: Option<InstanceRef<Q>>,
 }
 
 #[derive(Debug)]
@@ -27,7 +26,7 @@ pub struct Config {
     pub port: u16,
 }
 
-impl<C, Q> Builder<C, Q> {
+impl<Q> Builder<Q> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -41,14 +40,14 @@ impl<C, Q> Builder<C, Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<C, Q>) -> Self {
+    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
         self.instance = Some(instance);
         self
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
-    pub fn build(self) -> Result<MysqlService<C, Q>> {
+impl<Q: QueryExecutor + 'static> Builder<Q> {
+    pub fn build(self) -> Result<MysqlService<Q>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
 

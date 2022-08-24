@@ -4,8 +4,7 @@
 
 use std::collections::HashMap;
 
-use catalog::manager::Manager as CatalogManager;
-use ceresdbproto::storage::{
+use ceresdbproto_deps::ceresdbproto::storage::{
     Value_oneof_value, WriteEntry, WriteMetric, WriteRequest, WriteResponse,
 };
 use common_types::{
@@ -28,8 +27,8 @@ use crate::{
     grpc::{self, HandlerContext},
 };
 
-pub(crate) async fn handle_write<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     req: WriteRequest,
 ) -> Result<WriteResponse> {
     let request_id = RequestId::next_id();
@@ -105,8 +104,8 @@ pub(crate) async fn handle_write<C: CatalogManager + 'static, Q: QueryExecutor +
     Ok(resp)
 }
 
-async fn write_request_to_insert_plan<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     mut write_request: WriteRequest,
     request_id: RequestId,
 ) -> Result<Vec<InsertPlan>> {
@@ -144,8 +143,8 @@ async fn write_request_to_insert_plan<C: CatalogManager + 'static, Q: QueryExecu
     Ok(plan_vec)
 }
 
-fn try_get_table<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+fn try_get_table<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     table_name: &str,
 ) -> Result<Option<TableRef>> {
     ctx.instance
@@ -178,8 +177,8 @@ fn try_get_table<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
         })
 }
 
-async fn create_table<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+async fn create_table<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     write_metric: &WriteMetric,
     request_id: RequestId,
 ) -> Result<()> {
@@ -432,7 +431,7 @@ fn convert_proto_value_to_datum(
 
 #[cfg(test)]
 mod test {
-    use ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
+    use ceresdbproto_deps::ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
     use common_types::{
         column_schema::{self, ColumnSchema},
         schema::Builder,

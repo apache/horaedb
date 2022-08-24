@@ -6,7 +6,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::{meta_service, meta_service_grpc::CeresmetaRpcServiceClient};
+use ceresdbproto_deps::ceresdbproto::{
+    common::ResponseHeader, meta_service, meta_service_grpc::CeresmetaRpcServiceClient,
+};
 use common_util::{
     config::ReadableDuration,
     runtime::{JoinHandle, Runtime},
@@ -29,13 +31,13 @@ use tokio::{
 use crate::{
     types::{
         ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest, DropTableResponse,
-        GetTablesRequest, GetTablesResponse, NodeHeartbeatResponse, NodeInfo, NodeMetaInfo,
-        RequestHeader, ResponseHeader, ShardInfo,
+        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest,
+        GetShardTablesRequest, GetShardTablesResponse, NodeHeartbeatResponse, NodeInfo,
+        NodeMetaInfo, RequestHeader, RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     EventHandler, EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailDropTable,
-    FailGetGrpcClient, FailGetTables, FailHandleEvent, FailSendHeartbeat, FetchActionCmd,
-    InitHeartBeatStream, MetaClient, MetaRpc, Result,
+    FailGetGrpcClient, FailGetTables, FailHandleEvent, FailRouteTables, FailSendHeartbeat,
+    FetchActionCmd, InitHeartBeatStream, MetaClient, MetaRpc, Result,
 };
 
 #[derive(Debug, Deserialize, Clone)]
@@ -52,7 +54,7 @@ impl Default for MetaClientConfig {
     fn default() -> Self {
         Self {
             cluster_name: String::new(),
-            meta_addr: "http://127.0.0.1:8080".to_string(),
+            meta_addr: "127.0.0.1:8080".to_string(),
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
             cq_count: 8,
@@ -96,7 +98,7 @@ impl Inner {
 
     fn request_header(&self) -> RequestHeader {
         RequestHeader {
-            node: self.node_meta_info.node.to_string(),
+            node: self.node_meta_info.endpoint(),
             cluster_name: self.meta_config.cluster_name.clone(),
         }
     }
@@ -227,11 +229,12 @@ impl Inner {
                 resp,
             );
 
-            let resp = NodeHeartbeatResponse::from(resp);
-            if let Err(e) = check_response_header(&resp.header) {
+            if let Err(e) = check_response_header(resp.get_header()) {
                 error!("Fetch action cmd failed, err:{}", e);
                 continue;
             }
+
+            let resp = NodeHeartbeatResponse::from(resp);
             let event = match resp.action_cmd {
                 Some(action_cmd) => action_cmd,
                 None => {
@@ -355,10 +358,8 @@ impl MetaClient for MetaClientImpl {
             pb_req, pb_resp
         );
 
-        let resp = AllocSchemaIdResponse::from(pb_resp);
-
-        check_response_header(&resp.header)?;
-        Ok(resp)
+        check_response_header(pb_resp.get_header())?;
+        Ok(AllocSchemaIdResponse::from(pb_resp))
     }
 
     async fn alloc_table_id(&self, req: AllocTableIdRequest) -> Result<AllocTableIdResponse> {
@@ -381,8 +382,8 @@ impl MetaClient for MetaClientImpl {
             pb_req, pb_resp
         );
 
+        check_response_header(pb_resp.get_header())?;
         let resp = AllocTableIdResponse::from(pb_resp);
-        check_response_header(&resp.header)?;
 
         let add_table_cmd = ActionCmd::CreateTableCmd(CreateTableCmd {
             schema_name: resp.schema_name.clone(),
@@ -396,7 +397,7 @@ impl MetaClient for MetaClientImpl {
         Ok(resp)
     }
 
-    async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse> {
+    async fn drop_table(&self, req: DropTableRequest) -> Result<()> {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
@@ -416,23 +417,20 @@ impl MetaClient for MetaClientImpl {
             pb_req, pb_resp
         );
 
-        let resp = DropTableResponse::from(pb_resp);
-        check_response_header(&resp.header)?;
-
+        check_response_header(pb_resp.get_header())?;
         let drop_table_cmd = ActionCmd::DropTableCmd(DropTableCmd {
             schema_name: req.schema_name.clone(),
             name: req.name.clone(),
         });
-        self.inner.handle_event(&drop_table_cmd).await?;
 
-        Ok(resp)
+        self.inner.handle_event(&drop_table_cmd).await
     }
 
-    async fn get_tables(&self, req: GetTablesRequest) -> Result<GetTablesResponse> {
+    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse> {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_req = meta_service::GetTablesRequest::from(req);
+        let mut pb_req = meta_service::GetShardTablesRequest::from(req);
         pb_req.set_header(self.inner.request_header().into());
 
         let pb_resp = grpc_client
@@ -449,10 +447,30 @@ impl MetaClient for MetaClientImpl {
             pb_req, pb_resp
         );
 
-        let resp = GetTablesResponse::from(pb_resp);
-        check_response_header(&resp.header)?;
+        check_response_header(pb_resp.get_header())?;
 
-        Ok(resp)
+        Ok(GetShardTablesResponse::from(pb_resp))
+    }
+
+    async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse> {
+        // TODO: maybe we can define a macro to avoid these boilerplate codes.
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = meta_service::RouteTablesRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+
+        let pb_resp = grpc_client
+            .client
+            .route_tables_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?;
+
+        check_response_header(pb_resp.get_header())?;
+        Ok(RouteTablesResponse::from(pb_resp))
     }
 
     async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
@@ -496,11 +514,12 @@ impl MetaClient for MetaClientImpl {
 }
 
 fn check_response_header(header: &ResponseHeader) -> Result<()> {
-    if header.is_success() {
+    if header.code == 0 {
         Ok(())
     } else {
         MetaRpc {
-            header: header.clone(),
+            code: header.code,
+            msg: header.get_error(),
         }
         .fail()
     }

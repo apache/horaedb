@@ -35,5 +35,5 @@ docker run -d --name ceresdb-server \
   ceresdb/ceresdb-server:v0.2.0
 ```
 
-# Write and read data
-- [Quick Start](https://github.com/CeresDB/ceresdb/blob/main/docs/user-guide/src/quick_start.md)
+# Documentation
+- https://docs.ceresdb.io/

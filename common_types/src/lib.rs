@@ -19,6 +19,7 @@ pub mod row;
 #[cfg(feature = "arrow_deps")]
 pub mod schema;
 pub mod string;
+pub mod table;
 pub mod time;
 
 /// Sequence number

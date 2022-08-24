@@ -45,6 +45,9 @@ pub mod error {
         #[snafu(display("Sst meta data is empty.\nBacktrace:\n{}", backtrace))]
         EmptySstMeta { backtrace: Backtrace },
 
+        #[snafu(display("Invalid schema, err:{}", source))]
+        InvalidSchema { source: common_types::schema::Error },
+
         #[snafu(display("Other kind of error:{}", source))]
         Other {
             source: Box<dyn std::error::Error + Send + Sync>,

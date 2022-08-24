@@ -4,8 +4,7 @@
 
 use std::time::Instant;
 
-use catalog::manager::Manager as CatalogManager;
-use ceresdbproto::{
+use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
     storage::{QueryRequest, QueryResponse, QueryResponse_SchemaType},
 };
@@ -39,8 +38,8 @@ fn empty_ok_resp() -> QueryResponse {
     resp
 }
 
-pub async fn handle_query<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+pub async fn handle_query<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     req: QueryRequest,
 ) -> Result<QueryResponse> {
     let output_result = fetch_query_output(ctx, &req).await?;
@@ -56,8 +55,8 @@ pub async fn handle_query<C: CatalogManager + 'static, Q: QueryExecutor + 'stati
     }
 }
 
-pub async fn fetch_query_output<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, C, Q>,
+pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
     req: &QueryRequest,
 ) -> Result<Option<Output>> {
     let request_id = RequestId::next_id();
@@ -76,7 +75,7 @@ pub async fn fetch_query_output<C: CatalogManager + 'static, Q: QueryExecutor + 
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
-        manager: &instance.catalog_manager,
+        manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
         default_schema: ctx.tenant(),
         function_registry: &*instance.function_registry,

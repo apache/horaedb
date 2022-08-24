@@ -20,9 +20,13 @@ use table_engine::{
 };
 use tokio::sync::oneshot;
 
+use self::data::TableDataRef;
 use crate::{
-    instance::{flush_compaction::TableFlushOptions, InstanceRef},
-    space::SpaceAndTable,
+    instance::{
+        flush_compaction::{TableFlushOptions, TableFlushPolicy},
+        InstanceRef,
+    },
+    space::{SpaceAndTable, SpaceId},
 };
 
 pub mod data;
@@ -31,24 +35,38 @@ pub mod sst_util;
 pub mod version;
 pub mod version_edit;
 
-// TODO(yingwen): How to handle drop table?
-
 /// Table trait implementation
 pub struct TableImpl {
-    /// Space and table info
     space_table: SpaceAndTable,
     /// Instance
     instance: InstanceRef,
     /// Engine type
     engine_type: String,
+
+    space_id: SpaceId,
+    table_id: TableId,
+
+    /// Holds a strong reference to prevent the underlying table from being
+    /// dropped when this handle exist.
+    table_data: TableDataRef,
 }
 
 impl TableImpl {
-    pub fn new(space_table: SpaceAndTable, instance: InstanceRef, engine_type: String) -> Self {
+    pub fn new(
+        instance: InstanceRef,
+        engine_type: String,
+        space_id: SpaceId,
+        table_id: TableId,
+        table_data: TableDataRef,
+        space_table: SpaceAndTable,
+    ) -> Self {
         Self {
             space_table,
             instance,
             engine_type,
+            space_id,
+            table_id,
+            table_data,
         }
     }
 }
@@ -56,7 +74,8 @@ impl TableImpl {
 impl fmt::Debug for TableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
-            .field("space_table", &self.space_table)
+            .field("space_id", &self.space_id)
+            .field("table_id", &self.table_id)
             .finish()
     }
 }
@@ -64,19 +83,19 @@ impl fmt::Debug for TableImpl {
 #[async_trait]
 impl Table for TableImpl {
     fn name(&self) -> &str {
-        &self.space_table.table_data().name
+        &self.table_data.name
     }
 
     fn id(&self) -> TableId {
-        self.space_table.table_data().id
+        self.table_data.id
     }
 
     fn schema(&self) -> Schema {
-        self.space_table.table_data().schema()
+        self.table_data.schema()
     }
 
     fn options(&self) -> HashMap<String, String> {
-        self.space_table.table_data().table_options().to_raw_map()
+        self.table_data.table_options().to_raw_map()
     }
 
     fn engine_type(&self) -> &str {
@@ -84,7 +103,7 @@ impl Table for TableImpl {
     }
 
     fn stats(&self) -> TableStats {
-        let metrics = &self.space_table.table_data().metrics;
+        let metrics = &self.table_data.metrics;
 
         TableStats {
             num_write: metrics.write_request_counter.get(),
@@ -232,6 +251,7 @@ impl Table for TableImpl {
             } else {
                 None
             },
+            policy: TableFlushPolicy::Dump,
         };
 
         self.instance

@@ -4,4 +4,5 @@
 
 pub mod builder;
 pub mod encoding;
+mod hybrid;
 pub mod reader;

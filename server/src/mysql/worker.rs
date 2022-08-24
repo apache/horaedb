@@ -2,7 +2,6 @@
 
 use std::{marker::PhantomData, sync::Arc};
 
-use catalog::manager::Manager as CatalogManager;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use query_engine::executor::Executor as QueryExecutor;
@@ -22,19 +21,18 @@ use crate::{
     },
 };
 
-pub struct MysqlWorker<W: std::io::Write + Send + Sync, C, Q> {
+pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
-    instance: Arc<Instance<C, Q>>,
+    instance: Arc<Instance<Q>>,
     runtimes: Arc<EngineRuntimes>,
 }
 
-impl<W, C, Q> MysqlWorker<W, C, Q>
+impl<W, Q> MysqlWorker<W, Q>
 where
     W: std::io::Write + Send + Sync,
-    C: CatalogManager + 'static,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(instance: Arc<Instance<C, Q>>, runtimes: Arc<EngineRuntimes>) -> Self {
+    pub fn new(instance: Arc<Instance<Q>>, runtimes: Arc<EngineRuntimes>) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             instance,
@@ -44,10 +42,9 @@ where
 }
 
 #[async_trait::async_trait]
-impl<W, C, Q> AsyncMysqlShim<W> for MysqlWorker<W, C, Q>
+impl<W, Q> AsyncMysqlShim<W> for MysqlWorker<W, Q>
 where
     W: std::io::Write + Send + Sync,
-    C: CatalogManager + 'static,
     Q: QueryExecutor + 'static,
 {
     type Error = crate::mysql::error::Error;
@@ -101,10 +98,9 @@ where
     }
 }
 
-impl<W, C, Q> MysqlWorker<W, C, Q>
+impl<W, Q> MysqlWorker<W, Q>
 where
     W: std::io::Write + Send + Sync,
-    C: CatalogManager + 'static,
     Q: QueryExecutor + 'static,
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Response> {

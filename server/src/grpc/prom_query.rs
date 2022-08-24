@@ -5,8 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use catalog::manager::Manager as CatalogManager;
-use ceresdbproto::{
+use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
     prometheus::{Label, PrometheusQueryRequest, PrometheusQueryResponse, Sample, TimeSeries},
 };
@@ -37,12 +36,11 @@ fn is_table_not_found_error(e: &FrontendError) -> bool {
                          if matches!(source, sql::promql::Error::TableNotFound { .. })))
 }
 
-pub async fn handle_query<C, Q>(
-    ctx: &HandlerContext<'_, C, Q>,
+pub async fn handle_query<Q>(
+    ctx: &HandlerContext<'_, Q>,
     req: PrometheusQueryRequest,
 ) -> Result<PrometheusQueryResponse>
 where
-    C: CatalogManager + 'static,
     Q: QueryExecutor + 'static,
 {
     let request_id = RequestId::next_id();
@@ -60,7 +58,7 @@ where
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
-        manager: &instance.catalog_manager,
+        manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
         default_schema: ctx.tenant(),
         function_registry: &*instance.function_registry,

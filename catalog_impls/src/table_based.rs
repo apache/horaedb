@@ -12,9 +12,9 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable, CreateOptions,
-        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
-        OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
+        self, AllocateTableId, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable,
+        CreateOptions, CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest,
+        NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
         WriteTableMeta,
     },
     Catalog, CatalogRef,
@@ -29,7 +29,8 @@ use system_catalog::sys_catalog_table::{
 use table_engine::{
     engine::{TableEngineRef, TableState},
     table::{
-        ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeqGenerator,
+        ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeq,
+        TableSeqGenerator,
     },
 };
 use tokio::sync::Mutex;
@@ -70,14 +71,31 @@ pub enum Error {
         schema: String,
         source: system_catalog::sys_catalog_table::Error,
     },
+
+    #[snafu(display(
+        "Invalid schema id and table seq, schema_id:{:?}, table_seq:{:?}.\nBacktrace:\n{}",
+        schema_id,
+        table_seq,
+        backtrace,
+    ))]
+    InvalidSchemaIdAndTableSeq {
+        schema_id: SchemaId,
+        table_seq: TableSeq,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
 
 /// Table based catalog manager
-#[derive(Clone)]
 pub struct TableBasedManager {
-    inner: Arc<Inner>,
+    /// Sys catalog table
+    catalog_table: Arc<SysCatalogTable>,
+    catalogs: CatalogMap,
+    /// Table engine proxy
+    engine_proxy: TableEngineRef,
+    /// Global schema id generator, Each schema has a unique schema id.
+    schema_id_generator: Arc<SchemaIdGenerator>,
 }
 
 impl Manager for TableBasedManager {
@@ -90,17 +108,12 @@ impl Manager for TableBasedManager {
     }
 
     fn catalog_by_name(&self, name: NameRef) -> manager::Result<Option<CatalogRef>> {
-        let catalog = self.inner.catalogs.get(name).cloned().map(|v| v as _);
+        let catalog = self.catalogs.get(name).cloned().map(|v| v as _);
         Ok(catalog)
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
-        Ok(self
-            .inner
-            .catalogs
-            .iter()
-            .map(|(_, v)| v.clone() as _)
-            .collect())
+        Ok(self.catalogs.iter().map(|(_, v)| v.clone() as _).collect())
     }
 }
 
@@ -114,40 +127,23 @@ impl TableBasedManager {
             .await
             .context(BuildSysCatalog)?;
 
-        let mut inner = Inner {
+        let mut manager = Self {
             catalog_table: Arc::new(catalog_table),
             catalogs: HashMap::new(),
             engine_proxy,
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
         };
 
-        inner.init().await?;
+        manager.init().await?;
 
-        Ok(Self {
-            inner: Arc::new(inner),
-        })
+        Ok(manager)
     }
 
     #[cfg(test)]
     pub fn get_engine_proxy(&self) -> TableEngineRef {
-        self.inner.engine_proxy.clone()
+        self.engine_proxy.clone()
     }
-}
 
-type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
-
-/// Inner state of TableBasedManager
-struct Inner {
-    /// Sys catalog table
-    catalog_table: Arc<SysCatalogTable>,
-    catalogs: CatalogMap,
-    /// Table engine proxy
-    engine_proxy: TableEngineRef,
-    /// Global schema id generator, Each schema has a unique schema id.
-    schema_id_generator: Arc<SchemaIdGenerator>,
-}
-
-impl Inner {
     /// Load all data from sys catalog table.
     async fn init(&mut self) -> Result<()> {
         // The system catalog and schema in it is not persisted, so we add it manually.
@@ -307,6 +303,8 @@ impl Inner {
     }
 }
 
+type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
+
 /// Sys catalog visitor implementation, used to load catalog info
 struct VisitorImpl<'a> {
     catalog_table: Arc<SysCatalogTable>,
@@ -385,7 +383,7 @@ impl<'a> Visitor for VisitorImpl<'a> {
 
         // Update max table sequence of the schema.
         let table_id = table_info.table_id;
-        let table_seq = table_id.table_seq();
+        let table_seq = TableSeq::from(table_id);
         if table_seq.as_u64() >= schema.table_seq_generator.last_table_seq_u64() {
             schema.table_seq_generator.set_last_table_seq(table_seq);
         }
@@ -631,7 +629,7 @@ impl SchemaImpl {
             .cloned()
     }
 
-    async fn alloc_table_id<'a>(&'a self, name: NameRef<'a>) -> schema::Result<TableId> {
+    async fn alloc_table_id<'a>(&self, name: NameRef<'a>) -> schema::Result<TableId> {
         let table_seq = self
             .table_seq_generator
             .alloc_table_seq()
@@ -640,7 +638,16 @@ impl SchemaImpl {
                 table: name,
             })?;
 
-        Ok(TableId::new(self.schema_id, table_seq))
+        TableId::with_seq(self.schema_id, table_seq)
+            .context(InvalidSchemaIdAndTableSeq {
+                schema_id: self.schema_id,
+                table_seq,
+            })
+            .map_err(|e| Box::new(e) as _)
+            .context(AllocateTableId {
+                schema: &self.schema_name,
+                table: name,
+            })
     }
 }
 
@@ -893,9 +900,7 @@ mod tests {
         // Create catalog manager, use analytic table as backend
         TableBasedManager::new(analytic.clone(), engine_proxy.clone())
             .await
-            .unwrap_or_else(|e| {
-                panic!("Failed to create catalog manager, err:{}", e);
-            })
+            .expect("Failed to create catalog manager")
     }
 
     async fn build_default_schema_with_catalog(catalog_manager: &TableBasedManager) -> SchemaRef {

@@ -33,7 +33,6 @@ members = [
     "grpcio",
     "interpreters",
     "meta_client",
-    "meta_client_v2",
     "proto",
     "query_engine",
     "server",
@@ -51,13 +50,16 @@ path = "src/bin/ceresdb-server.rs"
 [dependencies]
 # Workspace dependencies, in alphabetical order
 analytic_engine = { path = "analytic_engine" }
+async-trait = "0.1.53"
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 clap = "2.0"
+cluster = { path = "cluster" }
 common_util = { path = "common_util" }
 df_operator = { path = "df_operator" }
 log = "0.4"
 logger = { path = "components/logger" }
+meta_client = { path = "meta_client" }
 query_engine = { path = "query_engine" }
 server = { path = "server" }
 table_engine = { path = "table_engine" }

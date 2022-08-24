@@ -14,10 +14,11 @@ catalog = { path = "../catalog" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 log = "0.4"
-meta_client_v2 = { path = "../meta_client_v2" }
+meta_client = { path = "../meta_client" }
 rust-fsm = "0.6.0"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0.60"
 snafu = { version ="0.6.10", features = ["backtraces"]}
+table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }

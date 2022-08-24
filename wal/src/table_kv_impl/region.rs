@@ -23,12 +23,10 @@ use table_kv::{
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::LogKey,
+    kv_encoder::{LogEncoding, LogKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
-    table_kv_impl::{
-        encoding, encoding::LogEncoding, model::RegionEntry, namespace::BucketRef, WalRuntimes,
-    },
+    table_kv_impl::{encoding, model::RegionEntry, namespace::BucketRef, WalRuntimes},
 };
 
 #[derive(Debug, Snafu)]
@@ -260,7 +258,7 @@ impl Region {
         table_kv: &T,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<'_>,
+        log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         let mut writer = self.writer.lock().await;
         writer
@@ -796,7 +794,7 @@ impl RegionWriter {
         region_state: &RegionState,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
-        log_batch: &LogWriteBatch<'_>,
+        log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         debug!(
             "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
@@ -811,16 +809,12 @@ impl RegionWriter {
             let mut wb = T::WriteBatch::with_capacity(log_batch.len());
             let mut next_sequence_num = self.alloc_sequence_num(region_state, entries_num)?;
             let mut key_buf = BytesMut::new();
-            let mut value_buf = BytesMut::new();
 
             for entry in &log_batch.entries {
                 log_encoding
                     .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
                     .context(LogCodec)?;
-                log_encoding
-                    .encode_value(&mut value_buf, entry.payload)
-                    .context(LogCodec)?;
-                wb.insert(&key_buf, &value_buf);
+                wb.insert(&key_buf, &entry.payload);
 
                 next_sequence_num += 1;
             }

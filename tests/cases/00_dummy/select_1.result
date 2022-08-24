@@ -56,7 +56,9 @@ Int64(24),
 
 SELECT "That is not good.";
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT \"That is not good.\";. Caused by: Failed to create plan, err:DataFusion Failed to plan, err:This feature is not implemented: Unsupported ast node Value(DoubleQuotedString(\"That is not good.\")) in sqltorel" })
+Utf8("That is not good."),
+String(StringBytes(b"That is not good.")),
+
 
 SELECT *;
 

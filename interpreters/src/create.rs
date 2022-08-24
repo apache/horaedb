@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use catalog::{
-    manager::Manager,
+    manager::ManagerRef,
     schema::{CreateOptions, CreateTableRequest},
 };
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -50,18 +50,18 @@ pub enum Error {
 define_result!(Error);
 
 /// Create interpreter
-pub struct CreateInterpreter<C> {
+pub struct CreateInterpreter {
     ctx: Context,
     plan: CreateTablePlan,
-    catalog_manager: C,
+    catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
 }
 
-impl<C: Manager + 'static> CreateInterpreter<C> {
+impl CreateInterpreter {
     pub fn create(
         ctx: Context,
         plan: CreateTablePlan,
-        catalog_manager: C,
+        catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
     ) -> InterpreterPtr {
         Box::new(Self {
@@ -73,7 +73,7 @@ impl<C: Manager + 'static> CreateInterpreter<C> {
     }
 }
 
-impl<C: Manager> CreateInterpreter<C> {
+impl CreateInterpreter {
     async fn execute_create(self: Box<Self>) -> Result<Output> {
         let default_catalog = self.ctx.default_catalog();
         let catalog = self
@@ -132,7 +132,7 @@ impl<C: Manager> CreateInterpreter<C> {
 // TODO(yingwen): Wrap a method that returns self::Result, simplify some code to
 // converting self::Error to super::Error
 #[async_trait]
-impl<C: Manager> Interpreter for CreateInterpreter<C> {
+impl Interpreter for CreateInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         self.execute_create().await.context(Create)
     }
