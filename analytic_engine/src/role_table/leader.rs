@@ -20,9 +20,7 @@ use crate::{
         write::TableWritePolicy,
         Instance, InstanceRef,
     },
-    role_table::{
-        AlterTable, FlushTable, ReadTable, Result, RoleTable, RoleTableRef, TableRole, WriteTable,
-    },
+    role_table::{Alter, Flush, Read, Result, RoleTable, RoleTableRef, TableRole, Write},
     table::data::TableDataRef,
 };
 
@@ -80,7 +78,7 @@ impl LeaderTableInner {
             .write_to_table(self.table_data.clone(), request, policy)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(WriteTable)
+            .context(Write)
     }
 
     async fn read(
@@ -94,7 +92,7 @@ impl LeaderTableInner {
             .partitioned_read_from_table(&self.table_data, request)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(ReadTable)
+            .context(Read)
     }
 
     async fn flush(
@@ -109,7 +107,7 @@ impl LeaderTableInner {
             .flush_table(&self.table_data, flush_opts)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(FlushTable)
+            .context(Flush)
     }
 
     async fn alter_schema(
@@ -124,7 +122,7 @@ impl LeaderTableInner {
             .alter_schema_of_table(&self.table_data, request, policy)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(AlterTable)
+            .context(Alter)
     }
 
     async fn alter_options(
@@ -139,7 +137,7 @@ impl LeaderTableInner {
             .alter_options_of_table(&self.table_data, options, policy)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(AlterTable)
+            .context(Alter)
     }
 }
 

@@ -19,22 +19,22 @@ mod leader;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to write table, err:{}", source))]
-    WriteTable {
+    Write {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
     #[snafu(display("Failed to read table, err:{}", source))]
-    ReadTable {
+    Read {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
     #[snafu(display("Failed to alter table, err:{}", source))]
-    AlterTable {
+    Alter {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 
     #[snafu(display("Failed to flush table, err:{}", source))]
-    FlushTable {
+    Flush {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 }
