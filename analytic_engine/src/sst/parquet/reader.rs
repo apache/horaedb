@@ -40,7 +40,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use crate::sst::{
     factory::SstReaderOptions,
     file::SstMetaData,
-    parquet::encoding,
+    parquet::encoding::{self, ParquetDecoder},
     reader::{error::*, SstReader},
 };
 
@@ -320,6 +320,7 @@ impl ProjectAndFilterReader {
         let reader = self.project_and_filter_reader()?;
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
+        let arrow_schema = self.projected_schema.to_projected_arrow_schema();
         let mut row_num = 0;
         for record_batch in reader {
             trace!(
@@ -333,12 +334,33 @@ impl ProjectAndFilterReader {
                 .context(DecodeRecordBatch)
             {
                 Ok(record_batch) => {
-                    let arrow_schema = record_batch.schema();
+                    // let arrow_schema = record_batch.schema();
                     let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
                         .map_err(|e| Box::new(e) as _)
                         .context(DecodeSstMeta)?;
-                    let record_batch = match arrow_schema_meta.storage_format() {
-                        StorageFormat::Hybrid => todo!(),
+                    let mut format = arrow_schema_meta.storage_format();
+                    println!(
+                        "debug_fields:{:?}, format:{:?}",
+                        arrow_schema.fields(),
+                        format
+                    );
+                    // TODO: remove this overwrite when we can set format via table options
+                    if matches!(format, StorageFormat::Hybrid)
+                        && !arrow_schema_meta.enable_tsid_primary_key()
+                    {
+                        format = StorageFormat::Columnar;
+                    }
+                    println!("debug_new_format:{:?}", format);
+
+                    let record_batch = match format {
+                        StorageFormat::Hybrid => ParquetDecoder {
+                            record_batch,
+                            arrow_schema: arrow_schema.clone(),
+                        }
+                        .decode()
+                        .map_err(|e| Box::new(e) as _)
+                        .context(DecodeRecordBatch)?,
+
                         StorageFormat::Columnar => record_batch,
                     };
 

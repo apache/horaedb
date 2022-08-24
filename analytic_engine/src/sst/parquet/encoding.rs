@@ -7,7 +7,11 @@ use std::{
 };
 
 use arrow_deps::{
-    arrow::record_batch::RecordBatch as ArrowRecordBatch,
+    arrow::{
+        array::{Array, ArrayData},
+        buffer::{Buffer, MutableBuffer},
+        record_batch::RecordBatch as ArrowRecordBatch,
+    },
     parquet::{
         arrow::ArrowWriter,
         basic::Compression,
@@ -17,9 +21,10 @@ use arrow_deps::{
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
     datum::DatumKind,
-    schema::{ArrowSchemaRef, Schema, StorageFormat},
+    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema, StorageFormat},
 };
 use common_util::define_result;
+use log::debug;
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -459,5 +464,92 @@ impl ParquetEncoder {
 
     pub fn close(mut self) -> Result<Vec<u8>> {
         self.record_encoder.close()
+    }
+}
+
+pub struct ParquetDecoder {
+    pub record_batch: ArrowRecordBatch,
+    pub arrow_schema: ArrowSchemaRef,
+}
+
+impl ParquetDecoder {
+    fn convert_schema(arrow_schema: ArrowSchemaRef) -> ArrowSchemaRef {
+        let new_fields: Vec<_> = arrow_schema
+            .fields()
+            .iter()
+            .map(|f| {
+                if let DataType::List(nested_field) = f.data_type() {
+                    Field::new(f.name(), nested_field.data_type().clone(), true)
+                } else {
+                    f.clone()
+                }
+            })
+            .collect();
+        Arc::new(ArrowSchema::new_with_metadata(
+            new_fields,
+            arrow_schema.metadata().clone(),
+        ))
+    }
+
+    /// Decode records from hybrid to columnar format
+    pub fn decode(self) -> Result<ArrowRecordBatch> {
+        let new_arrow_schema = Self::convert_schema(self.record_batch.schema());
+        let columns = self.record_batch.columns();
+        let mut offsets = None;
+        let mut num_values = 0;
+        for col in columns {
+            if matches!(col.data_type(), DataType::List(_)) {
+                let offset_slices = col.data().buffers()[0].as_slice();
+                num_values = col.data().child_data()[0].len();
+
+                let mut i32_offsets = Vec::with_capacity(offset_slices.len() / 4);
+                for i in (0..offset_slices.len()).step_by(4) {
+                    let offset = i32::from_le_bytes(offset_slices[i..i + 4].try_into().unwrap());
+                    i32_offsets.push(offset);
+                }
+                offsets = Some(i32_offsets);
+                break;
+            }
+        }
+        debug!("offsets:{:?}, num_values:{}", offsets, num_values);
+
+        let offsets = offsets.unwrap();
+        let new_cols = columns
+            .iter()
+            .map(|col| {
+                let data_type = col.data_type();
+                match data_type {
+                    DataType::List(_nested_field) => col.data().child_data()[0].clone().into(),
+                    _ => {
+                        let datum_kind = DatumKind::from_data_type(data_type).unwrap();
+                        let value_size = datum_kind.size().unwrap();
+                        let mut new_buffer = MutableBuffer::new(value_size * num_values);
+                        let raw_buffer = col.data().buffers()[0].as_slice();
+                        for (idx, offset) in (0..raw_buffer.len()).step_by(value_size).enumerate() {
+                            debug!("xx {idx}-{offset}-{}-{value_size}", offsets[idx]);
+                            let value_num = offsets[idx + 1] - offsets[idx];
+                            new_buffer.extend(
+                                raw_buffer[offset..offset + value_size].repeat(value_num as usize),
+                            )
+                        }
+                        let buf: Buffer = new_buffer.into();
+                        debug!("11_{:?}, new_buffer:{:#02x?}", data_type, buf.as_slice());
+
+                        let array_data = ArrayData::builder(data_type.clone())
+                            .add_buffer(buf)
+                            .len(num_values)
+                            .build()
+                            .unwrap();
+
+                        array_data.into()
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        println!("try_new:{:?}, cols:{:?}", new_arrow_schema, new_cols);
+        ArrowRecordBatch::try_new(new_arrow_schema, new_cols)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)
     }
 }

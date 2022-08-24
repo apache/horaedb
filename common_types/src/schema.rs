@@ -199,6 +199,10 @@ impl ArrowSchemaMeta {
         }
     }
 
+    pub fn enable_tsid_primary_key(&self) -> bool {
+        self.enable_tsid_primary_key
+    }
+
     fn parse_arrow_schema_meta_value<T>(
         meta: &HashMap<String, String>,
         key: ArrowSchemaMetaKey,
@@ -503,6 +507,7 @@ pub fn compare_row<LR: RowView, RR: RowView>(
 }
 
 /// StorageFormat specify how records are saved in persistent storage
+#[derive(Debug)]
 pub enum StorageFormat {
     /// Traditional columnar format, every column is saved in one exact one
     /// column, for example:
