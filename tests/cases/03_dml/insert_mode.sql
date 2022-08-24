@@ -12,7 +12,7 @@ WITH(
 
 
 INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)
-    VALUES (1, 10), (2, 20), (3, 30);
+    VALUES (1, +10), (2, 0), (3, -30);
 
 
 SELECT
