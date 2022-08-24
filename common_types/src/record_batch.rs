@@ -558,7 +558,7 @@ impl From<RowProjector> for ArrowRecordBatchProjector {
 
 impl ArrowRecordBatchProjector {
     /// Project the [arrow::RecordBatch] to [RecordBatchWithKey] and these
-    /// things is to be done:
+    /// things are to be done:
     ///  - Insert the null column if the projected column does not appear in the
     ///    source schema.
     ///  - Convert the [arrow::RecordBatch] to [RecordBatchWithKey].

@@ -8,8 +8,8 @@ use std::{
 use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
-use meta_client_v2::{
-    types::{ActionCmd, GetTablesRequest},
+use meta_client::{
+    types::{ActionCmd, GetShardTablesRequest},
     EventHandler, MetaClient,
 };
 use snafu::ResultExt;
@@ -21,7 +21,7 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
-    Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterTopologyRef, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -88,11 +88,11 @@ impl ClusterImpl {
 
     // Register node every 2/3 lease
     fn heartbeat_interval(&self) -> Duration {
-        Duration::from_secs(self.config.meta_client_config.lease.as_millis() * 2 / 3)
+        Duration::from_secs(self.config.meta_client.lease.as_millis() * 2 / 3)
     }
 
     fn error_wait_lease(&self) -> Duration {
-        self.config.meta_client_config.lease.0 / 2
+        self.config.meta_client.lease.0 / 2
     }
 }
 
@@ -118,21 +118,21 @@ impl EventHandler for Inner {
             ActionCmd::MetaOpenCmd(open_cmd) => {
                 let resp = self
                     .meta_client
-                    .get_tables(GetTablesRequest {
+                    .get_tables(GetShardTablesRequest {
                         shard_ids: open_cmd.shard_ids.clone(),
                     })
                     .await
                     .context(MetaClientFailure)
                     .map_err(Box::new)?;
 
-                for shard_tables in resp.tables_map.values() {
+                for shard_tables in resp.shard_tables.values() {
                     for table in &shard_tables.tables {
                         self.table_manipulator
                             .open_table(&table.schema_name, &table.name, table.id)
                             .await?;
                     }
                 }
-                self.table_manager.update_table_info(&resp.tables_map);
+                self.table_manager.update_table_info(&resp.shard_tables);
 
                 Ok(())
             }
@@ -190,7 +190,7 @@ impl Cluster for ClusterImpl {
             .await
             .context(StartMetaClient)?;
 
-        // start the backgroud loop for sending heartbeat.
+        // start the background loop for sending heartbeat.
         self.start_heartbeat_loop();
 
         info!("Cluster has started");
@@ -220,5 +220,9 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    async fn fetch_topology(&self) -> Result<ClusterTopologyRef> {
+        todo!("fetch topology from the meta")
     }
 }

@@ -5,7 +5,7 @@
 //! The root mod only contains common functions of instance, other logics are
 //! divided into the sub crates
 
-mod alter;
+pub(crate) mod alter;
 mod close;
 mod create;
 mod drop;
@@ -14,7 +14,7 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
-mod write;
+pub(crate) mod write;
 pub mod write_worker;
 
 use std::{
@@ -37,9 +37,11 @@ use crate::{
     space::{SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::TableDataRef,
+    wal_synchronizer::WalSynchronizer,
     TableOptions,
 };
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to stop file purger, err:{}", source))]
@@ -48,6 +50,11 @@ pub enum Error {
     #[snafu(display("Failed to stop compaction scheduler, err:{}", source))]
     StopScheduler {
         source: crate::compaction::scheduler::Error,
+    },
+
+    #[snafu(display("Failed to stop WAL Synchronizer, err:{}", source))]
+    StopWalSynchronizer {
+        source: crate::wal_synchronizer::Error,
     },
 }
 
@@ -141,7 +148,6 @@ impl SpaceStore {
 /// Table engine instance
 ///
 /// Manages all spaces, also contains needed resources shared across all table
-// TODO(yingwen): Track memory usage of all tables (or tables of space)
 pub struct Instance {
     /// Space storage
     space_store: Arc<SpaceStore>,
@@ -157,6 +163,7 @@ pub struct Instance {
     // End of write group options.
     compaction_scheduler: CompactionSchedulerRef,
     file_purger: FilePurger,
+    wal_synchronizer: WalSynchronizer,
 
     meta_cache: Option<MetaCacheRef>,
     data_cache: Option<DataCacheRef>,
@@ -174,6 +181,11 @@ impl Instance {
     /// Close the instance gracefully.
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
+
+        self.wal_synchronizer
+            .stop()
+            .await
+            .context(StopWalSynchronizer)?;
 
         self.space_store.close().await?;
 

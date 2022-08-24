@@ -19,7 +19,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
-    log_batch::{LogEntry, LogWriteBatch, LogWriteEntry},
+    log_batch::LogEntry,
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
         RegionId, SequenceNumber, WalManagerRef, WriteContext,
@@ -36,6 +36,21 @@ use crate::meta::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display(
+        "Failed to get to get log batch encoder, region_id:{}, err:{}",
+        region_id,
+        source
+    ))]
+    GetLogBatchEncoder {
+        region_id: RegionId,
+        source: wal::manager::Error,
+    },
+
+    #[snafu(display("Failed to encode payloads, region_id:{}, err:{}", region_id, source))]
+    EncodePayloads {
+        region_id: RegionId,
+        source: wal::manager::Error,
+    },
     #[snafu(display("Failed to write update to wal, err:{}", source))]
     WriteWal { source: wal::manager::Error },
 
@@ -170,9 +185,14 @@ impl ManifestImpl {
         info!("Manifest store update, update:{:?}", update);
 
         let region_id = Self::region_id_of_meta_update(&update);
-        let mut log_batch = LogWriteBatch::new(region_id);
         let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(update).into();
-        log_batch.push(LogWriteEntry { payload: &payload });
+        let log_batch_encoder = self
+            .wal_manager
+            .encoder(region_id)
+            .context(GetLogBatchEncoder { region_id })?;
+        let log_batch = log_batch_encoder
+            .encode(&payload)
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 
@@ -311,17 +331,14 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        let mut log_batch = LogWriteBatch::new(self.region_id);
-        let mut payload_batch = Vec::with_capacity(log_entries.len());
-
-        for entry in log_entries {
-            let payload = MetaUpdatePayload::from(entry);
-            payload_batch.push(payload);
-        }
-
-        for payload in payload_batch.iter() {
-            log_batch.push(LogWriteEntry { payload });
-        }
+        let region_id = self.region_id;
+        let log_batch_encoder = self
+            .wal_manager
+            .encoder(self.region_id)
+            .context(GetLogBatchEncoder { region_id })?;
+        let log_batch = log_batch_encoder
+            .encode_batch::<MetaUpdatePayload, MetaUpdateLogEntry>(log_entries)
+            .context(EncodePayloads { region_id })?;
 
         let write_ctx = WriteContext::default();
 
@@ -726,10 +743,11 @@ mod tests {
         }
 
         fn alloc_table_id(&self) -> TableId {
-            TableId::new(
+            TableId::with_seq(
                 self.schema_id,
                 self.table_seq_gen.alloc_table_seq().unwrap(),
             )
+            .unwrap()
         }
 
         fn table_name_from_id(table_id: TableId) -> String {
@@ -934,7 +952,7 @@ mod tests {
 
     #[test]
     fn test_manifest_add_table() {
-        let ctx = TestContext::new("add_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("add_table", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -944,7 +962,7 @@ mod tests {
 
     #[test]
     fn test_manifest_drop_table() {
-        let ctx = TestContext::new("drop_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("drop_table", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -955,7 +973,7 @@ mod tests {
 
     #[test]
     fn test_manifest_version_edit() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -967,7 +985,7 @@ mod tests {
 
     #[test]
     fn test_manifest_alter_options() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -979,7 +997,7 @@ mod tests {
 
     #[test]
     fn test_manifest_alter_schema() {
-        let ctx = TestContext::new("version_edit", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
         run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
             Box::pin(async move {
                 ctx.add_table(table_id, manifest_data_builder).await;
@@ -991,7 +1009,7 @@ mod tests {
 
     #[test]
     fn test_manifest_snapshot_one_table() {
-        let ctx = TestContext::new("snapshot_one_table", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("snapshot_one_table", SchemaId::from_u32(0));
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
@@ -1020,7 +1038,7 @@ mod tests {
 
     #[test]
     fn test_manifest_snapshot_one_table_massive_logs() {
-        let ctx = TestContext::new("snapshot_one_table_massive_logs", SchemaId::new(0).unwrap());
+        let ctx = TestContext::new("snapshot_one_table_massive_logs", SchemaId::from_u32(0));
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
@@ -1207,7 +1225,7 @@ mod tests {
     fn test_no_snapshot_logs_merge() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_no_snapshot",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1262,7 +1280,7 @@ mod tests {
     fn test_multiple_snapshot_merge_normal() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_normal",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1349,7 +1367,7 @@ mod tests {
     fn test_multiple_snapshot_merge_interleaved_snapshot() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_interleaved",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1439,7 +1457,7 @@ mod tests {
     fn test_multiple_snapshot_merge_sneaked_update() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_sneaked_update",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
@@ -1502,7 +1520,7 @@ mod tests {
     fn test_multiple_snapshot_drop_table() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_drop_table",
-            SchemaId::new(0).unwrap(),
+            SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
         let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![

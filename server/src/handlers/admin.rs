@@ -24,9 +24,9 @@ pub struct RejectResponse {
     read_reject_list: BTreeSet<String>,
 }
 
-pub async fn handle_reject<C: CatalogManager + 'static, Q: QueryExecutor + 'static>(
+pub async fn handle_reject<Q: QueryExecutor + 'static>(
     _ctx: RequestContext,
-    instance: InstanceRef<C, Q>,
+    instance: InstanceRef<Q>,
     request: RejectRequest,
 ) -> Result<RejectResponse> {
     match request.operation {

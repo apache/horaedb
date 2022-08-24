@@ -137,28 +137,11 @@ pub const DEFAULT_READ_PARALLELISM: usize = 8;
 pub struct SchemaId(u32);
 
 impl SchemaId {
-    /// Bits of schema id.
-    const BITS: u32 = 24;
-    /// 24 bits mask (0xffffff)
-    const MASK: u32 = (1 << Self::BITS) - 1;
-    /// Max schema id.
-    pub const MAX: SchemaId = SchemaId(Self::MASK);
     /// Min schema id.
     pub const MIN: SchemaId = SchemaId(0);
 
-    /// Create a new schema id from u32, return None if `id` is invalid.
-    pub fn new(id: u32) -> Option<Self> {
-        // Only need to check max as min is 0.
-        if id <= SchemaId::MAX.0 {
-            Some(Self(id))
-        } else {
-            None
-        }
-    }
-
-    // It is safe to convert u16 into schema id.
-    pub const fn from_u16(id: u16) -> Self {
-        Self(id as u32)
+    pub const fn from_u32(id: u32) -> Self {
+        Self(id)
     }
 
     /// Convert the schema id into u32.
@@ -176,7 +159,13 @@ impl PartialEq<u32> for SchemaId {
 
 impl From<u16> for SchemaId {
     fn from(id: u16) -> SchemaId {
-        SchemaId::from_u16(id)
+        Self(id as u32)
+    }
+}
+
+impl From<u32> for SchemaId {
+    fn from(id: u32) -> SchemaId {
+        Self(id)
     }
 }
 
@@ -205,8 +194,8 @@ impl TableSeq {
     }
 
     // It is safe to convert u32 into table seq.
-    pub const fn from_u32(id: u32) -> Self {
-        Self(id as u64)
+    pub const fn from_u32(seq: u32) -> Self {
+        Self(seq as u64)
     }
 
     /// Convert the table sequence into u64.
@@ -218,7 +207,16 @@ impl TableSeq {
 
 impl From<u32> for TableSeq {
     fn from(id: u32) -> TableSeq {
-        TableSeq::from_u32(id)
+        TableSeq(id as u64)
+    }
+}
+
+impl From<TableId> for TableSeq {
+    /// Get the sequence part of the table id.
+    fn from(table_id: TableId) -> TableSeq {
+        let seq_part = table_id.0 & TableSeq::MASK;
+
+        TableSeq(seq_part)
     }
 }
 
@@ -226,7 +224,7 @@ impl From<u32> for TableSeq {
 ///
 /// Table id is constructed via schema id (24 bits) and a table sequence (40
 /// bits).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Deserialize)]
 pub struct TableId(u64);
 
 impl TableId {
@@ -234,33 +232,21 @@ impl TableId {
     pub const MIN: TableId = TableId(0);
 
     /// Create table id from raw u64 number.
-    pub const fn from_raw(id: u64) -> Self {
+    pub const fn new(id: u64) -> Self {
         Self(id)
     }
 
     /// Create a new table id from `schema_id` and `table_seq`.
-    pub const fn new(schema_id: SchemaId, table_seq: TableSeq) -> Self {
+    ///
+    /// Return `None` If `schema_id` is not invalid.
+    pub const fn with_seq(schema_id: SchemaId, table_seq: TableSeq) -> Option<Self> {
         let schema_id_data = schema_id.0 as u64;
         let schema_id_part = schema_id_data << TableSeq::BITS;
-        let table_id_data = schema_id_part | table_seq.0;
-
-        Self(table_id_data)
-    }
-
-    /// Get the schema id part of the table id.
-    #[inline]
-    pub fn schema_id(&self) -> SchemaId {
-        let schema_id_part = self.0 >> TableSeq::BITS;
-
-        SchemaId(schema_id_part as u32)
-    }
-
-    /// Get the sequence part of the table id.
-    #[inline]
-    pub fn table_seq(&self) -> TableSeq {
-        let seq_part = self.0 & TableSeq::MASK;
-
-        TableSeq(seq_part)
+        if (schema_id_part >> TableSeq::BITS) != schema_id_data {
+            None
+        } else {
+            Some(Self(schema_id_part | table_seq.0))
+        }
     }
 
     /// Convert table id into u64.
@@ -272,19 +258,7 @@ impl TableId {
 
 impl From<u64> for TableId {
     fn from(id: u64) -> TableId {
-        TableId(id)
-    }
-}
-
-impl fmt::Debug for TableId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "TableId({}, {}, {})",
-            self.0,
-            self.schema_id().as_u32(),
-            self.table_seq().as_u64()
-        )
+        TableId::new(id)
     }
 }
 
@@ -490,9 +464,10 @@ impl SchemaIdGenerator {
     }
 
     pub fn alloc_schema_id(&self) -> Option<SchemaId> {
+        // TODO: consider the case where schema id overflows.
         let last = self.last_schema_id.fetch_add(1, Ordering::Relaxed);
 
-        SchemaId::new(last + 1)
+        Some(SchemaId::from(last + 1))
     }
 }
 
@@ -520,6 +495,7 @@ impl TableSeqGenerator {
     }
 
     pub fn alloc_table_seq(&self) -> Option<TableSeq> {
+        // TODO: consider the case where table sequence overflows.
         let last = self.last_table_seq.fetch_add(1, Ordering::Relaxed);
 
         TableSeq::new(last + 1)
@@ -606,7 +582,6 @@ mod tests {
     #[test]
     fn test_schema_id() {
         assert_eq!(0, SchemaId::MIN.as_u32());
-        assert_eq!(0xffffff, SchemaId::MAX.as_u32());
     }
 
     #[test]

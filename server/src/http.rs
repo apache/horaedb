@@ -6,7 +6,6 @@ use std::{
     collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
 };
 
-use catalog::manager::Manager as CatalogManager;
 use log::error;
 use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
@@ -84,21 +83,21 @@ impl reject::Reject for Error {}
 /// Http service
 ///
 /// Note that the service does not owns the runtime
-pub struct Service<C, Q> {
+pub struct Service<Q> {
     runtimes: Arc<EngineRuntimes>,
-    instance: InstanceRef<C, Q>,
+    instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     tx: Sender<()>,
 }
 
-impl<C, Q> Service<C, Q> {
+impl<Q> Service<Q> {
     // TODO(yingwen): Maybe log error or return error
     pub fn stop(self) {
         let _ = self.tx.send(());
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
+impl<Q: QueryExecutor + 'static> Service<Q> {
     fn routes(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         self.home()
             .or(self.metrics())
@@ -147,7 +146,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
         warp::path!("flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
-            .and_then(|instance: InstanceRef<C, Q>| async move {
+            .and_then(|instance: InstanceRef<Q>| async move {
                 let get_all_tables = || {
                     let mut tables = Vec::new();
                     for catalog in instance
@@ -265,7 +264,7 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
 
     fn with_instance(
         &self,
-    ) -> impl Filter<Extract = (InstanceRef<C, Q>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
         let instance = self.instance.clone();
         warp::any().map(move || instance.clone())
     }
@@ -296,13 +295,13 @@ impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Service<C, Q> {
 }
 
 /// Service builder
-pub struct Builder<C, Q> {
+pub struct Builder<Q> {
     config: Config,
     runtimes: Option<Arc<EngineRuntimes>>,
-    instance: Option<InstanceRef<C, Q>>,
+    instance: Option<InstanceRef<Q>>,
 }
 
-impl<C, Q> Builder<C, Q> {
+impl<Q> Builder<Q> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -316,15 +315,15 @@ impl<C, Q> Builder<C, Q> {
         self
     }
 
-    pub fn instance(mut self, instance: InstanceRef<C, Q>) -> Self {
+    pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
         self.instance = Some(instance);
         self
     }
 }
 
-impl<C: CatalogManager + 'static, Q: QueryExecutor + 'static> Builder<C, Q> {
+impl<Q: QueryExecutor + 'static> Builder<Q> {
     /// Build and start the service
-    pub fn build(self) -> Result<Service<C, Q>> {
+    pub fn build(self) -> Result<Service<Q>> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
         let (tx, rx) = oneshot::channel();

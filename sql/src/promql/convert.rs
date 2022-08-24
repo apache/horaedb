@@ -13,7 +13,7 @@ use arrow_deps::datafusion::{
     },
     sql::planner::ContextProvider,
 };
-use ceresdbproto::prometheus::{
+use ceresdbproto_deps::ceresdbproto::prometheus::{
     Expr as ExprPb, Filter as FilterPb, FilterType as FilterPbType, Operand as OperandPb,
     Selector as PbSelector, SubExpr as PbSubExpr, SubExpr_OperatorType,
 };

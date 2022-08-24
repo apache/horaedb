@@ -152,7 +152,8 @@ pub enum Error {
     },
 }
 
-// TODO(boyan)  make these constants configurable
+pub type SchemaId = u32;
+// TODO: make these constants configurable
 pub const TSID_COLUMN: &str = "tsid";
 pub const TIMESTAMP_COLUMN: &str = "timestamp";
 
@@ -445,6 +446,44 @@ pub fn compare_row<LR: RowView, RR: RowView>(
     Ordering::Equal
 }
 
+/// StorageFormat specify how records are saved in persistent storage
+pub enum StorageFormat {
+    /// Traditional columnar format, every column is saved in one exact one
+    /// column, for example:
+    ///
+    ///```plaintext
+    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
+    /// | --------- |---------- | ----------- | ----- | ----- |
+    /// | 12:01     | A         | 0           | v1    | v1    |
+    /// | 12:01     | B         | 0           | v2    | v2    |
+    /// | 12:02     | A         | 0           | v1    | v1    |
+    /// | 12:02     | B         | 1           | v2    | v2    |
+    /// | 12:03     | A         | 0           | v1    | v1    |
+    /// | 12:03     | B         | 0           | v2    | v2    |
+    /// | .....     |           |             |       |       |
+    /// ```
+    Columnar,
+
+    /// Design for time-series data
+    /// Collapsible Columns within same primary key are collapsed
+    /// into list, other columns are the same format with columar's.
+    ///
+    /// Wether a column is collapsible is decided by
+    /// `Schema::is_collapsible_column`
+    ///
+    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
+    /// for time-range pushdown filter
+    ///
+    ///```plaintext
+    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
+    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
+    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
+    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
+    /// | ...       |                     |             |       |       |         |         |
+    /// ```
+    Hybrid,
+}
+
 // TODO(yingwen): Maybe rename to TableSchema.
 /// Schema of a table
 ///
@@ -593,6 +632,26 @@ impl Schema {
     #[inline]
     pub fn timestamp_index(&self) -> usize {
         self.timestamp_index
+    }
+
+    /// Whether i-nth column is tag column
+    pub fn is_tag_column(&self, i: usize) -> bool {
+        self.column(i).is_tag
+    }
+
+    /// Whether i-nth column can be collapsed to List describe in
+    /// `StorageFormat::Hybrid`
+    pub fn is_collapsible_column(&self, i: usize) -> bool {
+        if self.timestamp_index == i {
+            return true;
+        }
+
+        if self.is_tag_column(i) {
+            return false;
+        }
+
+        self.tsid_index
+            .map_or_else(|| true, |tsid_idx| tsid_idx != i)
     }
 
     /// Get the version of this schema
@@ -744,6 +803,21 @@ impl Schema {
     #[inline]
     pub fn string_buffer_offset(&self) -> usize {
         self.column_schemas.string_buffer_offset
+    }
+
+    /// Data format in storage
+    pub fn storage_format(&self) -> StorageFormat {
+        // TODO: parse it from table options
+        match std::env::var("CERESDB_TABLE_FORMAT") {
+            Ok(format) => {
+                if format == "HYBRID" {
+                    StorageFormat::Hybrid
+                } else {
+                    StorageFormat::Columnar
+                }
+            }
+            Err(_) => StorageFormat::Columnar,
+        }
     }
 }
 

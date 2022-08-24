@@ -13,8 +13,8 @@ use common_util::{
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
-    log_batch::Payload,
-    manager::{self, RegionId},
+    log_batch::{LogWriteBatch, LogWriteEntry, Payload},
+    manager::{self, Encoding, RegionId},
 };
 
 pub const LOG_KEY_ENCODING_V0: u8 = 0;
@@ -214,20 +214,23 @@ impl LogValueEncoder {
     }
 }
 
-impl LogValueEncoder {
+impl<T: Payload> Encoder<T> for LogValueEncoder {
+    type Error = Error;
+
     /// Value format:
     /// +--------------------+---------+
     /// | version_header(u8) | payload |
     /// +--------------------+---------+
-    pub fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &dyn Payload) -> Result<()> {
+    fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &T) -> Result<()> {
         buf.write_u8(self.version).context(EncodeLogValueHeader)?;
 
         payload
-            .encode_to(buf as &mut dyn MemBufMut)
+            .encode_to(buf)
+            .map_err(|e| Box::new(e) as _)
             .context(EncodeLogValuePayload)
     }
 
-    pub fn estimate_encoded_size(&self, payload: &dyn Payload) -> usize {
+    fn estimate_encoded_size(&self, payload: &T) -> usize {
         // Refer to value format.
         1 + payload.encode_size()
     }
@@ -461,5 +464,157 @@ impl MaxSeqMetaEncoding {
             .decode(&mut buf)
             .map_err(|e| Box::new(e) as _)
             .context(manager::Decoding)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LogEncoding {
+    key_enc: LogKeyEncoder,
+    value_enc: LogValueEncoder,
+    // value decoder is created dynamically from the version,
+    value_enc_version: u8,
+}
+
+impl LogEncoding {
+    pub fn newest() -> Self {
+        Self {
+            key_enc: LogKeyEncoder::newest(),
+            value_enc: LogValueEncoder::newest(),
+            value_enc_version: NEWEST_LOG_VALUE_ENCODING_VERSION,
+        }
+    }
+
+    /// Encode [LogKey] into `buf` and caller should knows that the keys are
+    /// ordered by ([RegionId], [SequenceNum]) so the caller can use this
+    /// method to generate min/max key in specific scope(global or in some
+    /// region).
+    pub fn encode_key(&self, buf: &mut BytesMut, log_key: &LogKey) -> Result<()> {
+        buf.clear();
+        buf.reserve(self.key_enc.estimate_encoded_size(log_key));
+        self.key_enc.encode(buf, log_key)?;
+
+        Ok(())
+    }
+
+    pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
+        buf.clear();
+        buf.reserve(self.value_enc.estimate_encoded_size(payload));
+        self.value_enc.encode(buf, payload)
+    }
+
+    pub fn is_log_key(&self, mut buf: &[u8]) -> Result<bool> {
+        self.key_enc.is_valid(&mut buf)
+    }
+
+    pub fn decode_key(&self, mut buf: &[u8]) -> Result<LogKey> {
+        self.key_enc.decode(&mut buf)
+    }
+
+    pub fn decode_value<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8]> {
+        let value_dec = LogValueDecoder {
+            version: self.value_enc_version,
+        };
+
+        value_dec.decode(buf)
+    }
+}
+
+/// LogBatchEncoder which are used to encode specify payloads.
+#[derive(Debug)]
+pub struct LogBatchEncoder {
+    region_id: RegionId,
+    log_encoding: LogEncoding,
+}
+
+impl LogBatchEncoder {
+    /// Create LogBatchEncoder with specific region_id.
+    pub fn create(region_id: RegionId) -> Self {
+        Self {
+            region_id,
+            log_encoding: LogEncoding::newest(),
+        }
+    }
+
+    /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
+    pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
+        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut buf = BytesMut::new();
+        self.log_encoding
+            .encode_value(&mut buf, payload)
+            .map_err(|e| Box::new(e) as _)
+            .context(Encoding)?;
+
+        write_batch.push(LogWriteEntry {
+            payload: buf.to_vec(),
+        });
+
+        Ok(write_batch)
+    }
+
+    /// Consume LogBatchEncoder and encode raw payload batch to LogWriteBatch.
+    /// Note: To build payload from raw payload in `encode_batch`, raw payload
+    /// need implement From trait.
+    pub fn encode_batch<'a, P: Payload, I>(
+        self,
+        raw_payload_batch: &'a [I],
+    ) -> manager::Result<LogWriteBatch>
+    where
+        &'a I: Into<P>,
+    {
+        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut buf = BytesMut::new();
+        for raw_payload in raw_payload_batch.iter() {
+            self.log_encoding
+                .encode_value(&mut buf, &raw_payload.into())
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
+
+            write_batch.push(LogWriteEntry {
+                payload: buf.to_vec(),
+            });
+        }
+
+        Ok(write_batch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use common_types::bytes::BytesMut;
+
+    use super::LogEncoding;
+    use crate::{
+        log_batch::PayloadDecoder,
+        tests::util::{TestPayload, TestPayloadDecoder},
+    };
+
+    #[test]
+    fn test_log_encoding() {
+        let region_id = 1234;
+
+        let sequences = [1000, 1001, 1002, 1003];
+        let mut buf = BytesMut::new();
+        let encoding = LogEncoding::newest();
+        for seq in sequences {
+            let log_key = (region_id, seq);
+            encoding.encode_key(&mut buf, &log_key).unwrap();
+
+            assert!(encoding.is_log_key(&buf).unwrap());
+
+            let decoded_key = encoding.decode_key(&buf).unwrap();
+            assert_eq!(log_key, decoded_key);
+        }
+
+        let decoder = TestPayloadDecoder;
+        for val in 0..8 {
+            let payload = TestPayload { val };
+
+            encoding.encode_value(&mut buf, &payload).unwrap();
+
+            let mut value = encoding.decode_value(&buf).unwrap();
+            let decoded_value = decoder.decode(&mut value).unwrap();
+
+            assert_eq!(payload, decoded_value);
+        }
     }
 }

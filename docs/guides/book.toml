@@ -1,0 +1,12 @@
+[book]
+authors = ["CeresDB Authors"]
+language = "en"
+multilingual = false
+src = "src"
+title = "CeresDB Documentation"
+
+[output.html]
+cname = "docs.ceresdb.io"
+
+[output.html.fold]
+enable = true

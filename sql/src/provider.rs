@@ -14,7 +14,7 @@ use arrow_deps::{
     },
     datafusion_expr::TableSource,
 };
-use catalog::manager::Manager;
+use catalog::manager::ManagerRef;
 use common_types::request_id::RequestId;
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use snafu::{ResultExt, Snafu};
@@ -78,14 +78,14 @@ pub trait MetaProvider {
 /// - Other meta data like default catalog and schema are needed
 // TODO(yingwen): Maybe support schema searching instead of using a fixed
 // default schema
-pub struct CatalogMetaProvider<'a, M> {
-    pub manager: &'a M,
+pub struct CatalogMetaProvider<'a> {
+    pub manager: ManagerRef,
     pub default_catalog: &'a str,
     pub default_schema: &'a str,
     pub function_registry: &'a (dyn FunctionRegistry + Send + Sync),
 }
 
-impl<'a, M: Manager> MetaProvider for CatalogMetaProvider<'a, M> {
+impl<'a> MetaProvider for CatalogMetaProvider<'a> {
     fn default_catalog_name(&self) -> &str {
         self.default_catalog
     }

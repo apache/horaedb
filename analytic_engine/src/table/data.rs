@@ -621,7 +621,7 @@ pub mod tests {
             let create_request = CreateTableRequest {
                 catalog_name: "test_catalog".to_string(),
                 schema_name: "public".to_string(),
-                schema_id: SchemaId::new(DEFAULT_SPACE_ID).unwrap(),
+                schema_id: SchemaId::from_u32(DEFAULT_SPACE_ID),
                 table_id: self.table_id,
                 table_name: self.table_name,
                 table_schema,

@@ -8,7 +8,6 @@ use common_util::runtime::Runtime;
 use rand::prelude::*;
 use table_kv::memory::MemoryImpl;
 use wal::{
-    log_batch::{LogWriteBatch, LogWriteEntry},
     manager::{WalManager, WriteContext},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -72,18 +71,15 @@ impl WalWriteBench {
                 NamespaceConfig::default(),
             )
             .await
-            .unwrap();
+            .expect("should succeed to open WalNamespaceImpl(Memory)");
 
             let values = self.build_value_vec();
-            let payloads = values
-                .iter()
-                .map(|value| WritePayload(value))
-                .collect::<Vec<_>>();
-
-            let mut log_batch = LogWriteBatch::with_capacity(1, values.len());
-            for payload in payloads.iter() {
-                log_batch.push(LogWriteEntry { payload });
-            }
+            let wal_encoder = wal
+                .encoder(1)
+                .expect("should succeed to create wal encoder");
+            let log_batch = wal_encoder
+                .encode_batch::<WritePayload, Vec<u8>>(values.as_slice())
+                .expect("should succeed to encode payload batch");
 
             // Write to wal manager
             let write_ctx = WriteContext::default();

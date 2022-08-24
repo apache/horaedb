@@ -584,7 +584,11 @@ mod tests {
         }
     }
 
-    fn make_comment_column_def(name: impl Into<String>, data_type: DataType, comment: String) -> ColumnDef {
+    fn make_comment_column_def(
+        name: impl Into<String>,
+        data_type: DataType,
+        comment: String,
+    ) -> ColumnDef {
         ColumnDef {
             name: Ident {
                 value: name.into(),

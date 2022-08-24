@@ -6,16 +6,16 @@ CREATE TABLE `03_dml_insert_mode_table1` (    `timestamp` timestamp NOT NULL,   
 
 affected_rows: 0
 
-INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)    VALUES (1, 10), (2, 20), (3, 30);
+INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)    VALUES (1, +10), (2, 0), (3, -30);
 
 affected_rows: 3
 
 SELECT    *FROM    `03_dml_insert_mode_table1`ORDER BY    `value` ASC;
 
 timestamp,tsid,value,
+Timestamp(Timestamp(3)),Int64(0),Double(-30.0),
+Timestamp(Timestamp(2)),Int64(0),Double(0.0),
 Timestamp(Timestamp(1)),Int64(0),Double(10.0),
-Timestamp(Timestamp(2)),Int64(0),Double(20.0),
-Timestamp(Timestamp(3)),Int64(0),Double(30.0),
 
 
 INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)    VALUES (1, 100), (2, 200), (3, 300);
