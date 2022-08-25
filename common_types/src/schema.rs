@@ -150,6 +150,9 @@ pub enum Error {
         key: ArrowSchemaMetaKey,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Unkown storage format. value:{:?}.\nBacktrace:\n{}", value, backtrace))]
+    UnknownStorageFormat { value: String, backtrace: Backtrace },
 }
 
 pub type SchemaId = u32;
@@ -182,21 +185,12 @@ pub struct ArrowSchemaMeta {
     timestamp_index: usize,
     enable_tsid_primary_key: bool,
     version: u32,
+    storage_format: StorageFormat,
 }
 
 impl ArrowSchemaMeta {
     pub fn storage_format(&self) -> StorageFormat {
-        // TODO: parse it from table options
-        match std::env::var("CERESDB_TABLE_FORMAT") {
-            Ok(format) => {
-                if format == "HYBRID" {
-                    StorageFormat::Hybrid
-                } else {
-                    StorageFormat::Columnar
-                }
-            }
-            Err(_) => StorageFormat::Columnar,
-        }
+        self.storage_format
     }
 
     pub fn enable_tsid_primary_key(&self) -> bool {
@@ -220,6 +214,18 @@ impl ArrowSchemaMeta {
     }
 }
 
+impl Default for ArrowSchemaMeta {
+    fn default() -> Self {
+        Self {
+            num_key_columns: 0,
+            timestamp_index: 0,
+            enable_tsid_primary_key: false,
+            version: 0,
+            storage_format: StorageFormat::default(),
+        }
+    }
+}
+
 /// Parse the necessary meta information from the arrow schema's meta data.
 impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
     type Error = Error;
@@ -239,6 +245,12 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
                 ArrowSchemaMetaKey::EnableTsidPrimaryKey,
             )?,
             version: Self::parse_arrow_schema_meta_value(meta, ArrowSchemaMetaKey::Version)?,
+            storage_format: Self::parse_arrow_schema_meta_value::<String>(
+                meta,
+                ArrowSchemaMetaKey::StorageFormat,
+            )?
+            .as_str()
+            .try_into()?,
         })
     }
 }
@@ -249,15 +261,17 @@ pub enum ArrowSchemaMetaKey {
     TimestampIndex,
     EnableTsidPrimaryKey,
     Version,
+    StorageFormat,
 }
 
 impl ArrowSchemaMetaKey {
     fn as_str(&self) -> &str {
         match self {
-            ArrowSchemaMetaKey::NumKeyColumns => "schema:num_key_columns",
-            ArrowSchemaMetaKey::TimestampIndex => "schema::timestamp_index",
-            ArrowSchemaMetaKey::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
-            ArrowSchemaMetaKey::Version => "schema::version",
+            Self::NumKeyColumns => "schema:num_key_columns",
+            Self::TimestampIndex => "schema::timestamp_index",
+            Self::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
+            Self::Version => "schema::version",
+            Self::StorageFormat => "schema::storage_format",
         }
     }
 }
@@ -507,7 +521,7 @@ pub fn compare_row<LR: RowView, RR: RowView>(
 }
 
 /// StorageFormat specify how records are saved in persistent storage
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StorageFormat {
     /// Traditional columnar format, every column is saved in one exact one
     /// column, for example:
@@ -545,6 +559,35 @@ pub enum StorageFormat {
     Hybrid,
 }
 
+impl TryFrom<&str> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self> {
+        let format = match s.to_lowercase().as_str() {
+            "columnar" => Self::Columnar,
+            "hybrid" => Self::Hybrid,
+            _ => return UnknownStorageFormat { value: s }.fail(),
+        };
+        Ok(format)
+    }
+}
+
+impl ToString for StorageFormat {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Columnar => "columnar",
+            Self::Hybrid => "hybrid",
+        }
+        .to_string()
+    }
+}
+
+impl Default for StorageFormat {
+    fn default() -> Self {
+        Self::Columnar
+    }
+}
+
 // TODO(yingwen): Maybe rename to TableSchema.
 /// Schema of a table
 ///
@@ -575,6 +618,8 @@ pub struct Schema {
     column_schemas: Arc<ColumnSchemas>,
     /// Version of the schema, schemas with same version should be identical.
     version: Version,
+    /// How columns is perisisted in underlying storage.
+    storage_format: StorageFormat,
 }
 
 impl fmt::Debug for Schema {
@@ -1097,6 +1142,7 @@ impl Builder {
             timestamp_index,
             enable_tsid_primary_key,
             version,
+            storage_format,
         } = Self::parse_arrow_schema_meta_or_default(arrow_schema.metadata())?;
         let tsid_index = Self::find_tsid_index(enable_tsid_primary_key, &columns)?;
 
@@ -1110,6 +1156,7 @@ impl Builder {
             enable_tsid_primary_key,
             column_schemas,
             version,
+            storage_format,
         })
     }
 
@@ -1119,12 +1166,7 @@ impl Builder {
     ) -> Result<ArrowSchemaMeta> {
         match ArrowSchemaMeta::try_from(meta) {
             Ok(v) => Ok(v),
-            Err(Error::ArrowSchemaMetaKeyNotFound { .. }) => Ok(ArrowSchemaMeta {
-                num_key_columns: 0,
-                timestamp_index: 0,
-                enable_tsid_primary_key: false,
-                version: 0,
-            }),
+            Err(Error::ArrowSchemaMetaKeyNotFound { .. }) => Ok(ArrowSchemaMeta::default()),
             Err(e) => Err(e),
         }
     }
@@ -1133,7 +1175,7 @@ impl Builder {
     ///
     /// Requires: the timestamp index is not None.
     fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
-        let mut meta = HashMap::with_capacity(4);
+        let mut meta = HashMap::with_capacity(5);
         meta.insert(
             ArrowSchemaMetaKey::NumKeyColumns.to_string(),
             self.num_key_columns.to_string(),
@@ -1149,6 +1191,11 @@ impl Builder {
         meta.insert(
             ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
             self.enable_tsid_primary_key.to_string(),
+        );
+        // FIXME
+        meta.insert(
+            ArrowSchemaMetaKey::StorageFormat.to_string(),
+            StorageFormat::Columnar.to_string(),
         );
 
         meta
@@ -1199,6 +1246,7 @@ impl Builder {
             enable_tsid_primary_key: self.enable_tsid_primary_key,
             column_schemas: Arc::new(ColumnSchemas::new(self.columns)),
             version: self.version,
+            storage_format: StorageFormat::Columnar, // FIXME
         })
     }
 }

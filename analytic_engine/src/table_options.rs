@@ -5,7 +5,7 @@
 use std::{collections::HashMap, string::ToString, time::Duration};
 
 use arrow_deps::datafusion::parquet::basic::Compression as ParquetCompression;
-use common_types::time::Timestamp;
+use common_types::{schema::StorageFormat, time::Timestamp};
 use common_util::{
     config::{ReadableDuration, ReadableSize},
     define_result,
@@ -32,6 +32,7 @@ pub const COMPACTION_STRATEGY: &str = "compaction_strategy";
 pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
 pub const UPDATE_MODE: &str = "update_mode";
 pub const COMPRESSION: &str = "compression";
+pub const STORAGE_FORMAT: &str = "storage_format";
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
 const UPDATE_MODE_APPEND: &str = "APPEND";
@@ -40,6 +41,8 @@ const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
 const AT_LEAST_OPTIONS_NUM: usize = 9;
+const UPDATE_MODE_COLUMNAR: &str = "COLUMNAR";
+const UPDATE_MODE_HYBRID: &str = "HYBRID";
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -97,6 +100,8 @@ pub enum Error {
         backtrace
     ))]
     ParseCompressionName { name: String, backtrace: Backtrace },
+    #[snafu(display("Failed to parse storage format, err:{}\n", source))]
+    ParseStorageFormat { source: common_types::schema::Error },
 }
 
 define_result!(Error);
@@ -224,6 +229,8 @@ pub struct TableOptions {
     pub num_rows_per_row_group: usize,
     /// Table Compression
     pub compression: Compression,
+    /// Storage format
+    pub storage_format: StorageFormat,
 }
 
 impl TableOptions {
@@ -267,6 +274,7 @@ impl TableOptions {
             format!("{}", self.num_rows_per_row_group),
         );
         m.insert(COMPRESSION.to_string(), self.compression.to_string());
+        m.insert(STORAGE_FORMAT.to_string(), self.storage_format.to_string());
 
         assert!(m.len() >= AT_LEAST_OPTIONS_NUM);
 
@@ -460,6 +468,7 @@ impl From<TableOptionsPb> for TableOptions {
             update_mode,
             write_buffer_size: opts.write_buffer_size,
             compression: opts.compression.into(),
+            storage_format: StorageFormat::default(), // FIXME: update pb
         }
     }
 }
@@ -476,6 +485,7 @@ impl Default for TableOptions {
             update_mode: UpdateMode::Overwrite,
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
+            storage_format: StorageFormat::default(),
         }
     }
 }
@@ -533,6 +543,9 @@ fn merge_table_options(
     }
     if let Some(v) = options.get(COMPRESSION) {
         table_opts.compression = Compression::parse_from(v)?;
+    }
+    if let Some(v) = options.get(STORAGE_FORMAT) {
+        table_opts.storage_format = v.try_into().context(ParseStorageFormat {})?;
     }
     Ok(table_opts)
 }
