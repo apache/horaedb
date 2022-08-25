@@ -3,7 +3,6 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
-    convert::TryFrom,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -23,7 +22,7 @@ use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::{Schema, StorageFormat},
+    schema::Schema,
 };
 use common_util::runtime::Runtime;
 use futures::Stream;
@@ -40,7 +39,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use crate::sst::{
     factory::SstReaderOptions,
     file::SstMetaData,
-    parquet::encoding,
+    parquet::encoding::{self, ParquetDecoder},
     reader::{error::*, SstReader},
 };
 
@@ -320,6 +319,10 @@ impl ProjectAndFilterReader {
         let reader = self.project_and_filter_reader()?;
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
+        let arrow_schema = self.projected_schema.to_projected_arrow_schema();
+        let parquet_decoder = ParquetDecoder::try_new(arrow_schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeRecordBatch)?;
         let mut row_num = 0;
         for record_batch in reader {
             trace!(
@@ -333,13 +336,10 @@ impl ProjectAndFilterReader {
                 .context(DecodeRecordBatch)
             {
                 Ok(record_batch) => {
-                    let arrow_schema = record_batch.schema();
-                    let schema = Schema::try_from(arrow_schema).context(InvalidSchema)?;
-                    let record_batch = match schema.storage_format() {
-                        StorageFormat::Hybrid => todo!("Will implement this in PR 207"),
-                        StorageFormat::Columnar => record_batch,
-                    };
-
+                    let record_batch = parquet_decoder
+                        .decode_record_batch(record_batch)
+                        .map_err(|e| Box::new(e) as _)
+                        .context(DecodeRecordBatch)?;
                     row_num += record_batch.num_rows();
                     let record_batch_with_key = arrow_record_batch_projector
                         .project_to_record_batch_with_key(record_batch)
