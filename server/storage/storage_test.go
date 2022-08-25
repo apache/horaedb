@@ -98,8 +98,8 @@ func TestClusterTopology(t *testing.T) {
 
 	// Test to create cluster topology.
 	clusterTopology := &clusterpb.ClusterTopology{
-		ClusterId:   defaultClusterID,
-		DataVersion: defaultVersion,
+		ClusterId: defaultClusterID,
+		Version:   defaultVersion,
 	}
 	clusterTopology, err := s.CreateClusterTopology(ctx, clusterTopology)
 	re.NoError(err)
@@ -108,18 +108,18 @@ func TestClusterTopology(t *testing.T) {
 	value, err := s.GetClusterTopology(ctx, defaultClusterID)
 	re.NoError(err)
 	re.Equal(clusterTopology.ClusterId, value.ClusterId)
-	re.Equal(clusterTopology.DataVersion, value.DataVersion)
+	re.Equal(clusterTopology.Version, value.Version)
 	re.Equal(clusterTopology.CreatedAt, value.CreatedAt)
 
 	// Test to put cluster topology.
-	clusterTopology.DataVersion = uint64(1)
+	clusterTopology.Version = uint64(1)
 	err = s.PutClusterTopology(ctx, defaultClusterID, defaultVersion, clusterTopology)
 	re.NoError(err)
 
 	value, err = s.GetClusterTopology(ctx, defaultClusterID)
 	re.NoError(err)
 	re.Equal(clusterTopology.ClusterId, value.ClusterId)
-	re.Equal(clusterTopology.DataVersion, value.DataVersion)
+	re.Equal(clusterTopology.Version, value.Version)
 	re.Equal(clusterTopology.Cause, value.Cause)
 	re.Equal(clusterTopology.CreatedAt, value.CreatedAt)
 }

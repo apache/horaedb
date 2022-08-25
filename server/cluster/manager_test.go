@@ -117,6 +117,8 @@ func TestManagerSingleThread(t *testing.T) {
 	testAllocTableID(ctx, re, manager, node2, cluster1, defaultSchema, table3, tableID3)
 	testAllocTableID(ctx, re, manager, node2, cluster1, defaultSchema, table4, tableID4)
 
+	testRouteTables(ctx, re, manager, cluster1, defaultSchema, []string{table1, table2, table3, table4})
+
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table1, tableID1)
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table3, tableID3)
 
@@ -204,6 +206,17 @@ func testGetTables(ctx context.Context, re *require.Assertions, manager Manager,
 		tableNum += len(tables.Tables)
 	}
 	re.Equal(num, tableNum)
+}
+
+func testRouteTables(ctx context.Context, re *require.Assertions, manager Manager, cluster, schema string, tableNames []string) {
+	ret, err := manager.RouteTables(ctx, cluster, schema, tableNames)
+	re.NoError(err)
+	re.Equal(uint64(0), ret.Version)
+	re.Equal(len(tableNames), len(ret.RouteEntries))
+	for _, entry := range ret.RouteEntries {
+		re.Equal(1, len(entry.NodeShards))
+		re.Equal(clusterpb.ShardRole_LEADER, entry.NodeShards[0].ShardInfo.ShardRole)
+	}
 }
 
 func testDropTable(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, tableName string, tableID uint64) {

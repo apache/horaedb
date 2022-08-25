@@ -16,6 +16,7 @@ func (s *Shard) dropTableLocked(tableID uint64) {
 }
 
 type ShardTablesWithRole struct {
+	shardID   uint32
 	shardRole clusterpb.ShardRole
 	tables    []*Table
 	version   uint64

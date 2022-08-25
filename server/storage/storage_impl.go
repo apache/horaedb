@@ -158,14 +158,14 @@ func (s *metaStorageImpl) CreateClusterTopology(ctx context.Context, clusterTopo
 		return nil, ErrDecodeClusterTopology.WithCausef("fail to decode cluster topology, clusterID:%d, err:%v", clusterTopology.ClusterId, err)
 	}
 
-	key := path.Join(s.rootPath, makeClusterTopologyKey(clusterTopology.ClusterId, fmtID(clusterTopology.DataVersion)))
+	key := path.Join(s.rootPath, makeClusterTopologyKey(clusterTopology.ClusterId, fmtID(clusterTopology.Version)))
 	latestVersionKey := path.Join(s.rootPath, makeClusterTopologyLatestVersionKey(clusterTopology.ClusterId))
 
 	// Check if the key and latest version key exists, if not，create cluster topology and latest version; Otherwise, the cluster topology already exists and return an error.
 	latestVersionKeyMissing := clientv3util.KeyMissing(latestVersionKey)
 	keyMissing := clientv3util.KeyMissing(key)
 	opCreateClusterTopology := clientv3.OpPut(key, string(value))
-	opCreateClusterTopologyLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(clusterTopology.DataVersion))
+	opCreateClusterTopologyLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(clusterTopology.Version))
 
 	resp, err := s.Txn(ctx).
 		If(latestVersionKeyMissing, keyMissing).
@@ -206,13 +206,13 @@ func (s *metaStorageImpl) PutClusterTopology(ctx context.Context, clusterID uint
 		return ErrDecodeClusterTopology.WithCausef("fail to decode cluster topology, clusterID:%d, err:%v", clusterID, err)
 	}
 
-	key := path.Join(s.rootPath, makeClusterTopologyKey(clusterID, fmtID(clusterTopology.DataVersion)))
+	key := path.Join(s.rootPath, makeClusterTopologyKey(clusterID, fmtID(clusterTopology.Version)))
 	latestVersionKey := path.Join(s.rootPath, makeClusterTopologyLatestVersionKey(clusterID))
 
 	// Check whether the latest version is equal to that in etcd. If it is equal，update cluster topology and latest version; Otherwise, return an error.
 	latestVersionEquals := clientv3.Compare(clientv3.Value(latestVersionKey), "=", fmtID(latestVersion))
 	opPutClusterTopology := clientv3.OpPut(key, string(value))
-	opPutLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(clusterTopology.DataVersion))
+	opPutLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(clusterTopology.Version))
 
 	resp, err := s.Txn(ctx).
 		If(latestVersionEquals).

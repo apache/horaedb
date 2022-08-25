@@ -16,6 +16,11 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+type metaData struct {
+	cluster         *clusterpb.Cluster
+	clusterTopology *clusterpb.ClusterTopology
+}
+
 type Cluster struct {
 	clusterID uint32
 
@@ -67,7 +72,7 @@ func (c *Cluster) stop() {
 // It will be used when we create the cluster.
 func (c *Cluster) init(ctx context.Context) error {
 	clusterTopologyPb := &clusterpb.ClusterTopology{
-		ClusterId: c.clusterID, DataVersion: 0,
+		ClusterId: c.clusterID, Version: 0,
 		State: clusterpb.ClusterTopology_EMPTY,
 	}
 	if clusterTopologyPb, err := c.storage.CreateClusterTopology(ctx, clusterTopologyPb); err != nil {
@@ -252,7 +257,7 @@ func (c *Cluster) GetTables(_ context.Context, shardIDs []uint32, nodeName strin
 		for _, table := range shard.tables {
 			tables = append(tables, table)
 		}
-		shardTables[shardID] = &ShardTablesWithRole{shardRole: shardRole, tables: tables, version: shard.version}
+		shardTables[shardID] = &ShardTablesWithRole{shardID: shardID, shardRole: shardRole, tables: tables, version: shard.version}
 	}
 
 	return shardTables, nil
@@ -542,7 +547,46 @@ func (c *Cluster) pickOneShardOnNode(nodeName string) (uint32, error) {
 	return 0, ErrNodeNotFound.WithCausef("nodeName:%s", nodeName)
 }
 
-type metaData struct {
-	cluster         *clusterpb.Cluster
-	clusterTopology *clusterpb.ClusterTopology
+func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames []string) (*RouteTablesResult, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	schema, ok := c.schemasCache[schemaName]
+	if !ok {
+		return nil, ErrSchemaNotFound.WithCausef("schemaName:%s", schemaName)
+	}
+
+	routeEntries := make(map[string]*RouteEntry, len(tableNames))
+	for _, tableName := range tableNames {
+		table, exists := schema.getTable(tableName)
+		if exists {
+			shard := c.shardsCache[table.GetShardID()]
+
+			nodeShards := make([]*NodeShard, 0, len(shard.nodes))
+			for i, node := range shard.nodes {
+				nodeShards = append(nodeShards, &NodeShard{
+					Endpoint: node.GetName(),
+					ShardInfo: &ShardInfo{
+						ShardID:   shard.meta[i].GetId(),
+						ShardRole: shard.meta[i].GetShardRole(),
+					},
+				})
+			}
+
+			routeEntries[tableName] = &RouteEntry{
+				Table: &TableInfo{
+					ID:         table.GetID(),
+					Name:       table.GetName(),
+					SchemaID:   table.GetSchemaID(),
+					SchemaName: table.GetSchemaName(),
+				},
+				NodeShards: nodeShards,
+			}
+		}
+	}
+
+	return &RouteTablesResult{
+		Version:      c.metaData.clusterTopology.Version,
+		RouteEntries: routeEntries,
+	}, nil
 }

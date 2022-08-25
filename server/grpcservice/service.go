@@ -139,7 +139,7 @@ func (s *Service) NodeHeartbeat(heartbeatSrv metaservicepb.CeresmetaRpcService_N
 			}
 		}
 
-		if err := binder.bindIfNot(ctx, req.Info.Node); err != nil {
+		if err := binder.bindIfNot(ctx, req.Info.GetEndpoint()); err != nil {
 			log.Error("fail to bind node stream", zap.Error(err))
 		}
 
@@ -208,10 +208,10 @@ func (s *Service) AllocTableID(ctx context.Context, req *metaservicepb.AllocTabl
 }
 
 // GetTables implements gRPC CeresmetaServer.
-func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetTablesRequest) (*metaservicepb.GetTablesResponse, error) {
+func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetShardTablesRequest) (*metaservicepb.GetShardTablesResponse, error) {
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
-		return &metaservicepb.GetTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
+		return &metaservicepb.GetShardTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
 	}
 
 	// Forward request to the leader.
@@ -219,9 +219,9 @@ func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetTablesReq
 		return ceresmetaClient.GetTables(ctx, req)
 	}
 
-	tables, err := s.h.GetClusterManager().GetTables(ctx, req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), req.GetShardId())
+	tables, err := s.h.GetClusterManager().GetTables(ctx, req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), req.GetShardIds())
 	if err != nil {
-		return &metaservicepb.GetTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
+		return &metaservicepb.GetShardTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
 	}
 
 	tablesPb := make(map[uint32]*metaservicepb.ShardTables, len(tables))
@@ -241,9 +241,9 @@ func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetTablesReq
 		}
 	}
 
-	return &metaservicepb.GetTablesResponse{
-		Header:    okResponseHeader(),
-		TablesMap: tablesPb,
+	return &metaservicepb.GetShardTablesResponse{
+		Header:      okResponseHeader(),
+		ShardTables: tablesPb,
 	}, nil
 }
 
@@ -267,6 +267,26 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	return &metaservicepb.DropTableResponse{
 		Header: okResponseHeader(),
 	}, nil
+}
+
+// RouteTables implements gRPC CeresmetaServer.
+func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTablesRequest) (*metaservicepb.RouteTablesResponse, error) {
+	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	if err != nil {
+		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
+	}
+
+	// Forward request to the leader.
+	if ceresmetaClient != nil {
+		return ceresmetaClient.RouteTables(ctx, req)
+	}
+
+	routeTableResult, err := s.h.GetClusterManager().RouteTables(ctx, req.GetHeader().GetClusterName(), req.GetSchemaName(), req.GetTableNames())
+	if err != nil {
+		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
+	}
+
+	return convertRouteTableResult(routeTableResult), nil
 }
 
 type forwarder struct {
@@ -330,4 +350,36 @@ func (f *forwarder) maybeInitForwardedStream(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *metaservicepb.RouteTablesResponse {
+	entries := make(map[string]*metaservicepb.RouteEntry, len(routeTablesResult.RouteEntries))
+	for tableName, entry := range routeTablesResult.RouteEntries {
+		nodeShards := make([]*metaservicepb.NodeShard, 0, len(entry.NodeShards))
+		for _, nodeShard := range entry.NodeShards {
+			nodeShards = append(nodeShards, &metaservicepb.NodeShard{
+				Endpoint: nodeShard.Endpoint,
+				ShardInfo: &metaservicepb.ShardInfo{
+					ShardId: nodeShard.ShardInfo.ShardID,
+					Role:    nodeShard.ShardInfo.ShardRole,
+				},
+			})
+		}
+
+		entries[tableName] = &metaservicepb.RouteEntry{
+			Table: &metaservicepb.TableInfo{
+				Id:         entry.Table.ID,
+				Name:       entry.Table.Name,
+				SchemaId:   entry.Table.SchemaID,
+				SchemaName: entry.Table.SchemaName,
+			},
+			NodeShards: nodeShards,
+		}
+	}
+
+	return &metaservicepb.RouteTablesResponse{
+		Header:                 okResponseHeader(),
+		ClusterTopologyVersion: routeTablesResult.Version,
+		Entries:                entries,
+	}
 }
