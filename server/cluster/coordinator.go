@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/pkg/errors"
@@ -74,13 +75,26 @@ func (c *coordinator) Close() {
 }
 
 // TODO: consider ReplicationFactor
-func (c *coordinator) scatterShard(ctx context.Context) error {
+func (c *coordinator) scatterShard(ctx context.Context, nodeInfo *metaservicepb.NodeInfo) error {
+	// FIXME: The following logic is used for static topology, which is a bit simple and violent.
+	// It needs to be modified when supporting dynamic topology.
+	if c.cluster.metaData.clusterTopology.State == clusterpb.ClusterTopology_STABLE {
+		shardIDs, err := c.cluster.GetShardIDs(nodeInfo.GetEndpoint())
+		if err != nil {
+			return errors.Wrap(err, "coordinator scatterShard")
+		}
+		if len(nodeInfo.GetShardInfos()) == 0 {
+			if err := c.eventHandler.Dispatch(ctx, nodeInfo.GetEndpoint(), &schedule.OpenEvent{ShardIDs: shardIDs}); err != nil {
+				return errors.Wrap(err, "coordinator scatterShard")
+			}
+		}
+	}
+
 	if !(int(c.cluster.metaData.cluster.MinNodeCount) <= len(c.cluster.nodesCache) &&
 		c.cluster.metaData.clusterTopology.State == clusterpb.ClusterTopology_EMPTY) {
 		return nil
 	}
 
-	// TODO: consider data race
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

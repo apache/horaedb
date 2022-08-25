@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/schedule"
@@ -67,7 +68,7 @@ type Manager interface {
 	AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (*Table, error)
 	GetTables(ctx context.Context, clusterName, nodeName string, shardIDs []uint32) (map[uint32]*ShardTables, error)
 	DropTable(ctx context.Context, clusterName, schemaName, tableName string, tableID uint64) error
-	RegisterNode(ctx context.Context, clusterName, nodeName string, lease uint32) error
+	RegisterNode(ctx context.Context, clusterName string, nodeInfo *metaservicepb.NodeInfo) error
 	GetShards(ctx context.Context, clusterName, nodeName string) ([]uint32, error)
 	RouteTables(ctx context.Context, clusterName, schemaName string, tableNames []string) (*RouteTablesResult, error)
 }
@@ -231,19 +232,19 @@ func (m *managerImpl) DropTable(ctx context.Context, clusterName, schemaName, ta
 	return nil
 }
 
-func (m *managerImpl) RegisterNode(ctx context.Context, clusterName, nodeName string, lease uint32) error {
+func (m *managerImpl) RegisterNode(ctx context.Context, clusterName string, nodeInfo *metaservicepb.NodeInfo) error {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		log.Error("cluster not found", zap.Error(err))
 		return errors.Wrap(err, "cluster manager RegisterNode")
 	}
-	err = cluster.RegisterNode(ctx, nodeName, lease)
+	err = cluster.RegisterNode(ctx, nodeInfo)
 	if err != nil {
 		return errors.Wrap(err, "cluster manager RegisterNode")
 	}
 
 	// TODO: refactor coordinator
-	if err := cluster.coordinator.scatterShard(ctx); err != nil {
+	if err := cluster.coordinator.scatterShard(ctx, nodeInfo); err != nil {
 		return errors.Wrap(err, "RegisterNode")
 	}
 	return nil

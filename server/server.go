@@ -239,5 +239,5 @@ func (srv *Server) UnbindHeartbeatStream(_ context.Context, node string) error {
 }
 
 func (srv *Server) ProcessHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) error {
-	return srv.clusterManager.RegisterNode(ctx, req.GetHeader().GetClusterName(), req.GetInfo().GetEndpoint(), req.GetInfo().GetLease())
+	return srv.clusterManager.RegisterNode(ctx, req.GetHeader().GetClusterName(), req.GetInfo())
 }

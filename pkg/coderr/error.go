@@ -33,13 +33,13 @@ func Is(err error, expectCode Code) bool {
 
 func GetCauseCode(err error) (Code, bool) {
 	if err == nil {
-		return 0, false
+		return Invalid, false
 	}
 
 	cause := errors.Cause(err)
 	cerr, ok := cause.(CodeError)
 	if !ok {
-		return 0, false
+		return Invalid, false
 	}
 	return cerr.Code(), true
 }
