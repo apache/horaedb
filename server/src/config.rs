@@ -47,22 +47,15 @@ pub struct StaticRouteConfig {
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct Endpoint {
     pub addr: String,
     pub port: u16,
 }
 
 impl Endpoint {
-    // Parse the raw endpoint which should be the form: <domain_name>:<port>
-    //
-    // Returns `None` if fail to parse.
-    pub fn try_from_str(s: &str) -> Option<Self> {
-        let (addr, raw_port) = s.rsplit_once(':')?;
-        raw_port.parse().ok().map(|port| Endpoint {
-            addr: addr.to_string(),
-            port,
-        })
+    pub fn new(addr: String, port: u16) -> Self {
+        Self { addr, port }
     }
 }
 
@@ -229,6 +222,49 @@ impl Default for Config {
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_endpoint() {
+        let cases = [
+            (
+                "abc.1234.com:1000",
+                Endpoint::new("abc.1235.com".to_string(), 1000),
+            ),
+            (
+                "127.0.0.1:1000",
+                Endpoint::new("127.0.0.1".to_string(), 1000),
+            ),
+            (
+                "fe80::dce8:23ff:fe0c:f2c0:1000",
+                Endpoint::new("fe80::dce8:23ff:fe0c:f2c0".to_string(), 1000),
+            ),
+        ];
+
+        for (source, expect) in cases {
+            let target: Endpoint = source.parse().expect("Should succeed to parse endpoint");
+            assert_eq!(target, expect);
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_endpoint() {
+        let cases = [
+            "abc.1234.com:1000000",
+            "fe80::dce8:23ff:fe0c:f2c0",
+            "127.0.0.1",
+            "abc.1234.com",
+            "abc.1234.com:abcd",
+        ];
+
+        for source in cases {
+            assert!(source.parse::<Endpoint>().is_err());
         }
     }
 }
