@@ -27,7 +27,7 @@ use common_types::{
     },
 };
 use common_util::define_result;
-use log::debug;
+use log::trace;
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -37,6 +37,7 @@ use crate::sst::{
     parquet::hybrid::{self, IndexedType},
 };
 
+// TODO: Only support i32 offset now, consider i64 here?
 const OFFSET_SIZE: usize = std::mem::size_of::<i32>();
 
 #[derive(Debug, Snafu)]
@@ -537,31 +538,28 @@ impl HybridRecordDecoder {
         array_ref: &ArrayRef,
         value_offsets: &[i32],
     ) -> Result<ArrayRef> {
-        assert!(!value_offsets.is_empty());
+        assert_eq!(array_ref.len() + 1, value_offsets.len());
 
         let values_num = *value_offsets.last().unwrap() as usize;
         let offset_slices = array_ref.data().buffers()[0].as_slice();
         let value_slices = array_ref.data().buffers()[1].as_slice();
         let null_bitmap = array_ref.data().null_bitmap();
-        debug!(
+        trace!(
             "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
             offset_slices,
             value_slices,
             null_bitmap.map(|v| v.buffer_ref().as_slice())
         );
 
-        let mut i32_offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
-        for i in (0..offset_slices.len()).step_by(OFFSET_SIZE) {
-            let offset = i32::from_le_bytes(offset_slices[i..i + OFFSET_SIZE].try_into().unwrap());
-            i32_offsets.push(offset);
-        }
-
+        let i32_offsets = Self::get_array_offsets(offset_slices);
         let mut value_bytes = 0;
         for (idx, (current, prev)) in i32_offsets[1..].iter().zip(&i32_offsets).enumerate() {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
             value_bytes += value_len * value_num;
         }
+
+        // construct new expanded array
         let mut new_offsets_buffer = MutableBuffer::new(OFFSET_SIZE * values_num);
         let mut new_values_buffer = MutableBuffer::new(value_bytes as usize);
         let mut new_null_buffer = MutableBuffer::new(values_num);
@@ -590,7 +588,7 @@ impl HybridRecordDecoder {
                 new_offsets_buffer.push(value_length_so_far);
             }
         }
-        debug!(
+        trace!(
             "new buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
             new_offsets_buffer.as_slice(),
             new_values_buffer.as_slice(),
@@ -654,14 +652,8 @@ impl HybridRecordDecoder {
         Ok(array_data.into())
     }
 
-    /// Returns offsets of nested items in ListArray, and populates the
-    /// `values_num`
-    ///
-    /// Note: caller should ensure `array_ref` is ListArray
-    fn get_list_array_offsets(array_ref: &ArrayRef) -> Vec<i32> {
-        let offset_slices = array_ref.data().buffers()[0].as_slice();
-        // *values_num = array_ref.data().child_data()[0].len();
-
+    /// Decode offset slices into Vec<i32>
+    fn get_array_offsets(offset_slices: &[u8]) -> Vec<i32> {
         let mut i32_offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
         for i in (0..offset_slices.len()).step_by(OFFSET_SIZE) {
             let offset = i32::from_le_bytes(offset_slices[i..i + OFFSET_SIZE].try_into().unwrap());
@@ -681,7 +673,8 @@ impl RecordDecoder for HybridRecordDecoder {
         // Find value offsets from the first `ListArray` column
         for array_ref in arrays {
             if matches!(array_ref.data_type(), DataType::List(_)) {
-                value_offsets = Some(Self::get_list_array_offsets(array_ref));
+                let offset_slices = array_ref.data().buffers()[0].as_slice();
+                value_offsets = Some(Self::get_array_offsets(offset_slices));
                 break;
             }
         }
@@ -694,6 +687,13 @@ impl RecordDecoder for HybridRecordDecoder {
             .map(|array_ref| {
                 let data_type = array_ref.data_type();
                 match data_type {
+                    // TODO:
+                    // 1. we assume the datatype inside the List is primitive now
+                    // Ensure this when create table
+                    // 2. Although nested structure isn't support now, but may will someday in
+                    // future. So We should keep metadata about which columns
+                    // are collapsed by hybrid storage format, to differentiate
+                    // List column in original records
                     DataType::List(_nested_field) => {
                         Ok(array_ref.data().child_data()[0].clone().into())
                     }
