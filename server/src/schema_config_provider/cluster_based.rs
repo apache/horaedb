@@ -2,7 +2,7 @@
 
 //! Schema provider based on cluster.
 
-use cluster::{topology::SchemaConfig, ClusterRef};
+use cluster::{config::SchemaConfig, ClusterRef};
 
 use crate::schema_config_provider::{Result, SchemaConfigProvider};
 

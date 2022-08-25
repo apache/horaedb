@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use cluster::topology::SchemaConfig;
+use cluster::config::SchemaConfig;
 use snafu::Snafu;
 
 pub mod cluster_based;

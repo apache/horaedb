@@ -17,7 +17,7 @@ use ceresdbproto_deps::ceresdbproto::{
     },
     storage_grpc::{self, StorageService},
 };
-use cluster::topology::SchemaConfig;
+use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -849,7 +849,7 @@ mod tests {
     use ceresdbproto_deps::ceresdbproto::storage::{
         Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
     };
-    use cluster::topology::SchemaConfig;
+    use cluster::config::SchemaConfig;
     use common_types::datum::DatumKind;
 
     use super::*;

@@ -3,30 +3,12 @@
 use std::collections::HashMap;
 
 use common_types::{
-    schema::{SchemaId, SchemaName, TIMESTAMP_COLUMN},
+    schema::{SchemaId, SchemaName},
     table::TableName,
 };
 use meta_client::types::{RouteEntry, RouteTablesResponse};
-use serde::Deserialize;
-use table_engine::ANALYTIC_ENGINE_TYPE;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct SchemaConfig {
-    pub auto_create_tables: bool,
-    pub default_engine_type: String,
-    pub default_timestamp_column_name: String,
-}
-
-impl Default for SchemaConfig {
-    fn default() -> Self {
-        Self {
-            auto_create_tables: false,
-            default_engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
-            default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
-        }
-    }
-}
+use crate::config::SchemaConfig;
 
 /// RouteSlot is used to prevent cache penetration, that is to say, the
 /// `NotExist` routing result of a table is also kept in the memory.

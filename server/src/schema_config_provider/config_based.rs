@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use cluster::topology::SchemaConfig;
+use cluster::config::SchemaConfig;
 
 use crate::schema_config_provider::{Result, SchemaConfigProvider};
 

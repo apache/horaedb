@@ -9,7 +9,7 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
-use cluster::topology::SchemaConfig;
+use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
