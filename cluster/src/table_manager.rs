@@ -5,11 +5,14 @@ use std::{
     sync::RwLock,
 };
 
-use common_types::{schema::SchemaId, table::TableId};
+use common_types::{
+    schema::{SchemaId, SchemaName},
+    table::{TableId, TableName},
+};
 use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
 use snafu::OptionExt;
 
-use crate::{Result, SchemaName, ShardNotFound, TableName};
+use crate::{Result, ShardNotFound};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
