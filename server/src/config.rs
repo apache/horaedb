@@ -2,7 +2,7 @@
 
 //! Server configs
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use analytic_engine;
 use ceresdbproto_deps::ceresdbproto::storage;
@@ -51,6 +51,38 @@ pub struct StaticRouteConfig {
 pub struct Endpoint {
     pub addr: String,
     pub port: u16,
+}
+
+impl Endpoint {
+    // Parse the raw endpoint which should be the form: <domain_name>:<port>
+    //
+    // Returns `None` if fail to parse.
+    pub fn try_from_str(s: &str) -> Option<Self> {
+        let (addr, raw_port) = s.rsplit_once(':')?;
+        raw_port.parse().ok().map(|port| Endpoint {
+            addr: addr.to_string(),
+            port,
+        })
+    }
+}
+
+impl FromStr for Endpoint {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let (addr, raw_port) = match s.rsplit_once(':') {
+            Some(v) => v,
+            None => return Err(format!("Can't find ':' in the source string")),
+        };
+        let port = raw_port
+            .parse()
+            .map_err(|e| format!("Fail to parse port:{}, err:{}", raw_port, e))?;
+
+        Ok(Endpoint {
+            addr: addr.to_string(),
+            port,
+        })
+    }
 }
 
 impl From<Endpoint> for storage::Endpoint {

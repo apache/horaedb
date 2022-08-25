@@ -3,13 +3,14 @@
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
+use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use log::warn;
 use meta_client::types::RouteTablesRequest;
 use snafu::ResultExt;
 
 use crate::{
+    config::Endpoint,
     error::{ErrWithCause, Result, StatusCode},
     route::Router,
 };
@@ -22,19 +23,6 @@ impl ClusterBasedRouter {
     pub fn new(cluster: ClusterRef) -> Self {
         Self { cluster }
     }
-}
-
-// Parse the raw endpoint which should be the form: <domain_name>:<port>
-//
-// Returns `None` if fail to parse.
-fn try_parse_endpoint(raw: &str) -> Option<Endpoint> {
-    let (domain, raw_port) = raw.split_once(':')?;
-    let port: u16 = raw_port.parse().ok()?;
-
-    let mut endpoint = Endpoint::default();
-    endpoint.set_ip(domain.to_string());
-    endpoint.set_port(port as u32);
-    Some(endpoint)
 }
 
 #[async_trait]
@@ -61,15 +49,18 @@ impl Router for ClusterBasedRouter {
             for node_shard in route_entry.node_shards {
                 if node_shard.shard_info.is_leader() {
                     let mut route = Route::default();
-                    let endpoint = match try_parse_endpoint(&node_shard.endpoint) {
-                        Some(v) => v,
-                        None => {
-                            warn!("Fail to parse endpoint:{}", node_shard.endpoint);
+                    let endpoint: Endpoint = match node_shard.endpoint.parse() {
+                        Ok(v) => v,
+                        Err(msg) => {
+                            warn!(
+                                "Ignore this endpoint for parsing failed:{}, endpoint:{}",
+                                msg, node_shard.endpoint
+                            );
                             continue;
                         }
                     };
                     route.set_metric(table_name.clone());
-                    route.set_endpoint(endpoint);
+                    route.set_endpoint(endpoint.into());
 
                     routes.push(route);
                 }
