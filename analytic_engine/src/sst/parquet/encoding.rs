@@ -531,6 +531,8 @@ impl HybridRecordDecoder {
     ///
     /// `array_ref` is `a b c`, `value_offsets` is `[0, 3, 5, 6]`, then
     /// output array is `a a a b b c`
+    ///
+    /// Note: caller should ensure offsets is not empty.
     fn stretch_variable_length_column(
         array_ref: &ArrayRef,
         value_offsets: &[i32],
@@ -548,28 +550,28 @@ impl HybridRecordDecoder {
             null_bitmap.map(|v| v.buffer_ref().as_slice())
         );
 
-        let mut offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
+        let mut i32_offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
         for i in (0..offset_slices.len()).step_by(OFFSET_SIZE) {
             let offset = i32::from_le_bytes(offset_slices[i..i + OFFSET_SIZE].try_into().unwrap());
-            offsets.push(offset);
+            i32_offsets.push(offset);
         }
 
         let mut value_bytes = 0;
-        for (idx, (current, prev)) in offsets[1..].iter().zip(&offsets).enumerate() {
+        for (idx, (current, prev)) in i32_offsets[1..].iter().zip(&i32_offsets).enumerate() {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
             value_bytes += value_len * value_num;
         }
-        let mut new_offsets = MutableBuffer::new(OFFSET_SIZE * values_num);
-        let mut new_values = MutableBuffer::new(value_bytes as usize);
+        let mut new_offsets_buffer = MutableBuffer::new(OFFSET_SIZE * values_num);
+        let mut new_values_buffer = MutableBuffer::new(value_bytes as usize);
         let mut new_null_buffer = MutableBuffer::new(values_num);
         new_null_buffer = new_null_buffer.with_bitset(values_num, true);
         let null_slice = new_null_buffer.as_slice_mut();
         let mut value_length_so_far: i32 = 0;
-        new_offsets.push(value_length_so_far);
+        new_offsets_buffer.push(value_length_so_far);
         let mut bitmap_length_so_far: usize = 0;
 
-        for (idx, (current, prev)) in offsets[1..].iter().zip(&offsets).enumerate() {
+        for (idx, (current, prev)) in i32_offsets[1..].iter().zip(&i32_offsets).enumerate() {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
 
@@ -581,24 +583,24 @@ impl HybridRecordDecoder {
                 }
             }
             bitmap_length_so_far += value_num as usize;
-            new_values
+            new_values_buffer
                 .extend(value_slices[*prev as usize..*current as usize].repeat(value_num as usize));
             for _ in 0..value_num {
                 value_length_so_far += value_len;
-                new_offsets.push(value_length_so_far);
+                new_offsets_buffer.push(value_length_so_far);
             }
         }
         debug!(
             "new buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
-            new_offsets.as_slice(),
-            new_values.as_slice(),
+            new_offsets_buffer.as_slice(),
+            new_values_buffer.as_slice(),
             new_null_buffer.as_slice(),
         );
 
         let array_data = ArrayData::builder(array_ref.data_type().clone())
             .len(values_num)
-            .add_buffer(new_offsets.into())
-            .add_buffer(new_values.into())
+            .add_buffer(new_offsets_buffer.into())
+            .add_buffer(new_values_buffer.into())
             .null_bit_buffer(Some(new_null_buffer.into()))
             .build()
             .map_err(|e| Box::new(e) as _)
@@ -609,6 +611,8 @@ impl HybridRecordDecoder {
 
     /// Like `stretch_variable_length_column`, but array value is fixed-size
     /// type.
+    ///
+    /// Note: caller should ensure offsets is not empty.
     fn stretch_fixed_length_column(
         array_ref: &ArrayRef,
         value_size: usize,
@@ -617,29 +621,30 @@ impl HybridRecordDecoder {
         assert!(!value_offsets.is_empty());
 
         let values_num = *value_offsets.last().unwrap() as usize;
-        let raw_buffer = array_ref.data().buffers()[0].as_slice();
-        let null_bitmap = array_ref.data().null_bitmap();
+        let old_values_buffer = array_ref.data().buffers()[0].as_slice();
+        let old_null_bitmap = array_ref.data().null_bitmap();
 
-        let mut new_buffer = MutableBuffer::new(value_size * values_num);
+        let mut new_values_buffer = MutableBuffer::new(value_size * values_num);
         let mut new_null_buffer = MutableBuffer::new(values_num);
         new_null_buffer = new_null_buffer.with_bitset(values_num, true);
         let null_slice = new_null_buffer.as_slice_mut();
-
         let mut length_so_far = 0;
-        for (idx, offset) in (0..raw_buffer.len()).step_by(value_size).enumerate() {
-            let value_num = value_offsets[idx + 1] - value_offsets[idx];
-            if let Some(bitmap) = null_bitmap {
+
+        for (idx, offset) in (0..old_values_buffer.len()).step_by(value_size).enumerate() {
+            let value_num = (value_offsets[idx + 1] - value_offsets[idx]) as usize;
+            if let Some(bitmap) = old_null_bitmap {
                 if !bitmap.is_set(idx) {
                     for i in 0..value_num {
                         bit_util::unset_bit(null_slice, length_so_far + i as usize);
                     }
                 }
             }
-            length_so_far += value_num as usize;
-            new_buffer.extend(raw_buffer[offset..offset + value_size].repeat(value_num as usize))
+            length_so_far += value_num;
+            new_values_buffer
+                .extend(old_values_buffer[offset..offset + value_size].repeat(value_num))
         }
         let array_data = ArrayData::builder(array_ref.data_type().clone())
-            .add_buffer(new_buffer.into())
+            .add_buffer(new_values_buffer.into())
             .null_bit_buffer(Some(new_null_buffer.into()))
             .len(values_num)
             .build()
@@ -684,7 +689,6 @@ impl RecordDecoder for HybridRecordDecoder {
         ensure!(value_offsets.is_some(), ListArrayRequired {});
 
         let value_offsets = value_offsets.unwrap();
-        // let values_num = value_offsets.last().map_or_else(|| 0, |v| *v);
         let arrays = arrays
             .iter()
             .map(|array_ref| {
@@ -715,7 +719,7 @@ impl RecordDecoder for HybridRecordDecoder {
 }
 
 pub struct ParquetDecoder {
-    record_decoder: Box<dyn RecordDecoder + Send>,
+    record_decoder: Box<dyn RecordDecoder>,
 }
 
 impl ParquetDecoder {
@@ -724,17 +728,12 @@ impl ParquetDecoder {
             .map_err(|e| Box::new(e) as _)
             .context(DecodeRecordBatch)?;
         let mut format = arrow_schema_meta.storage_format();
-        log::info!(
-            "debug_fields:{:?}, format:{:?}",
-            arrow_schema.fields(),
-            format
-        );
         // TODO: remove this overwrite when we can set format via table options
         if matches!(format, StorageFormat::Hybrid) && !arrow_schema_meta.enable_tsid_primary_key() {
             format = StorageFormat::Columnar;
         }
 
-        let record_decoder: Box<dyn RecordDecoder + Send> = match format {
+        let record_decoder: Box<dyn RecordDecoder> = match format {
             StorageFormat::Hybrid => Box::new(HybridRecordDecoder {}),
             StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
         };
@@ -929,12 +928,13 @@ mod tests {
         let encoded_bytes = encoder.close().unwrap();
         let reader =
             SerializedFileReader::new(SliceableCursor::new(Arc::new(encoded_bytes))).unwrap();
-        let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(reader));
-        let mut record_batch_reader = arrow_reader.get_record_reader(2048).unwrap();
-        let hybrid_record_batch = record_batch_reader.next().unwrap().unwrap();
+        let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
+        let mut reader = reader.get_record_reader(2048).unwrap();
+        let hybrid_record_batch = reader.next().unwrap().unwrap();
 
         let decoder = HybridRecordDecoder {};
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
+
         // Note: decode record batch's schema doesn't have metadata
         // It's encoded in metadata of every fields
         // assert_eq!(decoded_record_batch.schema(), input_record_batch.schema());
