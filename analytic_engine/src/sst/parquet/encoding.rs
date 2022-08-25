@@ -678,7 +678,7 @@ impl RecordDecoder for HybridRecordDecoder {
         let new_arrow_schema = Self::convert_schema(arrow_record_batch.schema());
         let arrays = arrow_record_batch.columns();
         let mut value_offsets = None;
-        // Find value offsets from first `ListArray` column
+        // Find value offsets from the first `ListArray` column
         for array_ref in arrays {
             if matches!(array_ref.data_type(), DataType::List(_)) {
                 value_offsets = Some(Self::get_list_array_offsets(array_ref));
