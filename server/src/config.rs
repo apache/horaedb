@@ -65,7 +65,7 @@ impl FromStr for Endpoint {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let (addr, raw_port) = match s.rsplit_once(':') {
             Some(v) => v,
-            None => return Err(format!("Can't find ':' in the source string")),
+            None => return Err("Can't find ':' in the source string".to_string()),
         };
         let port = raw_port
             .parse()
@@ -235,7 +235,7 @@ mod tests {
         let cases = [
             (
                 "abc.1234.com:1000",
-                Endpoint::new("abc.1235.com".to_string(), 1000),
+                Endpoint::new("abc.1234.com".to_string(), 1000),
             ),
             (
                 "127.0.0.1:1000",
