@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use analytic_engine;
+use ceresdbproto_deps::ceresdbproto::storage;
 use cluster::{config::ClusterConfig, topology::SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
@@ -47,15 +48,25 @@ pub struct StaticRouteConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Node {
+pub struct Endpoint {
     pub addr: String,
     pub port: u16,
+}
+
+impl From<Endpoint> for storage::Endpoint {
+    fn from(endpoint: Endpoint) -> Self {
+        let mut pb_endpoint = storage::Endpoint::default();
+        pb_endpoint.set_ip(endpoint.addr);
+        pb_endpoint.set_port(endpoint.port as u32);
+
+        pb_endpoint
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
-    pub node: Node,
+    pub endpoint: Endpoint,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -108,7 +119,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
                 schema_shard_view
                     .shard_views
                     .iter()
-                    .map(|shard| (shard.shard_id, shard.node.clone()))
+                    .map(|shard| (shard.shard_id, shard.endpoint.clone()))
                     .collect(),
             );
             schema_configs.insert(schema, SchemaConfig::from(schema_shard_view));

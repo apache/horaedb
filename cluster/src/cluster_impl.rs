@@ -217,6 +217,7 @@ impl Inner {
 
         // TODO: Besides such patching update, one background `CheckAndUpdate` job
         // should be supported to keep the topology cache latest.
+        // TODO: Now the version is ignored because current topology is almost static.
         {
             // Apply the update patch to the topology cache.
             let update_patch = make_route_update_patch(&req.table_names, &route_resp.entries);

@@ -2,13 +2,12 @@
 
 //! Schema provider based on cluster.
 
-#![allow(dead_code)]
-
 use cluster::{topology::SchemaConfig, ClusterRef};
 
 use crate::schema_config_provider::{Result, SchemaConfigProvider};
 
 pub struct ClusterBasedProvider {
+    #[allow(dead_code)]
     cluster: ClusterRef,
     default_schema_config: SchemaConfig,
 }

@@ -36,10 +36,11 @@ pub enum RouteSlot {
     NotExist,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct SchemaTopology {
+    #[allow(dead_code)]
     id: SchemaId,
+    #[allow(dead_code)]
     config: SchemaConfig,
     /// The [RouteSlot] in the `route_slots` only can be `Exist` or `NotExist`.
     route_slots: HashMap<TableName, RouteSlot>,
