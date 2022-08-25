@@ -7,14 +7,17 @@ use std::{
     hash::{Hash, Hasher},
 };
 
-use ceresdbproto_deps::ceresdbproto::storage::{Endpoint, Route, RouteRequest};
-use cluster::{Node, SchemaConfig};
+use async_trait::async_trait;
+use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
+use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
+use snafu::OptionExt;
 use twox_hash::XxHash64;
 
 use crate::{
+    config::Endpoint,
     error::{ErrNoCause, Result, StatusCode},
     route::Router,
 };
@@ -23,7 +26,7 @@ use crate::{
 /// result!
 const HASH_SEED: u64 = 0;
 
-pub type ShardNodes = HashMap<ShardId, Node>;
+pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
 #[derive(Clone, Debug, Default)]
 pub struct ClusterView {
@@ -149,8 +152,9 @@ impl RuleBasedRouter {
     }
 }
 
+#[async_trait]
 impl Router for RuleBasedRouter {
-    fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             if shard_nodes.is_empty() {
                 return ErrNoCause {
@@ -172,23 +176,16 @@ impl Router for RuleBasedRouter {
 
                 let shard_id = Self::route_metric(route.get_metric(), rule_list_opt, total_shards);
 
-                let mut endpoint = Endpoint::new();
-                if let Some(node) = shard_nodes.get(&shard_id) {
-                    endpoint.set_ip(node.addr.clone());
-                    endpoint.set_port(node.port as u32);
-                } else {
-                    return ErrNoCause {
-                        code: StatusCode::NotFound,
-                        msg: format!(
-                            "Shard not found, metric:{}, shard_id:{}",
-                            route.get_metric(),
-                            shard_id
-                        ),
-                    }
-                    .fail();
-                }
-
-                route.set_endpoint(endpoint);
+                let endpoint = shard_nodes.get(&shard_id).with_context(|| ErrNoCause {
+                    code: StatusCode::NotFound,
+                    msg: format!(
+                        "Shard not found, metric:{}, shard_id:{}",
+                        route.get_metric(),
+                        shard_id
+                    ),
+                })?;
+                let pb_endpoint = storage::Endpoint::from(endpoint.clone());
+                route.set_endpoint(pb_endpoint);
                 route_vec.push(route);
             }
             return Ok(route_vec);

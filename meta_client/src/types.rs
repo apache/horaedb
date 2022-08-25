@@ -2,12 +2,14 @@
 
 use std::collections::HashMap;
 
-use catalog::schema::SchemaName;
 use ceresdbproto_deps::ceresdbproto::{
     cluster,
     meta_service::{self, NodeHeartbeatResponse_oneof_cmd},
 };
-use common_types::{schema::SchemaId, table::TableId};
+use common_types::{
+    schema::{SchemaId, SchemaName},
+    table::TableId,
+};
 use common_util::config::ReadableDuration;
 use protobuf::RepeatedField;
 use serde_derive::Deserialize;
@@ -122,7 +124,14 @@ pub struct ShardInfo {
     pub role: ShardRole,
 }
 
-#[derive(Debug, Copy, Clone)]
+impl ShardInfo {
+    #[inline]
+    pub fn is_leader(&self) -> bool {
+        self.role == ShardRole::LEADER
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ShardRole {
     LEADER,
     FOLLOWER,

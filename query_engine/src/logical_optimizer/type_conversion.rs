@@ -274,9 +274,9 @@ fn string_to_timestamp_ms(string: &str) -> Result<ScalarValue> {
     ))
 }
 
-#[allow(dead_code)]
 enum TimestampType {
     Second,
+    #[allow(dead_code)]
     Millisecond,
     Microsecond,
     Nanosecond,

@@ -2,10 +2,11 @@
 
 //! Server configs
 
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use analytic_engine;
-use cluster::{config::ClusterConfig, Node, SchemaConfig};
+use ceresdbproto_deps::ceresdbproto::storage;
+use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
@@ -46,10 +47,51 @@ pub struct StaticRouteConfig {
     pub topology: StaticTopologyConfig,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct Endpoint {
+    pub addr: String,
+    pub port: u16,
+}
+
+impl Endpoint {
+    pub fn new(addr: String, port: u16) -> Self {
+        Self { addr, port }
+    }
+}
+
+impl FromStr for Endpoint {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let (addr, raw_port) = match s.rsplit_once(':') {
+            Some(v) => v,
+            None => return Err("Can't find ':' in the source string".to_string()),
+        };
+        let port = raw_port
+            .parse()
+            .map_err(|e| format!("Fail to parse port:{}, err:{}", raw_port, e))?;
+
+        Ok(Endpoint {
+            addr: addr.to_string(),
+            port,
+        })
+    }
+}
+
+impl From<Endpoint> for storage::Endpoint {
+    fn from(endpoint: Endpoint) -> Self {
+        let mut pb_endpoint = storage::Endpoint::default();
+        pb_endpoint.set_ip(endpoint.addr);
+        pb_endpoint.set_port(endpoint.port as u32);
+
+        pb_endpoint
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
-    pub node: Node,
+    pub endpoint: Endpoint,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -102,7 +144,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
                 schema_shard_view
                     .shard_views
                     .iter()
-                    .map(|shard| (shard.shard_id, shard.node.clone()))
+                    .map(|shard| (shard.shard_id, shard.endpoint.clone()))
                     .collect(),
             );
             schema_configs.insert(schema, SchemaConfig::from(schema_shard_view));
@@ -180,6 +222,49 @@ impl Default for Config {
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_endpoint() {
+        let cases = [
+            (
+                "abc.1234.com:1000",
+                Endpoint::new("abc.1234.com".to_string(), 1000),
+            ),
+            (
+                "127.0.0.1:1000",
+                Endpoint::new("127.0.0.1".to_string(), 1000),
+            ),
+            (
+                "fe80::dce8:23ff:fe0c:f2c0:1000",
+                Endpoint::new("fe80::dce8:23ff:fe0c:f2c0".to_string(), 1000),
+            ),
+        ];
+
+        for (source, expect) in cases {
+            let target: Endpoint = source.parse().expect("Should succeed to parse endpoint");
+            assert_eq!(target, expect);
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_endpoint() {
+        let cases = [
+            "abc.1234.com:1000000",
+            "fe80::dce8:23ff:fe0c:f2c0",
+            "127.0.0.1",
+            "abc.1234.com",
+            "abc.1234.com:abcd",
+        ];
+
+        for source in cases {
+            assert!(source.parse::<Endpoint>().is_err());
         }
     }
 }

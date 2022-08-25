@@ -134,7 +134,6 @@ define_result!(Error);
 
 /// A name reference.
 pub type NameRef<'a> = &'a str;
-pub type SchemaName = String;
 // TODO: This name is conflict with [table_engine::schema::SchemaRef].
 pub type SchemaRef = Arc<dyn Schema + Send + Sync>;
 
