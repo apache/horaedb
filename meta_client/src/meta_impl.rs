@@ -125,16 +125,14 @@ impl Inner {
         })
     }
 
-    async fn reconnect_heartbeat_channel(&self) {
+    async fn reconnect_heartbeat_channel(&self) -> GrpcClient {
         info!("gRPC reconnect begin");
 
         loop {
             match self.connect_grpc_client() {
                 Ok(client) => {
-                    *self.grpc_client.write().await = Some(client);
-
                     info!("gRPC reconnect succeeds");
-                    return;
+                    return client;
                 }
                 Err(e) => {
                     error!("gRPC reconnect failed, err:{}", e);
@@ -169,8 +167,9 @@ impl Inner {
             };
 
             if receiver.is_none() {
-                warn!("gRPC stream is not inited and try to reconnect the stream");
-                self.reconnect_heartbeat_channel().await;
+                warn!("gRPC stream is not init and try to reconnect the stream");
+                let client = self.reconnect_heartbeat_channel().await;
+                *self.grpc_client.write().await = Some(client);
                 continue;
             }
 
@@ -295,7 +294,8 @@ impl MetaClient for MetaClientImpl {
             self.inner.meta_config
         );
 
-        self.inner.reconnect_heartbeat_channel().await;
+        let client = self.inner.reconnect_heartbeat_channel().await;
+        *self.inner.grpc_client.write().await = Some(client);
 
         let inner = self.inner.clone();
         let (tx, rx) = mpsc::channel(1);
@@ -319,6 +319,7 @@ impl MetaClient for MetaClientImpl {
                 let _ = tx.send(()).await;
             }
         }
+        info!("Stop eventloop signal is sent");
 
         {
             let handle = self.eventloop_handle.lock().unwrap().take();
@@ -507,7 +508,10 @@ impl MetaClient for MetaClientImpl {
 
         // FIXME: reconnect the heartbeat channel iff specific errors occur.
         if send_res.is_err() {
-            self.inner.reconnect_heartbeat_channel().await;
+            let client = self.inner.reconnect_heartbeat_channel().await;
+            drop(grpc_client);
+            drop(grpc_client_guard);
+            *self.inner.grpc_client.write().await = Some(client);
         }
         send_res
     }
