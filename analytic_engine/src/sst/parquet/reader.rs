@@ -3,7 +3,6 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
-    convert::TryFrom,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -23,7 +22,7 @@ use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::{ArrowSchemaMeta, Schema, StorageFormat},
+    schema::Schema,
 };
 use common_util::runtime::Runtime;
 use futures::Stream;
@@ -321,6 +320,9 @@ impl ProjectAndFilterReader {
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
         let arrow_schema = self.projected_schema.to_projected_arrow_schema();
+        let parquet_decoder = ParquetDecoder::try_new(arrow_schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeRecordBatch)?;
         let mut row_num = 0;
         for record_batch in reader {
             trace!(
@@ -334,36 +336,10 @@ impl ProjectAndFilterReader {
                 .context(DecodeRecordBatch)
             {
                 Ok(record_batch) => {
-                    // let arrow_schema = record_batch.schema();
-                    let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
+                    let record_batch = parquet_decoder
+                        .decode_record_batch(record_batch)
                         .map_err(|e| Box::new(e) as _)
-                        .context(DecodeSstMeta)?;
-                    let mut format = arrow_schema_meta.storage_format();
-                    println!(
-                        "debug_fields:{:?}, format:{:?}",
-                        arrow_schema.fields(),
-                        format
-                    );
-                    // TODO: remove this overwrite when we can set format via table options
-                    if matches!(format, StorageFormat::Hybrid)
-                        && !arrow_schema_meta.enable_tsid_primary_key()
-                    {
-                        format = StorageFormat::Columnar;
-                    }
-                    println!("debug_new_format:{:?}", format);
-
-                    let record_batch = match format {
-                        StorageFormat::Hybrid => ParquetDecoder {
-                            record_batch,
-                            arrow_schema: arrow_schema.clone(),
-                        }
-                        .decode()
-                        .map_err(|e| Box::new(e) as _)
-                        .context(DecodeRecordBatch)?,
-
-                        StorageFormat::Columnar => record_batch,
-                    };
-
+                        .context(DecodeRecordBatch)?;
                     row_num += record_batch.num_rows();
                     let record_batch_with_key = arrow_record_batch_projector
                         .project_to_record_batch_with_key(record_batch)

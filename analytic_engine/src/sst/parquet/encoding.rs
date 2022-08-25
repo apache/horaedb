@@ -9,8 +9,9 @@ use std::{
 use arrow_deps::{
     arrow::{
         array::{Array, ArrayData, ArrayRef},
-        buffer::{Buffer, MutableBuffer},
+        buffer::MutableBuffer,
         record_batch::RecordBatch as ArrowRecordBatch,
+        util::bit_util,
     },
     parquet::{
         arrow::ArrowWriter,
@@ -21,7 +22,9 @@ use arrow_deps::{
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
     datum::DatumKind,
-    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema, StorageFormat},
+    schema::{
+        ArrowSchema, ArrowSchemaMeta, ArrowSchemaRef, DataType, Field, Schema, StorageFormat,
+    },
 };
 use common_util::define_result;
 use log::debug;
@@ -485,12 +488,24 @@ impl ParquetEncoder {
     }
 }
 
-pub struct ParquetDecoder {
-    pub record_batch: ArrowRecordBatch,
-    pub arrow_schema: ArrowSchemaRef,
+/// RecordDecoder is used for decoding ArrowRecordBatch based on
+/// `schema.StorageFormat`
+trait RecordDecoder {
+    fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch>;
 }
 
-impl ParquetDecoder {
+struct ColumnarRecordDecoder {}
+
+impl RecordDecoder for ColumnarRecordDecoder {
+    fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
+        Ok(arrow_record_batch)
+    }
+}
+
+struct HybridRecordDecoder {}
+
+impl HybridRecordDecoder {
+    /// Convert `ListArray` fields to underlying data type
     fn convert_schema(arrow_schema: ArrowSchemaRef) -> ArrowSchemaRef {
         let new_fields: Vec<_> = arrow_schema
             .fields()
@@ -519,13 +534,18 @@ impl ParquetDecoder {
     fn stretch_variable_length_column(
         array_ref: &ArrayRef,
         value_offsets: &[i32],
-        values_num: usize,
     ) -> Result<ArrayRef> {
+        assert!(!value_offsets.is_empty());
+
+        let values_num = *value_offsets.last().unwrap() as usize;
         let offset_slices = array_ref.data().buffers()[0].as_slice();
         let value_slices = array_ref.data().buffers()[1].as_slice();
+        let null_bitmap = array_ref.data().null_bitmap();
         debug!(
-            "raw buffer slice, offset:{:#02x?}, value:{:#02x?}",
-            offset_slices, value_slices
+            "raw buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
+            offset_slices,
+            value_slices,
+            null_bitmap.map(|v| v.buffer_ref().as_slice())
         );
 
         let mut offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
@@ -542,23 +562,44 @@ impl ParquetDecoder {
         }
         let mut new_offsets = MutableBuffer::new(OFFSET_SIZE * values_num);
         let mut new_values = MutableBuffer::new(value_bytes as usize);
-        let mut length_so_far: i32 = 0;
-        new_offsets.push(length_so_far);
+        let mut new_null_buffer = MutableBuffer::new(values_num);
+        new_null_buffer = new_null_buffer.with_bitset(values_num, true);
+        let null_slice = new_null_buffer.as_slice_mut();
+        let mut value_length_so_far: i32 = 0;
+        new_offsets.push(value_length_so_far);
+        let mut bitmap_length_so_far: usize = 0;
 
         for (idx, (current, prev)) in offsets[1..].iter().zip(&offsets).enumerate() {
             let value_len = current - prev;
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
+
+            if let Some(bitmap) = null_bitmap {
+                if !bitmap.is_set(idx) {
+                    for i in 0..value_num {
+                        bit_util::unset_bit(null_slice, bitmap_length_so_far + i as usize);
+                    }
+                }
+            }
+            bitmap_length_so_far += value_num as usize;
             new_values
                 .extend(value_slices[*prev as usize..*current as usize].repeat(value_num as usize));
             for _ in 0..value_num {
-                length_so_far += value_len;
-                new_offsets.push(length_so_far);
+                value_length_so_far += value_len;
+                new_offsets.push(value_length_so_far);
             }
         }
+        debug!(
+            "new buffer slice, offsets:{:#02x?}, values:{:#02x?}, bitmap:{:#02x?}",
+            new_offsets.as_slice(),
+            new_values.as_slice(),
+            new_null_buffer.as_slice(),
+        );
+
         let array_data = ArrayData::builder(array_ref.data_type().clone())
             .len(values_num)
             .add_buffer(new_offsets.into())
             .add_buffer(new_values.into())
+            .null_bit_buffer(Some(new_null_buffer.into()))
             .build()
             .map_err(|e| Box::new(e) as _)
             .context(DecodeRecordBatch)?;
@@ -566,21 +607,40 @@ impl ParquetDecoder {
         Ok(array_data.into())
     }
 
-    /// Like `stretch_variable_length_column`, but value is fixed-size
+    /// Like `stretch_variable_length_column`, but array value is fixed-size
+    /// type.
     fn stretch_fixed_length_column(
         array_ref: &ArrayRef,
         value_size: usize,
         value_offsets: &[i32],
-        values_num: usize,
     ) -> Result<ArrayRef> {
-        let mut new_buffer = MutableBuffer::new(value_size * values_num);
+        assert!(!value_offsets.is_empty());
+
+        let values_num = *value_offsets.last().unwrap() as usize;
         let raw_buffer = array_ref.data().buffers()[0].as_slice();
+        let null_bitmap = array_ref.data().null_bitmap();
+
+        let mut new_buffer = MutableBuffer::new(value_size * values_num);
+        let mut new_null_buffer = MutableBuffer::new(values_num);
+        new_null_buffer = new_null_buffer.with_bitset(values_num, true);
+        let null_slice = new_null_buffer.as_slice_mut();
+
+        let mut length_so_far = 0;
         for (idx, offset) in (0..raw_buffer.len()).step_by(value_size).enumerate() {
             let value_num = value_offsets[idx + 1] - value_offsets[idx];
+            if let Some(bitmap) = null_bitmap {
+                if !bitmap.is_set(idx) {
+                    for i in 0..value_num {
+                        bit_util::unset_bit(null_slice, length_so_far + i as usize);
+                    }
+                }
+            }
+            length_so_far += value_num as usize;
             new_buffer.extend(raw_buffer[offset..offset + value_size].repeat(value_num as usize))
         }
         let array_data = ArrayData::builder(array_ref.data_type().clone())
             .add_buffer(new_buffer.into())
+            .null_bit_buffer(Some(new_null_buffer.into()))
             .len(values_num)
             .build()
             .map_err(|e| Box::new(e) as _)
@@ -589,24 +649,34 @@ impl ParquetDecoder {
         Ok(array_data.into())
     }
 
-    /// Decode records from hybrid to columnar format
-    pub fn decode(self) -> Result<ArrowRecordBatch> {
-        let new_arrow_schema = Self::convert_schema(self.record_batch.schema());
-        let columns = self.record_batch.columns();
-        let mut value_offsets = None;
-        let mut values_num = 0;
-        // Find value offsets from first `ListArray` column
-        for col in columns {
-            if matches!(col.data_type(), DataType::List(_)) {
-                let offset_slices = col.data().buffers()[0].as_slice();
-                values_num = col.data().child_data()[0].len();
+    /// Returns offsets of nested items in ListArray, and populates the
+    /// `values_num`
+    ///
+    /// Note: caller should ensure `array_ref` is ListArray
+    fn get_list_array_offsets(array_ref: &ArrayRef) -> Vec<i32> {
+        let offset_slices = array_ref.data().buffers()[0].as_slice();
+        // *values_num = array_ref.data().child_data()[0].len();
 
-                let mut i32_offsets = Vec::with_capacity(offset_slices.len() / 4);
-                for i in (0..offset_slices.len()).step_by(4) {
-                    let offset = i32::from_le_bytes(offset_slices[i..i + 4].try_into().unwrap());
-                    i32_offsets.push(offset);
-                }
-                value_offsets = Some(i32_offsets);
+        let mut i32_offsets = Vec::with_capacity(offset_slices.len() / OFFSET_SIZE);
+        for i in (0..offset_slices.len()).step_by(OFFSET_SIZE) {
+            let offset = i32::from_le_bytes(offset_slices[i..i + OFFSET_SIZE].try_into().unwrap());
+            i32_offsets.push(offset);
+        }
+
+        i32_offsets
+    }
+}
+
+impl RecordDecoder for HybridRecordDecoder {
+    /// Decode records from hybrid to columnar format
+    fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
+        let new_arrow_schema = Self::convert_schema(arrow_record_batch.schema());
+        let arrays = arrow_record_batch.columns();
+        let mut value_offsets = None;
+        // Find value offsets from first `ListArray` column
+        for array_ref in arrays {
+            if matches!(array_ref.data_type(), DataType::List(_)) {
+                value_offsets = Some(Self::get_list_array_offsets(array_ref));
                 break;
             }
         }
@@ -614,25 +684,23 @@ impl ParquetDecoder {
         ensure!(value_offsets.is_some(), ListArrayRequired {});
 
         let value_offsets = value_offsets.unwrap();
-        let new_cols = columns
+        // let values_num = value_offsets.last().map_or_else(|| 0, |v| *v);
+        let arrays = arrays
             .iter()
-            .map(|col| {
-                let data_type = col.data_type();
+            .map(|array_ref| {
+                let data_type = array_ref.data_type();
                 match data_type {
-                    DataType::List(_nested_field) => Ok(col.data().child_data()[0].clone().into()),
+                    DataType::List(_nested_field) => {
+                        Ok(array_ref.data().child_data()[0].clone().into())
+                    }
                     _ => {
                         let datum_kind = DatumKind::from_data_type(data_type).unwrap();
                         match datum_kind.size() {
-                            None => Self::stretch_variable_length_column(
-                                col,
-                                &value_offsets,
-                                values_num,
-                            ),
+                            None => Self::stretch_variable_length_column(array_ref, &value_offsets),
                             Some(value_size) => Self::stretch_fixed_length_column(
-                                col,
+                                array_ref,
                                 value_size,
                                 &value_offsets,
-                                values_num,
                             ),
                         }
                     }
@@ -640,8 +708,236 @@ impl ParquetDecoder {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        ArrowRecordBatch::try_new(new_arrow_schema, new_cols)
+        ArrowRecordBatch::try_new(new_arrow_schema, arrays)
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)
+    }
+}
+
+pub struct ParquetDecoder {
+    record_decoder: Box<dyn RecordDecoder + Send>,
+}
+
+impl ParquetDecoder {
+    pub fn try_new(arrow_schema: ArrowSchemaRef) -> Result<Self> {
+        let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeRecordBatch)?;
+        let mut format = arrow_schema_meta.storage_format();
+        log::info!(
+            "debug_fields:{:?}, format:{:?}",
+            arrow_schema.fields(),
+            format
+        );
+        // TODO: remove this overwrite when we can set format via table options
+        if matches!(format, StorageFormat::Hybrid) && !arrow_schema_meta.enable_tsid_primary_key() {
+            format = StorageFormat::Columnar;
+        }
+
+        let record_decoder: Box<dyn RecordDecoder + Send> = match format {
+            StorageFormat::Hybrid => Box::new(HybridRecordDecoder {}),
+            StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
+        };
+
+        Ok(Self { record_decoder })
+    }
+
+    pub fn decode_record_batch(
+        &self,
+        arrow_record_batch: ArrowRecordBatch,
+    ) -> Result<ArrowRecordBatch> {
+        self.record_decoder.decode(arrow_record_batch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use arrow_deps::{
+        arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array},
+        parquet::{
+            arrow::{ArrowReader, ParquetFileArrowReader},
+            file::serialized_reader::{SerializedFileReader, SliceableCursor},
+        },
+    };
+    use common_types::{
+        column_schema,
+        schema::{Builder, TSID_COLUMN},
+    };
+
+    use super::*;
+
+    fn build_schema() -> Schema {
+        Builder::new()
+            .auto_increment_column_id(true)
+            .enable_tsid_primary_key(true)
+            .add_key_column(
+                column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_key_column(
+                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("host".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("region".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("value".to_string(), DatumKind::Int32)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    fn string_array(values: Vec<Option<&str>>) -> ArrayRef {
+        Arc::new(StringArray::from(values))
+    }
+
+    fn int32_array(values: Vec<Option<i32>>) -> ArrayRef {
+        Arc::new(Int32Array::from(values))
+    }
+
+    fn timestamp_array(values: Vec<i64>) -> ArrayRef {
+        Arc::new(TimestampMillisecondArray::from(values))
+    }
+
+    #[test]
+    fn stretch_int32_column() {
+        let testcases = [
+            // (input, value_offsets, expected)
+            (
+                vec![Some(1), Some(2)],
+                vec![0, 2, 4],
+                vec![Some(1), Some(1), Some(2), Some(2)],
+            ),
+            (
+                vec![Some(1), None, Some(2)],
+                vec![0, 2, 4, 5],
+                vec![Some(1), Some(1), None, None, Some(2)],
+            ),
+        ];
+
+        for (input, value_offsets, expected) in testcases {
+            let input = int32_array(input);
+            let expected = int32_array(expected);
+            let actual = HybridRecordDecoder::stretch_fixed_length_column(
+                &input,
+                std::mem::size_of::<i32>(),
+                &value_offsets,
+            )
+            .unwrap();
+            assert_eq!(
+                actual.as_any().downcast_ref::<Int32Array>().unwrap(),
+                expected.as_any().downcast_ref::<Int32Array>().unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn stretch_string_column() {
+        let testcases = [
+            // (input, value_offsets, values_num, expected)
+            //
+            // value with same length
+            (
+                vec![Some("a"), Some("b"), Some("c")],
+                vec![0, 3, 5, 6],
+                vec![
+                    Some("a"),
+                    Some("a"),
+                    Some("a"),
+                    Some("b"),
+                    Some("b"),
+                    Some("c"),
+                ],
+            ),
+            // value with different length
+            (
+                vec![Some("hello"), Some("ceresdb")],
+                vec![0, 1, 3],
+                vec![Some("hello"), Some("ceresdb"), Some("ceresdb")],
+            ),
+            // value with none
+            (
+                vec![None, None, Some("hello"), None],
+                vec![0, 1, 3, 4, 5],
+                vec![None, None, None, Some("hello"), None],
+            ),
+        ];
+
+        for (input, value_offsets, expected) in testcases {
+            let input = string_array(input);
+            let expected = string_array(expected);
+            let actual =
+                HybridRecordDecoder::stretch_variable_length_column(&input, &value_offsets)
+                    .unwrap();
+            assert_eq!(
+                actual.as_any().downcast_ref::<StringArray>().unwrap(),
+                expected.as_any().downcast_ref::<StringArray>().unwrap(),
+            );
+        }
+    }
+
+    #[test]
+    fn encode_hybrid_record_and_decode_back() {
+        let write_props = WriterProperties::builder().build();
+        let schema = build_schema();
+        let mut encoder = HybridRecordEncoder::try_new(write_props, &schema).unwrap();
+
+        let columns = vec![
+            Arc::new(UInt64Array::from(vec![1, 1, 2, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 101]),
+            string_array(vec![
+                Some("host1"),
+                Some("host1"),
+                Some("host2"),
+                Some("host2"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region2"),
+            ]),
+            int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
+        ];
+
+        let input_record_batch =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
+        let row_nums = encoder.encode(vec![input_record_batch.clone()]).unwrap();
+        assert_eq!(2, row_nums);
+
+        // read encoded records back, and then compare with input records
+        let encoded_bytes = encoder.close().unwrap();
+        let reader =
+            SerializedFileReader::new(SliceableCursor::new(Arc::new(encoded_bytes))).unwrap();
+        let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(reader));
+        let mut record_batch_reader = arrow_reader.get_record_reader(2048).unwrap();
+        let hybrid_record_batch = record_batch_reader.next().unwrap().unwrap();
+
+        let decoder = HybridRecordDecoder {};
+        let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
+        // Note: decode record batch's schema doesn't have metadata
+        // It's encoded in metadata of every fields
+        // assert_eq!(decoded_record_batch.schema(), input_record_batch.schema());
+        assert_eq!(decoded_record_batch.columns(), input_record_batch.columns());
     }
 }
