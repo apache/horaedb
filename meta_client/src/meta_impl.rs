@@ -509,7 +509,6 @@ impl MetaClient for MetaClientImpl {
         // FIXME: reconnect the heartbeat channel iff specific errors occur.
         if send_res.is_err() {
             let client = self.inner.reconnect_heartbeat_channel().await;
-            drop(grpc_client);
             drop(grpc_client_guard);
             *self.inner.grpc_client.write().await = Some(client);
         }
