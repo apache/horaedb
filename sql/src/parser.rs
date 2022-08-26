@@ -30,7 +30,6 @@ macro_rules! parser_err {
 
 const TS_KEY: &str = "__ts_key";
 const TAG: &str = "TAG";
-const COMMENT: &str = "COMMENT";
 const UNSIGN: &str = "UNSIGN";
 const MODIFY: &str = "MODIFY";
 const SETTING: &str = "SETTING";
@@ -59,13 +58,10 @@ is_custom_column!(TAG);
 is_custom_column!(UNSIGN);
 
 /// Get the comment from the [`ColumnOption`] if it is a comment option.
+#[inline]
 pub fn get_column_comment(opt: &ColumnOption) -> Option<String> {
-    if let ColumnOption::DialectSpecific(tokens) = opt {
-        if let [Token::Word(keyword), Token::SingleQuotedString(comment)] = &tokens[..] {
-            if keyword.value == COMMENT {
-                return Some(comment.clone());
-            }
-        }
+    if let ColumnOption::Comment(comment) = opt {
+        return Some(comment.clone());
     }
 
     None
@@ -480,12 +476,10 @@ impl<'a> Parser<'a> {
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(UNSIGN),
             ])))
-        } else if self.consume_token(COMMENT) {
-            let comment = self.parser.parse_literal_string()?;
-            Ok(Some(ColumnOption::DialectSpecific(vec![
-                Token::make_keyword(COMMENT),
-                Token::SingleQuotedString(comment),
-            ])))
+        } else if self.parser.parse_keyword(Keyword::COMMENT) {
+            Ok(Some(ColumnOption::Comment(
+                self.parser.parse_literal_string()?,
+            )))
         } else {
             Ok(None)
         }
@@ -590,6 +584,25 @@ mod tests {
         }
     }
 
+    fn make_comment_column_def(
+        name: impl Into<String>,
+        data_type: DataType,
+        comment: String,
+    ) -> ColumnDef {
+        ColumnDef {
+            name: Ident {
+                value: name.into(),
+                quote_style: None,
+            },
+            data_type,
+            collation: None,
+            options: vec![ColumnOptionDef {
+                name: None,
+                option: ColumnOption::Comment(comment),
+            }],
+        }
+    }
+
     fn make_table_name(name: impl Into<String>) -> TableName {
         ObjectName(vec![Ident::new(name)]).into()
     }
@@ -617,6 +630,22 @@ mod tests {
                 make_column_def("c1", DataType::Timestamp),
                 make_column_def("c2", DataType::Double),
                 make_column_def("c3", DataType::String),
+            ],
+            engine: "XX".to_string(),
+            constraints: vec![],
+            options: vec![],
+        });
+        expect_parse_ok(sql, expected).unwrap();
+
+        // positive case, multiple columns with comment
+        let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double comment 'id', c3 string comment 'name',) ENGINE = XX";
+        let expected = Statement::Create(CreateTable {
+            if_not_exists: false,
+            table_name: make_table_name("mytbl"),
+            columns: vec![
+                make_column_def("c1", DataType::Timestamp),
+                make_comment_column_def("c2", DataType::Double, "id".to_string()),
+                make_comment_column_def("c3", DataType::String, "name".to_string()),
             ],
             engine: "XX".to_string(),
             constraints: vec![],

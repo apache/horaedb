@@ -1,19 +1,15 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    collections::HashMap,
     sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
 
 use async_trait::async_trait;
-use common_types::table::TableName;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{
-        ActionCmd, GetShardTablesRequest, RouteEntry, RouteTablesRequest, RouteTablesResponse,
-    },
+    types::{ActionCmd, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
     EventHandler, MetaClient,
 };
 use snafu::ResultExt;
@@ -25,7 +21,7 @@ use tokio::{
 use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
-    topology::{ClusterTopology, RouteSlot},
+    topology::ClusterTopology,
     Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
@@ -105,6 +101,7 @@ struct Inner {
     table_manager: TableManager,
     meta_client: Arc<dyn MetaClient + Send + Sync>,
     table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
+    #[allow(dead_code)]
     topology: RwLock<ClusterTopology>,
 }
 
@@ -164,23 +161,6 @@ impl EventHandler for Inner {
     }
 }
 
-fn make_route_update_patch(
-    queried_tables: &[TableName],
-    route_entries: &HashMap<TableName, RouteEntry>,
-) -> HashMap<TableName, RouteSlot> {
-    let mut slots = HashMap::with_capacity(queried_tables.len());
-
-    for table_name in queried_tables {
-        let slot = match route_entries.get(table_name) {
-            Some(entry) => RouteSlot::Exist(entry.clone()),
-            None => RouteSlot::NotExist,
-        };
-        slots.insert(table_name.clone(), slot);
-    }
-
-    slots
-}
-
 impl Inner {
     fn new(
         meta_client: Arc<dyn MetaClient + Send + Sync>,
@@ -195,39 +175,13 @@ impl Inner {
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
-        let route_res = {
-            let topology = self.topology.read().unwrap();
-            topology.route_tables(&req.schema_name, &req.table_names)
-        };
-
-        if route_res.missing_tables.is_empty() {
-            return Ok(RouteTablesResponse::from(route_res));
-        }
-
-        // TODO: Actually, only the missing tables' routing information needs fetching
-        // from CeresMeta.
-
-        // Some tables are not found in the cluster topology cache, and we need to fetch
-        // them from CeresMeta.
+        // TODO: we should use self.topology to cache the route result to reduce the
+        // pressure on the CeresMeta.
         let route_resp = self
             .meta_client
             .route_tables(req.clone())
             .await
             .context(MetaClientFailure)?;
-
-        // TODO: Besides such patching update, one background `CheckAndUpdate` job
-        // should be supported to keep the topology cache latest.
-        // TODO: Now the version is ignored because current topology is almost static.
-        {
-            // Apply the update patch to the topology cache.
-            let update_patch = make_route_update_patch(&req.table_names, &route_resp.entries);
-            let mut topology = self.topology.write().unwrap();
-            topology.update_tables(
-                &req.schema_name,
-                update_patch,
-                route_resp.cluster_topology_version,
-            );
-        }
 
         Ok(route_resp)
     }
