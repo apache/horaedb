@@ -618,7 +618,7 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
     let mut time_range_start = files[0].time_range().inclusive_start();
     let mut time_range_end = files[0].time_range().exclusive_end();
     let mut max_sequence = files[0].max_sequence();
-    // TODO: what if format of different file is different?
+    // TODO(jiacai2050): what if format of different file is different?
     // pick first now
     let storage_format = files[0].storage_format();
 
