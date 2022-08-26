@@ -83,6 +83,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                     schema,
                     size: src.size,
                     row_num: src.row_num,
+                    storage_format: src.storage_format.into(),
                 },
             },
         })

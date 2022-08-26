@@ -42,6 +42,7 @@ use crate::{
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
+    table_options::StorageFormat,
     TableOptions,
 };
 
@@ -465,6 +466,10 @@ impl TableData {
 
     pub fn is_expired(&self, timestamp: Timestamp) -> bool {
         self.table_options().is_expired(timestamp)
+    }
+
+    pub fn storage_format(&self) -> StorageFormat {
+        self.table_options().storage_format
     }
 }
 

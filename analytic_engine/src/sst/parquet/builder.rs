@@ -176,7 +176,7 @@ mod tests {
             parquet::reader::ParquetSstReader,
             reader::{tests::check_stream, SstReader},
         },
-        table_options,
+        table_options::{self, StorageFormat},
     };
 
     // TODO(xikai): add test for reverse reader
@@ -217,6 +217,7 @@ mod tests {
                 schema: schema.clone(),
                 size: 10,
                 row_num: 2,
+                storage_format: StorageFormat::default(),
             };
 
             let mut counter = 10;

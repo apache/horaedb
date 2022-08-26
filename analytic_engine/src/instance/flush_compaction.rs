@@ -607,6 +607,7 @@ impl Instance {
                 schema: table_data.schema(),
                 size: 0,
                 row_num: 0,
+                storage_format: table_data.table_options().storage_format,
             };
 
             let store = self.space_store.clone();
@@ -711,6 +712,7 @@ impl Instance {
             schema: table_data.schema(),
             size: 0,
             row_num: 0,
+            storage_format: table_data.storage_format(),
         };
 
         // Alloc file id for next sst file

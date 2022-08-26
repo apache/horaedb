@@ -177,6 +177,7 @@ pub enum CompatError {
 }
 
 /// Meta data of the arrow schema
+#[derive(Default)]
 pub struct ArrowSchemaMeta {
     num_key_columns: usize,
     timestamp_index: usize,
@@ -185,20 +186,6 @@ pub struct ArrowSchemaMeta {
 }
 
 impl ArrowSchemaMeta {
-    pub fn storage_format(&self) -> StorageFormat {
-        // TODO: parse it from table options
-        match std::env::var("CERESDB_TABLE_FORMAT") {
-            Ok(format) => {
-                if format == "HYBRID" {
-                    StorageFormat::Hybrid
-                } else {
-                    StorageFormat::Columnar
-                }
-            }
-            Err(_) => StorageFormat::Columnar,
-        }
-    }
-
     pub fn enable_tsid_primary_key(&self) -> bool {
         self.enable_tsid_primary_key
     }
@@ -254,10 +241,10 @@ pub enum ArrowSchemaMetaKey {
 impl ArrowSchemaMetaKey {
     fn as_str(&self) -> &str {
         match self {
-            ArrowSchemaMetaKey::NumKeyColumns => "schema:num_key_columns",
-            ArrowSchemaMetaKey::TimestampIndex => "schema::timestamp_index",
-            ArrowSchemaMetaKey::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
-            ArrowSchemaMetaKey::Version => "schema::version",
+            Self::NumKeyColumns => "schema:num_key_columns",
+            Self::TimestampIndex => "schema::timestamp_index",
+            Self::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
+            Self::Version => "schema::version",
         }
     }
 }
@@ -504,45 +491,6 @@ pub fn compare_row<LR: RowView, RR: RowView>(
     }
 
     Ordering::Equal
-}
-
-/// StorageFormat specify how records are saved in persistent storage
-#[derive(Debug)]
-pub enum StorageFormat {
-    /// Traditional columnar format, every column is saved in one exact one
-    /// column, for example:
-    ///
-    ///```plaintext
-    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
-    /// | --------- |---------- | ----------- | ----- | ----- |
-    /// | 12:01     | A         | 0           | v1    | v1    |
-    /// | 12:01     | B         | 0           | v2    | v2    |
-    /// | 12:02     | A         | 0           | v1    | v1    |
-    /// | 12:02     | B         | 1           | v2    | v2    |
-    /// | 12:03     | A         | 0           | v1    | v1    |
-    /// | 12:03     | B         | 0           | v2    | v2    |
-    /// | .....     |           |             |       |       |
-    /// ```
-    Columnar,
-
-    /// Design for time-series data
-    /// Collapsible Columns within same primary key are collapsed
-    /// into list, other columns are the same format with columar's.
-    ///
-    /// Wether a column is collapsible is decided by
-    /// `Schema::is_collapsible_column`
-    ///
-    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
-    /// for time-range pushdown filter
-    ///
-    ///```plaintext
-    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
-    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
-    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
-    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
-    /// | ...       |                     |             |       |       |         |         |
-    /// ```
-    Hybrid,
 }
 
 // TODO(yingwen): Maybe rename to TableSchema.
@@ -865,21 +813,6 @@ impl Schema {
     pub fn string_buffer_offset(&self) -> usize {
         self.column_schemas.string_buffer_offset
     }
-
-    /// Data format in storage
-    pub fn storage_format(&self) -> StorageFormat {
-        // TODO: parse it from table options
-        match std::env::var("CERESDB_TABLE_FORMAT") {
-            Ok(format) => {
-                if format == "HYBRID" {
-                    StorageFormat::Hybrid
-                } else {
-                    StorageFormat::Columnar
-                }
-            }
-            Err(_) => StorageFormat::Columnar,
-        }
-    }
 }
 
 impl TryFrom<common_pb::TableSchema> for Schema {
@@ -1119,12 +1052,7 @@ impl Builder {
     ) -> Result<ArrowSchemaMeta> {
         match ArrowSchemaMeta::try_from(meta) {
             Ok(v) => Ok(v),
-            Err(Error::ArrowSchemaMetaKeyNotFound { .. }) => Ok(ArrowSchemaMeta {
-                num_key_columns: 0,
-                timestamp_index: 0,
-                enable_tsid_primary_key: false,
-                version: 0,
-            }),
+            Err(Error::ArrowSchemaMetaKeyNotFound { .. }) => Ok(ArrowSchemaMeta::default()),
             Err(e) => Err(e),
         }
     }
@@ -1133,25 +1061,26 @@ impl Builder {
     ///
     /// Requires: the timestamp index is not None.
     fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
-        let mut meta = HashMap::with_capacity(4);
-        meta.insert(
-            ArrowSchemaMetaKey::NumKeyColumns.to_string(),
-            self.num_key_columns.to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::TimestampIndex.to_string(),
-            self.timestamp_index.unwrap().to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::Version.to_string(),
-            self.version.to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
-            self.enable_tsid_primary_key.to_string(),
-        );
-
-        meta
+        [
+            (
+                ArrowSchemaMetaKey::NumKeyColumns.to_string(),
+                self.num_key_columns.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::TimestampIndex.to_string(),
+                self.timestamp_index.unwrap().to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::Version.to_string(),
+                self.version.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
+                self.enable_tsid_primary_key.to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect()
     }
 
     fn find_tsid_index(

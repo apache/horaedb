@@ -17,7 +17,7 @@ affected_rows: 0
 SHOW CREATE TABLE `06_show_a`;
 
 Table,Create Table,
-String(StringBytes(b"06_show_a")),String(StringBytes(b"CREATE TABLE `06_show_a` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` bigint, `b` int, `c` string, `d` smallint, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"06_show_a")),String(StringBytes(b"CREATE TABLE `06_show_a` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` bigint, `b` int, `c` string, `d` smallint, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 CREATE TABLE `06_show_b` (a bigint, b int null default null, c string, d smallint null, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
@@ -27,7 +27,7 @@ affected_rows: 0
 SHOW CREATE TABLE `06_show_b`;
 
 Table,Create Table,
-String(StringBytes(b"06_show_b")),String(StringBytes(b"CREATE TABLE `06_show_b` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` bigint, `b` int, `c` string, `d` smallint, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"06_show_b")),String(StringBytes(b"CREATE TABLE `06_show_b` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` bigint, `b` int, `c` string, `d` smallint, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 CREATE TABLE `06_show_c` (a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
@@ -37,7 +37,7 @@ affected_rows: 0
 SHOW CREATE TABLE `06_show_c`;
 
 Table,Create Table,
-String(StringBytes(b"06_show_c")),String(StringBytes(b"CREATE TABLE `06_show_c` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"06_show_c")),String(StringBytes(b"CREATE TABLE `06_show_c` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 DROP TABLE `06_show_a`;

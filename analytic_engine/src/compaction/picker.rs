@@ -594,6 +594,7 @@ mod tests {
             file::SstMetaData,
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
         },
+        table_options::StorageFormat,
     };
 
     fn build_sst_meta_data(time_range: TimeRange, size: u64) -> SstMetaData {
@@ -605,6 +606,7 @@ mod tests {
             schema: build_schema(),
             size,
             row_num: 2,
+            storage_format: StorageFormat::default(),
         }
     }
 

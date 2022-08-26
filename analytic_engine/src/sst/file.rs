@@ -37,7 +37,7 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::{space::SpaceId, sst::manager::FileId, table::sst_util};
+use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options::StorageFormat};
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]
@@ -219,6 +219,11 @@ impl FileHandle {
     #[inline]
     pub fn set_being_compacted(&self, value: bool) {
         self.inner.being_compacted.store(value, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn storage_format(&self) -> StorageFormat {
+        self.inner.meta.meta.storage_format
     }
 }
 
@@ -420,6 +425,7 @@ pub struct SstMetaData {
     pub size: u64,
     // total row number
     pub row_num: u64,
+    pub storage_format: StorageFormat,
 }
 
 impl From<SstMetaData> for SstMetaDataPb {
@@ -433,6 +439,7 @@ impl From<SstMetaData> for SstMetaDataPb {
         target.set_schema(src.schema.into());
         target.set_size(src.size);
         target.set_row_num(src.row_num);
+        target.set_storage_format(src.storage_format.into());
 
         target
     }
@@ -452,6 +459,7 @@ impl TryFrom<SstMetaDataPb> for SstMetaData {
             schema,
             size: src.size,
             row_num: src.row_num,
+            storage_format: src.storage_format.into(),
         })
     }
 }
@@ -610,6 +618,9 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
     let mut time_range_start = files[0].time_range().inclusive_start();
     let mut time_range_end = files[0].time_range().exclusive_end();
     let mut max_sequence = files[0].max_sequence();
+    // TODO(jiacai2050): what if format of different file is different?
+    // pick first now
+    let storage_format = files[0].storage_format();
 
     if files.len() > 1 {
         for file in &files[1..] {
@@ -630,6 +641,7 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
         // we don't know file size and total row number yet
         size: 0,
         row_num: 0,
+        storage_format,
     }
 }
 
@@ -685,6 +697,7 @@ pub mod tests {
                 schema: self.schema.clone(),
                 size: 0,
                 row_num: 0,
+                storage_format: StorageFormat::default(),
             }
         }
     }

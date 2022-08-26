@@ -44,6 +44,7 @@ message AddFileMeta {
     common.TableSchema schema = 7;
     uint64 size = 8;
     uint64 row_num = 9;
+    analytic_common.StorageFormat storage_format = 10;
 }
 
 // Meta data of the file to delete

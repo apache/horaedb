@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS `05_create_tables_t4`;
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 DROP TABLE IF EXISTS `05_create_tables_t7`;
+DROP TABLE IF EXISTS `05_create_tables_t8`;
 
 -- no TIMESTAMP column
 CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
@@ -47,6 +48,21 @@ CREATE TABLE `05_create_tables_t7`(c1 int COMMENT 'id', t timestamp NOT NULL, TI
 describe table `05_create_tables_t7`;
 show create table `05_create_tables_t7`;
 
+-- StorageFormat
+CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
+show create table `05_create_tables_t8`;
+drop table `05_create_tables_t8`;
+
+CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'columnar');
+show create table `05_create_tables_t8`;
+drop table `05_create_tables_t8`;
+
+CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'hybrid');
+show create table `05_create_tables_t8`;
+drop table `05_create_tables_t8`;
+
+CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 DROP TABLE IF EXISTS `05_create_tables_t3`;
@@ -54,3 +70,4 @@ DROP TABLE IF EXISTS `05_create_tables_t4`;
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 DROP TABLE IF EXISTS `05_create_tables_t7`;
+DROP TABLE IF EXISTS `05_create_tables_t8`;

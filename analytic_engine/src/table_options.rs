@@ -13,7 +13,8 @@ use common_util::{
 };
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, TableOptions as TableOptionsPb, UpdateMode as UpdateModePb,
+    Compression as CompressionPb, StorageFormat as StorageFormatPb, TableOptions as TableOptionsPb,
+    UpdateMode as UpdateModePb,
 };
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -32,6 +33,7 @@ pub const COMPACTION_STRATEGY: &str = "compaction_strategy";
 pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
 pub const UPDATE_MODE: &str = "update_mode";
 pub const COMPRESSION: &str = "compression";
+pub const STORAGE_FORMAT: &str = "storage_format";
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
 const UPDATE_MODE_APPEND: &str = "APPEND";
@@ -39,7 +41,8 @@ const COMPRESSION_UNCOMPRESSED: &str = "UNCOMPRESSED";
 const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
-const AT_LEAST_OPTIONS_NUM: usize = 9;
+const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
+const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -97,6 +100,13 @@ pub enum Error {
         backtrace
     ))]
     ParseCompressionName { name: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownStorageFormat { value: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -196,6 +206,92 @@ impl From<Compression> for ParquetCompression {
     }
 }
 
+/// StorageFormat specify how records are saved in persistent storage
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+pub enum StorageFormat {
+    /// Traditional columnar format, every column is saved in one exact one
+    /// column, for example:
+    ///
+    ///```plaintext
+    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
+    /// | --------- |---------- | ----------- | ----- | ----- |
+    /// | 12:01     | A         | 0           | v1    | v1    |
+    /// | 12:01     | B         | 0           | v2    | v2    |
+    /// | 12:02     | A         | 0           | v1    | v1    |
+    /// | 12:02     | B         | 1           | v2    | v2    |
+    /// | 12:03     | A         | 0           | v1    | v1    |
+    /// | 12:03     | B         | 0           | v2    | v2    |
+    /// | .....     |           |             |       |       |
+    /// ```
+    Columnar,
+
+    /// Design for time-series data
+    /// Collapsible Columns within same primary key are collapsed
+    /// into list, other columns are the same format with columar's.
+    ///
+    /// Wether a column is collapsible is decided by
+    /// `Schema::is_collapsible_column`
+    ///
+    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
+    /// for time-range pushdown filter
+    ///
+    ///```plaintext
+    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
+    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
+    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
+    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
+    /// | ...       |                     |             |       |       |         |         |
+    /// ```
+    Hybrid,
+}
+
+impl From<StorageFormat> for StorageFormatPb {
+    fn from(format: StorageFormat) -> Self {
+        match format {
+            StorageFormat::Columnar => Self::Columnar,
+            StorageFormat::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
+impl From<StorageFormatPb> for StorageFormat {
+    fn from(format: StorageFormatPb) -> Self {
+        match format {
+            StorageFormatPb::Columnar => Self::Columnar,
+            StorageFormatPb::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
+impl TryFrom<&str> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        let format = match value.to_uppercase().as_str() {
+            STORAGE_FORMAT_COLUMNAR => Self::Columnar,
+            STORAGE_FORMAT_HYBRID => Self::Hybrid,
+            _ => return UnknownStorageFormat { value }.fail(),
+        };
+        Ok(format)
+    }
+}
+
+impl ToString for StorageFormat {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Columnar => STORAGE_FORMAT_COLUMNAR,
+            Self::Hybrid => STORAGE_FORMAT_HYBRID,
+        }
+        .to_string()
+    }
+}
+
+impl Default for StorageFormat {
+    fn default() -> Self {
+        Self::Columnar
+    }
+}
+
 /// Options for a table.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
@@ -208,6 +304,8 @@ pub struct TableOptions {
     pub segment_duration: Option<ReadableDuration>,
     /// Table update mode, now support Overwrite(Default) and Append
     pub update_mode: UpdateMode,
+    /// Column's format in underlying storage
+    pub storage_format: StorageFormat,
 
     // The following options can be altered.
     /// Enable ttl
@@ -243,32 +341,34 @@ impl TableOptions {
 
     // for show create table
     pub fn to_raw_map(&self) -> HashMap<String, String> {
-        let mut m = HashMap::with_capacity(AT_LEAST_OPTIONS_NUM);
-        m.insert(
-            SEGMENT_DURATION.to_string(),
-            self.segment_duration
-                .map(|v| v.to_string())
-                .unwrap_or_else(String::new),
-        );
-        m.insert(UPDATE_MODE.to_string(), self.update_mode.to_string());
-        m.insert(ENABLE_TTL.to_string(), self.enable_ttl.to_string());
-        m.insert(TTL.to_string(), format!("{}", self.ttl));
-        m.insert(
-            ARENA_BLOCK_SIZE.to_string(),
-            format!("{}", self.arena_block_size),
-        );
-        m.insert(
-            WRITE_BUFFER_SIZE.to_string(),
-            format!("{}", self.write_buffer_size),
-        );
+        let mut m = [
+            (
+                SEGMENT_DURATION.to_string(),
+                self.segment_duration
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(String::new),
+            ),
+            (UPDATE_MODE.to_string(), self.update_mode.to_string()),
+            (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),
+            (TTL.to_string(), format!("{}", self.ttl)),
+            (
+                ARENA_BLOCK_SIZE.to_string(),
+                format!("{}", self.arena_block_size),
+            ),
+            (
+                WRITE_BUFFER_SIZE.to_string(),
+                format!("{}", self.write_buffer_size),
+            ),
+            (
+                NUM_ROWS_PER_ROW_GROUP.to_string(),
+                format!("{}", self.num_rows_per_row_group),
+            ),
+            (COMPRESSION.to_string(), self.compression.to_string()),
+            (STORAGE_FORMAT.to_string(), self.storage_format.to_string()),
+        ]
+        .into_iter()
+        .collect();
         self.compaction_strategy.fill_raw_map(&mut m);
-        m.insert(
-            NUM_ROWS_PER_ROW_GROUP.to_string(),
-            format!("{}", self.num_rows_per_row_group),
-        );
-        m.insert(COMPRESSION.to_string(), self.compression.to_string());
-
-        assert!(m.len() >= AT_LEAST_OPTIONS_NUM);
 
         m
     }
@@ -409,6 +509,7 @@ impl From<TableOptions> for TableOptionsPb {
 
         target.set_write_buffer_size(opts.write_buffer_size);
         target.set_compression(opts.compression.into());
+        target.set_storage_format(opts.storage_format.into());
 
         target
     }
@@ -460,6 +561,7 @@ impl From<TableOptionsPb> for TableOptions {
             update_mode,
             write_buffer_size: opts.write_buffer_size,
             compression: opts.compression.into(),
+            storage_format: opts.storage_format.into(),
         }
     }
 }
@@ -476,6 +578,7 @@ impl Default for TableOptions {
             update_mode: UpdateMode::Overwrite,
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
+            storage_format: StorageFormat::default(),
         }
     }
 }
@@ -533,6 +636,9 @@ fn merge_table_options(
     }
     if let Some(v) = options.get(COMPRESSION) {
         table_opts.compression = Compression::parse_from(v)?;
+    }
+    if let Some(v) = options.get(STORAGE_FORMAT) {
+        table_opts.storage_format = v.as_str().try_into()?;
     }
     Ok(table_opts)
 }
