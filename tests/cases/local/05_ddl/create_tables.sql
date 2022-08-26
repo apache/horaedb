@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS `05_create_tables_t3`;
 DROP TABLE IF EXISTS `05_create_tables_t4`;
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
+DROP TABLE IF EXISTS `05_create_tables_t7`;
 
 -- no TIMESTAMP column
 CREATE TABLE `05_create_tables_t`(c1 int) ENGINE = Analytic;
@@ -41,10 +42,15 @@ show create table `05_create_tables_t5`;
 -- Multiple TIMESTAMP KEYs
 CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
+-- Column with comment
+CREATE TABLE `05_create_tables_t7`(c1 int COMMENT 'id', t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+describe table `05_create_tables_t7`;
+show create table `05_create_tables_t7`;
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 DROP TABLE IF EXISTS `05_create_tables_t3`;
 DROP TABLE IF EXISTS `05_create_tables_t4`;
 DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
-
+DROP TABLE IF EXISTS `05_create_tables_t7`;
