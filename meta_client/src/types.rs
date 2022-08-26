@@ -120,7 +120,7 @@ pub struct NodeHeartbeatResponse {
     pub action_cmd: Option<ActionCmd>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShardInfo {
     pub shard_id: ShardId,
     pub role: ShardRole,
@@ -417,7 +417,7 @@ pub struct RouteTablesRequest {
     pub table_names: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeShard {
     pub endpoint: String,
     pub shard_info: ShardInfo,

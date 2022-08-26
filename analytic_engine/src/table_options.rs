@@ -229,7 +229,7 @@ pub enum StorageFormat {
     /// Collapsible Columns within same primary key are collapsed
     /// into list, other columns are the same format with columar's.
     ///
-    /// Wether a column is collapsible is decided by
+    /// Whether a column is collapsible is decided by
     /// `Schema::is_collapsible_column`
     ///
     /// Note: minTime/maxTime is optional and not implemented yet, mainly used

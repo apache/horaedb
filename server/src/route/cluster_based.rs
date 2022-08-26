@@ -53,7 +53,7 @@ impl ClusterBasedRouter {
             return Ok(());
         }
 
-        // Check wether some tables are missing, and pick some nodes for them if any.
+        // Check whether some tables are missing, and pick some nodes for them if any.
         for table_name in queried_tables {
             if route_resp.entries.contains_key(table_name) {
                 continue;
@@ -131,11 +131,15 @@ impl Router for ClusterBasedRouter {
 /// 1. The picked node has leader shard;
 /// 2. The picked node is determined if `node_shards` doesn't change.
 fn pick_node_for_table<'a>(
-    table_name: &'_ TableName,
+    table_name: &'_ str,
     node_shards: &'a [NodeShard],
 ) -> Option<&'a NodeShard> {
+    if node_shards.is_empty() {
+        return None;
+    }
+
     // The cluster_nodes has been ensured not empty.
-    let node_idx = hash::hash_metric(table_name) as usize % node_shards.len();
+    let node_idx = hash::hash_table(table_name) as usize % node_shards.len();
 
     for idx in node_idx..(node_shards.len() + node_idx) {
         let idx = idx % node_shards.len();
@@ -146,4 +150,66 @@ fn pick_node_for_table<'a>(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use meta_client::types::{ShardInfo, ShardRole};
+
+    use super::*;
+
+    fn make_node_shards(leaderships: &[bool]) -> Vec<NodeShard> {
+        leaderships
+            .iter()
+            .enumerate()
+            .map(|(idx, is_leader)| {
+                let role = if *is_leader {
+                    ShardRole::LEADER
+                } else {
+                    ShardRole::FOLLOWER
+                };
+
+                let shard_info = ShardInfo {
+                    shard_id: 0,
+                    role,
+                    version: 0,
+                };
+
+                NodeShard {
+                    endpoint: format!("test-domain:{}", idx + 100),
+                    shard_info,
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_pick_node_for_table() {
+        let cases = [
+            (vec![false, false, false, false, true], true),
+            (vec![false, false, false, false, false], false),
+            (vec![], false),
+            (vec![true, true, true, true], true),
+        ];
+
+        let table_names = ["aaa", "bbb", "***111abc", ""];
+
+        for (leadership, picked) in cases {
+            let node_shards = make_node_shards(&leadership);
+
+            for table_name in table_names {
+                let picked_node_shard = pick_node_for_table(table_name, &node_shards);
+                assert_eq!(picked_node_shard.is_some(), picked);
+
+                if picked {
+                    let node_shard = picked_node_shard.unwrap();
+                    assert!(node_shard.shard_info.is_leader());
+                }
+
+                // pick again and check whether they are the same.
+                let picked_again_node_shard = pick_node_for_table(table_name, &node_shards);
+                assert_eq!(picked_node_shard, picked_again_node_shard);
+            }
+        }
+    }
 }

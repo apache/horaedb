@@ -113,7 +113,7 @@ impl RuleBasedRouter {
 
         if let Some(hash_rule) = rule_list.hash_rules.get(0) {
             let total_shards = hash_rule.shards.len();
-            let hash_value = hash::hash_metric(metric);
+            let hash_value = hash::hash_table(metric);
             let index = hash_value as usize % total_shards;
 
             return Some(hash_rule.shards[index]);
@@ -124,7 +124,7 @@ impl RuleBasedRouter {
 
     #[inline]
     fn route_by_hash(metric: &str, total_shards: usize) -> ShardId {
-        let hash_value = hash::hash_metric(metric);
+        let hash_value = hash::hash_table(metric);
         (hash_value as usize % total_shards) as ShardId
     }
 
