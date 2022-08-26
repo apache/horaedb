@@ -159,6 +159,7 @@ mod tests {
     use common_types::{
         bytes::Bytes,
         projected_schema::ProjectedSchema,
+        schema::StorageFormat,
         tests::{build_row, build_schema},
         time::{TimeRange, Timestamp},
     };
@@ -217,6 +218,7 @@ mod tests {
                 schema: schema.clone(),
                 size: 10,
                 row_num: 2,
+                storage_format: StorageFormat::default(),
             };
 
             let mut counter = 10;

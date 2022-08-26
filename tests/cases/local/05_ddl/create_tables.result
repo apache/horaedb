@@ -88,7 +88,7 @@ String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(tru
 show create table `05_create_tables_t4`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t4")),String(StringBytes(b"CREATE TABLE `05_create_tables_t4` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='columnar', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t4")),String(StringBytes(b"CREATE TABLE `05_create_tables_t4` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `a` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 CREATE TABLE `05_create_tables_t5`(c1 int, t timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
@@ -106,7 +106,7 @@ String(StringBytes(b"c1")),String(StringBytes(b"int")),Boolean(false),Boolean(tr
 show create table `05_create_tables_t5`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t5")),String(StringBytes(b"CREATE TABLE `05_create_tables_t5` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='columnar', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t5")),String(StringBytes(b"CREATE TABLE `05_create_tables_t5` (`t` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t,tsid), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 CREATE TABLE `05_create_tables_t6`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, t2 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
@@ -120,7 +120,7 @@ affected_rows: 0
 show create table `05_create_tables_t7`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='columnar', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 drop table `05_create_tables_t7`;
@@ -134,7 +134,7 @@ affected_rows: 0
 show create table `05_create_tables_t7`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='columnar', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 drop table `05_create_tables_t7`;
@@ -148,7 +148,7 @@ affected_rows: 0
 show create table `05_create_tables_t7`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='hybrid', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t7")),String(StringBytes(b"CREATE TABLE `05_create_tables_t7` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='HYBRID', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 drop table `05_create_tables_t7`;
@@ -157,7 +157,7 @@ affected_rows: 0
 
 CREATE TABLE `05_create_tables_t7`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t7`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t7, err:Failed to create table, err:Invalid arguments, err:Invalid options, space_id:2, table:05_create_tables_t7, table_id:2199023255650, err:Failed to parse storage format, err:Unknown storage format. value:\"unknown\"." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t7`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t7, err:Failed to create table, err:Invalid arguments, err:Invalid options, space_id:2, table:05_create_tables_t7, table_id:2199023255698, err:Unknown storage format. value:\"unknown\"." })
 
 DROP TABLE IF EXISTS `05_create_tables_t`;
 

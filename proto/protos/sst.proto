@@ -5,6 +5,7 @@ syntax = "proto3";
 package sst;
 
 import "common.proto";
+import "analytic_common.proto";
 
 message SstMetaData {
   // Min key in the sst
@@ -18,4 +19,5 @@ message SstMetaData {
   common.TableSchema schema = 5;
   uint64 size = 6;
   uint64 row_num = 7;
+  analytic_common.StorageFormat storage_format = 8;
 }

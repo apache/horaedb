@@ -22,9 +22,7 @@ use arrow_deps::{
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
     datum::DatumKind,
-    schema::{
-        ArrowSchema, ArrowSchemaMeta, ArrowSchemaRef, DataType, Field, Schema, StorageFormat,
-    },
+    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
 use common_util::define_result;
 use log::trace;
@@ -32,9 +30,12 @@ use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::sst::{
-    file::SstMetaData,
-    parquet::hybrid::{self, IndexedType},
+use crate::{
+    sst::{
+        file::SstMetaData,
+        parquet::hybrid::{self, IndexedType},
+    },
+    table_options::StorageFormat,
 };
 
 // TODO: Only support i32 offset now, consider i64 here?
@@ -450,8 +451,8 @@ impl ParquetEncoder {
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
-        let format = meta_data.schema.storage_format();
-        let record_encoder: Box<dyn RecordEncoder + Send> = match format {
+
+        let record_encoder: Box<dyn RecordEncoder + Send> = match meta_data.storage_format {
             StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
                 write_props,
                 &meta_data.schema,
@@ -717,17 +718,13 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn try_new(arrow_schema: ArrowSchemaRef) -> Result<Self> {
-        let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeRecordBatch)?;
-        let format = arrow_schema_meta.storage_format();
-        let record_decoder: Box<dyn RecordDecoder> = match format {
+    pub fn new(storage_format: StorageFormat) -> Self {
+        let record_decoder: Box<dyn RecordDecoder> = match storage_format {
             StorageFormat::Hybrid => Box::new(HybridRecordDecoder {}),
             StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
         };
 
-        Ok(Self { record_decoder })
+        Self { record_decoder }
     }
 
     pub fn decode_record_batch(

@@ -3,7 +3,6 @@
 // Common protos of analytic engine
 syntax = "proto3";
 package analytic_common;
-import "common.proto";
 
 // Options of a table that need to persist
 message TableOptions {
@@ -21,12 +20,17 @@ message TableOptions {
     // If sampling_segment_duration is true, then the segment duration
     // is still unknown.
     bool sampling_segment_duration = 11;
-    common.StorageFormat storage_format = 12;
+    StorageFormat storage_format = 12;
 }
 
 enum UpdateMode {
     Overwrite = 0;
     Append = 1;
+}
+
+enum StorageFormat {
+    Columnar = 0;
+    Hybrid = 1;
 }
 
 message CompactionOptions {

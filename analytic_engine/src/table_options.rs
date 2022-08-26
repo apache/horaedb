@@ -5,7 +5,7 @@
 use std::{collections::HashMap, string::ToString, time::Duration};
 
 use arrow_deps::datafusion::parquet::basic::Compression as ParquetCompression;
-use common_types::{schema::StorageFormat, time::Timestamp};
+use common_types::time::Timestamp;
 use common_util::{
     config::{ReadableDuration, ReadableSize},
     define_result,
@@ -13,7 +13,8 @@ use common_util::{
 };
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, TableOptions as TableOptionsPb, UpdateMode as UpdateModePb,
+    Compression as CompressionPb, StorageFormat as StorageFormatPb, TableOptions as TableOptionsPb,
+    UpdateMode as UpdateModePb,
 };
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -40,6 +41,8 @@ const COMPRESSION_UNCOMPRESSED: &str = "UNCOMPRESSED";
 const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
+const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
+const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -97,8 +100,13 @@ pub enum Error {
         backtrace
     ))]
     ParseCompressionName { name: String, backtrace: Backtrace },
-    #[snafu(display("Failed to parse storage format, err:{}\n", source))]
-    ParseStorageFormat { source: common_types::schema::Error },
+
+    #[snafu(display(
+        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownStorageFormat { value: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -195,6 +203,92 @@ impl From<Compression> for ParquetCompression {
             Compression::Snappy => ParquetCompression::SNAPPY,
             Compression::Zstd => ParquetCompression::ZSTD,
         }
+    }
+}
+
+/// StorageFormat specify how records are saved in persistent storage
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+pub enum StorageFormat {
+    /// Traditional columnar format, every column is saved in one exact one
+    /// column, for example:
+    ///
+    ///```plaintext
+    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
+    /// | --------- |---------- | ----------- | ----- | ----- |
+    /// | 12:01     | A         | 0           | v1    | v1    |
+    /// | 12:01     | B         | 0           | v2    | v2    |
+    /// | 12:02     | A         | 0           | v1    | v1    |
+    /// | 12:02     | B         | 1           | v2    | v2    |
+    /// | 12:03     | A         | 0           | v1    | v1    |
+    /// | 12:03     | B         | 0           | v2    | v2    |
+    /// | .....     |           |             |       |       |
+    /// ```
+    Columnar,
+
+    /// Design for time-series data
+    /// Collapsible Columns within same primary key are collapsed
+    /// into list, other columns are the same format with columar's.
+    ///
+    /// Wether a column is collapsible is decided by
+    /// `Schema::is_collapsible_column`
+    ///
+    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
+    /// for time-range pushdown filter
+    ///
+    ///```plaintext
+    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
+    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
+    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
+    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
+    /// | ...       |                     |             |       |       |         |         |
+    /// ```
+    Hybrid,
+}
+
+impl From<StorageFormat> for StorageFormatPb {
+    fn from(format: StorageFormat) -> Self {
+        match format {
+            StorageFormat::Columnar => Self::Columnar,
+            StorageFormat::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
+impl From<StorageFormatPb> for StorageFormat {
+    fn from(format: StorageFormatPb) -> Self {
+        match format {
+            StorageFormatPb::Columnar => Self::Columnar,
+            StorageFormatPb::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
+impl TryFrom<&str> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        let format = match value.to_uppercase().as_str() {
+            STORAGE_FORMAT_COLUMNAR => Self::Columnar,
+            STORAGE_FORMAT_HYBRID => Self::Hybrid,
+            _ => return UnknownStorageFormat { value }.fail(),
+        };
+        Ok(format)
+    }
+}
+
+impl ToString for StorageFormat {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Columnar => STORAGE_FORMAT_COLUMNAR,
+            Self::Hybrid => STORAGE_FORMAT_HYBRID,
+        }
+        .to_string()
+    }
+}
+
+impl Default for StorageFormat {
+    fn default() -> Self {
+        Self::Columnar
     }
 }
 
@@ -415,6 +509,7 @@ impl From<TableOptions> for TableOptionsPb {
 
         target.set_write_buffer_size(opts.write_buffer_size);
         target.set_compression(opts.compression.into());
+        target.set_storage_format(opts.storage_format.into());
 
         target
     }
@@ -543,7 +638,7 @@ fn merge_table_options(
         table_opts.compression = Compression::parse_from(v)?;
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
-        table_opts.storage_format = v.as_str().try_into().context(ParseStorageFormat {})?;
+        table_opts.storage_format = v.as_str().try_into()?;
     }
     Ok(table_opts)
 }

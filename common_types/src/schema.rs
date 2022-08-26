@@ -19,7 +19,6 @@ pub use arrow_deps::arrow::datatypes::{
     DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef,
 };
 use proto::common as common_pb;
-use serde_derive::Deserialize;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -151,13 +150,6 @@ pub enum Error {
         key: ArrowSchemaMetaKey,
         backtrace: Backtrace,
     },
-
-    #[snafu(display(
-        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
-        value,
-        backtrace
-    ))]
-    UnknownStorageFormat { value: String, backtrace: Backtrace },
 }
 
 pub type SchemaId = u32;
@@ -191,14 +183,9 @@ pub struct ArrowSchemaMeta {
     timestamp_index: usize,
     enable_tsid_primary_key: bool,
     version: u32,
-    storage_format: StorageFormat,
 }
 
 impl ArrowSchemaMeta {
-    pub fn storage_format(&self) -> StorageFormat {
-        self.storage_format
-    }
-
     pub fn enable_tsid_primary_key(&self) -> bool {
         self.enable_tsid_primary_key
     }
@@ -239,12 +226,6 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
                 ArrowSchemaMetaKey::EnableTsidPrimaryKey,
             )?,
             version: Self::parse_arrow_schema_meta_value(meta, ArrowSchemaMetaKey::Version)?,
-            storage_format: Self::parse_arrow_schema_meta_value::<String>(
-                meta,
-                ArrowSchemaMetaKey::StorageFormat,
-            )?
-            .as_str()
-            .try_into()?,
         })
     }
 }
@@ -255,7 +236,6 @@ pub enum ArrowSchemaMetaKey {
     TimestampIndex,
     EnableTsidPrimaryKey,
     Version,
-    StorageFormat,
 }
 
 impl ArrowSchemaMetaKey {
@@ -265,7 +245,6 @@ impl ArrowSchemaMetaKey {
             Self::TimestampIndex => "schema::timestamp_index",
             Self::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
             Self::Version => "schema::version",
-            Self::StorageFormat => "schema::storage_format",
         }
     }
 }
@@ -514,95 +493,6 @@ pub fn compare_row<LR: RowView, RR: RowView>(
     Ordering::Equal
 }
 
-/// StorageFormat specify how records are saved in persistent storage
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-pub enum StorageFormat {
-    /// Traditional columnar format, every column is saved in one exact one
-    /// column, for example:
-    ///
-    ///```plaintext
-    /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
-    /// | --------- |---------- | ----------- | ----- | ----- |
-    /// | 12:01     | A         | 0           | v1    | v1    |
-    /// | 12:01     | B         | 0           | v2    | v2    |
-    /// | 12:02     | A         | 0           | v1    | v1    |
-    /// | 12:02     | B         | 1           | v2    | v2    |
-    /// | 12:03     | A         | 0           | v1    | v1    |
-    /// | 12:03     | B         | 0           | v2    | v2    |
-    /// | .....     |           |             |       |       |
-    /// ```
-    Columnar,
-
-    /// Design for time-series data
-    /// Collapsible Columns within same primary key are collapsed
-    /// into list, other columns are the same format with columar's.
-    ///
-    /// Wether a column is collapsible is decided by
-    /// `Schema::is_collapsible_column`
-    ///
-    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
-    /// for time-range pushdown filter
-    ///
-    ///```plaintext
-    /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
-    /// |-----------|---------------------|-------------|-------|-------|---------|---------|
-    /// | A         | [12:01,12:02,12:03] | [0,0,0]     | v1    | v1    | 12:01   | 12:03   |
-    /// | B         | [12:01,12:02,12:03] | [0,1,0]     | v2    | v2    | 12:01   | 12:03   |
-    /// | ...       |                     |             |       |       |         |         |
-    /// ```
-    Hybrid,
-}
-
-const STORAGE_FORMAT_COLUMNAR: &str = "columnar";
-const STORAGE_FORMAT_HYBRID: &str = "hybrid";
-
-impl From<StorageFormat> for common_pb::StorageFormat {
-    fn from(format: StorageFormat) -> Self {
-        match format {
-            StorageFormat::Columnar => Self::Columnar,
-            StorageFormat::Hybrid => Self::Hybrid,
-        }
-    }
-}
-
-impl From<common_pb::StorageFormat> for StorageFormat {
-    fn from(format: common_pb::StorageFormat) -> Self {
-        match format {
-            common_pb::StorageFormat::Columnar => Self::Columnar,
-            common_pb::StorageFormat::Hybrid => Self::Hybrid,
-        }
-    }
-}
-
-impl TryFrom<&str> for StorageFormat {
-    type Error = Error;
-
-    fn try_from(value: &str) -> Result<Self> {
-        let format = match value.to_lowercase().as_str() {
-            STORAGE_FORMAT_COLUMNAR => Self::Columnar,
-            STORAGE_FORMAT_HYBRID => Self::Hybrid,
-            _ => return UnknownStorageFormat { value }.fail(),
-        };
-        Ok(format)
-    }
-}
-
-impl ToString for StorageFormat {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Columnar => STORAGE_FORMAT_COLUMNAR,
-            Self::Hybrid => STORAGE_FORMAT_HYBRID,
-        }
-        .to_string()
-    }
-}
-
-impl Default for StorageFormat {
-    fn default() -> Self {
-        Self::Columnar
-    }
-}
-
 // TODO(yingwen): Maybe rename to TableSchema.
 /// Schema of a table
 ///
@@ -633,8 +523,6 @@ pub struct Schema {
     column_schemas: Arc<ColumnSchemas>,
     /// Version of the schema, schemas with same version should be identical.
     version: Version,
-    /// How columns is perisisted in underlying storage.
-    storage_format: StorageFormat,
 }
 
 impl fmt::Debug for Schema {
@@ -647,7 +535,6 @@ impl fmt::Debug for Schema {
             .field("enable_tsid_primary_key", &self.enable_tsid_primary_key)
             .field("column_schemas", &self.column_schemas)
             .field("version", &self.version)
-            .field("storage_format", &self.storage_format.to_string())
             .finish()
     }
 }
@@ -926,11 +813,6 @@ impl Schema {
     pub fn string_buffer_offset(&self) -> usize {
         self.column_schemas.string_buffer_offset
     }
-
-    /// Column's format in storage
-    pub fn storage_format(&self) -> StorageFormat {
-        self.storage_format
-    }
 }
 
 impl TryFrom<common_pb::TableSchema> for Schema {
@@ -939,8 +821,7 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     fn try_from(schema: common_pb::TableSchema) -> Result<Self> {
         let mut builder = Builder::with_capacity(schema.columns.len())
             .version(schema.version)
-            .enable_tsid_primary_key(schema.enable_tsid_primary_key)
-            .storage_format(schema.storage_format.into());
+            .enable_tsid_primary_key(schema.enable_tsid_primary_key);
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
             let column = ColumnSchema::from(column_schema_pb);
@@ -970,7 +851,6 @@ impl From<Schema> for common_pb::TableSchema {
         table_schema.timestamp_index = schema.timestamp_index as u32;
         table_schema.enable_tsid_primary_key = schema.enable_tsid_primary_key;
         table_schema.version = schema.version;
-        table_schema.storage_format = schema.storage_format.into();
 
         table_schema
     }
@@ -993,7 +873,6 @@ pub struct Builder {
     auto_increment_column_id: bool,
     max_column_id: ColumnId,
     enable_tsid_primary_key: bool,
-    storage_format: StorageFormat,
 }
 
 impl Default for Builder {
@@ -1020,7 +899,6 @@ impl Builder {
             auto_increment_column_id: false,
             max_column_id: column_schema::COLUMN_ID_UNINIT,
             enable_tsid_primary_key: false,
-            storage_format: StorageFormat::default(),
         }
     }
 
@@ -1078,12 +956,6 @@ impl Builder {
     /// Enable tsid as primary key.
     pub fn enable_tsid_primary_key(mut self, enable_tsid_primary_key: bool) -> Self {
         self.enable_tsid_primary_key = enable_tsid_primary_key;
-        self
-    }
-
-    /// Set version of the schema
-    pub fn storage_format(mut self, format: StorageFormat) -> Self {
-        self.storage_format = format;
         self
     }
 
@@ -1158,7 +1030,6 @@ impl Builder {
             timestamp_index,
             enable_tsid_primary_key,
             version,
-            storage_format,
         } = Self::parse_arrow_schema_meta_or_default(arrow_schema.metadata())?;
         let tsid_index = Self::find_tsid_index(enable_tsid_primary_key, &columns)?;
 
@@ -1172,7 +1043,6 @@ impl Builder {
             enable_tsid_primary_key,
             column_schemas,
             version,
-            storage_format,
         })
     }
 
@@ -1207,10 +1077,6 @@ impl Builder {
             (
                 ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
                 self.enable_tsid_primary_key.to_string(),
-            ),
-            (
-                ArrowSchemaMetaKey::StorageFormat.to_string(),
-                self.storage_format.to_string(),
             ),
         ]
         .into_iter()
@@ -1262,7 +1128,6 @@ impl Builder {
             enable_tsid_primary_key: self.enable_tsid_primary_key,
             column_schemas: Arc::new(ColumnSchemas::new(self.columns)),
             version: self.version,
-            storage_format: self.storage_format,
         })
     }
 }
@@ -1480,35 +1345,6 @@ mod tests {
             .unwrap()
             .build()
             .unwrap();
-    }
-
-    #[test]
-    fn test_with_storage_format() {
-        let schema = Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-        // default is columnar
-        assert_eq!(schema.storage_format, StorageFormat::Columnar);
-
-        let schema = Builder::new()
-            .auto_increment_column_id(true)
-            .storage_format(StorageFormat::Hybrid)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-        assert_eq!(schema.storage_format, StorageFormat::Hybrid);
     }
 
     #[test]
