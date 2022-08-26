@@ -10,8 +10,7 @@ use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
     types::{
-        ActionCmd, ClusterNodesRef, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest,
-        RouteTablesResponse,
+        ActionCmd, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse,
     },
     EventHandler, MetaClient,
 };
@@ -25,7 +24,7 @@ use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
     topology::ClusterTopology,
-    Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient, TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -189,10 +188,16 @@ impl Inner {
         Ok(route_resp)
     }
 
-    async fn fetch_nodes(&self) -> Result<ClusterNodesRef> {
-        let cached_nodes = self.topology.read().unwrap().nodes();
-        if let Some(cached_nodes) = cached_nodes {
-            return Ok(cached_nodes);
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
+        {
+            let topology = self.topology.read().unwrap();
+            let cached_nodes = topology.nodes();
+            if let Some(cached_nodes) = cached_nodes {
+                return Ok(ClusterNodesResp {
+                    cluster_topology_version: topology.version(),
+                    cluster_nodes: cached_nodes,
+                });
+            }
         }
 
         let req = GetNodesRequest::default();
@@ -209,7 +214,10 @@ impl Inner {
             .unwrap()
             .update_nodes(nodes.clone(), version);
 
-        Ok(nodes)
+        Ok(ClusterNodesResp {
+            cluster_topology_version: version,
+            cluster_nodes: nodes,
+        })
     }
 }
 
@@ -268,7 +276,7 @@ impl Cluster for ClusterImpl {
         self.inner.route_tables(req).await
     }
 
-    async fn fetch_nodes(&self) -> Result<ClusterNodesRef> {
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
         self.inner.fetch_nodes().await
     }
 }

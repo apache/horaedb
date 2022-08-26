@@ -62,11 +62,17 @@ pub trait TableManipulator {
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
+#[derive(Clone, Debug)]
+pub struct ClusterNodesResp {
+    pub cluster_topology_version: u64,
+    pub cluster_nodes: ClusterNodesRef,
+}
+
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
-    async fn fetch_nodes(&self) -> Result<ClusterNodesRef>;
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
 }

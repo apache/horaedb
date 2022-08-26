@@ -7,12 +7,12 @@ use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_types::table::TableName;
 use log::warn;
-use meta_client::types::{RouteTablesRequest, RouteTablesResponse};
-use snafu::ResultExt;
+use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
+use snafu::{OptionExt, ResultExt};
 
 use crate::{
     config::Endpoint,
-    error::{ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     route::{hash, Router},
 };
 
@@ -38,7 +38,7 @@ impl ClusterBasedRouter {
             return Ok(());
         }
 
-        let cluster_nodes = self
+        let cluster_nodes_resp = self
             .cluster
             .fetch_nodes()
             .await
@@ -48,7 +48,7 @@ impl ClusterBasedRouter {
                 msg: "fail to fetch cluster nodes",
             })?;
 
-        if cluster_nodes.is_empty() {
+        if cluster_nodes_resp.cluster_nodes.is_empty() {
             warn!("Cluster has no nodes for route response");
             return Ok(());
         }
@@ -59,11 +59,17 @@ impl ClusterBasedRouter {
                 continue;
             }
 
-            // The cluster_nodes has been ensured not empty.
-            let random_idx = hash::hash_metric(table_name) as usize % cluster_nodes.len();
-            let random_node = &cluster_nodes[random_idx];
-
-            let route = make_route(table_name, &random_node.endpoint)?;
+            let picked_node_shard =
+                pick_node_for_table(table_name, &cluster_nodes_resp.cluster_nodes).with_context(
+                    || ErrNoCause {
+                        code: StatusCode::NotFound,
+                        msg: format!(
+                            "No valid node for table({}), cluster nodes:{:?}",
+                            table_name, cluster_nodes_resp
+                        ),
+                    },
+                )?;
+            let route = make_route(table_name, &picked_node_shard.endpoint)?;
             route_result.push(route);
         }
 
@@ -117,4 +123,27 @@ impl Router for ClusterBasedRouter {
 
         Ok(routes)
     }
+}
+
+/// Pick a node for the table.
+///
+/// This pick logic ensures:
+/// 1. The picked node has leader shard;
+/// 2. The picked node is determined if `node_shards` doesn't change.
+fn pick_node_for_table<'a>(
+    table_name: &'_ TableName,
+    node_shards: &'a [NodeShard],
+) -> Option<&'a NodeShard> {
+    // The cluster_nodes has been ensured not empty.
+    let node_idx = hash::hash_metric(table_name) as usize % node_shards.len();
+
+    for idx in node_idx..(node_shards.len() + node_idx) {
+        let idx = idx % node_shards.len();
+        let node_shard = &node_shards[idx];
+        if node_shard.shard_info.is_leader() {
+            return Some(node_shard);
+        }
+    }
+
+    None
 }

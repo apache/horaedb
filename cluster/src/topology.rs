@@ -122,6 +122,10 @@ impl ClusterTopology {
 
         true
     }
+
+    pub fn version(&self) -> u64 {
+        self.version
+    }
 }
 
 impl SchemaTopology {
