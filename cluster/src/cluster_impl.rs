@@ -9,7 +9,10 @@ use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{ActionCmd, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{
+        ActionCmd, ClusterNodesRef, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest,
+        RouteTablesResponse,
+    },
     EventHandler, MetaClient,
 };
 use snafu::ResultExt;
@@ -185,6 +188,29 @@ impl Inner {
 
         Ok(route_resp)
     }
+
+    async fn fetch_nodes(&self) -> Result<ClusterNodesRef> {
+        let cached_nodes = self.topology.read().unwrap().nodes();
+        if let Some(cached_nodes) = cached_nodes {
+            return Ok(cached_nodes);
+        }
+
+        let req = GetNodesRequest::default();
+        let resp = self
+            .meta_client
+            .get_nodes(req)
+            .await
+            .context(MetaClientFailure)?;
+
+        let version = resp.cluster_topology_version;
+        let nodes = Arc::new(resp.node_shards);
+        self.topology
+            .write()
+            .unwrap()
+            .update_nodes(nodes.clone(), version);
+
+        Ok(nodes)
+    }
 }
 
 #[async_trait]
@@ -240,5 +266,9 @@ impl Cluster for ClusterImpl {
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
         self.inner.route_tables(req).await
+    }
+
+    async fn fetch_nodes(&self) -> Result<ClusterNodesRef> {
+        self.inner.fetch_nodes().await
     }
 }

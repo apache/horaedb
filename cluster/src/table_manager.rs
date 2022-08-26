@@ -104,6 +104,7 @@ impl Inner {
             let shard_info = ShardInfo {
                 shard_id: *shard_id,
                 role: shard_tables.role,
+                version: shard_tables.version,
             };
             self.shard_infos.insert(*shard_id, shard_info.clone());
             for table in &shard_tables.tables {

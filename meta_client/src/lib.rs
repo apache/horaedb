@@ -7,8 +7,9 @@ use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-    AllocTableIdResponse, DropTableRequest, GetShardTablesRequest, GetShardTablesResponse,
-    RouteTablesRequest, RouteTablesResponse, ShardInfo,
+    AllocTableIdResponse, DropTableRequest, GetNodesRequest, GetNodesResponse,
+    GetShardTablesRequest, GetShardTablesResponse, RouteTablesRequest, RouteTablesResponse,
+    ShardInfo,
 };
 
 pub mod meta_impl;
@@ -136,6 +137,8 @@ pub trait MetaClient: Send + Sync {
     async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse>;
 
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse>;
+
+    async fn get_nodes(&self, req: GetNodesRequest) -> Result<GetNodesResponse>;
 
     async fn send_heartbeat(&self, req: Vec<ShardInfo>) -> Result<()>;
 }

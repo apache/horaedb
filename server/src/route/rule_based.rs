@@ -2,10 +2,7 @@
 
 //! A router based on rules.
 
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
@@ -14,17 +11,12 @@ use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use snafu::OptionExt;
-use twox_hash::XxHash64;
 
 use crate::{
     config::Endpoint,
     error::{ErrNoCause, Result, StatusCode},
-    route::Router,
+    route::{hash, Router},
 };
-
-/// Hash seed to build hasher. Modify the seed will result in different route
-/// result!
-const HASH_SEED: u64 = 0;
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 
@@ -121,7 +113,7 @@ impl RuleBasedRouter {
 
         if let Some(hash_rule) = rule_list.hash_rules.get(0) {
             let total_shards = hash_rule.shards.len();
-            let hash_value = hash_metric(metric);
+            let hash_value = hash::hash_metric(metric);
             let index = hash_value as usize % total_shards;
 
             return Some(hash_rule.shards[index]);
@@ -132,7 +124,7 @@ impl RuleBasedRouter {
 
     #[inline]
     fn route_by_hash(metric: &str, total_shards: usize) -> ShardId {
-        let hash_value = hash_metric(metric);
+        let hash_value = hash::hash_metric(metric);
         (hash_value as usize % total_shards) as ShardId
     }
 
@@ -193,10 +185,4 @@ impl Router for RuleBasedRouter {
 
         Ok(Vec::new())
     }
-}
-
-fn hash_metric(metric: &str) -> u64 {
-    let mut hasher = XxHash64::with_seed(HASH_SEED);
-    metric.hash(&mut hasher);
-    hasher.finish()
 }

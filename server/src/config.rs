@@ -60,16 +60,20 @@ impl Endpoint {
 }
 
 impl FromStr for Endpoint {
-    type Err = String;
+    type Err = Box<dyn std::error::Error + Send + Sync>;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let (addr, raw_port) = match s.rsplit_once(':') {
             Some(v) => v,
-            None => return Err("Can't find ':' in the source string".to_string()),
+            None => {
+                let err_msg = "Can't find ':' in the source string".to_string();
+                return Err(Self::Err::from(err_msg));
+            }
         };
-        let port = raw_port
-            .parse()
-            .map_err(|e| format!("Fail to parse port:{}, err:{}", raw_port, e))?;
+        let port = raw_port.parse().map_err(|e| {
+            let err_msg = format!("Fail to parse port:{}, err:{}", raw_port, e);
+            Self::Err::from(err_msg)
+        })?;
 
         Ok(Endpoint {
             addr: addr.to_string(),

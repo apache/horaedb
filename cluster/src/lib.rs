@@ -9,7 +9,7 @@ pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, GetShardTablesRequest,
 };
-use meta_client::types::{RouteTablesRequest, RouteTablesResponse, ShardId};
+use meta_client::types::{ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId};
 use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
@@ -68,4 +68,5 @@ pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
+    async fn fetch_nodes(&self) -> Result<ClusterNodesRef>;
 }

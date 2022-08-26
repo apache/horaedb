@@ -8,6 +8,7 @@ use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
 use crate::error::Result;
 
 pub mod cluster_based;
+pub(crate) mod hash;
 pub mod rule_based;
 
 pub use cluster_based::ClusterBasedRouter;

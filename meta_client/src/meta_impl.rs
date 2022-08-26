@@ -31,9 +31,9 @@ use tokio::{
 use crate::{
     types::{
         ActionCmd, AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest,
-        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest,
-        GetShardTablesRequest, GetShardTablesResponse, NodeHeartbeatResponse, NodeInfo,
-        NodeMetaInfo, RequestHeader, RouteTablesRequest, RouteTablesResponse, ShardInfo,
+        AllocTableIdResponse, CreateTableCmd, DropTableCmd, DropTableRequest, GetNodesRequest,
+        GetNodesResponse, GetShardTablesRequest, GetShardTablesResponse, NodeHeartbeatResponse,
+        NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     EventHandler, EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailDropTable,
     FailGetGrpcClient, FailGetTables, FailHandleEvent, FailRouteTables, FailSendHeartbeat,
@@ -436,7 +436,7 @@ impl MetaClient for MetaClientImpl {
 
         let pb_resp = grpc_client
             .client
-            .get_tables_async_opt(&pb_req, CallOption::default())
+            .get_shard_tables_async_opt(&pb_req, CallOption::default())
             .map_err(|e| Box::new(e) as _)
             .context(FailGetTables)?
             .await
@@ -472,6 +472,27 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(pb_resp.get_header())?;
         Ok(RouteTablesResponse::from(pb_resp))
+    }
+
+    async fn get_nodes(&self, req: GetNodesRequest) -> Result<GetNodesResponse> {
+        // TODO: maybe we can define a macro to avoid these boilerplate codes.
+        let grpc_client_guard = self.inner.grpc_client.read().await;
+        let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
+
+        let mut pb_req = meta_service::GetNodesRequest::from(req);
+        pb_req.set_header(self.inner.request_header().into());
+
+        let pb_resp = grpc_client
+            .client
+            .get_nodes_async_opt(&pb_req, CallOption::default())
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(FailRouteTables)?;
+
+        check_response_header(pb_resp.get_header())?;
+        Ok(GetNodesResponse::from(pb_resp))
     }
 
     async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {

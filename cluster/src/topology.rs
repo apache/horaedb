@@ -6,7 +6,7 @@ use common_types::{
     schema::{SchemaId, SchemaName},
     table::TableName,
 };
-use meta_client::types::{RouteEntry, RouteTablesResponse};
+use meta_client::types::{ClusterNodesRef, RouteEntry, RouteTablesResponse};
 
 use crate::config::SchemaConfig;
 
@@ -32,6 +32,7 @@ struct SchemaTopology {
 pub struct ClusterTopology {
     version: u64,
     schema_topologies: HashMap<SchemaName, SchemaTopology>,
+    nodes: Option<ClusterNodesRef>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -104,6 +105,21 @@ impl ClusterTopology {
             .entry(schema_name.to_string())
             .or_insert_with(Default::default)
             .update_tables(tables);
+
+        true
+    }
+
+    pub fn nodes(&self) -> Option<ClusterNodesRef> {
+        self.nodes.clone()
+    }
+
+    pub fn update_nodes(&mut self, nodes: ClusterNodesRef, version: u64) -> bool {
+        if self.is_outdated_version(version) {
+            return false;
+        }
+
+        self.nodes = Some(nodes);
+
         true
     }
 }
