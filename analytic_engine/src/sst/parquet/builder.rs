@@ -159,7 +159,6 @@ mod tests {
     use common_types::{
         bytes::Bytes,
         projected_schema::ProjectedSchema,
-        schema::StorageFormat,
         tests::{build_row, build_schema},
         time::{TimeRange, Timestamp},
     };
@@ -177,7 +176,7 @@ mod tests {
             parquet::reader::ParquetSstReader,
             reader::{tests::check_stream, SstReader},
         },
-        table_options,
+        table_options::{self, StorageFormat},
     };
 
     // TODO(xikai): add test for reverse reader
