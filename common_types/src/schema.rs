@@ -553,17 +553,35 @@ pub enum StorageFormat {
     Hybrid,
 }
 
-const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
-const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
+const STORAGE_FORMAT_COLUMNAR: &str = "columnar";
+const STORAGE_FORMAT_HYBRID: &str = "hybrid";
+
+impl From<StorageFormat> for common_pb::StorageFormat {
+    fn from(format: StorageFormat) -> Self {
+        match format {
+            StorageFormat::Columnar => Self::Columnar,
+            StorageFormat::Hybrid => Self::Hybrid,
+        }
+    }
+}
+
+impl From<common_pb::StorageFormat> for StorageFormat {
+    fn from(format: common_pb::StorageFormat) -> Self {
+        match format {
+            common_pb::StorageFormat::Columnar => Self::Columnar,
+            common_pb::StorageFormat::Hybrid => Self::Hybrid,
+        }
+    }
+}
 
 impl TryFrom<&str> for StorageFormat {
     type Error = Error;
 
-    fn try_from(s: &str) -> Result<Self> {
-        let format = match s.to_uppercase().as_str() {
+    fn try_from(value: &str) -> Result<Self> {
+        let format = match value.to_lowercase().as_str() {
             STORAGE_FORMAT_COLUMNAR => Self::Columnar,
             STORAGE_FORMAT_HYBRID => Self::Hybrid,
-            _ => return UnknownStorageFormat { value: s }.fail(),
+            _ => return UnknownStorageFormat { value }.fail(),
         };
         Ok(format)
     }
@@ -572,8 +590,8 @@ impl TryFrom<&str> for StorageFormat {
 impl ToString for StorageFormat {
     fn to_string(&self) -> String {
         match self {
-            Self::Columnar => "columnar",
-            Self::Hybrid => "hybrid",
+            Self::Columnar => STORAGE_FORMAT_COLUMNAR,
+            Self::Hybrid => STORAGE_FORMAT_HYBRID,
         }
         .to_string()
     }
@@ -629,6 +647,7 @@ impl fmt::Debug for Schema {
             .field("enable_tsid_primary_key", &self.enable_tsid_primary_key)
             .field("column_schemas", &self.column_schemas)
             .field("version", &self.version)
+            .field("storage_format", &self.storage_format.to_string())
             .finish()
     }
 }
@@ -920,7 +939,8 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     fn try_from(schema: common_pb::TableSchema) -> Result<Self> {
         let mut builder = Builder::with_capacity(schema.columns.len())
             .version(schema.version)
-            .enable_tsid_primary_key(schema.enable_tsid_primary_key);
+            .enable_tsid_primary_key(schema.enable_tsid_primary_key)
+            .storage_format(schema.storage_format.into());
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
             let column = ColumnSchema::from(column_schema_pb);
@@ -950,6 +970,7 @@ impl From<Schema> for common_pb::TableSchema {
         table_schema.timestamp_index = schema.timestamp_index as u32;
         table_schema.enable_tsid_primary_key = schema.enable_tsid_primary_key;
         table_schema.version = schema.version;
+        table_schema.storage_format = schema.storage_format.into();
 
         table_schema
     }

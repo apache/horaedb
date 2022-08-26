@@ -450,13 +450,7 @@ impl ParquetEncoder {
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
-        let mut format = meta_data.schema.storage_format();
-
-        // TODO: remove this overwrite when we can set format via table options
-        if matches!(format, StorageFormat::Hybrid) && meta_data.schema.index_of_tsid().is_none() {
-            format = StorageFormat::Columnar;
-        }
-
+        let format = meta_data.schema.storage_format();
         let record_encoder: Box<dyn RecordEncoder + Send> = match format {
             StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
                 write_props,
@@ -727,12 +721,7 @@ impl ParquetDecoder {
         let arrow_schema_meta = ArrowSchemaMeta::try_from(arrow_schema.metadata())
             .map_err(|e| Box::new(e) as _)
             .context(DecodeRecordBatch)?;
-        let mut format = arrow_schema_meta.storage_format();
-        // TODO: remove this overwrite when we can set format via table options
-        if matches!(format, StorageFormat::Hybrid) && !arrow_schema_meta.enable_tsid_primary_key() {
-            format = StorageFormat::Columnar;
-        }
-
+        let format = arrow_schema_meta.storage_format();
         let record_decoder: Box<dyn RecordDecoder> = match format {
             StorageFormat::Hybrid => Box::new(HybridRecordDecoder {}),
             StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),

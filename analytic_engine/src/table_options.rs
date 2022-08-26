@@ -13,8 +13,7 @@ use common_util::{
 };
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, StorageFormat as StorageFormatPb, TableOptions as TableOptionsPb,
-    UpdateMode as UpdateModePb,
+    Compression as CompressionPb, TableOptions as TableOptionsPb, UpdateMode as UpdateModePb,
 };
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -456,10 +455,6 @@ impl From<TableOptionsPb> for TableOptions {
         } else {
             Some(Duration::from_millis(opts.segment_duration).into())
         };
-        let storage_format = match opts.storage_format {
-            StorageFormatPb::Columnar => StorageFormat::Columnar,
-            StorageFormatPb::Hybrid => StorageFormat::Hybrid,
-        };
 
         Self {
             segment_duration,
@@ -471,7 +466,7 @@ impl From<TableOptionsPb> for TableOptions {
             update_mode,
             write_buffer_size: opts.write_buffer_size,
             compression: opts.compression.into(),
-            storage_format,
+            storage_format: opts.storage_format.into(),
         }
     }
 }
