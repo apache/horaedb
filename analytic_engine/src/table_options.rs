@@ -41,8 +41,6 @@ const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
 const AT_LEAST_OPTIONS_NUM: usize = 9;
-const UPDATE_MODE_COLUMNAR: &str = "COLUMNAR";
-const UPDATE_MODE_HYBRID: &str = "HYBRID";
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -545,7 +543,7 @@ fn merge_table_options(
         table_opts.compression = Compression::parse_from(v)?;
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
-        table_opts.storage_format = v.try_into().context(ParseStorageFormat {})?;
+        table_opts.storage_format = v.as_str().try_into().context(ParseStorageFormat {})?;
     }
     Ok(table_opts)
 }

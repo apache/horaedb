@@ -19,6 +19,7 @@ pub use arrow_deps::arrow::datatypes::{
     DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef,
 };
 use proto::common as common_pb;
+use serde::Deserialize;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -180,6 +181,7 @@ pub enum CompatError {
 }
 
 /// Meta data of the arrow schema
+#[derive(Default)]
 pub struct ArrowSchemaMeta {
     num_key_columns: usize,
     timestamp_index: usize,
@@ -211,18 +213,6 @@ impl ArrowSchemaMeta {
         T::from_str(raw_value.as_str())
             .map_err(|e| Box::new(e) as _)
             .context(InvalidArrowSchemaMetaValue { key, raw_value })
-    }
-}
-
-impl Default for ArrowSchemaMeta {
-    fn default() -> Self {
-        Self {
-            num_key_columns: 0,
-            timestamp_index: 0,
-            enable_tsid_primary_key: false,
-            version: 0,
-            storage_format: StorageFormat::default(),
-        }
     }
 }
 
@@ -521,7 +511,7 @@ pub fn compare_row<LR: RowView, RR: RowView>(
 }
 
 /// StorageFormat specify how records are saved in persistent storage
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 pub enum StorageFormat {
     /// Traditional columnar format, every column is saved in one exact one
     /// column, for example:
@@ -559,13 +549,16 @@ pub enum StorageFormat {
     Hybrid,
 }
 
+const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
+const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
+
 impl TryFrom<&str> for StorageFormat {
     type Error = Error;
 
     fn try_from(s: &str) -> Result<Self> {
-        let format = match s.to_lowercase().as_str() {
-            "columnar" => Self::Columnar,
-            "hybrid" => Self::Hybrid,
+        let format = match s.to_uppercase().as_str() {
+            STORAGE_FORMAT_COLUMNAR => Self::Columnar,
+            STORAGE_FORMAT_HYBRID => Self::Hybrid,
             _ => return UnknownStorageFormat { value: s }.fail(),
         };
         Ok(format)
