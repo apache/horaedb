@@ -19,7 +19,7 @@ pub use arrow_deps::arrow::datatypes::{
     DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef,
 };
 use proto::common as common_pb;
-use serde::Deserialize;
+use serde_derive::Deserialize;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -152,7 +152,11 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Unkown storage format. value:{:?}.\nBacktrace:\n{}", value, backtrace))]
+    #[snafu(display(
+        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
     UnknownStorageFormat { value: String, backtrace: Backtrace },
 }
 
@@ -904,19 +908,9 @@ impl Schema {
         self.column_schemas.string_buffer_offset
     }
 
-    /// Data format in storage
+    /// Column's format in storage
     pub fn storage_format(&self) -> StorageFormat {
-        // TODO: parse it from table options
-        match std::env::var("CERESDB_TABLE_FORMAT") {
-            Ok(format) => {
-                if format == "HYBRID" {
-                    StorageFormat::Hybrid
-                } else {
-                    StorageFormat::Columnar
-                }
-            }
-            Err(_) => StorageFormat::Columnar,
-        }
+        self.storage_format
     }
 }
 
@@ -978,6 +972,7 @@ pub struct Builder {
     auto_increment_column_id: bool,
     max_column_id: ColumnId,
     enable_tsid_primary_key: bool,
+    storage_format: StorageFormat,
 }
 
 impl Default for Builder {
@@ -1004,6 +999,7 @@ impl Builder {
             auto_increment_column_id: false,
             max_column_id: column_schema::COLUMN_ID_UNINIT,
             enable_tsid_primary_key: false,
+            storage_format: StorageFormat::default(),
         }
     }
 
@@ -1061,6 +1057,12 @@ impl Builder {
     /// Enable tsid as primary key.
     pub fn enable_tsid_primary_key(mut self, enable_tsid_primary_key: bool) -> Self {
         self.enable_tsid_primary_key = enable_tsid_primary_key;
+        self
+    }
+
+    /// Set version of the schema
+    pub fn storage_format(mut self, format: StorageFormat) -> Self {
+        self.storage_format = format;
         self
     }
 
@@ -1168,30 +1170,30 @@ impl Builder {
     ///
     /// Requires: the timestamp index is not None.
     fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
-        let mut meta = HashMap::with_capacity(5);
-        meta.insert(
-            ArrowSchemaMetaKey::NumKeyColumns.to_string(),
-            self.num_key_columns.to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::TimestampIndex.to_string(),
-            self.timestamp_index.unwrap().to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::Version.to_string(),
-            self.version.to_string(),
-        );
-        meta.insert(
-            ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
-            self.enable_tsid_primary_key.to_string(),
-        );
-        // FIXME
-        meta.insert(
-            ArrowSchemaMetaKey::StorageFormat.to_string(),
-            StorageFormat::Columnar.to_string(),
-        );
-
-        meta
+        [
+            (
+                ArrowSchemaMetaKey::NumKeyColumns.to_string(),
+                self.num_key_columns.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::TimestampIndex.to_string(),
+                self.timestamp_index.unwrap().to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::Version.to_string(),
+                self.version.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
+                self.enable_tsid_primary_key.to_string(),
+            ),
+            (
+                ArrowSchemaMetaKey::StorageFormat.to_string(),
+                self.storage_format.to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect()
     }
 
     fn find_tsid_index(
@@ -1239,7 +1241,7 @@ impl Builder {
             enable_tsid_primary_key: self.enable_tsid_primary_key,
             column_schemas: Arc::new(ColumnSchemas::new(self.columns)),
             version: self.version,
-            storage_format: StorageFormat::Columnar, // FIXME
+            storage_format: self.storage_format,
         })
     }
 }
@@ -1457,6 +1459,35 @@ mod tests {
             .unwrap()
             .build()
             .unwrap();
+    }
+
+    #[test]
+    fn test_with_storage_format() {
+        let schema = Builder::new()
+            .auto_increment_column_id(true)
+            .add_key_column(
+                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        // default is columnar
+        assert_eq!(schema.storage_format, StorageFormat::Columnar);
+
+        let schema = Builder::new()
+            .auto_increment_column_id(true)
+            .storage_format(StorageFormat::Hybrid)
+            .add_key_column(
+                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(schema.storage_format, StorageFormat::Hybrid);
     }
 
     #[test]

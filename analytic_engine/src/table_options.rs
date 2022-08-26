@@ -13,7 +13,8 @@ use common_util::{
 };
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, TableOptions as TableOptionsPb, UpdateMode as UpdateModePb,
+    Compression as CompressionPb, StorageFormat as StorageFormatPb, TableOptions as TableOptionsPb,
+    UpdateMode as UpdateModePb,
 };
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -40,7 +41,6 @@ const COMPRESSION_UNCOMPRESSED: &str = "UNCOMPRESSED";
 const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
-const AT_LEAST_OPTIONS_NUM: usize = 9;
 
 /// Default bucket duration (1d)
 const BUCKET_DURATION_1D: Duration = Duration::from_secs(24 * 60 * 60);
@@ -211,6 +211,8 @@ pub struct TableOptions {
     pub segment_duration: Option<ReadableDuration>,
     /// Table update mode, now support Overwrite(Default) and Append
     pub update_mode: UpdateMode,
+    /// Column's format in underlying storage
+    pub storage_format: StorageFormat,
 
     // The following options can be altered.
     /// Enable ttl
@@ -227,8 +229,6 @@ pub struct TableOptions {
     pub num_rows_per_row_group: usize,
     /// Table Compression
     pub compression: Compression,
-    /// Storage format
-    pub storage_format: StorageFormat,
 }
 
 impl TableOptions {
@@ -248,33 +248,34 @@ impl TableOptions {
 
     // for show create table
     pub fn to_raw_map(&self) -> HashMap<String, String> {
-        let mut m = HashMap::with_capacity(AT_LEAST_OPTIONS_NUM);
-        m.insert(
-            SEGMENT_DURATION.to_string(),
-            self.segment_duration
-                .map(|v| v.to_string())
-                .unwrap_or_else(String::new),
-        );
-        m.insert(UPDATE_MODE.to_string(), self.update_mode.to_string());
-        m.insert(ENABLE_TTL.to_string(), self.enable_ttl.to_string());
-        m.insert(TTL.to_string(), format!("{}", self.ttl));
-        m.insert(
-            ARENA_BLOCK_SIZE.to_string(),
-            format!("{}", self.arena_block_size),
-        );
-        m.insert(
-            WRITE_BUFFER_SIZE.to_string(),
-            format!("{}", self.write_buffer_size),
-        );
+        let mut m = [
+            (
+                SEGMENT_DURATION.to_string(),
+                self.segment_duration
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(String::new),
+            ),
+            (UPDATE_MODE.to_string(), self.update_mode.to_string()),
+            (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),
+            (TTL.to_string(), format!("{}", self.ttl)),
+            (
+                ARENA_BLOCK_SIZE.to_string(),
+                format!("{}", self.arena_block_size),
+            ),
+            (
+                WRITE_BUFFER_SIZE.to_string(),
+                format!("{}", self.write_buffer_size),
+            ),
+            (
+                NUM_ROWS_PER_ROW_GROUP.to_string(),
+                format!("{}", self.num_rows_per_row_group),
+            ),
+            (COMPRESSION.to_string(), self.compression.to_string()),
+            (STORAGE_FORMAT.to_string(), self.storage_format.to_string()),
+        ]
+        .into_iter()
+        .collect();
         self.compaction_strategy.fill_raw_map(&mut m);
-        m.insert(
-            NUM_ROWS_PER_ROW_GROUP.to_string(),
-            format!("{}", self.num_rows_per_row_group),
-        );
-        m.insert(COMPRESSION.to_string(), self.compression.to_string());
-        m.insert(STORAGE_FORMAT.to_string(), self.storage_format.to_string());
-
-        assert!(m.len() >= AT_LEAST_OPTIONS_NUM);
 
         m
     }
@@ -455,6 +456,10 @@ impl From<TableOptionsPb> for TableOptions {
         } else {
             Some(Duration::from_millis(opts.segment_duration).into())
         };
+        let storage_format = match opts.storage_format {
+            StorageFormatPb::Columnar => StorageFormat::Columnar,
+            StorageFormatPb::Hybrid => StorageFormat::Hybrid,
+        };
 
         Self {
             segment_duration,
@@ -466,7 +471,7 @@ impl From<TableOptionsPb> for TableOptions {
             update_mode,
             write_buffer_size: opts.write_buffer_size,
             compression: opts.compression.into(),
-            storage_format: StorageFormat::default(), // FIXME: update pb
+            storage_format,
         }
     }
 }
