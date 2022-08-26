@@ -60,7 +60,7 @@ func TestWatchLeaderSingle(t *testing.T) {
 	leaderGetter := &etcdutil.LeaderGetterWrapper{Server: etcd.Server}
 	rpcTimeout := time.Duration(10) * time.Second
 	leaseTTLSec := int64(1)
-	mem := NewMember("", uint64(etcd.Server.ID()), "mem0", client, leaderGetter, rpcTimeout)
+	mem := NewMember("", uint64(etcd.Server.ID()), "mem0", "", client, leaderGetter, rpcTimeout)
 	leaderWatcher := NewLeaderWatcher(watchCtx, mem, leaseTTLSec)
 
 	ctx, cancelWatch := context.WithCancel(context.Background())

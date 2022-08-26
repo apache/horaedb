@@ -6,7 +6,9 @@ import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -18,9 +20,10 @@ func (s *Service) getForwardedCeresmetaClient(ctx context.Context) (metaservicep
 	}
 
 	if forwardedAddr != "" {
+		log.Info("try to create ceresmeta client", zap.String("addr", forwardedAddr))
 		ceresmetaClient, err := s.getCeresmetaClient(ctx, forwardedAddr)
 		if err != nil {
-			return nil, errors.Wrap(err, "get forwarded ceresmeta client")
+			return nil, errors.Wrapf(err, "get forwarded ceresmeta client, addr:%s", forwardedAddr)
 		}
 		return ceresmetaClient, nil
 	}
@@ -56,7 +59,7 @@ func (s *Service) getForwardedAddr(ctx context.Context) (string, bool, error) {
 	if member.IsLocal {
 		return "", true, nil
 	}
-	return member.Leader.GetName(), false, nil
+	return member.Leader.GetEndpoint(), false, nil
 }
 
 func (s *Service) createHeartbeatForwardedStream(ctx context.Context,
@@ -70,7 +73,6 @@ func forwardRegionHeartbeatRespToClient(forwardedStream metaservicepb.CeresmetaR
 	server metaservicepb.CeresmetaRpcService_NodeHeartbeatServer,
 	errCh chan error,
 ) {
-	defer close(errCh)
 	for {
 		resp, err := forwardedStream.Recv()
 		if err != nil {

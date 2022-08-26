@@ -131,7 +131,8 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 
 	srv.etcdCli = client
 	etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: etcdSrv.Server}
-	srv.member = member.NewMember("", uint64(etcdSrv.Server.ID()), srv.cfg.NodeName, client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
+
+	srv.member = member.NewMember("", uint64(etcdSrv.Server.ID()), srv.cfg.NodeName, endpoints[0], client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
 	srv.etcdSrv = etcdSrv
 	return nil
 }
@@ -251,11 +252,10 @@ type leadershipEventCallbacks struct {
 }
 
 func (c *leadershipEventCallbacks) AfterElected(ctx context.Context) {
-	c.srv.createDefaultCluster(ctx)
-
 	if err := c.srv.clusterManager.Start(ctx); err != nil {
 		panic(fmt.Sprintf("cluster manager fail to start, err:%v", err))
 	}
+	c.srv.createDefaultCluster(ctx)
 }
 
 func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {

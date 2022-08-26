@@ -299,6 +299,7 @@ func (m *managerImpl) Start(ctx context.Context) error {
 
 	m.clusters = make(map[string]*Cluster, len(clusters))
 	for _, clusterPb := range clusters {
+		log.Info("cluster manager start, new cluster", zap.String("cluster", clusterPb.GetName()))
 		cluster := NewCluster(clusterPb, m.storage, m.kv, m.hbstreams, m.rootPath, m.idAllocatorStep)
 		if err := cluster.Load(ctx); err != nil {
 			log.Error("cluster manager fail to start, fail to load cluster", zap.Error(err))

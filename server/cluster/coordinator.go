@@ -51,6 +51,7 @@ func (c *coordinator) runBgJob() {
 	c.bgJobWg.Add(1)
 	defer c.bgJobWg.Done()
 
+	log.Info("coordinator runBgJob started", zap.String("cluster", c.cluster.Name()))
 	for {
 		t := time.After(DefaultHeartbeatInterval)
 		select {

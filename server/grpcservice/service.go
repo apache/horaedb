@@ -69,6 +69,8 @@ func (b *streamBinder) bindIfNot(ctx context.Context, node string) error {
 		return ErrBindHeartbeatStream.WithCausef("node:%s, err:%v", node, err)
 	}
 
+	log.Info("bind stream", zap.String("endpoint", node))
+
 	b.bound = true
 	b.node = node
 	return nil
@@ -84,7 +86,7 @@ func (b *streamBinder) unbind(ctx context.Context) error {
 	if err := b.h.UnbindHeartbeatStream(ctx, b.node); err != nil {
 		return ErrUnbindHeartbeatStream.WithCausef("node:%s, err:%v", b.node, err)
 	}
-
+	log.Info("unbind stream", zap.String("endpoint", b.node))
 	return nil
 }
 
@@ -132,6 +134,7 @@ func (s *Service) NodeHeartbeat(heartbeatSrv metaservicepb.CeresmetaRpcService_N
 
 				select {
 				case err = <-f.errCh:
+					log.Error("stream send failed", zap.String("endpoint", f.addr), zap.Error(err))
 					return err
 				default:
 				}
@@ -140,7 +143,7 @@ func (s *Service) NodeHeartbeat(heartbeatSrv metaservicepb.CeresmetaRpcService_N
 		}
 
 		if err := binder.bindIfNot(ctx, req.Info.GetEndpoint()); err != nil {
-			log.Error("fail to bind node stream", zap.Error(err))
+			log.Error("fail to bind node stream", zap.String("endpoint", req.Info.GetEndpoint()), zap.Error(err))
 		}
 
 		func() {
@@ -344,9 +347,11 @@ func (f *forwarder) maybeInitForwardedStream(ctx context.Context) error {
 
 		// When isLocal is false, request need to be forwarded to the leader.
 		if !isLocal {
+			log.Info("forwarder needReconnect", zap.String("addr", forwardedAddr), zap.String("previous", f.addr))
 			if err = f.reconnect(forwardedAddr); err != nil {
 				return err
 			}
+			f.addr = forwardedAddr
 		}
 	}
 	return nil

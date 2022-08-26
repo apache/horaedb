@@ -23,6 +23,7 @@ const leaderCheckInterval = time.Duration(100) * time.Millisecond
 type Member struct {
 	ID               uint64
 	Name             string
+	Endpoint         string
 	rootPath         string
 	leaderKey        string
 	etcdCli          *clientv3.Client
@@ -36,12 +37,13 @@ func formatLeaderKey(rootPath string) string {
 	return fmt.Sprintf("%s/members/leader", rootPath)
 }
 
-func NewMember(rootPath string, id uint64, name string, etcdCli *clientv3.Client, etcdLeaderGetter etcdutil.EtcdLeaderGetter, rpcTimeout time.Duration) *Member {
+func NewMember(rootPath string, id uint64, name, endpoint string, etcdCli *clientv3.Client, etcdLeaderGetter etcdutil.EtcdLeaderGetter, rpcTimeout time.Duration) *Member {
 	leaderKey := formatLeaderKey(rootPath)
 	logger := log.With(zap.String("node-name", name), zap.Uint64("node-id", id))
 	return &Member{
 		ID:               id,
 		Name:             name,
+		Endpoint:         endpoint,
 		rootPath:         rootPath,
 		leaderKey:        leaderKey,
 		etcdCli:          etcdCli,
@@ -215,8 +217,9 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 
 func (m *Member) Marshal() (string, error) {
 	memPb := &metastoragepb.Member{
-		Name: m.Name,
-		Id:   m.ID,
+		Name:     m.Name,
+		Id:       m.ID,
+		Endpoint: m.Endpoint,
 	}
 	bs, err := proto.Marshal(memPb)
 	if err != nil {
