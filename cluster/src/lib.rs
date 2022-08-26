@@ -38,6 +38,13 @@ pub enum Error {
         shard_id: ShardId,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Cluster nodes is not found in the topology, version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    ClusterNodesNotFound { version: u64, backtrace: Backtrace },
 }
 
 define_result!(Error);

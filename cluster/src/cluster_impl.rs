@@ -14,7 +14,7 @@ use meta_client::{
     },
     EventHandler, MetaClient,
 };
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
@@ -24,7 +24,8 @@ use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
     topology::ClusterTopology,
-    Cluster, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
+    TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -209,15 +210,29 @@ impl Inner {
 
         let version = resp.cluster_topology_version;
         let nodes = Arc::new(resp.node_shards);
-        self.topology
+        let updated = self
+            .topology
             .write()
             .unwrap()
             .update_nodes(nodes.clone(), version);
 
-        Ok(ClusterNodesResp {
-            cluster_topology_version: version,
-            cluster_nodes: nodes,
-        })
+        let resp = if updated {
+            ClusterNodesResp {
+                cluster_topology_version: version,
+                cluster_nodes: nodes,
+            }
+        } else {
+            let topology = self.topology.read().unwrap();
+            let version = topology.version();
+            // The fetched topology is outdated, and we will use the cache.
+            let nodes = topology.nodes().context(ClusterNodesNotFound { version })?;
+            ClusterNodesResp {
+                cluster_topology_version: version,
+                cluster_nodes: nodes,
+            }
+        };
+
+        Ok(resp)
     }
 }
 
