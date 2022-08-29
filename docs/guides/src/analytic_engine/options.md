@@ -41,11 +41,11 @@ In traditional time-series user case like IoT or DevOps, queries will typically 
  ```
 
 
-- With in one file, rows belong to same primary key(eg: series/device id) are collapsed in one row
-- The columns besides primary key are divided in two categroies:
+- Within one file, rows belonging to the same primary key(eg: series/device id) are collapsed into one row
+- The columns besides primary key are divided into two categories:
   - `collapsible`, those columns will be collapsed into a list. Used to encode `fields` in time-series table
     - Note: only fixed-length type is supported now
-  - `non-collapsible`, those columns should only contains one distinct value. Used to encode `tags` in time-series table
+  - `non-collapsible`, those columns should only contain one distinct value. Used to encode `tags` in time-series table
     - Note: only string type is supported now
 - Two more columns are added, `minTime` and `maxTime`. Those are used to cut unnecessary rows out in query.
   - Note: Not implemented yet.
