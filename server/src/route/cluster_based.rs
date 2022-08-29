@@ -34,7 +34,7 @@ impl ClusterBasedRouter {
         route_resp: &RouteTablesResponse,
         route_result: &mut Vec<Route>,
     ) -> Result<()> {
-        if !route_resp.contains_missing_table(queried_tables) {
+        if route_resp.contains_all_tables(queried_tables) {
             return Ok(());
         }
 

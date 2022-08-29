@@ -192,11 +192,11 @@ impl Inner {
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
         {
             let topology = self.topology.read().unwrap();
-            let cached_nodes = topology.nodes();
-            if let Some(cached_nodes) = cached_nodes {
+            let cached_node_topology = topology.nodes();
+            if let Some(cached_node_topology) = cached_node_topology {
                 return Ok(ClusterNodesResp {
-                    cluster_topology_version: topology.version(),
-                    cluster_nodes: cached_nodes,
+                    cluster_topology_version: cached_node_topology.version,
+                    cluster_nodes: cached_node_topology.nodes,
                 });
             }
         }
@@ -214,7 +214,7 @@ impl Inner {
             .topology
             .write()
             .unwrap()
-            .update_nodes(nodes.clone(), version);
+            .maybe_update_nodes(nodes.clone(), version);
 
         let resp = if updated {
             ClusterNodesResp {
@@ -223,12 +223,12 @@ impl Inner {
             }
         } else {
             let topology = self.topology.read().unwrap();
-            let version = topology.version();
             // The fetched topology is outdated, and we will use the cache.
-            let nodes = topology.nodes().context(ClusterNodesNotFound { version })?;
+            let cached_node_topology =
+                topology.nodes().context(ClusterNodesNotFound { version })?;
             ClusterNodesResp {
-                cluster_topology_version: version,
-                cluster_nodes: nodes,
+                cluster_topology_version: cached_node_topology.version,
+                cluster_nodes: cached_node_topology.nodes,
             }
         };
 

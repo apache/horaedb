@@ -436,7 +436,7 @@ pub struct RouteTablesResponse {
 }
 
 impl RouteTablesResponse {
-    pub fn contains_missing_table(&self, queried_tables: &[TableName]) -> bool {
+    pub fn contains_all_tables(&self, queried_tables: &[TableName]) -> bool {
         queried_tables
             .iter()
             .all(|table_name| self.entries.contains_key(table_name))
