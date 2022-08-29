@@ -43,7 +43,49 @@ In traditional time-series user case like IoT or DevOps, queries will typically 
 
 - With in one file, rows belong to same primary key(eg: series/device id) are collapsed in one row
 - The columns besides primary key are divided in two categroies:
-  1. `collapsible`, those columns will be collapsed into a list. Used to encode `fields` in time-series table
-  2. `non-collapsible`, those columns should only contains one distinct value. Used to encode `tags` in time-series table
+  - `collapsible`, those columns will be collapsed into a list. Used to encode `fields` in time-series table
+    - Note: only fixed-length type is supported now
+  - `non-collapsible`, those columns should only contains one distinct value. Used to encode `tags` in time-series table
+    - Note: only string type is supported now
 - Two more columns are added, `minTime` and `maxTime`. Those are used to cut unnecessary rows out in query.
   - Note: Not implemented yet.
+
+### Example
+
+```sql
+CREATE TABLE `device` (
+    `ts` timestamp NOT NULL,
+    `tag1` string tag,
+    `tag2` string tag,
+    `value1` double,
+    `value2` int,
+    timestamp KEY (ts)) ENGINE=Analytic
+  with (
+    enable_ttl = 'false',
+    storage_format = 'hybrid'
+);
+```
+This will create a table with hybrid format, users can inspect data format with [parquet-tools](https://formulae.brew.sh/formula/parquet-tools). The table above should have following parquet schema:
+
+```
+message arrow_schema {
+  optional group ts (LIST) {
+    repeated group list {
+      optional int64 item (TIMESTAMP(MILLIS,false));
+    }
+  }
+  required int64 tsid (INTEGER(64,false));
+  optional binary tag1 (STRING);
+  optional binary tag2 (STRING);
+  optional group value1 (LIST) {
+    repeated group list {
+      optional double item;
+    }
+  }
+  optional group value2 (LIST) {
+    repeated group list {
+      optional int32 item;
+    }
+  }
+}
+```
