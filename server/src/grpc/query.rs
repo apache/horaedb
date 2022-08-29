@@ -30,7 +30,7 @@ const RECORD_NAME: &str = "Result";
 
 fn empty_ok_resp() -> QueryResponse {
     let mut header = ResponseHeader::new();
-    header.code = StatusCode::Ok.as_u32();
+    header.code = StatusCode::OK.as_u16().into();
 
     let mut resp = QueryResponse::new();
     resp.set_header(header);
@@ -47,7 +47,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         convert_output(&output)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::InternalError,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("Failed to convert output, query:{}", &req.ql),
             })
     } else {
@@ -89,7 +89,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .parse_sql(&mut sql_ctx, &req.ql)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: "Failed to parse sql",
         })?;
 
@@ -102,7 +102,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     ensure!(
         stmts.len() == 1,
         ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Only support execute one statement now, current num:{}, query:{}",
                 stmts.len(),
@@ -119,13 +119,13 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .statement_to_plan(&mut sql_ctx, stmts.remove(0))
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to create plan, query:{}", req.ql),
         })?;
 
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: StatusCode::TooManyRequests,
+            code: StatusCode::TOO_MANY_REQUESTS,
             msg: "Query limited by reject list",
         }
         .fail()?;
@@ -148,7 +148,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to execute interpreter, query:{}", req.ql),
         })?;
 
@@ -217,7 +217,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
         avro_util::record_batch_to_avro(record_batch, avro_schema, &mut rows)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::InternalError,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to convert record batch",
             })?;
     }
