@@ -115,21 +115,24 @@ impl SchemaTopologies {
 
 impl NodeTopology {
     fn maybe_update_nodes(&mut self, nodes: ClusterNodesRef, version: u64) -> bool {
-        if ClusterTopology::is_outdated_version(self.version, version) {
-            return false;
+        if ClusterTopology::is_newer_version(self.version, version) {
+            self.nodes = nodes;
+            true
+        } else {
+            false
         }
-
-        self.nodes = nodes;
-
-        true
     }
 }
 
 impl ClusterTopology {
-    /// Any update on the topology should ensure the version is valid: the
-    /// target version must not be older than the current version.
-    fn is_outdated_version(current_version: u64, version: u64) -> bool {
-        version < current_version
+    #[inline]
+    fn is_outdated_version(current_version: u64, check_version: u64) -> bool {
+        check_version < current_version
+    }
+
+    #[inline]
+    fn is_newer_version(current_version: u64, check_version: u64) -> bool {
+        check_version > current_version
     }
 
     pub fn nodes(&self) -> Option<NodeTopology> {
@@ -158,6 +161,35 @@ impl SchemaTopology {
     fn update_tables(&mut self, tables: HashMap<TableName, RouteSlot>) {
         for (table_name, slot) in tables {
             self.route_slots.insert(table_name, slot);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_outdated_version() {
+        // One case is (current_version, check_version, is_outdated)
+        let cases = [(1, 2, false), (1, 1, false), (1, 0, true)];
+        for (current_version, check_version, is_outdated) in cases {
+            assert_eq!(
+                is_outdated,
+                ClusterTopology::is_outdated_version(current_version, check_version)
+            );
+        }
+    }
+
+    #[test]
+    fn test_newer_version() {
+        // One case is (current_version, check_version, is_newer)
+        let cases = [(1, 2, true), (1, 1, false), (1, 0, false)];
+        for (current_version, check_version, is_newer) in cases {
+            assert_eq!(
+                is_newer,
+                ClusterTopology::is_newer_version(current_version, check_version)
+            );
         }
     }
 }
