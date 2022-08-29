@@ -43,7 +43,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Cluster nodes is not found in the topology, version:{}.\nBacktrace:\n{}",
+        "Cluster nodes are not found in the topology, version:{}.\nBacktrace:\n{}",
         version,
         backtrace
     ))]

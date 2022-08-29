@@ -45,7 +45,7 @@ impl ClusterBasedRouter {
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::InternalError,
-                msg: "fail to fetch cluster nodes",
+                msg: "Failed to fetch cluster nodes",
             })?;
 
         if cluster_nodes_resp.cluster_nodes.is_empty() {
@@ -77,7 +77,7 @@ impl ClusterBasedRouter {
     }
 }
 
-/// Make a route according the table name and the raw endpoint.
+/// Make a route according to the table name and the raw endpoint.
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
     let mut route = Route::default();
     let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
@@ -104,7 +104,7 @@ impl Router for ClusterBasedRouter {
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::InternalError,
-                msg: "Fail to route tables by cluster",
+                msg: "Failed to route tables by cluster",
             })?;
 
         let mut routes = Vec::with_capacity(route_resp.entries.len());
@@ -206,7 +206,7 @@ mod tests {
                     assert!(node_shard.shard_info.is_leader());
                 }
 
-                // pick again and check whether they are the same.
+                // Pick again and check whether they are the same.
                 let picked_again_node_shard = pick_node_for_table(table_name, &node_shards);
                 assert_eq!(picked_node_shard, picked_again_node_shard);
             }
