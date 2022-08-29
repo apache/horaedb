@@ -6,7 +6,7 @@ use common_types::{
     schema::{SchemaId, SchemaName},
     table::TableName,
 };
-use meta_client::types::{RouteEntry, RouteTablesResponse};
+use meta_client::types::{ClusterNodesRef, RouteEntry, RouteTablesResponse};
 
 use crate::config::SchemaConfig;
 
@@ -20,18 +20,28 @@ pub enum RouteSlot {
 
 #[derive(Debug, Default)]
 struct SchemaTopology {
-    #[allow(dead_code)]
     id: SchemaId,
-    #[allow(dead_code)]
     config: SchemaConfig,
     /// The [RouteSlot] in the `route_slots` only can be `Exist` or `NotExist`.
     route_slots: HashMap<TableName, RouteSlot>,
 }
 
 #[derive(Debug, Default)]
-pub struct ClusterTopology {
+pub struct SchemaTopologies {
     version: u64,
-    schema_topologies: HashMap<SchemaName, SchemaTopology>,
+    topologies: HashMap<SchemaName, SchemaTopology>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NodeTopology {
+    pub version: u64,
+    pub nodes: ClusterNodesRef,
+}
+
+#[derive(Debug, Default)]
+pub struct ClusterTopology {
+    schemas: Option<SchemaTopologies>,
+    nodes: Option<NodeTopology>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -50,15 +60,9 @@ impl From<RouteTablesResult> for RouteTablesResponse {
     }
 }
 
-impl ClusterTopology {
-    /// Any update on the topology should ensure the version is valid: the
-    /// target version must be not older than the current version.
-    pub fn is_outdated_version(&self, version: u64) -> bool {
-        version >= self.version
-    }
-
-    pub fn route_tables(&self, schema_name: &str, tables: &[TableName]) -> RouteTablesResult {
-        if let Some(schema_topology) = self.schema_topologies.get(schema_name) {
+impl SchemaTopologies {
+    fn route_tables(&self, schema_name: &str, tables: &[TableName]) -> RouteTablesResult {
+        if let Some(schema_topology) = self.topologies.get(schema_name) {
             let mut route_entries = HashMap::with_capacity(tables.len());
             let mut missing_tables = vec![];
 
@@ -90,21 +94,66 @@ impl ClusterTopology {
     /// valid.
     ///
     /// Return false if the version is outdated.
-    pub fn update_tables(
+    fn maybe_update_tables(
         &mut self,
         schema_name: &str,
         tables: HashMap<TableName, RouteSlot>,
         version: u64,
     ) -> bool {
-        if self.is_outdated_version(version) {
+        if ClusterTopology::is_outdated_version(self.version, version) {
             return false;
         }
 
-        self.schema_topologies
+        self.topologies
             .entry(schema_name.to_string())
             .or_insert_with(Default::default)
             .update_tables(tables);
+
         true
+    }
+}
+
+impl NodeTopology {
+    fn maybe_update_nodes(&mut self, nodes: ClusterNodesRef, version: u64) -> bool {
+        if ClusterTopology::is_newer_version(self.version, version) {
+            self.nodes = nodes;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl ClusterTopology {
+    #[inline]
+    fn is_outdated_version(current_version: u64, check_version: u64) -> bool {
+        check_version < current_version
+    }
+
+    #[inline]
+    fn is_newer_version(current_version: u64, check_version: u64) -> bool {
+        check_version > current_version
+    }
+
+    pub fn nodes(&self) -> Option<NodeTopology> {
+        self.nodes.clone()
+    }
+
+    /// Try to update the nodes topology of the cluster.
+    ///
+    /// If the provided version is not newer, then the update will be
+    /// ignored.
+    pub fn maybe_update_nodes(&mut self, nodes: ClusterNodesRef, version: u64) -> bool {
+        if self.nodes.is_none() {
+            let nodes = NodeTopology { version, nodes };
+            self.nodes = Some(nodes);
+            return true;
+        }
+
+        self.nodes
+            .as_mut()
+            .unwrap()
+            .maybe_update_nodes(nodes, version)
     }
 }
 
@@ -112,6 +161,35 @@ impl SchemaTopology {
     fn update_tables(&mut self, tables: HashMap<TableName, RouteSlot>) {
         for (table_name, slot) in tables {
             self.route_slots.insert(table_name, slot);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_outdated_version() {
+        // One case is (current_version, check_version, is_outdated)
+        let cases = [(1, 2, false), (1, 1, false), (1, 0, true)];
+        for (current_version, check_version, is_outdated) in cases {
+            assert_eq!(
+                is_outdated,
+                ClusterTopology::is_outdated_version(current_version, check_version)
+            );
+        }
+    }
+
+    #[test]
+    fn test_newer_version() {
+        // One case is (current_version, check_version, is_newer)
+        let cases = [(1, 2, true), (1, 1, false), (1, 0, false)];
+        for (current_version, check_version, is_newer) in cases {
+            assert_eq!(
+                is_newer,
+                ClusterTopology::is_newer_version(current_version, check_version)
+            );
         }
     }
 }

@@ -9,10 +9,12 @@ use async_trait::async_trait;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{ActionCmd, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{
+        ActionCmd, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse,
+    },
     EventHandler, MetaClient,
 };
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
@@ -22,7 +24,8 @@ use crate::{
     config::ClusterConfig,
     table_manager::{ShardTableInfo, TableManager},
     topology::ClusterTopology,
-    Cluster, MetaClientFailure, Result, StartMetaClient, TableManipulator,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
+    TableManipulator,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -185,6 +188,52 @@ impl Inner {
 
         Ok(route_resp)
     }
+
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
+        {
+            let topology = self.topology.read().unwrap();
+            let cached_node_topology = topology.nodes();
+            if let Some(cached_node_topology) = cached_node_topology {
+                return Ok(ClusterNodesResp {
+                    cluster_topology_version: cached_node_topology.version,
+                    cluster_nodes: cached_node_topology.nodes,
+                });
+            }
+        }
+
+        let req = GetNodesRequest::default();
+        let resp = self
+            .meta_client
+            .get_nodes(req)
+            .await
+            .context(MetaClientFailure)?;
+
+        let version = resp.cluster_topology_version;
+        let nodes = Arc::new(resp.node_shards);
+        let updated = self
+            .topology
+            .write()
+            .unwrap()
+            .maybe_update_nodes(nodes.clone(), version);
+
+        let resp = if updated {
+            ClusterNodesResp {
+                cluster_topology_version: version,
+                cluster_nodes: nodes,
+            }
+        } else {
+            let topology = self.topology.read().unwrap();
+            // The fetched topology is outdated, and we will use the cache.
+            let cached_node_topology =
+                topology.nodes().context(ClusterNodesNotFound { version })?;
+            ClusterNodesResp {
+                cluster_topology_version: cached_node_topology.version,
+                cluster_nodes: cached_node_topology.nodes,
+            }
+        };
+
+        Ok(resp)
+    }
 }
 
 #[async_trait]
@@ -240,5 +289,9 @@ impl Cluster for ClusterImpl {
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
         self.inner.route_tables(req).await
+    }
+
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp> {
+        self.inner.fetch_nodes().await
     }
 }

@@ -285,6 +285,7 @@ impl<T: TableIdAlloc> Schema for SchemaImpl<T> {
         request: CreateTableRequest,
         opts: CreateOptions,
     ) -> schema::Result<TableRef> {
+        // FIXME: Error should be returned if create_if_not_exist is false.
         if let Some(table) = self.get_table(
             &request.catalog_name,
             &request.schema_name,

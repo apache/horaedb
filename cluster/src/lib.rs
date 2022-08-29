@@ -9,12 +9,15 @@ pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
     DropTableRequest, GetShardTablesRequest,
 };
-use meta_client::types::{RouteTablesRequest, RouteTablesResponse, ShardId};
+use meta_client::types::{ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId};
 use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
 mod table_manager;
+// FIXME: Remove this lint ignore derive when topology about schema tables is
+// finished.
+#[allow(dead_code)]
 pub mod topology;
 
 #[derive(Debug, Snafu)]
@@ -38,6 +41,13 @@ pub enum Error {
         shard_id: ShardId,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Cluster nodes are not found in the topology, version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    ClusterNodesNotFound { version: u64, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -62,10 +72,17 @@ pub trait TableManipulator {
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
+#[derive(Clone, Debug)]
+pub struct ClusterNodesResp {
+    pub cluster_topology_version: u64,
+    pub cluster_nodes: ClusterNodesRef,
+}
+
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
+    async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
 }

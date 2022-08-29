@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use ceresdbproto_deps::ceresdbproto::{
     cluster,
@@ -8,13 +8,14 @@ use ceresdbproto_deps::ceresdbproto::{
 };
 use common_types::{
     schema::{SchemaId, SchemaName},
-    table::TableId,
+    table::{TableId, TableName},
 };
 use common_util::config::ReadableDuration;
 use protobuf::RepeatedField;
 use serde_derive::Deserialize;
 
 pub type ShardId = u32;
+pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]
 pub struct RequestHeader {
@@ -88,6 +89,7 @@ impl From<meta_service::TableInfo> for TableInfo {
 pub struct ShardTables {
     pub role: ShardRole,
     pub tables: Vec<TableInfo>,
+    pub version: u64,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -118,10 +120,11 @@ pub struct NodeHeartbeatResponse {
     pub action_cmd: Option<ActionCmd>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShardInfo {
     pub shard_id: ShardId,
     pub role: ShardRole,
+    pub version: u64,
 }
 
 impl ShardInfo {
@@ -236,6 +239,7 @@ impl From<meta_service::ShardInfo> for ShardInfo {
         ShardInfo {
             shard_id: pb_shard_info.shard_id,
             role: pb_shard_info.role.into(),
+            version: pb_shard_info.version,
         }
     }
 }
@@ -345,6 +349,7 @@ impl From<meta_service::ShardTables> for ShardTables {
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
+            version: pb_shard_tables.version,
         }
     }
 }
@@ -412,7 +417,7 @@ pub struct RouteTablesRequest {
     pub table_names: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeShard {
     pub endpoint: String,
     pub shard_info: ShardInfo,
@@ -428,6 +433,14 @@ pub struct RouteEntry {
 pub struct RouteTablesResponse {
     pub cluster_topology_version: u64,
     pub entries: HashMap<String, RouteEntry>,
+}
+
+impl RouteTablesResponse {
+    pub fn contains_all_tables(&self, queried_tables: &[TableName]) -> bool {
+        queried_tables
+            .iter()
+            .all(|table_name| self.entries.contains_key(table_name))
+    }
 }
 
 impl From<RouteTablesRequest> for meta_service::RouteTablesRequest {
@@ -474,6 +487,32 @@ impl From<meta_service::RouteTablesResponse> for RouteTablesResponse {
         RouteTablesResponse {
             cluster_topology_version: pb_resp.cluster_topology_version,
             entries,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GetNodesRequest {}
+
+pub struct GetNodesResponse {
+    pub cluster_topology_version: u64,
+    pub node_shards: Vec<NodeShard>,
+}
+
+impl From<GetNodesRequest> for meta_service::GetNodesRequest {
+    fn from(_: GetNodesRequest) -> Self {
+        meta_service::GetNodesRequest::default()
+    }
+}
+
+impl From<meta_service::GetNodesResponse> for GetNodesResponse {
+    fn from(pb_resp: meta_service::GetNodesResponse) -> Self {
+        let node_shards: Vec<NodeShard> =
+            pb_resp.node_shards.into_iter().map(|v| v.into()).collect();
+
+        GetNodesResponse {
+            cluster_topology_version: pb_resp.cluster_topology_vesion,
+            node_shards,
         }
     }
 }
