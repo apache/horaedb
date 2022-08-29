@@ -470,6 +470,8 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailRouteTables)?;
 
+        debug!("get_nodes response:{:?}, request:{:?}", pb_resp, pb_req);
+
         check_response_header(pb_resp.get_header())?;
         Ok(RouteTablesResponse::from(pb_resp))
     }
@@ -491,6 +493,8 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailRouteTables)?;
 
+        debug!("get_nodes response:{:?}, request:{:?}", pb_resp, pb_req);
+
         check_response_header(pb_resp.get_header())?;
         Ok(GetNodesResponse::from(pb_resp))
     }
@@ -505,22 +509,22 @@ impl MetaClient for MetaClientImpl {
         let grpc_client_guard = self.inner.grpc_client.read().await;
         let grpc_client = grpc_client_guard.as_ref().context(FailGetGrpcClient)?;
 
-        let mut pb_request = meta_service::NodeHeartbeatRequest::new();
-        pb_request.set_header(self.inner.request_header().into());
+        let mut pb_req = meta_service::NodeHeartbeatRequest::new();
+        pb_req.set_header(self.inner.request_header().into());
         let node_info = NodeInfo {
             node_meta_info: self.inner.node_meta_info(),
             shards_info,
         };
-        pb_request.set_info(node_info.into());
+        pb_req.set_info(node_info.into());
 
-        info!("Meta client send heartbeat req:{:?}", pb_request);
+        info!("Meta client send heartbeat req:{:?}", pb_req);
 
         let send_res = grpc_client
             .heartbeat_channel
             .write()
             .await
             .heartbeat_sender
-            .send((pb_request, WriteFlags::default()))
+            .send((pb_req, WriteFlags::default()))
             .await
             .map_err(|e| Box::new(e) as _)
             .context(FailSendHeartbeat {
