@@ -11,10 +11,11 @@ use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use snafu::OptionExt;
+use warp::http::StatusCode;
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, Result, StatusCode},
+    error::{ErrNoCause, Result},
     route::{hash, Router},
 };
 
@@ -150,7 +151,7 @@ impl Router for RuleBasedRouter {
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             if shard_nodes.is_empty() {
                 return ErrNoCause {
-                    code: StatusCode::NotFound,
+                    code: StatusCode::NOT_FOUND,
                     msg: "No valid shard is found",
                 }
                 .fail();
@@ -169,7 +170,7 @@ impl Router for RuleBasedRouter {
                 let shard_id = Self::route_metric(route.get_metric(), rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ErrNoCause {
-                    code: StatusCode::NotFound,
+                    code: StatusCode::NOT_FOUND,
                     msg: format!(
                         "Shard not found, metric:{}, shard_id:{}",
                         route.get_metric(),

@@ -35,10 +35,11 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot;
+use warp::http::StatusCode;
 
 use crate::{
     consts,
-    error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
     route::{Router, RouterRef},
@@ -328,7 +329,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
 fn build_err_header(err: ServerError) -> ResponseHeader {
     let mut header = ResponseHeader::new();
-    header.set_code(err.code().as_u32());
+    header.set_code(err.code().as_u16().into());
     header.set_error(err.error_message());
 
     header
@@ -336,7 +337,7 @@ fn build_err_header(err: ServerError) -> ResponseHeader {
 
 fn build_ok_header() -> ResponseHeader {
     let mut header = ResponseHeader::new();
-    header.set_code(StatusCode::Ok.as_u32());
+    header.set_code(StatusCode::OK.as_u16().into());
 
     header
 }
@@ -385,7 +386,7 @@ macro_rules! handle_request {
                         HandlerContext::new(header, router, instance, &schema_config_provider)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
-                                code: StatusCode::InvalidArgument,
+                                code: StatusCode::BAD_REQUEST,
                                 msg: "Invalid header",
                             })?;
                     $mod_name::$handle_fn(&handler_ctx, req).await.map_err(|e| {
@@ -413,7 +414,7 @@ macro_rules! handle_request {
                 let resp_result = match rx.await {
                     Ok(resp_result) => resp_result,
                     Err(_e) => ErrNoCause {
-                        code: StatusCode::InternalError,
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "Result channel disconnected",
                     }
                     .fail(),
@@ -483,7 +484,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
-                    code: StatusCode::InvalidArgument,
+                    code: StatusCode::BAD_REQUEST,
                     msg: "Invalid header",
                 })?;
             let mut total_success = 0;
@@ -493,7 +494,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
                 let write_result = write::handle_write(
                     &handler_ctx,
                     req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
-                        code: StatusCode::InternalError,
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "Failed to fetch request",
                     })?,
                 )
@@ -529,7 +530,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             let resp_result = match rx.await {
                 Ok(resp_result) => resp_result,
                 Err(_e) => ErrNoCause {
-                    code: StatusCode::InternalError,
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: "Result channel disconnected",
                 }
                 .fail(),
@@ -578,7 +579,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
-                    code: StatusCode::InvalidArgument,
+                    code: StatusCode::BAD_REQUEST,
                     msg: "Invalid header",
                 })?;
             let output = query::fetch_query_output(&handler_ctx, &req)

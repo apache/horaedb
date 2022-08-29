@@ -9,10 +9,11 @@ use common_types::table::TableName;
 use log::warn;
 use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
+use warp::http::StatusCode;
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     route::{hash, Router},
 };
 
@@ -44,7 +45,7 @@ impl ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::InternalError,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to fetch cluster nodes",
             })?;
 
@@ -62,7 +63,7 @@ impl ClusterBasedRouter {
             let picked_node_shard =
                 pick_node_for_table(table_name, &cluster_nodes_resp.cluster_nodes).with_context(
                     || ErrNoCause {
-                        code: StatusCode::NotFound,
+                        code: StatusCode::NOT_FOUND,
                         msg: format!(
                             "No valid node for table({}), cluster nodes:{:?}",
                             table_name, cluster_nodes_resp
@@ -81,7 +82,7 @@ impl ClusterBasedRouter {
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
     let mut route = Route::default();
     let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
-        code: StatusCode::InternalError,
+        code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: format!("Failed to parse endpoint:{}", endpoint),
     })?;
     route.set_metric(table_name.to_string());
@@ -103,7 +104,7 @@ impl Router for ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::InternalError,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to route tables by cluster",
             })?;
 

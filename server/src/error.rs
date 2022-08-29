@@ -4,32 +4,17 @@
 
 use common_util::define_result;
 use snafu::Snafu;
-
-/// Server status code
-#[derive(Debug, Clone, Copy)]
-pub enum StatusCode {
-    Ok = 200,
-    InvalidArgument = 400,
-    NotFound = 404,
-    TooManyRequests = 429,
-    InternalError = 500,
-}
-
-impl StatusCode {
-    pub fn as_u32(&self) -> u32 {
-        *self as u32
-    }
-}
+use warp::http::StatusCode;
 
 define_result!(ServerError);
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
 pub enum ServerError {
-    #[snafu(display("Rpc error, code:{}, message:{}", code.as_u32(), msg))]
+    #[snafu(display("Rpc error, code:{}, message:{}", code.as_u16(), msg))]
     ErrNoCause { code: StatusCode, msg: String },
 
-    #[snafu(display("Rpc error, code:{}, message:{}, cause:{}", code.as_u32(), msg, source))]
+    #[snafu(display("Rpc error, code:{}, message:{}, cause:{}", code.as_u16(), msg, source))]
     ErrWithCause {
         code: StatusCode,
         msg: String,
