@@ -98,8 +98,12 @@ jobs:
           sudo apt update
           sudo apt install --yes gcc g++ libssl-dev pkg-config cmake git
       - name: Run Tests
+        env:
+          LOCK_FILE: Cargo.lock
         run: |
+          cp ${LOCK_FILE} ${LOCK_FILE}.bak
           git clone https://github.com/apache/parquet-testing.git components/parquet-testing
           make test-ut
+          diff ${LOCK_FILE} ${LOCK_FILE}.bak
         env:
           RUST_BACKTRACE: "1"
