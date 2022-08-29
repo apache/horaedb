@@ -27,7 +27,7 @@ There are mainly two formats supported in analytic engine. One is `columnar`, wh
 | .....     |           |             |       |       |
 ```
 
-The other one is `hybrid`, a exprimental format used to simulate a row-oriented storage in columnar storage, in order to accelerate OLTP queries.
+The other one is `hybrid`, an experimental format used to simulate row-oriented storage in columnar storage to accelerate OLTP queries.
 
 In traditional time-series user cases like IoT or DevOps, queries will typically first group their result by series id(or device-id), then by timestamp. In order to achieve good performance in those scenarios, the data physical layout should match this style, so the `hybrid` format is proposed like this:
 
