@@ -470,7 +470,10 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailRouteTables)?;
 
-        debug!("get_nodes response:{:?}, request:{:?}", pb_resp, pb_req);
+        debug!(
+            "Meta client route tables, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
 
         check_response_header(pb_resp.get_header())?;
         Ok(RouteTablesResponse::from(pb_resp))
@@ -493,7 +496,10 @@ impl MetaClient for MetaClientImpl {
             .map_err(|e| Box::new(e) as _)
             .context(FailRouteTables)?;
 
-        debug!("get_nodes response:{:?}, request:{:?}", pb_resp, pb_req);
+        debug!(
+            "Meta client get nodes, req:{:?}, resp:{:?}",
+            pb_req, pb_resp
+        );
 
         check_response_header(pb_resp.get_header())?;
         Ok(GetNodesResponse::from(pb_resp))
