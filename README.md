@@ -21,7 +21,7 @@ export HostIP0="127.0.0.1"
 
 # ceresmeta0
 mkdir /tmp/ceresmeta0
-./ceresmeta -etcd-start-timeout-ms 1000000 \
+./ceresmeta -etcd-start-timeout-ms 30000 \
             -peer-urls "http://${HostIP0}:2380" \
             -advertise-client-urls "http://${HostIP0}:2379" \
             -advertise-peer-urls "http://${HostIP0}:2380" \
