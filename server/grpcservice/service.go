@@ -210,8 +210,8 @@ func (s *Service) AllocTableID(ctx context.Context, req *metaservicepb.AllocTabl
 	}, nil
 }
 
-// GetTables implements gRPC CeresmetaServer.
-func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetShardTablesRequest) (*metaservicepb.GetShardTablesResponse, error) {
+// GetShardTables implements gRPC CeresmetaServer.
+func (s *Service) GetShardTables(ctx context.Context, req *metaservicepb.GetShardTablesRequest) (*metaservicepb.GetShardTablesResponse, error) {
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
 		return &metaservicepb.GetShardTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
@@ -219,7 +219,7 @@ func (s *Service) GetTables(ctx context.Context, req *metaservicepb.GetShardTabl
 
 	// Forward request to the leader.
 	if ceresmetaClient != nil {
-		return ceresmetaClient.GetTables(ctx, req)
+		return ceresmetaClient.GetShardTables(ctx, req)
 	}
 
 	tables, err := s.h.GetClusterManager().GetTables(ctx, req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), req.GetShardIds())
@@ -290,6 +290,27 @@ func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTable
 	}
 
 	return convertRouteTableResult(routeTableResult), nil
+}
+
+// GetNodes implements gRPC CeresmetaServer.
+func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesRequest) (*metaservicepb.GetNodesResponse, error) {
+	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	if err != nil {
+		return &metaservicepb.GetNodesResponse{Header: responseHeader(err, "grpc get nodes")}, nil
+	}
+
+	// Forward request to the leader.
+	if ceresmetaClient != nil {
+		return ceresmetaClient.GetNodes(ctx, req)
+	}
+
+	nodesResult, err := s.h.GetClusterManager().GetNodes(ctx, req.GetHeader().GetClusterName())
+	if err != nil {
+		log.Error("fail to get nodes", zap.Error(err))
+		return &metaservicepb.GetNodesResponse{Header: responseHeader(err, "grpc get nodes")}, nil
+	}
+
+	return convertGetNodesResult(nodesResult), nil
 }
 
 type forwarder struct {
@@ -386,5 +407,24 @@ func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *meta
 		Header:                 okResponseHeader(),
 		ClusterTopologyVersion: routeTablesResult.Version,
 		Entries:                entries,
+	}
+}
+
+func convertGetNodesResult(nodesResult *cluster.GetNodesResult) *metaservicepb.GetNodesResponse {
+	nodeShards := make([]*metaservicepb.NodeShard, 0, len(nodesResult.NodeShards))
+	for _, nodeShard := range nodesResult.NodeShards {
+		nodeShards = append(nodeShards, &metaservicepb.NodeShard{
+			Endpoint: nodeShard.Endpoint,
+			ShardInfo: &metaservicepb.ShardInfo{
+				ShardId: nodeShard.ShardInfo.ShardID,
+				Role:    nodeShard.ShardInfo.ShardRole,
+				Version: nodeShard.ShardInfo.Version,
+			},
+		})
+	}
+	return &metaservicepb.GetNodesResponse{
+		Header:                okResponseHeader(),
+		ClusterTopologyVesion: nodesResult.ClusterTopologyVersion,
+		NodeShards:            nodeShards,
 	}
 }

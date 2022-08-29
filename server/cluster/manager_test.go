@@ -125,6 +125,7 @@ func TestManagerSingleThread(t *testing.T) {
 
 	testGetTables(ctx, re, manager, node1, cluster1, num2)
 	testGetTables(ctx, re, manager, node2, cluster1, num2)
+	testGetNodes(ctx, re, manager, cluster1)
 
 	re.NoError(manager.Stop(ctx))
 
@@ -231,4 +232,10 @@ func testDropTable(ctx context.Context, re *require.Assertions, manager Manager,
 func testAllocTableIDWithMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, tableID uint64) {
 	go testAllocTableID(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
 	testAllocTableID(ctx, re, manager, node2, clusterName, defaultSchema, table1, tableID)
+}
+
+func testGetNodes(ctx context.Context, re *require.Assertions, manager Manager, cluster string) {
+	getNodesResult, err := manager.GetNodes(ctx, cluster)
+	re.NoError(err)
+	re.Equal(defaultShardTotal, len(getNodesResult.NodeShards))
 }

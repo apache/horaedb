@@ -591,3 +591,41 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 		RouteEntries: routeEntries,
 	}, nil
 }
+
+func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
+	nodeShards := make([]*NodeShard, 0, len(c.nodesCache))
+
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	for nodeName, node := range c.nodesCache {
+		for _, shardID := range node.shardIDs {
+			shard, ok := c.shardsCache[shardID]
+			if !ok {
+				return nil, ErrShardNotFound.WithCausef("shardID:%d", shardID)
+			}
+
+			var shardRole clusterpb.ShardRole
+			for i := range shard.nodes {
+				if shard.nodes[i].GetName() == nodeName {
+					shardRole = shard.meta[i].GetShardRole()
+					break
+				}
+			}
+
+			nodeShards = append(nodeShards, &NodeShard{
+				Endpoint: nodeName,
+				ShardInfo: &ShardInfo{
+					ShardID:   shardID,
+					ShardRole: shardRole,
+					Version:   shard.version,
+				},
+			})
+		}
+	}
+
+	return &GetNodesResult{
+		ClusterTopologyVersion: c.metaData.clusterTopology.GetVersion(),
+		NodeShards:             nodeShards,
+	}, nil
+}

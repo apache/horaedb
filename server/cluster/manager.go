@@ -40,6 +40,7 @@ type ShardTables struct {
 type ShardInfo struct {
 	ShardID   uint32
 	ShardRole clusterpb.ShardRole
+	Version   uint64
 }
 
 type NodeShard struct {
@@ -57,6 +58,11 @@ type RouteTablesResult struct {
 	RouteEntries map[string]*RouteEntry
 }
 
+type GetNodesResult struct {
+	ClusterTopologyVersion uint64
+	NodeShards             []*NodeShard
+}
+
 type Manager interface {
 	// Start must be called before manager is used.
 	Start(ctx context.Context) error
@@ -71,6 +77,7 @@ type Manager interface {
 	RegisterNode(ctx context.Context, clusterName string, nodeInfo *metaservicepb.NodeInfo) error
 	GetShards(ctx context.Context, clusterName, nodeName string) ([]uint32, error)
 	RouteTables(ctx context.Context, clusterName, schemaName string, tableNames []string) (*RouteTablesResult, error)
+	GetNodes(ctx context.Context, clusterName string) (*GetNodesResult, error)
 }
 
 type managerImpl struct {
@@ -339,6 +346,20 @@ func (m *managerImpl) RouteTables(ctx context.Context, clusterName, schemaName s
 	if err != nil {
 		log.Error("cluster manager RouteTables", zap.Error(err))
 		return nil, errors.Wrap(err, "cluster manager routeTables")
+	}
+
+	return ret, nil
+}
+
+func (m *managerImpl) GetNodes(ctx context.Context, clusterName string) (*GetNodesResult, error) {
+	cluster, err := m.getCluster(clusterName)
+	if err != nil {
+		return nil, errors.Wrap(err, "cluster manager GetNodes")
+	}
+
+	ret, err := cluster.GetNodes(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "cluster manager GetNodes")
 	}
 
 	return ret, nil
