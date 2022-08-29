@@ -7,6 +7,80 @@ CeresMeta is the meta service for managing the CeresDB cluster.
 ## Status
 The project is in a very early stage.
 
+## Quick Start
+### Build ceresmeta binary
+```bash
+make build
+```
+
+### Standalone Mode
+Although CeresMeta is designed to deployed as a cluster with three or more instances, it can also be started standalone:
+```bash
+# Set correct HostIP here.
+export HostIP0="127.0.0.1"
+
+# ceresmeta0
+mkdir /tmp/ceresmeta0
+./ceresmeta -etcd-start-timeout-ms 1000000 \
+            -peer-urls "http://${HostIP0}:2380" \
+            -advertise-client-urls "http://${HostIP0}:2379" \
+            -advertise-peer-urls "http://${HostIP0}:2380" \
+            -client-urls "http://${HostIP0}:2379" \
+            -wal-dir /tmp/ceresmeta0/wal \
+            -data-dir /tmp/ceresmeta0/data \
+            -node-name "meta0" \
+            -etcd-log-file /tmp/ceresmeta0/etcd.log \
+            -initial-cluster "meta0=http://${HostIP0}:2380"
+```
+
+### Cluster mode
+Here is an example for starting CeresMeta in cluster mode (three instances) on single machine by using different ports:
+```bash
+# Set correct HostIP here.
+export HostIP0="127.0.0.1"
+export HostIP1="127.0.0.1"
+export HostIP2="127.0.0.1"
+
+# ceresmeta0
+mkdir /tmp/ceresmeta0
+./ceresmeta -etcd-start-timeout-ms 30000 \
+            -peer-urls "http://${HostIP0}:2380" \
+            -advertise-client-urls "http://${HostIP0}:2379" \
+            -advertise-peer-urls "http://${HostIP0}:2380" \
+            -client-urls "http://${HostIP0}:2379" \
+            -wal-dir /tmp/ceresmeta0/wal \
+            -data-dir /tmp/ceresmeta0/data \
+            -node-name "meta0" \
+            -etcd-log-file /tmp/ceresmeta0/etcd.log \
+            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+
+# ceresmeta1
+mkdir /tmp/ceresmeta1
+./ceresmeta -etcd-start-timeout-ms 30000 \
+            -peer-urls "http://${HostIP1}:12380" \
+            -advertise-client-urls "http://${HostIP1}:12379" \
+            -advertise-peer-urls "http://${HostIP1}:12380" \
+            -client-urls "http://${HostIP1}:12379" \
+            -wal-dir /tmp/ceresmeta1/wal \
+            -data-dir /tmp/ceresmeta1/data \
+            -node-name "meta1" \
+            -etcd-log-file /tmp/ceresmeta1/etcd.log \
+            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+
+# ceresmeta2
+mkdir /tmp/ceresmeta2
+./ceresmeta -etcd-start-timeout-ms 30000 \
+            -peer-urls "http://${HostIP2}:12380" \
+            -advertise-client-urls "http://${HostIP2}:12379" \
+            -advertise-peer-urls "http://${HostIP2}:12380" \
+            -client-urls "http://${HostIP2}:12379" \
+            -wal-dir /tmp/ceresmeta2/wal \
+            -data-dir /tmp/ceresmeta2/data \
+            -node-name "meta2" \
+            -etcd-log-file /tmp/ceresmeta2/etcd.log \
+            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+```
+
 ## Acknowledgment
 CeresMeta refers to the excellent project [pd](https://github.com/tikv/pd) in design and some module and codes are forked from [pd](https://github.com/tikv/pd), thanks to the TiKV team.
 
