@@ -1,0 +1,24 @@
+bind_addr = "127.0.0.1"
+http_port = 5440
+grpc_port = 8831
+log_level = "info"
+
+[analytic.storage]
+type = "Local"
+data_path = "/tmp/ceresdb"
+
+[analytic]
+wal_path = "/tmp/ceresdb"
+sst_data_cache_cap = 10000
+sst_meta_cache_cap = 10000
+
+[[meta_client.cluster_view.schema_shards]]
+schema = 'public'
+auto_create_tables = true
+
+[[meta_client.cluster_view.schema_shards.shard_views]]
+shard_id = 0
+
+[meta_client.cluster_view.schema_shards.shard_views.node]
+addr = "127.0.0.1"
+port = 8831
