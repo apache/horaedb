@@ -1,6 +1,11 @@
 name: Test Docker image build
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/docker-build-image.yml'
+      - 'Dockerfile'
+      - 'docker/**'
   push:
     paths:
       - '.github/workflows/docker-build-image.yml'

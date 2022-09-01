@@ -5,12 +5,13 @@ This guide shows how to deploy a CeresDB cluster with CeresMeta.
 First, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deploy according to the two-instances example.
 
 ## Start CeresDBs
-You can use the following command to create a ceresdb cluster with two instances.
+You can use the following command to create a CeresDB cluster with two instances.
 1. Start CeresMeta first
-   Refer to [CeresMeta](https://github.com/CeresDB/ceresmeta).
+   Refer to [CeresMeta](https://github.com/CeresDB/ceresmeta)
 
 2. Prepare config of CeresDB
-You need to modify address of CeresMeta in config file.
+* Replace `{meta_addr}` with the actual address of CeresMeta in config file
+ 
 ```toml
 # {project_path}/docs/example-cluster-0.toml
 bind_addr = "0.0.0.0"
@@ -77,7 +78,8 @@ lease = "10s"
 timeout = "5s"
 ```
 
-3. Start ceresdb instances
+3. Start CeresDB instances
+* You need to replace `{project_path}` with the actual project path
 
 ```bash
 # Update address of CeresMeta in CeresDB config.
