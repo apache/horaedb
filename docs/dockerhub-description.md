@@ -19,20 +19,18 @@ CeresDB will listen three ports when start:
 - 3307, MySQL port
 - 5440, HTTP port
 
-There are some files used by server inside Docker image, the following two are most important:
-- `/home/admin/logs/ceresdb/out.log`, log
+There are some files used by server inside Docker image, the following one is the most important:
 - `/etc/ceresdb/ceresdb.toml`, config
 
-You overwrite those files with this command:
+You overwrite config with this command:
 
 ```bash
 docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  -v $(path/to/log):/home/admin/logs/ceresdb/out.log \
   -v $(path/to/config):/etc/ceresdb/ceresdb.toml \
-  ceresdb/ceresdb-server:v0.2.0
+  ceresdb/ceresdb-server:$(version)
 ```
 
 # Documentation

@@ -1,6 +1,7 @@
 name: Publish Docker image
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -24,4 +25,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ceresdb/ceresdb-server:${{github.ref_name}}
+          tags: ceresdb/ceresdb-server:latest,ceresdb/ceresdb-server:${{github.ref_name}}
