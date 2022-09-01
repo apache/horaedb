@@ -1,4 +1,4 @@
-name: Build Docker Image and Push to Docker Hub on Tags
+name: Publish Docker image
 
 on:
   push:
