@@ -24,9 +24,10 @@ use sql::{
     promql::ColumnNames,
     provider::CatalogMetaProvider,
 };
+use warp::http::StatusCode;
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, ServerError, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result, ServerError},
     grpc::HandlerContext,
 };
 

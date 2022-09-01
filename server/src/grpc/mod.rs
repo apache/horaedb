@@ -35,10 +35,11 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot;
+use warp::http::StatusCode;
 
 use crate::{
     consts,
-    error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
     route::{Router, RouterRef},

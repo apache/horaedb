@@ -18,10 +18,11 @@ use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
+use warp::http::StatusCode;
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     grpc::HandlerContext,
 };
 

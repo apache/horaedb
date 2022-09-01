@@ -21,9 +21,10 @@ use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{InsertPlan, Plan};
 use table_engine::table::TableRef;
+use warp::http::StatusCode;
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     grpc::{self, HandlerContext},
 };
 

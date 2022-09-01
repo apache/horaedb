@@ -9,10 +9,11 @@ use common_types::table::TableName;
 use log::warn;
 use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
+use warp::http::StatusCode;
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     route::{hash, Router},
 };
 
