@@ -11,11 +11,10 @@ use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use snafu::OptionExt;
-use warp::http::StatusCode;
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, Result},
+    error::{ErrNoCause, Result, StatusCode},
     route::{hash, Router},
 };
 
