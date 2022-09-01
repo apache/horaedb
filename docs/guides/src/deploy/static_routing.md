@@ -1,10 +1,10 @@
 # Static Routing
-This guide shows how to deloy a CeresDB cluster with static, rule-based routing.
+This guide shows how to deploy a CeresDB cluster with static, rule-based routing.
 
 The crucial point here is that CeresDB server provides configurable routing function on table name so what we need is just a valid config containing routing rules which will be shipped to every CeresDB instance in the cluster.
 
 ## Target
-First of all, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deployed according to the two-instances example.
+First, let's assume that our target is to deploy a cluster consisting of two CeresDB instances on the same machine. And a large cluster of more CeresDB instances can deploy according to the two-instances example.
 
 ## Prepare Config
 ### Basic

@@ -4,7 +4,7 @@ This page shows you how to get started with CeresDB quickly. You'll start a stan
 
 ## Start server
 
-[CeresDB docker image](https://hub.docker.com/r/ceresdb/ceresdb-server) is the easiest way to get started, if you haven't install Docker, go [there](https://www.docker.com/products/docker-desktop/) to install it first.
+[CeresDB docker image](https://hub.docker.com/r/ceresdb/ceresdb-server) is the easiest way to get started, if you haven't installed Docker, go [there](https://www.docker.com/products/docker-desktop/) to install it first.
 
 You can use command below to start a standalone server
 ```bash
@@ -12,7 +12,7 @@ docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  ceresdb/ceresdb-server:v0.2.0
+  ceresdb/ceresdb-server:v0.3.1
 ```
 
 CeresDB will listen three ports when start:
