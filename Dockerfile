@@ -27,7 +27,7 @@ COPY --from=build /ceresdb/target/release/ceresdb-server /usr/bin/ceresdb-server
 RUN chmod +x /usr/bin/ceresdb-server
 
 COPY ./docker/entrypoint.sh /entrypoint.sh
-COPY ./configs/ceresdb.toml /etc/ceresdb/ceresdb.toml
+COPY ./docs/minimal.toml /etc/ceresdb/ceresdb.toml
 
 COPY ./docker/tini /tini
 RUN chmod +x /tini

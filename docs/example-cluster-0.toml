@@ -1,0 +1,30 @@
+bind_addr = "0.0.0.0"
+http_port = 5440
+grpc_port = 8831
+mysql_port = 3307
+log_level = "info"
+deploy_mode = "Cluster"
+
+[analytic]
+wal_path = "/tmp/ceresdb"
+sst_data_cache_cap = 10000
+sst_meta_cache_cap = 10000
+
+[analytic.storage]
+type = "Local"
+data_path = "/tmp/ceresdb"
+
+[cluster]
+cmd_channel_buffer_size = 10
+
+[cluster.node]
+addr = "127.0.0.1"
+port = 8831
+
+[cluster.meta_client]
+# Only support "defaultCluster" currently.
+cluster_name = "defaultCluster"
+meta_addr = "{meta_addr}:2379"
+lease = "10s"
+timeout = "5s"
+
