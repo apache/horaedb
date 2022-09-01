@@ -58,7 +58,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
 
         if ctx.instance.limiter.should_limit(&plan) {
             ErrNoCause {
-                code: StatusCode::TooManyRequests,
+                code: StatusCode::TOO_MANY_REQUESTS,
                 msg: "Insert limited by reject list",
             }
             .fail()?;
@@ -80,7 +80,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::InternalError,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to execute interpreter",
             })? {
             Output::AffectedRows(n) => n,
@@ -132,7 +132,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             }
             None => {
                 return ErrNoCause {
-                    code: StatusCode::InvalidArgument,
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!("Table not found, table:{}", write_metric.get_metric()),
                 }
                 .fail();
@@ -152,27 +152,27 @@ fn try_get_table<Q: QueryExecutor + 'static>(
         .catalog_by_name(ctx.catalog())
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find catalog, catalog_name:{}", ctx.catalog()),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!("Catalog not found, catalog_name:{}", ctx.catalog()),
         })?
         .schema_by_name(ctx.tenant())
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find tenant, tenant_name:{}", ctx.tenant()),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!("Tenant not found, tenant_name:{}", ctx.tenant()),
         })?
         .table_by_name(table_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find table, table:{}", table_name),
         })
 }
@@ -185,7 +185,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let create_table_plan = grpc::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!(
                 "Failed to build creating table plan from metric, table:{}",
                 write_metric.get_metric()
@@ -202,7 +202,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
 
     if instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: StatusCode::TooManyRequests,
+            code: StatusCode::TOO_MANY_REQUESTS,
             msg: "Create table limited by reject list",
         }
         .fail()?;
@@ -224,7 +224,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to execute interpreter",
         })? {
         Output::AffectedRows(n) => n,
@@ -255,7 +255,7 @@ fn write_metric_to_insert_plan(
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::InternalError,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
         })?
         .build();
@@ -293,7 +293,7 @@ fn write_entry_to_rows(
         ensure!(
             name_index < tag_names.len(),
             ErrNoCause {
-                code: StatusCode::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: format!(
                     "tag index {} is not found in tag_names:{:?}, table:{}",
                     name_index, tag_names, table_name,
@@ -303,7 +303,7 @@ fn write_entry_to_rows(
 
         let tag_name = &tag_names[name_index];
         let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Can't find tag in schema, table:{}, tag_name:{}",
                 table_name, tag_name
@@ -314,7 +314,7 @@ fn write_entry_to_rows(
         ensure!(
             column_schema.is_tag,
             ErrNoCause {
-                code: StatusCode::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: format!(
                     "column {} is a field rather than a tag, table:{}",
                     tag_name, table_name
@@ -323,7 +323,7 @@ fn write_entry_to_rows(
         );
 
         let tag_value = tag.take_value().value.with_context(|| ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Tag value is needed, table:{}, tag_name:{}",
                 table_name, tag_name
@@ -355,7 +355,7 @@ fn write_entry_to_rows(
                 } else {
                     let index_in_schema =
                         schema.index_of(field_name).with_context(|| ErrNoCause {
-                            code: StatusCode::InvalidArgument,
+                            code: StatusCode::BAD_REQUEST,
                             msg: format!(
                                 "Can't find field in schema, table:{}, field_name:{}",
                                 table_name, field_name
@@ -368,7 +368,7 @@ fn write_entry_to_rows(
                 ensure!(
                     !column_schema.is_tag,
                     ErrNoCause {
-                        code: StatusCode::InvalidArgument,
+                        code: StatusCode::BAD_REQUEST,
                         msg: format!(
                             "Column {} is a tag rather than a field, table:{}",
                             field_name, table_name
@@ -376,7 +376,7 @@ fn write_entry_to_rows(
                     }
                 );
                 let field_value = field.take_value().value.with_context(|| ErrNoCause {
-                    code: StatusCode::InvalidArgument,
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!("Field is needed, table:{}", table_name),
                 })?;
 
@@ -416,7 +416,7 @@ fn convert_proto_value_to_datum(
         (Value_oneof_value::timestamp_value(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
         (Value_oneof_value::varbinary_value(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
         (v, _) => ErrNoCause {
-            code: StatusCode::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Value type is not same, table:{}, value_name:{}, schema_type:{:?}, actual_value:{:?}",
                 table_name,
