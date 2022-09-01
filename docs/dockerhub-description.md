@@ -11,7 +11,7 @@ docker run -d --name ceresdb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  ceresdb/ceresdb-server:v0.2.0
+  ceresdb/ceresdb-server:$(version)
 ```
 
 CeresDB will listen three ports when start:
