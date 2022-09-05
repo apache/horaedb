@@ -1,6 +1,7 @@
 name: Test Docker image build
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - '.github/workflows/docker-build-image.yml'
@@ -15,6 +16,8 @@ on:
 env:
   CERESDB_ADDR: 127.0.0.1
   CERESDB_PORT: 5440
+  IMAGE_NAME: ceresdb-server:latest
+  SERVER_NAME: standalone-server
 
 jobs:
   docker:
@@ -23,16 +26,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Build Docker image
-        run: docker build -t ceresdb-server .
+        run: docker build -t ${IMAGE_NAME} .
       - name: Test the Built Image
-        run: >-
-          docker run -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -d ceresdb-server &&
-          sleep 10 &&
-          bash ./docker/basic.sh &&
-          docker rm -f ceresdb-server
+        run: |
+          docker run --name ${SERVER_NAME} -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -d ${IMAGE_NAME}
+          sleep 10
+          bash ./docker/basic.sh
+          docker rm -f ${SERVER_NAME}
       - name: Test the Built Image With Config
-          run: >-
-            docker run -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -v `pwd`/docs/minimal.toml:/etc/ceresdb/ceresdb.toml -d ceresdb-server &&
-            sleep 10 &&
-            bash ./docker/basic.sh &&
-            docker rm -f ceresdb-server
+        run: |
+          docker run --name ${SERVER_NAME} -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} \
+            -v `pwd`/docs/minimal.toml:/etc/ceresdb/ceresdb.toml -d ${IMAGE_NAME}
+          sleep 10
+          bash ./docker/basic.sh
+          docker rm -f ${SERVER_NAME}

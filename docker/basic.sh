@@ -2,6 +2,16 @@
 
 set -exo pipefail
 
+trap cleanup EXIT
+
+cleanup() {
+    exit_code=$?
+    # cat server log when script failed
+    if [[ ${exit_code} -ne 0 ]]; then
+        docker logs -n 200 ${SERVER_NAME}
+    fi
+}
+
 ADDR=${CERESDB_ADDR:-"127.0.0.1"}
 PORT=${CERESDB_PORT:-"5440"}
 
