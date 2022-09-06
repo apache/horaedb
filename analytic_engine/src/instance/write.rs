@@ -332,9 +332,10 @@ impl Instance {
             }
         }
 
+        let worker_index = worker_local.worker_id();
         if self.should_flush_instance() {
             if let Some(space) = self.space_store.find_maximum_memory_usage_space() {
-                if let Some(table) = space.find_maximum_memory_usage_table() {
+                if let Some(table) = space.find_maximum_memory_usage_table(worker_index) {
                     info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
                           table.name,
                           table.memtable_memory_usage(),
@@ -347,7 +348,7 @@ impl Instance {
         }
 
         if space.should_flush_space() {
-            if let Some(table) = space.find_maximum_memory_usage_table() {
+            if let Some(table) = space.find_maximum_memory_usage_table(worker_index) {
                 info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
                       table.name,
                       table.memtable_memory_usage() ,

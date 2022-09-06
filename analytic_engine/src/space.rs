@@ -113,13 +113,15 @@ impl Space {
         self.write_buffer_size > 0 && self.memtable_memory_usage() >= self.write_buffer_size
     }
 
-    /// Find the table in space which it's memtable consumes maximum memory.
+    /// Find the table whose memtable consumes the most memory in the space by
+    /// specifying Worker.
     #[inline]
-    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
+    pub fn find_maximum_memory_usage_table(&self, worker_index: usize) -> Option<TableDataRef> {
+        let worker_num = self.write_group.worker_num();
         self.table_datas
             .read()
             .unwrap()
-            .find_maximum_memory_usage_table()
+            .find_maximum_memory_usage_table(worker_num, worker_index)
     }
 
     #[inline]

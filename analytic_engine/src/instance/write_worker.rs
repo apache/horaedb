@@ -285,6 +285,10 @@ impl WorkerLocal {
         let data = self.data.clone();
         CompactionNotifier::new(data)
     }
+
+    pub fn worker_id(&self) -> usize {
+        self.data.as_ref().id
+    }
 }
 
 /// Write table command.
@@ -642,6 +646,10 @@ impl WriteGroup {
         let worker_data = self.worker_datas[index].clone();
 
         WriteHandle { worker_data }
+    }
+
+    pub fn worker_num(&self) -> usize {
+        self.worker_datas.len()
     }
 }
 
