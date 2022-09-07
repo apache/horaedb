@@ -3,7 +3,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use arrow_deps::arrow::{
-    array::{Array, ArrayData, ArrayRef, ListArray, StringArray, UInt64Array},
+    array::{
+        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
+        UInt64Array,
+    },
     bitmap::Bitmap,
     buffer::MutableBuffer,
     datatypes::Schema as ArrowSchema,
@@ -146,12 +149,8 @@ impl ListArrayBuilder {
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
-        let data_type_size = self
-            .datum_kind
-            .size()
-            .expect("checked in HybridRecordEncoder::try_new");
         let values_num = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
-        let mut values = MutableBuffer::new(values_num * data_type_size);
+
         // Initialize null_buffer with all 1, so we don't need to set it when array's
         // null_bitmap is None
         //
@@ -160,7 +159,7 @@ impl ListArrayBuilder {
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
-        offsets.push(length_so_far);
+
         for array_handle in &self.list_of_arrays {
             let shared_buffer = array_handle.data_slice();
             let null_bitmap = array_handle.null_bitmap();
@@ -179,28 +178,111 @@ impl ListArrayBuilder {
                     }
                 }
                 length_so_far += length as i32;
-                values.extend_from_slice(
-                    &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
-                );
             }
-            offsets.push(length_so_far);
         }
 
-        debug!(
-            "build_child_data offsets:{:?}, values:{:?}",
-            offsets.as_slice(),
-            values.as_slice()
-        );
-
-        let values_array_data = ArrayData::builder(self.datum_kind.to_arrow_data_type())
+        let mut builder = ArrayData::builder(self.datum_kind.to_arrow_data_type())
             .len(values_num)
-            .add_buffer(values.into())
-            .null_bit_buffer(Some(null_buffer.into()))
+            .null_bit_buffer(Some(null_buffer.into()));
+
+        builder = self.build_buffer(builder, offsets);
+        let values_array_data = builder
             .build()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
         Ok(values_array_data)
+    }
+
+    fn build_buffer(
+        &self,
+        mut builder: ArrayDataBuilder,
+        offsets: &mut MutableBuffer,
+    ) -> ArrayDataBuilder {
+        let mut length_so_far: i32 = 0;
+        offsets.push(length_so_far);
+
+        let (inner_offsets, values) = if let Some(data_type_size) = self.datum_kind.size() {
+            let values_num: usize = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
+
+            let mut values = MutableBuffer::new(values_num * data_type_size);
+            for array_handle in &self.list_of_arrays {
+                let shared_buffer = array_handle.data_slice();
+
+                for slice_arg in &array_handle.slice_args {
+                    let offset = slice_arg.offset;
+                    let length = slice_arg.length;
+                    length_so_far += length as i32;
+
+                    values.extend_from_slice(
+                        &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
+                    );
+                }
+                offsets.push(length_so_far);
+            }
+            (None, values)
+        } else {
+            let mut values = MutableBuffer::new(0);
+
+            let mut inner_length_so_far: i32 = 0;
+            let mut inner_offsets = MutableBuffer::new(0);
+            inner_offsets.push(inner_length_so_far);
+            for array_handle in &self.list_of_arrays {
+                match self.datum_kind.to_arrow_data_type() {
+                    DataType::Utf8 => {
+                        let string_array = StringArray::from(array_handle.array.data().clone());
+                        for slice_arg in &array_handle.slice_args {
+                            let offset = slice_arg.offset;
+                            let length = slice_arg.length;
+                            length_so_far += length as i32;
+
+                            let start = string_array.value_offsets()[offset];
+                            let end = string_array.value_offsets()[offset + length];
+
+                            for i in (offset as usize)..(offset + length as usize) {
+                                inner_length_so_far += string_array.value_length(i);
+                                inner_offsets.push(inner_length_so_far);
+                            }
+
+                            values.extend_from_slice(
+                                &array_handle.array.data().buffers()[1].as_slice()
+                                    [start as usize..end as usize],
+                            );
+                        }
+                        offsets.push(length_so_far);
+                    }
+                    DataType::Binary => {
+                        let binary_array = BinaryArray::from(array_handle.array.data().clone());
+                        for slice_arg in &array_handle.slice_args {
+                            let offset = slice_arg.offset;
+                            let length = slice_arg.length;
+                            length_so_far += length as i32;
+
+                            let start = binary_array.value_offsets()[offset];
+                            let end = binary_array.value_offsets()[offset + length];
+
+                            for i in (offset as usize)..(offset + length as usize) {
+                                inner_length_so_far += binary_array.value_length(i);
+                                inner_offsets.push(inner_length_so_far);
+                            }
+
+                            values.extend_from_slice(
+                                &array_handle.array.data().buffers()[1].as_slice()
+                                    [start as usize..end as usize],
+                            );
+                        }
+                        offsets.push(length_so_far);
+                    }
+                    _ => panic!("Only support Utf8 and Binary"),
+                }
+            }
+            (Some(inner_offsets), values)
+        };
+        if let Some(buffer) = inner_offsets {
+            builder = builder.add_buffer(buffer.into());
+        }
+        builder = builder.add_buffer(values.into());
+        builder
     }
 
     /// This function is a translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
@@ -372,6 +454,7 @@ pub fn convert_to_hybrid_record(
 mod tests {
     use arrow_deps::arrow::{
         array::{TimestampMillisecondArray, UInt16Array},
+        buffer::Buffer,
         datatypes::{TimestampMillisecondType, UInt16Type},
     };
 
@@ -392,6 +475,12 @@ mod tests {
 
     fn uint16_array(values: Vec<Option<u16>>) -> ArrayRef {
         let arr: UInt16Array = values.into_iter().collect();
+
+        Arc::new(arr)
+    }
+
+    fn string_array(values: Vec<Option<&str>>) -> ArrayRef {
+        let arr: StringArray = values.into_iter().collect();
 
         Arc::new(arr)
     }
@@ -423,22 +512,90 @@ mod tests {
 
     #[test]
     fn merge_u16_array_with_none_to_list() {
-        let list_of_arrays = vec![ArrayHandle::with_slice_args(
-            uint16_array(vec![
-                Some(1),
-                Some(2),
-                None,
-                Some(3),
-                Some(4),
-                Some(5),
-                Some(6),
-            ]),
-            vec![(1, 3).into(), (4, 1).into()],
-        )];
+        let list_of_arrays = vec![
+            ArrayHandle::with_slice_args(
+                uint16_array(vec![
+                    Some(1),
+                    Some(2),
+                    None,
+                    Some(3),
+                    Some(4),
+                    Some(5),
+                    Some(6),
+                ]),
+                vec![(1, 3).into(), (4, 1).into()],
+            ),
+            ArrayHandle::with_slice_args(
+                uint16_array(vec![
+                    Some(1),
+                    Some(2),
+                    None,
+                    Some(3),
+                    Some(4),
+                    Some(5),
+                    Some(6),
+                ]),
+                vec![(0, 1).into()],
+            ),
+        ];
 
-        let data = vec![Some(vec![Some(2), None, Some(3), Some(4)])];
+        let data = vec![
+            Some(vec![Some(2), None, Some(3), Some(4)]),
+            Some(vec![Some(1)]),
+        ];
         let expected = ListArray::from_iter_primitive::<UInt16Type, _, _>(data);
         let list_array = ListArrayBuilder::new(DatumKind::UInt16, list_of_arrays)
+            .build()
+            .unwrap();
+
+        assert_eq!(list_array, expected);
+    }
+
+    #[test]
+    fn merge_string_array_with_none_to_list() {
+        let list_of_arrays = vec![
+            ArrayHandle::with_slice_args(
+                string_array(vec![
+                    Some("a"),
+                    Some("b"),
+                    None,
+                    Some("c"),
+                    Some("d"),
+                    Some("e"),
+                    Some("e"),
+                ]),
+                vec![(1, 3).into(), (4, 1).into()],
+            ),
+            ArrayHandle::with_slice_args(
+                string_array(vec![
+                    Some("a"),
+                    Some("b"),
+                    None,
+                    Some("c"),
+                    Some("d"),
+                    Some("e"),
+                    Some("e"),
+                ]),
+                vec![(0, 1).into()],
+            ),
+        ];
+
+        // let data = vec![Some(vec![Some("b"), None, Some("c"), Some("d")])];
+        // let expected =StringArray::from(data);
+        let string_data = string_array(vec![Some("b"), None, Some("c"), Some("d"), Some("a")]);
+        let offsets: [i32; 3] = [0, 4, 5];
+        let array_data = ArrayData::builder(DataType::List(Box::new(Field::new(
+            LIST_ITEM_NAME,
+            DataType::Utf8,
+            true,
+        ))))
+        .len(2)
+        .add_buffer(Buffer::from_slice_ref(&offsets))
+        .add_child_data(string_data.data().to_owned())
+        .build()
+        .unwrap();
+        let expected = ListArray::from(array_data);
+        let list_array = ListArrayBuilder::new(DatumKind::String, list_of_arrays)
             .build()
             .unwrap();
 

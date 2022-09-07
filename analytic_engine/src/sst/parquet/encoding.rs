@@ -355,14 +355,6 @@ impl HybridRecordEncoder {
             }
 
             if schema.is_collapsible_column(idx) {
-                // TODO: support variable length type
-                ensure!(
-                    col.data_type.size().is_some(),
-                    VariableLengthType {
-                        type_name: col.data_type.to_string(),
-                    }
-                );
-
                 collapsible_col_types.push(IndexedType {
                     idx,
                     data_type: schema.column(idx).data_type,
@@ -770,7 +762,6 @@ mod tests {
             .unwrap()
             .add_normal_column(
                 column_schema::Builder::new("host".to_string(), DatumKind::String)
-                    .is_tag(true)
                     .build()
                     .unwrap(),
             )
