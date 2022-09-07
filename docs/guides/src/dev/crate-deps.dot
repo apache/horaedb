@@ -34,6 +34,8 @@ digraph G {
     catalog_impls -> catalog
     catalog_impls -> system_catalog
     catalog_impls -> table_engine
+    catalog_impls -> cluster
+    catalog_impls -> meta_client
 
     cluster -> analytic_engine
     cluster -> catalog

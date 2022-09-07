@@ -44,7 +44,7 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub fn new(
         meta_client: MetaClientRef,
-        table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
+        table_manipulator: TableManipulatorRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
