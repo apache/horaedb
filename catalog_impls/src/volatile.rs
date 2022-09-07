@@ -22,29 +22,22 @@ use catalog::{
 };
 use common_types::schema::SchemaName;
 use log::{debug, info};
+use meta_client::MetaClientRef;
 use snafu::{ensure, ResultExt};
-use table_engine::table::{SchemaId, TableRef};
+use table_engine::table::{SchemaId, TableId, TableRef};
 use tokio::sync::Mutex;
 
-use crate::{SchemaIdAlloc, TableIdAlloc};
-
 /// ManagerImpl manages multiple volatile catalogs.
-pub struct ManagerImpl<S, T> {
-    catalogs: HashMap<String, Arc<CatalogImpl<S, T>>>,
-    schema_id_alloc: Arc<S>,
-    table_id_alloc: Arc<T>,
+pub struct ManagerImpl {
+    catalogs: HashMap<String, Arc<CatalogImpl>>,
+    meta_client: MetaClientRef,
 }
 
-impl<S, T> ManagerImpl<S, T>
-where
-    S: SchemaIdAlloc + 'static,
-    T: TableIdAlloc + 'static,
-{
-    pub async fn new(schema_id_alloc: S, table_id_alloc: T) -> Self {
+impl ManagerImpl {
+    pub async fn new(meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
-            table_id_alloc: Arc::new(table_id_alloc),
-            schema_id_alloc: Arc::new(schema_id_alloc),
+            meta_client,
         };
 
         manager.maybe_create_default_catalog().await;
@@ -53,11 +46,7 @@ where
     }
 }
 
-impl<S, T> Manager for ManagerImpl<S, T>
-where
-    S: SchemaIdAlloc + 'static,
-    T: TableIdAlloc + 'static,
-{
+impl Manager for ManagerImpl {
     fn default_catalog_name(&self) -> NameRef {
         consts::DEFAULT_CATALOG
     }
@@ -80,11 +69,7 @@ where
     }
 }
 
-impl<S, T> ManagerImpl<S, T>
-where
-    S: SchemaIdAlloc,
-    T: TableIdAlloc + 'static,
-{
+impl ManagerImpl {
     async fn maybe_create_default_catalog(&mut self) {
         // Try to get default catalog, create it if not exists.
         if self.catalogs.get(consts::DEFAULT_CATALOG).is_none() {
@@ -94,12 +79,11 @@ where
         };
     }
 
-    async fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl<S, T>> {
+    async fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl> {
         let catalog = Arc::new(CatalogImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
-            schema_id_alloc: self.schema_id_alloc.clone(),
-            table_id_alloc: self.table_id_alloc.clone(),
+            meta_client: self.meta_client.clone(),
         });
 
         self.catalogs.insert(catalog_name, catalog.clone());
@@ -113,21 +97,16 @@ where
 /// The schema and table id are allocated (and maybe stored) by other components
 /// so there is no recovering work for all the schemas and tables during
 /// initialization.
-struct CatalogImpl<S, T> {
+struct CatalogImpl {
     /// Catalog name
     name: String,
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
-    schema_id_alloc: Arc<S>,
-    table_id_alloc: Arc<T>,
+    meta_client: MetaClientRef,
 }
 
 #[async_trait]
-impl<S, T> Catalog for CatalogImpl<S, T>
-where
-    S: SchemaIdAlloc,
-    T: TableIdAlloc + 'static,
-{
+impl Catalog for CatalogImpl {
     fn name(&self) -> NameRef {
         &self.name
     }
@@ -147,14 +126,17 @@ where
         }
 
         let schema_id = self
-            .schema_id_alloc
-            .alloc_schema_id(name)
+            .meta_client
+            .alloc_schema_id(cluster::AllocSchemaIdRequest {
+                name: name.to_string(),
+            })
             .await
             .map_err(|e| Box::new(e) as _)
             .context(catalog::CreateSchema {
                 catalog: &self.name,
                 schema: name,
-            })?;
+            })
+            .map(|resp| SchemaId::from(resp.id))?;
 
         let mut schemas = self.schemas.write().unwrap();
         if schemas.get(name).is_some() {
@@ -165,7 +147,7 @@ where
             self.name.to_string(),
             name.to_string(),
             schema_id,
-            self.table_id_alloc.clone(),
+            self.meta_client.clone(),
         ));
 
         schemas.insert(name.to_string(), schema);
@@ -191,7 +173,7 @@ where
 ///
 /// The tables belonging to the schema won't be recovered during initialization
 /// and will be opened afterwards.
-struct SchemaImpl<T> {
+struct SchemaImpl {
     /// Catalog name
     catalog_name: String,
     /// Schema name
@@ -201,15 +183,15 @@ struct SchemaImpl<T> {
     /// Guard for creating/dropping table
     create_table_mutex: Mutex<()>,
     schema_id: SchemaId,
-    table_id_alloc: Arc<T>,
+    meta_client: MetaClientRef,
 }
 
-impl<T> SchemaImpl<T> {
+impl SchemaImpl {
     fn new(
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        table_id_alloc: Arc<T>,
+        meta_client: MetaClientRef,
     ) -> Self {
         Self {
             catalog_name,
@@ -217,7 +199,7 @@ impl<T> SchemaImpl<T> {
             tables: RwLock::new(HashMap::new()),
             create_table_mutex: Mutex::new(()),
             schema_id,
-            table_id_alloc,
+            meta_client,
         }
     }
 
@@ -265,7 +247,7 @@ impl<T> SchemaImpl<T> {
 }
 
 #[async_trait]
-impl<T: TableIdAlloc> Schema for SchemaImpl<T> {
+impl Schema for SchemaImpl {
     fn name(&self) -> NameRef {
         &self.schema_name
     }
@@ -306,14 +288,18 @@ impl<T: TableIdAlloc> Schema for SchemaImpl<T> {
         }
 
         let table_id = self
-            .table_id_alloc
-            .alloc_table_id(&request.schema_name, &request.table_name)
+            .meta_client
+            .alloc_table_id(cluster::AllocTableIdRequest {
+                schema_name: request.schema_name.to_string(),
+                name: request.table_name.to_string(),
+            })
             .await
             .map_err(|e| Box::new(e) as _)
             .context(schema::AllocateTableId {
                 schema: &self.schema_name,
                 table: &request.table_name,
-            })?;
+            })
+            .map(|v| TableId::from(v.id))?;
 
         let request = request.into_engine_create_request(table_id);
 
@@ -367,9 +353,13 @@ impl<T: TableIdAlloc> Schema for SchemaImpl<T> {
             .await
             .context(DropTable)?;
 
-        // invalidate the table id after table is dropped in engine.
-        self.table_id_alloc
-            .invalidate_table_id(&schema_name, &table_name, table.id())
+        // Request CeresMeta to drop this table.
+        self.meta_client
+            .drop_table(cluster::DropTableRequest {
+                schema_name: schema_name.to_string(),
+                name: table_name.to_string(),
+                id: table.id().as_u64(),
+            })
             .await
             .map_err(|e| Box::new(e) as _)
             .context(schema::InvalidateTableId {

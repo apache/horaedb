@@ -38,7 +38,6 @@ pub enum Error {
 define_result!(Error);
 
 /// Catalog manage schemas
-// TODO(yingwen): Maybe use async trait?
 // TODO(yingwen): Provide a context
 // TODO(yingwen): Catalog id?
 #[async_trait]
