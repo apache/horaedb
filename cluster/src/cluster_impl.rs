@@ -12,7 +12,7 @@ use meta_client::{
     types::{
         ActionCmd, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse,
     },
-    EventHandler, MetaClient,
+    EventHandler, MetaClientRef,
 };
 use snafu::{OptionExt, ResultExt};
 use tokio::{
@@ -25,7 +25,7 @@ use crate::{
     table_manager::{ShardTableInfo, TableManager},
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
-    TableManipulator,
+    TableManipulator, TableManipulatorRef,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -43,7 +43,7 @@ pub struct ClusterImpl {
 
 impl ClusterImpl {
     pub fn new(
-        meta_client: Arc<dyn MetaClient + Send + Sync>,
+        meta_client: MetaClientRef,
         table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
@@ -102,8 +102,8 @@ impl ClusterImpl {
 
 struct Inner {
     table_manager: TableManager,
-    meta_client: Arc<dyn MetaClient + Send + Sync>,
-    table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
+    meta_client: MetaClientRef,
+    table_manipulator: TableManipulatorRef,
     #[allow(dead_code)]
     topology: RwLock<ClusterTopology>,
 }
@@ -166,7 +166,7 @@ impl EventHandler for Inner {
 
 impl Inner {
     fn new(
-        meta_client: Arc<dyn MetaClient + Send + Sync>,
+        meta_client: MetaClientRef,
         table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
     ) -> Result<Self> {
         Ok(Self {
