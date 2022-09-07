@@ -79,10 +79,10 @@ pub enum ShardRole {
 ├────┘         │         ├────┘         │
 │    Leader    ◀─────────│PendingLeader │
 │              │         │              │
-└───────┬──────┘         └───────▲──────┘
-        │                        │       
-┌────┐  │                ┌────┐  │       
-│ R  ├──▼──────┐         │ R  ├──┴──────┐
+└───────┬──▲───┘         └───────▲─┬────┘
+        │  │                     │ │     
+┌────┐  │  │             ┌────┐  │ │     
+│ R  ├──▼──┴───┐         │ R  ├──┴─▼────┐
 ├────┘         │         ├────┘         │
 │   Pending    ├─────────▶   Follower   │
 │   Follower   │         │              │
@@ -178,7 +178,7 @@ Only Leader Shard(`Replication_Factor` == 1)
 
 Multi Follower Shard(`Replication_Factor` >= 2)
 
-1. Same as `shard split`, repeat the merging of individual shards until each one succeeds.
+1. Same as shard split, repeat the merging of individual shards until each one succeeds.
 
 
 ### Processing flow
