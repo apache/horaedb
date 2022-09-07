@@ -34,7 +34,7 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 
-use crate::{signal_handler, adapter::TableManipulatorImpl};
+use crate::{adapter::TableManipulatorImpl, signal_handler};
 
 /// Setup log with given `config`, returns the runtime log level switch.
 pub fn setup_log(config: &Config) -> RuntimeLevel {
