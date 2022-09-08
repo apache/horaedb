@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,9 +40,8 @@ const (
 	tableID3                 uint64 = 2
 	tableID4                 uint64 = 3
 	testRootPath                    = "/rootPath"
-	num1                            = 0
-	num2                            = 1
 	defaultIDAllocatorStep          = 20
+	defaultThreadNum                = 20
 )
 
 func prepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, func()) {
@@ -107,7 +107,7 @@ func TestManagerSingleThread(t *testing.T) {
 	testRegisterNode(ctx, re, manager, cluster1, node1, defaultLease)
 	testRegisterNode(ctx, re, manager, cluster1, node2, defaultLease)
 
-	testGetTables(ctx, re, manager, node1, cluster1, num1)
+	testGetTables(ctx, re, manager, node1, cluster1, 0)
 
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
@@ -123,8 +123,8 @@ func TestManagerSingleThread(t *testing.T) {
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table1, tableID1)
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table3, tableID3)
 
-	testGetTables(ctx, re, manager, node1, cluster1, num2)
-	testGetTables(ctx, re, manager, node2, cluster1, num2)
+	testGetTables(ctx, re, manager, node1, cluster1, 1)
+	testGetTables(ctx, re, manager, node2, cluster1, 1)
 	testGetNodes(ctx, re, manager, cluster1)
 
 	re.NoError(manager.Stop(ctx))
@@ -134,13 +134,14 @@ func TestManagerSingleThread(t *testing.T) {
 
 	re.NoError(manager.Start(ctx))
 
-	testGetTables(ctx, re, manager, node1, cluster1, num2)
-	testGetTables(ctx, re, manager, node2, cluster1, num2)
+	testGetTables(ctx, re, manager, node1, cluster1, 1)
+	testGetTables(ctx, re, manager, node2, cluster1, 1)
 
 	re.NoError(manager.Stop(ctx))
 }
 
 func TestManagerMultiThread(t *testing.T) {
+	wg := sync.WaitGroup{}
 	re := require.New(t)
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
@@ -148,8 +149,14 @@ func TestManagerMultiThread(t *testing.T) {
 	manager := newTestClusterManager(t)
 	defer re.NoError(manager.Stop(ctx))
 
-	go testCluster(ctx, re, manager, cluster1)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		testCluster(ctx, re, manager, cluster1)
+	}()
 	testCluster(ctx, re, manager, cluster2)
+
+	wg.Wait()
 }
 
 func testCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
@@ -158,12 +165,13 @@ func testCluster(ctx context.Context, re *require.Assertions, manager Manager, c
 	testRegisterNode(ctx, re, manager, clusterName, node1, defaultLease)
 	testRegisterNode(ctx, re, manager, clusterName, node2, defaultLease)
 
-	testAllocSchemaID(ctx, re, manager, clusterName, defaultSchema, defaultSchemaID)
-	go testAllocSchemaID(ctx, re, manager, clusterName, defaultSchema, defaultSchemaID)
+	testAllocSchemaIDMultiThread(ctx, re, manager, clusterName, defaultSchema, defaultSchemaID)
 
-	testAllocTableIDWithMultiThread(ctx, re, manager, clusterName, tableID1)
+	testAllocTableIDMultiThread(ctx, re, manager, clusterName, tableID1)
+
 	testDropTable(ctx, re, manager, clusterName, defaultSchema, table1, tableID1)
-	testAllocTableIDWithMultiThread(ctx, re, manager, clusterName, tableID2)
+
+	testAllocTableIDMultiThread(ctx, re, manager, clusterName, tableID2)
 }
 
 func testCreateCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
@@ -229,9 +237,31 @@ func testDropTable(ctx context.Context, re *require.Assertions, manager Manager,
 	re.NoError(err)
 }
 
-func testAllocTableIDWithMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, tableID uint64) {
-	go testAllocTableID(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
+func testAllocSchemaIDMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, schemaID uint32) {
+	wg := sync.WaitGroup{}
+	for i := 0; i < defaultThreadNum; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			testAllocSchemaID(ctx, re, manager, clusterName, schemaName, schemaID)
+		}()
+	}
+
+	wg.Wait()
+}
+
+func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, tableID uint64) {
+	wg := sync.WaitGroup{}
+	for i := 0; i < defaultThreadNum; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			testAllocTableID(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
+		}()
+	}
+
 	testAllocTableID(ctx, re, manager, node2, clusterName, defaultSchema, table1, tableID)
+	wg.Wait()
 }
 
 func testGetNodes(ctx context.Context, re *require.Assertions, manager Manager, cluster string) {
