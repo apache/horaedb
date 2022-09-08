@@ -321,7 +321,7 @@ impl Instance {
         let worker_id = worker_local.worker_id();
         let worker_num = space.write_group.worker_num();
         ensure!(
-            table_data.id.as_u64() % worker_id != worker_local.worker_id(),
+            table_data.id.as_u64() % worker_num != worker_id,
             DataNotLegal {
                 table: &table_data.name,
                 worker_id: worker_id
