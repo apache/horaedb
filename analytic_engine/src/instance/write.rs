@@ -121,6 +121,12 @@ pub enum Error {
 
     #[snafu(display("Failed to update sequence of memtable, err:{}", source))]
     UpdateMemTableSequence { source: crate::memtable::Error },
+
+    #[snafu(display(
+        "Failed to write/flush table data, this table:{} does not belong to this worker: {}",
+        source
+    ))]
+    DataNotLegal { table: String, worker_id: u64 },
 }
 
 define_result!(Error);
@@ -312,6 +318,16 @@ impl Instance {
             }
         );
 
+        let worker_id = worker_local.worker_id();
+        let worker_num = space.write_group.worker_num();
+        ensure!(
+            table_data.id.as_u64() % worker_id != worker_local.worker_id(),
+            DataNotLegal {
+                table: &table_data.name,
+                worker_id: worker_id
+            }
+        );
+
         // Checks schema compatibility.
         table_data
             .schema()
@@ -332,10 +348,9 @@ impl Instance {
             }
         }
 
-        let worker_index = worker_local.worker_id();
         if self.should_flush_instance() {
             if let Some(space) = self.space_store.find_maximum_memory_usage_space() {
-                if let Some(table) = space.find_maximum_memory_usage_table(worker_index) {
+                if let Some(table) = space.find_maximum_memory_usage_table(worker_id) {
                     info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
                           table.name,
                           table.memtable_memory_usage(),
@@ -348,7 +363,7 @@ impl Instance {
         }
 
         if space.should_flush_space() {
-            if let Some(table) = space.find_maximum_memory_usage_table(worker_index) {
+            if let Some(table) = space.find_maximum_memory_usage_table(worker_id) {
                 info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
                       table.name,
                       table.memtable_memory_usage() ,
