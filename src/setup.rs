@@ -34,10 +34,7 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 
-use crate::{
-    adapter::{SchemaIdAllocAdapter, TableIdAllocAdapter, TableManipulatorImpl},
-    signal_handler,
-};
+use crate::{adapter::TableManipulatorImpl, signal_handler};
 
 /// Setup log with given `config`, returns the runtime log level switch.
 pub fn setup_log(config: &Config) -> RuntimeLevel {
@@ -158,11 +155,7 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     )
     .expect("fail to build meta client");
 
-    let catalog_manager = {
-        let schema_id_alloc = SchemaIdAllocAdapter(meta_client.clone());
-        let table_id_alloc = TableIdAllocAdapter(meta_client.clone());
-        Arc::new(volatile::ManagerImpl::new(schema_id_alloc, table_id_alloc).await)
-    };
+    let catalog_manager = { Arc::new(volatile::ManagerImpl::new(meta_client.clone()).await) };
 
     let cluster = {
         let table_manipulator = Arc::new(TableManipulatorImpl {

@@ -37,7 +37,7 @@ use crate::{
     },
     EventHandler, EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailDropTable,
     FailGetGrpcClient, FailGetTables, FailHandleEvent, FailRouteTables, FailSendHeartbeat,
-    FetchActionCmd, InitHeartBeatStream, MetaClient, MetaRpc, Result,
+    FetchActionCmd, InitHeartBeatStream, MetaClient, MetaClientRef, MetaRpc, Result,
 };
 
 #[derive(Debug, Deserialize, Clone)]
@@ -564,7 +564,7 @@ pub fn build_meta_client(
     config: MetaClientConfig,
     node_meta_info: NodeMetaInfo,
     runtime: Arc<Runtime>,
-) -> Result<Arc<dyn MetaClient + Send + Sync>> {
+) -> Result<MetaClientRef> {
     let meta_client = MetaClientImpl::new(config, node_meta_info, runtime)?;
     Ok(Arc::new(meta_client))
 }

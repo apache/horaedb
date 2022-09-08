@@ -12,9 +12,11 @@ workspace = true
 # Workspace dependencies, in alphabetical order
 async-trait = "0.1.53"
 catalog = { path = "../catalog" }
+cluster = { path = "../cluster" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 log = "0.4"
+meta_client = { path = "../meta_client" }
 snafu = { version ="0.6.10", features = ["backtraces"]}
 system_catalog = { path = "../system_catalog" }
 table_engine = { path = "../table_engine" }
