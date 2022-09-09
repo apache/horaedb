@@ -45,13 +45,13 @@ func NewLeaderWatcher(ctx WatchContext, self *Member, leaseTTLSec int64) *Leader
 }
 
 // Watch watches the leader changes:
-//  - Check whether the leader is valid (same as the etcd leader) if leader exists.
-//   - Leader is valid: wait for the leader changes.
-//   - Leader is not valid: reset the leader by the current leader.
-//  - Campaign the leadership if leader does not exist.
-//   - Elect the etcd leader as the ceresmeta leader.
-//	 - The leader keeps the leadership lease alive.
-//   - The other members keeps waiting for the leader changes.
+//  1. Check whether the leader is valid (same as the etcd leader) if leader exists.
+//     - Leader is valid: wait for the leader changes.
+//     - Leader is not valid: reset the leader by the current leader.
+//  2. Campaign the leadership if leader does not exist.
+//     - Elect the etcd leader as the ceresmeta leader.
+//     - The leader keeps the leadership lease alive.
+//     - The other members keeps waiting for the leader changes.
 //
 // The LeadershipCallbacks `callbacks` will be triggered when specific events occur.
 func (l *LeaderWatcher) Watch(ctx context.Context, callbacks LeadershipEventCallbacks) {

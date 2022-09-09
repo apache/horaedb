@@ -1,6 +1,6 @@
 module github.com/CeresDB/ceresmeta
 
-go 1.18
+go 1.19
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0

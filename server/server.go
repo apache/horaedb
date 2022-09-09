@@ -137,7 +137,7 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 	return nil
 }
 
-/// startServer starts involved services.
+// startServer starts involved services.
 func (srv *Server) startServer(ctx context.Context) error {
 	srv.hbStreams = schedule.NewHeartbeatStreams(ctx)
 
@@ -195,7 +195,6 @@ func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {
 	defer srv.bgJobWg.Done()
 }
 
-//nolint
 func (srv *Server) createDefaultCluster(ctx context.Context) {
 	leaderResp, err := srv.member.GetLeader(ctx)
 	if err != nil {
