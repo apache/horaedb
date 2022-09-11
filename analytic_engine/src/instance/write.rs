@@ -121,13 +121,6 @@ pub enum Error {
 
     #[snafu(display("Failed to update sequence of memtable, err:{}", source))]
     UpdateMemTableSequence { source: crate::memtable::Error },
-
-    #[snafu(display(
-        "Failed to write/flush table data, this table:{} does not belong to this worker: {}",
-        table,
-        worker_id
-    ))]
-    DataNotLegal { table: String, worker_id: usize },
 }
 
 define_result!(Error);
@@ -320,14 +313,13 @@ impl Instance {
         );
 
         let worker_id = worker_local.worker_id();
-        let worker_num = space.write_group.worker_num();
-        ensure!(
-            table_data.id.as_u64() as usize % worker_num != worker_id,
-            DataNotLegal {
-                table: &table_data.name,
-                worker_id
-            }
-        );
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(Write)?;
 
         // Checks schema compatibility.
         table_data
@@ -385,10 +377,18 @@ impl Instance {
     /// Write log_batch into wal, return the sequence number of log_batch.
     async fn write_to_wal(
         &self,
-        _worker_local: &WorkerLocal,
+        worker_local: &WorkerLocal,
         table_data: &TableData,
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(Write)?;
+
         // Convert into pb
         let mut write_req_pb = table_requests::WriteRequest::new();
         // Use the table schema instead of the schema in request to avoid schema

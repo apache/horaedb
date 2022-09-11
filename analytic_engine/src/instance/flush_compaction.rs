@@ -267,6 +267,14 @@ impl Instance {
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
     ) -> Result<TableFlushRequest> {
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(BackgroundFlushFailed)?;
+
         let current_version = table_data.current_version();
         let last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
