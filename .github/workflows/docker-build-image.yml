@@ -8,6 +8,8 @@ on:
       - 'Dockerfile'
       - 'docker/**'
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/docker-build-image.yml'
       - 'Dockerfile'
