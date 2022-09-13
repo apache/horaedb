@@ -105,7 +105,6 @@ jobs:
       - name: Run Tests
         run: |
           cp ${LOCK_FILE} ${LOCK_FILE}.bak
-          git clone https://github.com/apache/parquet-testing.git components/parquet-testing
           make test-ut
           echo "Checking if ${LOCK_FILE} has changed..."
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
