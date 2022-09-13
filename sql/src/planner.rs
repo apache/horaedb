@@ -9,7 +9,18 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::datafusion::{error::DataFusionError, sql::planner::SqlToRel};
+use arrow_deps::{
+    arrow::{
+        compute::can_cast_types,
+        datatypes::{DataType as ArrowDataType, Schema as ArrowSchema},
+    },
+    datafusion::{
+        common::{DFField, DFSchema},
+        error::DataFusionError,
+        physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+        sql::planner::SqlToRel,
+    },
+};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::{Datum, DatumKind},
@@ -17,6 +28,8 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Schema, TSID_COLUMN},
 };
+use df_operator::visitor::find_columns_by_expr;
+use hashbrown::HashMap as CteHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -48,6 +61,15 @@ pub enum Error {
     #[snafu(display("DataFusion Failed to plan, err:{}", source))]
     DataFusionPlan { source: DataFusionError },
 
+    #[snafu(display("DataFusion Failed to create schema, err:{}", source))]
+    DataFusionSchema { source: DataFusionError },
+
+    #[snafu(display("DataFusion Failed to generate expr, err:{}", source))]
+    DataFusionExpr { source: DataFusionError },
+
+    #[snafu(display("DataFusion Failed to get data type from PhysicalExpr, err:{}", source))]
+    DataFusionDataType { source: DataFusionError },
+
     // Statement is too large and complicate to carry in Error, so we
     // only return error here, so the caller should attach sql to its
     // error context
@@ -56,6 +78,9 @@ pub enum Error {
 
     #[snafu(display("Create table name is empty"))]
     CreateTableNameEmpty,
+
+    #[snafu(display("Only support non-column-input expr in default-value-option, column name:{} default value:{}", name, default_value))]
+    CreateWithComplexDefaultValue { name: String, default_value: Expr },
 
     #[snafu(display("Table must contain timestamp constraint"))]
     RequireTimestamp,
@@ -162,6 +187,18 @@ pub enum Error {
 
     #[snafu(display("Failed to build plan from promql, error:{}", source))]
     BuildPromPlanError { source: crate::promql::Error },
+
+    #[snafu(display(
+        "Failed to cast default value expr to column type, expr:{}, from:{}, to:{}",
+        expr,
+        from,
+        to
+    ))]
+    InvalidDefaultValueCoercion {
+        expr: Expr,
+        from: ArrowDataType,
+        to: ArrowDataType,
+    },
 }
 
 define_result!(Error);
@@ -284,6 +321,58 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // Build all column schemas.
         for col in &stmt.columns {
             name_column_map.insert(col.name.value.as_str(), parse_column(col)?);
+        }
+
+        // Analyze default value exprs.
+        let df_planner = SqlToRel::new(&self.meta_provider);
+        let df_fields = name_column_map
+            .iter()
+            .map(|(name, column_def)| {
+                DFField::new(
+                    None,
+                    name,
+                    column_def.data_type.to_arrow_data_type(),
+                    column_def.is_nullable,
+                )
+            })
+            .collect::<Vec<_>>();
+        let df_schema =
+            DFSchema::new_with_metadata(df_fields, HashMap::new()).context(DataFusionSchema)?;
+        for column_def in name_column_map.values() {
+            if let Some(expr) = &column_def.default_value {
+                let df_logical_expr = df_planner
+                    .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
+                    .context(DataFusionExpr)?;
+
+                // Check input columns for the expr. Currently only suppory expr without input
+                ensure!(
+                    find_columns_by_expr(&df_logical_expr).is_empty(),
+                    CreateWithComplexDefaultValue {
+                        name: column_def.name.clone(),
+                        default_value: expr.clone(),
+                    }
+                );
+
+                // Check if the return type of expr can cast to target type
+                let physical_expr = create_physical_expr(
+                    &df_logical_expr,
+                    &DFSchema::empty(),
+                    &ArrowSchema::empty(),
+                    &ExecutionProps::default(),
+                )
+                .context(DataFusionExpr)?;
+                let from_type = physical_expr
+                    .data_type(&ArrowSchema::empty())
+                    .context(DataFusionDataType)?;
+                ensure! {
+                    can_cast_types(&from_type, &column_def.data_type.into()),
+                    InvalidDefaultValueCoercion::<Expr, ArrowDataType, ArrowDataType>{
+                        expr: expr.clone(),
+                        from: from_type,
+                        to: column_def.data_type.into(),
+                    },
+                }
+            }
         }
 
         // Tsid column is a reserved column.
@@ -438,8 +527,26 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
                 validate_insert_stmt(table.name(), &schema, &column_names_idx)?;
 
+                let df_fields = schema
+                    .columns()
+                    .iter()
+                    .map(|column_schema| {
+                        DFField::new(
+                            None,
+                            &column_schema.name,
+                            column_schema.data_type.to_arrow_data_type(),
+                            column_schema.is_nullable,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
+                    .context(DataFusionSchema)?;
+                let df_planner = SqlToRel::new(&self.meta_provider);
+
                 // Index in insert values stmt of each column in table schema
                 let mut column_index_in_insert = Vec::with_capacity(schema.num_columns());
+                // Column index in schema to its default-value-expr
+                let mut default_value_map = HashMap::new();
 
                 // Check all not null columns are provided in stmt, also init
                 // `column_index_in_insert`
@@ -458,10 +565,17 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                         }
                         None => {
                             // This column in schema is not in insert stmt
-                            if column.is_nullable {
+                            if let Some(expr) = &column.default_value {
+                                let expr = df_planner
+                                    .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
+                                    .context(DataFusionExpr)?;
+
+                                default_value_map.insert(idx, expr);
+                                column_index_in_insert.push(InsertMode::Auto);
+                            } else if column.is_nullable {
                                 column_index_in_insert.push(InsertMode::Null);
                             } else {
-                                // Column is not null and input does not contains that column
+                                // Column can not be null and input does not contains that column
                                 return InsertMissingColumn {
                                     table: table.name(),
                                     column: &column.name,
@@ -474,7 +588,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
                 let rows = build_row_group(schema, source, column_index_in_insert)?;
 
-                Ok(Plan::Insert(InsertPlan { table, rows }))
+                Ok(Plan::Insert(InsertPlan {
+                    table,
+                    rows,
+                    default_value_map,
+                }))
             }
             // We already known this stmt is a INSERT stmt
             _ => unreachable!(),
@@ -720,6 +838,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     let mut is_tag = false;
     let mut is_unsign = false;
     let mut comment = String::new();
+    let mut default_value = None;
     for option_def in &col.options {
         if matches!(option_def.option, ColumnOption::NotNull) {
             is_nullable = false;
@@ -727,6 +846,8 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
             is_tag = true;
         } else if parser::is_unsign_column(&option_def.option) {
             is_unsign = true;
+        } else if let Some(default_value_expr) = parser::get_default_value(&option_def.option) {
+            default_value = Some(default_value_expr);
         } else if let Some(v) = parser::get_column_comment(&option_def.option) {
             comment = v;
         }
@@ -741,12 +862,24 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     let builder = column_schema::Builder::new(col.name.value.clone(), data_type)
         .is_nullable(is_nullable)
         .is_tag(is_tag)
-        .comment(comment);
+        .comment(comment)
+        .default_value(default_value);
 
     builder.build().context(InvalidColumnSchema {
         column_name: &col.name.value,
     })
 }
+
+// fn parse_default_value(col: &ColumnDef) -> Result<Option<Expr>> {
+//     let mut default_value = None;
+//     for option_def in &col.options {
+//         if let Some(expr) = parser::get_default_value(&option_def.option) {
+//             default_value = Some(expr);
+//         }
+//     }
+
+//     Ok(default_value)
+// }
 
 #[cfg(test)]
 mod tests {
@@ -765,6 +898,7 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
+        println!("{:#?}", plan);
         assert_eq!(format!("{:#?}", plan), expected);
         Ok(())
     }
@@ -828,7 +962,10 @@ mod tests {
 
     #[test]
     fn test_create_statement_to_plan() {
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
+                                                      ts timestamp not null, 
+                                                      c3 string, c4 uint32 Default 0, 
+                                                      c5 uint32 Default 1+1, timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
         quick_test(
             sql,
@@ -852,6 +989,7 @@ mod tests {
                         is_tag: true,
                         comment: "",
                         escaped_name: "c1",
+                        default_value: None,
                     },
                     ColumnSchema {
                         id: 2,
@@ -861,6 +999,7 @@ mod tests {
                         is_tag: false,
                         comment: "",
                         escaped_name: "ts",
+                        default_value: None,
                     },
                     ColumnSchema {
                         id: 3,
@@ -870,6 +1009,50 @@ mod tests {
                         is_tag: false,
                         comment: "",
                         escaped_name: "c3",
+                        default_value: None,
+                    },
+                    ColumnSchema {
+                        id: 4,
+                        name: "c4",
+                        data_type: UInt32,
+                        is_nullable: true,
+                        is_tag: false,
+                        comment: "",
+                        escaped_name: "c4",
+                        default_value: Some(
+                            Value(
+                                Number(
+                                    "0",
+                                    false,
+                                ),
+                            ),
+                        ),
+                    },
+                    ColumnSchema {
+                        id: 5,
+                        name: "c5",
+                        data_type: UInt32,
+                        is_nullable: true,
+                        is_tag: false,
+                        comment: "",
+                        escaped_name: "c5",
+                        default_value: Some(
+                            BinaryOp {
+                                left: Value(
+                                    Number(
+                                        "1",
+                                        false,
+                                    ),
+                                ),
+                                op: Plus,
+                                right: Value(
+                                    Number(
+                                        "1",
+                                        false,
+                                    ),
+                                ),
+                            },
+                        ),
                     },
                 ],
             },
@@ -902,10 +1085,10 @@ mod tests {
 
     #[test]
     fn test_insert_statement_to_plan() {
-        let sql = "INSERT INTO test_tablex(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3');";
+        let sql = "INSERT INTO test_tablex(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3');";
         assert!(quick_test(sql, "").is_err());
 
-        let sql = "INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3');";
+        let sql = "INSERT INTO test_table(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3');";
         quick_test(
             sql,
             r#"Insert(
@@ -930,6 +1113,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 2,
@@ -939,6 +1123,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key2",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 3,
@@ -948,6 +1133,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 4,
@@ -957,6 +1143,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
+                            default_value: None,
                         },
                     ],
                 },
@@ -979,6 +1166,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 2,
@@ -988,6 +1176,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key2",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 3,
@@ -997,6 +1186,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 4,
@@ -1006,6 +1196,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
+                            default_value: None,
                         },
                     ],
                 },
@@ -1040,6 +1231,7 @@ mod tests {
                 1638428434000,
             ),
         },
+        default_value_map: {},
     },
 )"#,
         )
@@ -1108,6 +1300,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 2,
@@ -1117,6 +1310,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key2",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 3,
@@ -1126,6 +1320,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 4,
@@ -1135,6 +1330,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
+                            default_value: None,
                         },
                     ],
                 },
@@ -1177,6 +1373,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 2,
@@ -1186,6 +1383,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key2",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 3,
@@ -1195,6 +1393,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 4,
@@ -1204,6 +1403,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
+                            default_value: None,
                         },
                     ],
                 },
@@ -1220,6 +1420,7 @@ mod tests {
                     is_tag: false,
                     comment: "",
                     escaped_name: "add_col",
+                    default_value: None,
                 },
             ],
         ),
@@ -1259,6 +1460,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 2,
@@ -1268,6 +1470,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "key2",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 3,
@@ -1277,6 +1480,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
+                            default_value: None,
                         },
                         ColumnSchema {
                             id: 4,
@@ -1286,6 +1490,7 @@ mod tests {
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
+                            default_value: None,
                         },
                     ],
                 },
@@ -1334,6 +1539,7 @@ mod tests {
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "key1",
+                                default_value: None,
                             },
                             ColumnSchema {
                                 id: 2,
@@ -1343,6 +1549,7 @@ mod tests {
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "key2",
+                                default_value: None,
                             },
                             ColumnSchema {
                                 id: 3,
@@ -1352,6 +1559,7 @@ mod tests {
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "field1",
+                                default_value: None,
                             },
                             ColumnSchema {
                                 id: 4,
@@ -1361,6 +1569,7 @@ mod tests {
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "field2",
+                                default_value: None,
                             },
                         ],
                     },

@@ -8,3 +8,4 @@ pub mod registry;
 pub mod scalar;
 pub mod udaf;
 pub mod udfs;
+pub mod visitor;

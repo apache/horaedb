@@ -19,6 +19,7 @@ ceresdbproto_deps = { path = "../ceresdbproto_deps" }
 common_types = { path = "../common_types"}
 common_util = { path = "../common_util" }
 df_operator = { path = "../df_operator" }
+hashbrown = { version = "0.12", features = ["raw"] }
 log = "0.4"
 paste = "1.0"
 snafu = { version ="0.6.10", features = ["backtraces"]}

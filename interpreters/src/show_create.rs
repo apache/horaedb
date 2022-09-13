@@ -78,12 +78,17 @@ impl ShowCreateInterpreter {
 
         let mut res = String::new();
         for col in table_schema.columns() {
+            println!("{:?}", col);
             res += format!("`{}` {}", col.name, col.data_type).as_str();
             if col.is_tag {
                 res += " TAG";
             }
             if !col.is_nullable {
                 res += " NOT NULL";
+            }
+
+            if let Some(expr) = &col.default_value {
+                res += format!(" DEFAULT {}", expr).as_str();
             }
 
             if !col.comment.is_empty() {

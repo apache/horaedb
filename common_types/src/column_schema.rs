@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, convert::TryFrom, str::FromStr};
 use arrow_deps::arrow::datatypes::{DataType, Field};
 use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::Expr;
 
 use crate::datum::DatumKind;
 
@@ -150,6 +151,8 @@ pub struct ColumnSchema {
     pub comment: String,
     /// Column name in response
     pub escaped_name: String,
+    /// Default value expr
+    pub default_value: Option<Expr>,
 }
 
 impl ColumnSchema {
@@ -186,6 +189,10 @@ impl ColumnSchema {
         column_schema.set_id(self.id);
         column_schema.set_is_tag(self.is_tag);
         column_schema.set_comment(self.comment.clone());
+
+        if let Some(default_value) = &self.default_value {
+            column_schema.set_default_value(serde_json::to_vec(default_value).unwrap());
+        }
 
         column_schema
     }
@@ -250,9 +257,14 @@ impl ColumnSchema {
     }
 }
 
+/// TRYFROM
 impl From<common_pb::ColumnSchema> for ColumnSchema {
     fn from(column_schema: common_pb::ColumnSchema) -> Self {
         let escaped_name = column_schema.name.escape_debug().to_string();
+        let default_value_bytes = column_schema.get_default_value();
+        let default_value = (!default_value_bytes.is_empty())
+            .then(|| serde_json::from_slice::<Expr>(default_value_bytes).unwrap());
+
         Self {
             id: column_schema.id,
             name: column_schema.name,
@@ -261,6 +273,7 @@ impl From<common_pb::ColumnSchema> for ColumnSchema {
             is_tag: column_schema.is_tag,
             comment: column_schema.comment,
             escaped_name,
+            default_value,
         }
     }
 }
@@ -290,6 +303,7 @@ impl TryFrom<&Field> for ColumnSchema {
             is_tag,
             comment,
             escaped_name: field.name().escape_debug().to_string(),
+            default_value: None,
         })
     }
 }
@@ -357,6 +371,7 @@ pub struct Builder {
     is_nullable: bool,
     is_tag: bool,
     comment: String,
+    default_value: Option<Expr>,
 }
 
 impl Builder {
@@ -369,6 +384,7 @@ impl Builder {
             is_nullable: false,
             is_tag: false,
             comment: String::new(),
+            default_value: None,
         }
     }
 
@@ -391,6 +407,11 @@ impl Builder {
 
     pub fn comment(mut self, comment: String) -> Self {
         self.comment = comment;
+        self
+    }
+
+    pub fn default_value(mut self, default_value: Option<Expr>) -> Self {
+        self.default_value = default_value;
         self
     }
 
@@ -418,6 +439,7 @@ impl Builder {
             is_tag: self.is_tag,
             comment: self.comment,
             escaped_name,
+            default_value: self.default_value,
         })
     }
 }
@@ -449,6 +471,7 @@ mod tests {
             is_tag: true,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
+            default_value: None,
         };
 
         assert_eq!(&lhs, &rhs);

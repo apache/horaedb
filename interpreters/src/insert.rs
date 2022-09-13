@@ -2,8 +2,24 @@
 
 //! Interpreter for insert statement
 
+use std::{collections::HashMap, ops::IndexMut, sync::Arc};
+
+use arrow_deps::{
+    arrow::{compute::CastOptions, datatypes::Schema as ArrowSchema, record_batch::RecordBatch},
+    datafusion::{
+        common::DFSchema,
+        error::DataFusionError,
+        logical_expr::ColumnarValue as DfColumnarValue,
+        physical_expr::{
+            create_physical_expr, execution_props::ExecutionProps, expressions::CastExpr,
+        },
+    },
+    datafusion_expr::expr::Expr as DfLogicalExpr,
+};
 use async_trait::async_trait;
-use common_types::{column_schema::ColumnId, datum::Datum, hash::hash64};
+use common_types::{
+    column::ColumnBlock, column_schema::ColumnId, datum::Datum, hash::hash64, row::RowGroup,
+};
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use snafu::{ResultExt, Snafu};
 use sql::plan::InsertPlan;
@@ -11,11 +27,20 @@ use table_engine::table::WriteRequest;
 
 use crate::{
     context::Context,
-    interpreter::{Insert, Interpreter, InterpreterPtr, Output, Result},
+    interpreter::{Insert, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
 };
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("DataFusion Failed to generate expr, err:{}", source))]
+    DataFusionExpr { source: DataFusionError },
+
+    #[snafu(display("DataFusion Failed to get data type from PhysicalExpr, err:{}", source))]
+    DataFusionDataType { source: DataFusionError },
+
+    #[snafu(display("DataFusion Failed to evaluate the physical expr, err:{}", source))]
+    DataFusionExecutor { source: DataFusionError },
+
     #[snafu(display("Failed to write table, err:{}", source))]
     WriteTable { source: table_engine::table::Error },
 
@@ -23,7 +48,12 @@ pub enum Error {
     EncodeTsid {
         source: common_util::codec::compact::Error,
     },
+
+    #[snafu(display("Failed to convert arrow Array to ColumnBlock, err:{}", source))]
+    ConvertColumnBlock { source: common_types::column::Error },
 }
+
+define_result!(Error);
 
 pub struct InsertInterpreter {
     ctx: Context,
@@ -38,10 +68,17 @@ impl InsertInterpreter {
 
 #[async_trait]
 impl Interpreter for InsertInterpreter {
-    async fn execute(mut self: Box<Self>) -> Result<Output> {
+    async fn execute(mut self: Box<Self>) -> InterpreterResult<Output> {
         // Generate tsid if needed.
-        self.maybe_generate_tsid()?;
-        let InsertPlan { table, rows } = self.plan;
+        self.maybe_generate_tsid().context(Insert)?;
+        let InsertPlan {
+            table,
+            mut rows,
+            default_value_map,
+        } = self.plan;
+
+        // Fill default values
+        fill_default_values(&mut rows, &default_value_map).context(Insert)?;
 
         // Context is unused now
         let _ctx = self.ctx;
@@ -122,17 +159,84 @@ impl<'a> TsidBuilder<'a> {
         // Write column id first.
         self.encoder
             .encode(self.hash_bytes, &Datum::UInt64(u64::from(column_id)))
-            .context(EncodeTsid)
-            .context(Insert)?;
+            .context(EncodeTsid)?;
         // Write datum.
         self.encoder
             .encode(self.hash_bytes, datum)
-            .context(EncodeTsid)
-            .context(Insert)?;
+            .context(EncodeTsid)?;
         Ok(())
     }
 
     fn finish(self) -> u64 {
         hash64(self.hash_bytes)
     }
+}
+
+fn fill_default_values(
+    rows: &mut RowGroup,
+    default_value_map: &HashMap<usize, DfLogicalExpr>,
+) -> Result<()> {
+    let input_df_schema = DFSchema::empty();
+    let input_arrow_schema = Arc::new(ArrowSchema::empty());
+    let input_batch = RecordBatch::new_empty(input_arrow_schema.clone());
+    for (column_idx, default_value_expr) in default_value_map.iter() {
+        let physical_expr = create_physical_expr(
+            default_value_expr,
+            &input_df_schema,
+            &input_arrow_schema,
+            &ExecutionProps::default(),
+        )
+        .context(DataFusionExpr)?;
+
+        let from_type = physical_expr
+            .data_type(&input_arrow_schema)
+            .context(DataFusionDataType)?;
+        let to_type = rows.schema().column(*column_idx).data_type;
+
+        // Try wrap cast expr
+        let casted_physical_expr = if from_type != to_type.into() {
+            Arc::new(CastExpr::new(
+                physical_expr,
+                to_type.into(),
+                CastOptions { safe: false },
+            ))
+        } else {
+            physical_expr
+        };
+
+        let output = casted_physical_expr
+            .evaluate(&input_batch)
+            .context(DataFusionExecutor)?;
+        fill_column_to_row_group(*column_idx, &output, rows)?;
+    }
+
+    Ok(())
+}
+
+fn fill_column_to_row_group(
+    column_idx: usize,
+    column: &DfColumnarValue,
+    rows: &mut RowGroup,
+) -> Result<()> {
+    match column {
+        DfColumnarValue::Array(array) => {
+            for row_idx in 0..rows.num_rows() {
+                let column_block =
+                    ColumnBlock::try_cast_arrow_array_ref(array).context(ConvertColumnBlock)?;
+                let datum = column_block.datum(row_idx);
+                rows.get_row_mut(row_idx)
+                    .map(|row| std::mem::replace(row.index_mut(column_idx), datum.clone()));
+            }
+        }
+        DfColumnarValue::Scalar(scalar) => {
+            if let Some(datum) = Datum::from_scalar_value(scalar) {
+                for row_idx in 0..rows.num_rows() {
+                    rows.get_row_mut(row_idx)
+                        .map(|row| std::mem::replace(row.index_mut(column_idx), datum.clone()));
+                }
+            }
+        }
+    };
+
+    Ok(())
 }

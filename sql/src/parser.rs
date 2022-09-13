@@ -7,7 +7,7 @@
 use log::debug;
 use paste::paste;
 use sqlparser::{
-    ast::{ColumnDef, ColumnOption, ColumnOptionDef, Ident, TableConstraint},
+    ast::{ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, TableConstraint},
     dialect::{keywords::Keyword, Dialect, MySqlDialect},
     parser::{IsOptional::Mandatory, Parser as SqlParser, ParserError},
     tokenizer::{Token, Tokenizer},
@@ -62,6 +62,16 @@ is_custom_column!(UNSIGN);
 pub fn get_column_comment(opt: &ColumnOption) -> Option<String> {
     if let ColumnOption::Comment(comment) = opt {
         return Some(comment.clone());
+    }
+
+    None
+}
+
+/// Get the default value expr from  [`ColumnOption`] if it is a default-value
+/// option.
+pub fn get_default_value(opt: &ColumnOption) -> Option<Expr> {
+    if let ColumnOption::Default(expr) = opt {
+        return Some(expr.clone());
     }
 
     None
