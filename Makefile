@@ -33,9 +33,8 @@ test-ut:
 	echo $(CARGO_INCREMENTAL)
 	echo $(RUSTFLAGS)
 	echo $(RUSTDOCFLAGS)
-#	cd $(DIR); cargo test --workspace -- -Z unstable-options --format json | tee results.json; \
-# 	cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
-	cd $(DIR); cargo test --workspace
+	cd $(DIR); cargo test --workspace -- -Z unstable-options --format json | tee results.json; \
+ 	cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
 
 fmt:
 	cd $(DIR); cargo fmt -- --check

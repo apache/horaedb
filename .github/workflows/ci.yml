@@ -42,8 +42,8 @@ jobs:
         rust: [nightly-2022-08-08]
     steps:
       - uses: actions/checkout@v3
-        # with:
-        #   submodules: true
+        with:
+          submodules: recursive
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${{ matrix.rust }} --profile minimal
