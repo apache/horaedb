@@ -10,7 +10,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/embed"
 )
 
 const (
@@ -20,26 +19,11 @@ const (
 	defaultAllocIDKey     = "/id"
 )
 
-func newTestKV(t *testing.T) clientv3.KV {
-	re := require.New(t)
-	cfg := etcdutil.NewTestSingleConfig()
-	etcd, err := embed.StartEtcd(cfg)
-	re.NoError(err)
-	<-etcd.Server.ReadyNotify()
-
-	endpoint := cfg.LCUrls[0].String()
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{endpoint},
-	})
-	re.NoError(err)
-
-	return client
-}
-
 func TestMultipleAllocBasedOnKV(t *testing.T) {
 	start := 0
 	size := 201
-	kv := newTestKV(t)
+	_, kv, close := etcdutil.PrepareEtcdServerAndClient(t)
+	defer close()
 
 	testAllocIDValue(t, kv, start, size)
 	testAllocIDValue(t, kv, ((start+size)/defaultStep+1)*defaultStep, size)

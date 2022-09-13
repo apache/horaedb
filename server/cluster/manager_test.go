@@ -13,10 +13,8 @@ import (
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/embed"
 )
 
 const (
@@ -44,41 +42,21 @@ const (
 	defaultThreadNum                = 20
 )
 
-func prepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, func()) {
-	cfg := etcdutil.NewTestSingleConfig()
-	etcd, err := embed.StartEtcd(cfg)
-	assert.NoError(t, err)
-
-	<-etcd.Server.ReadyNotify()
-
-	endpoint := cfg.LCUrls[0].String()
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{endpoint},
-	})
-	assert.NoError(t, err)
-
-	clean := func() {
-		etcd.Close()
-		etcdutil.CleanConfig(cfg)
-	}
-	return etcd, client, clean
-}
-
-func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV) {
-	_, client, _ := prepareEtcdServerAndClient(t)
+func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseFn) {
+	_, client, close := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
 		MaxScanLimit: 100, MinScanLimit: 10,
 	})
-	return storage, client
+	return storage, client, close
 }
 
 func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
 	return NewManagerImpl(storage, kv, schedule.NewHeartbeatStreams(context.Background()), testRootPath, defaultIDAllocatorStep)
 }
 
-func newTestClusterManager(t *testing.T) Manager {
+func newTestClusterManager(t *testing.T) (Manager, etcdutil.CloseFn) {
 	re := require.New(t)
-	storage, kv := newTestStorage(t)
+	storage, kv, close := newTestStorage(t)
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
@@ -88,7 +66,7 @@ func newTestClusterManager(t *testing.T) Manager {
 	err = manager.Start(ctx)
 	re.NoError(err)
 
-	return manager
+	return manager, close
 }
 
 func TestManagerSingleThread(t *testing.T) {
@@ -96,7 +74,8 @@ func TestManagerSingleThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	storage, kv := newTestStorage(t)
+	storage, kv, close := newTestStorage(t)
+	defer close()
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
@@ -146,7 +125,8 @@ func TestManagerMultiThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	manager := newTestClusterManager(t)
+	manager, close := newTestClusterManager(t)
+	defer close()
 	defer re.NoError(manager.Stop(ctx))
 
 	wg.Add(1)

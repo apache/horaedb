@@ -10,7 +10,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/stretchr/testify/assert"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/embed"
 	"go.etcd.io/etcd/server/v3/etcdserver"
 )
 
@@ -28,29 +27,9 @@ func (ctx *mockWatchCtx) EtcdLeaderID() uint64 {
 	return ctx.srv.Lead()
 }
 
-func prepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, func()) {
-	cfg := etcdutil.NewTestSingleConfig()
-	etcd, err := embed.StartEtcd(cfg)
-	assert.NoError(t, err)
-
-	<-etcd.Server.ReadyNotify()
-
-	endpoint := cfg.LCUrls[0].String()
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints: []string{endpoint},
-	})
-	assert.NoError(t, err)
-
-	clean := func() {
-		etcd.Close()
-		etcdutil.CleanConfig(cfg)
-	}
-	return etcd, client, clean
-}
-
 func TestWatchLeaderSingle(t *testing.T) {
-	etcd, client, clean := prepareEtcdServerAndClient(t)
-	defer clean()
+	etcd, client, close := etcdutil.PrepareEtcdServerAndClient(t)
+	defer close()
 
 	watchCtx := &mockWatchCtx{
 		stopped: false,

@@ -46,7 +46,7 @@ func (s *metaStorageImpl) ListClusters(ctx context.Context) ([]*clusterpb.Cluste
 	rangeLimit := s.opts.MaxScanLimit
 
 	clusters := make([]*clusterpb.Cluster, 0)
-	encode := func(value []byte) error {
+	do := func(_ string, value []byte) error {
 		cluster := &clusterpb.Cluster{}
 		if err := proto.Unmarshal(value, cluster); err != nil {
 			return ErrEncodeCluster.WithCausef("fail to encode cluster, err:%v", err)
@@ -56,7 +56,7 @@ func (s *metaStorageImpl) ListClusters(ctx context.Context) ([]*clusterpb.Cluste
 		return nil
 	}
 
-	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, encode)
+	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
 		return nil, errors.Wrapf(err, "fail to list clusters, start key:%s, end key:%s, range limit:%d", startKey, endKey, rangeLimit)
 	}
@@ -179,7 +179,7 @@ func (s *metaStorageImpl) ListSchemas(ctx context.Context, clusterID uint32) ([]
 	rangeLimit := s.opts.MaxScanLimit
 
 	schemas := make([]*clusterpb.Schema, 0)
-	encode := func(value []byte) error {
+	do := func(_ string, value []byte) error {
 		schema := &clusterpb.Schema{}
 		if err := proto.Unmarshal(value, schema); err != nil {
 			return ErrEncodeSchema.WithCausef("fail to encode schema, clusterID:%d, err:%v", clusterID, err)
@@ -189,7 +189,7 @@ func (s *metaStorageImpl) ListSchemas(ctx context.Context, clusterID uint32) ([]
 		return nil
 	}
 
-	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, encode)
+	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
 		return nil, errors.Wrapf(err, "fail to list schemas, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
 	}
@@ -289,7 +289,7 @@ func (s *metaStorageImpl) ListTables(ctx context.Context, clusterID uint32, sche
 	rangeLimit := s.opts.MaxScanLimit
 
 	tables := make([]*clusterpb.Table, 0)
-	encode := func(value []byte) error {
+	do := func(_ string, value []byte) error {
 		table := &clusterpb.Table{}
 		if err := proto.Unmarshal(value, table); err != nil {
 			return ErrEncodeTable.WithCausef("fail to encode table, clusterID:%d, schemaID:%d, err:%v", clusterID, schemaID, err)
@@ -298,7 +298,7 @@ func (s *metaStorageImpl) ListTables(ctx context.Context, clusterID uint32, sche
 		tables = append(tables, table)
 		return nil
 	}
-	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, encode)
+	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
 		return nil, errors.Wrapf(err, "fail to list tables, clusterID:%d, schemaID:%d, start key:%s, end key:%s, range limit:%d", clusterID, schemaID, startKey, endKey, rangeLimit)
 	}
@@ -435,7 +435,7 @@ func (s *metaStorageImpl) ListNodes(ctx context.Context, clusterID uint32) ([]*c
 	rangeLimit := s.opts.MaxScanLimit
 
 	nodes := make([]*clusterpb.Node, 0)
-	encode := func(value []byte) error {
+	do := func(_ string, value []byte) error {
 		node := &clusterpb.Node{}
 		if err := proto.Unmarshal(value, node); err != nil {
 			return ErrEncodeNode.WithCausef("fail to encode node, clusterID:%d, err:%v", clusterID, err)
@@ -445,7 +445,7 @@ func (s *metaStorageImpl) ListNodes(ctx context.Context, clusterID uint32) ([]*c
 		return nil
 	}
 
-	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, encode)
+	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
 		return nil, errors.Wrapf(err, "fail to list nodes, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
 	}
