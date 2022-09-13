@@ -70,6 +70,13 @@ pub enum Error {
     Channel {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display(
+        "Failed to manipulate table data, this table:{} does not belong to this worker: {}",
+        table,
+        worker_id
+    ))]
+    DataNotLegal { table: String, worker_id: usize },
 }
 
 define_result!(Error);
@@ -284,6 +291,27 @@ impl WorkerLocal {
     pub fn compaction_notifier(&self) -> CompactionNotifier {
         let data = self.data.clone();
         CompactionNotifier::new(data)
+    }
+
+    pub fn worker_id(&self) -> usize {
+        self.data.as_ref().id
+    }
+
+    pub fn validate_table_data(
+        &self,
+        table_name: &str,
+        table_id: usize,
+        worker_num: usize,
+    ) -> Result<()> {
+        let worker_id = self.data.as_ref().id;
+        if table_id % worker_num != worker_id {
+            return DataNotLegal {
+                table: table_name,
+                worker_id,
+            }
+            .fail();
+        }
+        Ok(())
     }
 }
 
@@ -642,6 +670,10 @@ impl WriteGroup {
         let worker_data = self.worker_datas[index].clone();
 
         WriteHandle { worker_data }
+    }
+
+    pub fn worker_num(&self) -> usize {
+        self.worker_datas.len()
     }
 }
 

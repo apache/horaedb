@@ -74,6 +74,18 @@ impl Instance {
             return Ok(false);
         }
 
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(OperateByWriteWorker {
+                space_id: table_data.space_id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
+
         // Fixme(xikai): Trigger a force flush so that the data of the table in the wal
         //  is marked for deletable. However, the overhead of the flushing can
         //  be avoided.

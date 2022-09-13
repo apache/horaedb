@@ -529,10 +529,16 @@ impl TableDataSet {
         self.table_datas.len()
     }
 
-    /// Find the table which consumes maximum memtable memory usag.
-    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
+    /// Find the table that the current WorkerLocal belongs to and consumes the
+    /// largest memtable memory usage.
+    pub fn find_maximum_memory_usage_table(
+        &self,
+        worker_num: usize,
+        worker_index: usize,
+    ) -> Option<TableDataRef> {
         self.table_datas
             .values()
+            .filter(|t| t.id.as_u64() as usize % worker_num == worker_index)
             .max_by_key(|t| t.memtable_memory_usage())
             .cloned()
     }

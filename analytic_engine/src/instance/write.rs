@@ -312,6 +312,15 @@ impl Instance {
             }
         );
 
+        let worker_id = worker_local.worker_id();
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(Write)?;
+
         // Checks schema compatibility.
         table_data
             .schema()
@@ -334,7 +343,7 @@ impl Instance {
 
         if self.should_flush_instance() {
             if let Some(space) = self.space_store.find_maximum_memory_usage_space() {
-                if let Some(table) = space.find_maximum_memory_usage_table() {
+                if let Some(table) = space.find_maximum_memory_usage_table(worker_id) {
                     info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
                           table.name,
                           table.memtable_memory_usage(),
@@ -347,7 +356,7 @@ impl Instance {
         }
 
         if space.should_flush_space() {
-            if let Some(table) = space.find_maximum_memory_usage_table() {
+            if let Some(table) = space.find_maximum_memory_usage_table(worker_id) {
                 info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
                       table.name,
                       table.memtable_memory_usage() ,
@@ -368,10 +377,18 @@ impl Instance {
     /// Write log_batch into wal, return the sequence number of log_batch.
     async fn write_to_wal(
         &self,
-        _worker_local: &WorkerLocal,
+        worker_local: &WorkerLocal,
         table_data: &TableData,
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
+        worker_local
+            .validate_table_data(
+                &table_data.name,
+                table_data.id.as_u64() as usize,
+                self.write_group_worker_num,
+            )
+            .context(Write)?;
+
         // Convert into pb
         let mut write_req_pb = table_requests::WriteRequest::new();
         // Use the table schema instead of the schema in request to avoid schema
