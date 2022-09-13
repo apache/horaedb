@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
@@ -15,24 +16,22 @@ import (
 )
 
 const (
-	defaultRootPath          = "/ceresmeta"
-	name1                    = "name_1"
-	name2                    = "name_2"
-	name3                    = "name_3"
-	defaultDesc              = "desc"
-	defaultClusterID         = 1
-	defaultSchemaID          = 1
-	defaultVersion           = 0
-	nodeName1                = "127.0.0.1:8081"
-	nodeName2                = "127.0.0.2:8081"
-	nodeName3                = "127.0.0.3:8081"
-	nodeName4                = "127.0.0.4:8081"
-	nodeName5                = "127.0.0.5:8081"
-	defaultMinNodeCount      = 1
-	defaultReplicationFactor = 3
-	defaultShardTotal        = 8
-	defaultShardID           = 1
-	defaultCount             = 10
+	defaultRootPath       = "/ceresmeta"
+	name1                 = "name_1"
+	name2                 = "name_2"
+	name3                 = "name_3"
+	defaultDesc           = "desc"
+	defaultClusterID      = 1
+	defaultSchemaID       = 1
+	defaultVersion        = 0
+	nodeName1             = "127.0.0.1:8081"
+	nodeName2             = "127.0.0.2:8081"
+	nodeName3             = "127.0.0.3:8081"
+	nodeName4             = "127.0.0.4:8081"
+	nodeName5             = "127.0.0.5:8081"
+	defaultShardID        = 1
+	defaultCount          = 10
+	defaultRequestTimeout = time.Second * 100
 )
 
 func TestCluster(t *testing.T) {
@@ -67,27 +66,6 @@ func TestCluster(t *testing.T) {
 		re.Equal(clusters[i].CreatedAt, values[i].CreatedAt)
 		re.Equal(clusters[i].ShardTotal, values[i].ShardTotal)
 	}
-
-	// Test to put cluster.
-	cluster := &clusterpb.Cluster{
-		Id:                defaultClusterID,
-		Name:              name1,
-		MinNodeCount:      defaultMinNodeCount,
-		ReplicationFactor: defaultReplicationFactor,
-		ShardTotal:        defaultShardTotal,
-	}
-	err = s.PutCluster(ctx, defaultClusterID, cluster)
-	re.NoError(err)
-
-	// Test to get cluster.
-	value, err := s.GetCluster(ctx, defaultClusterID)
-	re.NoError(err)
-	re.Equal(cluster.Id, value.Id)
-	re.Equal(cluster.Name, value.Name)
-	re.Equal(cluster.MinNodeCount, value.MinNodeCount)
-	re.Equal(cluster.ReplicationFactor, value.ReplicationFactor)
-	re.Equal(cluster.CreatedAt, value.CreatedAt)
-	re.Equal(cluster.ShardTotal, value.ShardTotal)
 }
 
 func TestClusterTopology(t *testing.T) {
@@ -141,22 +119,6 @@ func TestSchemes(t *testing.T) {
 
 	// Test to list schemas.
 	value, err := s.ListSchemas(ctx, defaultClusterID)
-	re.NoError(err)
-	for i := 0; i < defaultCount; i++ {
-		re.Equal(schemas[i].Id, value[i].Id)
-		re.Equal(schemas[i].ClusterId, value[i].ClusterId)
-		re.Equal(schemas[i].Name, value[i].Name)
-		re.Equal(schemas[i].CreatedAt, value[i].CreatedAt)
-	}
-
-	// Test to put schemas.
-	for i := 0; i < defaultCount; i++ {
-		schemas[i].Name = name2
-	}
-	err = s.PutSchemas(ctx, defaultClusterID, schemas)
-	re.NoError(err)
-
-	value, err = s.ListSchemas(ctx, defaultClusterID)
 	re.NoError(err)
 	for i := 0; i < defaultCount; i++ {
 		re.Equal(schemas[i].Id, value[i].Id)
@@ -243,7 +205,7 @@ func TestTables(t *testing.T) {
 	re.NoError(err)
 
 	value, exist, err = s.GetTable(ctx, defaultClusterID, defaultSchemaID, name1)
-	re.NoError(err)
+	re.Error(err)
 	re.Empty(value)
 	re.True(!exist)
 }
@@ -277,10 +239,9 @@ func TestShardTopologies(t *testing.T) {
 	// Test to put shard topologies.
 	for i := 0; i < defaultCount; i++ {
 		shardTopologies[i].Version = 1
+		err = s.PutShardTopology(ctx, defaultClusterID, defaultVersion, shardTopologies[i])
+		re.NoError(err)
 	}
-
-	err = s.PutShardTopologies(ctx, defaultClusterID, shardID, defaultVersion, shardTopologies)
-	re.NoError(err)
 
 	value, err = s.ListShardTopologies(ctx, defaultClusterID, shardID)
 	re.NoError(err)

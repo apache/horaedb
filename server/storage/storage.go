@@ -8,7 +8,6 @@ import (
 
 // Storage is the interface for the backend storage of the ceresmeta.
 type Storage interface {
-	KV
 	MetaStorage
 }
 

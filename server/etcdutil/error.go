@@ -7,6 +7,5 @@ import "github.com/CeresDB/ceresmeta/pkg/coderr"
 var (
 	ErrEtcdKVGet         = coderr.NewCodeError(coderr.Internal, "etcd KV get failed")
 	ErrEtcdKVGetResponse = coderr.NewCodeError(coderr.Internal, "etcd invalid get value response must only one")
-	ErrEtcdKVPut         = coderr.NewCodeError(coderr.Internal, "etcd KV put failed")
-	ErrEtcdKVDelete      = coderr.NewCodeError(coderr.Internal, "etcd KV delete failed")
+	ErrEtcdKVGetNotFound = coderr.NewCodeError(coderr.Internal, "etcd KV get value not found")
 )

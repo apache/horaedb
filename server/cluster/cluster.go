@@ -358,8 +358,9 @@ func (c *Cluster) GetOrCreateTable(ctx context.Context, nodeName string, schemaN
 			shardID, shardTopologies)
 	}
 
-	shardTopologies[0].TableIds = append(shardTopologies[0].TableIds, tableID)
-	if err = c.storage.PutShardTopologies(ctx, c.clusterID, []uint32{shardID}, shardTopologies[0].GetVersion(), shardTopologies); err != nil {
+	shardTopology := shardTopologies[0]
+	shardTopology.TableIds = append(shardTopology.TableIds, tableID)
+	if err = c.storage.PutShardTopology(ctx, c.clusterID, shardTopology.GetVersion(), shardTopology); err != nil {
 		return nil, errors.Wrap(err, "cluster CreateTable")
 	}
 
