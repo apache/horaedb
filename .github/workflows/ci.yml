@@ -69,6 +69,7 @@ jobs:
           rustup component add rustfmt
       - name: Run
         run: |
+          make check-license
           make clippy
           make fmt
 

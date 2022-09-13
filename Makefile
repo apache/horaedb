@@ -40,6 +40,9 @@ test-ut:
 fmt:
 	cd $(DIR); cargo fmt -- --check
 
+check-license:
+	cd $(DIR); sh scripts/check-license.sh
+
 clippy:
 	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings
 
