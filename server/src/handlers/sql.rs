@@ -166,20 +166,13 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         query: &request.query,
     })?;
 
-    info!(
-        "sql handler execute finished, request_id:{}, cost:{}ms, request:{:?}",
-        request_id,
-        begin_instant.saturating_elapsed().as_millis(),
-        request
-    );
-
     // Convert output to json
     let resp = convert_output(output).context(ArrowToString {
         query: &request.query,
     })?;
 
     info!(
-        "sql handler convert output finished, request_id:{}, cost:{}ms, request:{:?}",
+        "sql handler finished, request_id:{}, cost:{}ms, request:{:?}",
         request_id,
         begin_instant.saturating_elapsed().as_millis(),
         request

@@ -2,10 +2,11 @@
 
 //! Query executor
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
+use common_util::time::InstantExt;
 use futures::TryStreamExt;
 use log::{debug, info};
 use snafu::{ResultExt, Snafu};
@@ -92,6 +93,7 @@ impl Executor for ExecutorImpl {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
         let request_id = ctx.request_id();
+        let begin_instant = Instant::now();
 
         let physical_plan = optimize_plan(ctx, plan).await?;
 
@@ -107,8 +109,9 @@ impl Executor for ExecutorImpl {
         let record_batches = collect(stream).await?;
 
         info!(
-            "Executor executed plan, request_id:{}, plan_and_metrics: {}",
+            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
             request_id,
+            begin_instant.saturating_elapsed().as_millis(),
             physical_plan.metrics_to_string()
         );
 
