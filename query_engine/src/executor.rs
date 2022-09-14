@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
 use futures::TryStreamExt;
-use log::debug;
+use log::{debug, info};
 use snafu::{ResultExt, Snafu};
 use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
@@ -106,7 +106,7 @@ impl Executor for ExecutorImpl {
         // calculation
         let record_batches = collect(stream).await?;
 
-        debug!(
+        info!(
             "Executor executed plan, request_id:{}, plan_and_metrics: {}",
             request_id,
             physical_plan.metrics_to_string()

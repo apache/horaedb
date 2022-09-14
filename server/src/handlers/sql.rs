@@ -2,11 +2,14 @@
 
 //! SQL request handler
 
+use std::time::Instant;
+
 use arrow_deps::arrow::error::Result as ArrowResult;
 use common_types::{
     datum::{Datum, DatumKind},
     request_id::RequestId,
 };
+use common_util::time::InstantExt;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
 use query_engine::executor::RecordBatchVec;
@@ -101,6 +104,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     request: Request,
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
+    let begin_instant = Instant::now();
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
         request_id, request
@@ -162,13 +166,22 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         query: &request.query,
     })?;
 
+    info!(
+        "sql handler execute finished, request_id:{}, cost:{}ms, request:{:?}",
+        request_id,
+        begin_instant.saturating_elapsed().as_millis(),
+        request
+    );
+
     // Convert output to json
     let resp = convert_output(output).context(ArrowToString {
         query: &request.query,
     })?;
 
     info!(
-        "sql handler finished processing request, request:{:?}",
+        "sql handler convert output finished, request_id:{}, cost:{}ms, request:{:?}",
+        request_id,
+        begin_instant.saturating_elapsed().as_millis(),
         request
     );
 

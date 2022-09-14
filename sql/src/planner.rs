@@ -363,9 +363,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     })?;
             schema_builder = schema_builder
                 .enable_tsid_primary_key(true)
-                .add_key_column(timestamp_column)
-                .context(BuildTableSchema)?
                 .add_key_column(column_schema)
+                .context(BuildTableSchema)?
+                .add_key_column(timestamp_column)
                 .context(BuildTableSchema)?;
         }
 

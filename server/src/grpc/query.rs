@@ -153,7 +153,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         })?;
 
     info!(
-        "Grpc handle query success, catalog:{}, tenant:{}, request_id:{}, cost:{}, request:{:?}",
+        "Grpc handle query success, catalog:{}, tenant:{}, request_id:{}, cost:{}ms, request:{:?}",
         ctx.catalog(),
         ctx.tenant(),
         request_id,
