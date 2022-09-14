@@ -184,7 +184,8 @@ fn fill_default_values(
         // Optimize logicalß expr
         let execution_props = ExecutionProps::default();
         let mut const_optimizer = ConstEvaluator::new(&execution_props);
-        let evaluated_expr = default_value_expr.clone()
+        let evaluated_expr = default_value_expr
+            .clone()
             .rewrite(&mut const_optimizer)
             .context(DataFusionExpr)?;
 

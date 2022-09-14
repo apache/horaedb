@@ -9,8 +9,10 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::datafusion_expr::expr::Expr as DfLogicalExpr;
-use arrow_deps::datafusion::logical_plan::LogicalPlan as DataFusionLogicalPlan;
+use arrow_deps::{
+    datafusion::logical_plan::LogicalPlan as DataFusionLogicalPlan,
+    datafusion_expr::expr::Expr as DfLogicalExpr,
+};
 use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema};
 use common_util::define_result;
 use snafu::Snafu;
@@ -122,7 +124,8 @@ pub struct InsertPlan {
     pub table: TableRef,
     /// RowGroup to insert
     pub rows: RowGroup,
-    /// Column idxes in schema to its defaut-value-expr which is used to fill values
+    /// Column idxes in schema to its defaut-value-expr which is used to fill
+    /// values
     pub default_value_map: HashMap<usize, DfLogicalExpr>,
 }
 
