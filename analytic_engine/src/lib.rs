@@ -69,6 +69,9 @@ pub struct Config {
     pub db_write_buffer_size: usize,
     // End of global write buffer options.
 
+    // Batch size for scan sst
+    pub scan_batch_size: usize,
+
     // Obkv wal config.
     pub obkv_wal: ObkvWalConfig,
 }
@@ -95,6 +98,7 @@ impl Default for Config {
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
+            scan_batch_size: 500,
             obkv_wal: ObkvWalConfig::default(),
         }
     }

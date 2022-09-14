@@ -175,6 +175,8 @@ pub struct Instance {
     pub(crate) space_write_buffer_size: usize,
     /// replay wal batch size
     pub(crate) replay_batch_size: usize,
+    /// batch size for scan sst
+    pub(crate) scan_batch_size: usize,
 }
 
 impl Instance {
