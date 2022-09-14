@@ -5,14 +5,14 @@
 use std::{collections::HashMap, ops::IndexMut, sync::Arc};
 
 use arrow_deps::{
-    arrow::{compute::CastOptions, datatypes::Schema as ArrowSchema, record_batch::RecordBatch},
+    arrow::{datatypes::Schema as ArrowSchema, record_batch::RecordBatch},
     datafusion::{
         common::DFSchema,
         error::DataFusionError,
         logical_expr::ColumnarValue as DfColumnarValue,
         optimizer::simplify_expressions::ConstEvaluator,
         physical_expr::{
-            create_physical_expr, execution_props::ExecutionProps, expressions::CastExpr,
+            create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
         },
     },
     datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable},
@@ -203,13 +203,8 @@ fn fill_default_values(
             .context(DataFusionDataType)?;
         let to_type = rows.schema().column(*column_idx).data_type;
 
-        // Try wrap cast expr
         let casted_physical_expr = if from_type != to_type.into() {
-            Arc::new(CastExpr::new(
-                physical_expr,
-                to_type.into(),
-                CastOptions { safe: false },
-            ))
+            Arc::new(TryCastExpr::new(physical_expr, to_type.into()))
         } else {
             physical_expr
         };

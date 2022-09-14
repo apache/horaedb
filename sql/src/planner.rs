@@ -31,7 +31,7 @@ use common_types::{
     schema::{self, Schema, TSID_COLUMN},
 };
 use df_operator::visitor::find_columns_by_expr;
-use hashbrown::HashMap as CteHashMap;
+use hashbrown::HashMap as NoStdHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -520,7 +520,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                             // This column in schema is not in insert stmt
                             if let Some(expr) = &column.default_value {
                                 let expr = df_planner
-                                    .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
+                                    .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
                                     .context(DataFusionExpr)?;
 
                                 default_value_map.insert(idx, expr);
@@ -845,7 +845,7 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
     for column_def in name_column_map.values() {
         if let Some(expr) = &column_def.default_value {
             let df_logical_expr = df_planner
-                .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
+                .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
                 .context(DataFusionExpr)?;
 
             // Check input columns for the expr. Currently only suppory expr without input

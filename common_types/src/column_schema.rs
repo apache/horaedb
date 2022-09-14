@@ -62,6 +62,15 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
         backtrace: Backtrace,
     },
+    #[snafu(display(
+        "Can not deserialize default-value-option from pb data, error:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    InvalidDefaultValueData {
+        source: serde_json::error::Error,
+        backtrace: Backtrace,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -257,15 +266,21 @@ impl ColumnSchema {
     }
 }
 
-/// TRYFROM
-impl From<common_pb::ColumnSchema> for ColumnSchema {
-    fn from(column_schema: common_pb::ColumnSchema) -> Self {
+impl TryFrom<common_pb::ColumnSchema> for ColumnSchema {
+    type Error = Error;
+
+    fn try_from(column_schema: common_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let default_value_bytes = column_schema.get_default_value();
-        let default_value = (!default_value_bytes.is_empty())
-            .then(|| serde_json::from_slice::<Expr>(default_value_bytes).unwrap());
+        let default_value = if !default_value_bytes.is_empty() {
+            let expr = serde_json::from_slice::<Expr>(default_value_bytes)
+                .context(InvalidDefaultValueData)?;
+            Some(expr)
+        } else {
+            None
+        };
 
-        Self {
+        Ok(Self {
             id: column_schema.id,
             name: column_schema.name,
             data_type: DatumKind::from(column_schema.data_type),
@@ -274,7 +289,7 @@ impl From<common_pb::ColumnSchema> for ColumnSchema {
             comment: column_schema.comment,
             escaped_name,
             default_value,
-        }
+        })
     }
 }
 
@@ -484,7 +499,7 @@ mod tests {
         // Check pb specific fields
         assert!(pb_schema.is_tag);
 
-        let schema_from_pb = ColumnSchema::from(pb_schema);
+        let schema_from_pb = ColumnSchema::try_from(pb_schema).unwrap();
         assert_eq!(&schema_from_pb, &column_schema);
     }
 
