@@ -30,9 +30,15 @@ pub struct IterOptions {
     pub batch_size: usize,
 }
 
+impl IterOptions {
+    pub fn new(batch_size: usize) -> Self {
+        Self { batch_size }
+    }
+}
+
 impl Default for IterOptions {
     fn default() -> Self {
-        Self { batch_size: 500 }
+        Self::new(500)
     }
 }
 

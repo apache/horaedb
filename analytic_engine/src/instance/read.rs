@@ -94,7 +94,7 @@ impl Instance {
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
 
-        let iter_options = IterOptions::default();
+        let iter_options = IterOptions::new(self.scan_batch_size);
         let table_options = table_data.table_options();
 
         if need_merge_sort_streams(&table_data.table_options(), &request) {
