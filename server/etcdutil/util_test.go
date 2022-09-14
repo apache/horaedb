@@ -23,8 +23,8 @@ func makeTestKeys(num int) []string {
 func TestScanNormal(t *testing.T) {
 	r := require.New(t)
 
-	_, client, close := PrepareEtcdServerAndClient(t)
-	defer close()
+	_, client, closeSrv := PrepareEtcdServerAndClient(t)
+	defer closeSrv()
 
 	keys := makeTestKeys(51)
 	lastKey := keys[len(keys)-1]
@@ -63,8 +63,8 @@ func TestScanNormal(t *testing.T) {
 func TestScanFailed(t *testing.T) {
 	r := require.New(t)
 
-	_, client, close := PrepareEtcdServerAndClient(t)
-	defer close()
+	_, client, closeSrv := PrepareEtcdServerAndClient(t)
+	defer closeSrv()
 
 	keys := makeTestKeys(50)
 	ctx := context.Background()

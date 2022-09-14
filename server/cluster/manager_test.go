@@ -43,11 +43,11 @@ const (
 )
 
 func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseFn) {
-	_, client, close := etcdutil.PrepareEtcdServerAndClient(t)
+	_, client, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
 		MaxScanLimit: 100, MinScanLimit: 10,
 	})
-	return storage, client, close
+	return storage, client, closeSrv
 }
 
 func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
@@ -56,7 +56,7 @@ func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Mana
 
 func newTestClusterManager(t *testing.T) (Manager, etcdutil.CloseFn) {
 	re := require.New(t)
-	storage, kv, close := newTestStorage(t)
+	storage, kv, closeSrv := newTestStorage(t)
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
@@ -66,7 +66,7 @@ func newTestClusterManager(t *testing.T) (Manager, etcdutil.CloseFn) {
 	err = manager.Start(ctx)
 	re.NoError(err)
 
-	return manager, close
+	return manager, closeSrv
 }
 
 func TestManagerSingleThread(t *testing.T) {
@@ -74,8 +74,8 @@ func TestManagerSingleThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	storage, kv, close := newTestStorage(t)
-	defer close()
+	storage, kv, closeSrv := newTestStorage(t)
+	defer closeSrv()
 	manager, err := newClusterManagerWithStorage(storage, kv)
 	re.NoError(err)
 
@@ -125,8 +125,8 @@ func TestManagerMultiThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	manager, close := newTestClusterManager(t)
-	defer close()
+	manager, closeMgr := newTestClusterManager(t)
+	defer closeMgr()
 	defer re.NoError(manager.Stop(ctx))
 
 	wg.Add(1)

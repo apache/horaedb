@@ -16,14 +16,14 @@ import (
 func (s *Service) getForwardedCeresmetaClient(ctx context.Context) (metaservicepb.CeresmetaRpcServiceClient, error) {
 	forwardedAddr, _, err := s.getForwardedAddr(ctx)
 	if err != nil {
-		return nil, errors.Wrap(err, "get forwarded ceresmeta client")
+		return nil, errors.WithMessage(err, "get forwarded ceresmeta client")
 	}
 
 	if forwardedAddr != "" {
 		log.Info("try to create ceresmeta client", zap.String("addr", forwardedAddr))
 		ceresmetaClient, err := s.getCeresmetaClient(ctx, forwardedAddr)
 		if err != nil {
-			return nil, errors.Wrapf(err, "get forwarded ceresmeta client, addr:%s", forwardedAddr)
+			return nil, errors.WithMessagef(err, "get forwarded ceresmeta client, addr:%s", forwardedAddr)
 		}
 		return ceresmetaClient, nil
 	}
@@ -33,7 +33,7 @@ func (s *Service) getForwardedCeresmetaClient(ctx context.Context) (metaservicep
 func (s *Service) getCeresmetaClient(ctx context.Context, addr string) (metaservicepb.CeresmetaRpcServiceClient, error) {
 	client, err := s.getForwardedGrpcClient(ctx, addr)
 	if err != nil {
-		return nil, errors.Wrapf(err, "get ceresmeta client, addr:%s", addr)
+		return nil, errors.WithMessagef(err, "get ceresmeta client, addr:%s", addr)
 	}
 	return metaservicepb.NewCeresmetaRpcServiceClient(client), nil
 }
@@ -54,7 +54,7 @@ func (s *Service) getForwardedGrpcClient(ctx context.Context, forwardedAddr stri
 func (s *Service) getForwardedAddr(ctx context.Context) (string, bool, error) {
 	member, err := s.h.GetLeader(ctx)
 	if err != nil {
-		return "", false, errors.Wrap(err, "get forwarded addr")
+		return "", false, errors.WithMessage(err, "get forwarded addr")
 	}
 	if member.IsLocal {
 		return "", true, nil

@@ -47,7 +47,7 @@ func NewEventHandler(hbstream *HeartbeatStreams) *EventHandler {
 
 func (e *EventHandler) Dispatch(ctx context.Context, nodeName string, event Event) error {
 	if err := e.hbstreams.SendMsgAsync(ctx, nodeName, event.ToHeartbeatResp()); err != nil {
-		return errors.Wrap(err, "event handler dispatch")
+		return errors.WithMessage(err, "event handler dispatch")
 	}
 	return nil
 }

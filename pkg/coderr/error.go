@@ -57,11 +57,11 @@ func NewCodeError(code Code, desc string) CodeError {
 type codeError struct {
 	code  Code
 	desc  string
-	cause string
+	cause error
 }
 
 func (e *codeError) Error() string {
-	return fmt.Sprintf("(#%d)%s, cause:%s", e.code, e.desc, e.cause)
+	return fmt.Sprintf("(#%d)%s, cause:%+v", e.code, e.desc, e.cause)
 }
 
 func (e *codeError) Code() Code {
@@ -69,17 +69,20 @@ func (e *codeError) Code() Code {
 }
 
 func (e *codeError) WithCausef(format string, a ...any) CodeError {
+	errMsg := fmt.Sprintf(format, a...)
+	causeWithStack := errors.WithStack(errors.New(errMsg))
 	return &codeError{
 		code:  e.code,
 		desc:  e.desc,
-		cause: fmt.Sprintf(format, a...),
+		cause: causeWithStack,
 	}
 }
 
 func (e *codeError) WithCause(cause error) CodeError {
+	causeWithStack := errors.WithStack(cause)
 	return &codeError{
 		code:  e.code,
 		desc:  e.desc,
-		cause: cause.Error(),
+		cause: causeWithStack,
 	}
 }

@@ -58,7 +58,7 @@ func (s *metaStorageImpl) ListClusters(ctx context.Context) ([]*clusterpb.Cluste
 
 	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to list clusters, start key:%s, end key:%s, range limit:%d", startKey, endKey, rangeLimit)
+		return nil, errors.WithMessagef(err, "fail to list clusters, start key:%s, end key:%s, range limit:%d", startKey, endKey, rangeLimit)
 	}
 
 	return clusters, nil
@@ -85,7 +85,7 @@ func (s *metaStorageImpl) CreateCluster(ctx context.Context, cluster *clusterpb.
 		Then(opCreateCluster).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create cluster, clusterID:%d, key:%s", cluster.Id, key)
+		return nil, errors.WithMessagef(err, "fail to create cluster, clusterID:%d, key:%s", cluster.Id, key)
 	}
 	if !resp.Succeeded {
 		return nil, ErrCreateClusterAgain.WithCausef("cluster may already exist, clusterID:%d, key:%s, resp:%v", cluster.Id, key, resp)
@@ -117,7 +117,7 @@ func (s *metaStorageImpl) CreateClusterTopology(ctx context.Context, clusterTopo
 		Then(opCreateClusterTopology, opCreateClusterTopologyLatestVersion).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create cluster topology, clusterID:%d, key:%s", clusterTopology.ClusterId, key)
+		return nil, errors.WithMessagef(err, "fail to create cluster topology, clusterID:%d, key:%s", clusterTopology.ClusterId, key)
 	}
 	if !resp.Succeeded {
 		return nil, ErrCreateClusterTopologyAgain.WithCausef("cluster topology may already exist, clusterID:%d, key:%s, resp:%v", clusterTopology.ClusterId, key, resp)
@@ -129,13 +129,13 @@ func (s *metaStorageImpl) GetClusterTopology(ctx context.Context, clusterID uint
 	key := makeClusterTopologyLatestVersionKey(s.rootPath, clusterID)
 	version, err := etcdutil.Get(ctx, s.client, key)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to get cluster topology latest version, clusterID:%d, key:%s", clusterID, key)
+		return nil, errors.WithMessagef(err, "fail to get cluster topology latest version, clusterID:%d, key:%s", clusterID, key)
 	}
 
 	key = makeClusterTopologyKey(s.rootPath, clusterID, version)
 	value, err := etcdutil.Get(ctx, s.client, key)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to get cluster topology, clusterID:%d, key:%s", clusterID, key)
+		return nil, errors.WithMessagef(err, "fail to get cluster topology, clusterID:%d, key:%s", clusterID, key)
 	}
 
 	clusterTopology := &clusterpb.ClusterTopology{}
@@ -164,7 +164,7 @@ func (s *metaStorageImpl) PutClusterTopology(ctx context.Context, clusterID uint
 		Then(opPutClusterTopology, opPutLatestVersion).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "fail to put cluster topology, clusterID:%d, key:%s", clusterID, key)
+		return errors.WithMessagef(err, "fail to put cluster topology, clusterID:%d, key:%s", clusterID, key)
 	}
 	if !resp.Succeeded {
 		return ErrPutClusterTopologyConflict.WithCausef("cluster topology may have been modified, clusterID:%d, key:%s, resp:%v", clusterID, key, resp)
@@ -191,7 +191,7 @@ func (s *metaStorageImpl) ListSchemas(ctx context.Context, clusterID uint32) ([]
 
 	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to list schemas, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
+		return nil, errors.WithMessagef(err, "fail to list schemas, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
 	}
 
 	return schemas, nil
@@ -218,7 +218,7 @@ func (s *metaStorageImpl) CreateSchema(ctx context.Context, clusterID uint32, sc
 		Then(opCreateSchema).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create schema, clusterID:%d, schemaID:%d, key:%s", clusterID, schema.Id, key)
+		return nil, errors.WithMessagef(err, "fail to create schema, clusterID:%d, schemaID:%d, key:%s", clusterID, schema.Id, key)
 	}
 	if !resp.Succeeded {
 		return nil, ErrCreateSchemaAgain.WithCausef("schema may already exist, clusterID:%d, schemaID:%d, key:%s, resp:%v", clusterID, schema.Id, key, resp)
@@ -250,7 +250,7 @@ func (s *metaStorageImpl) CreateTable(ctx context.Context, clusterID uint32, sch
 		Then(opCreateTable, opCreateNameToID).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create table, clusterID:%d, schemaID:%d, tableID:%d, key:%s", clusterID, schemaID, table.Id, key)
+		return nil, errors.WithMessagef(err, "fail to create table, clusterID:%d, schemaID:%d, tableID:%d, key:%s", clusterID, schemaID, table.Id, key)
 	}
 	if !resp.Succeeded {
 		return nil, ErrCreateTableAgain.WithCausef("table may already exist, clusterID:%d, schemaID:%d, tableID:%d, key:%s, resp:%v", clusterID, schemaID, table.Id, key, resp)
@@ -261,18 +261,18 @@ func (s *metaStorageImpl) CreateTable(ctx context.Context, clusterID uint32, sch
 func (s *metaStorageImpl) GetTable(ctx context.Context, clusterID uint32, schemaID uint32, tableName string) (*clusterpb.Table, bool, error) {
 	value, err := etcdutil.Get(ctx, s.client, makeNameToIDKey(s.rootPath, clusterID, schemaID, tableName))
 	if err != nil {
-		return nil, false, errors.Wrapf(err, "fail to get table id, clusterID:%d, schemaID:%d, table name:%s", clusterID, schemaID, tableName)
+		return nil, false, errors.WithMessagef(err, "fail to get table id, clusterID:%d, schemaID:%d, table name:%s", clusterID, schemaID, tableName)
 	}
 
 	tableID, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
-		return nil, false, errors.Wrapf(err, "string to int failed")
+		return nil, false, errors.WithMessagef(err, "string to int failed")
 	}
 
 	key := makeTableKey(s.rootPath, clusterID, schemaID, tableID)
 	value, err = etcdutil.Get(ctx, s.client, key)
 	if err != nil {
-		return nil, false, errors.Wrapf(err, "fail to get table, clusterID:%d, schemaID:%d, tableID:%d, key:%s", clusterID, schemaID, tableID, key)
+		return nil, false, errors.WithMessagef(err, "fail to get table, clusterID:%d, schemaID:%d, tableID:%d, key:%s", clusterID, schemaID, tableID, key)
 	}
 
 	table := &clusterpb.Table{}
@@ -300,7 +300,7 @@ func (s *metaStorageImpl) ListTables(ctx context.Context, clusterID uint32, sche
 	}
 	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to list tables, clusterID:%d, schemaID:%d, start key:%s, end key:%s, range limit:%d", clusterID, schemaID, startKey, endKey, rangeLimit)
+		return nil, errors.WithMessagef(err, "fail to list tables, clusterID:%d, schemaID:%d, start key:%s, end key:%s, range limit:%d", clusterID, schemaID, startKey, endKey, rangeLimit)
 	}
 
 	return tables, nil
@@ -311,12 +311,12 @@ func (s *metaStorageImpl) DeleteTable(ctx context.Context, clusterID uint32, sch
 
 	value, err := etcdutil.Get(ctx, s.client, nameKey)
 	if err != nil {
-		return errors.Wrapf(err, "fail to get table id, clusterID:%d, schemaID:%d, table name:%s", clusterID, schemaID, tableName)
+		return errors.WithMessagef(err, "fail to get table id, clusterID:%d, schemaID:%d, table name:%s", clusterID, schemaID, tableName)
 	}
 
 	tableID, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
-		return errors.Wrapf(err, "string to int failed")
+		return errors.WithMessagef(err, "string to int failed")
 	}
 
 	key := makeTableKey(s.rootPath, clusterID, schemaID, tableID)
@@ -332,7 +332,7 @@ func (s *metaStorageImpl) DeleteTable(ctx context.Context, clusterID uint32, sch
 		Then(opDeleteNameToID, opDeleteTable).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "fail to delete table, clusterID:%d, schemaID:%d, tableID:%d, tableName:%s", clusterID, schemaID, tableID, tableName)
+		return errors.WithMessagef(err, "fail to delete table, clusterID:%d, schemaID:%d, tableID:%d, tableName:%s", clusterID, schemaID, tableID, tableName)
 	}
 	if !resp.Succeeded {
 		return ErrDeleteTableAgain.WithCausef("table may already delete, clusterID:%d, schemaID:%d, tableID:%d, tableName:%s", clusterID, schemaID, tableID, tableName)
@@ -368,7 +368,7 @@ func (s *metaStorageImpl) CreateShardTopologies(ctx context.Context, clusterID u
 		Then(opCreateShardTopologiesAndLatestVersion...).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create shard topology, clusterID:%d", clusterID)
+		return nil, errors.WithMessagef(err, "fail to create shard topology, clusterID:%d", clusterID)
 	}
 	if !resp.Succeeded {
 		return nil, ErrCreateShardTopologyAgain.WithCausef("shard topology may already exist, clusterID:%d, resp:%v", clusterID, resp)
@@ -383,13 +383,13 @@ func (s *metaStorageImpl) ListShardTopologies(ctx context.Context, clusterID uin
 		key := makeShardLatestVersionKey(s.rootPath, clusterID, shardID)
 		version, err := etcdutil.Get(ctx, s.client, key)
 		if err != nil {
-			return nil, errors.Wrapf(err, "fail to list shard topology latest version, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
+			return nil, errors.WithMessagef(err, "fail to list shard topology latest version, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
 		}
 
 		key = makeShardTopologyKey(s.rootPath, clusterID, shardID, version)
 		value, err := etcdutil.Get(ctx, s.client, key)
 		if err != nil {
-			return nil, errors.Wrapf(err, "fail to list shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
+			return nil, errors.WithMessagef(err, "fail to list shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
 		}
 
 		shardTopology := &clusterpb.ShardTopology{}
@@ -420,7 +420,7 @@ func (s *metaStorageImpl) PutShardTopology(ctx context.Context, clusterID uint32
 		Then(opPutLatestVersion, opPutShardTopology).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "fail to put shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardTopology.ShardId, key)
+		return errors.WithMessagef(err, "fail to put shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardTopology.ShardId, key)
 	}
 	if !resp.Succeeded {
 		return ErrPutShardTopologyConflict.WithCausef("shard topology may have been modified, clusterID:%d, shardID:%d, key:%s, resp:%v", clusterID, shardTopology.ShardId, key, resp)
@@ -447,7 +447,7 @@ func (s *metaStorageImpl) ListNodes(ctx context.Context, clusterID uint32) ([]*c
 
 	err := etcdutil.Scan(ctx, s.client, startKey, endKey, rangeLimit, do)
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to list nodes, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
+		return nil, errors.WithMessagef(err, "fail to list nodes, clusterID:%d, start key:%s, end key:%s, range limit:%d", clusterID, startKey, endKey, rangeLimit)
 	}
 
 	return nodes, nil
@@ -484,7 +484,7 @@ func (s *metaStorageImpl) CreateOrUpdateNode(ctx context.Context, clusterID uint
 		Else(opUpdateNode).
 		Commit()
 	if err != nil {
-		return nil, errors.Wrapf(err, "fail to create or update node, clusterID:%d, node name:%s, key:%s", clusterID, node.Name, key)
+		return nil, errors.WithMessagef(err, "fail to create or update node, clusterID:%d, node name:%s, key:%s", clusterID, node.Name, key)
 	}
 
 	return node, nil

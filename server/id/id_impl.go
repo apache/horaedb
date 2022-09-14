@@ -42,7 +42,7 @@ func (a *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
 
 	if !a.isInitialized {
 		if err := a.slowRebaseLocked(ctx); err != nil {
-			return 0, errors.Wrap(err, "alloc id")
+			return 0, errors.WithMessage(err, "alloc id")
 		}
 		a.isInitialized = true
 	}
@@ -52,7 +52,7 @@ func (a *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
 			log.Warn("fast rebase failed", zap.Error(err))
 
 			if err = a.slowRebaseLocked(ctx); err != nil {
-				return 0, errors.Wrap(err, "alloc id")
+				return 0, errors.WithMessage(err, "alloc id")
 			}
 		}
 	}
@@ -65,7 +65,7 @@ func (a *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
 func (a *AllocatorImpl) slowRebaseLocked(ctx context.Context) error {
 	resp, err := a.kv.Get(ctx, a.key)
 	if err != nil {
-		return errors.Wrapf(err, "get end id failed, key:%s", a.key)
+		return errors.WithMessagef(err, "get end id failed, key:%s", a.key)
 	}
 
 	if n := len(resp.Kvs); n > 1 {
@@ -96,7 +96,7 @@ func (a *AllocatorImpl) firstDoRebaseLocked(ctx context.Context) error {
 		Then(opPutEnd).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "put end id failed, key:%s", a.key)
+		return errors.WithMessagef(err, "put end id failed, key:%s", a.key)
 	} else if !resp.Succeeded {
 		return ErrTxnPutEndID.WithCausef("txn put end id failed, key is exist, key:%s, resp:%v", a.key, resp)
 	}
@@ -122,7 +122,7 @@ func (a *AllocatorImpl) doRebaseLocked(ctx context.Context, currEnd uint64) erro
 		Then(opPutEnd).
 		Commit()
 	if err != nil {
-		return errors.Wrapf(err, "put end id failed, key:%s, old value:%d, new value:%d", a.key, currEnd, newEnd)
+		return errors.WithMessagef(err, "put end id failed, key:%s, old value:%d, new value:%d", a.key, currEnd, newEnd)
 	} else if !resp.Succeeded {
 		return ErrTxnPutEndID.WithCausef("txn put end id failed, endEquals failed, key:%s, value:%d, resp:%v", a.key, currEnd, resp)
 	}

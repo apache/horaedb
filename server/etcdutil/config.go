@@ -60,9 +60,9 @@ func PrepareEtcdServerAndClient(t *testing.T) (*embed.Etcd, *clientv3.Client, Cl
 	})
 	assert.NoError(t, err)
 
-	close := func() {
+	closeSrv := func() {
 		etcd.Close()
 		CleanConfig(cfg)
 	}
-	return etcd, client, close
+	return etcd, client, closeSrv
 }

@@ -22,8 +22,8 @@ const (
 func TestMultipleAllocBasedOnKV(t *testing.T) {
 	start := 0
 	size := 201
-	_, kv, close := etcdutil.PrepareEtcdServerAndClient(t)
-	defer close()
+	_, kv, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
+	defer closeSrv()
 
 	testAllocIDValue(t, kv, start, size)
 	testAllocIDValue(t, kv, ((start+size)/defaultStep+1)*defaultStep, size)

@@ -124,12 +124,12 @@ func (s *Service) NodeHeartbeat(heartbeatSrv metaservicepb.CeresmetaRpcService_N
 		{
 			err = f.maybeInitForwardedStream(ctx)
 			if err != nil {
-				return errors.Wrap(err, "node heartbeat")
+				return errors.WithMessage(err, "node heartbeat")
 			}
 
 			if f.stream != nil {
 				if err = f.stream.Send(req); err != nil {
-					return errors.Wrap(err, "node heartbeat")
+					return errors.WithMessage(err, "node heartbeat")
 				}
 
 				select {
@@ -332,7 +332,7 @@ func (f *forwarder) reconnect(addr string) error {
 
 	ceresmetaClient, err := f.s.getCeresmetaClient(dialCtx, addr)
 	if err != nil {
-		return errors.Wrap(err, "forwarder reconnect")
+		return errors.WithMessage(err, "forwarder reconnect")
 	}
 
 	if ceresmetaClient != nil {
@@ -341,7 +341,7 @@ func (f *forwarder) reconnect(addr string) error {
 		f.stream, err = f.s.createHeartbeatForwardedStream(ctx, ceresmetaClient)
 		if err != nil {
 			cancel()
-			return errors.Wrap(err, "forwarder reconnect")
+			return errors.WithMessage(err, "forwarder reconnect")
 		}
 
 		// Forward the leader's response to the client.

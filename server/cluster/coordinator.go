@@ -82,11 +82,11 @@ func (c *coordinator) scatterShard(ctx context.Context, nodeInfo *metaservicepb.
 	if c.cluster.metaData.clusterTopology.State == clusterpb.ClusterTopology_STABLE {
 		shardIDs, err := c.cluster.GetShardIDs(nodeInfo.GetEndpoint())
 		if err != nil {
-			return errors.Wrap(err, "coordinator scatterShard")
+			return errors.WithMessage(err, "coordinator scatterShard")
 		}
 		if len(nodeInfo.GetShardInfos()) == 0 {
 			if err := c.eventHandler.Dispatch(ctx, nodeInfo.GetEndpoint(), &schedule.OpenEvent{ShardIDs: shardIDs}); err != nil {
-				return errors.Wrap(err, "coordinator scatterShard")
+				return errors.WithMessage(err, "coordinator scatterShard")
 			}
 		}
 	}
@@ -124,16 +124,16 @@ func (c *coordinator) scatterShard(ctx context.Context, nodeInfo *metaservicepb.
 	c.cluster.metaData.clusterTopology.ShardView = shards
 	c.cluster.metaData.clusterTopology.State = clusterpb.ClusterTopology_STABLE
 	if err := c.cluster.storage.PutClusterTopology(ctx, c.cluster.clusterID, c.cluster.metaData.clusterTopology.Version, c.cluster.metaData.clusterTopology); err != nil {
-		return errors.Wrap(err, "coordinator scatterShard")
+		return errors.WithMessage(err, "coordinator scatterShard")
 	}
 
 	if err := c.cluster.Load(ctx); err != nil {
-		return errors.Wrap(err, "coordinator scatterShard")
+		return errors.WithMessage(err, "coordinator scatterShard")
 	}
 
 	for nodeName, node := range c.cluster.nodesCache {
 		if err := c.eventHandler.Dispatch(ctx, nodeName, &schedule.OpenEvent{ShardIDs: node.shardIDs}); err != nil {
-			return errors.Wrap(err, "coordinator scatterShard")
+			return errors.WithMessage(err, "coordinator scatterShard")
 		}
 	}
 	return nil

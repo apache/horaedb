@@ -28,8 +28,8 @@ func (ctx *mockWatchCtx) EtcdLeaderID() uint64 {
 }
 
 func TestWatchLeaderSingle(t *testing.T) {
-	etcd, client, close := etcdutil.PrepareEtcdServerAndClient(t)
-	defer close()
+	etcd, client, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
+	defer closeSrv()
 
 	watchCtx := &mockWatchCtx{
 		stopped: false,

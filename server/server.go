@@ -151,7 +151,7 @@ func (srv *Server) startServer(ctx context.Context) error {
 
 	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.hbStreams, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
 	if err != nil {
-		return errors.Wrap(err, "start server")
+		return errors.WithMessage(err, "start server")
 	}
 	srv.clusterManager = manager
 
