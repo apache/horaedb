@@ -36,7 +36,7 @@ pub enum Error {
 
     #[snafu(display("Failed to handle request, err:{}", source))]
     HandleRequest {
-        source: crate::handlers::error::Error,
+        source: Box<crate::handlers::error::Error>,
     },
 
     #[snafu(display("Missing runtimes to build service.\nBacktrace:\n{}", backtrace))]
@@ -130,7 +130,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
-                        e
+                        Box::new(e)
                     })
                     .context(HandleRequest);
                 match result {
@@ -282,7 +282,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     .await
                     .map_err(|e| {
                         error!("Http service failed to handle admin reject, err:{}", e);
-                        e
+                        Box::new(e)
                     })
                     .context(HandleRequest);
 

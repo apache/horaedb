@@ -10,11 +10,12 @@ use arrow_deps::{
         common::DFSchema,
         error::DataFusionError,
         logical_expr::ColumnarValue as DfColumnarValue,
+        optimizer::simplify_expressions::ConstEvaluator,
         physical_expr::{
             create_physical_expr, execution_props::ExecutionProps, expressions::CastExpr,
         },
     },
-    datafusion_expr::expr::Expr as DfLogicalExpr,
+    datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable},
 };
 use async_trait::async_trait;
 use common_types::{
@@ -180,8 +181,16 @@ fn fill_default_values(
     let input_arrow_schema = Arc::new(ArrowSchema::empty());
     let input_batch = RecordBatch::new_empty(input_arrow_schema.clone());
     for (column_idx, default_value_expr) in default_value_map.iter() {
+        // Optimize logicalß expr
+        let execution_props = ExecutionProps::default();
+        let mut const_optimizer = ConstEvaluator::new(&execution_props);
+        let evaluated_expr = default_value_expr.clone()
+            .rewrite(&mut const_optimizer)
+            .context(DataFusionExpr)?;
+
+        // Create physical expr
         let physical_expr = create_physical_expr(
-            default_value_expr,
+            &evaluated_expr,
             &input_df_schema,
             &input_arrow_schema,
             &ExecutionProps::default(),
@@ -207,6 +216,7 @@ fn fill_default_values(
         let output = casted_physical_expr
             .evaluate(&input_batch)
             .context(DataFusionExecutor)?;
+
         fill_column_to_row_group(*column_idx, &output, rows)?;
     }
 
@@ -221,8 +231,9 @@ fn fill_column_to_row_group(
     match column {
         DfColumnarValue::Array(array) => {
             for row_idx in 0..rows.num_rows() {
-                let column_block =
-                    ColumnBlock::try_cast_arrow_array_ref(array).context(ConvertColumnBlock)?;
+                let datum_kind = rows.schema().column(column_idx).data_type;
+                let column_block = ColumnBlock::try_from_arrow_array_ref(&datum_kind, array)
+                    .context(ConvertColumnBlock)?;
                 let datum = column_block.datum(row_idx);
                 rows.get_row_mut(row_idx)
                     .map(|row| std::mem::replace(row.index_mut(column_idx), datum.clone()));

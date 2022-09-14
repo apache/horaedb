@@ -990,6 +990,7 @@ dependencies = [
 name = "common_util"
 version = "0.1.0"
 dependencies = [
+ "arrow_deps 0.1.0",
  "backtrace",
  "chrono",
  "common_types 0.1.0",

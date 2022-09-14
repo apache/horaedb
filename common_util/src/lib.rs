@@ -16,6 +16,7 @@ pub mod panic;
 pub mod runtime;
 pub mod time;
 pub mod toml;
+pub mod record_batch;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests {

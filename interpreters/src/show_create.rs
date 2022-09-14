@@ -78,7 +78,6 @@ impl ShowCreateInterpreter {
 
         let mut res = String::new();
         for col in table_schema.columns() {
-            println!("{:?}", col);
             res += format!("`{}` {}", col.name, col.data_type).as_str();
             if col.is_tag {
                 res += " TAG";

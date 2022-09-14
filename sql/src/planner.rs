@@ -17,9 +17,11 @@ use arrow_deps::{
     datafusion::{
         common::{DFField, DFSchema},
         error::DataFusionError,
+        optimizer::simplify_expressions::ConstEvaluator,
         physical_expr::{create_physical_expr, execution_props::ExecutionProps},
         sql::planner::SqlToRel,
     },
+    datafusion_expr::expr_rewriter::ExprRewritable,
 };
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -323,57 +325,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             name_column_map.insert(col.name.value.as_str(), parse_column(col)?);
         }
 
-        // Analyze default value exprs.
-        let df_planner = SqlToRel::new(&self.meta_provider);
-        let df_fields = name_column_map
-            .iter()
-            .map(|(name, column_def)| {
-                DFField::new(
-                    None,
-                    name,
-                    column_def.data_type.to_arrow_data_type(),
-                    column_def.is_nullable,
-                )
-            })
-            .collect::<Vec<_>>();
-        let df_schema =
-            DFSchema::new_with_metadata(df_fields, HashMap::new()).context(DataFusionSchema)?;
-        for column_def in name_column_map.values() {
-            if let Some(expr) = &column_def.default_value {
-                let df_logical_expr = df_planner
-                    .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
-                    .context(DataFusionExpr)?;
-
-                // Check input columns for the expr. Currently only suppory expr without input
-                ensure!(
-                    find_columns_by_expr(&df_logical_expr).is_empty(),
-                    CreateWithComplexDefaultValue {
-                        name: column_def.name.clone(),
-                        default_value: expr.clone(),
-                    }
-                );
-
-                // Check if the return type of expr can cast to target type
-                let physical_expr = create_physical_expr(
-                    &df_logical_expr,
-                    &DFSchema::empty(),
-                    &ArrowSchema::empty(),
-                    &ExecutionProps::default(),
-                )
-                .context(DataFusionExpr)?;
-                let from_type = physical_expr
-                    .data_type(&ArrowSchema::empty())
-                    .context(DataFusionDataType)?;
-                ensure! {
-                    can_cast_types(&from_type, &column_def.data_type.into()),
-                    InvalidDefaultValueCoercion::<Expr, ArrowDataType, ArrowDataType>{
-                        expr: expr.clone(),
-                        from: from_type,
-                        to: column_def.data_type.into(),
-                    },
-                }
-            }
-        }
+        // analyze default value options
+        analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
 
         // Tsid column is a reserved column.
         ensure!(
@@ -870,16 +823,69 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     })
 }
 
-// fn parse_default_value(col: &ColumnDef) -> Result<Option<Expr>> {
-//     let mut default_value = None;
-//     for option_def in &col.options {
-//         if let Some(expr) = parser::get_default_value(&option_def.option) {
-//             default_value = Some(expr);
-//         }
-//     }
+// Analyze default value exprs.
+fn analyze_column_default_value_options<'a, P: MetaProvider>(
+    name_column_map: &BTreeMap<&str, ColumnSchema>,
+    meta_provider: &ContextProviderAdapter<'a, P>,
+) -> Result<()> {
+    let df_planner = SqlToRel::new(meta_provider);
+    let df_fields = name_column_map
+        .iter()
+        .map(|(name, column_def)| {
+            DFField::new(
+                None,
+                name,
+                column_def.data_type.to_arrow_data_type(),
+                column_def.is_nullable,
+            )
+        })
+        .collect::<Vec<_>>();
+    let df_schema =
+        DFSchema::new_with_metadata(df_fields, HashMap::new()).context(DataFusionSchema)?;
+    for column_def in name_column_map.values() {
+        if let Some(expr) = &column_def.default_value {
+            let df_logical_expr = df_planner
+                .sql_to_rex(expr.clone(), &df_schema, &mut CteHashMap::new())
+                .context(DataFusionExpr)?;
 
-//     Ok(default_value)
-// }
+            // Check input columns for the expr. Currently only suppory expr without input
+            ensure!(
+                find_columns_by_expr(&df_logical_expr).is_empty(),
+                CreateWithComplexDefaultValue {
+                    name: column_def.name.clone(),
+                    default_value: expr.clone(),
+                }
+            );
+            // Optimize expr
+            let execution_props = ExecutionProps::default();
+            let mut const_optimizer = ConstEvaluator::new(&execution_props);
+            let evaluated_expr = df_logical_expr
+                .rewrite(&mut const_optimizer)
+                .context(DataFusionExpr)?;
+
+            // Check if the return type of expr can cast to target type
+            let physical_expr = create_physical_expr(
+                &evaluated_expr,
+                &DFSchema::empty(),
+                &ArrowSchema::empty(),
+                &ExecutionProps::default(),
+            )
+            .context(DataFusionExpr)?;
+            let from_type = physical_expr
+                .data_type(&ArrowSchema::empty())
+                .context(DataFusionDataType)?;
+            ensure! {
+                can_cast_types(&from_type, &column_def.data_type.into()),
+                InvalidDefaultValueCoercion::<Expr, ArrowDataType, ArrowDataType>{
+                    expr: expr.clone(),
+                    from: from_type,
+                    to: column_def.data_type.into(),
+                },
+            }
+        }
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -898,7 +904,6 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
-        println!("{:#?}", plan);
         assert_eq!(format!("{:#?}", plan), expected);
         Ok(())
     }
@@ -1067,6 +1072,30 @@ mod tests {
 )"#,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_create_table_failed() {
+        // Currently only support non-input expr as column default value.
+        // TODO(ygf11): remove this test after we support complex
+        // default-value-expr.
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
+                                                      ts timestamp not null, 
+                                                      c3 uint32 Default 0, 
+                                                      c4 uint32 Default c3, timestamp key(ts),primary key(c1, ts)) \
+        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
+        assert!(quick_test(sql, "").is_err());
+
+        // We need cast the data type of default-value-expr to the column data type
+        // when default-value-expr is present, so planner will check if this cast is
+        // allowed.
+        // bool -> timestamp is not allowed in Arrow.
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
+                                                      ts timestamp not null, 
+                                                      c3 timestamp Default 1 > 2,
+                                                      timestamp key(ts),primary key(c1, ts)) \
+        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
+        assert!(quick_test(sql, "").is_err());
     }
 
     #[test]
