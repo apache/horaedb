@@ -161,16 +161,6 @@ pub enum Error {
         type_name: String,
         backtrace: Backtrace,
     },
-
-    #[snafu(display(
-        "Hybrid format doesn't support variable length type, type:{}.\nBacktrace:\n{}",
-        type_name,
-        backtrace
-    ))]
-    VariableLengthType {
-        type_name: String,
-        backtrace: Backtrace,
-    },
 }
 
 define_result!(Error);
@@ -762,6 +752,7 @@ mod tests {
             .unwrap()
             .add_normal_column(
                 column_schema::Builder::new("host".to_string(), DatumKind::String)
+                    .is_tag(true)
                     .build()
                     .unwrap(),
             )
@@ -775,6 +766,12 @@ mod tests {
             .unwrap()
             .add_normal_column(
                 column_schema::Builder::new("value".to_string(), DatumKind::Int32)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("string_value".to_string(), DatumKind::String)
                     .build()
                     .unwrap(),
             )
@@ -873,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_hybrid_record_and_decode_back() {
+    fn hybrid_record_encode_and_decode() {
         let write_props = WriterProperties::builder().build();
         let schema = build_schema();
         let mut encoder = HybridRecordEncoder::try_new(write_props, &schema).unwrap();
@@ -894,6 +891,12 @@ mod tests {
                 Some("region2"),
             ]),
             int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
         ];
 
         let input_record_batch =
