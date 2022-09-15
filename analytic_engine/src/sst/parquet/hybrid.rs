@@ -205,7 +205,7 @@ impl ListArrayBuilder {
         // null_bitmap is None
         //
         // Note: bit set to 1 means value is not null.
-        let mut null_buffer = MutableBuffer::new_null(values_num).with_bitset(values_num, true);
+        let mut null_buffer = new_null_buffer_with_ones(values_num);
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
@@ -561,6 +561,13 @@ pub fn convert_to_hybrid_record(
         collapsible_col_types,
         batch_by_tsid,
     )
+}
+
+/// Return a MutableBuffer with bits all set to 1
+pub fn new_null_buffer_with_ones(len: usize) -> MutableBuffer {
+    let null_buffer = MutableBuffer::new_null(len);
+    let buf_cap = null_buffer.capacity();
+    null_buffer.with_bitset(buf_cap, true)
 }
 
 #[cfg(test)]

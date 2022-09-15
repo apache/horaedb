@@ -539,8 +539,7 @@ impl HybridRecordDecoder {
         // construct new expanded array
         let mut new_offsets_buffer = MutableBuffer::new(OFFSET_SIZE * values_num);
         let mut new_values_buffer = MutableBuffer::new(value_bytes as usize);
-        let mut new_null_buffer = MutableBuffer::new(values_num);
-        new_null_buffer = new_null_buffer.with_bitset(values_num, true);
+        let mut new_null_buffer = hybrid::new_null_buffer_with_ones(values_num);
         let null_slice = new_null_buffer.as_slice_mut();
         let mut value_length_so_far: i32 = 0;
         new_offsets_buffer.push(value_length_so_far);
@@ -600,8 +599,7 @@ impl HybridRecordDecoder {
         let old_null_bitmap = array_ref.data().null_bitmap();
 
         let mut new_values_buffer = MutableBuffer::new(value_size * values_num);
-        let mut new_null_buffer = MutableBuffer::new(values_num);
-        new_null_buffer = new_null_buffer.with_bitset(values_num, true);
+        let mut new_null_buffer = hybrid::new_null_buffer_with_ones(values_num);
         let null_slice = new_null_buffer.as_slice_mut();
         let mut length_so_far = 0;
 
