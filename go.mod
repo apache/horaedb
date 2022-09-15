@@ -20,6 +20,7 @@ require (
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0
 	gotest.tools/gotestsum v1.8.1
+	github.com/looplab/fsm v0.3.0
 )
 
 require (
