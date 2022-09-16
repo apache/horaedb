@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// Helper function and struct to find input columns for an Expr;
+//! Helper function and struct to find input columns for an Expr;
 
 use arrow_deps::{
     datafusion::common::Result,
