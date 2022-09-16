@@ -124,7 +124,7 @@ pub struct InsertPlan {
     pub table: TableRef,
     /// RowGroup to insert
     pub rows: RowGroup,
-    /// Column idxes in schema to its defaut-value-expr which is used to fill
+    /// Column indexes in schema to its default-value-expr which is used to fill
     /// values
     pub default_value_map: HashMap<usize, DfLogicalExpr>,
 }
