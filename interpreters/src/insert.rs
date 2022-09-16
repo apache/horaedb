@@ -181,7 +181,7 @@ fn fill_default_values(
     let input_arrow_schema = Arc::new(ArrowSchema::empty());
     let input_batch = RecordBatch::new_empty(input_arrow_schema.clone());
     for (column_idx, default_value_expr) in default_value_map.iter() {
-        // Optimize logicalß expr
+        // Optimize logical expr
         let execution_props = ExecutionProps::default();
         let mut const_optimizer = ConstEvaluator::new(&execution_props);
         let evaluated_expr = default_value_expr
