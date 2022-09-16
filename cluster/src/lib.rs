@@ -14,7 +14,7 @@ use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
-mod table_manager;
+pub mod table_manager;
 // FIXME: Remove this lint ignore derive when topology about schema tables is
 // finished.
 #[allow(dead_code)]

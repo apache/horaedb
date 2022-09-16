@@ -21,10 +21,8 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig,
-    table_manager::{ShardTableInfo, TableManager},
-    topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
+    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
+    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
     TableManipulator, TableManipulatorRef,
 };
 
@@ -98,6 +96,10 @@ impl ClusterImpl {
     fn error_wait_lease(&self) -> Duration {
         self.config.meta_client.lease.0 / 2
     }
+
+    pub fn table_manager(&self) -> &TableManager {
+        &self.inner.table_manager
+    }
 }
 
 struct Inner {
@@ -142,17 +144,9 @@ impl EventHandler for Inner {
 
                 Ok(())
             }
-            ActionCmd::CreateTableCmd(cmd) => self
-                .table_manager
-                .add_shard_table(ShardTableInfo::from(cmd))
-                .map_err(|e| Box::new(e) as _),
-            ActionCmd::DropTableCmd(cmd) => {
-                warn!("Drop table, schema:{}, table:{}", cmd.schema_name, cmd.name);
-
-                self.table_manager.drop_table(&cmd.schema_name, &cmd.name);
-                Ok(())
-            }
-            ActionCmd::MetaNoneCmd(_)
+            ActionCmd::CreateTableCmd(_) => todo!(),
+            ActionCmd::DropTableCmd(_)
+            | ActionCmd::MetaNoneCmd(_)
             | ActionCmd::MetaCloseCmd(_)
             | ActionCmd::MetaSplitCmd(_)
             | ActionCmd::MetaChangeRoleCmd(_) => {

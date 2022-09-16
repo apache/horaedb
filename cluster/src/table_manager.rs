@@ -1,24 +1,24 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
-    collections::{BTreeMap, HashMap},
-    sync::RwLock,
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::{Arc, RwLock},
 };
 
+use catalog::consts::{self, DEFAULT_CATALOG};
 use common_types::{
     schema::{SchemaId, SchemaName},
-    table::{TableId, TableName},
+    table::TableId,
 };
 use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
-use snafu::OptionExt;
+use table_engine::table::TableRef;
 
-use crate::{Result, ShardNotFound};
+use crate::Result;
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct SchemaInfo {
-    name: SchemaName,
-    id: SchemaId,
+pub struct SchemaInfo {
+    pub name: SchemaName,
+    pub id: SchemaId,
 }
 
 #[derive(Debug, Clone)]
@@ -47,9 +47,9 @@ impl From<&CreateTableCmd> for ShardTableInfo {
 /// relationships:
 /// * one shard -> multiple tables
 /// * one schema -> multiple tables
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TableManager {
-    inner: RwLock<Inner>,
+    inner: Arc<RwLock<Inner>>,
 }
 
 impl TableManager {
@@ -57,41 +57,128 @@ impl TableManager {
         self.inner.read().unwrap().get_shards_infos()
     }
 
-    pub fn add_shard_table(&self, shard_table: ShardTableInfo) -> Result<()> {
-        self.inner.write().unwrap().add_shard_table(shard_table)
-    }
+    pub fn add_shard_table(&self, table_info: TableInfo, table: TableRef) -> Result<()> {
+        self.inner.write().unwrap().add_table(table_info, table);
 
-    pub fn drop_table(&self, schema_name: &str, table_name: &str) {
-        self.inner
-            .write()
-            .unwrap()
-            .drop_table(schema_name, table_name)
+        Ok(())
     }
 
     pub fn update_table_info(&self, shard_table: &HashMap<ShardId, ShardTables>) {
         self.inner.write().unwrap().update_table_info(shard_table)
     }
 
-    #[allow(dead_code)]
-    pub fn get_schema_id(&self, schema_name: &str) -> Option<SchemaId> {
-        self.inner.read().unwrap().get_schema_id(schema_name)
+    pub fn get_catalog_name(&self, catalog: &str) -> Option<String> {
+        if self
+            .inner
+            .read()
+            .unwrap()
+            .catalog_infos
+            .contains_key(catalog)
+        {
+            Some(catalog.to_string())
+        } else {
+            None
+        }
     }
 
-    #[allow(dead_code)]
-    pub fn get_table_id(&self, schema_name: &str, table_name: &str) -> Option<TableId> {
+    pub fn get_all_catalog_names(&self) -> Vec<String> {
         self.inner
             .read()
             .unwrap()
-            .get_table_id(schema_name, table_name)
+            .catalog_infos
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    // todo: should return schema id as well?
+    pub fn get_schema_id(&self, catalog: &str, schema: &str) -> Option<SchemaId> {
+        self.inner
+            .read()
+            .unwrap()
+            .catalog_infos
+            .get(catalog)?
+            .get(schema)
+            .map(|info| info.id)
+    }
+
+    pub fn get_all_schema_infos(&self, catalog: &str) -> Vec<SchemaInfo> {
+        if let Some(schemas) = self.inner.read().unwrap().catalog_infos.get(catalog) {
+            schemas.values().cloned().collect()
+        } else {
+            vec![]
+        }
+    }
+
+    // todo: should accept schema id as param instead of schema name?
+    pub fn get_all_table_ref(&self, catalog: &str, schema: &str) -> Vec<TableRef> {
+        let schema_id = if let Some(id) = self.inner.read().unwrap().get_schema_id(schema) {
+            id
+        } else {
+            return vec![];
+        };
+
+        self.inner
+            .read()
+            .unwrap()
+            .tables_org_by_token
+            .iter()
+            .filter_map(|(token, table)| {
+                if token.catalog == catalog && token.schema == schema_id {
+                    Some(table.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn table_by_name(&self, catalog: &str, schema: &str, table_name: &str) -> Option<TableRef> {
+        let schema_id = self.inner.read().unwrap().get_schema_id(schema)?;
+
+        self.inner
+            .read()
+            .unwrap()
+            .tables_org_by_token
+            .iter()
+            .find(|(token, table)| {
+                token.catalog == catalog && token.schema == schema_id && table.name() == table_name
+            })
+            .map(|(_, table)| table.clone())
     }
 }
 
 #[derive(Debug, Default)]
 struct Inner {
+    // shard infos
     shard_infos: HashMap<ShardId, ShardInfo>,
-    schema_infos: HashMap<SchemaName, SchemaInfo>,
-    // TODO: maybe another mapping (shard -> table) is necessary.
-    tables: BTreeMap<SchemaName, BTreeMap<TableName, ShardTableInfo>>,
+
+    // catalog/schema infos
+    catalog_infos: HashMap<String, HashMap<SchemaName, SchemaInfo>>,
+
+    // table handles
+    tables_org_by_token: BTreeMap<TableToken, TableRef>,
+    #[allow(dead_code)]
+    shard_to_table_tokens: HashMap<ShardId, HashSet<TableToken>>,
+}
+
+#[repr(C)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+struct TableToken {
+    // todo: change this to CatalogId
+    catalog: String,
+    schema: SchemaId,
+    table: TableId,
+}
+
+impl TableToken {
+    fn from_table_info(info: TableInfo) -> Self {
+        Self {
+            catalog: DEFAULT_CATALOG.to_string(),
+            schema: info.schema_id,
+            table: info.id,
+        }
+    }
 }
 
 impl Inner {
@@ -108,26 +195,21 @@ impl Inner {
             };
             self.shard_infos.insert(*shard_id, shard_info.clone());
             for table in &shard_tables.tables {
-                self.schema_infos
+                self.catalog_infos
+                    .get_mut(consts::DEFAULT_CATALOG)
+                    .unwrap()
                     .entry(table.schema_name.clone())
                     .or_insert(SchemaInfo {
                         name: table.schema_name.clone(),
                         id: table.schema_id,
                     });
-                self.tables
-                    .entry(table.schema_name.clone())
-                    .or_insert_with(BTreeMap::new)
-                    .insert(
-                        table.name.clone(),
-                        ShardTableInfo {
-                            shard_id: shard_info.shard_id,
-                            table_info: table.clone(),
-                        },
-                    );
+
+                todo!()
             }
         }
     }
 
+    #[allow(dead_code)]
     fn find_shard_info(&self, shard_id: ShardId) -> Option<ShardInfo> {
         self.shard_infos
             .values()
@@ -135,33 +217,22 @@ impl Inner {
             .cloned()
     }
 
-    fn add_shard_table(&mut self, shard_table: ShardTableInfo) -> Result<()> {
-        self.find_shard_info(shard_table.shard_id)
-            .context(ShardNotFound {
-                shard_id: shard_table.shard_id,
-            })?;
-
-        self.tables
-            .entry(shard_table.table_info.schema_name.clone())
-            .or_insert_with(BTreeMap::new)
-            .insert(shard_table.table_info.name.clone(), shard_table);
-
-        Ok(())
+    fn add_table(&mut self, table_info: TableInfo, table: TableRef) {
+        self.tables_org_by_token
+            .insert(TableToken::from_table_info(table_info), table);
     }
 
-    fn drop_table(&mut self, schema_name: &str, table_name: &str) {
-        self.tables
-            .get_mut(schema_name)
-            .map(|v| v.remove(table_name));
+    #[allow(dead_code)]
+    fn drop_table(&mut self, table_info: TableInfo) {
+        self.tables_org_by_token
+            .remove(&TableToken::from_table_info(table_info));
     }
 
     fn get_schema_id(&self, schema_name: &str) -> Option<SchemaId> {
-        self.schema_infos.get(schema_name).map(|v| v.id)
-    }
-
-    fn get_table_id(&self, schema_name: &str, table_name: &str) -> Option<TableId> {
-        self.tables
+        self.catalog_infos
+            .get(consts::DEFAULT_CATALOG)
+            .unwrap()
             .get(schema_name)
-            .and_then(|schema| schema.get(table_name).map(|v| v.table_info.id))
+            .map(|v| v.id)
     }
 }
