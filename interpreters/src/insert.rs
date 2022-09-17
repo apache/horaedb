@@ -33,13 +33,16 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("DataFusion Failed to generate expr, err:{}", source))]
+    #[snafu(display("Failed to generate datafusion expr, err:{}", source))]
     DataFusionExpr { source: DataFusionError },
 
-    #[snafu(display("DataFusion Failed to get data type from PhysicalExpr, err:{}", source))]
+    #[snafu(display(
+        "Failed to get data type from datafusion physical expr, err:{}",
+        source
+    ))]
     DataFusionDataType { source: DataFusionError },
 
-    #[snafu(display("DataFusion Failed to evaluate the physical expr, err:{}", source))]
+    #[snafu(display("Failed to evaluate datafusion physical expr, err:{}", source))]
     DataFusionExecutor { source: DataFusionError },
 
     #[snafu(display("Failed to write table, err:{}", source))]
@@ -190,11 +193,12 @@ fn fill_default_values(
             .context(DataFusionExpr)?;
 
         // Create physical expr
+        let execution_props = ExecutionProps::default();
         let physical_expr = create_physical_expr(
             &evaluated_expr,
             &input_df_schema,
             &input_arrow_schema,
-            &ExecutionProps::default(),
+            &execution_props,
         )
         .context(DataFusionExpr)?;
 

@@ -63,7 +63,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
     #[snafu(display(
-        "Can not deserialize default-value-option from pb data, error:{}.\nBacktrace:\n{}",
+        "Can not deserialize default-value-option from pb data, err:{}.\nBacktrace:\n{}",
         source,
         backtrace
     ))]

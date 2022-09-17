@@ -12,7 +12,7 @@ use arrow_deps::{
 
 #[derive(Default)]
 struct ColumnCollector {
-    /// column use by the given expr
+    /// columns used by the given expr
     columns: Vec<String>,
 }
 

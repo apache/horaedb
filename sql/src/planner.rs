@@ -848,7 +848,8 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
                 .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
                 .context(DataFusionExpr)?;
 
-            // Check input columns for the expr. Currently only suppory expr without input
+            // Check input columns for the expr. Currently only support expr without input.
+            // Tracking issue: https://github.com/CeresDB/ceresdb/issues/252.
             ensure!(
                 find_columns_by_expr(&df_logical_expr).is_empty(),
                 CreateWithComplexDefaultValue {
