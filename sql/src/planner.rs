@@ -304,6 +304,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         }))
     }
 
+    fn tsid_column_schema() -> Result<ColumnSchema> {
+        column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
+            .is_nullable(false)
+            .build()
+            .context(InvalidColumnSchema {
+                column_name: TSID_COLUMN,
+            })
+    }
+
     fn create_table_to_plan(&self, stmt: CreateTable) -> Result<Plan> {
         ensure!(!stmt.table_name.is_empty(), CreateTableNameEmpty);
 
@@ -318,12 +327,13 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         let mut schema_builder =
             schema::Builder::with_capacity(stmt.columns.len()).auto_increment_column_id(true);
-        let mut name_column_map = BTreeMap::new();
 
         // Build all column schemas.
-        for col in &stmt.columns {
-            name_column_map.insert(col.name.value.as_str(), parse_column(col)?);
-        }
+        let mut name_column_map = stmt
+            .columns
+            .iter()
+            .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
+            .collect::<Result<BTreeMap<_, _>>>()?;
 
         // analyze default value options
         analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
@@ -377,11 +387,16 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             // If primary key is already provided, use that primary key.
             if let TableConstraint::Unique { columns, .. } = &stmt.constraints[idx] {
                 for col in columns {
-                    let key_column = name_column_map.remove(&*col.value).with_context(|| {
-                        PrimaryKeyNotFound {
-                            name: col.value.clone(),
-                        }
-                    })?;
+                    let key_column = if TSID_COLUMN == col.value {
+                        schema_builder = schema_builder.enable_tsid_primary_key(true);
+                        Self::tsid_column_schema()?
+                    } else {
+                        name_column_map
+                            .remove(&*col.value)
+                            .with_context(|| PrimaryKeyNotFound {
+                                name: col.value.clone(),
+                            })?
+                    };
                     // The schema builder will checks there is only one timestamp column in primary
                     // key.
                     schema_builder = schema_builder
@@ -396,13 +411,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     name: &timestamp_name,
                 },
             )?;
-            let column_schema =
-                column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-                    .is_nullable(false)
-                    .build()
-                    .context(InvalidColumnSchema {
-                        column_name: TSID_COLUMN,
-                    })?;
+            let column_schema = Self::tsid_column_schema()?;
             schema_builder = schema_builder
                 .enable_tsid_primary_key(true)
                 .add_key_column(timestamp_column)

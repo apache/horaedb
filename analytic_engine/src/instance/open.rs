@@ -88,6 +88,7 @@ impl Instance {
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
+            scan_batch_size: ctx.config.scan_batch_size,
         });
 
         Ok(instance)
