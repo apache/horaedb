@@ -37,7 +37,12 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options::StorageFormat};
+use crate::{
+    space::SpaceId,
+    sst::manager::FileId,
+    table::sst_util,
+    table_options::{StorageFormat, StorageFormatOptions},
+};
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]
@@ -223,7 +228,7 @@ impl FileHandle {
 
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
-        self.inner.meta.meta.storage_format
+        self.inner.meta.meta.storage_format_opts.format
     }
 }
 
@@ -411,7 +416,7 @@ impl FileMeta {
     }
 }
 
-/// Meta data of a sst file, immutable once created
+/// Meta data of a sst file
 #[derive(Debug, Clone, PartialEq)]
 pub struct SstMetaData {
     pub min_key: Bytes,
@@ -425,7 +430,13 @@ pub struct SstMetaData {
     pub size: u64,
     // total row number
     pub row_num: u64,
-    pub storage_format: StorageFormat,
+    pub storage_format_opts: StorageFormatOptions,
+}
+
+impl SstMetaData {
+    pub fn storage_format(&self) -> StorageFormat {
+        self.storage_format_opts.format
+    }
 }
 
 impl From<SstMetaData> for SstMetaDataPb {
@@ -439,7 +450,6 @@ impl From<SstMetaData> for SstMetaDataPb {
         target.set_schema(src.schema.into());
         target.set_size(src.size);
         target.set_row_num(src.row_num);
-        target.set_storage_format(src.storage_format.into());
 
         target
     }
@@ -452,14 +462,14 @@ impl TryFrom<SstMetaDataPb> for SstMetaData {
         let time_range = TimeRange::try_from(src.take_time_range()).context(ConvertTimeRange)?;
         let schema = Schema::try_from(src.take_schema()).context(ConvertTableSchema)?;
         Ok(Self {
-            min_key: src.min_key.into(),
-            max_key: src.max_key.into(),
+            min_key: src.take_min_key().into(),
+            max_key: src.take_max_key().into(),
             time_range,
             max_sequence: src.max_sequence,
             schema,
             size: src.size,
             row_num: src.row_num,
-            storage_format: src.storage_format.into(),
+            storage_format_opts: src.take_storage_format_opts().into(),
         })
     }
 }
@@ -641,7 +651,7 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
         // we don't know file size and total row number yet
         size: 0,
         row_num: 0,
-        storage_format,
+        storage_format_opts: StorageFormatOptions::new(storage_format),
     }
 }
 
@@ -697,7 +707,7 @@ pub mod tests {
                 schema: self.schema.clone(),
                 size: 0,
                 row_num: 0,
-                storage_format: StorageFormat::default(),
+                storage_format_opts: StorageFormatOptions::default(),
             }
         }
     }

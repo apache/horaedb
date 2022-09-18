@@ -13,7 +13,8 @@ use common_util::{
 };
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, StorageFormat as StorageFormatPb, TableOptions as TableOptionsPb,
+    Compression as CompressionPb, StorageFormat as StorageFormatPb,
+    StorageFormatOptions as StorageFormatOptionsPb, TableOptions as TableOptionsPb,
     UpdateMode as UpdateModePb,
 };
 use serde_derive::Deserialize;
@@ -289,6 +290,48 @@ impl ToString for StorageFormat {
 impl Default for StorageFormat {
     fn default() -> Self {
         Self::Columnar
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StorageFormatOptions {
+    pub format: StorageFormat,
+    pub collapsible_cols_idx: Vec<u32>,
+}
+
+impl StorageFormatOptions {
+    pub fn new(format: StorageFormat) -> Self {
+        Self {
+            format,
+            collapsible_cols_idx: Vec::new(),
+        }
+    }
+}
+
+impl Default for StorageFormatOptions {
+    fn default() -> Self {
+        Self {
+            format: StorageFormat::default(),
+            collapsible_cols_idx: Vec::new(),
+        }
+    }
+}
+
+impl From<StorageFormatOptions> for StorageFormatOptionsPb {
+    fn from(format_opts: StorageFormatOptions) -> Self {
+        let mut format_opts_pb = StorageFormatOptionsPb::default();
+        format_opts_pb.set_format(format_opts.format.into());
+        format_opts_pb.set_collapsible_cols_idx(format_opts.collapsible_cols_idx);
+        format_opts_pb
+    }
+}
+
+impl From<StorageFormatOptionsPb> for StorageFormatOptions {
+    fn from(mut format_opts_pb: StorageFormatOptionsPb) -> Self {
+        Self {
+            format: format_opts_pb.get_format().into(),
+            collapsible_cols_idx: format_opts_pb.take_collapsible_cols_idx().into(),
+        }
     }
 }
 

@@ -15,6 +15,7 @@ use crate::{
         manager::FileId,
     },
     table::data::MemTableId,
+    table_options::StorageFormatOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -83,7 +84,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                     schema,
                     size: src.size,
                     row_num: src.row_num,
-                    storage_format: src.storage_format.into(),
+                    storage_format_opts: StorageFormatOptions::new(src.storage_format.into()),
                 },
             },
         })

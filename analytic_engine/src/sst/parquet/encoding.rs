@@ -22,7 +22,7 @@ use arrow_deps::{
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
     datum::DatumKind,
-    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
+    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
 };
 use common_util::define_result;
 use log::trace;
@@ -144,10 +144,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "At least one ListArray(such as Timestamp) is required to decode hybrid record batch.\nBacktrace:\n{}",
+        "Sst meta data collapsible_cols_idx is empty, fail to decode hybrid record batch.\nBacktrace:\n{}",
         backtrace
     ))]
-    ListArrayRequired { backtrace: Backtrace },
+    CollapsibleColsIdxEmpty { backtrace: Backtrace },
 
     #[snafu(display("Tsid is required for hybrid format.\nBacktrace:\n{}", backtrace))]
     TsidRequired { backtrace: Backtrace },
@@ -268,8 +268,18 @@ struct ColumnarRecordEncoder {
 }
 
 impl ColumnarRecordEncoder {
-    fn try_new(write_props: WriterProperties, schema: &Schema) -> Result<Self> {
-        let arrow_schema = schema.to_arrow_schema_ref();
+    fn try_new(
+        num_rows_per_row_group: usize,
+        compression: Compression,
+        meta_data: SstMetaData,
+    ) -> Result<Self> {
+        let write_props = WriterProperties::builder()
+            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data.clone())?]))
+            .set_max_row_group_size(num_rows_per_row_group)
+            .set_compression(compression)
+            .build();
+
+        let arrow_schema = meta_data.schema.to_arrow_schema_ref();
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -328,27 +338,35 @@ struct HybridRecordEncoder {
 }
 
 impl HybridRecordEncoder {
-    fn try_new(write_props: WriterProperties, schema: &Schema) -> Result<Self> {
+    fn try_new(
+        num_rows_per_row_group: usize,
+        compression: Compression,
+        mut meta_data: SstMetaData,
+    ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
-        let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
+        let tsid_idx = meta_data.schema.index_of_tsid().context(TsidRequired)?;
         let tsid_type = IndexedType {
             idx: tsid_idx,
-            data_type: schema.column(tsid_idx).data_type,
+            data_type: meta_data.schema.column(tsid_idx).data_type,
         };
 
         let mut non_collapsible_col_types = Vec::new();
         let mut collapsible_col_types = Vec::new();
-        for (idx, col) in schema.columns().iter().enumerate() {
+        for (idx, col) in meta_data.schema.columns().iter().enumerate() {
             if idx == tsid_idx {
                 continue;
             }
 
-            if schema.is_collapsible_column(idx) {
+            if meta_data.schema.is_collapsible_column(idx) {
                 collapsible_col_types.push(IndexedType {
                     idx,
-                    data_type: schema.column(idx).data_type,
+                    data_type: meta_data.schema.column(idx).data_type,
                 });
+                meta_data
+                    .storage_format_opts
+                    .collapsible_cols_idx
+                    .push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
@@ -364,7 +382,13 @@ impl HybridRecordEncoder {
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(schema);
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(&meta_data.schema);
+
+        let write_props = WriterProperties::builder()
+            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
+            .set_max_row_group_size(num_rows_per_row_group)
+            .set_compression(compression)
+            .build();
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -426,22 +450,18 @@ impl ParquetEncoder {
     pub fn try_new(
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: &SstMetaData,
+        meta_data: SstMetaData,
     ) -> Result<Self> {
-        let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data.clone())?]))
-            .set_max_row_group_size(num_rows_per_row_group)
-            .set_compression(compression)
-            .build();
-
-        let record_encoder: Box<dyn RecordEncoder + Send> = match meta_data.storage_format {
+        let record_encoder: Box<dyn RecordEncoder + Send> = match meta_data.storage_format() {
             StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
-                write_props,
-                &meta_data.schema,
+                num_rows_per_row_group,
+                compression,
+                meta_data,
             )?),
             StorageFormat::Columnar => Box::new(ColumnarRecordEncoder::try_new(
-                write_props,
-                &meta_data.schema,
+                num_rows_per_row_group,
+                compression,
+                meta_data,
             )?),
         };
 
@@ -480,7 +500,9 @@ impl RecordDecoder for ColumnarRecordDecoder {
     }
 }
 
-struct HybridRecordDecoder {}
+struct HybridRecordDecoder {
+    meta_data: SstMetaData,
+}
 
 impl HybridRecordDecoder {
     /// Convert `ListArray` fields to underlying data type
@@ -644,17 +666,23 @@ impl RecordDecoder for HybridRecordDecoder {
     fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
         let new_arrow_schema = Self::convert_schema(arrow_record_batch.schema());
         let arrays = arrow_record_batch.columns();
-        let mut value_offsets = None;
-        // Find value offsets from the first `ListArray` column
-        for array_ref in arrays {
-            if matches!(array_ref.data_type(), DataType::List(_)) {
-                let offset_slices = array_ref.data().buffers()[0].as_slice();
-                value_offsets = Some(Self::get_array_offsets(offset_slices));
-                break;
-            }
-        }
 
-        ensure!(value_offsets.is_some(), ListArrayRequired {});
+        let mut value_offsets = None;
+        if !self
+            .meta_data
+            .storage_format_opts
+            .collapsible_cols_idx
+            .is_empty()
+        {
+            let offset_slices = arrays
+                [self.meta_data.storage_format_opts.collapsible_cols_idx[0] as usize]
+                .data()
+                .buffers()[0]
+                .as_slice();
+            value_offsets = Some(Self::get_array_offsets(offset_slices));
+        } else {
+            CollapsibleColsIdxEmpty.fail()?;
+        }
 
         let value_offsets = value_offsets.unwrap();
         let arrays = arrays
@@ -698,9 +726,9 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn new(storage_format: StorageFormat) -> Self {
+    pub fn new(storage_format: StorageFormat, meta_data: SstMetaData) -> Self {
         let record_decoder: Box<dyn RecordDecoder> = match storage_format {
-            StorageFormat::Hybrid => Box::new(HybridRecordDecoder {}),
+            StorageFormat::Hybrid => Box::new(HybridRecordDecoder { meta_data }),
             StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
         };
 
@@ -726,11 +754,14 @@ mod tests {
         },
     };
     use common_types::{
+        bytes::Bytes,
         column_schema,
-        schema::{Builder, TSID_COLUMN},
+        schema::{Builder, Schema, TSID_COLUMN},
+        time::{TimeRange, Timestamp},
     };
 
     use super::*;
+    use crate::table_options::StorageFormatOptions;
 
     fn build_schema() -> Schema {
         Builder::new()
@@ -869,9 +900,19 @@ mod tests {
 
     #[test]
     fn hybrid_record_encode_and_decode() {
-        let write_props = WriterProperties::builder().build();
         let schema = build_schema();
-        let mut encoder = HybridRecordEncoder::try_new(write_props, &schema).unwrap();
+        let mut meta_data = SstMetaData {
+            min_key: Bytes::from_static(b"100"),
+            max_key: Bytes::from_static(b"200"),
+            time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
+            max_sequence: 200,
+            schema: schema.clone(),
+            size: 10,
+            row_num: 4,
+            storage_format_opts: StorageFormatOptions::new(StorageFormat::Hybrid),
+        };
+        let mut encoder =
+            HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
 
         let columns = vec![
             Arc::new(UInt64Array::from(vec![1, 1, 2, 2])) as ArrayRef,
@@ -910,7 +951,16 @@ mod tests {
         let mut reader = reader.get_record_reader(2048).unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
 
-        let decoder = HybridRecordDecoder {};
+        for (idx, _col) in meta_data.schema.columns().iter().enumerate() {
+            if meta_data.schema.is_collapsible_column(idx) {
+                meta_data
+                    .storage_format_opts
+                    .collapsible_cols_idx
+                    .push(idx as u32);
+            }
+        }
+
+        let decoder = HybridRecordDecoder { meta_data };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 
         // Note: decode record batch's schema doesn't have metadata

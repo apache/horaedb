@@ -169,7 +169,7 @@ impl<'a> ParquetSstReader<'a> {
         let batch_size = self.batch_size;
         let (schema, storage_format) = {
             let meta_data = self.meta_data.as_ref().unwrap();
-            (meta_data.schema.clone(), meta_data.storage_format)
+            (meta_data.schema.clone(), meta_data.storage_format())
         };
         let projected_schema = self.projected_schema.clone();
         let row_projector = projected_schema
@@ -179,6 +179,7 @@ impl<'a> ParquetSstReader<'a> {
         let predicate = self.predicate.clone();
         let reverse = self.reverse;
 
+        let meta_data = self.meta_data.take().unwrap();
         let _ = self.runtime.spawn_blocking(move || {
             debug!(
                 "begin reading record batch from the sst:{}, predicate:{:?}, projection:{:?}",
@@ -206,6 +207,7 @@ impl<'a> ParquetSstReader<'a> {
                 batch_size,
                 reverse,
                 storage_format,
+                meta_data,
             };
 
             let start_fetch = Instant::now();
@@ -253,6 +255,7 @@ struct ProjectAndFilterReader {
     batch_size: usize,
     reverse: bool,
     storage_format: StorageFormat,
+    meta_data: SstMetaData,
 }
 
 impl ProjectAndFilterReader {
@@ -324,7 +327,7 @@ impl ProjectAndFilterReader {
         let reader = self.project_and_filter_reader()?;
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
-        let parquet_decoder = ParquetDecoder::new(self.storage_format);
+        let parquet_decoder = ParquetDecoder::new(self.storage_format, self.meta_data);
         let mut row_num = 0;
         for record_batch in reader {
             trace!(
