@@ -7,7 +7,7 @@ use std::{
 
 use catalog::consts::{self, DEFAULT_CATALOG};
 use common_types::{
-    schema::{SchemaId, SchemaName},
+    schema::{CatalogName, SchemaId, SchemaName},
     table::TableId,
 };
 use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
@@ -91,7 +91,6 @@ impl TableManager {
             .collect()
     }
 
-    // todo: should return schema id as well?
     pub fn get_schema_id(&self, catalog: &str, schema: &str) -> Option<SchemaId> {
         self.inner
             .read()
@@ -121,7 +120,7 @@ impl TableManager {
         self.inner
             .read()
             .unwrap()
-            .tables_org_by_token
+            .tables_by_token
             .iter()
             .filter_map(|(token, table)| {
                 if token.catalog == catalog && token.schema == schema_id {
@@ -139,7 +138,7 @@ impl TableManager {
         self.inner
             .read()
             .unwrap()
-            .tables_org_by_token
+            .tables_by_token
             .iter()
             .find(|(token, table)| {
                 token.catalog == catalog && token.schema == schema_id && table.name() == table_name
@@ -154,15 +153,14 @@ struct Inner {
     shard_infos: HashMap<ShardId, ShardInfo>,
 
     // catalog/schema infos
-    catalog_infos: HashMap<String, HashMap<SchemaName, SchemaInfo>>,
+    catalog_infos: HashMap<CatalogName, HashMap<SchemaName, SchemaInfo>>,
 
     // table handles
-    tables_org_by_token: BTreeMap<TableToken, TableRef>,
+    tables_by_token: BTreeMap<TableToken, TableRef>,
     #[allow(dead_code)]
-    shard_to_table_tokens: HashMap<ShardId, HashSet<TableToken>>,
+    tokens_by_shard: HashMap<ShardId, HashSet<TableToken>>,
 }
 
-#[repr(C)]
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
 struct TableToken {
     // todo: change this to CatalogId
@@ -218,13 +216,13 @@ impl Inner {
     }
 
     fn add_table(&mut self, table_info: TableInfo, table: TableRef) {
-        self.tables_org_by_token
+        self.tables_by_token
             .insert(TableToken::from_table_info(table_info), table);
     }
 
     #[allow(dead_code)]
     fn drop_table(&mut self, table_info: TableInfo) {
-        self.tables_org_by_token
+        self.tables_by_token
             .remove(&TableToken::from_table_info(table_info));
     }
 

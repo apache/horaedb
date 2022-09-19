@@ -13,6 +13,10 @@ use catalog::{
 use cluster::{cluster_impl::ClusterImpl, table_manager::TableManager};
 use table_engine::table::{SchemaId, TableRef};
 
+/// Catalog/Schema manager in the cluster mode.
+///
+/// This just redirects requests to [ClusterImpl] (which implements
+/// [cluster::Cluster]) for orphan rule.
 pub struct ManagerImpl(ClusterImpl);
 
 impl Manager for ManagerImpl {
