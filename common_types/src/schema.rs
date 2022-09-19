@@ -152,6 +152,7 @@ pub enum Error {
     },
 }
 
+pub type CatalogName = String;
 pub type SchemaId = u32;
 pub type SchemaName = String;
 // TODO: make these constants configurable
