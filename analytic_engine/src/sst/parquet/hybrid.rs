@@ -3,9 +3,12 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use arrow_deps::arrow::{
-    array::{Array, ArrayData, ArrayRef, ListArray, StringArray, UInt64Array},
+    array::{
+        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
+        UInt64Array,
+    },
     bitmap::Bitmap,
-    buffer::MutableBuffer,
+    buffer::{Buffer, MutableBuffer},
     datatypes::Schema as ArrowSchema,
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
@@ -14,13 +17,25 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchemaRef, DataType, Field, Schema},
 };
-use log::debug;
-use snafu::ResultExt;
+use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::sst::builder::{EncodeRecordBatch, Result};
 
 //  hard coded in https://github.com/apache/arrow-rs/blob/20.0.0/arrow/src/array/array_list.rs#L185
 const LIST_ITEM_NAME: &str = "item";
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display(
+    "Hybrid format only support variable length types UTF8 and Binary, current type:{:?}.\nBacktrace:\n{}",
+    type_name,
+    backtrace
+    ))]
+    VariableLengthType {
+        type_name: DataType,
+        backtrace: Backtrace,
+    },
+}
 
 #[derive(Debug, Clone, Copy)]
 struct SliceArg {
@@ -34,7 +49,7 @@ struct SliceArg {
 /// Note:
 /// 1. Array.slice(offset, length) don't work as expected, since the
 /// underlying buffer is still shared without slice.
-/// 2. Array shoule be [fixed-size primitive](https://arrow.apache.org/docs/format/Columnar.html#fixed-size-primitive-layout)
+/// 2. Array should be [fixed-size primitive](https://arrow.apache.org/docs/format/Columnar.html#fixed-size-primitive-layout)
 #[derive(Debug, Clone)]
 struct ArrayHandle {
     array: ArrayRef,
@@ -130,6 +145,44 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
     ))
 }
 
+struct StringArrayWrapper<'a>(&'a StringArray);
+struct BinaryArrayWrapper<'a>(&'a BinaryArray);
+
+/// VariableSizeArray is a trait of variable-size array, such as StringArray and
+/// BinaryArray. Dealing with the buffer data.
+///
+/// There is no common trait for variable-size array to dealing with the buffer
+/// data in arrow-rs library.
+trait VariableSizeArray {
+    // Returns the offset values in the offsets buffer.
+    fn value_offsets(&self) -> &[i32];
+    // Returns the length for the element at index i.
+    fn value_length(&self, index: usize) -> i32;
+    // Returns a clone of the value data buffer.
+    fn value_data(&self) -> Buffer;
+}
+
+macro_rules! impl_offsets {
+    ($array: ty) => {
+        impl<'a> VariableSizeArray for $array {
+            fn value_offsets(&self) -> &[i32] {
+                self.0.value_offsets()
+            }
+
+            fn value_length(&self, index: usize) -> i32 {
+                self.0.value_length(index)
+            }
+
+            fn value_data(&self) -> Buffer {
+                self.0.value_data()
+            }
+        }
+    };
+}
+
+impl_offsets!(StringArrayWrapper<'a>);
+impl_offsets!(BinaryArrayWrapper<'a>);
+
 /// ListArrayBuilder is used for concat slice of different Arrays represented by
 /// ArrayHandle into one ListArray
 struct ListArrayBuilder {
@@ -146,12 +199,8 @@ impl ListArrayBuilder {
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
-        let data_type_size = self
-            .datum_kind
-            .size()
-            .expect("checked in HybridRecordEncoder::try_new");
         let values_num = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
-        let mut values = MutableBuffer::new(values_num * data_type_size);
+
         // Initialize null_buffer with all 1, so we don't need to set it when array's
         // null_bitmap is None
         //
@@ -160,9 +209,7 @@ impl ListArrayBuilder {
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
-        offsets.push(length_so_far);
         for array_handle in &self.list_of_arrays {
-            let shared_buffer = array_handle.data_slice();
             let null_bitmap = array_handle.null_bitmap();
 
             for slice_arg in &array_handle.slice_args {
@@ -179,28 +226,176 @@ impl ListArrayBuilder {
                     }
                 }
                 length_so_far += length as i32;
+            }
+        }
+
+        let mut builder = ArrayData::builder(self.datum_kind.to_arrow_data_type())
+            .len(values_num)
+            .null_bit_buffer(Some(null_buffer.into()));
+
+        builder = self.apply_child_data_buffer(builder, offsets)?;
+        let values_array_data = builder
+            .build()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
+        Ok(values_array_data)
+    }
+
+    fn apply_child_data_buffer(
+        &self,
+        mut builder: ArrayDataBuilder,
+        offsets: &mut MutableBuffer,
+    ) -> Result<ArrayDataBuilder> {
+        let (inner_offsets, values) = if let Some(data_type_size) = self.datum_kind.size() {
+            (
+                None,
+                self.build_fixed_size_array_buffer(offsets, data_type_size),
+            )
+        } else {
+            let (inner_offsets, values) = self.build_variable_size_array_buffer(offsets)?;
+            (Some(inner_offsets), values)
+        };
+
+        if let Some(buffer) = inner_offsets {
+            builder = builder.add_buffer(buffer.into());
+        }
+        builder = builder.add_buffer(values.into());
+        Ok(builder)
+    }
+
+    fn build_fixed_size_array_buffer(
+        &self,
+        offsets: &mut MutableBuffer,
+        data_type_size: usize,
+    ) -> MutableBuffer {
+        let mut length_so_far: i32 = 0;
+        offsets.push(length_so_far);
+
+        let values_num: usize = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
+        let mut values = MutableBuffer::new(values_num * data_type_size);
+
+        for array_handle in &self.list_of_arrays {
+            let shared_buffer = array_handle.data_slice();
+
+            for slice_arg in &array_handle.slice_args {
+                let offset = slice_arg.offset;
+                let length = slice_arg.length;
+                length_so_far += length as i32;
+
                 values.extend_from_slice(
                     &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
                 );
             }
             offsets.push(length_so_far);
         }
+        values
+    }
 
-        debug!(
-            "build_child_data offsets:{:?}, values:{:?}",
-            offsets.as_slice(),
-            values.as_slice()
-        );
+    /// Return (offsets_buffer, values_buffer) according to arrow
+    /// `Variable-size Binary Layout`. Refer to https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-layout.
+    fn build_variable_size_array_buffer(
+        &self,
+        offsets: &mut MutableBuffer,
+    ) -> Result<(MutableBuffer, MutableBuffer)> {
+        let mut length_so_far: i32 = 0;
+        offsets.push(length_so_far);
 
-        let values_array_data = ArrayData::builder(self.datum_kind.to_arrow_data_type())
-            .len(values_num)
-            .add_buffer(values.into())
-            .null_bit_buffer(Some(null_buffer.into()))
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+        let (offsets_length_total, values_length_total) =
+            self.compute_variable_size_array_buffer_length()?;
 
-        Ok(values_array_data)
+        let mut inner_values = MutableBuffer::new(values_length_total as usize);
+        let mut inner_offsets = MutableBuffer::new(offsets_length_total);
+
+        self.build_variable_size_array_buffer_data(
+            &mut length_so_far,
+            offsets,
+            &mut inner_offsets,
+            &mut inner_values,
+        )?;
+        Ok((inner_offsets, inner_values))
+    }
+
+    fn convert_to_variable_size_array<'a>(
+        &self,
+        array_handle: &'a ArrayHandle,
+    ) -> Result<Box<dyn VariableSizeArray + 'a>> {
+        match self.datum_kind.to_arrow_data_type() {
+            DataType::Utf8 => Ok(Box::new(StringArrayWrapper(
+                array_handle
+                    .array
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .expect("downcast StringArray failed"),
+            ))),
+            DataType::Binary => Ok(Box::new(BinaryArrayWrapper(
+                array_handle
+                    .array
+                    .as_any()
+                    .downcast_ref::<BinaryArray>()
+                    .expect("downcast BinaryArray failed"),
+            ))),
+            typ => VariableLengthType { type_name: typ }
+                .fail()
+                .map_err(|e| Box::new(e) as _)
+                .context(EncodeRecordBatch),
+        }
+    }
+
+    /// Return (offsets_length_total, values_length_total).
+    #[inline]
+    fn compute_variable_size_array_buffer_length(&self) -> Result<(usize, usize)> {
+        let mut offsets_length_total = 0;
+        let mut values_length_total = 0;
+
+        for array_handle in &self.list_of_arrays {
+            let array = self.convert_to_variable_size_array(array_handle)?;
+            for slice_arg in &array_handle.slice_args {
+                let start = array.value_offsets()[slice_arg.offset];
+                let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
+
+                offsets_length_total += slice_arg.length;
+                values_length_total += (end - start) as usize;
+            }
+        }
+        Ok((offsets_length_total, values_length_total))
+    }
+
+    /// Build variable-size array buffer data.
+    ///
+    /// length_so_far and offsets are used for father buffer data.
+    /// inner_offsets and inner_values are used for child buffer data.
+    fn build_variable_size_array_buffer_data(
+        &self,
+        length_so_far: &mut i32,
+        offsets: &mut MutableBuffer,
+        inner_offsets: &mut MutableBuffer,
+        inner_values: &mut MutableBuffer,
+    ) -> Result<()> {
+        let mut inner_length_so_far: i32 = 0;
+        inner_offsets.push(inner_length_so_far);
+
+        for array_handle in &self.list_of_arrays {
+            let array = self.convert_to_variable_size_array(array_handle)?;
+            for slice_arg in &array_handle.slice_args {
+                *length_so_far += slice_arg.length as i32;
+
+                let start = array.value_offsets()[slice_arg.offset];
+                let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
+
+                for i in (slice_arg.offset as usize)..(slice_arg.offset + slice_arg.length as usize)
+                {
+                    inner_length_so_far += array.value_length(i);
+                    inner_offsets.push(inner_length_so_far);
+                }
+
+                inner_values.extend_from_slice(
+                    &array.value_data().as_slice()[start as usize..end as usize],
+                );
+            }
+            offsets.push(*length_so_far);
+        }
+        Ok(())
     }
 
     /// This function is a translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
@@ -232,7 +427,7 @@ impl ListArrayBuilder {
 }
 
 /// Builds hybrid record by concat timestamp and non key columns into
-/// `ListArray`
+/// `ListArray`.
 fn build_hybrid_record(
     arrow_schema: ArrowSchemaRef,
     tsid_type: &IndexedType,
@@ -372,6 +567,7 @@ pub fn convert_to_hybrid_record(
 mod tests {
     use arrow_deps::arrow::{
         array::{TimestampMillisecondArray, UInt16Array},
+        buffer::Buffer,
         datatypes::{TimestampMillisecondType, UInt16Type},
     };
 
@@ -392,6 +588,12 @@ mod tests {
 
     fn uint16_array(values: Vec<Option<u16>>) -> ArrayRef {
         let arr: UInt16Array = values.into_iter().collect();
+
+        Arc::new(arr)
+    }
+
+    fn string_array(values: Vec<Option<&str>>) -> ArrayRef {
+        let arr: StringArray = values.into_iter().collect();
 
         Arc::new(arr)
     }
@@ -423,22 +625,88 @@ mod tests {
 
     #[test]
     fn merge_u16_array_with_none_to_list() {
-        let list_of_arrays = vec![ArrayHandle::with_slice_args(
-            uint16_array(vec![
-                Some(1),
-                Some(2),
-                None,
-                Some(3),
-                Some(4),
-                Some(5),
-                Some(6),
-            ]),
-            vec![(1, 3).into(), (4, 1).into()],
-        )];
+        let list_of_arrays = vec![
+            ArrayHandle::with_slice_args(
+                uint16_array(vec![
+                    Some(1),
+                    Some(2),
+                    None,
+                    Some(3),
+                    Some(4),
+                    Some(5),
+                    Some(6),
+                ]),
+                vec![(1, 3).into(), (4, 1).into()],
+            ),
+            ArrayHandle::with_slice_args(
+                uint16_array(vec![
+                    Some(1),
+                    Some(2),
+                    None,
+                    Some(3),
+                    Some(4),
+                    Some(5),
+                    Some(6),
+                ]),
+                vec![(0, 1).into()],
+            ),
+        ];
 
-        let data = vec![Some(vec![Some(2), None, Some(3), Some(4)])];
+        let data = vec![
+            Some(vec![Some(2), None, Some(3), Some(4)]),
+            Some(vec![Some(1)]),
+        ];
         let expected = ListArray::from_iter_primitive::<UInt16Type, _, _>(data);
         let list_array = ListArrayBuilder::new(DatumKind::UInt16, list_of_arrays)
+            .build()
+            .unwrap();
+
+        assert_eq!(list_array, expected);
+    }
+
+    #[test]
+    fn merge_string_array_with_none_to_list() {
+        let list_of_arrays = vec![
+            ArrayHandle::with_slice_args(
+                string_array(vec![
+                    Some("a"),
+                    Some("bb"),
+                    None,
+                    Some("ccc"),
+                    Some("d"),
+                    Some("eeee"),
+                    Some("eee"),
+                ]),
+                vec![(1, 3).into(), (4, 1).into()],
+            ),
+            ArrayHandle::with_slice_args(
+                string_array(vec![
+                    Some("a"),
+                    Some("bb"),
+                    None,
+                    Some("ccc"),
+                    Some("d"),
+                    Some("eeee"),
+                    Some("eee"),
+                ]),
+                vec![(0, 1).into()],
+            ),
+        ];
+
+        let string_data = string_array(vec![Some("bb"), None, Some("ccc"), Some("d"), Some("a")]);
+        let offsets: [i32; 3] = [0, 4, 5];
+        let array_data = ArrayData::builder(DataType::List(Box::new(Field::new(
+            LIST_ITEM_NAME,
+            DataType::Utf8,
+            true,
+        ))))
+        .len(2)
+        .add_buffer(Buffer::from_slice_ref(&offsets))
+        .add_child_data(string_data.data().to_owned())
+        .build()
+        .unwrap();
+        let expected = ListArray::from(array_data);
+        let list_array = ListArrayBuilder::new(DatumKind::String, list_of_arrays)
             .build()
             .unwrap();
 

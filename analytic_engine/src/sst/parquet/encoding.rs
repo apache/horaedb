@@ -161,16 +161,6 @@ pub enum Error {
         type_name: String,
         backtrace: Backtrace,
     },
-
-    #[snafu(display(
-        "Hybrid format doesn't support variable length type, type:{}.\nBacktrace:\n{}",
-        type_name,
-        backtrace
-    ))]
-    VariableLengthType {
-        type_name: String,
-        backtrace: Backtrace,
-    },
 }
 
 define_result!(Error);
@@ -355,14 +345,6 @@ impl HybridRecordEncoder {
             }
 
             if schema.is_collapsible_column(idx) {
-                // TODO: support variable length type
-                ensure!(
-                    col.data_type.size().is_some(),
-                    VariableLengthType {
-                        type_name: col.data_type.to_string(),
-                    }
-                );
-
                 collapsible_col_types.push(IndexedType {
                     idx,
                     data_type: schema.column(idx).data_type,
@@ -788,6 +770,12 @@ mod tests {
                     .unwrap(),
             )
             .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("string_value".to_string(), DatumKind::String)
+                    .build()
+                    .unwrap(),
+            )
+            .unwrap()
             .build()
             .unwrap()
     }
@@ -882,7 +870,7 @@ mod tests {
     }
 
     #[test]
-    fn encode_hybrid_record_and_decode_back() {
+    fn hybrid_record_encode_and_decode() {
         let write_props = WriterProperties::builder().build();
         let schema = build_schema();
         let mut encoder = HybridRecordEncoder::try_new(write_props, &schema).unwrap();
@@ -903,6 +891,12 @@ mod tests {
                 Some("region2"),
             ]),
             int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
         ];
 
         let input_record_batch =
