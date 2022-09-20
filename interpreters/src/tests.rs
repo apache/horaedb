@@ -78,41 +78,50 @@ where
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
 
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 0);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 0),
+            "create table should success"
+        );
     }
 
     async fn test_desc_table(&self) {
         let sql = "desc table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::Records(v) = output {
-            assert_eq!(v.len(), 1);
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+        let expected = vec![
+            "+--------+-----------+------------+-------------+--------+",
+            "| name   | type      | is_primary | is_nullable | is_tag |",
+            "+--------+-----------+------------+-------------+--------+",
+            "| key1   | varbinary | true       | false       | false  |",
+            "| key2   | timestamp | true       | false       | false  |",
+            "| field1 | double    | false      | false       | false  |",
+            "| field2 | string    | false      | false       | false  |",
+            "+--------+-----------+------------+-------------+--------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_exists_table(&self) {
         let sql = "exists table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::Records(v) = output {
-            assert_eq!(v.len(), 1);
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+        let expected = vec![
+            "+--------+",
+            "| result |",
+            "+--------+",
+            "| 1      |",
+            "+--------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_insert_table(&self) {
         let sql = "INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 2);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 2),
+            "insert table should success"
+        );
     }
 
     async fn test_insert_table_with_missing_columns(&self) {
@@ -127,11 +136,10 @@ where
         let plan = sql_to_plan(&self.meta_provider, insert_sql);
         let interpreter = insert_factory.create(ctx, plan);
         let output = interpreter.execute().await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 2);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 2),
+            "insert should success"
+        );
 
         // Check data which just insert.
         let select_sql =
@@ -143,78 +151,83 @@ where
         let plan = sql_to_plan(&self.meta_provider, select_sql);
         let interpreter = select_factory.create(ctx, plan);
         let output = interpreter.execute().await.unwrap();
-        if let Output::Records(records) = output {
-            let expected = vec![
-                "+------------+---------------------+--------+--------+--------+",
-                "| key1       | key2                | field1 | field2 | field3 |",
-                "+------------+---------------------+--------+--------+--------+",
-                "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
-                "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
-                "+------------+---------------------+--------+--------+--------+",
-            ];
-            common_util::record_batch::assert_record_batches_eq(&expected, records)
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+
+        let expected = vec![
+            "+------------+---------------------+--------+--------+--------+",
+            "| key1       | key2                | field1 | field2 | field3 |",
+            "+------------+---------------------+--------+--------+--------+",
+            "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
+            "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
+            "+------------+---------------------+--------+--------+--------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_select_table(&self) {
         let sql = "select * from test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::Records(v) = output {
-            assert_eq!(v.len(), 1);
-            assert_eq!(v[0].num_rows(), 2);
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+        let expected = vec![
+            "+------------+---------------------+--------+--------+",
+            "| key1       | key2                | field1 | field2 |",
+            "+------------+---------------------+--------+--------+",
+            "| 7461676b   | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "| 7461676b32 | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "+------------+---------------------+--------+--------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
 
         let sql = "select count(*) from test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::Records(v) = output {
-            assert_eq!(v.len(), 1);
-            assert_eq!(v[0].num_rows(), 1);
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+        let expected = vec![
+            "+-----------------+",
+            "| COUNT(UInt8(1)) |",
+            "+-----------------+",
+            "| 2               |",
+            "+-----------------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_show_create_table(&self) {
         let sql = "show create table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::Records(v) = output {
-            assert_eq!(v.len(), 1);
-            assert_eq!(v[0].num_rows(), 1);
-        } else {
-            panic!();
-        }
+        let records = output.into_records().unwrap();
+        let expected = vec![
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
+            "| Table      | Create Table                                                                                                                                                                                      |",
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
+            "| test_table | CREATE TABLE `test_table` (`key1` varbinary NOT NULL, `key2` timestamp NOT NULL, `field1` double NOT NULL, `field2` string NOT NULL, PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic |",
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+"
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
 
     async fn test_alter_table(&self) {
         let sql = "alter table test_table add column add_col string";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 0);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 0),
+            "alter table should success"
+        );
 
         let sql = "alter table test_table modify SETTING ttl='9d'";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 0);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 0),
+            "alter table should success"
+        );
     }
 
     async fn test_drop_table(&self) {
         let sql = "drop table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        if let Output::AffectedRows(v) = output {
-            assert_eq!(v, 0);
-        } else {
-            panic!();
-        }
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 0),
+            "alter table should success"
+        );
     }
 }
 

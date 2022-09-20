@@ -63,7 +63,10 @@ fn default_value_schema_builder() -> schema::Builder {
         )
         .unwrap()
         .add_normal_column(
-            // Do not need Cast
+            // The data type of column and its default value will not be the same in most time.
+            // So we need check if the type coercion is legal and do type coercion when legal.
+            // In he following, the data type of column is `Int64`, and the type of default value
+            // expr is `Int64`. So we use this column to cover the test, which has the same type.
             column_schema::Builder::new("field1".to_string(), DatumKind::Int64)
                 .default_value(Some(Expr::Value(Value::Number("10".to_string(), false))))
                 .build()
@@ -71,7 +74,8 @@ fn default_value_schema_builder() -> schema::Builder {
         )
         .unwrap()
         .add_normal_column(
-            // Need cast
+            // The data type of column is `UInt32`, and the type of default value expr is `Int64`.
+            // So we use this column to cover the test, which has different type.
             column_schema::Builder::new("field2".to_string(), DatumKind::UInt32)
                 .default_value(Some(Expr::Value(Value::Number("20".to_string(), false))))
                 .build()
@@ -98,7 +102,7 @@ pub fn build_schema() -> Schema {
 }
 
 /// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(uint32, default 10),
+/// (key1(varbinary), key2(timestamp), field1(int64, default 10),
 /// field2(uint32, default 20)), field3(uint32, default 1 + 2)
 pub fn build_default_value_schema() -> Schema {
     default_value_schema_builder().build().unwrap()

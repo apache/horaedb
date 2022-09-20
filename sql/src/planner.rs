@@ -60,16 +60,19 @@ use crate::{
 // should be easy to find out the reason.
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("DataFusion Failed to plan, err:{}", source))]
+    #[snafu(display("Failed to generate datafusion plan, err:{}", source))]
     DataFusionPlan { source: DataFusionError },
 
-    #[snafu(display("DataFusion Failed to create schema, err:{}", source))]
+    #[snafu(display("Failed to create datafusion schema, err:{}", source))]
     DataFusionSchema { source: DataFusionError },
 
-    #[snafu(display("DataFusion Failed to generate expr, err:{}", source))]
+    #[snafu(display("Failed to generate datafusion expr, err:{}", source))]
     DataFusionExpr { source: DataFusionError },
 
-    #[snafu(display("DataFusion Failed to get data type from PhysicalExpr, err:{}", source))]
+    #[snafu(display(
+        "Failed to get data type from datafusion physical expr, err:{}",
+        source
+    ))]
     DataFusionDataType { source: DataFusionError },
 
     // Statement is too large and complicate to carry in Error, so we
@@ -878,7 +881,7 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
                 &evaluated_expr,
                 &DFSchema::empty(),
                 &ArrowSchema::empty(),
-                &ExecutionProps::default(),
+                &execution_props,
             )
             .context(DataFusionExpr)?;
             let from_type = physical_expr

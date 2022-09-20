@@ -39,6 +39,9 @@ pub enum Error {
 
     #[snafu(display("Failed to execute exists, err:{}", source))]
     Exists { source: crate::exists::Error },
+
+    #[snafu(display("Failed to transfer ouput to records"))]
+    IntoRecords,
 }
 
 define_result!(Error);
@@ -50,6 +53,17 @@ pub enum Output {
     AffectedRows(usize),
     /// A vec of RecordBatch
     Records(RecordBatchVec),
+}
+
+impl Output {
+    /// Helper function to transfer into inner records just for test.
+    pub fn into_records(self) -> Result<RecordBatchVec> {
+        if let Output::Records(records) = self {
+            Ok(records)
+        } else {
+            Err(Error::IntoRecords)
+        }
+    }
 }
 
 /// Interpreter executes the plan it holds
