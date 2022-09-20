@@ -41,7 +41,7 @@ pub enum Error {
     Exists { source: crate::exists::Error },
 
     #[snafu(display("Failed to transfer ouput to records"))]
-    IntoRecords,
+    TryIntoRecords,
 }
 
 define_result!(Error);
@@ -55,13 +55,14 @@ pub enum Output {
     Records(RecordBatchVec),
 }
 
-impl Output {
-    /// Helper function to transfer into inner records just for test.
-    pub fn into_records(self) -> Result<RecordBatchVec> {
-        if let Output::Records(records) = self {
+impl TryFrom<Output> for RecordBatchVec {
+    type Error = Error;
+
+    fn try_from(output: Output) -> Result<Self> {
+        if let Output::Records(records) = output {
             Ok(records)
         } else {
-            Err(Error::IntoRecords)
+            Err(Error::TryIntoRecords)
         }
     }
 }

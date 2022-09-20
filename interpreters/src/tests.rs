@@ -87,7 +87,7 @@ where
     async fn test_desc_table(&self) {
         let sql = "desc table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
         let expected = vec![
             "+--------+-----------+------------+-------------+--------+",
             "| name   | type      | is_primary | is_nullable | is_tag |",
@@ -104,7 +104,7 @@ where
     async fn test_exists_table(&self) {
         let sql = "exists table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
         let expected = vec![
             "+--------+",
             "| result |",
@@ -151,7 +151,7 @@ where
         let plan = sql_to_plan(&self.meta_provider, select_sql);
         let interpreter = select_factory.create(ctx, plan);
         let output = interpreter.execute().await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
 
         let expected = vec![
             "+------------+---------------------+--------+--------+--------+",
@@ -167,7 +167,7 @@ where
     async fn test_select_table(&self) {
         let sql = "select * from test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
         let expected = vec![
             "+------------+---------------------+--------+--------+",
             "| key1       | key2                | field1 | field2 |",
@@ -180,7 +180,7 @@ where
 
         let sql = "select count(*) from test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
         let expected = vec![
             "+-----------------+",
             "| COUNT(UInt8(1)) |",
@@ -194,7 +194,7 @@ where
     async fn test_show_create_table(&self) {
         let sql = "show create table test_table";
         let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.into_records().unwrap();
+        let records = output.try_into().unwrap();
         let expected = vec![
             "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
             "| Table      | Create Table                                                                                                                                                                                      |",
