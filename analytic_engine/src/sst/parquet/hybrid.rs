@@ -719,4 +719,15 @@ mod tests {
 
         assert_eq!(list_array, expected);
     }
+
+    // Fix https://github.com/CeresDB/ceresdb/issues/255
+    // null buffer will ceiled by 8, so its capacity may less than `size`
+    #[test]
+    fn new_null_buffer_with_different_size() {
+        let sizes = [1, 8, 11, 20, 511];
+
+        for size in &sizes {
+            let _ = new_null_buffer_with_ones(*size);
+        }
+    }
 }
