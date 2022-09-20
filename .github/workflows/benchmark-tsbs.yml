@@ -1,0 +1,41 @@
+name: TSBS Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '2 0 * * *'
+
+jobs:
+  run-tsbs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: rust-${{ runner.os }}-release-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-release-${{ hashFiles('rust-toolchain') }}-
+            rust-${{ runner.os }}-release-
+            rust-${{ runner.os }}
+      - name: Build server
+        run: |
+          ./scripts/run-tsbs.sh
+          echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bench-log
+          path: logs/**
+      - name: Create Issue From File
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: TSBS benchmark ${{ env.NOW }}
+          # repository: CeresDB/tsbs
+          content-filepath: ./tsbs/issue.md
+          labels: |
+            benchmark
