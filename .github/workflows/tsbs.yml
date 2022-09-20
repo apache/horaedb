@@ -2,6 +2,11 @@ name: TSBS Benchmark
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/tsbs.yml'
+      - 'scrits/run-tsbs.sh'
+    paths-ignore:
   schedule:
     - cron: '2 0 * * *'
 
