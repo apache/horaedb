@@ -273,13 +273,13 @@ impl ColumnarRecordEncoder {
         compression: Compression,
         meta_data: SstMetaData,
     ) -> Result<Self> {
+        let arrow_schema = meta_data.schema.to_arrow_schema_ref();
+
         let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data.clone())?]))
+            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
-
-        let arrow_schema = meta_data.schema.to_arrow_schema_ref();
 
         let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
@@ -898,6 +898,14 @@ mod tests {
         }
     }
 
+    fn collect_collapsible_cols_idx(schema: &Schema, collapsible_cols_idx: &mut Vec<u32>) {
+        for (idx, _col) in schema.columns().iter().enumerate() {
+            if schema.is_collapsible_column(idx) {
+                collapsible_cols_idx.push(idx as u32);
+            }
+        }
+    }
+
     #[test]
     fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
@@ -950,15 +958,10 @@ mod tests {
         let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
         let mut reader = reader.get_record_reader(2048).unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
-
-        for (idx, _col) in meta_data.schema.columns().iter().enumerate() {
-            if meta_data.schema.is_collapsible_column(idx) {
-                meta_data
-                    .storage_format_opts
-                    .collapsible_cols_idx
-                    .push(idx as u32);
-            }
-        }
+        collect_collapsible_cols_idx(
+            &meta_data.schema,
+            &mut meta_data.storage_format_opts.collapsible_cols_idx,
+        );
 
         let decoder = HybridRecordDecoder { meta_data };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();

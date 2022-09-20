@@ -293,7 +293,7 @@ impl Default for StorageFormat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StorageFormatOptions {
     pub format: StorageFormat,
     pub collapsible_cols_idx: Vec<u32>,
@@ -303,15 +303,6 @@ impl StorageFormatOptions {
     pub fn new(format: StorageFormat) -> Self {
         Self {
             format,
-            collapsible_cols_idx: Vec::new(),
-        }
-    }
-}
-
-impl Default for StorageFormatOptions {
-    fn default() -> Self {
-        Self {
-            format: StorageFormat::default(),
             collapsible_cols_idx: Vec::new(),
         }
     }
@@ -330,7 +321,7 @@ impl From<StorageFormatOptionsPb> for StorageFormatOptions {
     fn from(mut format_opts_pb: StorageFormatOptionsPb) -> Self {
         Self {
             format: format_opts_pb.get_format().into(),
-            collapsible_cols_idx: format_opts_pb.take_collapsible_cols_idx().into(),
+            collapsible_cols_idx: format_opts_pb.take_collapsible_cols_idx(),
         }
     }
 }
