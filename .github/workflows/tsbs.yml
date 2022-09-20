@@ -30,6 +30,9 @@ jobs:
             rust-${{ runner.os }}
       - name: Build server
         run: |
+          make build
+      - name: Run TSBS
+        run: |
           ./scripts/run-tsbs.sh
           echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v3
