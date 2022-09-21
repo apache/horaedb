@@ -963,6 +963,7 @@ dependencies = [
  "proto 0.1.0",
  "serde",
  "serde_derive",
+ "serde_json",
  "snafu 0.6.10",
  "sqlparser 0.19.0",
 ]
@@ -989,6 +990,7 @@ dependencies = [
 name = "common_util"
 version = "0.1.0"
 dependencies = [
+ "arrow_deps 0.1.0",
  "backtrace",
  "chrono",
  "common_types 0.1.0",
@@ -5137,6 +5139,7 @@ dependencies = [
  "common_types 0.1.0",
  "common_util",
  "df_operator",
+ "hashbrown",
  "log",
  "paste 1.0.8",
  "regex",
@@ -5162,6 +5165,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8ec7ef1bad82a2453dbaef7218b6f036e545edcce1ffd55f6e7af7bea43cce2"
 dependencies = [
  "log",
+ "serde",
 ]
 
 [[package]]
@@ -5950,8 +5954,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 1.0.0",
- "rand 0.8.5",
+ "cfg-if 0.1.10",
+ "rand 0.3.23",
  "static_assertions 1.1.0",
 ]
 

@@ -846,6 +846,43 @@ pub mod arrow_convert {
                 Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
             }
         }
+
+        pub fn from_scalar_value(val: &ScalarValue) -> Option<Self> {
+            match val {
+                ScalarValue::Boolean(v) => v.map(Datum::Boolean),
+                ScalarValue::Float32(v) => v.map(Datum::Float),
+                ScalarValue::Float64(v) => v.map(Datum::Double),
+                ScalarValue::Int8(v) => v.map(Datum::Int8),
+                ScalarValue::Int16(v) => v.map(Datum::Int16),
+                ScalarValue::Int32(v) => v.map(Datum::Int32),
+                ScalarValue::Int64(v) => v.map(Datum::Int64),
+                ScalarValue::UInt8(v) => v.map(Datum::UInt8),
+                ScalarValue::UInt16(v) => v.map(Datum::UInt16),
+                ScalarValue::UInt32(v) => v.map(Datum::UInt32),
+                ScalarValue::UInt64(v) => v.map(Datum::UInt64),
+                ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => v
+                    .as_ref()
+                    .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str()))),
+                ScalarValue::Binary(v) | ScalarValue::LargeBinary(v) => v
+                    .as_ref()
+                    .map(|v| Datum::Varbinary(Bytes::copy_from_slice(v.as_slice()))),
+                ScalarValue::TimestampMillisecond(v, _) => {
+                    v.map(|v| Datum::Timestamp(Timestamp::new(v)))
+                }
+                ScalarValue::List(_, _)
+                | ScalarValue::Date32(_)
+                | ScalarValue::Date64(_)
+                | ScalarValue::TimestampSecond(_, _)
+                | ScalarValue::TimestampMicrosecond(_, _)
+                | ScalarValue::TimestampNanosecond(_, _)
+                | ScalarValue::IntervalYearMonth(_)
+                | ScalarValue::IntervalDayTime(_)
+                | ScalarValue::Struct(_, _)
+                | ScalarValue::Decimal128(_, _, _)
+                | ScalarValue::Null
+                | ScalarValue::IntervalMonthDayNano(_) => None,
+            }
+        }
     }
 
     impl<'a> DatumView<'a> {

@@ -1,6 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use bytes::Bytes;
+use sqlparser::ast::{BinaryOperator, Expr, Value};
 
 use crate::{
     column_schema,
@@ -46,10 +47,65 @@ fn base_schema_builder() -> schema::Builder {
         .unwrap()
 }
 
+fn default_value_schema_builder() -> schema::Builder {
+    schema::Builder::new()
+        .auto_increment_column_id(true)
+        .add_key_column(
+            column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_key_column(
+            column_schema::Builder::new("key2".to_string(), DatumKind::Timestamp)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            // The data type of column and its default value will not be the same in most time.
+            // So we need check if the type coercion is legal and do type coercion when legal.
+            // In he following, the data type of column is `Int64`, and the type of default value
+            // expr is `Int64`. So we use this column to cover the test, which has the same type.
+            column_schema::Builder::new("field1".to_string(), DatumKind::Int64)
+                .default_value(Some(Expr::Value(Value::Number("10".to_string(), false))))
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            // The data type of column is `UInt32`, and the type of default value expr is `Int64`.
+            // So we use this column to cover the test, which has different type.
+            column_schema::Builder::new("field2".to_string(), DatumKind::UInt32)
+                .default_value(Some(Expr::Value(Value::Number("20".to_string(), false))))
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("field3".to_string(), DatumKind::UInt32)
+                .default_value(Some(Expr::BinaryOp {
+                    left: Box::new(Expr::Value(Value::Number("1".to_string(), false))),
+                    op: BinaryOperator::Plus,
+                    right: Box::new(Expr::Value(Value::Number("2".to_string(), false))),
+                }))
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+}
+
 /// Build a schema for testing:
 /// (key1(varbinary), key2(timestamp), field1(double), field2(string))
 pub fn build_schema() -> Schema {
     base_schema_builder().build().unwrap()
+}
+
+/// Build a schema for testing:
+/// (key1(varbinary), key2(timestamp), field1(int64, default 10),
+/// field2(uint32, default 20)), field3(uint32, default 1 + 2)
+pub fn build_default_value_schema() -> Schema {
+    default_value_schema_builder().build().unwrap()
 }
 
 pub fn build_projected_schema() -> ProjectedSchema {

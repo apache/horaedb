@@ -150,6 +150,9 @@ pub enum Error {
         key: ArrowSchemaMetaKey,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Arrow schema meta key not found.\nerr:\n{}", source))]
+    ColumnSchemaDeserializeFailed { source: crate::column_schema::Error },
 }
 
 pub type CatalogName = String;
@@ -825,7 +828,8 @@ impl TryFrom<common_pb::TableSchema> for Schema {
             .enable_tsid_primary_key(schema.enable_tsid_primary_key);
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
-            let column = ColumnSchema::from(column_schema_pb);
+            let column =
+                ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
 
             if i < schema.num_key_columns as usize {
                 builder = builder.add_key_column(column)?;

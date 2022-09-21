@@ -38,6 +38,8 @@ message ColumnSchema {
     bool is_tag = 5;
     // Comment of the column
     string comment = 6;
+    // Default value expr of the column
+    optional bytes default_value = 7;
 }
 
 // Table Schema

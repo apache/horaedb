@@ -575,7 +575,6 @@ impl ColumnBlock {
             DatumKind::from_data_type(array.data_type()).with_context(|| UnsupportedArray {
                 data_type: array.data_type().clone(),
             })?;
-
         Self::try_from_arrow_array_ref(&datum_kind, array)
     }
 

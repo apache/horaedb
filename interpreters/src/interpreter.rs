@@ -39,6 +39,9 @@ pub enum Error {
 
     #[snafu(display("Failed to execute exists, err:{}", source))]
     Exists { source: crate::exists::Error },
+
+    #[snafu(display("Failed to transfer ouput to records"))]
+    TryIntoRecords,
 }
 
 define_result!(Error);
@@ -50,6 +53,18 @@ pub enum Output {
     AffectedRows(usize),
     /// A vec of RecordBatch
     Records(RecordBatchVec),
+}
+
+impl TryFrom<Output> for RecordBatchVec {
+    type Error = Error;
+
+    fn try_from(output: Output) -> Result<Self> {
+        if let Output::Records(records) = output {
+            Ok(records)
+        } else {
+            Err(Error::TryIntoRecords)
+        }
+    }
 }
 
 /// Interpreter executes the plan it holds

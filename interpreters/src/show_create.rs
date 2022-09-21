@@ -86,6 +86,10 @@ impl ShowCreateInterpreter {
                 res += " NOT NULL";
             }
 
+            if let Some(expr) = &col.default_value {
+                res += format!(" DEFAULT {}", expr).as_str();
+            }
+
             if !col.comment.is_empty() {
                 res += format!(" COMMENT '{}'", col.comment).as_str();
             }

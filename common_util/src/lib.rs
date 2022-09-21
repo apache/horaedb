@@ -13,6 +13,7 @@ pub mod codec;
 pub mod config;
 pub mod metric;
 pub mod panic;
+pub mod record_batch;
 pub mod runtime;
 pub mod time;
 pub mod toml;
