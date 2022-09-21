@@ -2,7 +2,7 @@
 
 export CURR_DIR=$(pwd)
 # used to create issue in https://github.com/CeresDB/tsbs/labels
-export ISSUE_FILE=${CURR_DIR}/tsbs/issue.md
+export RESULT_FILE=${CURR_DIR}/tsbs/result.md
 export CONFIG_FILE=${CONFIG_FILE:-docs/minimal.toml}
 export LOG_DIR=${CURR_DIR}/logs
 # where generated data stored
@@ -60,13 +60,13 @@ go build ./cmd/tsbs_run_queries_ceresdb
 # Note: only run 5-8-1 now
 cat ${BULK_DATA_DIR}/ceresdb-single-groupby-5-8-1-queries.gz | gunzip | ./tsbs_run_queries_ceresdb | tee ${LOG_DIR}/5-8-1.log
 
-# Output write & query result to issue
-echo '# Write' >> ${ISSUE_FILE}
-echo '```bash' >> ${ISSUE_FILE}
-cat ${LOG_DIR}/write.log >> ${ISSUE_FILE}
-echo '```' >> ${ISSUE_FILE}
+# Output write & query result
+echo '# Write' >> ${RESULT_FILE}
+echo '```bash' >> ${RESULT_FILE}
+cat ${LOG_DIR}/write.log >> ${RESULT_FILE}
+echo '```' >> ${RESULT_FILE}
 
-echo '# Query' >> ${ISSUE_FILE}
-echo '```bash' >> ${ISSUE_FILE}
-cat ${LOG_DIR}/5-8-1.log >> ${ISSUE_FILE}
-echo '```' >> ${ISSUE_FILE}
+echo '# Query' >> ${RESULT_FILE}
+echo '```bash' >> ${RESULT_FILE}
+cat ${LOG_DIR}/5-8-1.log >> ${RESULT_FILE}
+echo '```' >> ${RESULT_FILE}

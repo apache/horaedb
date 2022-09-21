@@ -34,16 +34,10 @@ jobs:
       - name: Run TSBS
         run: |
           ./scripts/run-tsbs.sh
-          echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+          echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H_%M_%S')" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v3
         with:
-          name: bench-log
-          path: logs/**
-      - name: Create Issue From File
-        uses: peter-evans/create-issue-from-file@v4
-        with:
-          title: TSBS benchmark ${{ env.NOW }}
-          # repository: CeresDB/tsbs
-          content-filepath: ./tsbs/issue.md
-          labels: |
-            benchmark
+          name: bench-${{ env.NOW }}
+          path: |
+            logs/**
+            tsbs/result.md
