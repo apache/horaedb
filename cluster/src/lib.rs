@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use common_types::schema::SchemaName;
 use common_util::define_result;
 pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
@@ -46,6 +47,16 @@ pub enum Error {
     ))]
     ShardNotFound {
         shard_id: ShardId,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Schema not found in current node, schema name:{}.\nBacktrace:\n{}",
+        schema_name,
+        backtrace
+    ))]
+    SchemaNotFound {
+        schema_name: SchemaName,
         backtrace: Backtrace,
     },
 

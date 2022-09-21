@@ -17,7 +17,7 @@ use meta_client::{
 };
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
-    engine::{OpenTableRequest, TableEngineRef},
+    engine::{CloseTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef},
     ANALYTIC_ENGINE_TYPE,
 };
 use tokio::{
@@ -27,7 +27,8 @@ use tokio::{
 
 use crate::{
     config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
+    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, SchemaNotFound,
+    StartMetaClient,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -35,6 +36,7 @@ use crate::{
 /// Its functions are to:
 /// * Receive and handle events from meta cluster by [`MetaClient`];
 /// * Send heartbeat to meta cluster;
+/// * Manipulate resources via [TableEngine];
 pub struct ClusterImpl {
     inner: Arc<Inner>,
     runtime: Arc<Runtime>,
@@ -145,6 +147,7 @@ impl EventHandler for Inner {
                             schema_id: table_info.schema_id.into(),
                             table_name: table_info.name.to_string(),
                             table_id: table_info.id.into(),
+                            // TODO: is this hard code appropriate?
                             engine: ANALYTIC_ENGINE_TYPE.to_string(),
                         };
                         let table = self.table_engine.open_table(req).await?;
@@ -158,12 +161,60 @@ impl EventHandler for Inner {
 
                 Ok(())
             }
-            ActionCmd::CreateTableCmd(_) => todo!(),
-            ActionCmd::DropTableCmd(_)
-            | ActionCmd::MetaNoneCmd(_)
-            | ActionCmd::MetaCloseCmd(_)
-            | ActionCmd::MetaSplitCmd(_)
-            | ActionCmd::MetaChangeRoleCmd(_) => {
+            ActionCmd::CreateTableCmd(_create_cmd) => {
+                // TODO: Modify CreateTableCmd to alias with CreateTableRequest.
+                todo!()
+            }
+            ActionCmd::DropTableCmd(drop_cmd) => {
+                let schema_id = self
+                    .table_manager
+                    .get_schema_id(DEFAULT_CATALOG, &drop_cmd.schema_name)
+                    .context(SchemaNotFound {
+                        schema_name: drop_cmd.schema_name.to_owned(),
+                    })?;
+                let req = DropTableRequest {
+                    catalog_name: DEFAULT_CATALOG.to_owned(),
+                    schema_name: drop_cmd.schema_name.to_owned(),
+                    schema_id: schema_id.into(),
+                    table_name: drop_cmd.name.to_string(),
+                    // TODO: is this hard code appropriate?
+                    engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                };
+
+                self.table_engine.drop_table(req).await?;
+
+                Ok(())
+            }
+            ActionCmd::MetaNoneCmd(_) => Ok(()),
+            ActionCmd::MetaCloseCmd(close_cmd) => {
+                let mut execute_errors = vec![];
+
+                for shard in &close_cmd.shard_ids {
+                    let tokens = self.table_manager.tokens_by_shard(*shard);
+                    for token in tokens {
+                        let req = CloseTableRequest {
+                            catalog_name: DEFAULT_CATALOG.to_string(),
+                            schema_name: "TODO".to_string(),
+                            schema_id: token.schema.into(),
+                            table_name: "TODO".to_string(),
+                            table_id: token.table.into(),
+                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                        };
+                        if let Err(e) = self.table_engine.close_table(req).await {
+                            execute_errors.push(e);
+                        }
+                    }
+                }
+
+                if !execute_errors.is_empty() {
+                    error!("Closing shard encounters errors: {:?}", execute_errors);
+                }
+
+                // TODO: drop those table handlers in TableManager
+
+                Ok(())
+            }
+            ActionCmd::MetaSplitCmd(_) | ActionCmd::MetaChangeRoleCmd(_) => {
                 warn!("Nothing to do for cmd:{:?}", cmd);
 
                 Ok(())

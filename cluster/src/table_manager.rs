@@ -43,10 +43,14 @@ impl From<&CreateTableCmd> for ShardTableInfo {
     }
 }
 
-/// TableManager manages information about tables, shards, schemas and their
+/// [TableManager] manages information about tables, shards, schemas and their
 /// relationships:
 /// * one shard -> multiple tables
 /// * one schema -> multiple tables
+///
+/// It doesn't interact with [TableEngine] directly, in contract [TableManager]
+/// only stores and maintains those table handles ([TableRef]) and relationships
+/// above. And that's why its interfaces require [TableRef]s.
 #[derive(Debug, Default, Clone)]
 pub struct TableManager {
     inner: Arc<RwLock<Inner>>,
@@ -145,6 +149,26 @@ impl TableManager {
             })
             .map(|(_, table)| table.clone())
     }
+
+    pub fn tables_by_shard(&self, shard_id: ShardId) -> Vec<TableRef> {
+        let inner = self.inner.read().unwrap();
+        let tokens = inner.tokens_by_shard.get(&shard_id);
+        if let Some(tokens) = tokens {
+            tokens
+                .iter()
+                .filter_map(|token| inner.tables_by_token.get(token).cloned())
+                .collect()
+        } else {
+            vec![]
+        }
+    }
+
+    pub(crate) fn tokens_by_shard(&self, shard_id: ShardId) -> Vec<TableToken> {
+        match self.inner.read().unwrap().tokens_by_shard.get(&shard_id) {
+            Some(tokens) => tokens.iter().cloned().collect(),
+            None => vec![],
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -161,12 +185,12 @@ struct Inner {
     tokens_by_shard: HashMap<ShardId, HashSet<TableToken>>,
 }
 
-#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
-struct TableToken {
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Clone)]
+pub(crate) struct TableToken {
     // todo: change this to CatalogId
-    catalog: String,
-    schema: SchemaId,
-    table: TableId,
+    pub(crate) catalog: String,
+    pub(crate) schema: SchemaId,
+    pub(crate) table: TableId,
 }
 
 impl TableToken {
