@@ -1,0 +1,46 @@
+name: TSBS Benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/tsbs.yml'
+      - 'scrits/run-tsbs.sh'
+    paths-ignore:
+  schedule:
+    - cron: '2 0 * * *'
+
+jobs:
+  run-tsbs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: rust-${{ runner.os }}-release-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-release-${{ hashFiles('rust-toolchain') }}-
+            rust-${{ runner.os }}-release-
+            rust-${{ runner.os }}
+      - name: Build server
+        run: |
+          make build
+      - name: Run TSBS
+        run: |
+          ./scripts/run-tsbs.sh
+          echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H_%M_%S')" >> $GITHUB_ENV
+      - name: Update Summary
+        run: |
+          cat tsbs/result.md >> $GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bench-${{ env.NOW }}
+          path: |
+            logs/**
+            tsbs/result.md
