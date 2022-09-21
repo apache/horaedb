@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use catalog::consts::DEFAULT_CATALOG;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
@@ -15,6 +16,10 @@ use meta_client::{
     EventHandler, MetaClientRef,
 };
 use snafu::{OptionExt, ResultExt};
+use table_engine::{
+    engine::{OpenTableRequest, TableEngineRef},
+    ANALYTIC_ENGINE_TYPE,
+};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
@@ -23,7 +28,6 @@ use tokio::{
 use crate::{
     config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
     ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
-    TableManipulator, TableManipulatorRef,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -42,11 +46,11 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub fn new(
         meta_client: MetaClientRef,
-        table_manipulator: TableManipulatorRef,
+        table_engine: TableEngineRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(meta_client, table_manipulator)?;
+        let inner = Inner::new(meta_client, table_engine)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -105,7 +109,7 @@ impl ClusterImpl {
 struct Inner {
     table_manager: TableManager,
     meta_client: MetaClientRef,
-    table_manipulator: TableManipulatorRef,
+    table_engine: TableEngineRef,
     #[allow(dead_code)]
     topology: RwLock<ClusterTopology>,
 }
@@ -134,10 +138,20 @@ impl EventHandler for Inner {
                     .map_err(Box::new)?;
 
                 for shard_tables in resp.shard_tables.values() {
-                    for table in &shard_tables.tables {
-                        self.table_manipulator
-                            .open_table(&table.schema_name, &table.name, table.id)
-                            .await?;
+                    for table_info in &shard_tables.tables {
+                        let req = OpenTableRequest {
+                            catalog_name: DEFAULT_CATALOG.to_string(),
+                            schema_name: table_info.schema_name.to_string(),
+                            schema_id: table_info.schema_id.into(),
+                            table_name: table_info.name.to_string(),
+                            table_id: table_info.id.into(),
+                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                        };
+                        let table = self.table_engine.open_table(req).await?;
+                        if let Some(table) = table {
+                            self.table_manager
+                                .add_shard_table(table_info.to_owned(), table)?;
+                        }
                     }
                 }
                 self.table_manager.update_table_info(&resp.shard_tables);
@@ -159,14 +173,11 @@ impl EventHandler for Inner {
 }
 
 impl Inner {
-    fn new(
-        meta_client: MetaClientRef,
-        table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
-    ) -> Result<Self> {
+    fn new(meta_client: MetaClientRef, table_engine: TableEngineRef) -> Result<Self> {
         Ok(Self {
             table_manager: TableManager::default(),
             meta_client,
-            table_manipulator,
+            table_engine,
             topology: Default::default(),
         })
     }

@@ -215,11 +215,13 @@ impl Inner {
             .cloned()
     }
 
+    // TODO: also request `ShardId` here
     fn add_table(&mut self, table_info: TableInfo, table: TableRef) {
         self.tables_by_token
             .insert(TableToken::from_table_info(table_info), table);
     }
 
+    // TODO: also request `ShardId` here
     #[allow(dead_code)]
     fn drop_table(&mut self, table_info: TableInfo) {
         self.tables_by_token

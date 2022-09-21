@@ -1,9 +1,16 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Cluster sub-crate includes serval functionalities for supporting CeresDB
+//! server to running in the distribute mode. Including:
+//! - Catalog / Schema / Table's create, open, close and drop operations.
+//! - Request CeresMeta for reading topology or configuration.
+//! - Accept CeresMeta's command events like create/drop table etc,.
+//!
+//! The core types are [Cluster] trait and its implementation [ClusterImpl].
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::table::TableId;
 use common_util::define_result;
 pub use meta_client::types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
@@ -53,24 +60,6 @@ pub enum Error {
 define_result!(Error);
 
 pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
-pub type TableManipulatorRef = Arc<dyn TableManipulator + Send + Sync>;
-
-#[async_trait]
-pub trait TableManipulator {
-    async fn open_table(
-        &self,
-        schema_name: &str,
-        table_name: &str,
-        table_id: TableId,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
-
-    async fn close_table(
-        &self,
-        schema_name: &str,
-        table_name: &str,
-        table_id: TableId,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
-}
 
 #[derive(Clone, Debug)]
 pub struct ClusterNodesResp {
