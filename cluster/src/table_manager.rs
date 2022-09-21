@@ -164,9 +164,10 @@ impl TableManager {
     }
 
     pub(crate) fn tokens_by_shard(&self, shard_id: ShardId) -> Vec<TableToken> {
-        match self.inner.read().unwrap().tokens_by_shard.get(&shard_id) {
-            Some(tokens) => tokens.iter().cloned().collect(),
-            None => vec![],
+        if let Some(tokens) = self.inner.read().unwrap().tokens_by_shard.get(&shard_id) {
+            tokens.iter().cloned().collect()
+        } else {
+            vec![]
         }
     }
 }
