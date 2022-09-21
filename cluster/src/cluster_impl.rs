@@ -189,14 +189,15 @@ impl EventHandler for Inner {
             ActionCmd::MetaCloseCmd(close_cmd) => {
                 let mut execute_errors = vec![];
 
-                for shard in &close_cmd.shard_ids {
-                    let tokens = self.table_manager.tokens_by_shard(*shard);
+                for shard_id in &close_cmd.shard_ids {
+                    let tokens = self.table_manager.tokens_by_shard(*shard_id);
                     for token in tokens {
+                        // TODO: remove `schema_name` and `table_name` fields in `CloseTableRequest`
                         let req = CloseTableRequest {
                             catalog_name: DEFAULT_CATALOG.to_string(),
-                            schema_name: "TODO".to_string(),
+                            schema_name: "".to_string(),
                             schema_id: token.schema.into(),
-                            table_name: "TODO".to_string(),
+                            table_name: "".to_string(),
                             table_id: token.table.into(),
                             engine: ANALYTIC_ENGINE_TYPE.to_string(),
                         };
