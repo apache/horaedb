@@ -35,6 +35,9 @@ jobs:
         run: |
           ./scripts/run-tsbs.sh
           echo "NOW=$(TZ=':Asia/Shanghai' date +'%Y-%m-%dT%H_%M_%S')" >> $GITHUB_ENV
+      - name: Update Summary
+        run: |
+          cat tsbs/result.md >> $GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v3
         with:
           name: bench-${{ env.NOW }}
