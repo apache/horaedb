@@ -34,7 +34,7 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 
-use crate::{adapter::TableManipulatorImpl, signal_handler};
+use crate::signal_handler;
 
 /// Setup log with given `config`, returns the runtime log level switch.
 pub fn setup_log(config: &Config) -> RuntimeLevel {
@@ -158,13 +158,9 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     let catalog_manager = { Arc::new(volatile::ManagerImpl::new(meta_client.clone()).await) };
 
     let cluster = {
-        let table_manipulator = Arc::new(TableManipulatorImpl {
-            catalog_manager: catalog_manager.clone(),
-            table_engine: engine_proxy,
-        });
         let cluster_impl = ClusterImpl::new(
             meta_client,
-            table_manipulator,
+            engine_proxy,
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )

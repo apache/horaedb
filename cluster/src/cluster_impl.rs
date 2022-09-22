@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use catalog::consts::DEFAULT_CATALOG;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
@@ -15,6 +16,10 @@ use meta_client::{
     EventHandler, MetaClientRef,
 };
 use snafu::{OptionExt, ResultExt};
+use table_engine::{
+    engine::{CloseTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef},
+    ANALYTIC_ENGINE_TYPE,
+};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
@@ -22,8 +27,8 @@ use tokio::{
 
 use crate::{
     config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, StartMetaClient,
-    TableManipulator, TableManipulatorRef,
+    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, SchemaNotFound,
+    StartMetaClient,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -31,6 +36,7 @@ use crate::{
 /// Its functions are to:
 /// * Receive and handle events from meta cluster by [`MetaClient`];
 /// * Send heartbeat to meta cluster;
+/// * Manipulate resources via [TableEngine];
 pub struct ClusterImpl {
     inner: Arc<Inner>,
     runtime: Arc<Runtime>,
@@ -42,11 +48,11 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub fn new(
         meta_client: MetaClientRef,
-        table_manipulator: TableManipulatorRef,
+        table_engine: TableEngineRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(meta_client, table_manipulator)?;
+        let inner = Inner::new(meta_client, table_engine)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -105,7 +111,7 @@ impl ClusterImpl {
 struct Inner {
     table_manager: TableManager,
     meta_client: MetaClientRef,
-    table_manipulator: TableManipulatorRef,
+    table_engine: TableEngineRef,
     #[allow(dead_code)]
     topology: RwLock<ClusterTopology>,
 }
@@ -134,22 +140,82 @@ impl EventHandler for Inner {
                     .map_err(Box::new)?;
 
                 for shard_tables in resp.shard_tables.values() {
-                    for table in &shard_tables.tables {
-                        self.table_manipulator
-                            .open_table(&table.schema_name, &table.name, table.id)
-                            .await?;
+                    for table_info in &shard_tables.tables {
+                        let req = OpenTableRequest {
+                            catalog_name: DEFAULT_CATALOG.to_string(),
+                            schema_name: table_info.schema_name.to_string(),
+                            schema_id: table_info.schema_id.into(),
+                            table_name: table_info.name.to_string(),
+                            table_id: table_info.id.into(),
+                            // TODO: is this hard code appropriate?
+                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                        };
+                        let table = self.table_engine.open_table(req).await?;
+                        if let Some(table) = table {
+                            self.table_manager
+                                .add_shard_table(table_info.to_owned(), table)?;
+                        }
                     }
                 }
                 self.table_manager.update_table_info(&resp.shard_tables);
 
                 Ok(())
             }
-            ActionCmd::CreateTableCmd(_) => todo!(),
-            ActionCmd::DropTableCmd(_)
-            | ActionCmd::MetaNoneCmd(_)
-            | ActionCmd::MetaCloseCmd(_)
-            | ActionCmd::MetaSplitCmd(_)
-            | ActionCmd::MetaChangeRoleCmd(_) => {
+            ActionCmd::CreateTableCmd(_create_cmd) => {
+                // TODO: Modify CreateTableCmd to alias with CreateTableRequest.
+                todo!()
+            }
+            ActionCmd::DropTableCmd(drop_cmd) => {
+                let schema_id = self
+                    .table_manager
+                    .get_schema_id(DEFAULT_CATALOG, &drop_cmd.schema_name)
+                    .context(SchemaNotFound {
+                        schema_name: drop_cmd.schema_name.to_owned(),
+                    })?;
+                let req = DropTableRequest {
+                    catalog_name: DEFAULT_CATALOG.to_owned(),
+                    schema_name: drop_cmd.schema_name.to_owned(),
+                    schema_id: schema_id.into(),
+                    table_name: drop_cmd.name.to_string(),
+                    // TODO: is this hard code appropriate?
+                    engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                };
+
+                self.table_engine.drop_table(req).await?;
+
+                Ok(())
+            }
+            ActionCmd::MetaNoneCmd(_) => Ok(()),
+            ActionCmd::MetaCloseCmd(close_cmd) => {
+                let mut execute_errors = vec![];
+
+                for shard_id in &close_cmd.shard_ids {
+                    let tokens = self.table_manager.tokens_by_shard(*shard_id);
+                    for token in tokens {
+                        // TODO: remove `schema_name` and `table_name` fields in `CloseTableRequest`
+                        let req = CloseTableRequest {
+                            catalog_name: DEFAULT_CATALOG.to_string(),
+                            schema_name: "".to_string(),
+                            schema_id: token.schema.into(),
+                            table_name: "".to_string(),
+                            table_id: token.table.into(),
+                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
+                        };
+                        if let Err(e) = self.table_engine.close_table(req).await {
+                            execute_errors.push(e);
+                        }
+                    }
+                }
+
+                if !execute_errors.is_empty() {
+                    error!("Closing shard encounters errors: {:?}", execute_errors);
+                }
+
+                // TODO: drop those table handlers in TableManager
+
+                Ok(())
+            }
+            ActionCmd::MetaSplitCmd(_) | ActionCmd::MetaChangeRoleCmd(_) => {
                 warn!("Nothing to do for cmd:{:?}", cmd);
 
                 Ok(())
@@ -159,14 +225,11 @@ impl EventHandler for Inner {
 }
 
 impl Inner {
-    fn new(
-        meta_client: MetaClientRef,
-        table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
-    ) -> Result<Self> {
+    fn new(meta_client: MetaClientRef, table_engine: TableEngineRef) -> Result<Self> {
         Ok(Self {
             table_manager: TableManager::default(),
             meta_client,
-            table_manipulator,
+            table_engine,
             topology: Default::default(),
         })
     }
