@@ -35,7 +35,7 @@ use crate::{
         file::SstMetaData,
         parquet::hybrid::{self, IndexedType},
     },
-    table_options::StorageFormat,
+    table_options::{StorageFormat, StorageFormatOptions},
 };
 
 // TODO: Only support i32 offset now, consider i64 here?
@@ -501,7 +501,7 @@ impl RecordDecoder for ColumnarRecordDecoder {
 }
 
 struct HybridRecordDecoder {
-    meta_data: SstMetaData,
+    storage_format_opts: StorageFormatOptions,
 }
 
 impl HybridRecordDecoder {
@@ -668,17 +668,9 @@ impl RecordDecoder for HybridRecordDecoder {
         let arrays = arrow_record_batch.columns();
 
         let mut value_offsets = None;
-        if !self
-            .meta_data
-            .storage_format_opts
-            .collapsible_cols_idx
-            .is_empty()
-        {
-            let offset_slices = arrays
-                [self.meta_data.storage_format_opts.collapsible_cols_idx[0] as usize]
-                .data()
-                .buffers()[0]
-                .as_slice();
+        // Find value offsets from the first col in collapsible_cols_idx.
+        if let Some(idx) = self.storage_format_opts.collapsible_cols_idx.first() {
+            let offset_slices = arrays[*idx as usize].data().buffers()[0].as_slice();
             value_offsets = Some(Self::get_array_offsets(offset_slices));
         } else {
             CollapsibleColsIdxEmpty.fail()?;
@@ -726,9 +718,11 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn new(storage_format: StorageFormat, meta_data: SstMetaData) -> Self {
-        let record_decoder: Box<dyn RecordDecoder> = match storage_format {
-            StorageFormat::Hybrid => Box::new(HybridRecordDecoder { meta_data }),
+    pub fn new(storage_format_opts: StorageFormatOptions) -> Self {
+        let record_decoder: Box<dyn RecordDecoder> = match storage_format_opts.format {
+            StorageFormat::Hybrid => Box::new(HybridRecordDecoder {
+                storage_format_opts,
+            }),
             StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
         };
 
@@ -909,6 +903,8 @@ mod tests {
     #[test]
     fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
+        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
+
         let mut meta_data = SstMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
@@ -917,7 +913,7 @@ mod tests {
             schema: schema.clone(),
             size: 10,
             row_num: 4,
-            storage_format_opts: StorageFormatOptions::new(StorageFormat::Hybrid),
+            storage_format_opts,
         };
         let mut encoder =
             HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
@@ -963,7 +959,9 @@ mod tests {
             &mut meta_data.storage_format_opts.collapsible_cols_idx,
         );
 
-        let decoder = HybridRecordDecoder { meta_data };
+        let decoder = HybridRecordDecoder {
+            storage_format_opts: meta_data.storage_format_opts,
+        };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 
         // Note: decode record batch's schema doesn't have metadata
