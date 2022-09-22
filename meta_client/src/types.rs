@@ -2,18 +2,16 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use ceresdbproto_deps::ceresdbproto::{
-    cluster,
-    meta_service::{self, node_heartbeat_response},
-};
+use ceresdbproto_deps::ceresdbproto::{cluster, meta_service};
 use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
 use common_util::config::ReadableDuration;
 use serde_derive::Deserialize;
+use snafu::OptionExt;
 
-use crate::{MissingShardInfo, Result};
+use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
 
 pub type ShardId = u32;
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
@@ -76,7 +74,7 @@ pub struct TableInfo {
 }
 
 impl From<meta_service::TableInfo> for TableInfo {
-    fn from(mut pb_table_info: meta_service::TableInfo) -> Self {
+    fn from(pb_table_info: meta_service::TableInfo) -> Self {
         TableInfo {
             id: pb_table_info.id,
             name: pb_table_info.name,
@@ -113,12 +111,6 @@ impl NodeMetaInfo {
 pub struct NodeInfo {
     pub node_meta_info: NodeMetaInfo,
     pub shards_info: Vec<ShardInfo>,
-}
-
-#[derive(Debug)]
-pub struct NodeHeartbeatResponse {
-    pub timestamp: u64,
-    pub action_cmd: Option<ActionCmd>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,11 +207,17 @@ impl Default for MetaClientConfig {
 
 impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
+        let shard_infos = node_info
+            .shards_info
+            .into_iter()
+            .map(meta_service::ShardInfo::from)
+            .collect();
+
         Self {
             endpoint: node_info.node_meta_info.endpoint(),
             zone: node_info.node_meta_info.zone,
             binary_version: node_info.node_meta_info.binary_version,
-            shard_infos: node_info.shards_info,
+            shard_infos,
             lease: 0,
         }
     }
@@ -227,9 +225,11 @@ impl From<NodeInfo> for meta_service::NodeInfo {
 
 impl From<ShardInfo> for meta_service::ShardInfo {
     fn from(shard_info: ShardInfo) -> Self {
+        let role = cluster::ShardRole::from(shard_info.role);
+
         Self {
             shard_id: shard_info.shard_id,
-            role: shard_info.role.as_i32(),
+            role: role as i32,
             version: 0,
         }
     }
@@ -263,65 +263,6 @@ impl From<cluster::ShardRole> for ShardRole {
     }
 }
 
-impl From<meta_service::NodeHeartbeatResponse> for NodeHeartbeatResponse {
-    fn from(pb_resp: meta_service::NodeHeartbeatResponse) -> Self {
-        let timestamp = pb_resp.timestamp;
-        let action_cmd = pb_resp.cmd.map(|v| ActionCmd::from(v));
-        NodeHeartbeatResponse {
-            timestamp,
-            action_cmd,
-        }
-    }
-}
-
-impl From<node_heartbeat_response::Cmd> for ActionCmd {
-    fn from(pb_cmd: node_heartbeat_response::Cmd) -> Self {
-        match pb_cmd {
-            node_heartbeat_response::Cmd::OpenCmd(v) => ActionCmd::MetaOpenCmd(v.into()),
-            node_heartbeat_response::Cmd::SplitCmd(v) => ActionCmd::MetaSplitCmd(v.into()),
-            node_heartbeat_response::Cmd::CloseCmd(v) => ActionCmd::MetaCloseCmd(v.into()),
-            node_heartbeat_response::Cmd::ChangeRoleCmd(v) => {
-                ActionCmd::MetaChangeRoleCmd(v.into())
-            }
-            node_heartbeat_response::Cmd::NoneCmd(_) => ActionCmd::MetaNoneCmd(NoneCmd {}),
-        }
-    }
-}
-
-impl From<meta_service::NoneCmd> for NoneCmd {
-    fn from(_: meta_service::NoneCmd) -> Self {
-        Self {}
-    }
-}
-
-impl From<meta_service::OpenCmd> for OpenCmd {
-    fn from(pb_cmd: meta_service::OpenCmd) -> Self {
-        Self {
-            shard_ids: pb_cmd.shard_ids,
-        }
-    }
-}
-
-impl From<meta_service::SplitCmd> for SplitCmd {
-    fn from(_: meta_service::SplitCmd) -> Self {
-        Self {}
-    }
-}
-
-impl From<meta_service::CloseCmd> for CloseCmd {
-    fn from(pb_cmd: meta_service::CloseCmd) -> Self {
-        Self {
-            shard_ids: pb_cmd.shard_ids,
-        }
-    }
-}
-
-impl From<meta_service::ChangeRoleCmd> for ChangeRoleCmd {
-    fn from(_: meta_service::ChangeRoleCmd) -> Self {
-        Self {}
-    }
-}
-
 impl From<GetShardTablesRequest> for meta_service::GetShardTablesRequest {
     fn from(req: GetShardTablesRequest) -> Self {
         Self {
@@ -335,7 +276,7 @@ impl From<meta_service::GetShardTablesResponse> for GetShardTablesResponse {
     fn from(pb_resp: meta_service::GetShardTablesResponse) -> Self {
         Self {
             shard_tables: pb_resp
-                .shard_table
+                .shard_tables
                 .into_iter()
                 .map(|(k, v)| (k, v.into()))
                 .collect(),
@@ -391,7 +332,7 @@ impl From<AllocTableIdRequest> for meta_service::AllocTableIdRequest {
 }
 
 impl From<meta_service::AllocTableIdResponse> for AllocTableIdResponse {
-    fn from(mut pb_resp: meta_service::AllocTableIdResponse) -> Self {
+    fn from(pb_resp: meta_service::AllocTableIdResponse) -> Self {
         Self {
             schema_name: pb_resp.schema_name,
             name: pb_resp.name,
@@ -456,10 +397,12 @@ impl From<RouteTablesRequest> for meta_service::RouteTablesRequest {
 }
 
 impl TryFrom<meta_service::NodeShard> for NodeShard {
+    type Error = Error;
+
     fn try_from(pb: meta_service::NodeShard) -> Result<Self> {
         let pb_shard_info = pb
             .shard_info
-            .context(MissingShardInfo { node: pb.endpoint })?;
+            .context(MissingShardInfo { node: &pb.endpoint })?;
         Ok(NodeShard {
             endpoint: pb.endpoint,
             shard_info: ShardInfo::from(pb_shard_info),
@@ -468,21 +411,26 @@ impl TryFrom<meta_service::NodeShard> for NodeShard {
 }
 
 impl TryFrom<meta_service::RouteEntry> for RouteEntry {
+    type Error = Error;
+
     fn try_from(pb_entry: meta_service::RouteEntry) -> Result<Self> {
         let mut node_shards = Vec::with_capacity(pb_entry.node_shards.len());
         for pb_node_shard in pb_entry.node_shards {
             let node_shard = NodeShard::try_from(pb_node_shard)?;
-            node_shards.append(node_shard);
+            node_shards.push(node_shard);
         }
 
+        let table_info = pb_entry.table.context(MissingTableInfo)?;
         Ok(RouteEntry {
-            table: TableInfo::from(pb_entry.table),
+            table: TableInfo::from(table_info),
             node_shards,
         })
     }
 }
 
 impl TryFrom<meta_service::RouteTablesResponse> for RouteTablesResponse {
+    type Error = Error;
+
     fn try_from(pb_resp: meta_service::RouteTablesResponse) -> Result<Self> {
         let mut entries = HashMap::with_capacity(pb_resp.entries.len());
         for (table_name, entry) in pb_resp.entries {
@@ -511,14 +459,18 @@ impl From<GetNodesRequest> for meta_service::GetNodesRequest {
     }
 }
 
-impl From<meta_service::GetNodesResponse> for GetNodesResponse {
-    fn from(pb_resp: meta_service::GetNodesResponse) -> Self {
-        let node_shards: Vec<NodeShard> =
-            pb_resp.node_shards.into_iter().map(|v| v.into()).collect();
+impl TryFrom<meta_service::GetNodesResponse> for GetNodesResponse {
+    type Error = Error;
 
-        GetNodesResponse {
+    fn try_from(pb_resp: meta_service::GetNodesResponse) -> Result<Self> {
+        let mut node_shards = Vec::with_capacity(pb_resp.node_shards.len());
+        for node_shard in pb_resp.node_shards {
+            node_shards.push(NodeShard::try_from(node_shard)?);
+        }
+
+        Ok(GetNodesResponse {
             cluster_topology_version: pb_resp.cluster_topology_version,
             node_shards,
-        }
+        })
     }
 }

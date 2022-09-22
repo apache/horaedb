@@ -40,6 +40,7 @@ members = [
     "system_catalog",
     "table_engine",
     "tests/harness",
+    "tonic",
     "wal",
 ]
 

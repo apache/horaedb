@@ -1,5 +1,5 @@
 [package]
-name = "ceresdbproto_deps"
+name = "tonic"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 
@@ -8,6 +8,8 @@ workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies.ceresdbproto]
-git = "https://github.com/ShiKaiWi/ceresdbproto.git"
-rev = "7c1e6805ff4c9c062c415a55b5f61717435e0843"
+# Rename to workaround doctest bug
+# See: https://github.com/rust-lang/cargo/issues/6819
+
+[dependencies]
+upstream = { version = "0.6.2", package = "tonic", features = ["compression"] }
