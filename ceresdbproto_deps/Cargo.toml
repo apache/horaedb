@@ -9,5 +9,5 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "8e54107e0255429313024822ec85b78561939d00"
+git = "https://github.com/ShiKaiWi/ceresdbproto.git"
+rev = "d50af739749129b81da52af034902e34a8dbd04e"

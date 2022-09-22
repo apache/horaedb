@@ -19,6 +19,13 @@ pub mod types;
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display(
+        "Missing shard info in NodeShard, node:{}.\nBacktrace:\n{}",
+        node,
+        backtrace
+    ))]
+    MissingShardInfo { node: String, backtrace: Backtrace },
+
+    #[snafu(display(
         "Failed to fetch action cmd, err:{}.\nBacktrace:\n{}",
         source,
         backtrace
@@ -29,7 +36,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to init heatbeat stream, err:{}.\nBacktrace:\n{}",
+        "Failed to init heartbeat stream, err:{}.\nBacktrace:\n{}",
         source,
         backtrace
     ))]

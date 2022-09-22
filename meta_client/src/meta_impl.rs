@@ -7,7 +7,8 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::{
-    common::ResponseHeader, meta_service, meta_service_grpc::CeresmetaRpcServiceClient,
+    common::ResponseHeader,
+    meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
 use common_util::{
     config::ReadableDuration,
@@ -228,7 +229,7 @@ impl Inner {
                 resp,
             );
 
-            if let Err(e) = check_response_header(resp.get_header()) {
+            if let Err(e) = check_response_header(resp.header) {
                 error!("Fetch action cmd failed, err:{}", e);
                 continue;
             }
