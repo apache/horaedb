@@ -17,7 +17,7 @@ pub async fn handle_route<Q>(
 
     let resp = RouteResponse {
         header: Some(grpc::build_ok_header()),
-        routes: routes.into(),
+        routes,
     };
 
     Ok(resp)

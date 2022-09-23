@@ -555,7 +555,7 @@ impl From<FilterPb> for Filter {
                 .into_iter()
                 .map(|f| FilterOperator {
                     typ: f.filter_type().into(),
-                    params: f.params.into(),
+                    params: f.params,
                 })
                 .collect::<Vec<_>>(),
         }

@@ -470,46 +470,49 @@ mod test {
         let tag_names = vec![TAG_K.to_string(), TAG_K1.to_string()];
         let field_names = vec![FIELD_NAME.to_string(), FIELD_NAME1.to_string()];
 
-        let mut tag = Tag::new();
-        tag.set_name_index(0);
-        let mut tag_val = Value::new();
-        tag_val.set_string_value(TAG_V.to_string());
-        tag.set_value(tag_val);
-
-        let mut tag1 = Tag::new();
-        tag1.set_name_index(1);
-        let mut tag_val1 = Value::new();
-        tag_val1.set_string_value(TAG_V1.to_string());
-        tag1.set_value(tag_val1);
+        let tag = Tag {
+            name_index: 0,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(TAG_V.to_string())),
+            }),
+        };
+        let tag1 = Tag {
+            name_index: 1,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(TAG_V1.to_string())),
+            }),
+        };
         let tags = vec![tag, tag1];
 
-        let mut field = Field::new();
-        field.set_name_index(0);
-        let mut field_val = Value::new();
-        field_val.set_float64_value(100.0);
-        field.set_value(field_val);
-        let mut field1 = Field::new();
-        field1.set_name_index(1);
-        let mut field_val1 = Value::new();
-        field_val1.set_string_value(FIELD_VALUE_STRING.to_string());
-        field1.set_value(field_val1);
-        let mut field_group = FieldGroup::new();
-        field_group.set_timestamp(1000);
-        field_group.set_fields(vec![field].into());
+        let field = Field {
+            name_index: 0,
+            value: Some(Value {
+                value: Some(value::Value::Float64Value(100.0)),
+            }),
+        };
+        let field1 = Field {
+            name_index: 1,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(FIELD_VALUE_STRING.to_string())),
+            }),
+        };
+        let field_group = FieldGroup {
+            timestamp: 1000,
+            fields: vec![field],
+        };
+        let field_group1 = FieldGroup {
+            timestamp: 2000,
+            fields: vec![field1.clone()],
+        };
+        let field_group2 = FieldGroup {
+            timestamp: 3000,
+            fields: vec![field1],
+        };
 
-        let mut field_group1 = FieldGroup::new();
-        field_group1.set_timestamp(2000);
-        field_group1.set_fields(vec![field1.clone()].into());
-
-        let mut field_group2 = FieldGroup::new();
-        field_group2.set_timestamp(3000);
-        field_group2.set_fields(vec![field1].into());
-
-        let mut write_entry = WriteEntry::new();
-
-        write_entry.set_tags(tags.into());
-
-        write_entry.set_field_groups(vec![field_group, field_group1, field_group2].into());
+        let write_entry = WriteEntry {
+            tags,
+            field_groups: vec![field_group, field_group1, field_group2],
+        };
 
         let schema_builder = Builder::new();
         let schema = schema_builder

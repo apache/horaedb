@@ -29,13 +29,15 @@ use crate::{
 const RECORD_NAME: &str = "Result";
 
 fn empty_ok_resp() -> QueryResponse {
-    let mut header = ResponseHeader::default();
-    header.code = Code::Ok as u32;
+    let header = ResponseHeader {
+        code: Code::Ok as u32,
+        ..Default::default()
+    };
 
-    let mut resp = QueryResponse::default();
-    resp.header = Some(header);
-
-    resp
+    QueryResponse {
+        header: Some(header),
+        ..Default::default()
+    }
 }
 
 pub async fn handle_query<Q: QueryExecutor + 'static>(

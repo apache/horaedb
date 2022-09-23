@@ -233,14 +233,14 @@ impl MetaClient for MetaClientImpl {
     }
 
     async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
-        let mut pb_req = meta_service::NodeHeartbeatRequest::default();
-        pb_req.header = Some(self.request_header().into());
-
         let node_info = NodeInfo {
             node_meta_info: self.node_meta_info.clone(),
             shards_info,
         };
-        pb_req.info = Some(node_info.into());
+        let pb_req = meta_service::NodeHeartbeatRequest {
+            header: Some(self.request_header().into()),
+            info: Some(node_info.into()),
+        };
 
         info!("Meta client try to send heartbeat req:{:?}", pb_req);
 

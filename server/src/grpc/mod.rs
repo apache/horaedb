@@ -256,7 +256,7 @@ pub struct RpcServices<Q: QueryExecutor + 'static> {
 impl<Q: QueryExecutor + 'static> RpcServices<Q> {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
-        let serve_addr = self.serve_addr.clone();
+        let serve_addr = self.serve_addr;
         let (stop_tx, stop_rx) = oneshot::channel();
         let join_handle = self.runtime.spawn(async move {
             info!("Grpc server starts listening on {}", serve_addr);
@@ -361,18 +361,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 }
 
 fn build_err_header(err: ServerError) -> ResponseHeader {
-    let mut header = ResponseHeader::default();
-    header.code = err.code() as u32;
-    header.error = err.error_message();
-
-    header
+    ResponseHeader {
+        code: err.code() as u32,
+        error: err.error_message(),
+    }
 }
 
 fn build_ok_header() -> ResponseHeader {
-    let mut header = ResponseHeader::default();
-    header.code = Code::Ok as u32;
-
-    header
+    ResponseHeader {
+        code: Code::Ok as u32,
+        ..Default::default()
+    }
 }
 
 struct StorageServiceImpl<Q: QueryExecutor + 'static> {
@@ -567,8 +566,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                     }
                 }
             } else {
-                let mut resp = QueryResponse::default();
-                resp.header = Some(build_ok_header());
+                let resp = QueryResponse {
+                    header: Some(build_ok_header()),
+                    ..Default::default()
+                };
 
                 if tx.send(ServerResult::Ok(resp)).await.is_err() {
                     error!(
@@ -866,7 +867,7 @@ fn try_get_data_type_from_value(value: &Value) -> Result<DatumKind> {
 #[cfg(test)]
 mod tests {
     use ceresdbproto_deps::ceresdbproto::storage::{
-        Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
+        value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
     };
     use cluster::config::SchemaConfig;
     use common_types::datum::DatumKind;
@@ -882,9 +883,49 @@ mod tests {
     const METRIC: &str = "pod_system_metric";
     const TIMESTAMP_COLUMN: &str = "custom_timestamp";
 
+    fn make_tag(name_index: u32, val: &str) -> Tag {
+        Tag {
+            name_index,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(val.to_string())),
+            }),
+        }
+    }
+
+    fn make_field(name_index: u32, val: value::Value) -> Field {
+        Field {
+            name_index,
+            value: Some(Value { value: Some(val) }),
+        }
+    }
+
     fn generate_write_metric() -> WriteMetric {
-        let mut write_metric = WriteMetric::default();
-        write_metric.set_metric(METRIC.to_string());
+        let tag1 = make_tag(0, "test.host");
+        let tag2 = make_tag(1, "test.idc");
+        let tags = vec![tag1, tag2];
+
+        let field1 = make_field(0, value::Value::Float64Value(100.0));
+        let field2 = make_field(1, value::Value::Float64Value(1024.0));
+        let field3 = make_field(2, value::Value::StringValue("test log".to_string()));
+        let field4 = make_field(3, value::Value::BoolValue(true));
+
+        let field_group1 = FieldGroup {
+            timestamp: 1000,
+            fields: vec![field1.clone(), field4],
+        };
+        let field_group2 = FieldGroup {
+            timestamp: 2000,
+            fields: vec![field1, field2],
+        };
+        let field_group3 = FieldGroup {
+            timestamp: 3000,
+            fields: vec![field3],
+        };
+
+        let write_entry = WriteEntry {
+            tags,
+            field_groups: vec![field_group1, field_group2, field_group3],
+        };
 
         let tag_names = vec![TAG1.to_string(), TAG2.to_string()];
         let field_names = vec![
@@ -894,63 +935,12 @@ mod tests {
             FIELD4.to_string(),
         ];
 
-        write_metric.set_field_names(field_names.into());
-        write_metric.set_tag_names(tag_names.into());
-
-        //tags
-        let mut tag1 = Tag::new();
-        tag1.set_name_index(0);
-        let mut tag_val1 = Value::new();
-        tag_val1.set_string_value("test.host".to_string());
-        tag1.set_value(tag_val1);
-        let mut tag2 = Tag::new();
-        tag2.set_name_index(1);
-        let mut tag_val2 = Value::new();
-        tag_val2.set_string_value("test.idc".to_string());
-        tag2.set_value(tag_val2);
-        let tags = vec![tag1, tag2];
-
-        //fields
-        let mut field1 = Field::new();
-        field1.set_name_index(0);
-        let mut field_val1 = Value::new();
-        field_val1.set_float64_value(100.0);
-        field1.set_value(field_val1);
-        let mut field2 = Field::new();
-        field2.set_name_index(1);
-        let mut field_val2 = Value::new();
-        field_val2.set_float64_value(1024.0);
-        field2.set_value(field_val2);
-        let mut field3 = Field::new();
-        field3.set_name_index(2);
-        let mut field_val3 = Value::new();
-        field_val3.set_string_value("test log".to_string());
-        field3.set_value(field_val3);
-        let mut field4 = Field::new();
-        field4.set_name_index(3);
-        let mut field_val4 = Value::new();
-        field_val4.set_bool_value(true);
-        field4.set_value(field_val4);
-
-        let mut field_group1 = FieldGroup::new();
-        field_group1.set_timestamp(1000);
-        field_group1.set_fields(vec![field1.clone(), field4].into());
-
-        let mut field_group2 = FieldGroup::new();
-        field_group2.set_timestamp(2000);
-        field_group2.set_fields(vec![field1.clone(), field2.clone()].into());
-
-        let mut field_group3 = FieldGroup::new();
-        field_group3.set_timestamp(3000);
-        field_group3.set_fields(vec![field3].into());
-
-        let mut write_entry = WriteEntry::new();
-        write_entry.set_tags(tags.into());
-        write_entry.set_field_groups(vec![field_group1, field_group2, field_group3].into());
-
-        write_metric.set_entries(vec![write_entry].into());
-
-        write_metric
+        WriteMetric {
+            metric: METRIC.to_string(),
+            tag_names,
+            field_names,
+            entries: vec![write_entry],
+        }
     }
 
     #[test]

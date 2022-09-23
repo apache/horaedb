@@ -173,8 +173,7 @@ fn convert_records(
                     name: k.clone(),
                     value: v.clone(),
                 })
-                .collect::<Vec<_>>()
-                .into();
+                .collect::<Vec<_>>();
 
             TimeSeries { labels, samples }
         })
@@ -186,13 +185,15 @@ fn convert_records(
 }
 
 fn empty_ok_resp() -> PrometheusQueryResponse {
-    let mut header = ResponseHeader::default();
-    header.code = Code::Ok as u32;
+    let header = ResponseHeader {
+        code: Code::Ok as u32,
+        ..Default::default()
+    };
 
-    let mut resp = PrometheusQueryResponse::default();
-    resp.header = Some(header);
-
-    resp
+    PrometheusQueryResponse {
+        header: Some(header),
+        ..Default::default()
+    }
 }
 
 /// RecordConverter convert RecordBatch to time series format required by PromQL
@@ -413,10 +414,7 @@ mod tests {
     }
 
     fn make_sample(timestamp: i64, value: f64) -> Sample {
-        let mut sample = Sample::new();
-        sample.set_value(value);
-        sample.set_timestamp(timestamp);
-        sample
+        Sample { value, timestamp }
     }
 
     fn make_tags(tags: Vec<(String, String)>) -> BTreeMap<String, String> {
