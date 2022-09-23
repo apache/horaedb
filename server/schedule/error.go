@@ -1,6 +1,4 @@
-/*
- * // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
- */
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 package schedule
 

@@ -16,6 +16,8 @@ PACKAGES := $(shell go list ./... | tail -n +2)
 PACKAGE_DIRECTORIES := $(subst $(META_PKG)/,,$(PACKAGES))
 
 check: install-tools
+	@ echo "check license ..."
+	@ make check-license
 	@ echo "gofmt ..."
 	@ gofmt -s -l -d $(PACKAGE_DIRECTORIES) 2>&1 | awk '{ print } END { if (NR > 0) { exit 1 } }'
 	@ echo "golangci-lint ..."
@@ -26,6 +28,9 @@ check: install-tools
 test: install-tools
 	@ echo "go test ..."
 	@ go test -timeout 5m -race -cover $(PACKAGES)
+
+check-license:
+	@ sh ./scripts/check-license.sh
 
 build: check
 	@ go build -o ceresmeta ./cmd/meta/...
