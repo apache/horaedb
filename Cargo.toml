@@ -39,7 +39,6 @@ members = [
     "system_catalog",
     "table_engine",
     "tests/harness",
-    "tonic",
     "wal",
 ]
 
@@ -47,8 +46,10 @@ members = [
 name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
+[workspace.dependencies]
+tonic = { version = "0.6.2", features = ["compression"] }
+
 [dependencies]
-# Workspace dependencies, in alphabetical order
 analytic_engine = { path = "analytic_engine" }
 async-trait = "0.1.53"
 catalog = { path = "catalog" }

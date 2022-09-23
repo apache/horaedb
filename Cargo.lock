@@ -858,7 +858,7 @@ version = "0.1.0"
 source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=0df37aa7b20919a0de7220ea77e9f251bc582026#0df37aa7b20919a0de7220ea77e9f251bc582026"
 dependencies = [
  "prost",
- "tonic 0.6.2",
+ "tonic",
  "tonic-build",
 ]
 
@@ -3070,7 +3070,7 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "tokio 1.20.1",
- "tonic 0.1.0",
+ "tonic",
  "url 2.2.2",
 ]
 
@@ -5046,7 +5046,7 @@ dependencies = [
  "table_engine",
  "tokio 1.20.1",
  "tokio-stream",
- "tonic 0.1.0",
+ "tonic",
  "twox-hash",
  "warp",
 ]
@@ -6042,13 +6042,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "tonic"
-version = "0.1.0"
-dependencies = [
- "tonic 0.6.2",
 ]
 
 [[package]]
