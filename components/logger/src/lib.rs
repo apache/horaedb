@@ -134,7 +134,6 @@ where
     slog_global::set_global(root_logger);
     if init_stdlog {
         slog_global::redirect_std_log(Some(level))?;
-        grpcio::redirect_log();
     }
 
     Ok(runtime_level)

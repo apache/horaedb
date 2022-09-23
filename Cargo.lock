@@ -838,7 +838,7 @@ dependencies = [
  "avro-rs",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
  "common_types 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
- "grpcio 0.9.1",
+ "grpcio",
 ]
 
 [[package]]
@@ -868,7 +868,7 @@ version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
 dependencies = [
  "futures 0.3.21",
- "grpcio 0.9.1",
+ "grpcio",
  "protobuf",
  "protobuf-builder",
 ]
@@ -2218,13 +2218,6 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "grpcio"
-version = "0.1.0"
-dependencies = [
- "grpcio 0.9.1",
-]
-
-[[package]]
-name = "grpcio"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d99e00eed7e0a04ee2705112e7cfdbe1a3cc771147f22f016a8cd2d002187b"
@@ -2967,7 +2960,6 @@ name = "logger"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "grpcio 0.1.0",
  "log",
  "slog",
  "slog-async",

@@ -10,7 +10,6 @@ workspace = true
 
 [dependencies]
 chrono = "0.4"
-grpcio = { path = "../../grpcio" }
 log = "0.4"
 slog = "2.7"
 slog-async = "2.6"

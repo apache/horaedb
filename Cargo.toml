@@ -30,7 +30,6 @@ members = [
     "components/table_kv",
     "components/tracing_util",
     "df_operator",
-    "grpcio",
     "interpreters",
     "meta_client",
     "proto",
