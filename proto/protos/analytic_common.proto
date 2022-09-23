@@ -28,6 +28,11 @@ enum UpdateMode {
     Append = 1;
 }
 
+message StorageFormatOptions{
+    StorageFormat format = 1;
+    repeated uint32 collapsible_cols_idx = 2;
+}
+
 enum StorageFormat {
     Columnar = 0;
     Hybrid = 1;

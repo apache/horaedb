@@ -65,7 +65,7 @@ impl RecordBytesReader {
         let mut parquet_encoder = ParquetEncoder::try_new(
             self.num_rows_per_row_group,
             self.compression,
-            &self.meta_data,
+            self.meta_data,
         )
         .map_err(|e| Box::new(e) as _)
         .context(EncodeRecordBatch)?;
@@ -176,7 +176,7 @@ mod tests {
             parquet::reader::ParquetSstReader,
             reader::{tests::check_stream, SstReader},
         },
-        table_options::{self, StorageFormat},
+        table_options::{self, StorageFormatOptions},
     };
 
     // TODO(xikai): add test for reverse reader
@@ -217,7 +217,7 @@ mod tests {
                 schema: schema.clone(),
                 size: 10,
                 row_num: 2,
-                storage_format: StorageFormat::default(),
+                storage_format_opts: StorageFormatOptions::default(),
             };
 
             let mut counter = 10;

@@ -43,7 +43,7 @@ use crate::{
         parquet::encoding::{self, ParquetDecoder},
         reader::{error::*, SstReader},
     },
-    table_options::StorageFormat,
+    table_options::StorageFormatOptions,
 };
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
@@ -167,9 +167,9 @@ impl<'a> ParquetSstReader<'a> {
 
         let file_reader = self.file_reader.take().unwrap();
         let batch_size = self.batch_size;
-        let (schema, storage_format) = {
+        let schema = {
             let meta_data = self.meta_data.as_ref().unwrap();
-            (meta_data.schema.clone(), meta_data.storage_format)
+            meta_data.schema.clone()
         };
         let projected_schema = self.projected_schema.clone();
         let row_projector = projected_schema
@@ -179,6 +179,7 @@ impl<'a> ParquetSstReader<'a> {
         let predicate = self.predicate.clone();
         let reverse = self.reverse;
 
+        let meta_data = self.meta_data.take().unwrap();
         let _ = self.runtime.spawn_blocking(move || {
             debug!(
                 "begin reading record batch from the sst:{}, predicate:{:?}, projection:{:?}",
@@ -205,7 +206,7 @@ impl<'a> ParquetSstReader<'a> {
                 predicate,
                 batch_size,
                 reverse,
-                storage_format,
+                storage_format_opts: meta_data.storage_format_opts,
             };
 
             let start_fetch = Instant::now();
@@ -252,7 +253,7 @@ struct ProjectAndFilterReader {
     predicate: PredicateRef,
     batch_size: usize,
     reverse: bool,
-    storage_format: StorageFormat,
+    storage_format_opts: StorageFormatOptions,
 }
 
 impl ProjectAndFilterReader {
@@ -324,7 +325,7 @@ impl ProjectAndFilterReader {
         let reader = self.project_and_filter_reader()?;
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
-        let parquet_decoder = ParquetDecoder::new(self.storage_format);
+        let parquet_decoder = ParquetDecoder::new(self.storage_format_opts);
         let mut row_num = 0;
         for record_batch in reader {
             trace!(
