@@ -12,7 +12,7 @@ use snafu::{OptionExt, ResultExt};
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{Code, ErrNoCause, ErrWithCause, Result},
     route::{hash, Router},
 };
 
@@ -44,7 +44,7 @@ impl ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: Code::Internal,
                 msg: "Failed to fetch cluster nodes",
             })?;
 
@@ -62,7 +62,7 @@ impl ClusterBasedRouter {
             let picked_node_shard =
                 pick_node_for_table(table_name, &cluster_nodes_resp.cluster_nodes).with_context(
                     || ErrNoCause {
-                        code: StatusCode::NOT_FOUND,
+                        code: Code::NotFound,
                         msg: format!(
                             "No valid node for table({}), cluster nodes:{:?}",
                             table_name, cluster_nodes_resp
@@ -79,23 +79,24 @@ impl ClusterBasedRouter {
 
 /// Make a route according to the table name and the raw endpoint.
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
-    let mut route = Route::default();
     let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
+        code: Code::Internal,
         msg: format!("Failed to parse endpoint:{}", endpoint),
     })?;
-    route.set_metric(table_name.to_string());
-    route.set_endpoint(endpoint.into());
 
-    Ok(route)
+    Ok(Route {
+        metric: table_name.to_string(),
+        endpoint: Some(endpoint.into()),
+        ..Default::default()
+    })
 }
 
 #[async_trait]
 impl Router for ClusterBasedRouter {
-    async fn route(&self, schema: &str, mut req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
         let route_tables_req = RouteTablesRequest {
             schema_name: schema.to_string(),
-            table_names: req.take_metrics().into(),
+            table_names: req.metrics,
         };
         let route_resp = self
             .cluster
@@ -103,7 +104,7 @@ impl Router for ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: Code::Internal,
                 msg: "Failed to route tables by cluster",
             })?;
 

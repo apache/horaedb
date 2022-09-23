@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use ceresdbproto_deps::ceresdbproto::storage::{
-    Value_oneof_value, WriteEntry, WriteMetric, WriteRequest, WriteResponse,
+    value, WriteEntry, WriteMetric, WriteRequest, WriteResponse,
 };
 use common_types::{
     bytes::Bytes,
@@ -23,7 +23,7 @@ use sql::plan::{InsertPlan, Plan};
 use table_engine::table::TableRef;
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{Code, ErrNoCause, ErrWithCause, Result},
     grpc::{self, HandlerContext},
 };
 
@@ -38,10 +38,10 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         ctx.catalog(),
         ctx.tenant(),
         request_id,
-        req.get_metrics()
+        req.metrics
             .first()
-            .map(|m| (m.get_metric(), m.get_tag_names(), m.get_field_names())),
-        req.get_metrics().len(),
+            .map(|m| (&m.metric, &m.tag_names, &m.field_names)),
+        req.metrics.len(),
     );
 
     let instance = &ctx.instance;
@@ -58,7 +58,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
 
         if ctx.instance.limiter.should_limit(&plan) {
             ErrNoCause {
-                code: StatusCode::TOO_MANY_REQUESTS,
+                code: Code::ResourceExhausted,
                 msg: "Insert limited by reject list",
             }
             .fail()?;
@@ -80,7 +80,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: Code::Internal,
                 msg: "Failed to execute interpreter",
             })? {
             Output::AffectedRows(n) => n,
@@ -90,9 +90,11 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         success += row_num;
     }
 
-    let mut resp = WriteResponse::new();
-    resp.set_header(grpc::build_ok_header());
-    resp.set_success(success as u32);
+    let resp = WriteResponse {
+        header: Some(grpc::build_ok_header()),
+        success: success as u32,
+        failed: 0,
+    };
 
     debug!(
         "Grpc handle write finished, catalog:{}, tenant:{}, resp:{:?}",
@@ -106,13 +108,13 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
 
 async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
-    mut write_request: WriteRequest,
+    write_request: WriteRequest,
     request_id: RequestId,
 ) -> Result<Vec<InsertPlan>> {
-    let mut plan_vec = Vec::with_capacity(write_request.get_metrics().len());
+    let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
 
-    for write_metric in write_request.take_metrics() {
-        let table_name = write_metric.get_metric();
+    for write_metric in write_request.metrics {
+        let table_name = &write_metric.metric;
         let mut table = try_get_table(ctx, table_name)?;
 
         if table.is_none() {
@@ -132,8 +134,8 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             }
             None => {
                 return ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: format!("Table not found, table:{}", write_metric.get_metric()),
+                    code: Code::InvalidArgument,
+                    msg: format!("Table not found, table:{}", table_name),
                 }
                 .fail();
             }
@@ -152,27 +154,27 @@ fn try_get_table<Q: QueryExecutor + 'static>(
         .catalog_by_name(ctx.catalog())
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to find catalog, catalog_name:{}", ctx.catalog()),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: format!("Catalog not found, catalog_name:{}", ctx.catalog()),
         })?
         .schema_by_name(ctx.tenant())
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to find tenant, tenant_name:{}", ctx.tenant()),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: format!("Tenant not found, tenant_name:{}", ctx.tenant()),
         })?
         .table_by_name(table_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to find table, table:{}", table_name),
         })
 }
@@ -185,15 +187,15 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let create_table_plan = grpc::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!(
                 "Failed to build creating table plan from metric, table:{}",
-                write_metric.get_metric()
+                write_metric.metric
             ),
         })?;
 
     debug!(
-        "Grpc handle create table begin, table:{}, schema: {:?}",
+        "Grpc handle create table begin, table:{}, schema:{:?}",
         create_table_plan.table, create_table_plan.table_schema,
     );
     let plan = Plan::Create(create_table_plan);
@@ -202,7 +204,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
 
     if instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
+            code: Code::ResourceExhausted,
             msg: "Create table limited by reject list",
         }
         .fail()?;
@@ -224,7 +226,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: "Failed to execute interpreter",
         })? {
         Output::AffectedRows(n) => n,
@@ -234,19 +236,16 @@ async fn create_table<Q: QueryExecutor + 'static>(
     Ok(())
 }
 
-fn write_metric_to_insert_plan(
-    table: TableRef,
-    mut write_metric: WriteMetric,
-) -> Result<InsertPlan> {
+fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Result<InsertPlan> {
     let schema = table.schema();
 
     let mut rows_total = Vec::new();
-    for write_entry in write_metric.take_entries() {
+    for write_entry in write_metric.entries {
         let mut rows = write_entry_to_rows(
-            write_metric.get_metric(),
+            &write_metric.metric,
             &schema,
-            write_metric.get_tag_names(),
-            write_metric.get_field_names(),
+            &write_metric.tag_names,
+            &write_metric.field_names,
             write_entry,
         )?;
         rows_total.append(&mut rows);
@@ -255,7 +254,7 @@ fn write_metric_to_insert_plan(
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to build row group, table:{}", table.name()),
         })?
         .build();
@@ -271,12 +270,12 @@ fn write_entry_to_rows(
     schema: &Schema,
     tag_names: &[String],
     field_names: &[String],
-    mut write_entry: WriteEntry,
+    write_entry: WriteEntry,
 ) -> Result<Vec<Row>> {
     // Init all columns by null.
     let mut rows = vec![
         Row::from_datums(vec![Datum::Null; schema.num_columns()]);
-        write_entry.get_field_groups().len()
+        write_entry.field_groups.len()
     ];
 
     // Fill tsid by default value.
@@ -289,12 +288,12 @@ fn write_entry_to_rows(
     }
 
     // Fill tags.
-    for mut tag in write_entry.take_tags() {
+    for tag in write_entry.tags {
         let name_index = tag.name_index as usize;
         ensure!(
             name_index < tag_names.len(),
             ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: format!(
                     "tag index {} is not found in tag_names:{:?}, table:{}",
                     name_index, tag_names, table_name,
@@ -304,10 +303,10 @@ fn write_entry_to_rows(
 
         let tag_name = &tag_names[name_index];
         let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: format!(
-                "Can't find tag in schema, table:{}, tag_name:{}",
-                table_name, tag_name
+                "Can't find tag({}) in schema, table:{}",
+                tag_name, table_name
             ),
         })?;
 
@@ -315,21 +314,28 @@ fn write_entry_to_rows(
         ensure!(
             column_schema.is_tag,
             ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: format!(
-                    "column {} is a field rather than a tag, table:{}",
+                    "column({}) is a field rather than a tag, table:{}",
                     tag_name, table_name
                 ),
             }
         );
 
-        let tag_value = tag.take_value().value.with_context(|| ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: format!(
-                "Tag value is needed, table:{}, tag_name:{}",
-                table_name, tag_name
-            ),
-        })?;
+        let tag_value = tag
+            .value
+            .with_context(|| ErrNoCause {
+                code: Code::InvalidArgument,
+                msg: format!("Tag({}) value is needed, table:{}", tag_name, table_name),
+            })?
+            .value
+            .with_context(|| ErrNoCause {
+                code: Code::InvalidArgument,
+                msg: format!(
+                    "Tag({}) value type is not supported, table_name:{}",
+                    tag_name, table_name
+                ),
+            })?;
         for row in &mut rows {
             row[tag_index_in_schema] = convert_proto_value_to_datum(
                 table_name,
@@ -342,13 +348,13 @@ fn write_entry_to_rows(
 
     // Fill fields.
     let mut field_name_index: HashMap<String, usize> = HashMap::new();
-    for (i, mut field_group) in write_entry.take_field_groups().into_iter().enumerate() {
+    for (i, field_group) in write_entry.field_groups.into_iter().enumerate() {
         // timestamp
         let timestamp_index_in_schema = schema.timestamp_index();
         rows[i][timestamp_index_in_schema] =
-            Datum::Timestamp(Timestamp::new(field_group.get_timestamp()));
+            Datum::Timestamp(Timestamp::new(field_group.timestamp));
 
-        for mut field in field_group.take_fields() {
+        for field in field_group.fields {
             if (field.name_index as usize) < field_names.len() {
                 let field_name = &field_names[field.name_index as usize];
                 let index_in_schema = if field_name_index.contains_key(field_name) {
@@ -356,7 +362,7 @@ fn write_entry_to_rows(
                 } else {
                     let index_in_schema =
                         schema.index_of(field_name).with_context(|| ErrNoCause {
-                            code: StatusCode::BAD_REQUEST,
+                            code: Code::InvalidArgument,
                             msg: format!(
                                 "Can't find field in schema, table:{}, field_name:{}",
                                 table_name, field_name
@@ -369,17 +375,27 @@ fn write_entry_to_rows(
                 ensure!(
                     !column_schema.is_tag,
                     ErrNoCause {
-                        code: StatusCode::BAD_REQUEST,
+                        code: Code::InvalidArgument,
                         msg: format!(
                             "Column {} is a tag rather than a field, table:{}",
                             field_name, table_name
                         )
                     }
                 );
-                let field_value = field.take_value().value.with_context(|| ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: format!("Field is needed, table:{}", table_name),
-                })?;
+                let field_value = field
+                    .value
+                    .with_context(|| ErrNoCause {
+                        code: Code::InvalidArgument,
+                        msg: format!("Field({}) is needed, table:{}", field_name, table_name),
+                    })?
+                    .value
+                    .with_context(|| ErrNoCause {
+                        code: Code::InvalidArgument,
+                        msg: format!(
+                            "Field({}) value type is not supported, table:{}",
+                            field_name, table_name
+                        ),
+                    })?;
 
                 rows[i][index_in_schema] = convert_proto_value_to_datum(
                     table_name,
@@ -398,26 +414,26 @@ fn write_entry_to_rows(
 fn convert_proto_value_to_datum(
     table_name: &str,
     name: &str,
-    value: Value_oneof_value,
+    value: value::Value,
     data_type: DatumKind,
 ) -> Result<Datum> {
     match (value, data_type) {
-        (Value_oneof_value::float64_value(v), DatumKind::Double) => Ok(Datum::Double(v)),
-        (Value_oneof_value::string_value(v), DatumKind::String) => Ok(Datum::String(v.into())),
-        (Value_oneof_value::int64_value(v), DatumKind::Int64) => Ok(Datum::Int64(v)),
-        (Value_oneof_value::float32_value(v), DatumKind::Float) => Ok(Datum::Float(v)),
-        (Value_oneof_value::int32_value(v), DatumKind::Int32) => Ok(Datum::Int32(v)),
-        (Value_oneof_value::int16_value(v), DatumKind::Int16) => Ok(Datum::Int16(v as i16)),
-        (Value_oneof_value::int8_value(v), DatumKind::Int8) => Ok(Datum::Int8(v as i8)),
-        (Value_oneof_value::bool_value(v), DatumKind::Boolean) => Ok(Datum::Boolean(v)),
-        (Value_oneof_value::uint64_value(v), DatumKind::UInt64) => Ok(Datum::UInt64(v)),
-        (Value_oneof_value::uint32_value(v), DatumKind::UInt32) => Ok(Datum::UInt32(v)),
-        (Value_oneof_value::uint16_value(v), DatumKind::UInt16) => Ok(Datum::UInt16(v as u16)),
-        (Value_oneof_value::uint8_value(v), DatumKind::UInt8) => Ok(Datum::UInt8(v as u8)),
-        (Value_oneof_value::timestamp_value(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
-        (Value_oneof_value::varbinary_value(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
+        (value::Value::Float64Value(v), DatumKind::Double) => Ok(Datum::Double(v)),
+        (value::Value::StringValue(v), DatumKind::String) => Ok(Datum::String(v.into())),
+        (value::Value::Int64Value(v), DatumKind::Int64) => Ok(Datum::Int64(v)),
+        (value::Value::Float32Value(v), DatumKind::Float) => Ok(Datum::Float(v)),
+        (value::Value::Int32Value(v), DatumKind::Int32) => Ok(Datum::Int32(v)),
+        (value::Value::Int16Value(v), DatumKind::Int16) => Ok(Datum::Int16(v as i16)),
+        (value::Value::Int8Value(v), DatumKind::Int8) => Ok(Datum::Int8(v as i8)),
+        (value::Value::BoolValue(v), DatumKind::Boolean) => Ok(Datum::Boolean(v)),
+        (value::Value::Uint64Value(v), DatumKind::UInt64) => Ok(Datum::UInt64(v)),
+        (value::Value::Uint32Value(v), DatumKind::UInt32) => Ok(Datum::UInt32(v)),
+        (value::Value::Uint16Value(v), DatumKind::UInt16) => Ok(Datum::UInt16(v as u16)),
+        (value::Value::Uint8Value(v), DatumKind::UInt8) => Ok(Datum::UInt8(v as u8)),
+        (value::Value::TimestampValue(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
+        (value::Value::VarbinaryValue(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
         (v, _) => ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: format!(
                 "Value type is not same, table:{}, value_name:{}, schema_type:{:?}, actual_value:{:?}",
                 table_name,

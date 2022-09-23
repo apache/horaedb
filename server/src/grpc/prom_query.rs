@@ -26,7 +26,7 @@ use sql::{
 };
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, ServerError, StatusCode},
+    error::{Code, ErrNoCause, ErrWithCause, Result, ServerError},
     grpc::HandlerContext,
 };
 
@@ -70,7 +70,7 @@ where
         .parse_promql(&mut sql_ctx, req)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: "Invalid request",
         })?;
 
@@ -78,9 +78,9 @@ where
         .promql_expr_to_plan(&mut sql_ctx, expr)
         .map_err(|e| {
             let code = if is_table_not_found_error(&e) {
-                StatusCode::NOT_FOUND
+                Code::NotFound
             } else {
-                StatusCode::INTERNAL_SERVER_ERROR
+                Code::Internal
             };
             ServerError::ErrWithCause {
                 code,
@@ -91,7 +91,7 @@ where
 
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
+            code: Code::ResourceExhausted,
             msg: "Query limited by reject list",
         }
         .fail()?;
@@ -114,14 +114,14 @@ where
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: "Failed to execute interpreter",
         })?;
 
     let resp = convert_output(output, column_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: "Failed to convert output",
         })?;
 
@@ -146,7 +146,6 @@ fn convert_records(
         return Ok(empty_ok_resp());
     }
 
-    let mut resp = empty_ok_resp();
     let mut tsid_to_tags = HashMap::new();
     let mut tsid_to_samples = HashMap::new();
 
@@ -168,33 +167,30 @@ fn convert_records(
             let tags = tsid_to_tags
                 .get(&tsid)
                 .expect("ensured in convert_to_samples");
-            let mut timeseries = TimeSeries::new();
-            timeseries.set_labels(
-                tags.iter()
-                    .map(|(k, v)| {
-                        let mut label = Label::new();
-                        label.set_name(k.clone());
-                        label.set_value(v.clone());
-                        label
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-            );
-            timeseries.set_samples(samples.into());
-            timeseries
+            let labels = tags
+                .iter()
+                .map(|(k, v)| Label {
+                    name: k.clone(),
+                    value: v.clone(),
+                })
+                .collect::<Vec<_>>()
+                .into();
+
+            TimeSeries { labels, samples }
         })
         .collect::<Vec<_>>();
 
-    resp.set_timeseries(series_set.into());
+    let mut resp = empty_ok_resp();
+    resp.timeseries = series_set;
     Ok(resp)
 }
 
 fn empty_ok_resp() -> PrometheusQueryResponse {
-    let mut header = ResponseHeader::new();
-    header.code = StatusCode::OK.as_u16().into();
+    let mut header = ResponseHeader::default();
+    header.code = Code::Ok as u32;
 
-    let mut resp = PrometheusQueryResponse::new();
-    resp.set_header(header);
+    let mut resp = PrometheusQueryResponse::default();
+    resp.header = Some(header);
 
     resp
 }
@@ -212,33 +208,33 @@ impl RecordConverter {
         let tsid_idx = record_schema
             .index_of(TSID_COLUMN)
             .with_context(|| ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: "Failed to find Tsid column".to_string(),
             })?;
         let timestamp_idx = record_schema
             .index_of(&column_name.timestamp)
             .with_context(|| ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: "Failed to find Timestamp column".to_string(),
             })?;
         ensure!(
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
             ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: "Timestamp column should be timestamp type"
             }
         );
         let field_idx = record_schema
             .index_of(&column_name.field)
             .with_context(|| ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: format!("Failed to find {} column", column_name.field),
             })?;
         let field_type = record_schema.column(field_idx).data_type;
         ensure!(
             field_type.is_f64_castable(),
             ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: Code::InvalidArgument,
                 msg: format!(
                     "Field type must be f64-compatibile type, current:{}",
                     field_type
@@ -311,9 +307,10 @@ impl RecordConverter {
             });
 
             let samples = tsid_to_samples.entry(tsid).or_insert_with(Vec::new);
-            let mut sample = Sample::new();
-            sample.set_value(field);
-            sample.set_timestamp(timestamp);
+            let sample = Sample {
+                value: field,
+                timestamp,
+            };
             samples.push(sample);
         }
 

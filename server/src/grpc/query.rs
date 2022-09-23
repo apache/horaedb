@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
-    storage::{QueryRequest, QueryResponse, QueryResponse_SchemaType},
+    storage::{query_response, QueryRequest, QueryResponse},
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::time::InstantExt;
@@ -21,7 +21,7 @@ use sql::{
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{Code, ErrNoCause, ErrWithCause, Result},
     grpc::HandlerContext,
 };
 
@@ -29,11 +29,11 @@ use crate::{
 const RECORD_NAME: &str = "Result";
 
 fn empty_ok_resp() -> QueryResponse {
-    let mut header = ResponseHeader::new();
-    header.code = StatusCode::OK.as_u16().into();
+    let mut header = ResponseHeader::default();
+    header.code = Code::Ok as u32;
 
-    let mut resp = QueryResponse::new();
-    resp.set_header(header);
+    let mut resp = QueryResponse::default();
+    resp.header = Some(header);
 
     resp
 }
@@ -47,7 +47,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         convert_output(&output)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: Code::Internal,
                 msg: format!("Failed to convert output, query:{}", &req.ql),
             })
     } else {
@@ -89,7 +89,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .parse_sql(&mut sql_ctx, &req.ql)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: "Failed to parse sql",
         })?;
 
@@ -102,7 +102,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     ensure!(
         stmts.len() == 1,
         ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: Code::InvalidArgument,
             msg: format!(
                 "Only support execute one statement now, current num:{}, query:{}",
                 stmts.len(),
@@ -119,13 +119,13 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .statement_to_plan(&mut sql_ctx, stmts.remove(0))
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to create plan, query:{}", req.ql),
         })?;
 
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
+            code: Code::ResourceExhausted,
             msg: "Query limited by reject list",
         }
         .fail()?;
@@ -148,7 +148,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Code::Internal,
             msg: format!("Failed to execute interpreter, query:{}", req.ql),
         })?;
 
@@ -197,7 +197,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
     let mut avro_schema_opt = None;
 
     let total_row = records.iter().map(|v| v.num_rows()).sum();
-    let mut rows = Vec::with_capacity(total_row);
+    resp.rows = Vec::with_capacity(total_row);
     for record_batch in records {
         let avro_schema = match avro_schema_opt.as_ref() {
             Some(schema) => schema,
@@ -205,7 +205,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
                 let avro_schema = avro_util::to_avro_schema(RECORD_NAME, record_batch.schema());
 
                 // We only set schema_json once, so all record batches need to have same schema
-                resp.schema_type = QueryResponse_SchemaType::AVRO;
+                resp.schema_type = query_response::SchemaType::Avro as i32;
                 resp.schema_content = avro_schema.canonical_form();
 
                 avro_schema_opt = Some(avro_schema);
@@ -214,15 +214,13 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
             }
         };
 
-        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut rows)
+        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut resp.rows)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: Code::Internal,
                 msg: "Failed to convert record batch",
             })?;
     }
-
-    resp.set_rows(rows.into());
 
     Ok(resp)
 }

@@ -20,7 +20,6 @@ common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 df_operator = { path = "../df_operator" }
 futures = "0.3"
-grpcio = { path = "../grpcio" }
 http = "0.2"
 interpreters = { path = "../interpreters" }
 lazy_static = "1.4.0"
@@ -28,6 +27,7 @@ log = "0.4"
 logger = { path = "../components/logger" }
 meta_client = { path = "../meta_client" }
 opensrv-mysql = "0.1.0"
+paste = "1.0"
 profile = { path = "../components/profile" }
 protobuf = "2.20"
 query_engine = { path = "../query_engine" }
@@ -41,6 +41,8 @@ sql = { path = "../sql" }
 system_catalog = { path = "../system_catalog" }
 table_engine = { path = "../table_engine" }
 tokio = { version = "1.0", features = ["full"] }
+tokio-stream = {version = "0.1", features = ["net"]}
+tonic = { path = "../tonic" }
 twox-hash = "1.6"
 warp = "0.3"
 
