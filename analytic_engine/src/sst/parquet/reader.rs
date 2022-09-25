@@ -297,7 +297,7 @@ impl ProjectAndFilterReader {
                 arrow_reader.get_record_reader(self.batch_size)
             } else {
                 let proj_mask = ProjectionMask::leaves(
-                    arrow_reader.get_metadata().file_metadata().schema_descr(),
+                    arrow_reader.metadata().file_metadata().schema_descr(),
                     self.row_projector
                         .existed_source_projection()
                         .iter()
