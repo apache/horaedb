@@ -35,12 +35,14 @@ fn base_schema_builder() -> schema::Builder {
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("field1".to_string(), DatumKind::Double)
+                .is_nullable(true)
                 .build()
                 .expect("should succeed build column schema"),
         )
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("field2".to_string(), DatumKind::String)
+                .is_nullable(true)
                 .build()
                 .expect("should succeed build column schema"),
         )

@@ -200,7 +200,7 @@ impl OptimizerRule for OrderByPrimaryKeyRule {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        _optimizer_config: &OptimizerConfig,
+        _optimizer_config: &mut OptimizerConfig,
     ) -> arrow_deps::datafusion::error::Result<LogicalPlan> {
         match self.do_optimize(plan)? {
             Some(new_plan) => {
@@ -227,7 +227,7 @@ struct RewriteContext {
     scan_plan: Arc<LogicalPlan>,
     sort_exprs: Vec<Expr>,
     sort_in_asc_order: bool,
-    skip: Option<usize>,
+    skip: usize,
     fetch: Option<usize>,
 }
 
@@ -324,7 +324,7 @@ mod tests {
             builder
                 .projection(vec![])
                 .sort(sort_exprs.clone())
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -340,9 +340,9 @@ mod tests {
             }
             builder
                 .projection(vec![])
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .sort(sort_exprs)
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -389,7 +389,7 @@ mod tests {
                 .table_scan()
                 .projection(vec![])
                 .sort(sort_exprs)
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -406,7 +406,7 @@ mod tests {
             builder
                 .table_scan()
                 .projection(vec![])
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 

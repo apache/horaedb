@@ -32,7 +32,7 @@ impl OptimizerRule for TypeConversion {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        optimizer_config: &OptimizerConfig,
+        optimizer_config: &mut OptimizerConfig,
     ) -> Result<LogicalPlan> {
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
@@ -79,8 +79,10 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::CrossJoin { .. }
             | LogicalPlan::CreateMemoryTable { .. }
             | LogicalPlan::DropTable { .. }
+            | LogicalPlan::DropView { .. }
             | LogicalPlan::Values { .. }
-            | LogicalPlan::Analyze { .. } => {
+            | LogicalPlan::Analyze { .. }
+            | LogicalPlan::Distinct { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
                     .iter()

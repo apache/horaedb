@@ -186,7 +186,8 @@ fn fill_default_values(
     for (column_idx, default_value_expr) in default_value_map.iter() {
         // Optimize logical expr
         let execution_props = ExecutionProps::default();
-        let mut const_optimizer = ConstEvaluator::new(&execution_props);
+        let mut const_optimizer =
+            ConstEvaluator::try_new(&execution_props).context(DataFusionExpr)?;
         let evaluated_expr = default_value_expr
             .clone()
             .rewrite(&mut const_optimizer)

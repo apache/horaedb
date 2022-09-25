@@ -6,8 +6,9 @@ use std::{sync::Arc, time::Instant};
 
 use arrow_deps::parquet::{
     arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
-    file::serialized_reader::{ReadOptionsBuilder, SerializedFileReader, SliceableCursor},
+    file::serialized_reader::{ReadOptionsBuilder, SerializedFileReader},
 };
+use bytes::Bytes;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
@@ -78,12 +79,15 @@ impl ParquetBench {
         self.runtime.block_on(async {
             let open_instant = Instant::now();
             let get_result = self.store.get(&sst_path).await.unwrap();
-            let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
             // todo: enable predicate filter
             let read_options = ReadOptionsBuilder::new()
                 .with_predicate(Box::new(move |_, _| true))
                 .build();
-            let file_reader = SerializedFileReader::new_with_options(cursor, read_options).unwrap();
+            let file_reader = SerializedFileReader::new_with_options(
+                get_result.bytes().await.unwrap(),
+                read_options,
+            )
+            .unwrap();
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();

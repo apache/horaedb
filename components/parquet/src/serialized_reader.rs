@@ -28,10 +28,11 @@ use std::{fs::File, io::Read, option::Option::Some, sync::Arc};
 use arrow_deps::parquet::{
     column::page::PageReader,
     errors::Result,
-    file::{footer, metadata::*, reader::*, serialized_reader::SliceableCursor},
+    file::{footer, metadata::*, reader::*},
     record::{reader::RowIter, Row},
     schema::types::Type as SchemaType,
 };
+use bytes::Bytes;
 
 use crate::{DataCacheRef, MetaCacheRef};
 
@@ -175,21 +176,19 @@ impl<'a, R: ChunkReader> SerializedRowGroupReader<'a, R> {
         Ok(buf)
     }
 
-    fn get_file_chunk(&self, col_start: u64, col_length: u64) -> Result<impl Read> {
+    fn get_file_chunk(&self, col_start: u64, col_length: u64) -> Result<Arc<Vec<u8>>> {
         if let Some(data_cache) = &self.data_cache {
             let key = format_page_data_key(&self.name, col_start, col_length);
             if let Some(v) = data_cache.get(&key) {
-                Ok(SliceableCursor::new(v))
+                Ok(v)
             } else {
                 let buf_arc = Arc::new(self.get_data(col_start, col_length)?);
                 data_cache.put(key, buf_arc.clone());
-                let slice = SliceableCursor::new(buf_arc);
-                Ok(slice)
+                Ok(buf_arc)
             }
         } else {
             let buf_arc = Arc::new(self.get_data(col_start, col_length)?);
-            let slice = SliceableCursor::new(buf_arc);
-            Ok(slice)
+            Ok(buf_arc)
         }
     }
 }
@@ -206,20 +205,24 @@ impl<'a, R: 'static + ChunkReader> RowGroupReader for SerializedRowGroupReader<'
     // TODO: fix PARQUET-816
     fn get_column_page_reader(&self, i: usize) -> Result<Box<dyn PageReader>> {
         let col = self.metadata.column(i);
-        let (col_start, col_length) = col.byte_range();
 
-        // MODIFICATION START: consider the cache for the data chunk: [col_start,
-        // col_start+col_length).
-        let file_chunk = self.get_file_chunk(col_start, col_length)?;
-        // MODIFICATION END.
+        let page_locations = self
+            .metadata
+            .page_offset_index()
+            .as_ref()
+            .map(|x| x[i].clone());
 
-        let page_reader = SerializedPageReader::new(
-            file_chunk,
-            col.num_values(),
-            col.compression(),
-            col.column_descr().physical_type(),
-        )?;
-        Ok(Box::new(page_reader))
+        // TODO: use data cache and avoid data copy
+        // let (col_start, col_length) = col.byte_range();
+        // let bytes = Bytes::from(self.get_file_chunk(col_start,
+        // col_length)?.to_vec());
+
+        Ok(Box::new(SerializedPageReader::new(
+            Arc::clone(&self.chunk_reader),
+            col,
+            self.metadata.num_rows() as usize,
+            page_locations,
+        )?))
     }
 
     fn get_row_iter(&self, projection: Option<SchemaType>) -> Result<RowIter> {
@@ -245,7 +248,7 @@ mod tests {
         crate::tests::get_test_file("alltypes_plain.parquet")
             .read_to_end(&mut buf)
             .unwrap();
-        let cursor = SliceableCursor::new(buf);
+        let cursor = Bytes::from(buf);
         let read_from_cursor =
             CachableSerializedFileReader::new("read_from_cursor".to_string(), cursor, None, None)
                 .unwrap();

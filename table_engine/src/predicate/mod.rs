@@ -386,6 +386,9 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::RegexNotIMatch
             | Operator::BitwiseAnd
             | Operator::BitwiseOr
+            | Operator::BitwiseXor
+            | Operator::BitwiseShiftRight
+            | Operator::BitwiseShiftLeft
             | Operator::StringConcat => TimeRange::min_to_max(),
         }
     }
@@ -465,13 +468,23 @@ impl<'a> TimeRangeExtractor<'a> {
 
                 TimeRange::min_to_max()
             }
-            Expr::Not(_)
-            | Expr::Alias(_, _)
+
+            Expr::Alias(_, _)
             | Expr::ScalarVariable(_, _)
             | Expr::Column(_)
             | Expr::Literal(_)
+            | Expr::Not(_)
+            | Expr::Like { .. }
+            | Expr::ILike { .. }
+            | Expr::SimilarTo { .. }
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)
+            | Expr::IsTrue(_)
+            | Expr::IsFalse(_)
+            | Expr::IsNotTrue(_)
+            | Expr::IsNotFalse(_)
+            | Expr::IsUnknown(_)
+            | Expr::IsNotUnknown(_)
             | Expr::Negative(_)
             | Expr::Case { .. }
             | Expr::Cast { .. }

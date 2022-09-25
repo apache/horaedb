@@ -11,6 +11,7 @@ use std::{
 use arrow_deps::{
     arrow::datatypes::SchemaRef,
     datafusion::{
+        config::OPT_BATCH_SIZE,
         datasource::datasource::{TableProvider, TableProviderFilterPushDown},
         error::{DataFusionError, Result},
         execution::context::{SessionState, TaskContext},
@@ -216,7 +217,7 @@ impl ScanTable {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
-                batch_size: state.config.batch_size,
+                batch_size: state.config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
                 read_parallelism: self.read_parallelism,
             },
             projected_schema: self.projected_schema.clone(),

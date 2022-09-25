@@ -744,7 +744,7 @@ mod tests {
         arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array},
         parquet::{
             arrow::{ArrowReader, ParquetFileArrowReader},
-            file::serialized_reader::{SerializedFileReader, SliceableCursor},
+            file::serialized_reader::SerializedFileReader,
         },
     };
     use common_types::{
@@ -949,8 +949,7 @@ mod tests {
 
         // read encoded records back, and then compare with input records
         let encoded_bytes = encoder.close().unwrap();
-        let reader =
-            SerializedFileReader::new(SliceableCursor::new(Arc::new(encoded_bytes))).unwrap();
+        let reader = SerializedFileReader::new(Bytes::from(encoded_bytes)).unwrap();
         let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
         let mut reader = reader.get_record_reader(2048).unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();

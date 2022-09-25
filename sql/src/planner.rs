@@ -871,7 +871,8 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
             );
             // Optimize expr
             let execution_props = ExecutionProps::default();
-            let mut const_optimizer = ConstEvaluator::new(&execution_props);
+            let mut const_optimizer =
+                ConstEvaluator::try_new(&execution_props).context(DataFusionExpr)?;
             let evaluated_expr = df_logical_expr
                 .rewrite(&mut const_optimizer)
                 .context(DataFusionExpr)?;
@@ -1120,7 +1121,7 @@ mod tests {
         quick_test(sql, "Query(
     QueryPlan {
         df_plan: Projection: #test_table.key1, #test_table.key2, #test_table.field1, #test_table.field2
-          TableScan: test_table projection=None,
+          TableScan: test_table,
     },
 )").unwrap();
     }
@@ -1171,7 +1172,7 @@ mod tests {
                             id: 3,
                             name: "field1",
                             data_type: Double,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
@@ -1181,7 +1182,7 @@ mod tests {
                             id: 4,
                             name: "field2",
                             data_type: String,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
@@ -1224,7 +1225,7 @@ mod tests {
                             id: 3,
                             name: "field1",
                             data_type: Double,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
@@ -1234,7 +1235,7 @@ mod tests {
                             id: 4,
                             name: "field2",
                             data_type: String,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
@@ -1358,7 +1359,7 @@ mod tests {
                             id: 3,
                             name: "field1",
                             data_type: Double,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
@@ -1368,7 +1369,7 @@ mod tests {
                             id: 4,
                             name: "field2",
                             data_type: String,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
@@ -1431,7 +1432,7 @@ mod tests {
                             id: 3,
                             name: "field1",
                             data_type: Double,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
@@ -1441,7 +1442,7 @@ mod tests {
                             id: 4,
                             name: "field2",
                             data_type: String,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
@@ -1518,7 +1519,7 @@ mod tests {
                             id: 3,
                             name: "field1",
                             data_type: Double,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field1",
@@ -1528,7 +1529,7 @@ mod tests {
                             id: 4,
                             name: "field2",
                             data_type: String,
-                            is_nullable: false,
+                            is_nullable: true,
                             is_tag: false,
                             comment: "",
                             escaped_name: "field2",
@@ -1597,7 +1598,7 @@ mod tests {
                                 id: 3,
                                 name: "field1",
                                 data_type: Double,
-                                is_nullable: false,
+                                is_nullable: true,
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "field1",
@@ -1607,7 +1608,7 @@ mod tests {
                                 id: 4,
                                 name: "field2",
                                 data_type: String,
-                                is_nullable: false,
+                                is_nullable: true,
                                 is_tag: false,
                                 comment: "",
                                 escaped_name: "field2",

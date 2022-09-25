@@ -11,6 +11,7 @@ use arrow_deps::{
         physical_plan::Accumulator as DfAccumulator,
         scalar::ScalarValue as DfScalarValue,
     },
+    datafusion_expr::AggregateState as DfAggregateState,
 };
 use common_util::define_result;
 use snafu::Snafu;
@@ -34,12 +35,6 @@ pub enum Error {
 define_result!(Error);
 
 pub struct State(Vec<DfScalarValue>);
-
-impl State {
-    fn into_df_scalar_values(self) -> Vec<DfScalarValue> {
-        self.0
-    }
-}
 
 impl From<ScalarValue> for State {
     fn from(value: ScalarValue) -> Self {
@@ -113,11 +108,11 @@ impl<T> ToDfAccumulator<T> {
 }
 
 impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
-    fn state(&self) -> DfResult<Vec<DfScalarValue>> {
+    fn state(&self) -> DfResult<Vec<DfAggregateState>> {
         let state = self.accumulator.state().map_err(|e| {
             DataFusionError::Execution(format!("Accumulator failed to get state, err:{}", e))
         })?;
-        Ok(state.into_df_scalar_values())
+        Ok(state.0.into_iter().map(DfAggregateState::Scalar).collect())
     }
 
     fn update_batch(&mut self, values: &[DfArrayRef]) -> DfResult<()> {
