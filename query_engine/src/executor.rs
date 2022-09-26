@@ -14,6 +14,7 @@ use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
 
 use crate::{
+    config::Config,
     context::ContextRef,
     logical_optimizer::{LogicalOptimizer, LogicalOptimizerImpl},
     physical_optimizer::{PhysicalOptimizer, PhysicalOptimizerImpl},
@@ -73,11 +74,13 @@ pub trait Executor: Clone + Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct ExecutorImpl;
+pub struct ExecutorImpl {
+    config: Config,
+}
 
 impl ExecutorImpl {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(config: Config) -> Self {
+        Self { config }
     }
 }
 

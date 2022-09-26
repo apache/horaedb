@@ -88,8 +88,11 @@ impl Runner {
 
     /// Collects all the file in ".sql" extension under the `root` dir. The
     /// returned path doesn't contains ".sql" extension.
+    ///
+    /// Note: the order of the cases matters so we should ensure the order is
+    /// os-independent.
     fn collect_cases(&self) -> Vec<PathBuf> {
-        WalkDir::new(&self.case_root)
+        let mut cases: Vec<_> = WalkDir::new(&self.case_root)
             .into_iter()
             .filter_map(|entry| {
                 entry
@@ -101,7 +104,15 @@ impl Runner {
                     })
             })
             .map(|path| path.with_extension(""))
-            .collect()
+            .collect();
+
+        // sort the cases in an os-independent order.
+        cases.sort_by(|a, b| {
+            let a_lower = a.to_string_lossy().to_lowercase();
+            let b_lower = b.to_string_lossy().to_lowercase();
+            a_lower.cmp(b_lower)
+        });
+        cases
     }
 
     async fn open_output_file<P: AsRef<Path>>(path: P) -> Result<File> {
