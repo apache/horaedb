@@ -339,21 +339,7 @@ impl_column!(
 );
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
-// impl_new_null!(TimestampColumn, TimestampMillisecondBuilder);
-// impl_new_null!(VarbinaryColumn, BinaryBuilder);
-// impl_new_null!(StringColumn, StringBuilder);
-
-impl TimestampColumn {
-    fn new_null(num_rows: usize) -> Self {
-        let mut builder = TimestampMillisecondBuilder::with_capacity(num_rows);
-        for _ in 0..num_rows {
-            builder.append_null();
-        }
-        let array = builder.finish();
-
-        Self(array)
-    }
-}
+impl_new_null!(TimestampColumn, TimestampMillisecondBuilder);
 
 impl VarbinaryColumn {
     fn new_null(num_rows: usize) -> Self {
@@ -844,8 +830,6 @@ macro_rules! define_column_block_builder {
 define_column_block_builder!(
     (Double, DoubleBuilder),
     (Float, FloatBuilder),
-    // (Varbinary, BinaryBuilder),
-    // (String, StringBuilder),
     (UInt64, UInt64Builder),
     (UInt32, UInt32Builder),
     (UInt16, UInt16Builder),

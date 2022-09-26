@@ -11,8 +11,6 @@ workspace = true
 [dependencies]
 arrow = { version = "23.0.0", features = ["prettyprint"]}
 parquet = {version = "23.0.0",features= ["experimental"]}
-#datafusion = "12.0.0"
-#datafusion-expr = "12.0.0"
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"

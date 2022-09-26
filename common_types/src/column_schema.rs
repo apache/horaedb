@@ -408,7 +408,7 @@ impl Builder {
         self
     }
 
-    /// Set this column is nullable, default is true (not nullable).
+    /// Set this column is nullable, default is false (not nullable).
     pub fn is_nullable(mut self, is_nullable: bool) -> Self {
         self.is_nullable = is_nullable;
         self
