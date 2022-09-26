@@ -855,16 +855,6 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=0df37aa7b20919a0de7220ea77e9f251bc582026#0df37aa7b20919a0de7220ea77e9f251bc582026"
-dependencies = [
- "prost",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
 dependencies = [
  "futures 0.3.21",
@@ -874,10 +864,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ceresdbproto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=ecc410b8ccd79c89391788597d977afe6d6a98ed#ecc410b8ccd79c89391788597d977afe6d6a98ed"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
 name = "ceresdbproto_deps"
 version = "0.1.0"
 dependencies = [
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=0df37aa7b20919a0de7220ea77e9f251bc582026)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=ecc410b8ccd79c89391788597d977afe6d6a98ed)",
 ]
 
 [[package]]
