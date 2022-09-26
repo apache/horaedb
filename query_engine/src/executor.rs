@@ -98,7 +98,7 @@ impl Executor for ExecutorImpl {
         }
         let begin_instant = Instant::now();
 
-        let physical_plan = optimize_plan(&*ctx, df_ctx, plan).await?;
+        let physical_plan = optimize_plan(&ctx, df_ctx, plan).await?;
 
         debug!(
             "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",

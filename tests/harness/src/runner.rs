@@ -110,7 +110,7 @@ impl Runner {
         cases.sort_by(|a, b| {
             let a_lower = a.to_string_lossy().to_lowercase();
             let b_lower = b.to_string_lossy().to_lowercase();
-            a_lower.cmp(b_lower)
+            a_lower.cmp(&b_lower)
         });
         cases
     }

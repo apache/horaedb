@@ -8,6 +8,7 @@ use std::{
 use ceresdb_client_rs::{client::Client, Builder};
 
 const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
+const CONFIG_PATH_ENV: &str = "CERESDB_CONFIG_PATH";
 const SERVER_ENDPOINT_ENV: &str = "CERESDB_SERVER_ENDPOINT";
 const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
 
@@ -17,12 +18,12 @@ pub struct Environment {
 
 impl Environment {
     pub fn start_server() -> Self {
-        let bin = env::var(BINARY_PATH_ENV)
-            .unwrap_or_else(|_| panic!("Cannot read from env {:?}", BINARY_PATH_ENV));
+        let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
+        let config = env::var(CONFIG_PATH_ENV).expect("Cannot parse config path env");
 
-        // TODO: support passing config "-c config.toml" to server
         // TODO: support config stdout/stderr
         let server_process = Command::new(&bin)
+            .args(["--config", &config])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
