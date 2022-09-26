@@ -9,7 +9,7 @@ use analytic_engine::{
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
-use query_engine::executor::ExecutorImpl;
+use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
 use sql::{
     parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider, tests::MockMetaProvider,
 };
@@ -58,7 +58,11 @@ where
 {
     async fn build_factory(&self) -> Factory<ExecutorImpl> {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
-        Factory::new(ExecutorImpl::new(), catalog_manager, self.engine())
+        Factory::new(
+            ExecutorImpl::new(query_engine::Config::default()),
+            catalog_manager,
+            self.engine(),
+        )
     }
 
     async fn sql_to_output(&self, sql: &str) -> Result<Output> {
@@ -129,8 +133,11 @@ where
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
-        let insert_factory =
-            Factory::new(ExecutorImpl::new(), catalog_manager.clone(), self.engine());
+        let insert_factory = Factory::new(
+            ExecutorImpl::new(QueryConfig::default()),
+            catalog_manager.clone(),
+            self.engine(),
+        );
         let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2) VALUES('tagk', 1638428434000), ('tagk2', 1638428434000);";
 
         let plan = sql_to_plan(&self.meta_provider, insert_sql);
@@ -144,7 +151,11 @@ where
         // Check data which just insert.
         let select_sql =
             "SELECT key1, key2, field1, field2, field3 from test_missing_columns_table";
-        let select_factory = Factory::new(ExecutorImpl::new(), catalog_manager, self.engine());
+        let select_factory = Factory::new(
+            ExecutorImpl::new(QueryConfig::default()),
+            catalog_manager,
+            self.engine(),
+        );
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();

@@ -1,9 +1,12 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use serde::Deserialize;
+
 // FIXME: Use cpu number as the default parallelism
 const DEFAULT_READ_PARALLELISM: usize = 8;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub read_parallelism: usize,
 }

@@ -4,6 +4,9 @@ grpc_port = 8831
 log_level = "info"
 enable_cluster = true
 
+[query]
+read_parallelism = 8
+
 [analytic]
 wal_path = "/tmp/ceresdb"
 sst_data_cache_cap = 10000

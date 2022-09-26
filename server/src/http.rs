@@ -332,8 +332,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             tx,
         };
 
-        let ip_addr: IpAddr = self.endpoint.ip.parse().context(ParseIpAddr {
-            ip: self.endpoint.ip,
+        let ip_addr: IpAddr = self.endpoint.addr.parse().context(ParseIpAddr {
+            ip: self.endpoint.addr,
         })?;
 
         // Register filters to warp and rejection handler

@@ -4097,6 +4097,8 @@ dependencies = [
  "df_operator",
  "futures 0.3.21",
  "log",
+ "serde",
+ "serde_derive",
  "snafu 0.6.10",
  "sql",
  "table_engine",
