@@ -61,12 +61,8 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt update
-          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake
+          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake protobuf-compiler
           sudo rm -rf /var/lib/apt/lists/*
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v1
-        with:
-          version: '3.20.1'
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
