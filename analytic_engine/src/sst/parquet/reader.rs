@@ -28,7 +28,7 @@ use futures::Stream;
 use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,
+    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CacheableSerializedFileReader,
     DataCacheRef, MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
@@ -52,7 +52,7 @@ pub async fn read_sst_meta(
     path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
-) -> Result<(CachableSerializedFileReader<Bytes>, SstMetaData)> {
+) -> Result<(CacheableSerializedFileReader<Bytes>, SstMetaData)> {
     let get_result = storage
         .get(path)
         .await
@@ -73,7 +73,7 @@ pub async fn read_sst_meta(
         })?;
 
     // generate the file reader
-    let file_reader = CachableSerializedFileReader::new(
+    let file_reader = CacheableSerializedFileReader::new(
         path.to_string(),
         bytes,
         meta_cache.clone(),
@@ -111,7 +111,7 @@ pub struct ParquetSstReader<'a> {
     projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_data: Option<SstMetaData>,
-    file_reader: Option<CachableSerializedFileReader<Bytes>>,
+    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
     /// The batch of rows in one `record_batch`.
     batch_size: usize,
     /// Read the rows in reverse order.
@@ -243,7 +243,7 @@ impl<'a> ParquetSstReader<'a> {
 /// A reader for projection and filter on the parquet file.
 struct ProjectAndFilterReader {
     file_path: String,
-    file_reader: Option<CachableSerializedFileReader<Bytes>>,
+    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
     schema: Schema,
     projected_schema: ProjectedSchema,
     row_projector: RowProjector,

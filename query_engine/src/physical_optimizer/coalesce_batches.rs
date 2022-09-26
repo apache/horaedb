@@ -11,16 +11,9 @@ use arrow_deps::datafusion::{
 
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
 
+#[derive(Default)]
 pub struct CoalesceBatchesAdapter {
     original_rule: CoalesceBatches,
-}
-
-impl Default for CoalesceBatchesAdapter {
-    fn default() -> Self {
-        Self {
-            original_rule: CoalesceBatches::default(),
-        }
-    }
 }
 
 impl Adapter for CoalesceBatchesAdapter {

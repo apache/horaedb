@@ -4,10 +4,10 @@
 
 use std::{sync::Arc, time::Instant};
 
+use arrow_deps::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
-use arrow_deps::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
@@ -77,7 +77,11 @@ impl ParquetBench {
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
-            let arrow_reader = ParquetRecordBatchReaderBuilder::try_new(get_result.bytes().await.unwrap()).unwrap().build().unwrap() ;
+            let arrow_reader =
+                ParquetRecordBatchReaderBuilder::try_new(get_result.bytes().await.unwrap())
+                    .unwrap()
+                    .build()
+                    .unwrap();
             let filter_cost = filter_begin_instant.elapsed();
 
             let iter_begin_instant = Instant::now();

@@ -12,7 +12,7 @@ use arrow_deps::arrow::array::{
     UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
 };
 use paste::paste;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, Snafu};
 
 use crate::{
     bytes::Bytes,

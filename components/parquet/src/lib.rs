@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 pub mod cache;
-// pub mod cursor;
+#[allow(deprecated)]
 pub mod reverse_reader;
 mod serialized_reader;
 #[cfg(test)]
@@ -10,7 +10,7 @@ pub mod tests;
 // use cache::Cache;
 use std::sync::Arc;
 
-pub use serialized_reader::CachableSerializedFileReader;
+pub use serialized_reader::CacheableSerializedFileReader;
 
 use crate::cache::{DataCache, MetaCache};
 

@@ -4,7 +4,6 @@
 
 use std::{convert::TryFrom, fmt, str};
 
-use arrow_deps::arrow::datatypes::{Decimal128Type, Decimal256Type};
 use chrono::{Local, TimeZone};
 use proto::common::DataType as DataTypePb;
 use serde::ser::{Serialize, Serializer};

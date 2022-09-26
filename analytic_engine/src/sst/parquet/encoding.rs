@@ -10,6 +10,7 @@ use arrow_deps::{
     arrow::{
         array::{Array, ArrayData, ArrayRef},
         buffer::MutableBuffer,
+        compute::concat_batches,
         record_batch::RecordBatch as ArrowRecordBatch,
         util::bit_util,
     },
@@ -299,7 +300,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
     fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
-        let record_batch = ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+        let record_batch = concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
