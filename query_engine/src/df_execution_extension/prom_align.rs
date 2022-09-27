@@ -14,6 +14,7 @@ use arrow_deps::{
         array::{
             new_empty_array, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array,
         },
+        compute::concat_batches,
         error::ArrowError,
         record_batch::RecordBatch,
     },
@@ -448,7 +449,7 @@ impl PromAlignReader {
             batches.push(RecordBatch::try_new(schema.clone(), arrays)?);
         }
 
-        RecordBatch::concat(&schema, &batches)
+        concat_batches(&schema, &batches)
     }
 }
 

@@ -6,11 +6,18 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::datafusion::{
-    error::DataFusionError,
-    execution::context::SessionState,
-    logical_plan::{self, DFSchemaRef, Expr, LogicalPlan, TableScan, UserDefinedLogicalNode},
-    physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
+use arrow_deps::{
+    datafusion::{
+        common::DFSchemaRef,
+        error::DataFusionError,
+        execution::context::SessionState,
+        physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
+    },
+    datafusion_expr::{
+        expr_rewriter,
+        logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
+        Expr,
+    },
 };
 use async_trait::async_trait;
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
@@ -92,7 +99,7 @@ impl TableScanByPrimaryKey {
                 // Remove all qualifiers from the scan as the provider
                 // doesn't know (nor should care) how the relation was
                 // referred to in the query
-                let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
+                let filters = expr_rewriter::unnormalize_cols(filters.iter().cloned());
 
                 // TODO: `scan_table` contains some IO (read metadata) which should not happen
                 // in plan stage. It should be push down to execute stage.

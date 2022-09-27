@@ -114,7 +114,7 @@ impl LogicalPlanNodeBuilder {
         self
     }
 
-    pub fn limit(mut self, skip: Option<usize>, fetch: Option<usize>) -> Self {
+    pub fn limit(mut self, skip: usize, fetch: Option<usize>) -> Self {
         let plan = LogicalPlan::Limit(Limit {
             skip,
             fetch,

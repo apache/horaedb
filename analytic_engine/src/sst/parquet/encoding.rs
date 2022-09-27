@@ -10,6 +10,7 @@ use arrow_deps::{
     arrow::{
         array::{Array, ArrayData, ArrayRef},
         buffer::MutableBuffer,
+        compute,
         record_batch::RecordBatch as ArrowRecordBatch,
         util::bit_util,
     },
@@ -299,7 +300,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
     fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
-        let record_batch = ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+        let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
@@ -744,7 +745,7 @@ mod tests {
         arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array},
         parquet::{
             arrow::{ArrowReader, ParquetFileArrowReader},
-            file::serialized_reader::{SerializedFileReader, SliceableCursor},
+            file::serialized_reader::SerializedFileReader,
         },
     };
     use common_types::{
@@ -949,8 +950,7 @@ mod tests {
 
         // read encoded records back, and then compare with input records
         let encoded_bytes = encoder.close().unwrap();
-        let reader =
-            SerializedFileReader::new(SliceableCursor::new(Arc::new(encoded_bytes))).unwrap();
+        let reader = SerializedFileReader::new(Bytes::from(encoded_bytes)).unwrap();
         let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
         let mut reader = reader.get_record_reader(2048).unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();

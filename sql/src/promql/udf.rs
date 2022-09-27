@@ -231,7 +231,7 @@ mod tests {
 
         let schema = Arc::new(ArrowSchema::new(vec![
             Field::new("words", DataType::Utf8, true),
-            Field::new("length", DataType::UInt64, false),
+            Field::new("length", DataType::UInt64, true),
         ]));
 
         // define data for table

@@ -4,10 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_deps::parquet::{
-    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
-    file::serialized_reader::{ReadOptionsBuilder, SerializedFileReader, SliceableCursor},
-};
+use arrow_deps::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
@@ -24,7 +21,6 @@ pub struct ParquetBench {
     projection: Vec<usize>,
     _schema: Schema,
     _predicate: PredicateRef,
-    batch_size: usize,
     runtime: Arc<Runtime>,
 }
 
@@ -52,7 +48,6 @@ impl ParquetBench {
             projection: Vec::new(),
             _schema: schema,
             _predicate: config.predicate.into_predicate(),
-            batch_size: config.read_batch_row_num,
             runtime: Arc::new(runtime),
         }
     }
@@ -78,34 +73,21 @@ impl ParquetBench {
         self.runtime.block_on(async {
             let open_instant = Instant::now();
             let get_result = self.store.get(&sst_path).await.unwrap();
-            let cursor = SliceableCursor::new(Arc::new(get_result.bytes().await.unwrap().to_vec()));
-            // todo: enable predicate filter
-            let read_options = ReadOptionsBuilder::new()
-                .with_predicate(Box::new(move |_, _| true))
-                .build();
-            let file_reader = SerializedFileReader::new_with_options(cursor, read_options).unwrap();
+
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
-            let mut arrow_reader = { ParquetFileArrowReader::new(Arc::new(file_reader)) };
-            let filter_cost = filter_begin_instant.elapsed();
-
-            let record_reader = if self.projection.is_empty() {
-                arrow_reader.get_record_reader(self.batch_size).unwrap()
-            } else {
-                let proj_mask = ProjectionMask::leaves(
-                    arrow_reader.get_metadata().file_metadata().schema_descr(),
-                    self.projection.iter().copied(),
-                );
-                arrow_reader
-                    .get_record_reader_by_columns(proj_mask, self.batch_size)
+            let arrow_reader =
+                ParquetRecordBatchReaderBuilder::try_new(get_result.bytes().await.unwrap())
                     .unwrap()
-            };
+                    .build()
+                    .unwrap();
+            let filter_cost = filter_begin_instant.elapsed();
 
             let iter_begin_instant = Instant::now();
             let mut total_rows = 0;
             let mut batch_num = 0;
-            for record_batch in record_reader {
+            for record_batch in arrow_reader {
                 let num_rows = record_batch.unwrap().num_rows();
                 total_rows += num_rows;
                 batch_num += 1;

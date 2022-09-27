@@ -23,7 +23,7 @@ paste = "1.0"
 proto = { path = "../proto" }
 snafu = { version ="0.6.10", features = ["backtraces"]}
 # TODO(yingwen): Make sqlparser support a feature
-sqlparser = { version = "0.19.0", features = ["serde"]}
+sqlparser = { version = "0.23.0", features = ["serde"]}
 serde = "1.0.81"
 serde_derive = "1.0.81"
 serde_json = "1.0.60"

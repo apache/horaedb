@@ -798,7 +798,8 @@ pub mod arrow_convert {
                 | DataType::Interval(_)
                 | DataType::Duration(_)
                 | DataType::Dictionary(_, _)
-                | DataType::Decimal(_, _)
+                | DataType::Decimal128(_, _)
+                | DataType::Decimal256(_, _)
                 | DataType::Map(_, _) => None,
             }
         }
@@ -872,6 +873,7 @@ pub mod arrow_convert {
                 ScalarValue::List(_, _)
                 | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time64(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -880,7 +882,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }
@@ -911,6 +914,7 @@ pub mod arrow_convert {
                 ScalarValue::List(_, _)
                 | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time64(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -919,7 +923,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }

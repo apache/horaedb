@@ -9,8 +9,8 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow = { version = "15.0.0", features = ["prettyprint"]}
-parquet = "15.0.0"
+arrow = { version = "23.0.0", features = ["prettyprint"] }
+parquet = { version = "23.0.0" }
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
@@ -18,8 +18,8 @@ rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"
+rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
 
 [dependencies.datafusion-expr]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "8330a40519b0cb32c04a24a540511cd4638ac9b4"
+rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
