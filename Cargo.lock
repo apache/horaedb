@@ -1107,7 +1107,7 @@ dependencies = [
  "libc",
  "log",
  "logger",
- "nix 0.25.0",
+ "nix 0.22.3",
  "pin-project-lite",
  "prometheus 0.12.0",
  "proto 0.1.0",
@@ -3408,16 +3408,15 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.25.0"
+version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e322c04a9e3440c327fca7b6c8a63e6890a32fa2ad689db972425f07e0d22abb"
+checksum = "e4916f159ed8e5de0082076562152a76b7a1f64a01fd9d1e0fea002c37624faf"
 dependencies = [
- "autocfg 1.1.0",
  "bitflags",
+ "cc",
  "cfg-if 1.0.0",
  "libc",
  "memoffset 0.6.5",
- "pin-utils",
 ]
 
 [[package]]
