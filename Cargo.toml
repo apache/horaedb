@@ -47,7 +47,7 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-tonic = { version = "0.6.2", features = ["compression"] }
+tonic = "0.8.1"
 
 [dependencies]
 analytic_engine = { path = "analytic_engine" }
