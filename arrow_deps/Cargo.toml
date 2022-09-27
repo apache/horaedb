@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 arrow = { version = "23.0.0", features = ["prettyprint"] }
-parquet = { version = "23.0.0", features= ["experimental"] }
+parquet = { version = "23.0.0" }
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
@@ -18,8 +18,8 @@ rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 
 [dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "75173589d404bc3ac4eca78d18b3d851d680e050"
+rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
 
 [dependencies.datafusion-expr]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "75173589d404bc3ac4eca78d18b3d851d680e050"
+rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"

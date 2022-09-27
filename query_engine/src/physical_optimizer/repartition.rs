@@ -14,21 +14,13 @@ use log::debug;
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct RepartitionAdapter {
-    original_rule: Repartition,
-}
-
-impl Default for RepartitionAdapter {
-    fn default() -> Self {
-        Self {
-            original_rule: Repartition::new(),
-        }
-    }
+    original_rule: OptimizeRuleRef,
 }
 
 impl Adapter for RepartitionAdapter {
     fn may_adapt(original_rule: OptimizeRuleRef) -> OptimizeRuleRef {
         if original_rule.name() == Repartition::new().name() {
-            Arc::new(Self::default())
+            Arc::new(Self { original_rule })
         } else {
             original_rule
         }

@@ -708,17 +708,15 @@ macro_rules! define_column_block_builder {
 
             impl ColumnBlockBuilder {
                 /// Create by data type with initial capacity
-                ///
-                /// BinaryBuilder and StringBuilder: item_capacity default is 1024.
-                /// Refer to https://github.com/apache/arrow-rs/blob/5a55406cf24171600a143a83a95046c7513fd92c/arrow/src/array/builder/struct_builder.rs#L96.
-                pub fn with_capacity(data_type: &DatumKind, capacity: usize) -> Self {
+                pub fn with_capacity(data_type: &DatumKind, item_capacity: usize) -> Self {
                     match data_type {
                         DatumKind::Null => Self::Null { rows: 0 },
-                        DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(capacity)),
-                        DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(1024,capacity)),
-                        DatumKind::String => Self::String(StringBuilder::with_capacity(1024,capacity)),
+                        DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(item_capacity)),
+                        // The data_capacity is set as 1024, because the item is variable-size type.
+                        DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
+                        DatumKind::String => Self::String(StringBuilder::with_capacity(item_capacity, 1024)),
                         $(
-                            DatumKind::$Kind => Self::$Kind($Builder::with_capacity(capacity)),
+                            DatumKind::$Kind => Self::$Kind($Builder::with_capacity(item_capacity)),
                         )*
                     }
                 }
@@ -817,7 +815,7 @@ macro_rules! define_column_block_builder {
                         }
                         Self::Timestamp(builder) => TimestampColumn::from(builder.finish()).into(),
                         Self::Varbinary(builder) => VarbinaryColumn::from(builder.finish()).into(),
-                        Self::String(builder) =>StringColumn::from(builder.finish()).into(),
+                        Self::String(builder) => StringColumn::from(builder.finish()).into(),
                         $(
                             Self::$Kind(builder) => [<$Kind Column>]::from(builder.finish()).into(),
                         )*
