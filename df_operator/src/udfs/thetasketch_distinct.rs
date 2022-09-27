@@ -4,6 +4,7 @@
 
 use std::fmt;
 
+use arrow_deps::arrow::datatypes::DataType;
 use common_types::datum::DatumKind;
 use common_util::define_result;
 use hyperloglog::HyperLogLog;
@@ -57,7 +58,7 @@ pub(crate) fn new_function() -> AggregateFunction {
     // Always use the same hasher with same keys.
     let hll = HyperLogLog::new_deterministic(HLL_ERROR_RATE, HLL_KEY);
 
-    let accumulator_fn = move |_data_type: &arrow_deps::arrow::datatypes::DataType| {
+    let accumulator_fn = move |_: &DataType| {
         let distinct = HllDistinct {
             hll: HyperLogLog::new_from_template(&hll),
         };

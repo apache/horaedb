@@ -270,11 +270,11 @@ impl AggregateFunction {
         accumulator_fn: F,
     ) -> Self
     where
-        F: Fn(&arrow_deps::arrow::datatypes::DataType) -> Result<A> + Send + Sync + 'static,
+        F: Fn(&DataType) -> Result<A> + Send + Sync + 'static,
         A: Accumulator + 'static,
     {
         // Create accumulator.
-        let df_adapter = move |data_type: &arrow_deps::arrow::datatypes::DataType| {
+        let df_adapter = move |data_type: &DataType| {
             let accumulator = accumulator_fn(data_type).map_err(|e| {
                 DataFusionError::Execution(format!("Failed to create accumulator, err:{}", e))
             })?;

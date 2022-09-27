@@ -9,8 +9,8 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow = { version = "23.0.0", features = ["prettyprint"]}
-parquet = {version = "23.0.0",features= ["experimental"]}
+arrow = { version = "23.0.0", features = ["prettyprint"] }
+parquet = { version = "23.0.0", features= ["experimental"] }
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
