@@ -33,8 +33,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
-    name: fmt-clippy
+  linux-ci:
+    name: linux-ci
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -53,11 +53,11 @@ jobs:
           path: |
             ~/.cargo
             ./target
-          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          key: rust-${{ runner.os }}-debug-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            rust-debug-${{ runner.os }}-
-            rust-
+            rust-${{ runner.os }}-debug-${{ hashFiles('rust-toolchain') }}-
+            rust-${{ runner.os }}-debug-
+            rust-${{ runner.os }}
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -67,42 +67,12 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
-      - name: Run
+      - name: Run Style Check
         run: |
           make check-license
           make clippy
           make fmt
-
-  linux-test:
-    name: unit-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        rust: [nightly-2022-08-08]
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${{ matrix.rust }} --profile minimal
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
-            rust-debug-${{ runner.os }}-
-            rust-
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake git
-      - name: Run Tests
+      - name: Run Unit Tests
         run: |
           cp ${LOCK_FILE} ${LOCK_FILE}.bak
           make test-ut
@@ -111,3 +81,9 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
           LOCK_FILE: Cargo.lock
+      - name: Run Harness
+        run: |
+          cd tests
+          make run
+        env:
+          RUST_BACKTRACE: "1"

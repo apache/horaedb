@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 use arrow_deps::datafusion::{
     error::DataFusionError, physical_optimizer::optimizer::PhysicalOptimizerRule,
+    prelude::SessionContext,
 };
 use async_trait::async_trait;
 use snafu::{Backtrace, ResultExt, Snafu};
 use sql::plan::QueryPlan;
 
 use crate::{
-    context::ContextRef,
     physical_optimizer::{
         coalesce_batches::CoalesceBatchesAdapter, repartition::RepartitionAdapter,
     },
@@ -47,11 +47,11 @@ pub trait PhysicalOptimizer {
 }
 
 pub struct PhysicalOptimizerImpl {
-    ctx: ContextRef,
+    ctx: SessionContext,
 }
 
 impl PhysicalOptimizerImpl {
-    pub fn with_context(ctx: ContextRef) -> Self {
+    pub fn with_context(ctx: SessionContext) -> Self {
         Self { ctx }
     }
 }
@@ -59,12 +59,12 @@ impl PhysicalOptimizerImpl {
 #[async_trait]
 impl PhysicalOptimizer for PhysicalOptimizerImpl {
     async fn optimize(&mut self, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-        let session_ctx = self.ctx.df_session_ctx();
-        let exec_plan = session_ctx
+        let exec_plan = self
+            .ctx
             .create_physical_plan(&logical_plan.df_plan)
             .await
             .context(DataFusionOptimize)?;
-        let physical_plan = DataFusionPhysicalPlan::with_plan(session_ctx.clone(), exec_plan);
+        let physical_plan = DataFusionPhysicalPlan::with_plan(self.ctx.clone(), exec_plan);
 
         Ok(Box::new(physical_plan))
     }

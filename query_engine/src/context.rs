@@ -17,6 +17,7 @@ use arrow_deps::datafusion::{
 use common_types::request_id::RequestId;
 
 use crate::{
+    config::Config,
     df_planner_extension::QueryPlannerAdapter,
     logical_optimizer::{
         order_by_primary_key::OrderByPrimaryKeyRule, type_conversion::TypeConversion,
@@ -24,66 +25,32 @@ use crate::{
     physical_optimizer,
 };
 
+pub type ContextRef = Arc<Context>;
+
 /// Query context
 pub struct Context {
-    request_id: RequestId,
-    df_session_ctx: SessionContext,
+    pub request_id: RequestId,
+    pub default_catalog: String,
+    pub default_schema: String,
 }
 
 impl Context {
-    // For datafusion, internal use only
-    #[inline]
-    pub(crate) fn df_session_ctx(&self) -> &SessionContext {
-        &self.df_session_ctx
-    }
-
-    #[inline]
-    pub fn request_id(&self) -> RequestId {
-        self.request_id
-    }
-
-    pub fn builder(request_id: RequestId) -> Builder {
-        Builder {
-            request_id,
-            df_session_config: SessionConfig::new(),
-        }
-    }
-}
-
-pub type ContextRef = Arc<Context>;
-
-#[must_use]
-pub struct Builder {
-    request_id: RequestId,
-    df_session_config: SessionConfig,
-}
-
-impl Builder {
-    /// Set default catalog and schema of this query context
-    pub fn default_catalog_and_schema(mut self, catalog: String, schema: String) -> Self {
-        self.df_session_config = self
-            .df_session_config
-            .with_default_catalog_and_schema(catalog, schema);
-
-        self
-    }
-
-    pub fn build(self) -> Context {
-        // Always create default catalog and schema now
+    pub fn build_df_session_ctx(&self, config: &Config) -> SessionContext {
+        let df_session_config = SessionConfig::new()
+            .with_default_catalog_and_schema(
+                self.default_catalog.clone(),
+                self.default_schema.clone(),
+            )
+            .with_target_partitions(config.read_parallelism);
 
         let logical_optimize_rules = Self::logical_optimize_rules();
-        let mut state = default_session_builder(self.df_session_config)
+        let mut state = default_session_builder(df_session_config)
             .with_query_planner(Arc::new(QueryPlannerAdapter))
             .with_optimizer_rules(logical_optimize_rules);
         let physical_optimizer =
             Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
         state.physical_optimizers = physical_optimizer;
-        let df_session_ctx = SessionContext::with_state(state);
-
-        Context {
-            request_id: self.request_id,
-            df_session_ctx,
-        }
+        SessionContext::with_state(state)
     }
 
     fn apply_adapters_for_physical_optimize_rules(

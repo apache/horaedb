@@ -14,7 +14,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::Config,
+    config::{Config, Endpoint},
     grpc::{self, RpcServices},
     http::{self, Service},
     instance::{Instance, InstanceRef},
@@ -228,8 +228,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let instance = InstanceRef::new(instance);
 
         // Create http config
-        let http_config = http::Config {
-            ip: self.config.bind_addr.clone(),
+        let http_config = Endpoint {
+            addr: self.config.bind_addr.clone(),
             port: self.config.http_port,
         };
 

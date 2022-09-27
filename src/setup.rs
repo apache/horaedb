@@ -114,7 +114,7 @@ where
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
-    let query_executor = ExecutorImpl::new();
+    let query_executor = ExecutorImpl::new(config.query.clone());
 
     let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())

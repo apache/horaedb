@@ -21,13 +21,10 @@ use warp::{
     Filter,
 };
 
-use crate::{consts, context::RequestContext, error, handlers, instance::InstanceRef, metrics};
-
-#[derive(Debug)]
-pub struct Config {
-    pub ip: String,
-    pub port: u16,
-}
+use crate::{
+    config::Endpoint, consts, context::RequestContext, error, handlers, instance::InstanceRef,
+    metrics,
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -296,15 +293,15 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
-    config: Config,
+    endpoint: Endpoint,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
 }
 
 impl<Q> Builder<Q> {
-    pub fn new(config: Config) -> Self {
+    pub fn new(endpoint: Endpoint) -> Self {
         Self {
-            config,
+            endpoint,
             runtimes: None,
             instance: None,
         }
@@ -335,16 +332,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             tx,
         };
 
-        let ip_addr: IpAddr = self
-            .config
-            .ip
-            .parse()
-            .context(ParseIpAddr { ip: self.config.ip })?;
+        let ip_addr: IpAddr = self.endpoint.addr.parse().context(ParseIpAddr {
+            ip: self.endpoint.addr,
+        })?;
 
         // Register filters to warp and rejection handler
         let routes = service.routes().recover(handle_rejection);
         let (_addr, server) =
-            warp::serve(routes).bind_with_graceful_shutdown((ip_addr, self.config.port), async {
+            warp::serve(routes).bind_with_graceful_shutdown((ip_addr, self.endpoint.port), async {
                 rx.await.ok();
             });
         // Run the service

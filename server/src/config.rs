@@ -187,8 +187,11 @@ pub struct Config {
     // Config of static router.
     pub static_route: StaticRouteConfig,
 
-    // Analytic engine configs:
+    // Analytic engine configs.
     pub analytic: analytic_engine::Config,
+
+    // Query engine config.
+    pub query: query_engine::Config,
 
     // Deployment configs:
     pub deploy_mode: DeployMode,
@@ -223,6 +226,7 @@ impl Default for Config {
             tracing_log_name: String::from("tracing"),
             tracing_level: String::from("info"),
             static_route: StaticRouteConfig::default(),
+            query: query_engine::Config::default(),
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),

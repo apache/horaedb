@@ -44,7 +44,7 @@ impl PhysicalOptimizerRule for RepartitionAdapter {
         // the underlying plan maybe requires the order of the output.
         if plan.output_partitioning().partition_count() == 1 {
             debug!(
-                "RepartitionAdapter avoid repartion optimization for plan:{:?}",
+                "RepartitionAdapter avoid repartition optimization for plan:{:?}",
                 plan
             );
             Ok(plan)
