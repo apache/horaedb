@@ -3,8 +3,8 @@
 //! Server error
 
 use common_util::define_result;
+use http::StatusCode;
 use snafu::Snafu;
-pub use tonic::Code;
 
 define_result!(ServerError);
 
@@ -12,18 +12,18 @@ define_result!(ServerError);
 #[snafu(visibility(pub(crate)))]
 pub enum ServerError {
     #[snafu(display("Rpc error, code:{:?}, message:{}", code, msg))]
-    ErrNoCause { code: Code, msg: String },
+    ErrNoCause { code: StatusCode, msg: String },
 
     #[snafu(display("Rpc error, code:{:?}, message:{}, cause:{}", code, msg, source))]
     ErrWithCause {
-        code: Code,
+        code: StatusCode,
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 
 impl ServerError {
-    pub fn code(&self) -> Code {
+    pub fn code(&self) -> StatusCode {
         match *self {
             ServerError::ErrNoCause { code, .. } => code,
             ServerError::ErrWithCause { code, .. } => code,
@@ -41,12 +41,6 @@ impl ServerError {
                 format!("{}. Caused by: {}", msg, first_line)
             }
         }
-    }
-}
-
-impl From<ServerError> for tonic::Status {
-    fn from(srv_err: ServerError) -> Self {
-        tonic::Status::new(srv_err.code(), srv_err.error_message())
     }
 }
 

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
+use http::StatusCode;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
@@ -14,7 +15,7 @@ use snafu::OptionExt;
 
 use crate::{
     config::Endpoint,
-    error::{Code, ErrNoCause, Result},
+    error::{ErrNoCause, Result},
     route::{hash, Router},
 };
 
@@ -150,7 +151,7 @@ impl Router for RuleBasedRouter {
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             if shard_nodes.is_empty() {
                 return ErrNoCause {
-                    code: Code::NotFound,
+                    code: StatusCode::NOT_FOUND,
                     msg: "No valid shard is found",
                 }
                 .fail();
@@ -166,7 +167,7 @@ impl Router for RuleBasedRouter {
                 let shard_id = Self::route_metric(&metric, rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ErrNoCause {
-                    code: Code::NotFound,
+                    code: StatusCode::NOT_FOUND,
                     msg: format!("Shard not found, metric:{}, shard_id:{}", metric, shard_id),
                 })?;
 

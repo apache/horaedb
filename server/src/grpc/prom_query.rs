@@ -15,6 +15,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
+use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
@@ -26,7 +27,7 @@ use sql::{
 };
 
 use crate::{
-    error::{Code, ErrNoCause, ErrWithCause, Result, ServerError},
+    error::{ErrNoCause, ErrWithCause, Result, ServerError},
     grpc::HandlerContext,
 };
 
@@ -70,7 +71,7 @@ where
         .parse_promql(&mut sql_ctx, req)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: Code::InvalidArgument,
+            code: StatusCode::BAD_REQUEST,
             msg: "Invalid request",
         })?;
 
@@ -78,9 +79,9 @@ where
         .promql_expr_to_plan(&mut sql_ctx, expr)
         .map_err(|e| {
             let code = if is_table_not_found_error(&e) {
-                Code::NotFound
+                StatusCode::NOT_FOUND
             } else {
-                Code::Internal
+                StatusCode::INTERNAL_SERVER_ERROR
             };
             ServerError::ErrWithCause {
                 code,
@@ -91,7 +92,7 @@ where
 
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
-            code: Code::ResourceExhausted,
+            code: StatusCode::TOO_MANY_REQUESTS,
             msg: "Query limited by reject list",
         }
         .fail()?;
@@ -114,14 +115,14 @@ where
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: Code::Internal,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to execute interpreter",
         })?;
 
     let resp = convert_output(output, column_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: Code::Internal,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to convert output",
         })?;
 
@@ -186,7 +187,7 @@ fn convert_records(
 
 fn empty_ok_resp() -> PrometheusQueryResponse {
     let header = ResponseHeader {
-        code: Code::Ok as u32,
+        code: StatusCode::OK.as_u16() as u32,
         ..Default::default()
     };
 
@@ -209,33 +210,33 @@ impl RecordConverter {
         let tsid_idx = record_schema
             .index_of(TSID_COLUMN)
             .with_context(|| ErrNoCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: "Failed to find Tsid column".to_string(),
             })?;
         let timestamp_idx = record_schema
             .index_of(&column_name.timestamp)
             .with_context(|| ErrNoCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: "Failed to find Timestamp column".to_string(),
             })?;
         ensure!(
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
             ErrNoCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: "Timestamp column should be timestamp type"
             }
         );
         let field_idx = record_schema
             .index_of(&column_name.field)
             .with_context(|| ErrNoCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: format!("Failed to find {} column", column_name.field),
             })?;
         let field_type = record_schema.column(field_idx).data_type;
         ensure!(
             field_type.is_f64_castable(),
             ErrNoCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: format!(
                     "Field type must be f64-compatibile type, current:{}",
                     field_type

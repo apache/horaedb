@@ -6,13 +6,14 @@ use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_types::table::TableName;
+use http::StatusCode;
 use log::warn;
 use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
     config::Endpoint,
-    error::{Code, ErrNoCause, ErrWithCause, Result},
+    error::{ErrNoCause, ErrWithCause, Result},
     route::{hash, Router},
 };
 
@@ -44,7 +45,7 @@ impl ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: Code::Internal,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to fetch cluster nodes",
             })?;
 
@@ -62,7 +63,7 @@ impl ClusterBasedRouter {
             let picked_node_shard =
                 pick_node_for_table(table_name, &cluster_nodes_resp.cluster_nodes).with_context(
                     || ErrNoCause {
-                        code: Code::NotFound,
+                        code: StatusCode::NOT_FOUND,
                         msg: format!(
                             "No valid node for table({}), cluster nodes:{:?}",
                             table_name, cluster_nodes_resp
@@ -80,7 +81,7 @@ impl ClusterBasedRouter {
 /// Make a route according to the table name and the raw endpoint.
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
     let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
-        code: Code::Internal,
+        code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: format!("Failed to parse endpoint:{}", endpoint),
     })?;
 
@@ -104,7 +105,7 @@ impl Router for ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: Code::Internal,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to route tables by cluster",
             })?;
 

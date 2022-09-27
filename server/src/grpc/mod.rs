@@ -33,9 +33,10 @@ use common_util::{
     time::InstantExt,
 };
 use futures::{
-    stream::{BoxStream, StreamExt},
-    FutureExt, TryStreamExt,
+    stream::{self, BoxStream, StreamExt},
+    FutureExt,
 };
+use http::StatusCode;
 use log::{error, info, warn};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -54,7 +55,7 @@ use tonic::{
 
 use crate::{
     consts,
-    error::{Code, ErrWithCause, Result as ServerResult, ServerError},
+    error::{ErrWithCause, Result as ServerResult, ServerError},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
     route::{Router, RouterRef},
@@ -362,14 +363,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
 fn build_err_header(err: ServerError) -> ResponseHeader {
     ResponseHeader {
-        code: err.code() as u32,
+        code: err.code().as_u16() as u32,
         error: err.error_message(),
     }
 }
 
 fn build_ok_header() -> ResponseHeader {
     ResponseHeader {
-        code: Code::Ok as u32,
+        code: StatusCode::OK.as_u16() as u32,
         ..Default::default()
     }
 }
@@ -420,7 +421,7 @@ macro_rules! handle_request {
                         HandlerContext::new(header, router, instance, &schema_config_provider)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
-                                code: Code::InvalidArgument,
+                                code: StatusCode::BAD_REQUEST,
                                 msg: "Invalid header",
                             })?;
                     $mod_name::$handle_fn(&handler_ctx, request.into_inner())
@@ -440,19 +441,25 @@ macro_rules! handle_request {
                     .$handle_fn
                     .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-                let resp = join_handle
+                let res = join_handle
                     .await
                     .map_err(|e| Box::new(e) as _)
                     .context(ErrWithCause {
-                        code: Code::Internal,
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "fail to join the spawn task",
-                    })
-                    .map_err(tonic::Status::from)?;
+                    });
 
-                match resp {
-                    Ok(v) => Ok(tonic::Response::new(v)),
-                    Err(e) => Err(tonic::Status::from(e)),
-                }
+                let resp = match res {
+                    Ok(Ok(v)) => v,
+                    Ok(Err(e)) | Err(e) => {
+                        let mut resp = $resp_ty::default();
+                        let header = build_err_header(e);
+                        resp.header = Some(header);
+                        resp
+                    },
+                };
+
+                Ok(tonic::Response::new(resp))
             }
         }
     };
@@ -485,7 +492,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: Code::InvalidArgument,
+                code: StatusCode::BAD_REQUEST,
                 msg: "Invalid header",
             })?;
 
@@ -495,7 +502,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let mut stream = request.into_inner();
         while let Some(req) = stream.next().await {
             let write_req = req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
-                code: Code::Internal,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to fetch request",
             })?;
 
@@ -546,7 +553,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
-                    code: Code::InvalidArgument,
+                    code: StatusCode::BAD_REQUEST,
                     msg: "Invalid header",
                 })?;
 
@@ -625,10 +632,14 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         &self,
         request: tonic::Request<tonic::Streaming<WriteRequest>>,
     ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        match self.stream_write_internal(request).await {
-            Ok(resp) => Ok(tonic::Response::new(resp)),
-            Err(e) => Err(tonic::Status::from(e)),
-        }
+        let resp = match self.stream_write_internal(request).await {
+            Ok(resp) => resp,
+            Err(e) => WriteResponse {
+                header: Some(build_err_header(e)),
+                ..Default::default()
+            },
+        };
+        Ok(tonic::Response::new(resp))
     }
 
     async fn stream_query(
@@ -636,13 +647,28 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         request: tonic::Request<QueryRequest>,
     ) -> std::result::Result<tonic::Response<Self::StreamQueryStream>, tonic::Status> {
         match self.stream_query_internal(request).await {
-            Ok(resp) => {
-                let new_stream: Self::StreamQueryStream =
-                    Box::pin(resp.map_err(tonic::Status::from));
+            Ok(stream) => {
+                let new_stream: Self::StreamQueryStream = Box::pin(stream.map(|res| match res {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => {
+                        let resp = QueryResponse {
+                            header: Some(build_err_header(e)),
+                            ..Default::default()
+                        };
+                        Ok(resp)
+                    }
+                }));
 
                 Ok(tonic::Response::new(new_stream))
             }
-            Err(e) => Err(tonic::Status::from(e)),
+            Err(e) => {
+                let resp = QueryResponse {
+                    header: Some(build_err_header(e)),
+                    ..Default::default()
+                };
+                let stream = stream::once(async { Ok(resp) });
+                Ok(tonic::Response::new(Box::pin(stream)))
+            }
         }
     }
 }
