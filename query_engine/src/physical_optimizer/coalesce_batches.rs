@@ -11,15 +11,14 @@ use arrow_deps::datafusion::{
 
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
 
-#[derive(Default)]
 pub struct CoalesceBatchesAdapter {
-    original_rule: CoalesceBatches,
+    original_rule: OptimizeRuleRef,
 }
 
 impl Adapter for CoalesceBatchesAdapter {
     fn may_adapt(original_rule: OptimizeRuleRef) -> OptimizeRuleRef {
         if original_rule.name() == CoalesceBatches::default().name() {
-            Arc::new(Self::default())
+            Arc::new(Self { original_rule })
         } else {
             original_rule
         }

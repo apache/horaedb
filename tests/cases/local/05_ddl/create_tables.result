@@ -60,7 +60,7 @@ affected_rows: 2
 
 select a+b from `05_create_tables_t2`;
 
-05_create_tables_t2.a Plus 05_create_tables_t2.b,
+05_create_tables_t2.a + 05_create_tables_t2.b,
 Int32(2),
 Int32(4),
 
