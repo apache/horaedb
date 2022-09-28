@@ -19,22 +19,35 @@ pub mod types;
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display(
+        "Missing shard info in NodeShard, node:{}.\nBacktrace:\n{}",
+        node,
+        backtrace
+    ))]
+    MissingShardInfo { node: String, backtrace: Backtrace },
+
+    #[snafu(display("Missing table info in NodeShard.\nBacktrace:\n{}", backtrace))]
+    MissingTableInfo { backtrace: Backtrace },
+
+    #[snafu(display("Missing header in rpc response.\nBacktrace:\n{}", backtrace))]
+    MissingHeader { backtrace: Backtrace },
+
+    #[snafu(display(
         "Failed to fetch action cmd, err:{}.\nBacktrace:\n{}",
         source,
         backtrace
     ))]
     FetchActionCmd {
-        source: grpcio::Error,
+        source: Box<dyn std::error::Error + Send + Sync>,
         backtrace: Backtrace,
     },
 
     #[snafu(display(
-        "Failed to init heatbeat stream, err:{}.\nBacktrace:\n{}",
+        "Failed to init heartbeat stream, err:{}.\nBacktrace:\n{}",
         source,
         backtrace
     ))]
     InitHeartBeatStream {
-        source: grpcio::Error,
+        source: Box<dyn std::error::Error + Send + Sync>,
         backtrace: Backtrace,
     },
 
@@ -43,6 +56,16 @@ pub enum Error {
         backtrace
     ))]
     FailGetGrpcClient { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to connect the service endpoint, err:{}\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    FailConnect {
+        source: Box<dyn std::error::Error + Send + Sync>,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to send heartbeat, cluster:{}, err:{}", cluster, source))]
     FailSendHeartbeat {

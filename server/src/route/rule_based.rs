@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
+use http::StatusCode;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
@@ -14,7 +15,7 @@ use snafu::OptionExt;
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, Result, StatusCode},
+    error::{ErrNoCause, Result},
     route::{hash, Router},
 };
 
@@ -161,26 +162,24 @@ impl Router for RuleBasedRouter {
 
             // TODO(yingwen): Better way to get total shard number
             let total_shards = shard_nodes.len();
-            let mut route_vec = Vec::with_capacity(req.metrics.len());
+            let mut route_results = Vec::with_capacity(req.metrics.len());
             for metric in req.metrics {
-                let mut route = Route::new();
-                route.set_metric(metric);
-
-                let shard_id = Self::route_metric(route.get_metric(), rule_list_opt, total_shards);
+                let shard_id = Self::route_metric(&metric, rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ErrNoCause {
                     code: StatusCode::NOT_FOUND,
-                    msg: format!(
-                        "Shard not found, metric:{}, shard_id:{}",
-                        route.get_metric(),
-                        shard_id
-                    ),
+                    msg: format!("Shard not found, metric:{}, shard_id:{}", metric, shard_id),
                 })?;
+
                 let pb_endpoint = storage::Endpoint::from(endpoint.clone());
-                route.set_endpoint(pb_endpoint);
-                route_vec.push(route);
+                let route = Route {
+                    metric,
+                    endpoint: Some(pb_endpoint),
+                    ..Default::default()
+                };
+                route_results.push(route);
             }
-            return Ok(route_vec);
+            return Ok(route_results);
         }
 
         Ok(Vec::new())

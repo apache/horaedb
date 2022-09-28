@@ -59,6 +59,12 @@ impl Endpoint {
     }
 }
 
+impl ToString for Endpoint {
+    fn to_string(&self) -> String {
+        format!("{}:{}", self.addr, self.port)
+    }
+}
+
 impl FromStr for Endpoint {
     type Err = Box<dyn std::error::Error + Send + Sync>;
 
@@ -84,11 +90,10 @@ impl FromStr for Endpoint {
 
 impl From<Endpoint> for storage::Endpoint {
     fn from(endpoint: Endpoint) -> Self {
-        let mut pb_endpoint = storage::Endpoint::default();
-        pb_endpoint.set_ip(endpoint.addr);
-        pb_endpoint.set_port(endpoint.port as u32);
-
-        pb_endpoint
+        storage::Endpoint {
+            ip: endpoint.addr,
+            port: endpoint.port as u32,
+        }
     }
 }
 

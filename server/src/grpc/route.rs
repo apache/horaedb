@@ -15,9 +15,10 @@ pub async fn handle_route<Q>(
 ) -> Result<RouteResponse> {
     let routes = ctx.router.route(ctx.tenant(), req).await?;
 
-    let mut resp = RouteResponse::new();
-    resp.set_header(grpc::build_ok_header());
-    resp.set_routes(routes.into());
+    let resp = RouteResponse {
+        header: Some(grpc::build_ok_header()),
+        routes,
+    };
 
     Ok(resp)
 }

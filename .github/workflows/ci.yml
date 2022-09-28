@@ -61,7 +61,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt update
-          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake
+          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake protobuf-compiler
           sudo rm -rf /var/lib/apt/lists/*
       - name: Install clippy rustfmt
         run: |

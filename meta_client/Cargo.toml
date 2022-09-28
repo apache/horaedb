@@ -14,7 +14,6 @@ ceresdbproto_deps = { path = "../ceresdbproto_deps" }
 common_types = { path = "../common_types" }
 common_util = { path = "../common_util" }
 futures = "0.3"
-grpcio = { path = "../grpcio" }
 log = "0.4"
 protobuf = "2.20"
 rand = "0.7"
@@ -24,4 +23,5 @@ serde_derive = "1.0.81"
 serde_json = "1.0.60"
 snafu = { version ="0.6.10", features = ["backtraces"]}
 tokio = { version = "1.0", features = ["full"] }
+tonic = { workspace = true }
 url = "2.2"

@@ -15,6 +15,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
+use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
@@ -26,7 +27,7 @@ use sql::{
 };
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, ServerError, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result, ServerError},
     grpc::HandlerContext,
 };
 
@@ -146,7 +147,6 @@ fn convert_records(
         return Ok(empty_ok_resp());
     }
 
-    let mut resp = empty_ok_resp();
     let mut tsid_to_tags = HashMap::new();
     let mut tsid_to_samples = HashMap::new();
 
@@ -168,35 +168,33 @@ fn convert_records(
             let tags = tsid_to_tags
                 .get(&tsid)
                 .expect("ensured in convert_to_samples");
-            let mut timeseries = TimeSeries::new();
-            timeseries.set_labels(
-                tags.iter()
-                    .map(|(k, v)| {
-                        let mut label = Label::new();
-                        label.set_name(k.clone());
-                        label.set_value(v.clone());
-                        label
-                    })
-                    .collect::<Vec<_>>()
-                    .into(),
-            );
-            timeseries.set_samples(samples.into());
-            timeseries
+            let labels = tags
+                .iter()
+                .map(|(k, v)| Label {
+                    name: k.clone(),
+                    value: v.clone(),
+                })
+                .collect::<Vec<_>>();
+
+            TimeSeries { labels, samples }
         })
         .collect::<Vec<_>>();
 
-    resp.set_timeseries(series_set.into());
+    let mut resp = empty_ok_resp();
+    resp.timeseries = series_set;
     Ok(resp)
 }
 
 fn empty_ok_resp() -> PrometheusQueryResponse {
-    let mut header = ResponseHeader::new();
-    header.code = StatusCode::OK.as_u16().into();
+    let header = ResponseHeader {
+        code: StatusCode::OK.as_u16() as u32,
+        ..Default::default()
+    };
 
-    let mut resp = PrometheusQueryResponse::new();
-    resp.set_header(header);
-
-    resp
+    PrometheusQueryResponse {
+        header: Some(header),
+        ..Default::default()
+    }
 }
 
 /// RecordConverter convert RecordBatch to time series format required by PromQL
@@ -311,9 +309,10 @@ impl RecordConverter {
             });
 
             let samples = tsid_to_samples.entry(tsid).or_insert_with(Vec::new);
-            let mut sample = Sample::new();
-            sample.set_value(field);
-            sample.set_timestamp(timestamp);
+            let sample = Sample {
+                value: field,
+                timestamp,
+            };
             samples.push(sample);
         }
 
@@ -416,10 +415,7 @@ mod tests {
     }
 
     fn make_sample(timestamp: i64, value: f64) -> Sample {
-        let mut sample = Sample::new();
-        sample.set_value(value);
-        sample.set_timestamp(timestamp);
-        sample
+        Sample { value, timestamp }
     }
 
     fn make_tags(tags: Vec<(String, String)>) -> BTreeMap<String, String> {

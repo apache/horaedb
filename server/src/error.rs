@@ -3,18 +3,18 @@
 //! Server error
 
 use common_util::define_result;
+use http::StatusCode;
 use snafu::Snafu;
-pub use warp::http::StatusCode;
 
 define_result!(ServerError);
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub(crate)))]
 pub enum ServerError {
-    #[snafu(display("Rpc error, code:{}, message:{}", code.as_u16(), msg))]
+    #[snafu(display("Rpc error, code:{:?}, message:{}", code, msg))]
     ErrNoCause { code: StatusCode, msg: String },
 
-    #[snafu(display("Rpc error, code:{}, message:{}, cause:{}", code.as_u16(), msg, source))]
+    #[snafu(display("Rpc error, code:{:?}, message:{}, cause:{}", code, msg, source))]
     ErrWithCause {
         code: StatusCode,
         msg: String,

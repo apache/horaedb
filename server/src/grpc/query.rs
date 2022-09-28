@@ -6,10 +6,11 @@ use std::time::Instant;
 
 use ceresdbproto_deps::ceresdbproto::{
     common::ResponseHeader,
-    storage::{QueryRequest, QueryResponse, QueryResponse_SchemaType},
+    storage::{query_response, QueryRequest, QueryResponse},
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::time::InstantExt;
+use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
@@ -21,7 +22,7 @@ use sql::{
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     grpc::HandlerContext,
 };
 
@@ -29,13 +30,15 @@ use crate::{
 const RECORD_NAME: &str = "Result";
 
 fn empty_ok_resp() -> QueryResponse {
-    let mut header = ResponseHeader::new();
-    header.code = StatusCode::OK.as_u16().into();
+    let header = ResponseHeader {
+        code: StatusCode::OK.as_u16() as u32,
+        ..Default::default()
+    };
 
-    let mut resp = QueryResponse::new();
-    resp.set_header(header);
-
-    resp
+    QueryResponse {
+        header: Some(header),
+        ..Default::default()
+    }
 }
 
 pub async fn handle_query<Q: QueryExecutor + 'static>(
@@ -197,7 +200,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
     let mut avro_schema_opt = None;
 
     let total_row = records.iter().map(|v| v.num_rows()).sum();
-    let mut rows = Vec::with_capacity(total_row);
+    resp.rows = Vec::with_capacity(total_row);
     for record_batch in records {
         let avro_schema = match avro_schema_opt.as_ref() {
             Some(schema) => schema,
@@ -205,7 +208,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
                 let avro_schema = avro_util::to_avro_schema(RECORD_NAME, record_batch.schema());
 
                 // We only set schema_json once, so all record batches need to have same schema
-                resp.schema_type = QueryResponse_SchemaType::AVRO;
+                resp.schema_type = query_response::SchemaType::Avro as i32;
                 resp.schema_content = avro_schema.canonical_form();
 
                 avro_schema_opt = Some(avro_schema);
@@ -214,15 +217,13 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
             }
         };
 
-        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut rows)
+        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut resp.rows)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to convert record batch",
             })?;
     }
-
-    resp.set_rows(rows.into());
 
     Ok(resp)
 }

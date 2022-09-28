@@ -30,7 +30,6 @@ members = [
     "components/table_kv",
     "components/tracing_util",
     "df_operator",
-    "grpcio",
     "interpreters",
     "meta_client",
     "proto",
@@ -47,8 +46,10 @@ members = [
 name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
+[workspace.dependencies]
+tonic = "0.8.1"
+
 [dependencies]
-# Workspace dependencies, in alphabetical order
 analytic_engine = { path = "analytic_engine" }
 async-trait = "0.1.53"
 catalog = { path = "catalog" }
