@@ -15,17 +15,19 @@ test = ["tempfile"]
 # In alphabetical order
 arc-swap = "1.4.0"
 arena = { workspace = true }
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+datafusion = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 object_store = { workspace = true }
-parquet = { path = "../components/parquet" }
+parquet = { workspace = true }
+parquet_ext = { workspace = true }
 prometheus = { workspace = true }
 proto = { workspace = true }
 protobuf = { workspace = true }

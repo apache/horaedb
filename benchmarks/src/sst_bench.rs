@@ -10,7 +10,7 @@ use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use parquet::{
+use parquet_ext::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
 };

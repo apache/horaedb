@@ -9,10 +9,10 @@ use std::{
     io::{self, Read, Write},
 };
 
-use snafu::{ensure, Backtrace, GenerateBacktrace, Snafu};
 // Should not use bytes crate outside of this mod so we can replace the actual
 // implementations if needed
-pub use upstream::{Buf, BufMut, Bytes, BytesMut};
+pub use bytes::{Buf, BufMut, Bytes, BytesMut};
+use snafu::{ensure, Backtrace, GenerateBacktrace, Snafu};
 
 /// Error of MemBuf/MemBufMut
 ///

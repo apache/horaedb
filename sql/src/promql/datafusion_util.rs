@@ -2,10 +2,10 @@
 
 use std::{any::Any, fmt, sync::Arc};
 
-use arrow_deps::datafusion::logical_plan::{
+use common_types::{schema::TSID_COLUMN, time::TimeRange};
+use datafusion::logical_plan::{
     col, lit, DFSchemaRef, Expr as DataFusionExpr, Expr, LogicalPlan, UserDefinedLogicalNode,
 };
-use common_types::{schema::TSID_COLUMN, time::TimeRange};
 
 use crate::promql::pushdown::{AlignParameter, Func};
 

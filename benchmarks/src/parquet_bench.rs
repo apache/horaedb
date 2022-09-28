@@ -4,12 +4,12 @@
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_deps::parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use parquet::{DataCacheRef, MetaCacheRef};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};

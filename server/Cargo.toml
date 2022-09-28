@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 analytic_engine = { workspace = true }
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 avro-rs = "0.13"
 catalog = { workspace = true }
@@ -18,6 +18,7 @@ ceresdbproto = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+datafusion = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"

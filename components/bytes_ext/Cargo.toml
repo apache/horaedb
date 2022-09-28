@@ -1,5 +1,5 @@
 [package]
-name = "parquet"
+name = "bytes_ext"
 version = "0.1.0"
 
 [package.edition]
@@ -8,8 +8,5 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow_deps = { path = "../../arrow_deps" }
-lru = "0.7.0"
-parquet-format = "4.0.0"
-thrift = "0.13"
 bytes = { workspace = true }
+snafu = { workspace = true }

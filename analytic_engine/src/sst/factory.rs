@@ -7,7 +7,7 @@ use std::{fmt::Debug, sync::Arc};
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
 use object_store::{ObjectStoreRef, Path};
-use parquet::{DataCacheRef, MetaCacheRef};
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
 
 use crate::{

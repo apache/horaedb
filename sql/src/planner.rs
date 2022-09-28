@@ -9,19 +9,9 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::{
-    arrow::{
-        compute::can_cast_types,
-        datatypes::{DataType as ArrowDataType, Schema as ArrowSchema},
-    },
-    datafusion::{
-        common::{DFField, DFSchema},
-        error::DataFusionError,
-        optimizer::simplify_expressions::ConstEvaluator,
-        physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-        sql::planner::SqlToRel,
-    },
-    datafusion_expr::expr_rewriter::ExprRewritable,
+use arrow::{
+    compute::can_cast_types,
+    datatypes::{DataType as ArrowDataType, Schema as ArrowSchema},
 };
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -30,6 +20,14 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Schema, TSID_COLUMN},
 };
+use datafusion::{
+    common::{DFField, DFSchema},
+    error::DataFusionError,
+    optimizer::simplify_expressions::ConstEvaluator,
+    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    sql::planner::SqlToRel,
+};
+use datafusion_expr::expr_rewriter::ExprRewritable;
 use df_operator::visitor::find_columns_by_expr;
 use hashbrown::HashMap as NoStdHashMap;
 use log::debug;

@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 # In alphabetical order
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 catalog = { workspace = true }
 common_types = { workspace = true }

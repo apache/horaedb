@@ -3,13 +3,17 @@
 //! Column
 use std::sync::Arc;
 
-use arrow_deps::arrow::array::{
-    Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
-    Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
-    Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
-    Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
-    TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
-    UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+use arrow::{
+    array::{
+        Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
+        Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
+        Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
+        Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
+        TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
+        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+    },
+    datatypes::DataType,
+    error::ArrowError,
 };
 use paste::paste;
 use snafu::{Backtrace, OptionExt, Snafu};
@@ -31,13 +35,13 @@ pub enum Error {
     ))]
     InvalidArrayType {
         datum_kind: DatumKind,
-        data_type: arrow_deps::arrow::datatypes::DataType,
+        data_type: DataType,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to append value, err:{}.\nBacktrace:\n{}", source, backtrace))]
     Append {
-        source: arrow_deps::arrow::error::ArrowError,
+        source: ArrowError,
         backtrace: Backtrace,
     },
 
@@ -59,7 +63,7 @@ pub enum Error {
         backtrace
     ))]
     UnsupportedArray {
-        data_type: arrow_deps::arrow::datatypes::DataType,
+        data_type: DataType,
         backtrace: Backtrace,
     },
 }
@@ -270,8 +274,8 @@ macro_rules! impl_from_array_and_slice {
 
         impl From<&$ArrayType> for $Column {
             fn from(array_ref: &$ArrayType) -> Self {
-                // We need to clone the [arrow_deps::arrow::array::ArrayData], which clones
-                // the underlying vector of [arrow_deps::arrow::buffer::Buffer] and Bitmap (also
+                // We need to clone the [arrow::array::ArrayData], which clones
+                // the underlying vector of [arrow::buffer::Buffer] and Bitmap (also
                 // holds a Buffer), thus require some allocation. However, the Buffer is
                 // managed by Arc, so cloning the buffer is not too expensive.
                 let array_data = array_ref.data().clone();

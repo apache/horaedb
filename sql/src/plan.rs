@@ -9,12 +9,10 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::{
-    datafusion::logical_plan::LogicalPlan as DataFusionLogicalPlan,
-    datafusion_expr::expr::Expr as DfLogicalExpr,
-};
 use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema};
 use common_util::define_result;
+use datafusion::logical_plan::LogicalPlan as DataFusionLogicalPlan;
+use datafusion_expr::expr::Expr as DfLogicalExpr;
 use snafu::Snafu;
 use table_engine::table::TableRef;
 

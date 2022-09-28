@@ -4,24 +4,22 @@
 
 use std::{collections::HashMap, ops::IndexMut, sync::Arc};
 
-use arrow_deps::{
-    arrow::{datatypes::Schema as ArrowSchema, record_batch::RecordBatch},
-    datafusion::{
-        common::DFSchema,
-        error::DataFusionError,
-        logical_expr::ColumnarValue as DfColumnarValue,
-        optimizer::simplify_expressions::ConstEvaluator,
-        physical_expr::{
-            create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
-        },
-    },
-    datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable},
-};
+use arrow::{datatypes::Schema as ArrowSchema, record_batch::RecordBatch};
 use async_trait::async_trait;
 use common_types::{
     column::ColumnBlock, column_schema::ColumnId, datum::Datum, hash::hash64, row::RowGroup,
 };
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
+use datafusion::{
+    common::DFSchema,
+    error::DataFusionError,
+    logical_expr::ColumnarValue as DfColumnarValue,
+    optimizer::simplify_expressions::ConstEvaluator,
+    physical_expr::{
+        create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
+    },
+};
+use datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable};
 use snafu::{ResultExt, Snafu};
 use sql::plan::InsertPlan;
 use table_engine::table::WriteRequest;

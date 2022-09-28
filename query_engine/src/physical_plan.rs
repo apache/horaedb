@@ -7,7 +7,8 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::datafusion::{
+use async_trait::async_trait;
+use datafusion::{
     error::DataFusionError,
     execution::context::TaskContext,
     physical_plan::{
@@ -16,7 +17,6 @@ use arrow_deps::datafusion::{
     },
     prelude::SessionContext,
 };
-use async_trait::async_trait;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 

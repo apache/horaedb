@@ -1,0 +1,17 @@
+[package]
+name = "parquet_ext"
+version = "0.1.0"
+
+[package.edition]
+workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrow = { workspace = true }
+arrow_ext = { workspace = true }
+bytes = { workspace = true }
+lru = "0.7.0"
+parquet = { workspace = true }
+parquet-format = "4.0.0"
+thrift = "0.13"

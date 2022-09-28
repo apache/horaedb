@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::{
+use async_trait::async_trait;
+use datafusion::{
     error::DataFusionError,
     execution::context::SessionState,
     logical_plan::{LogicalPlan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
-use async_trait::async_trait;
 use snafu::Snafu;
 use sql::promql::PromAlignNode;
 
@@ -31,7 +31,7 @@ impl ExtensionPlanner for PromAlignPlanner {
         logical_inputs: &[&LogicalPlan],
         physical_inputs: &[Arc<dyn ExecutionPlan>],
         _session_state: &SessionState,
-    ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
+    ) -> datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         Ok(
             if let Some(node) = node.as_any().downcast_ref::<PromAlignNode>() {
                 assert_eq!(logical_inputs.len(), 1, "Inconsistent number of inputs");

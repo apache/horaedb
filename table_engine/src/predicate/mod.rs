@@ -5,24 +5,22 @@
 
 use std::{convert::TryInto, sync::Arc};
 
-use arrow_deps::{
-    arrow::{
-        array::ArrayRef,
-        datatypes::{Schema as ArrowSchema, SchemaRef},
-    },
-    datafusion::{
-        logical_plan::{Column, Expr, Operator},
-        parquet::file::metadata::RowGroupMetaData,
-        physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
-        scalar::ScalarValue,
-    },
-    parquet::file::statistics::Statistics as ParquetStatistics,
+use arrow::{
+    array::ArrayRef,
+    datatypes::{Schema as ArrowSchema, SchemaRef},
 };
 use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
+use datafusion::{
+    logical_plan::{Column, Expr, Operator},
+    parquet::file::metadata::RowGroupMetaData,
+    physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
+    scalar::ScalarValue,
+};
 use log::{debug, error, trace};
+use parquet::file::statistics::Statistics as ParquetStatistics;
 use snafu::{ResultExt, Snafu};
 
 pub mod filter_record_batch;
@@ -32,7 +30,7 @@ pub mod filter_record_batch;
 pub enum Error {
     #[snafu(display("Failed ot do pruning, err:{}", source))]
     Prune {
-        source: arrow_deps::datafusion::error::DataFusionError,
+        source: datafusion::error::DataFusionError,
     },
 }
 
@@ -509,14 +507,12 @@ impl<'a> TimeRangeExtractor<'a> {
 #[cfg(test)]
 mod test {
 
-    use arrow_deps::{
-        arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField},
-        datafusion::logical_expr::{expr_fn::col, lit},
-        parquet::{
-            basic::Type,
-            file::{metadata::ColumnChunkMetaData, statistics::Statistics},
-            schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
-        },
+    use arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField};
+    use datafusion::logical_expr::{expr_fn::col, lit};
+    use parquet::{
+        basic::Type,
+        file::{metadata::ColumnChunkMetaData, statistics::Statistics},
+        schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
     };
 
     use super::*;

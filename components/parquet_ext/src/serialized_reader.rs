@@ -25,14 +25,14 @@
 
 use std::{fs::File, option::Option::Some, sync::Arc};
 
-use arrow_deps::parquet::{
+use bytes::{Buf, Bytes};
+use parquet::{
     column::page::PageReader,
     errors::Result,
     file::{footer, metadata::*, reader::*},
     record::{reader::RowIter, Row},
     schema::types::Type as SchemaType,
 };
-use bytes::{Buf, Bytes};
 
 use crate::{DataCacheRef, MetaCacheRef};
 
@@ -250,7 +250,7 @@ impl<'a, R: 'static + ChunkReader> RowGroupReader for SerializedRowGroupReader<'
 mod tests {
     use std::{io::Read, sync::Arc};
 
-    use arrow_deps::parquet::{
+    use parquet::{
         basic::{ColumnOrder, Encoding},
         column::page::Page,
     };

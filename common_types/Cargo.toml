@@ -9,21 +9,23 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["arrow_deps"]
+default = ["arrow", "datafusion"]
 test = []
 
 [dependencies]
 # In alphabetical order
-arrow_deps = { path = "../arrow_deps", optional = true }
+arrow = { workspace = true, optional = true }
+datafusion = { workspace = true, optional = true }
+arrow_ext = { workspace = true }
 byteorder = "1.2"
-bytes = { path = "../components/bytes" }
+bytes_ext = { workspace = true }
 chrono = { workspace = true }
 murmur3 = "0.4.1"
 paste = { workspace = true }
 proto = { workspace = true }
 snafu = { workspace = true }
 # TODO(yingwen): Make sqlparser support a feature
-sqlparser = { version = "0.23.0", features = ["serde"]}
+sqlparser = { version = "0.23.0", features = ["serde"] }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }

@@ -7,19 +7,17 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::{
-    arrow::datatypes::DataType,
-    datafusion::{
-        error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
-        scalar::ScalarValue as DfScalarValue,
-    },
-    datafusion_expr::{
-        AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
-        Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
-    },
-};
+use arrow::datatypes::DataType;
 use common_types::{column::ColumnBlock, datum::DatumKind};
 use common_util::define_result;
+use datafusion::{
+    error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
+    scalar::ScalarValue as DfScalarValue,
+};
+use datafusion_expr::{
+    AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
+    Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
+};
 use smallvec::SmallVec;
 use snafu::{ResultExt, Snafu};
 

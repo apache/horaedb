@@ -2,14 +2,6 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use arrow_deps::datafusion::{
-    error::DataFusionError,
-    logical_plan::{
-        avg, col, combine_filters, count, lit, max, min, plan::Extension, sum,
-        Expr as DataFusionExpr, LogicalPlan, LogicalPlanBuilder,
-    },
-    sql::planner::ContextProvider,
-};
 use ceresdbproto::prometheus::{
     self, operand, sub_expr::OperatorType, Expr as ExprPb, Filter as FilterPb,
     FilterType as FilterPbType, Operand as OperandPb, Selector as PbSelector, SubExpr as PbSubExpr,
@@ -17,6 +9,14 @@ use ceresdbproto::prometheus::{
 use common_types::{
     schema::{Schema, TSID_COLUMN},
     time::{TimeRange, Timestamp},
+};
+use datafusion::{
+    error::DataFusionError,
+    logical_plan::{
+        avg, col, combine_filters, count, lit, max, min, plan::Extension, sum,
+        Expr as DataFusionExpr, LogicalPlan, LogicalPlanBuilder,
+    },
+    sql::planner::ContextProvider,
 };
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 

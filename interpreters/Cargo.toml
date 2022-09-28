@@ -14,13 +14,15 @@ async-trait = { workspace = true }
 catalog = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 log = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
 query_engine = { workspace = true }
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }

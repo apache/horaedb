@@ -752,17 +752,15 @@ impl<'a> DatumView<'a> {
     }
 }
 
-#[cfg(feature = "arrow_deps")]
+#[cfg(feature = "arrow")]
 pub mod arrow_convert {
-    use arrow_deps::{
-        arrow::datatypes::{DataType, TimeUnit},
-        datafusion::scalar::ScalarValue,
-    };
+    use arrow::datatypes::{DataType, TimeUnit};
+    use datafusion::scalar::ScalarValue;
 
     use super::*;
 
     impl DatumKind {
-        /// Create DatumKind from [arrow_deps::arrow::datatypes::DataType], if
+        /// Create DatumKind from [arrow::datatypes::DataType], if
         /// the type is not supported, returns None
         pub fn from_data_type(data_type: &DataType) -> Option<Self> {
             match data_type {

@@ -8,24 +8,22 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use arrow_deps::{
-    arrow::datatypes::SchemaRef,
-    datafusion::{
-        config::OPT_BATCH_SIZE,
-        datasource::datasource::{TableProvider, TableProviderFilterPushDown},
-        error::{DataFusionError, Result},
-        execution::context::{SessionState, TaskContext},
-        logical_plan::Expr,
-        physical_expr::PhysicalSortExpr,
-        physical_plan::{
-            DisplayFormatType, ExecutionPlan, Partitioning,
-            SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
-        },
-    },
-    datafusion_expr::{TableSource, TableType},
-};
+use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
+use datafusion::{
+    config::OPT_BATCH_SIZE,
+    datasource::datasource::{TableProvider, TableProviderFilterPushDown},
+    error::{DataFusionError, Result},
+    execution::context::{SessionState, TaskContext},
+    logical_plan::Expr,
+    physical_expr::PhysicalSortExpr,
+    physical_plan::{
+        DisplayFormatType, ExecutionPlan, Partitioning,
+        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
+    },
+};
+use datafusion_expr::{TableSource, TableType};
 use log::debug;
 
 use crate::{

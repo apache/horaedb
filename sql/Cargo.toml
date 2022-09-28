@@ -13,12 +13,14 @@ test = []
 
 [dependencies]
 # In alphabetical order
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 df_operator = { workspace = true }
+datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
 log = { workspace = true }
 paste = { workspace = true }

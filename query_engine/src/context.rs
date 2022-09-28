@@ -4,7 +4,8 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::{
+use common_types::request_id::RequestId;
+use datafusion::{
     execution::context::default_session_builder,
     optimizer::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
@@ -14,7 +15,6 @@ use arrow_deps::datafusion::{
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
-use common_types::request_id::RequestId;
 
 use crate::{
     config::Config,

@@ -44,7 +44,7 @@ pub enum Error {
     ))]
     ArrowToString {
         query: String,
-        source: arrow_deps::arrow::error::ArrowError,
+        source: arrow::error::ArrowError,
         backtrace: Backtrace,
     },
 }

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use common_util::define_result;
 use futures::Future;
 use object_store::{aliyun::AliyunOSS, cache::CachedStore, LocalFileSystem, ObjectStoreRef};
-use parquet::{
+use parquet_ext::{
     cache::{LruDataCache, LruMetaCache},
     DataCacheRef, MetaCacheRef,
 };

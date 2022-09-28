@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::catalog::TableReference;
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use common_types::tests::{build_default_value_schema, build_schema};
+use datafusion::catalog::TableReference;
 use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
 use table_engine::{
     memory::MemoryTable,

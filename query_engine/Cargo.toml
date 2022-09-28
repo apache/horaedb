@@ -10,10 +10,12 @@ workspace = true
 
 [dependencies]
 # In alphabetical order
-arrow_deps = { path = "../arrow_deps" }
+arrow = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }

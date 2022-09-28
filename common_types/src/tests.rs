@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use sqlparser::ast::{BinaryOperator, Expr, Value};
 
 use crate::{

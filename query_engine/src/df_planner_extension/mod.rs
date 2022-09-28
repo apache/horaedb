@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::{
+use datafusion::{
     execution::context::{QueryPlanner, SessionState},
     logical_plan::LogicalPlan,
     physical_plan::{
@@ -26,7 +26,7 @@ impl QueryPlanner for QueryPlannerAdapter {
         &self,
         logical_plan: &LogicalPlan,
         session_state: &SessionState,
-    ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(table_scan_by_primary_key::Planner),
             Arc::new(prom_align::PromAlignPlanner),

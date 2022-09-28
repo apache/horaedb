@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use arrow_deps::arrow::datatypes::DataType;
+use arrow::datatypes::DataType;
 use common_types::datum::DatumKind;
 use common_util::define_result;
 use hyperloglog::HyperLogLog;
