@@ -9,7 +9,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-analytic_engine = { path = "../analytic_engine" }
+analytic_engine = { workspace = true }
 arrow_deps = { path = "../arrow_deps" }
 async-trait = { workspace = true }
 avro-rs = "0.13"
@@ -21,30 +21,30 @@ common_util = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
-interpreters = { path = "../interpreters" }
+interpreters = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-logger = { path = "../components/logger" }
+logger = { workspace = true }
 meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
-paste = "1.0"
-profile = { path = "../components/profile" }
+paste = { workspace = true }
+profile = { workspace = true }
 protobuf = { workspace = true }
 query_engine = { workspace = true }
 prometheus = { workspace = true }
 prometheus-static-metric = "0.5"
 serde = { workspace = true }
 serde_derive = { workspace = true }
-serde_json = "1.0.60"
+serde_json = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
 system_catalog = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }
-tokio-stream = {version = "0.1", features = ["net"]}
+tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
 twox-hash = "1.6"
 warp = "0.3"
 
 [dev-dependencies]
-sql = { path = "../sql" , features=["test"]}
+sql = { workspace = true , features=["test"] }

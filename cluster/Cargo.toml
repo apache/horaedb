@@ -8,7 +8,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-analytic_engine = { path = "../analytic_engine" }
+analytic_engine = { workspace = true }
 async-trait = { workspace = true }
 catalog = { workspace = true }
 common_types = { workspace = true }
@@ -18,7 +18,7 @@ meta_client = { workspace = true }
 rust-fsm = "0.6.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
-serde_json = "1.0.60"
+serde_json = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }

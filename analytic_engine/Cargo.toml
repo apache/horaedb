@@ -14,7 +14,7 @@ test = ["tempfile"]
 [dependencies]
 # In alphabetical order
 arc-swap = "1.4.0"
-arena = { path = "../components/arena" }
+arena = { workspace = true }
 arrow_deps = { path = "../arrow_deps" }
 async-trait = { workspace = true }
 base64 = { workspace = true }
@@ -24,7 +24,7 @@ common_util = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
-object_store = { path = "../components/object_store" }
+object_store = { workspace = true }
 parquet = { path = "../components/parquet" }
 prometheus = { workspace = true }
 proto = { workspace = true }
@@ -35,7 +35,7 @@ skiplist = { path = "../components/skiplist" }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
-table_kv = { path = "../components/table_kv" }
+table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 wal = { workspace = true }

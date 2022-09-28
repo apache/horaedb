@@ -15,30 +15,30 @@ test = ["env_logger"]
 # In alphabetical order
 arrow_deps = { path = "../arrow_deps" }
 backtrace = "0.3.9"
-common_types = { path = "../common_types", features = ["test"] }
-chrono = "0.4"
+common_types = { workspace = true , features = ["test"] }
+chrono = { workspace = true }
 crossbeam-utils = "0.8.7"
-env_logger = { version = "0.6", optional = true }
+env_logger = { workspace = true, optional = true }
 lazy_static = { workspace = true }
 libc = "0.2"
 log = { workspace = true }
-logger = { path = "../components/logger"}
+logger = { workspace = true }
 snafu = { workspace = true }
-serde = {version = "1.0.81", features = ["derive"]}
-serde_derive = "1.0.81"
+serde = { workspace = true}
+serde_derive = { workspace = true }
 pin-project-lite = "0.2.8"
 prometheus = { workspace = true }
 proto = { workspace = true }
 time = "0.1"
-tokio = { version = "1.15", features = ["full"] }
+tokio = { workspace = true }
 toml = "0.5"
 
 [dev-dependencies]
 env_logger = { workspace = true }
 gag = "1.0"
 nix = "0.22"
-slog = "2.7"
-tempfile = "3.1.0"
+slog = { workspace = true }
+tempfile = { workspace = true }
 tokio-test = "0.4.2"
 
 [dev-dependencies.slog-global]

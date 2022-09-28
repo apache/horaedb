@@ -13,22 +13,22 @@ test = ["tempfile", "futures"]
 
 [dependencies]
 async-trait = { workspace = true }
-common_util = {path = "../common_util"}
-common_types = {path = "../common_types"}
-chrono = "0.4"
+common_util = { workspace = true }
+common_types = { workspace = true }
+chrono = { workspace = true }
 futures = { workspace = true, features = ["async-await"], optional = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
-serde_json = "1.0.60"
+serde_json = { workspace = true }
 snafu = { workspace = true }
-table_kv = { path = "../components/table_kv" }
+table_kv = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true }
 tempfile = { workspace = true, optional = true }
 
 [dev-dependencies]
-futures = { version = "0.3", features = ["async-await"] }
+futures = { workspace = true, features = ["async-await"] }
 env_logger = { workspace = true }
 
 [dependencies.rocksdb]

@@ -8,7 +8,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-common_util = { path = "../../common_util" }
+common_util = { workspace = true }
 log = { workspace = true }
 obkv-table-client-rs = { git = "https://github.com/oceanbase/obkv-table-client-rs.git", rev = "318907f35de51404c05180c65440c9516fd1e10f" }
 serde = { workspace = true }
@@ -16,4 +16,4 @@ serde_derive = { workspace = true }
 snafu = { workspace = true }
 
 [dev-dependencies]
-rand = "0.7"
+rand = { workspace = true }

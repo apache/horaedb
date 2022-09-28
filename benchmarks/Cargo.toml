@@ -8,10 +8,10 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arena = { path = "../components/arena" }
+arena = { workspace = true }
 arrow2 = { version = "0.12.0", features = [ "io_parquet" ] }
 arrow_deps = { path = "../arrow_deps" }
-analytic_engine = { path = "../analytic_engine" }
+analytic_engine = { workspace = true }
 base64 = { workspace = true }
 clap = "2.0"
 common_types = { workspace = true }
@@ -19,19 +19,19 @@ common_util = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
-object_store = { path = "../components/object_store" }
+object_store = { workspace = true }
 parquet = { path = "../components/parquet"}
-rand = "0.7"
+rand = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
-table_kv = { path = "../components/table_kv" }
+table_kv = { workspace = true }
 tokio = { workspace = true }
-wal = {path = "../wal"}
+wal = { workspace = true }
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = { workspace = true }
 
 [[bench]]
 name = "bench"

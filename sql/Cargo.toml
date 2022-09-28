@@ -16,17 +16,17 @@ test = []
 arrow_deps = { path = "../arrow_deps" }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
-common_types = { path = "../common_types"}
+common_types = { workspace = true }
 common_util = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
 log = { workspace = true }
-paste = "1.0"
+paste = { workspace = true }
 snafu = { workspace = true }
 sqlparser = "0.23.0"
 table_engine = { workspace = true }
 regex = "1"
 
 [dev-dependencies]
-common_types = { path = "../common_types", features = ["test"] }
+common_types = { workspace = true, features = ["test"] }
 tokio = { workspace = true }

@@ -23,5 +23,5 @@ table_engine = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-analytic_engine = { path = "../analytic_engine", features = ["test"] }
-server = { path = "../server" }
+analytic_engine = { workspace = true, features = ["test"] }
+server = { workspace = true }
