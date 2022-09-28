@@ -8,7 +8,7 @@ workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-log = "0.4"
+log = { workspace = true }
 tempfile = "3.0"
 jemallocator = "0.3.2"
 jemalloc-ctl = "0.3.2"

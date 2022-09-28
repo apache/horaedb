@@ -10,20 +10,20 @@ workspace = true
 
 [dependencies]
 # In alphabetical order
-async-trait = "0.1.53"
-catalog = { path = "../catalog" }
-common_types = { path = "../common_types" }
-common_util = { path = "../common_util" }
-df_operator = { path = "../df_operator" }
-log = "0.4"
-snafu = { version ="0.6.10", features = ["backtraces"]}
-sql = { path = "../sql" }
-table_engine = { path = "../table_engine" }
-query_engine = { path = "../query_engine" }
+async-trait = { workspace = true }
+catalog = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+df_operator = { workspace = true }
+log = { workspace = true }
+snafu = { workspace = true }
+sql = { workspace = true }
+table_engine = { workspace = true }
+query_engine = { workspace = true }
 arrow_deps = { path = "../arrow_deps" }
 
 [dev-dependencies]
-analytic_engine = { path = "../analytic_engine", features = ["test"] }
-catalog_impls = { path = "../catalog_impls" }
-sql = { path = "../sql", features = ["test"] }
-tokio = { version = "1.0", features = ["sync", "time"] }
+analytic_engine = { workspace = true, features = ["test"] }
+catalog_impls = { workspace = true }
+sql = { workspace = true, features = ["test"] }
+tokio = { workspace = true }

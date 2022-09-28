@@ -5,7 +5,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use analytic_engine;
-use ceresdbproto_deps::ceresdbproto::storage;
+use ceresdbproto::storage;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;

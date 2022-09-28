@@ -11,14 +11,14 @@ workspace = true
 [dependencies]
 # In alphabetical order
 arrow_deps = { path = "../arrow_deps" }
-async-trait = "0.1.53"
-catalog = { path = "../catalog" }
-common_types = { path = "../common_types" }
-common_util = { path = "../common_util" }
-futures = "0.3"
-log = "0.4"
-proto = { path = "../proto" }
-protobuf = "2.20"
-snafu = { version = "0.6.10", features = ["backtraces"] }
-table_engine = { path = "../table_engine" }
-tokio = { version = "1.0", features = ["sync"] }
+async-trait = { workspace = true }
+catalog = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+proto = { workspace = true }
+protobuf = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }
+tokio = { workspace = true }

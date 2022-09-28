@@ -4,9 +4,7 @@
 
 use std::collections::HashMap;
 
-use ceresdbproto_deps::ceresdbproto::storage::{
-    value, WriteEntry, WriteMetric, WriteRequest, WriteResponse,
-};
+use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
 use common_types::{
     bytes::Bytes,
     datum::{Datum, DatumKind},
@@ -449,7 +447,7 @@ fn convert_proto_value_to_datum(
 
 #[cfg(test)]
 mod test {
-    use ceresdbproto_deps::ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
+    use ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
     use common_types::{
         column_schema::{self, ColumnSchema},
         schema::Builder,

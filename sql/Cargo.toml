@@ -14,19 +14,19 @@ test = []
 [dependencies]
 # In alphabetical order
 arrow_deps = { path = "../arrow_deps" }
-catalog = { path = "../catalog" }
-ceresdbproto_deps = { path = "../ceresdbproto_deps" }
+catalog = { workspace = true }
+ceresdbproto = { workspace = true }
 common_types = { path = "../common_types"}
-common_util = { path = "../common_util" }
-df_operator = { path = "../df_operator" }
+common_util = { workspace = true }
+df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
-log = "0.4"
+log = { workspace = true }
 paste = "1.0"
-snafu = { version ="0.6.10", features = ["backtraces"]}
+snafu = { workspace = true }
 sqlparser = "0.23.0"
-table_engine = { path = "../table_engine" }
+table_engine = { workspace = true }
 regex = "1"
 
 [dev-dependencies]
 common_types = { path = "../common_types", features = ["test"] }
-tokio = { version = "1.0", features = ["full"] }
+tokio = { workspace = true }

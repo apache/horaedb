@@ -9,16 +9,16 @@ workspace = true
 
 [dependencies]
 analytic_engine = { path = "../analytic_engine" }
-async-trait = "0.1.53"
-catalog = { path = "../catalog" }
-common_types = { path = "../common_types" }
-common_util = { path = "../common_util" }
-log = "0.4"
-meta_client = { path = "../meta_client" }
+async-trait = { workspace = true }
+catalog = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+log = { workspace = true }
+meta_client = { workspace = true }
 rust-fsm = "0.6.0"
-serde = "1.0"
-serde_derive = "1.0"
+serde = { workspace = true }
+serde_derive = { workspace = true }
 serde_json = "1.0.60"
-snafu = { version ="0.6.10", features = ["backtraces"]}
-table_engine = { path = "../table_engine" }
-tokio = { version = "1.0", features = ["full"] }
+snafu = { workspace = true }
+table_engine = { workspace = true }
+tokio = { workspace = true }

@@ -9,7 +9,7 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-protobuf = "2.20"
+protobuf = { workspace = true }
 
 [build-dependencies.protobuf-builder]
 git = "https://github.com/CeresDB/protobuf-builder.git"

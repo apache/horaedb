@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::storage::{self, Route, RouteRequest};
+use ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
 use http::StatusCode;
 use log::info;

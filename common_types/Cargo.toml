@@ -20,8 +20,8 @@ bytes = { path = "../components/bytes" }
 chrono = "0.4"
 murmur3 = "0.4.1"
 paste = "1.0"
-proto = { path = "../proto" }
-snafu = { version ="0.6.10", features = ["backtraces"]}
+proto = { workspace = true }
+snafu = { workspace = true }
 # TODO(yingwen): Make sqlparser support a feature
 sqlparser = { version = "0.23.0", features = ["serde"]}
 serde = "1.0.81"

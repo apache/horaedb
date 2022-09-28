@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::{Route, RouteRequest};
 
 use crate::error::Result;
 

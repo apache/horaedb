@@ -9,4 +9,4 @@ workspace = true
 
 [dependencies]
 upstream = { version = "1.0", package = "bytes" }
-snafu = { version ="0.6.10", features = ["backtraces"]}
+snafu = { workspace = true }

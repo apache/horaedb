@@ -47,27 +47,60 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-tonic = "0.8.1"
-
-[dependencies]
 analytic_engine = { path = "analytic_engine" }
 async-trait = "0.1.53"
+base64 = "0.13"
+bytes = "1.1.0"
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-clap = "2.0"
 cluster = { path = "cluster" }
+common_types = { path = "common_types" }
 common_util = { path = "common_util" }
 df_operator = { path = "df_operator" }
+env_logger = "0.6"
+futures = "0.3"
+lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
 meta_client = { path = "meta_client" }
+prometheus = "0.12"
+proto = { path = "proto" }
+protobuf = "2.20"
 query_engine = { path = "query_engine" }
+snafu = { version ="0.6.10", features = ["backtraces"]}
+serde = "1.0"
+serde_derive = "1.0"
 server = { path = "server" }
+smallvec = "1.6"
+sql = { path = "sql" }
+system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
+tempfile = "3.1.0"
 tracing_util = { path = "components/tracing_util" }
+tonic = "0.8.1"
+tokio = { version = "1.0", features = ["full"] }
+wal = { path = "wal" }
 
-# Crates.io dependencies, in alphabetical order
+[workspace.dependencies.ceresdbproto]
+git = "https://github.com/CeresDB/ceresdbproto.git"
+rev = "224c393408ec60a3226bf7f6c41f607c26eca08e"
+
+[dependencies]
+analytic_engine = { workspace = true }
+catalog = { workspace = true }
+catalog_impls = { workspace = true }
+clap = "2.0"
+cluster = { workspace = true }
+common_util = { workspace = true }
+df_operator = { workspace = true }
+log = { workspace = true }
+logger = { workspace = true }
+meta_client = { workspace = true }
+query_engine = { workspace = true }
+server = { workspace = true }
 signal-hook = "0.3"
+table_engine = { workspace = true }
+tracing_util = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "5", default-features = false, features = ["build", "git"] }

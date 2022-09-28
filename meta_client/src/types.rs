@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use ceresdbproto_deps::ceresdbproto::{cluster, meta_service};
+use ceresdbproto::{cluster, meta_service};
 use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},

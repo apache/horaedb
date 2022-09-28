@@ -19,22 +19,22 @@ common_types = { path = "../common_types", features = ["test"] }
 chrono = "0.4"
 crossbeam-utils = "0.8.7"
 env_logger = { version = "0.6", optional = true }
-lazy_static = "1.4.0"
+lazy_static = { workspace = true }
 libc = "0.2"
-log = "0.4"
+log = { workspace = true }
 logger = { path = "../components/logger"}
-snafu = { version ="0.6.10", features = ["backtraces"]}
+snafu = { workspace = true }
 serde = {version = "1.0.81", features = ["derive"]}
 serde_derive = "1.0.81"
 pin-project-lite = "0.2.8"
-prometheus = "0.12"
-proto = { path = "../proto" }
+prometheus = { workspace = true }
+proto = { workspace = true }
 time = "0.1"
 tokio = { version = "1.15", features = ["full"] }
 toml = "0.5"
 
 [dev-dependencies]
-env_logger = "0.6"
+env_logger = { workspace = true }
 gag = "1.0"
 nix = "0.22"
 slog = "2.7"

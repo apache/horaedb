@@ -12,4 +12,4 @@ arrow_deps = { path = "../../arrow_deps" }
 lru = "0.7.0"
 parquet-format = "4.0.0"
 thrift = "0.13"
-bytes = "1.1.0"
+bytes = { workspace = true }

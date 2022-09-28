@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 chrono = "0.4"
-log = "0.4"
+log = { workspace = true }
 slog = "2.7"
 slog-async = "2.6"
 slog-term = "2.8"
