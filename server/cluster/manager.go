@@ -250,10 +250,6 @@ func (m *managerImpl) RegisterNode(ctx context.Context, clusterName string, node
 		return errors.WithMessage(err, "cluster manager RegisterNode")
 	}
 
-	// TODO: refactor coordinator
-	if err := cluster.coordinator.scatterShard(ctx, nodeInfo); err != nil {
-		return errors.WithMessage(err, "RegisterNode")
-	}
 	return nil
 }
 

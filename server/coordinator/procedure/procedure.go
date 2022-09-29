@@ -2,22 +2,30 @@
 
 package procedure
 
-import "context"
+import (
+	"context"
+)
 
 type State string
 
 const (
+	StateInit      = "init"
 	StateRunning   = "running"
 	StateFinished  = "finished"
 	StateFailed    = "failed"
 	StateCancelled = "cancelled"
 )
 
-type Typ = uint
+type Typ uint
 
 const (
-	switchLeader Typ = iota
-	mergeShard
+	Create Typ = iota
+	Delete
+	TransferLeader
+	Migrate
+	Split
+	Merge
+	Scatter
 )
 
 // Procedure is used to describe how to execute a set of operations from the scheduler, e.g. SwitchLeaderProcedure, MergeShardProcedure.
@@ -25,8 +33,8 @@ type Procedure interface {
 	// ID of the procedure.
 	ID() uint64
 
-	// Type of the procedure.
-	Type() Typ
+	// Typ of the procedure.
+	Typ() Typ
 
 	// Start the procedure.
 	Start(ctx context.Context) error
@@ -42,4 +50,25 @@ type Procedure interface {
 type Manager struct {
 	storage    *Storage
 	procedures []Procedure
+}
+
+func NewProcedure(operationType Typ) *Procedure {
+	switch operationType {
+	case Create:
+		return nil
+	case Delete:
+		return nil
+	case TransferLeader:
+		return nil
+	case Migrate:
+		return nil
+	case Split:
+		return nil
+	case Merge:
+		return nil
+	case Scatter:
+		return nil
+	}
+
+	return nil
 }

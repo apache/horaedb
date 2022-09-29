@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
@@ -26,18 +27,56 @@ type Cluster struct {
 	clusterID uint32
 
 	// RWMutex is used to protect following fields.
+	// TODO: Encapsulated maps as a specific struct
 	lock         sync.RWMutex
 	metaData     *metaData
-	shardsCache  map[uint32]*Shard  // shard_id -> shard
-	schemasCache map[string]*Schema // schema_name -> schema
-	nodesCache   map[string]*Node   // node_name -> node
+	shardsCache  map[uint32]*Shard         // shard_id -> shard
+	schemasCache map[string]*Schema        // schema_name -> schema
+	nodesCache   map[string]*Node          // node_name -> node
+	shardLock    map[uint32]*ShardWithLock // shard_id -> shardLock
 
 	storage       storage.Storage
 	kv            clientv3.KV
 	hbstream      *schedule.HeartbeatStreams
-	coordinator   *coordinator
 	schemaIDAlloc id.Allocator
 	tableIDAlloc  id.Allocator
+}
+
+func (c *Cluster) GetNodesSize() int {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return len(c.nodesCache)
+}
+
+func (c *Cluster) GetClusterNodeCache() map[string]*Node {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	newNodes := make(map[string]*Node)
+	for key, value := range c.nodesCache {
+		newNodes[key] = value
+	}
+	return newNodes
+}
+
+func (c *Cluster) GetClusterShardView() ([]*clusterpb.Shard, error) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	shardView := c.metaData.clusterTopology.ShardView
+	newShardView := make([]*clusterpb.Shard, 0)
+	// TODO: We need to use the general deep copy tool method to replace
+	for _, shard := range shardView {
+		copyShard := &clusterpb.Shard{
+			Id:        shard.Id,
+			ShardRole: shard.ShardRole,
+			Node:      shard.Node,
+		}
+		newShardView = append(newShardView, copyShard)
+	}
+	return newShardView, nil
+}
+
+func (c *Cluster) GetClusterID() uint32 {
+	return c.clusterID
 }
 
 func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV, hbstream *schedule.HeartbeatStreams, rootPath string, idAllocatorStep uint) *Cluster {
@@ -55,9 +94,6 @@ func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV
 		hbstream: hbstream,
 	}
 
-	cluster.coordinator = newCoordinator(cluster, cluster.hbstream)
-	go cluster.coordinator.runBgJob()
-
 	return cluster
 }
 
@@ -66,7 +102,6 @@ func (c *Cluster) Name() string {
 }
 
 func (c *Cluster) stop() {
-	c.coordinator.stop()
 }
 
 // Initialize the cluster topology and shard topology of the cluster.
@@ -543,7 +578,7 @@ func (c *Cluster) pickOneShardOnNode(nodeName string) (uint32, error) {
 			return 0, ErrNodeShardsIsEmpty.WithCausef("nodeName:%s", nodeName)
 		}
 
-		idx := rand.Int31n(int32(len(node.shardIDs))) //#nosec G404
+		idx := rand.Int31n(int32(len(node.shardIDs))) // #nosec G404
 		return node.shardIDs[idx], nil
 	}
 	return 0, ErrNodeNotFound.WithCausef("nodeName:%s", nodeName)
@@ -629,4 +664,83 @@ func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
 		ClusterTopologyVersion: c.metaData.clusterTopology.GetVersion(),
 		NodeShards:             nodeShards,
 	}, nil
+}
+
+func (c *Cluster) GetClusterVersion() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.metaData.clusterTopology.Version
+}
+
+func (c *Cluster) GetClusterMinNodeCount() uint32 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.metaData.cluster.MinNodeCount
+}
+
+func (c *Cluster) GetClusterShardTotal() uint32 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.metaData.cluster.ShardTotal
+}
+
+func (c *Cluster) GetClusterState() clusterpb.ClusterTopology_ClusterState {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	return c.metaData.clusterTopology.State
+}
+
+func (c *Cluster) UpdateClusterTopology(ctx context.Context, state clusterpb.ClusterTopology_ClusterState, shardView []*clusterpb.Shard) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	clusterTopology, err := c.storage.GetClusterTopology(ctx, c.GetClusterID())
+	if err != nil {
+		return errors.WithMessage(err, "UpdateClusterTopology failed")
+	}
+	clusterTopology.ShardView = shardView
+	clusterTopology.State = state
+	return c.storage.PutClusterTopology(ctx, c.GetClusterID(), c.GetClusterVersion(), clusterTopology)
+}
+
+type ShardWithLock struct {
+	shardID uint32
+	lock    sync.Mutex
+}
+
+func (c *Cluster) getShardLock(shardID uint32) *ShardWithLock {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	_, ok := c.shardLock[shardID]
+	if !ok {
+		c.shardLock[shardID] = &ShardWithLock{shardID: shardID, lock: sync.Mutex{}}
+	}
+	return c.shardLock[shardID]
+}
+
+func (c *Cluster) LockShardByID(shardID uint32) bool {
+	shardLock := c.getShardLock(shardID)
+	return shardLock.lock.TryLock()
+}
+
+func (c *Cluster) LockShardByIDWithRetry(shardID uint32, maxRetry int, waitInterval time.Duration) bool {
+	if maxRetry <= 0 {
+		return false
+	}
+	lockResult := c.LockShardByID(shardID)
+	if !lockResult {
+		time.Sleep(waitInterval)
+		return c.LockShardByIDWithRetry(shardID, maxRetry-1, waitInterval)
+	}
+	return lockResult
+}
+
+func (c *Cluster) UnlockShardByID(shardID uint32) {
+	shardLock := c.getShardLock(shardID)
+	if shardLock == nil {
+		return
+	}
+	shardLock.lock.Unlock()
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	delete(c.shardLock, shardID)
 }
