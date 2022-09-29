@@ -53,10 +53,10 @@ jobs:
           path: |
             ~/.cargo
             ./target
-          key: rust-${{ runner.os }}-debug-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          key: rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-${{ runner.os }}-debug-${{ hashFiles('rust-toolchain') }}-
-            rust-${{ runner.os }}-debug-
+            rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-
+            rust-${{ runner.os }}-ci-
             rust-${{ runner.os }}
       - name: Setup Build Environment
         run: |
