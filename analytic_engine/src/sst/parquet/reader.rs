@@ -9,13 +9,7 @@ use std::{
     time::Instant,
 };
 
-use arrow_deps::{
-    arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
-    parquet::{
-        arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
-        file::{metadata::RowGroupMetaData, reader::FileReader},
-    },
-};
+use arrow::{error::Result as ArrowResult, record_batch::RecordBatch};
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
@@ -28,6 +22,10 @@ use futures::Stream;
 use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
+    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
+    file::{metadata::RowGroupMetaData, reader::FileReader},
+};
+use parquet_ext::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CacheableSerializedFileReader,
     DataCacheRef, MetaCacheRef,
 };

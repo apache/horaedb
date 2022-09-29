@@ -2,12 +2,10 @@
 
 //! Helper function and struct to find input columns for an Expr;
 
-use arrow_deps::{
-    datafusion::common::Result,
-    datafusion_expr::{
-        expr::Expr as DfLogicalExpr,
-        expr_visitor::{ExprVisitable, ExpressionVisitor, Recursion},
-    },
+use datafusion::common::Result;
+use datafusion_expr::{
+    expr::Expr as DfLogicalExpr,
+    expr_visitor::{ExprVisitable, ExpressionVisitor, Recursion},
 };
 
 #[derive(Default)]

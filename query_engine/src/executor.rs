@@ -4,10 +4,10 @@
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_deps::datafusion::prelude::SessionContext;
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
 use common_util::time::InstantExt;
+use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
 use snafu::{ResultExt, Snafu};

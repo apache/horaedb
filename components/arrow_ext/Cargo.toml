@@ -1,5 +1,5 @@
 [package]
-name = "ceresdbproto_deps"
+name = "arrow_ext"
 version = "0.1.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 
@@ -8,7 +8,10 @@ workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "224c393408ec60a3226bf7f6c41f607c26eca08e"
+[dependencies]
+arrow = { workspace = true }
+
+[dependencies.uncover]
+git = "https://github.com/matklad/uncover.git"
+rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
 

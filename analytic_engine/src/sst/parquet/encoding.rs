@@ -6,19 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use arrow_deps::{
-    arrow::{
-        array::{Array, ArrayData, ArrayRef},
-        buffer::MutableBuffer,
-        compute,
-        record_batch::RecordBatch as ArrowRecordBatch,
-        util::bit_util,
-    },
-    parquet::{
-        arrow::ArrowWriter,
-        basic::Compression,
-        file::{metadata::KeyValue, properties::WriterProperties},
-    },
+use arrow::{
+    array::{Array, ArrayData, ArrayRef},
+    buffer::MutableBuffer,
+    compute,
+    record_batch::RecordBatch as ArrowRecordBatch,
+    util::bit_util,
 };
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
@@ -27,6 +20,11 @@ use common_types::{
 };
 use common_util::define_result;
 use log::trace;
+use parquet::{
+    arrow::ArrowWriter,
+    basic::Compression,
+    file::{metadata::KeyValue, properties::WriterProperties},
+};
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -741,18 +739,16 @@ impl ParquetDecoder {
 #[cfg(test)]
 mod tests {
 
-    use arrow_deps::{
-        arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array},
-        parquet::{
-            arrow::{ArrowReader, ParquetFileArrowReader},
-            file::serialized_reader::SerializedFileReader,
-        },
-    };
+    use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
         column_schema,
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
+    };
+    use parquet::{
+        arrow::{ArrowReader, ParquetFileArrowReader},
+        file::serialized_reader::SerializedFileReader,
     };
 
     use super::*;

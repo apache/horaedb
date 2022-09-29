@@ -7,7 +7,7 @@ pub mod order_by_primary_key;
 pub mod tests;
 pub mod type_conversion;
 
-use arrow_deps::datafusion::{error::DataFusionError, prelude::SessionContext};
+use datafusion::{error::DataFusionError, prelude::SessionContext};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sql::plan::QueryPlan;
 

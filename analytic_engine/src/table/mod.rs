@@ -4,9 +4,9 @@
 
 use std::{collections::HashMap, fmt};
 
-use arrow_deps::datafusion::logical_plan::{Column, Expr};
 use async_trait::async_trait;
 use common_types::{row::Row, schema::Schema, time::TimeRange};
+use datafusion::logical_plan::{Column, Expr};
 use futures::TryStreamExt;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{

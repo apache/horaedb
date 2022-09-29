@@ -4,12 +4,11 @@
 
 use std::{cmp, convert::TryFrom, mem};
 
-use arrow_deps::{
-    arrow::{
-        datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch as ArrowRecordBatch,
-    },
-    util,
+use arrow::{
+    datatypes::SchemaRef as ArrowSchemaRef, error::ArrowError,
+    record_batch::RecordBatch as ArrowRecordBatch,
 };
+use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -37,7 +36,7 @@ pub enum Error {
         backtrace
     ))]
     CreateArrow {
-        source: arrow_deps::arrow::error::ArrowError,
+        source: ArrowError,
         backtrace: Backtrace,
     },
 
@@ -359,7 +358,7 @@ impl RecordBatchWithKey {
     ///
     /// The data retains intact if failed.
     pub fn reverse_data(&mut self) -> Result<()> {
-        let reversed_record_batch = util::reverse_record_batch(&self.data.arrow_record_batch)
+        let reversed_record_batch = operation::reverse_record_batch(&self.data.arrow_record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(ReverseRecordBatchData)?;
 
@@ -394,7 +393,7 @@ impl RecordBatchWithKey {
         assert_eq!(self.num_rows(), selected_rows.len());
 
         let selected_record_batch =
-            util::select_record_batch(&self.data.arrow_record_batch, selected_rows)
+            operation::select_record_batch(&self.data.arrow_record_batch, selected_rows)
                 .map_err(|e| Box::new(e) as _)
                 .context(SelectRecordBatchData)?;
         let selected_data = RecordBatchData::try_from(selected_record_batch)

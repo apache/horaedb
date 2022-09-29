@@ -15,9 +15,7 @@ use std::{
 // TODO(yingwen): No need to support all schema that arrow supports, we can
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
-pub use arrow_deps::arrow::datatypes::{
-    DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef,
-};
+pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
 use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -609,17 +607,17 @@ impl Schema {
         self.column_schemas.column(i)
     }
 
-    /// Return the ref to [arrow_deps::arrow::datatypes::SchemaRef]
+    /// Return the ref to [arrow::datatypes::SchemaRef]
     pub fn as_arrow_schema_ref(&self) -> &ArrowSchemaRef {
         &self.arrow_schema
     }
 
-    /// Return the cloned [arrow_deps::arrow::datatypes::SchemaRef]
+    /// Return the cloned [arrow::datatypes::SchemaRef]
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
         self.arrow_schema.clone()
     }
 
-    /// Into [arrow_deps::arrow::datatypes::SchemaRef]
+    /// Into [arrow::datatypes::SchemaRef]
     pub fn into_arrow_schema_ref(self) -> ArrowSchemaRef {
         self.arrow_schema
     }

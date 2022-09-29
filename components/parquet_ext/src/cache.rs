@@ -5,8 +5,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use arrow_deps::parquet::file::metadata::ParquetMetaData;
 use lru::LruCache;
+use parquet::file::metadata::ParquetMetaData;
 
 pub trait MetaCache: Debug {
     fn get(&self, key: &str) -> Option<Arc<ParquetMetaData>>;

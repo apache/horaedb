@@ -1,9 +1,8 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::process::id;
-use arrow_deps::arrow::{
+use std::{collections::HashMap, convert::TryFrom, process::id};
+
+use arrow::{
     array::{Float64Array, StringArray, TimestampMillisecondArray, UInt64Array},
     datatypes::{Float64Type, TimestampMillisecondType},
     record_batch::RecordBatch as ArrowRecordBatch,
@@ -14,7 +13,7 @@ use common_types::schema::Schema;
 type IndexMap = HashMap<Vec<u8>, HashMap<Vec<u8>, Vec<TSID>>>;
 type TSID = u64;
 
-fn build_index(&mut self,arrow_record_batch_vec: &Vec<ArrowRecordBatch>) {
+fn build_index(&mut self, arrow_record_batch_vec: &Vec<ArrowRecordBatch>) {
     let mut index_map: IndexMap = HashMap::new();
     let arrow_schema = arrow_record_batch_vec[0].schema();
     let schema = Schema::try_from(arrow_schema.clone()).unwrap();
@@ -50,10 +49,12 @@ fn build_index(&mut self,arrow_record_batch_vec: &Vec<ArrowRecordBatch>) {
             tagv_columns.push(v);
             for (i, tagvalue_opt) in v.iter().enumerate() {
                 if let Some(tagvalue) = tagvalue_opt {
-                    let map = index_map.get_mut(
-                        schema.column(col_idx.clone()).name.as_bytes());
+                    let map = index_map.get_mut(schema.column(col_idx.clone()).name.as_bytes());
                     if let Some(map_inner) = map {
-                        map_inner.entry(tagvalue.as_bytes().to_vec()).or_default().push(tsid_array.value(i));
+                        map_inner
+                            .entry(tagvalue.as_bytes().to_vec())
+                            .or_default()
+                            .push(tsid_array.value(i));
                     }
                 }
             }

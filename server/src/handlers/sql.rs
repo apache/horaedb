@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use arrow_deps::arrow::error::Result as ArrowResult;
+use arrow::error::Result as ArrowResult;
 use common_types::{
     datum::{Datum, DatumKind},
     request_id::RequestId,

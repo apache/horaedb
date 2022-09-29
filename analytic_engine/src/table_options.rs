@@ -4,13 +4,13 @@
 
 use std::{collections::HashMap, string::ToString, time::Duration};
 
-use arrow_deps::datafusion::parquet::basic::Compression as ParquetCompression;
 use common_types::time::Timestamp;
 use common_util::{
     config::{ReadableDuration, ReadableSize},
     define_result,
     time::DurationExt,
 };
+use datafusion::parquet::basic::Compression as ParquetCompression;
 use proto::analytic_common::{
     CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
     Compression as CompressionPb, StorageFormat as StorageFormatPb,

@@ -3,7 +3,7 @@
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_types::table::TableName;
 use http::StatusCode;

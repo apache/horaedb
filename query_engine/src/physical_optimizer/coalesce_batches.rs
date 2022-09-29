@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::{
+use datafusion::{
     config::OPT_BATCH_SIZE,
     physical_optimizer::{coalesce_batches::CoalesceBatches, optimizer::PhysicalOptimizerRule},
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
@@ -49,7 +49,7 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
         &self,
         plan: Arc<dyn ExecutionPlan>,
         config: &SessionConfig,
-    ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         if Self::detect_small_limit_plan(
             &*plan,
             config.config_options.get_u64(OPT_BATCH_SIZE) as usize,

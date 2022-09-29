@@ -2,25 +2,23 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use arrow_deps::{
+use arrow::{
+    datatypes::SchemaRef,
+    error::Result as ArrowResult,
+    record_batch::{RecordBatch, RecordBatchReader},
+};
+use arrow_ext::operation;
+use parquet::{
     arrow::{
-        datatypes::SchemaRef,
-        error::Result as ArrowResult,
-        record_batch::{RecordBatch, RecordBatchReader},
+        arrow_reader::ParquetRecordBatchReader, ArrowReader, ParquetFileArrowReader, ProjectionMask,
     },
-    parquet::{
-        arrow::{
-            self, arrow_reader::ParquetRecordBatchReader, ArrowReader, ParquetFileArrowReader,
-            ProjectionMask,
-        },
-        errors::Result,
-        file::{
-            metadata::{FileMetaData, ParquetMetaData},
-            reader::{FileReader, RowGroupReader},
-        },
-        record::reader::RowIter,
-        schema::types::Type as SchemaType,
+    errors::Result,
+    file::{
+        metadata::{FileMetaData, ParquetMetaData},
+        reader::{FileReader, RowGroupReader},
     },
+    record::reader::RowIter,
+    schema::types::Type as SchemaType,
 };
 
 /// The reverse reader for [FileReader].
@@ -60,7 +58,7 @@ impl ReversedFileReader {
         for batch in reader {
             // reverse the order of the data of every record batch.
             let reversed_batch = match batch {
-                Ok(v) => arrow_deps::util::reverse_record_batch(&v),
+                Ok(v) => operation::reverse_record_batch(&v),
                 Err(e) => Err(e),
             };
             // reverse the order of the record batches.
@@ -183,7 +181,7 @@ impl Builder {
 
         let schema = {
             let file_metadata = self.file_reader.metadata().file_metadata();
-            Arc::new(arrow::parquet_to_arrow_schema(
+            Arc::new(parquet::arrow::parquet_to_arrow_schema(
                 file_metadata.schema_descr(),
                 file_metadata.key_value_metadata(),
             )?)
@@ -200,7 +198,7 @@ impl Builder {
 
 #[cfg(test)]
 mod tests {
-    use arrow_deps::parquet::file::reader::SerializedFileReader;
+    use parquet::file::reader::SerializedFileReader;
 
     use super::*;
 

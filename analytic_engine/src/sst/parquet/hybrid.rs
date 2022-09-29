@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use arrow_deps::arrow::{
+use arrow::{
     array::{
         Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
         UInt64Array,
@@ -572,7 +572,7 @@ pub fn new_ones_buffer(len: usize) -> MutableBuffer {
 
 #[cfg(test)]
 mod tests {
-    use arrow_deps::arrow::{
+    use arrow::{
         array::{TimestampMillisecondArray, UInt16Array},
         buffer::Buffer,
         datatypes::{TimestampMillisecondType, UInt16Type},

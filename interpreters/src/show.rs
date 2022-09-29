@@ -2,7 +2,7 @@
 
 use std::{convert::TryInto, sync::Arc};
 
-use arrow_deps::arrow::{
+use arrow::{
     array::StringArray,
     datatypes::{DataType, Field, Schema as DataSchema},
     record_batch::RecordBatch,
@@ -42,9 +42,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to create a new arrow RecordBatch, err:{}", source))]
-    CreateRecordBatch {
-        source: arrow_deps::arrow::error::ArrowError,
-    },
+    CreateRecordBatch { source: arrow::error::ArrowError },
 
     #[snafu(display(
         "Failed to convert arrow::RecordBatch to common_types::RecordBatch, err:{}",

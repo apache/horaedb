@@ -1,10 +1,10 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use arrow_deps::datafusion::{
+use common_types::{datum::DatumView, record_batch::RecordBatchWithKey};
+use datafusion::{
     logical_plan::{Expr, Operator},
     scalar::ScalarValue,
 };
-use common_types::{datum::DatumView, record_batch::RecordBatchWithKey};
 
 #[derive(Debug)]
 struct ColumnFilter {
@@ -154,11 +154,11 @@ impl From<&[Expr]> for RecordBatchFilter {
 
 #[cfg(test)]
 mod test {
-    use arrow_deps::datafusion::prelude::Column;
     use common_types::{
         row::Row,
         tests::{build_record_batch_with_key_by_rows, build_row},
     };
+    use datafusion::prelude::Column;
 
     use super::*;
 

@@ -11,7 +11,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::{
+use ceresdbproto::{
     common::ResponseHeader,
     prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
     storage::{
@@ -892,9 +892,7 @@ fn try_get_data_type_from_value(value: &Value) -> Result<DatumKind> {
 
 #[cfg(test)]
 mod tests {
-    use ceresdbproto_deps::ceresdbproto::storage::{
-        value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric,
-    };
+    use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric};
     use cluster::config::SchemaConfig;
     use common_types::datum::DatumKind;
 

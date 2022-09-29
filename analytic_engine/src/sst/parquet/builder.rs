@@ -7,9 +7,9 @@ use std::sync::{
     Arc,
 };
 
-use arrow_deps::datafusion::parquet::basic::Compression;
 use async_trait::async_trait;
 use common_types::request_id::RequestId;
+use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};

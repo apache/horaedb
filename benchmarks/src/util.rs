@@ -26,7 +26,7 @@ use common_util::{
 };
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
-use parquet::{DataCacheRef, MetaCacheRef};
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use snafu::Snafu;
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;

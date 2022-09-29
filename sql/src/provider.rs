@@ -4,18 +4,16 @@
 
 use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
-use arrow_deps::{
-    datafusion::{
-        catalog::{catalog::CatalogProvider, schema::SchemaProvider},
-        common::DataFusionError,
-        datasource::{DefaultTableSource, TableProvider},
-        physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
-        sql::planner::ContextProvider,
-    },
-    datafusion_expr::TableSource,
-};
 use catalog::manager::ManagerRef;
 use common_types::request_id::RequestId;
+use datafusion::{
+    catalog::{catalog::CatalogProvider, schema::SchemaProvider},
+    common::DataFusionError,
+    datasource::{DefaultTableSource, TableProvider},
+    physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
+    sql::planner::ContextProvider,
+};
+use datafusion_expr::TableSource;
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use snafu::{ResultExt, Snafu};
 use table_engine::{provider::TableProviderAdapter, table::TableRef};

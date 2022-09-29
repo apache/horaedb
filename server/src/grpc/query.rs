@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use ceresdbproto_deps::ceresdbproto::{
+use ceresdbproto::{
     common::ResponseHeader,
     storage::{query_response, QueryRequest, QueryResponse},
 };

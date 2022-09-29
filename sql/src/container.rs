@@ -4,8 +4,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-pub use arrow_deps::datafusion::catalog::{ResolvedTableReference, TableReference};
-use arrow_deps::datafusion::datasource::DefaultTableSource;
+pub use datafusion::catalog::{ResolvedTableReference, TableReference};
+use datafusion::datasource::DefaultTableSource;
 
 // Rust has poor support of using tuple as map key, so we use a 3 level
 // map to store catalog -> schema -> table mapping

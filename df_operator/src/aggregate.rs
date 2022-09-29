@@ -4,16 +4,14 @@
 
 use std::{fmt, ops::Deref};
 
-use arrow_deps::{
-    arrow::array::ArrayRef as DfArrayRef,
-    datafusion::{
-        error::{DataFusionError, Result as DfResult},
-        physical_plan::Accumulator as DfAccumulator,
-        scalar::ScalarValue as DfScalarValue,
-    },
-    datafusion_expr::AggregateState as DfAggregateState,
-};
+use arrow::array::ArrayRef as DfArrayRef;
 use common_util::define_result;
+use datafusion::{
+    error::{DataFusionError, Result as DfResult},
+    physical_plan::Accumulator as DfAccumulator,
+    scalar::ScalarValue as DfScalarValue,
+};
+use datafusion_expr::AggregateState as DfAggregateState;
 use snafu::Snafu;
 
 use crate::functions::{ScalarValue, ScalarValueRef};

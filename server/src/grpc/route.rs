@@ -2,7 +2,7 @@
 
 //! Route handler
 
-use ceresdbproto_deps::ceresdbproto::storage::{RouteRequest, RouteResponse};
+use ceresdbproto::storage::{RouteRequest, RouteResponse};
 
 use crate::{
     error::Result,
