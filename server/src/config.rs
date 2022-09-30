@@ -43,7 +43,7 @@ pub struct RuntimeConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
-    pub rule_list: RuleList,
+    pub rules: RuleList,
     pub topology: StaticTopologyConfig,
 }
 

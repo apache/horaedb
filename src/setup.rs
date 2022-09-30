@@ -195,7 +195,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     let schema_configs = cluster_view.schema_configs.clone();
     let router = Arc::new(RuleBasedRouter::new(
         cluster_view,
-        config.static_route.rule_list.clone(),
+        config.static_route.rules.clone(),
     ));
     let schema_config_provider = Arc::new(ConfigBasedProvider::new(schema_configs));
 
