@@ -21,7 +21,7 @@ pub fn set_panic_hook(panic_abort: bool) {
     // Caching is slow, spawn it in another thread to speed up.
     thread::Builder::new()
         .name("backtrace-loader".to_owned())
-        .spawn(::backtrace::Backtrace::new)
+        .spawn(backtrace::Backtrace::new)
         .unwrap();
 
     panic::set_hook(Box::new(move |info: &panic::PanicInfo<'_>| {
@@ -129,7 +129,7 @@ mod tests {
             }
         }
 
-        let mut stdout = BufferRedirect::stdout().unwrap();
+        let mut stderr = BufferRedirect::stderr().unwrap();
         let status = run_and_wait_child_process(|| {
             set_panic_hook(false);
             let drainer = logger::term_drainer();
@@ -153,7 +153,7 @@ mod tests {
 
         assert_eq!(status, 1);
         let mut panic = String::new();
-        stdout.read_to_string(&mut panic).unwrap();
+        stderr.read_to_string(&mut panic).unwrap();
         assert!(!panic.is_empty());
     }
 }
