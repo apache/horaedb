@@ -2,12 +2,20 @@
 
 //! Interpreter for insert statement
 
-use std::{collections::HashMap, ops::IndexMut, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    ops::{IndexMut, Not},
+    sync::Arc,
+};
 
-use arrow::{datatypes::Schema as ArrowSchema, record_batch::RecordBatch};
+use arrow::{array::ArrayRef, record_batch::RecordBatch};
 use async_trait::async_trait;
 use common_types::{
-    column::ColumnBlock, column_schema::ColumnId, datum::Datum, hash::hash64, row::RowGroup,
+    column::{ColumnBlock, ColumnBlockBuilder},
+    column_schema::ColumnId,
+    datum::Datum,
+    hash::hash64,
+    row::RowGroup,
 };
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
@@ -20,9 +28,10 @@ use datafusion::{
     },
 };
 use datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable};
+use df_operator::visitor::find_columns_by_expr;
 use snafu::{ResultExt, Snafu};
 use sql::plan::InsertPlan;
-use table_engine::table::WriteRequest;
+use table_engine::table::{TableRef, WriteRequest};
 
 use crate::{
     context::Context,
@@ -80,7 +89,7 @@ impl Interpreter for InsertInterpreter {
         } = self.plan;
 
         // Fill default values
-        fill_default_values(&mut rows, &default_value_map).context(Insert)?;
+        fill_default_values(table.clone(), &mut rows, &default_value_map).context(Insert)?;
 
         // Context is unused now
         let _ctx = self.ctx;
@@ -175,12 +184,13 @@ impl<'a> TsidBuilder<'a> {
 }
 
 fn fill_default_values(
-    rows: &mut RowGroup,
-    default_value_map: &HashMap<usize, DfLogicalExpr>,
+    table: TableRef,
+    row_groups: &mut RowGroup,
+    default_value_map: &BTreeMap<usize, DfLogicalExpr>,
 ) -> Result<()> {
-    let input_df_schema = DFSchema::empty();
-    let input_arrow_schema = Arc::new(ArrowSchema::empty());
-    let input_batch = RecordBatch::new_empty(input_arrow_schema.clone());
+    let mut cached_columns_map: HashMap<usize, DfColumnarValue> = HashMap::new();
+    let table_arrow_schema = table.schema().to_arrow_schema_ref();
+
     for (column_idx, default_value_expr) in default_value_map.iter() {
         // Optimize logical expr
         let execution_props = ExecutionProps::default();
@@ -190,6 +200,15 @@ fn fill_default_values(
             .clone()
             .rewrite(&mut const_optimizer)
             .context(DataFusionExpr)?;
+
+        // Find input columns
+        let required_column_idxes = find_columns_by_expr(&evaluated_expr)
+            .iter()
+            .map(|column_name| table.schema().index_of(column_name))
+            .collect::<Option<Vec<usize>>>()
+            .unwrap();
+        let input_arrow_schema = table_arrow_schema.project(&required_column_idxes).unwrap();
+        let input_df_schema: DFSchema = input_arrow_schema.clone().try_into().unwrap();
 
         // Create physical expr
         let execution_props = ExecutionProps::default();
@@ -204,7 +223,7 @@ fn fill_default_values(
         let from_type = physical_expr
             .data_type(&input_arrow_schema)
             .context(DataFusionDataType)?;
-        let to_type = rows.schema().column(*column_idx).data_type;
+        let to_type = row_groups.schema().column(*column_idx).data_type;
 
         let casted_physical_expr = if from_type != to_type.into() {
             Arc::new(TryCastExpr::new(physical_expr, to_type.into()))
@@ -212,11 +231,23 @@ fn fill_default_values(
             physical_expr
         };
 
+        // Build input record batch
+        let input = if required_column_idxes.is_empty().not() {
+            let input_arrays = required_column_idxes
+                .into_iter()
+                .map(|col_idx| get_and_save_column(col_idx, row_groups, &mut cached_columns_map))
+                .collect::<Vec<_>>();
+            RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays).unwrap()
+        } else {
+            RecordBatch::new_empty(Arc::new(input_arrow_schema))
+        };
+
         let output = casted_physical_expr
-            .evaluate(&input_batch)
+            .evaluate(&input)
             .context(DataFusionExecutor)?;
 
-        fill_column_to_row_group(*column_idx, &output, rows)?;
+        fill_column_to_row_group(*column_idx, &output, row_groups)?;
+        cached_columns_map.insert(*column_idx, output);
     }
 
     Ok(())
@@ -229,10 +260,10 @@ fn fill_column_to_row_group(
 ) -> Result<()> {
     match column {
         DfColumnarValue::Array(array) => {
+            let datum_kind = rows.schema().column(column_idx).data_type;
+            let column_block = ColumnBlock::try_from_arrow_array_ref(&datum_kind, array)
+                .context(ConvertColumnBlock)?;
             for row_idx in 0..rows.num_rows() {
-                let datum_kind = rows.schema().column(column_idx).data_type;
-                let column_block = ColumnBlock::try_from_arrow_array_ref(&datum_kind, array)
-                    .context(ConvertColumnBlock)?;
                 let datum = column_block.datum(row_idx);
                 rows.get_row_mut(row_idx)
                     .map(|row| std::mem::replace(row.index_mut(column_idx), datum.clone()));
@@ -249,4 +280,29 @@ fn fill_column_to_row_group(
     };
 
     Ok(())
+}
+
+fn get_and_save_column(
+    column_idx: usize,
+    row_groups: &RowGroup,
+    cached_columns_map: &mut HashMap<usize, DfColumnarValue>,
+) -> ArrayRef {
+    let num_rows = row_groups.num_rows();
+    let column = cached_columns_map
+        .entry(column_idx)
+        .or_insert_with(|| {
+            let data_type = row_groups.schema().column(column_idx).data_type;
+            let iter = row_groups.iter_column(column_idx);
+            let mut builder = ColumnBlockBuilder::with_capacity(&data_type, iter.size_hint().0);
+
+            for datum in iter {
+                builder.append(datum.clone()).unwrap();
+            }
+
+            let input_column = builder.build().to_arrow_array_ref();
+            DfColumnarValue::Array(input_column)
+        })
+        .clone();
+
+    column.into_array(num_rows)
 }

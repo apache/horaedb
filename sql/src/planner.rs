@@ -11,7 +11,7 @@ use std::{
 
 use arrow::{
     compute::can_cast_types,
-    datatypes::{DataType as ArrowDataType, Schema as ArrowSchema},
+    datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
 };
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -28,7 +28,6 @@ use datafusion::{
     sql::planner::SqlToRel,
 };
 use datafusion_expr::expr_rewriter::ExprRewritable;
-use df_operator::visitor::find_columns_by_expr;
 use hashbrown::HashMap as NoStdHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -336,9 +335,6 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
             .collect::<Result<BTreeMap<_, _>>>()?;
 
-        // analyze default value options
-        analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
-
         // Tsid column is a reserved column.
         ensure!(
             !name_column_map.contains_key(TSID_COLUMN),
@@ -432,6 +428,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         let options = parse_options(stmt.options)?;
 
+        // Analyze default values
+        analyze_column_default_value_options_v2(table_schema.columns(), &self.meta_provider)?;
+
         let plan = CreateTablePlan {
             engine: stmt.engine,
             if_not_exists: stmt.if_not_exists,
@@ -509,7 +508,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 // Index in insert values stmt of each column in table schema
                 let mut column_index_in_insert = Vec::with_capacity(schema.num_columns());
                 // Column index in schema to its default-value-expr
-                let mut default_value_map = HashMap::new();
+                let mut default_value_map = BTreeMap::new();
 
                 // Check all not null columns are provided in stmt, also init
                 // `column_index_in_insert`
@@ -834,39 +833,20 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 }
 
 // Analyze default value exprs.
-fn analyze_column_default_value_options<'a, P: MetaProvider>(
-    name_column_map: &BTreeMap<&str, ColumnSchema>,
+fn analyze_column_default_value_options_v2<'a, P: MetaProvider>(
+    columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'a, P>,
 ) -> Result<()> {
     let df_planner = SqlToRel::new(meta_provider);
-    let df_fields = name_column_map
-        .iter()
-        .map(|(name, column_def)| {
-            DFField::new(
-                None,
-                name,
-                column_def.data_type.to_arrow_data_type(),
-                column_def.is_nullable,
-            )
-        })
-        .collect::<Vec<_>>();
-    let df_schema =
-        DFSchema::new_with_metadata(df_fields, HashMap::new()).context(DataFusionSchema)?;
-    for column_def in name_column_map.values() {
+    let mut df_schema = DFSchema::empty();
+    let mut arrow_schema = ArrowSchema::empty();
+
+    for column_def in columns.iter() {
         if let Some(expr) = &column_def.default_value {
             let df_logical_expr = df_planner
                 .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
                 .context(DataFusionExpr)?;
 
-            // Check input columns for the expr. Currently only support expr without input.
-            // Tracking issue: https://github.com/CeresDB/ceresdb/issues/252.
-            ensure!(
-                find_columns_by_expr(&df_logical_expr).is_empty(),
-                CreateWithComplexDefaultValue {
-                    name: column_def.name.clone(),
-                    default_value: expr.clone(),
-                }
-            );
             // Optimize expr
             let execution_props = ExecutionProps::default();
             let mut const_optimizer =
@@ -876,15 +856,12 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
                 .context(DataFusionExpr)?;
 
             // Check if the return type of expr can cast to target type
-            let physical_expr = create_physical_expr(
-                &evaluated_expr,
-                &DFSchema::empty(),
-                &ArrowSchema::empty(),
-                &execution_props,
-            )
-            .context(DataFusionExpr)?;
+            let physical_expr =
+                create_physical_expr(&evaluated_expr, &df_schema, &arrow_schema, &execution_props)
+                    .context(DataFusionExpr)?;
+
             let from_type = physical_expr
-                .data_type(&ArrowSchema::empty())
+                .data_type(&arrow_schema)
                 .context(DataFusionDataType)?;
             ensure! {
                 can_cast_types(&from_type, &column_def.data_type.into()),
@@ -895,7 +872,20 @@ fn analyze_column_default_value_options<'a, P: MetaProvider>(
                 },
             }
         }
+
+        // Add evaluated column to schema
+        let new_arrow_field = ArrowField::try_from(column_def).unwrap();
+        let to_merged_df_schema = &DFSchema::new_with_metadata(
+            vec![DFField::from(new_arrow_field.clone())],
+            HashMap::new(),
+        )
+        .unwrap();
+        df_schema.merge(to_merged_df_schema);
+        arrow_schema =
+            ArrowSchema::try_merge(vec![arrow_schema, ArrowSchema::new(vec![new_arrow_field])])
+                .unwrap();
     }
+
     Ok(())
 }
 
@@ -916,6 +906,7 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
+        println!("{:#?}", plan);
         assert_eq!(format!("{:#?}", plan), expected);
         Ok(())
     }
@@ -981,8 +972,11 @@ mod tests {
     fn test_create_statement_to_plan() {
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
                                                       ts timestamp not null, 
-                                                      c3 string, c4 uint32 Default 0, 
-                                                      c5 uint32 Default 1+1, timestamp key(ts),primary key(c1, ts)) \
+                                                      c3 string, 
+                                                      c4 uint32 Default 0, 
+                                                      c5 uint32 Default 1+1, 
+                                                      c6 String Default c3,
+                                                      timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
         quick_test(
             sql,
@@ -1071,6 +1065,23 @@ mod tests {
                             },
                         ),
                     },
+                    ColumnSchema {
+                        id: 6,
+                        name: "c6",
+                        data_type: String,
+                        is_nullable: true,
+                        is_tag: false,
+                        comment: "",
+                        escaped_name: "c6",
+                        default_value: Some(
+                            Identifier(
+                                Ident {
+                                    value: "c3",
+                                    quote_style: None,
+                                },
+                            ),
+                        ),
+                    },
                 ],
             },
             version: 1,
@@ -1088,13 +1099,13 @@ mod tests {
 
     #[test]
     fn test_create_table_failed() {
-        // Currently only support non-input expr as column default value.
-        // TODO(ygf11): remove this test after we support complex
-        // default-value-expr.
+        // CeresDB can reference other columns in default value expr, but it is mysql
+        // style, which only allow ti reference columns defined before it.
+        // Issue: https://github.com/CeresDB/ceresdb/issues/250
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
                                                       ts timestamp not null, 
-                                                      c3 uint32 Default 0, 
-                                                      c4 uint32 Default c3, timestamp key(ts),primary key(c1, ts)) \
+                                                      c3 uint32 Default c4, 
+                                                      c4 uint32 Default 0, timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
         assert!(quick_test(sql, "").is_err());
 

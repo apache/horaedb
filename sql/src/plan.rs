@@ -124,7 +124,7 @@ pub struct InsertPlan {
     pub rows: RowGroup,
     /// Column indexes in schema to its default-value-expr which is used to fill
     /// values
-    pub default_value_map: HashMap<usize, DfLogicalExpr>,
+    pub default_value_map: BTreeMap<usize, DfLogicalExpr>,
 }
 
 #[derive(Debug)]
