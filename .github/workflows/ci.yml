@@ -47,17 +47,6 @@ jobs:
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${{ matrix.rust }} --profile minimal
-      - name: Cache Rust Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo
-            ./target
-          key: rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-
-            rust-${{ runner.os }}-ci-
-            rust-${{ runner.os }}
       - name: Setup Build Environment
         run: |
           sudo apt update
