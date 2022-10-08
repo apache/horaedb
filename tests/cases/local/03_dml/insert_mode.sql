@@ -129,4 +129,4 @@ FROM
 ORDER BY
     `c1` ASC;
 
-DROP TABLE `03_dml_insert_mode_table4`;    
+DROP TABLE `03_dml_insert_mode_table4`;   
