@@ -87,5 +87,7 @@ jobs:
           df -h
           cd tests
           make run
+          du -sh .
+          df -h
         env:
           RUST_BACKTRACE: "1"
