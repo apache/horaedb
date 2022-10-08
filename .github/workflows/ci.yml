@@ -61,7 +61,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt update
-          sudo apt install --yes gcc g++ libssl-dev pkg-config cmake protobuf-compiler
+          sudo apt install --yes protobuf-compiler
           sudo rm -rf /var/lib/apt/lists/*
       - name: Install clippy rustfmt
         run: |
@@ -87,3 +87,9 @@ jobs:
           make run
         env:
           RUST_BACKTRACE: "1"
+      - name: Report Disk Usage
+        if: always()
+        run: |
+          du -sh .
+          df -h
+
