@@ -85,9 +85,9 @@ struct Region {
 ```
 ## 2. Main process
 ### 2.1 Open namespace
-- Fetch all topic and filter them according to the namespace prefix.Cache the results after.
+- Fetch all topics and filter them according to the namespace prefix. Cache the results after.
 ### 2.2 Open region
-- Search the regionin opened namespace. 
+- Search the region in opened namespace. 
 - If not found and auto creating is defined,  create correspoding topic in kafka and add it to cache.
 - Return the pointer of `region`.
 ### 2.3 Write
@@ -95,27 +95,27 @@ struct Region {
 - Put the log batch to `wal partition`.
 - Update `cur_offset` and `next_sequence_number` in memory.
 ### 2.4 Read
-- Open the corresponding region.
-- The actual log's fetching work will be done by a fetcher thread.
-- Fetcher thread will be triggered by the first table which reads logs, and all tables will be assigned a channel to wait their logs after.
+- Open the corresponding `region`.
+- The actual logs fetching work will be done by a fetcher thread.
+- Fetcher thread will be triggered by the first table which reads logs, and each table will be assigned a channel to wait its logs after.
 - The fetcher thread will do two things as follow:
-  - Firstly, read all logs from `meta partition` and get their `start_sequence_num`, all logs belongs to a table but with sequence nums smaller than `start_sequence_num` will be filtered. 
-  - Fetch logs from `wal partition` from region topic and put them to corresponding channel.
+  - Firstly, read all logs from `meta partition` and get their `start_sequence_num`s, all logs belongs to a table but with sequence nums smaller than `start_sequence_num` will be filtered. 
+  - Fetch logs from `wal partition` from `region topic` and put them to corresponding channel.
 ### 2.5 Delete
 Log's deletion can be splitted to two steps:
 + Mark the delete offset.
 + Do delayed deletion periodically in a cleaner thread.
 #### Mark
-+ Each table's `cur_sequence_num` and `cur_offset` will be updated in each logs writing, and `start_offset` will be updated in its first log writing.
-+ When `mark_delete_entries_up_to` is called by a table, it will make firstly make `start_offset` None.
-+ Put a record with its `table_id` and `next_sequence_num` to corresponding `meta partition` in `region topic`. Error while pushing is tolerable, it will just make the replay time of this table longer.
++ Each table's `cur_sequence_num` and `cur_offset` will be updated in each log writing, and `start_offset` will be updated in its first log writing.
++ When `mark_delete_entries_up_to` is called by a table, it will make `start_offset` None.
++ Put a record with its `table_id` and `next_sequence_num` to corresponding `meta partition` in `region topic`. Error while putting is tolerable, it will just make the replay time longer.
 #### Delete
-The deletion logic done in a cleaner task, and it may be a bit complicated. In cleaner's checking, I think logs should be considered to delete in these two situation:
+The deletion logic done in a cleaner thread, and it may be a bit complicated. In cleaner's checking, I think logs should be considered to delete in these two situation:
 - Common cleaning:
   - Scan all `log_states` in region,  check their `start_offset` and get their maximum `cur_offset`(or directly get it from kafka?) .
   - If all the start_offsets are None, it represents that evey table is just compacted, we will delete records up to maximum `cur_offset`.
   - Otherwise, we will delete records up to the minimum `start_offset`.
-- Too large wal size (while some tables have low update frequency or is never updated for a long time) :
+- Too large wal size (while some tables have low update frequency or are never updated for a long time) :
   - We should get such tables and flush them, and try to clean the wals after.
   - But the stategy about this still needs more consideration and discussion, the simplest way is to flush all tables in the region.
 
