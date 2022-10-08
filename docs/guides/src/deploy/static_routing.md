@@ -63,29 +63,29 @@ Then we should define the common part -- schema&shard declaration and routing ru
 
 Here is the config for schema&shard declaration:
 ```toml
-[[meta_client.cluster_view.schema_shards]]
+[[static_route.topology.schema_shards]]
 schema = 'public_0'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
 
-[[meta_client.cluster_view.schema_shards]]
-schema = 'public_1'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards]]
+schema = 'public_0'
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 18831
 ```
@@ -127,38 +127,38 @@ wal_path = "/tmp/ceresdb_0"
 type = "Local"
 data_path = "/tmp/ceresdb_0"
 
-[[meta_client.cluster_view.schema_shards]]
+[[static_route.topology.schema_shards]]
 schema = 'public_0'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
 
-[[meta_client.cluster_view.schema_shards]]
-schema = 'public_1'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards]]
+schema = 'public_0'
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 18831
 
-[[route_rules.prefix_rules]]
+[[static_route.rules.prefix_rules]]
 schema = 'public_0'
 prefix = 'prod_'
 shard = 0
 
-[[route_rules.hash_rules]]
+[[static_route.rules.hash_rules]]
 schema = 'public_1'
 shards = [0, 1]
 ```
@@ -177,38 +177,38 @@ wal_path = "/tmp/ceresdb_1"
 type = "Local"
 data_path = "/tmp/ceresdb_1"
 
-[[meta_client.cluster_view.schema_shards]]
+[[static_route.topology.schema_shards]]
 schema = 'public_0'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
 
-[[meta_client.cluster_view.schema_shards]]
-schema = 'public_1'
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards]]
+schema = 'public_0'
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 8831
-[[meta_client.cluster_view.schema_shards.shard_views]]
+[[static_route.topology.schema_shards.shard_views]]
 shard_id = 1
-[meta_client.cluster_view.schema_shards.shard_views.node]
+[static_route.topology.schema_shards.shard_views.endpoint]
 addr = '127.0.0.1'
 port = 18831
 
-[[route_rules.prefix_rules]]
+[[static_route.rules.prefix_rules]]
 schema = 'public_0'
 prefix = 'prod_'
 shard = 0
 
-[[route_rules.hash_rules]]
+[[static_route.rules.hash_rules]]
 schema = 'public_1'
 shards = [0, 1]
 ```

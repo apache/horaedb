@@ -28,6 +28,11 @@ jobs:
             rust-${{ runner.os }}-release-${{ hashFiles('rust-toolchain') }}-
             rust-${{ runner.os }}-release-
             rust-${{ runner.os }}
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+          sudo rm -rf /var/lib/apt/lists/*
       - name: Build server
         run: |
           make build

@@ -3,7 +3,7 @@ In order to compile CeresDB, some relevant dependencies(including the `Rust` too
 # Dependencies(Ubuntu20.04)
 Assuming the development environment is Ubuntu20.04, execute the following command to install the required dependencies:
 ```shell
-apt install git curl gcc g++ libssl-dev pkg-config cmake
+apt install git curl gcc g++ libssl-dev pkg-config cmake protobuf-compiler
 ```
 
 It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.
@@ -15,9 +15,15 @@ If the development environment is MacOS, execute the following command to instal
 ```shell
 xcode-select --install
 ```
+
 2. Install cmake:
 ```shell
 brew install cmake
+```
+
+3. Install protobuf:
+```shell
+brew install protobuf
 ```
 
 # Rust
@@ -36,5 +42,5 @@ cargo build --release
 
 Then you can run CeresDB using the default configuration file provided in the codebase.
 ```bash
-./target/release/ceresdb-server --config ./configs/minimal.toml
+./target/release/ceresdb-server --config ./docs/minimal.toml
 ```
