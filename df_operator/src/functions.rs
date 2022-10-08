@@ -7,19 +7,17 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::{
-    arrow::datatypes::DataType,
-    datafusion::{
-        error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
-        scalar::ScalarValue as DfScalarValue,
-    },
-    datafusion_expr::{
-        AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
-        Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
-    },
-};
+use arrow::datatypes::DataType;
 use common_types::{column::ColumnBlock, datum::DatumKind};
 use common_util::define_result;
+use datafusion::{
+    error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
+    scalar::ScalarValue as DfScalarValue,
+};
+use datafusion_expr::{
+    AccumulatorFunctionImplementation, ReturnTypeFunction, ScalarFunctionImplementation,
+    Signature as DfSignature, StateTypeFunction, TypeSignature as DfTypeSignature, Volatility,
+};
 use smallvec::SmallVec;
 use snafu::{ResultExt, Snafu};
 
@@ -270,12 +268,12 @@ impl AggregateFunction {
         accumulator_fn: F,
     ) -> Self
     where
-        F: Fn() -> Result<A> + Send + Sync + 'static,
+        F: Fn(&DataType) -> Result<A> + Send + Sync + 'static,
         A: Accumulator + 'static,
     {
         // Create accumulator.
-        let df_adapter = move || {
-            let accumulator = accumulator_fn().map_err(|e| {
+        let df_adapter = move |data_type: &DataType| {
+            let accumulator = accumulator_fn(data_type).map_err(|e| {
                 DataFusionError::Execution(format!("Failed to create accumulator, err:{}", e))
             })?;
             let accumulator = Box::new(ToDfAccumulator::new(accumulator));

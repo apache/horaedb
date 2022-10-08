@@ -7,13 +7,13 @@ authors = ["Jay Lee <busyjaylee@gmail.com>"]
 workspace = true
 
 [dependencies]
-rand = "0.7"
-bytes = "1.0"
-arena = { path = "../arena" }
+rand = { workspace = true }
+bytes = { workspace = true }
+arena = { workspace = true }
 
 [dev-dependencies]
 yatp = { git = "https://github.com/tikv/yatp.git", rev = "4b71f8abd86890f0d1e95778c2b6bf5a9ee4c502" }
-criterion = "0.3"
+criterion = { workspace = true }
 
 # [target.'cfg(not(target_env = "msvc"))'.dev-dependencies]
 # tikv-jemallocator = "0.4.0"

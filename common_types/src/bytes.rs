@@ -2,4 +2,4 @@
 
 //! Bytes type.
 
-pub use bytes::*;
+pub use bytes_ext::*;

@@ -2,14 +2,14 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use arrow_deps::datafusion::{
+use common_types::schema::Schema;
+use datafusion::{
     logical_plan::{
         plan::{Extension, Filter, Projection, Sort},
         DFSchemaRef, Expr, Limit, LogicalPlan, TableScan,
     },
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
 };
-use common_types::schema::Schema;
 use log::info;
 
 use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;
@@ -28,10 +28,7 @@ impl OrderByPrimaryKeyRule {
     ///     Project:
     ///       (Filter): (Filer node is allowed to be not exist)
     ///         TableScan
-    fn do_optimize(
-        &self,
-        plan: &LogicalPlan,
-    ) -> arrow_deps::datafusion::error::Result<Option<LogicalPlan>> {
+    fn do_optimize(&self, plan: &LogicalPlan) -> datafusion::error::Result<Option<LogicalPlan>> {
         if let LogicalPlan::Limit(Limit {
             skip,
             fetch,
@@ -69,7 +66,7 @@ impl OrderByPrimaryKeyRule {
                                 "fail to convert arrow schema to schema, table:{}, err:{:?}",
                                 table_name, e
                             );
-                            arrow_deps::datafusion::error::DataFusionError::Plan(err_msg)
+                            datafusion::error::DataFusionError::Plan(err_msg)
                         })?;
                         if let Some(sort_in_asc_order) =
                             Self::detect_primary_key_order(&schema, sort_exprs.as_slice())
@@ -200,8 +197,8 @@ impl OptimizerRule for OrderByPrimaryKeyRule {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        _optimizer_config: &OptimizerConfig,
-    ) -> arrow_deps::datafusion::error::Result<LogicalPlan> {
+        _optimizer_config: &mut OptimizerConfig,
+    ) -> datafusion::error::Result<LogicalPlan> {
         match self.do_optimize(plan)? {
             Some(new_plan) => {
                 info!(
@@ -227,14 +224,14 @@ struct RewriteContext {
     scan_plan: Arc<LogicalPlan>,
     sort_exprs: Vec<Expr>,
     sort_in_asc_order: bool,
-    skip: Option<usize>,
+    skip: usize,
     fetch: Option<usize>,
 }
 
 #[cfg(test)]
 mod tests {
-    use arrow_deps::datafusion::{logical_plan::Column, scalar::ScalarValue};
     use common_types::{column_schema, datum::DatumKind, schema};
+    use datafusion::{logical_plan::Column, scalar::ScalarValue};
 
     use super::*;
     use crate::logical_optimizer::tests::LogicalPlanNodeBuilder;
@@ -324,7 +321,7 @@ mod tests {
             builder
                 .projection(vec![])
                 .sort(sort_exprs.clone())
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -340,9 +337,9 @@ mod tests {
             }
             builder
                 .projection(vec![])
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .sort(sort_exprs)
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -389,7 +386,7 @@ mod tests {
                 .table_scan()
                 .projection(vec![])
                 .sort(sort_exprs)
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 
@@ -406,7 +403,7 @@ mod tests {
             builder
                 .table_scan()
                 .projection(vec![])
-                .limit(None, Some(10))
+                .limit(0, Some(10))
                 .take_plan()
         };
 

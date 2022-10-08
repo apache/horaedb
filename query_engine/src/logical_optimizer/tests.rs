@@ -4,21 +4,19 @@
 
 use std::{any::Any, sync::Arc};
 
-use arrow_deps::{
-    arrow::datatypes::SchemaRef,
-    datafusion::{
-        datasource::TableProvider,
-        execution::context::SessionState,
-        logical_plan::{
-            plan::{Extension, Filter, Projection, Sort},
-            DFSchemaRef, Expr, Limit, LogicalPlan, TableScan, ToDFSchema,
-        },
-        physical_plan::ExecutionPlan,
-    },
-    datafusion_expr::{TableSource, TableType},
-};
+use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::schema::Schema;
+use datafusion::{
+    datasource::TableProvider,
+    execution::context::SessionState,
+    logical_plan::{
+        plan::{Extension, Filter, Projection, Sort},
+        DFSchemaRef, Expr, Limit, LogicalPlan, TableScan, ToDFSchema,
+    },
+    physical_plan::ExecutionPlan,
+};
+use datafusion_expr::{TableSource, TableType};
 
 use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;
 
@@ -54,7 +52,7 @@ impl TableProvider for MockTableProvider {
         _projection: &Option<Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
-    ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         unimplemented!("not support")
     }
 }
@@ -114,7 +112,7 @@ impl LogicalPlanNodeBuilder {
         self
     }
 
-    pub fn limit(mut self, skip: Option<usize>, fetch: Option<usize>) -> Self {
+    pub fn limit(mut self, skip: usize, fetch: Option<usize>) -> Self {
         let plan = LogicalPlan::Limit(Limit {
             skip,
             fetch,

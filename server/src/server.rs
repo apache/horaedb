@@ -7,14 +7,13 @@ use std::sync::Arc;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
-use grpcio::Environment;
 use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::Config,
+    config::{Config, Endpoint},
     grpc::{self, RpcServices},
     http::{self, Service},
     instance::{Instance, InstanceRef},
@@ -77,9 +76,9 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q> {
+pub struct Server<Q: QueryExecutor + 'static> {
     http_service: Service<Q>,
-    rpc_services: RpcServices,
+    rpc_services: RpcServices<Q>,
     mysql_service: mysql::MysqlService<Q>,
     instance: InstanceRef<Q>,
     cluster: Option<ClusterRef>,
@@ -87,7 +86,7 @@ pub struct Server<Q> {
 
 impl<Q: QueryExecutor + 'static> Server<Q> {
     pub async fn stop(mut self) {
-        self.rpc_services.shutdown();
+        self.rpc_services.shutdown().await;
         self.http_service.stop();
         self.mysql_service.shutdown();
 
@@ -228,8 +227,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let instance = InstanceRef::new(instance);
 
         // Create http config
-        let http_config = http::Config {
-            ip: self.config.bind_addr.clone(),
+        let http_config = Endpoint {
+            addr: self.config.bind_addr.clone(),
             port: self.config.http_port,
         };
 
@@ -256,11 +255,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
-        let env = Arc::new(Environment::new(self.config.grpc_server_cq_count));
         let rpc_services = grpc::Builder::new()
-            .bind_addr(self.config.bind_addr)
-            .port(self.config.grpc_port)
-            .env(env)
+            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
             .runtimes(runtimes)
             .instance(instance.clone())
             .router(router)

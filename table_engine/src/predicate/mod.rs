@@ -5,24 +5,22 @@
 
 use std::{convert::TryInto, sync::Arc};
 
-use arrow_deps::{
-    arrow::{
-        array::ArrayRef,
-        datatypes::{Schema as ArrowSchema, SchemaRef},
-    },
-    datafusion::{
-        logical_plan::{Column, Expr, Operator},
-        parquet::file::metadata::RowGroupMetaData,
-        physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
-        scalar::ScalarValue,
-    },
-    parquet::file::statistics::Statistics as ParquetStatistics,
+use arrow::{
+    array::ArrayRef,
+    datatypes::{Schema as ArrowSchema, SchemaRef},
 };
 use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
+use datafusion::{
+    logical_plan::{Column, Expr, Operator},
+    parquet::file::metadata::RowGroupMetaData,
+    physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
+    scalar::ScalarValue,
+};
 use log::{debug, error, trace};
+use parquet::file::statistics::Statistics as ParquetStatistics;
 use snafu::{ResultExt, Snafu};
 
 pub mod filter_record_batch;
@@ -32,7 +30,7 @@ pub mod filter_record_batch;
 pub enum Error {
     #[snafu(display("Failed ot do pruning, err:{}", source))]
     Prune {
-        source: arrow_deps::datafusion::error::DataFusionError,
+        source: datafusion::error::DataFusionError,
     },
 }
 
@@ -386,6 +384,9 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::RegexNotIMatch
             | Operator::BitwiseAnd
             | Operator::BitwiseOr
+            | Operator::BitwiseXor
+            | Operator::BitwiseShiftRight
+            | Operator::BitwiseShiftLeft
             | Operator::StringConcat => TimeRange::min_to_max(),
         }
     }
@@ -465,13 +466,23 @@ impl<'a> TimeRangeExtractor<'a> {
 
                 TimeRange::min_to_max()
             }
-            Expr::Not(_)
-            | Expr::Alias(_, _)
+
+            Expr::Alias(_, _)
             | Expr::ScalarVariable(_, _)
             | Expr::Column(_)
             | Expr::Literal(_)
+            | Expr::Not(_)
+            | Expr::Like { .. }
+            | Expr::ILike { .. }
+            | Expr::SimilarTo { .. }
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)
+            | Expr::IsTrue(_)
+            | Expr::IsFalse(_)
+            | Expr::IsNotTrue(_)
+            | Expr::IsNotFalse(_)
+            | Expr::IsUnknown(_)
+            | Expr::IsNotUnknown(_)
             | Expr::Negative(_)
             | Expr::Case { .. }
             | Expr::Cast { .. }
@@ -496,14 +507,12 @@ impl<'a> TimeRangeExtractor<'a> {
 #[cfg(test)]
 mod test {
 
-    use arrow_deps::{
-        arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField},
-        datafusion::logical_expr::{expr_fn::col, lit},
-        parquet::{
-            basic::Type,
-            file::{metadata::ColumnChunkMetaData, statistics::Statistics},
-            schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
-        },
+    use arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField};
+    use datafusion::logical_expr::{expr_fn::col, lit};
+    use parquet::{
+        basic::Type,
+        file::{metadata::ColumnChunkMetaData, statistics::Statistics},
+        schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
     };
 
     use super::*;

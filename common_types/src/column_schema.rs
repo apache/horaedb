@@ -4,7 +4,7 @@
 
 use std::{collections::BTreeMap, convert::TryFrom, str::FromStr};
 
-use arrow_deps::arrow::datatypes::{DataType, Field};
+use arrow::datatypes::{DataType, Field};
 use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::Expr;
@@ -206,7 +206,7 @@ impl ColumnSchema {
         column_schema
     }
 
-    /// Convert `self` to [arrow_deps::arrow::datatypes::Field]
+    /// Convert `self` to [arrow::datatypes::Field]
     pub fn to_arrow_field(&self) -> Field {
         From::from(self)
     }
@@ -408,7 +408,7 @@ impl Builder {
         self
     }
 
-    /// Set this column is nullable, default is true (not nullable).
+    /// Set this column is nullable, default is false (not nullable).
     pub fn is_nullable(mut self, is_nullable: bool) -> Self {
         self.is_nullable = is_nullable;
         self

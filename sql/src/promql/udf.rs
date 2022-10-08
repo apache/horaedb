@@ -5,20 +5,18 @@
 
 use std::sync::Arc;
 
-use arrow_deps::{
-    arrow::{
-        array::{ArrayRef, BooleanArray, StringArray, UInt64Array},
-        datatypes::DataType,
-    },
-    datafusion::{
-        error::{DataFusionError, Result as DataFusionResult},
-        logical_plan::{create_udf, Expr},
-        physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
-    },
-    datafusion_expr::Volatility,
+use arrow::{
+    array::{ArrayRef, BooleanArray, StringArray, UInt64Array},
+    datatypes::DataType,
 };
 use common_types::hash::hash64;
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
+use datafusion::{
+    error::{DataFusionError, Result as DataFusionResult},
+    logical_plan::{create_udf, Expr},
+    physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
+};
+use datafusion_expr::Volatility;
 
 /// The name of the regex_match UDF given to DataFusion.
 pub const REGEX_MATCH_UDF_NAME: &str = "RegexMatch";
@@ -151,20 +149,18 @@ impl UUIDBuilder {
 mod tests {
     use std::sync::Arc;
 
-    use arrow_deps::{
-        arrow::{
-            array::{StringArray, UInt64Array},
-            record_batch::RecordBatch,
-            util::pretty::pretty_format_batches,
-        },
-        datafusion::{
-            datasource::MemTable,
-            error::DataFusionError,
-            logical_plan::{col, Expr as DataFusionExpr},
-            prelude::SessionContext,
-        },
+    use arrow::{
+        array::{StringArray, UInt64Array},
+        record_batch::RecordBatch,
+        util::pretty::pretty_format_batches,
     };
     use common_types::schema::{ArrowSchema, ArrowSchemaRef, DataType, Field};
+    use datafusion::{
+        datasource::MemTable,
+        error::DataFusionError,
+        logical_plan::{col, Expr as DataFusionExpr},
+        prelude::SessionContext,
+    };
 
     #[tokio::test]
     async fn regex_match_expr() {
@@ -231,7 +227,7 @@ mod tests {
 
         let schema = Arc::new(ArrowSchema::new(vec![
             Field::new("words", DataType::Utf8, true),
-            Field::new("length", DataType::UInt64, false),
+            Field::new("length", DataType::UInt64, true),
         ]));
 
         // define data for table

@@ -3,16 +3,20 @@
 //! Column
 use std::sync::Arc;
 
-use arrow_deps::arrow::array::{
-    Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
-    Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
-    Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
-    Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
-    TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
-    UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+use arrow::{
+    array::{
+        Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
+        Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
+        Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
+        Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
+        TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
+        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+    },
+    datatypes::DataType,
+    error::ArrowError,
 };
 use paste::paste;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, Snafu};
 
 use crate::{
     bytes::Bytes,
@@ -31,13 +35,13 @@ pub enum Error {
     ))]
     InvalidArrayType {
         datum_kind: DatumKind,
-        data_type: arrow_deps::arrow::datatypes::DataType,
+        data_type: DataType,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to append value, err:{}.\nBacktrace:\n{}", source, backtrace))]
     Append {
-        source: arrow_deps::arrow::error::ArrowError,
+        source: ArrowError,
         backtrace: Backtrace,
     },
 
@@ -59,7 +63,7 @@ pub enum Error {
         backtrace
     ))]
     UnsupportedArray {
-        data_type: arrow_deps::arrow::datatypes::DataType,
+        data_type: DataType,
         backtrace: Backtrace,
     },
 }
@@ -247,14 +251,14 @@ macro_rules! impl_new_null {
     ($Column: ident, $Builder: ident) => {
         impl $Column {
             /// Create a column that all values are null.
-            fn new_null(num_rows: usize) -> Result<Self> {
-                let mut builder = $Builder::new(num_rows);
+            fn new_null(num_rows: usize) -> Self {
+                let mut builder = $Builder::with_capacity(num_rows);
                 for _ in 0..num_rows {
-                    builder.append_null().context(Append)?;
+                    builder.append_null();
                 }
                 let array = builder.finish();
 
-                Ok(Self(array))
+                Self(array)
             }
         }
     };
@@ -270,8 +274,8 @@ macro_rules! impl_from_array_and_slice {
 
         impl From<&$ArrayType> for $Column {
             fn from(array_ref: &$ArrayType) -> Self {
-                // We need to clone the [arrow_deps::arrow::array::ArrayData], which clones
-                // the underlying vector of [arrow_deps::arrow::buffer::Buffer] and Bitmap (also
+                // We need to clone the [arrow::array::ArrayData], which clones
+                // the underlying vector of [arrow::buffer::Buffer] and Bitmap (also
                 // holds a Buffer), thus require some allocation. However, the Buffer is
                 // managed by Arc, so cloning the buffer is not too expensive.
                 let array_data = array_ref.data().clone();
@@ -340,8 +344,31 @@ impl_column!(
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
 impl_new_null!(TimestampColumn, TimestampMillisecondBuilder);
-impl_new_null!(VarbinaryColumn, BinaryBuilder);
-impl_new_null!(StringColumn, StringBuilder);
+
+impl VarbinaryColumn {
+    fn new_null(num_rows: usize) -> Self {
+        let mut builder = BinaryBuilder::with_capacity(num_rows, 0usize);
+        for _ in 0..num_rows {
+            builder.append_null();
+        }
+        let array = builder.finish();
+
+        Self(array)
+    }
+}
+
+impl StringColumn {
+    /// Create a column that all values are null.
+    fn new_null(num_rows: usize) -> Self {
+        let mut builder = StringBuilder::with_capacity(num_rows, 0usize);
+        for _ in 0..num_rows {
+            builder.append_null();
+        }
+        let array = builder.finish();
+
+        Self(array)
+    }
+}
 
 impl_from_array_and_slice!(NullColumn, NullArray);
 impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
@@ -552,7 +579,7 @@ macro_rules! define_column_block {
                     let block = match kind {
                         DatumKind::Null => ColumnBlock::Null(NullColumn::new_null(rows)),
                         $(
-                            DatumKind::$Kind => ColumnBlock::$Kind([<$Kind Column>]::new_null(rows)?),
+                            DatumKind::$Kind => ColumnBlock::$Kind([<$Kind Column>]::new_null(rows)),
                         )*
                     };
 
@@ -608,8 +635,8 @@ fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Re
 macro_rules! append_datum {
     ($Kind: ident, $builder: ident, $DatumType: ident, $datum: ident) => {
         match $datum {
-            $DatumType::Null => $builder.append_null().context(Append),
-            $DatumType::$Kind(v) => $builder.append_value(v).context(Append),
+            $DatumType::Null => Ok($builder.append_null()),
+            $DatumType::$Kind(v) => Ok($builder.append_value(v)),
             _ => ConflictType {
                 expect: DatumKind::$Kind,
                 given: $datum.kind(),
@@ -622,8 +649,8 @@ macro_rules! append_datum {
 macro_rules! append_datum_into {
     ($Kind: ident, $builder: ident, $DatumType: ident, $datum: ident) => {
         match $datum {
-            $DatumType::Null => $builder.append_null().context(Append),
-            $DatumType::$Kind(v) => $builder.append_value(v.into()).context(Append),
+            $DatumType::Null => Ok($builder.append_null()),
+            $DatumType::$Kind(v) => Ok($builder.append_value(v.into())),
             _ => ConflictType {
                 expect: DatumKind::$Kind,
                 given: $datum.kind(),
@@ -639,7 +666,7 @@ macro_rules! append_block {
             $BlockType::Null(v) => {
                 let end = std::cmp::min($start + $len, v.num_rows());
                 for _ in $start..end {
-                    $builder.append_null().context(Append)?;
+                    $builder.append_null();
                 }
                 Ok(())
             }
@@ -651,10 +678,10 @@ macro_rules! append_block {
                     let value_opt = v.value(i);
                     match value_opt {
                         Some(value) => {
-                            $builder.append_value(value).context(Append)?;
+                            $builder.append_value(value);
                         }
                         None => {
-                            $builder.append_null().context(Append)?;
+                            $builder.append_null();
                         }
                     }
                 }
@@ -676,6 +703,8 @@ macro_rules! define_column_block_builder {
             pub enum ColumnBlockBuilder {
                 Null { rows: usize },
                 Timestamp(TimestampMillisecondBuilder),
+                Varbinary(BinaryBuilder),
+                String(StringBuilder),
                 $(
                     $Kind($Builder),
                 )*
@@ -683,12 +712,15 @@ macro_rules! define_column_block_builder {
 
             impl ColumnBlockBuilder {
                 /// Create by data type with initial capacity
-                pub fn with_capacity(data_type: &DatumKind, capacity: usize) -> Self {
+                pub fn with_capacity(data_type: &DatumKind, item_capacity: usize) -> Self {
                     match data_type {
                         DatumKind::Null => Self::Null { rows: 0 },
-                        DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::new(capacity)),
+                        DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(item_capacity)),
+                        // The data_capacity is set as 1024, because the item is variable-size type.
+                        DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
+                        DatumKind::String => Self::String(StringBuilder::with_capacity(item_capacity, 1024)),
                         $(
-                            DatumKind::$Kind => Self::$Kind($Builder::new(capacity)),
+                            DatumKind::$Kind => Self::$Kind($Builder::with_capacity(item_capacity)),
                         )*
                     }
                 }
@@ -710,6 +742,8 @@ macro_rules! define_column_block_builder {
                             .fail(),
                         },
                         Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, Datum, datum),
+                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, Datum, datum),
+                        Self::String(builder) => append_datum!(String, builder, Datum, datum),
                         $(
                             Self::$Kind(builder) => append_datum!($Kind, builder, Datum, datum),
                         )*
@@ -733,6 +767,8 @@ macro_rules! define_column_block_builder {
                             .fail(),
                         },
                         Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datum),
+                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datum),
+                        Self::String(builder) => append_datum!(String, builder, DatumView, datum),
                         $(
                             Self::$Kind(builder) => append_datum!($Kind, builder, DatumView, datum),
                         )*
@@ -753,6 +789,8 @@ macro_rules! define_column_block_builder {
                             Ok(())
                         },
                         Self::Timestamp(builder) => append_block!(Timestamp, builder, ColumnBlock, block, start, len),
+                        Self::Varbinary(builder) => append_block!(Varbinary, builder, ColumnBlock, block, start, len),
+                        Self::String(builder) => append_block!(String, builder, ColumnBlock, block, start, len),
                         $(
                             Self::$Kind(builder) => append_block!($Kind, builder, ColumnBlock, block, start, len),
                         )*
@@ -763,6 +801,8 @@ macro_rules! define_column_block_builder {
                     match &self {
                         Self::Null { rows } => *rows,
                         Self::Timestamp(builder) => builder.len(),
+                        Self::Varbinary(builder) => builder.len(),
+                        Self::String(builder) => builder.len(),
                         $(
                             Self::$Kind(builder) =>  builder.len(),
                         )*
@@ -778,6 +818,8 @@ macro_rules! define_column_block_builder {
                             block
                         }
                         Self::Timestamp(builder) => TimestampColumn::from(builder.finish()).into(),
+                        Self::Varbinary(builder) => VarbinaryColumn::from(builder.finish()).into(),
+                        Self::String(builder) => StringColumn::from(builder.finish()).into(),
                         $(
                             Self::$Kind(builder) => [<$Kind Column>]::from(builder.finish()).into(),
                         )*
@@ -793,8 +835,6 @@ macro_rules! define_column_block_builder {
 define_column_block_builder!(
     (Double, DoubleBuilder),
     (Float, FloatBuilder),
-    (Varbinary, BinaryBuilder),
-    (String, StringBuilder),
     (UInt64, UInt64Builder),
     (UInt32, UInt32Builder),
     (UInt16, UInt16Builder),

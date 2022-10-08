@@ -9,7 +9,7 @@ publish = false
 workspace = true
 
 [dependencies] # In alphabetical order
-lazy_static = "1.4.0"
+lazy_static = { workspace = true }
 tracing = "0.1.26"
 tracing-appender = "0.1.2"
 tracing-subscriber = "0.2.20"

@@ -7,11 +7,9 @@ pub mod order_by_primary_key;
 pub mod tests;
 pub mod type_conversion;
 
-use arrow_deps::datafusion::error::DataFusionError;
+use datafusion::{error::DataFusionError, prelude::SessionContext};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sql::plan::QueryPlan;
-
-use crate::context::ContextRef;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -37,11 +35,11 @@ pub trait LogicalOptimizer {
 }
 
 pub struct LogicalOptimizerImpl {
-    ctx: ContextRef,
+    ctx: SessionContext,
 }
 
 impl LogicalOptimizerImpl {
-    pub fn with_context(ctx: ContextRef) -> Self {
+    pub fn with_context(ctx: SessionContext) -> Self {
         Self { ctx }
     }
 }
@@ -53,8 +51,7 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
             mut df_plan,
             tables,
         } = plan;
-        let session_ctx = self.ctx.df_session_ctx();
-        df_plan = session_ctx.optimize(&df_plan).context(DataFusionOptimize)?;
+        df_plan = self.ctx.optimize(&df_plan).context(DataFusionOptimize)?;
 
         Ok(QueryPlan { df_plan, tables })
     }

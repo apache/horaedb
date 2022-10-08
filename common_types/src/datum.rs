@@ -752,17 +752,15 @@ impl<'a> DatumView<'a> {
     }
 }
 
-#[cfg(feature = "arrow_deps")]
+#[cfg(feature = "arrow")]
 pub mod arrow_convert {
-    use arrow_deps::{
-        arrow::datatypes::{DataType, TimeUnit},
-        datafusion::scalar::ScalarValue,
-    };
+    use arrow::datatypes::{DataType, TimeUnit};
+    use datafusion::scalar::ScalarValue;
 
     use super::*;
 
     impl DatumKind {
-        /// Create DatumKind from [arrow_deps::arrow::datatypes::DataType], if
+        /// Create DatumKind from [arrow::datatypes::DataType], if
         /// the type is not supported, returns None
         pub fn from_data_type(data_type: &DataType) -> Option<Self> {
             match data_type {
@@ -798,7 +796,8 @@ pub mod arrow_convert {
                 | DataType::Interval(_)
                 | DataType::Duration(_)
                 | DataType::Dictionary(_, _)
-                | DataType::Decimal(_, _)
+                | DataType::Decimal128(_, _)
+                | DataType::Decimal256(_, _)
                 | DataType::Map(_, _) => None,
             }
         }
@@ -872,6 +871,7 @@ pub mod arrow_convert {
                 ScalarValue::List(_, _)
                 | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time64(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -880,7 +880,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }
@@ -911,6 +912,7 @@ pub mod arrow_convert {
                 ScalarValue::List(_, _)
                 | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time64(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -919,7 +921,8 @@ pub mod arrow_convert {
                 | ScalarValue::Struct(_, _)
                 | ScalarValue::Decimal128(_, _, _)
                 | ScalarValue::Null
-                | ScalarValue::IntervalMonthDayNano(_) => None,
+                | ScalarValue::IntervalMonthDayNano(_)
+                | ScalarValue::Dictionary(_, _) => None,
             }
         }
     }

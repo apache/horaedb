@@ -4,7 +4,7 @@
 
 use std::{fmt, sync::Arc};
 
-use parquet::{DataCacheRef, MetaCacheRef};
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::engine::EngineRuntimes;
 
 use crate::Config;

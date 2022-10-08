@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::physical_plan::udaf::AggregateUDF;
+use datafusion::physical_plan::udaf::AggregateUDF;
 
 use crate::functions::AggregateFunction;
 

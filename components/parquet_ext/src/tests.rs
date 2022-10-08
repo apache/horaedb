@@ -2,10 +2,8 @@
 
 use std::{env, error::Error, fs, path::PathBuf, str::FromStr};
 
-use arrow_deps::{
-    arrow::{array::*, datatypes::DataType, record_batch::RecordBatch},
-    parquet::record::{Field, Row},
-};
+use arrow::{array::*, datatypes::DataType, record_batch::RecordBatch};
+use parquet::record::{Field, Row};
 
 fn get_data_dir(
     udf_env: &str,

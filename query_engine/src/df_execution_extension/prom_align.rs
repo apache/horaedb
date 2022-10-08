@@ -9,28 +9,25 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow_deps::{
-    arrow::{
-        array::{
-            new_empty_array, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array,
-        },
-        error::ArrowError,
-        record_batch::RecordBatch,
-    },
-    datafusion::{
-        error::{DataFusionError, Result as ArrowResult},
-        execution::context::TaskContext,
-        physical_expr::PhysicalSortExpr,
-        physical_plan::{
-            repartition::RepartitionExec, ColumnarValue, DisplayFormatType, ExecutionPlan,
-            Partitioning, PhysicalExpr, RecordBatchStream,
-            SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
-        },
-    },
+use arrow::{
+    array::{new_empty_array, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array},
+    compute::concat_batches,
+    error::ArrowError,
+    record_batch::RecordBatch,
 };
 use common_types::{
     schema::{ArrowSchema, ArrowSchemaRef, DataType, TSID_COLUMN},
     time::{TimeRange, Timestamp},
+};
+use datafusion::{
+    error::{DataFusionError, Result as ArrowResult},
+    execution::context::TaskContext,
+    physical_expr::PhysicalSortExpr,
+    physical_plan::{
+        repartition::RepartitionExec, ColumnarValue, DisplayFormatType, ExecutionPlan,
+        Partitioning, PhysicalExpr, RecordBatchStream,
+        SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
+    },
 };
 use futures::{Stream, StreamExt};
 use log::debug;
@@ -448,7 +445,7 @@ impl PromAlignReader {
             batches.push(RecordBatch::try_new(schema.clone(), arrays)?);
         }
 
-        RecordBatch::concat(&schema, &batches)
+        concat_batches(&schema, &batches)
     }
 }
 

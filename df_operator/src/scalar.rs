@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::physical_plan::udf::ScalarUDF;
+use datafusion::physical_plan::udf::ScalarUDF;
 
 use crate::functions::ScalarFunction;
 

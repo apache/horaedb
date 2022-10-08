@@ -1,25 +1,22 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-};
+use std::{convert::TryFrom, sync::Arc};
 
-use arrow_deps::datafusion::{
+use ceresdbproto::prometheus::{
+    self, operand, sub_expr::OperatorType, Expr as ExprPb, Filter as FilterPb,
+    FilterType as FilterPbType, Operand as OperandPb, Selector as PbSelector, SubExpr as PbSubExpr,
+};
+use common_types::{
+    schema::{Schema, TSID_COLUMN},
+    time::{TimeRange, Timestamp},
+};
+use datafusion::{
     error::DataFusionError,
     logical_plan::{
         avg, col, combine_filters, count, lit, max, min, plan::Extension, sum,
         Expr as DataFusionExpr, LogicalPlan, LogicalPlanBuilder,
     },
     sql::planner::ContextProvider,
-};
-use ceresdbproto_deps::ceresdbproto::prometheus::{
-    Expr as ExprPb, Filter as FilterPb, FilterType as FilterPbType, Operand as OperandPb,
-    Selector as PbSelector, SubExpr as PbSubExpr, SubExpr_OperatorType,
-};
-use common_types::{
-    schema::{Schema, TSID_COLUMN},
-    time::{TimeRange, Timestamp},
 };
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -42,8 +39,8 @@ pub enum Error {
     #[snafu(display("Invalid expr, expected: {}, actual:{:?}", expected, actual))]
     UnexpectedExpr { expected: String, actual: String },
 
-    #[snafu(display("Expr pushdown not implemented. expr:{:?}", expr))]
-    NotImplemented { expr: String },
+    #[snafu(display("Expr pushdown not implemented, expr_type:{:?}", expr_type))]
+    NotImplemented { expr_type: OperatorType },
 
     #[snafu(display("MetaProvider {}, err:{}", msg, source))]
     MetaProviderError {
@@ -92,72 +89,69 @@ pub enum Expr {
 impl TryFrom<OperandPb> for Expr {
     type Error = Error;
 
-    fn try_from(mut pb_operand: OperandPb) -> Result<Self> {
-        let op = if pb_operand.has_selector() {
-            let PbSelector {
-                measurement: table,
-                start,
-                end,
-                align_start,
-                align_end,
-                filters,
-                range,
-                field,
-                offset,
-                step,
-                ..
-            } = pb_operand.take_selector();
-            let filters = Into::<Vec<_>>::into(filters)
-                .into_iter()
-                .map(Filter::from)
-                .collect::<Vec<_>>();
-            Operand::Selector(Selector {
-                table,
-                filters,
-                field,
-                query_range: TimeRange::new_unchecked(
-                    Timestamp::new(start),
-                    Timestamp::new(end + 1),
-                ), /* [start, end] */
-                align_range: TimeRange::new_unchecked(
-                    Timestamp::new(align_start),
-                    Timestamp::new(align_end + 1),
-                ), /* [align_start, align_end] */
-                step,
-                range,
-                offset,
-            })
-        } else if pb_operand.has_float_val() {
-            Operand::Float(pb_operand.get_float_val())
-        } else if pb_operand.has_string_val() {
-            Operand::String(pb_operand.take_string_val())
+    fn try_from(pb_operand: OperandPb) -> Result<Self> {
+        if let Some(v) = pb_operand.value {
+            let op = match v {
+                operand::Value::Selector(selector) => {
+                    let PbSelector {
+                        measurement: table,
+                        start,
+                        end,
+                        align_start,
+                        align_end,
+                        filters,
+                        range,
+                        field,
+                        offset,
+                        step,
+                        ..
+                    } = selector;
+                    let filters = filters.into_iter().map(Filter::from).collect::<Vec<_>>();
+                    Operand::Selector(Selector {
+                        table,
+                        filters,
+                        field,
+                        query_range: TimeRange::new_unchecked(
+                            Timestamp::new(start),
+                            Timestamp::new(end + 1),
+                        ), /* [start, end] */
+                        align_range: TimeRange::new_unchecked(
+                            Timestamp::new(align_start),
+                            Timestamp::new(align_end + 1),
+                        ), /* [align_start, align_end] */
+                        step,
+                        range,
+                        offset,
+                    })
+                }
+                operand::Value::FloatVal(val) => Operand::Float(val),
+                operand::Value::StringVal(val) => Operand::String(val),
+            };
+            Ok(Expr::SimpleExpr(op))
         } else {
-            return InvalidExpr {
-                msg: format!("unknown operand:{:?}", pb_operand),
+            InvalidExpr {
+                msg: "unknown operand".to_string(),
             }
-            .fail();
-        };
-
-        Ok(Expr::SimpleExpr(op))
+            .fail()
+        }
     }
 }
 
 impl TryFrom<ExprPb> for Expr {
     type Error = Error;
 
-    fn try_from(mut expr: ExprPb) -> Result<Self> {
-        if expr.has_operand() {
-            let operand = expr.take_operand();
-            return operand.try_into();
-        } else if expr.has_sub_expr() {
-            let sub_expr = expr.take_sub_expr();
-            return sub_expr.try_into();
+    fn try_from(expr: ExprPb) -> Result<Self> {
+        if let Some(expr_node) = expr.node {
+            match expr_node {
+                prometheus::expr::Node::Operand(v) => Expr::try_from(v),
+                prometheus::expr::Node::SubExpr(v) => Expr::try_from(v),
+            }
+        } else {
+            InvalidExpr {
+                msg: "unknown expr".to_string(),
+            }
+            .fail()
         }
-
-        InvalidExpr {
-            msg: format!("unknown expr:{:?}", expr),
-        }
-        .fail()
     }
 }
 
@@ -417,29 +411,29 @@ pub enum SubExpr {
 impl TryFrom<PbSubExpr> for Expr {
     type Error = Error;
 
-    fn try_from(mut pb_sub_expr: PbSubExpr) -> Result<Self> {
-        let op_type = pb_sub_expr.get_op_type();
+    fn try_from(pb_sub_expr: PbSubExpr) -> Result<Self> {
+        let op_type = pb_sub_expr.op_type();
 
-        let operator = pb_sub_expr.take_operator();
+        let operator = pb_sub_expr.operator;
         let operands = pb_sub_expr
-            .take_operands()
+            .operands
             .into_iter()
             .map(Expr::try_from)
             .collect::<Result<Vec<_>>>()?;
         let sub_expr = match op_type {
-            SubExpr_OperatorType::AGGR => SubExpr::Aggr(AggrExpr {
+            OperatorType::Aggr => SubExpr::Aggr(AggrExpr {
                 op: operator,
                 operands,
-                group_by: pb_sub_expr.take_group().into_vec(),
-                without: pb_sub_expr.get_without(),
+                group_by: pb_sub_expr.group,
+                without: pb_sub_expr.without,
             }),
-            SubExpr_OperatorType::FUNC => SubExpr::Func(FuncExpr {
+            OperatorType::Func => SubExpr::Func(FuncExpr {
                 op: operator,
                 operands,
             }),
-            SubExpr_OperatorType::BINARY => {
+            OperatorType::Binary => {
                 return NotImplemented {
-                    expr: format!("{:?}", pb_sub_expr),
+                    expr_type: OperatorType::Binary,
                 }
                 .fail()
             }
@@ -501,10 +495,10 @@ pub enum FilterType {
 impl From<FilterPbType> for FilterType {
     fn from(pb_type: FilterPbType) -> Self {
         match pb_type {
-            FilterPbType::LITERAL_OR => FilterType::LiteralOr,
-            FilterPbType::NOT_LITERAL_OR => FilterType::NotLiteralOr,
-            FilterPbType::REGEXP => FilterType::Regexp,
-            FilterPbType::NOT_REGEXP_MATCH => FilterType::NotRegexpMatch,
+            FilterPbType::LiteralOr => FilterType::LiteralOr,
+            FilterPbType::NotLiteralOr => FilterType::NotLiteralOr,
+            FilterPbType::Regexp => FilterType::Regexp,
+            FilterPbType::NotRegexpMatch => FilterType::NotRegexpMatch,
         }
     }
 }
@@ -527,7 +521,7 @@ impl From<Filter> for DataFusionExpr {
         // TODO(chenxiang): only compare first op now
         let mut first_op = f.operators.remove(0);
         match first_op.typ {
-            // regepx filter only have one param
+            // regexp filter only have one param
             FilterType::Regexp => regex_match_expr(tag_key, first_op.params.remove(0), true),
             FilterType::NotRegexpMatch => {
                 regex_match_expr(tag_key, first_op.params.remove(0), false)
@@ -553,14 +547,15 @@ impl From<Filter> for DataFusionExpr {
 }
 
 impl From<FilterPb> for Filter {
-    fn from(mut pb_filter: FilterPb) -> Self {
+    fn from(pb_filter: FilterPb) -> Self {
         Self {
-            tag_key: pb_filter.take_tag_key(),
-            operators: Into::<Vec<_>>::into(pb_filter.take_operators())
+            tag_key: pb_filter.tag_key,
+            operators: pb_filter
+                .operators
                 .into_iter()
-                .map(|mut f| FilterOperator {
-                    typ: f.get_filter_type().into(),
-                    params: f.take_params().into(),
+                .map(|f| FilterOperator {
+                    typ: f.filter_type().into(),
+                    params: f.params,
                 })
                 .collect::<Vec<_>>(),
         }

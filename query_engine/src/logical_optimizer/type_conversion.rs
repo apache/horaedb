@@ -2,20 +2,18 @@
 
 use std::{mem, sync::Arc};
 
-use arrow_deps::{
-    arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos},
-    datafusion::{
-        arrow::datatypes::DataType,
-        error::{DataFusionError, Result},
-        logical_plan::{
-            plan::Filter, DFSchemaRef, Expr, ExprRewritable, ExprRewriter, LogicalPlan, Operator,
-            TableScan,
-        },
-        optimizer::{optimizer::OptimizerRule, OptimizerConfig},
-        scalar::ScalarValue,
+use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos};
+use datafusion::{
+    arrow::datatypes::DataType,
+    error::{DataFusionError, Result},
+    logical_plan::{
+        plan::Filter, DFSchemaRef, Expr, ExprRewritable, ExprRewriter, LogicalPlan, Operator,
+        TableScan,
     },
-    datafusion_expr::{utils, ExprSchemable},
+    optimizer::{optimizer::OptimizerRule, OptimizerConfig},
+    scalar::ScalarValue,
 };
+use datafusion_expr::{utils, ExprSchemable};
 use log::debug;
 
 /// Optimizer that cast literal value to target column's type
@@ -32,7 +30,7 @@ impl OptimizerRule for TypeConversion {
     fn optimize(
         &self,
         plan: &LogicalPlan,
-        optimizer_config: &OptimizerConfig,
+        optimizer_config: &mut OptimizerConfig,
     ) -> Result<LogicalPlan> {
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
@@ -79,8 +77,10 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::CrossJoin { .. }
             | LogicalPlan::CreateMemoryTable { .. }
             | LogicalPlan::DropTable { .. }
+            | LogicalPlan::DropView { .. }
             | LogicalPlan::Values { .. }
-            | LogicalPlan::Analyze { .. } => {
+            | LogicalPlan::Analyze { .. }
+            | LogicalPlan::Distinct { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
                     .iter()
@@ -297,12 +297,10 @@ fn timestamp_to_timestamp_ms_expr(typ: TimestampType, timestamp: i64) -> Expr {
 mod tests {
     use std::collections::HashMap;
 
-    use arrow_deps::{
-        arrow::datatypes::TimeUnit,
-        datafusion::{
-            logical_plan::{DFField, DFSchema},
-            prelude::col,
-        },
+    use arrow::datatypes::TimeUnit;
+    use datafusion::{
+        logical_plan::{DFField, DFSchema},
+        prelude::col,
     };
 
     use super::*;

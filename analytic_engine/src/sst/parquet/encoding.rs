@@ -6,18 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use arrow_deps::{
-    arrow::{
-        array::{Array, ArrayData, ArrayRef},
-        buffer::MutableBuffer,
-        record_batch::RecordBatch as ArrowRecordBatch,
-        util::bit_util,
-    },
-    parquet::{
-        arrow::ArrowWriter,
-        basic::Compression,
-        file::{metadata::KeyValue, properties::WriterProperties},
-    },
+use arrow::{
+    array::{Array, ArrayData, ArrayRef},
+    buffer::MutableBuffer,
+    compute,
+    record_batch::RecordBatch as ArrowRecordBatch,
+    util::bit_util,
 };
 use common_types::{
     bytes::{BytesMut, MemBufMut, Writer},
@@ -26,6 +20,11 @@ use common_types::{
 };
 use common_util::define_result;
 use log::trace;
+use parquet::{
+    arrow::ArrowWriter,
+    basic::Compression,
+    file::{metadata::KeyValue, properties::WriterProperties},
+};
 use proto::sst::SstMetaData as SstMetaDataPb;
 use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -299,7 +298,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
     fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
-        let record_batch = ArrowRecordBatch::concat(&self.arrow_schema, &arrow_record_batch_vec)
+        let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
@@ -740,18 +739,16 @@ impl ParquetDecoder {
 #[cfg(test)]
 mod tests {
 
-    use arrow_deps::{
-        arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array},
-        parquet::{
-            arrow::{ArrowReader, ParquetFileArrowReader},
-            file::serialized_reader::{SerializedFileReader, SliceableCursor},
-        },
-    };
+    use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
         column_schema,
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
+    };
+    use parquet::{
+        arrow::{ArrowReader, ParquetFileArrowReader},
+        file::serialized_reader::SerializedFileReader,
     };
 
     use super::*;
@@ -949,8 +946,7 @@ mod tests {
 
         // read encoded records back, and then compare with input records
         let encoded_bytes = encoder.close().unwrap();
-        let reader =
-            SerializedFileReader::new(SliceableCursor::new(Arc::new(encoded_bytes))).unwrap();
+        let reader = SerializedFileReader::new(Bytes::from(encoded_bytes)).unwrap();
         let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
         let mut reader = reader.get_record_reader(2048).unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();

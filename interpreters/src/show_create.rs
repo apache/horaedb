@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
-use arrow_deps::arrow::{
+use arrow::{
     array::StringArray,
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,

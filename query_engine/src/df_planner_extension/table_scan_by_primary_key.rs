@@ -6,13 +6,18 @@ use std::{
     sync::Arc,
 };
 
-use arrow_deps::datafusion::{
+use async_trait::async_trait;
+use datafusion::{
+    common::DFSchemaRef,
     error::DataFusionError,
     execution::context::SessionState,
-    logical_plan::{self, DFSchemaRef, Expr, LogicalPlan, TableScan, UserDefinedLogicalNode},
     physical_plan::{planner::ExtensionPlanner, ExecutionPlan, PhysicalPlanner},
 };
-use async_trait::async_trait;
+use datafusion_expr::{
+    expr_rewriter,
+    logical_plan::{LogicalPlan, TableScan, UserDefinedLogicalNode},
+    Expr,
+};
 use table_engine::{provider::TableProviderAdapter, table::ReadOrder};
 
 /// The extension planner creates physical plan for the
@@ -28,7 +33,7 @@ impl ExtensionPlanner for Planner {
         _logical_inputs: &[&LogicalPlan],
         _physical_inputs: &[Arc<dyn ExecutionPlan>],
         session_state: &SessionState,
-    ) -> arrow_deps::datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
+    ) -> datafusion::error::Result<Option<Arc<dyn ExecutionPlan>>> {
         let maybe_node = node.as_any().downcast_ref::<TableScanByPrimaryKey>();
         if let Some(node) = maybe_node {
             let plan = node.build_scan_table_exec_plan(session_state).await?;
@@ -70,7 +75,7 @@ impl TableScanByPrimaryKey {
     async fn build_scan_table_exec_plan(
         &self,
         session_state: &SessionState,
-    ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         match self.scan_plan.as_ref() {
             LogicalPlan::TableScan(TableScan {
                 source,
@@ -92,7 +97,7 @@ impl TableScanByPrimaryKey {
                 // Remove all qualifiers from the scan as the provider
                 // doesn't know (nor should care) how the relation was
                 // referred to in the query
-                let filters = logical_plan::unnormalize_cols(filters.iter().cloned());
+                let filters = expr_rewriter::unnormalize_cols(filters.iter().cloned());
 
                 // TODO: `scan_table` contains some IO (read metadata) which should not happen
                 // in plan stage. It should be push down to execute stage.

@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Instant};
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
 use common_util::time::InstantExt;
+use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
 use snafu::{ResultExt, Snafu};
@@ -14,7 +15,8 @@ use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
 
 use crate::{
-    context::ContextRef,
+    config::Config,
+    context::{Context, ContextRef},
     logical_optimizer::{LogicalOptimizer, LogicalOptimizerImpl},
     physical_optimizer::{PhysicalOptimizer, PhysicalOptimizerImpl},
     physical_plan::PhysicalPlanPtr,
@@ -73,11 +75,13 @@ pub trait Executor: Clone + Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct ExecutorImpl;
+pub struct ExecutorImpl {
+    config: Config,
+}
 
 impl ExecutorImpl {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(config: Config) -> Self {
+        Self { config }
     }
 }
 
@@ -88,18 +92,17 @@ impl Executor for ExecutorImpl {
 
         // Register catalogs to datafusion execution context.
         let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
-        let df_ctx = ctx.df_session_ctx();
+        let df_ctx = ctx.build_df_session_ctx(&self.config);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
-        let request_id = ctx.request_id();
         let begin_instant = Instant::now();
 
-        let physical_plan = optimize_plan(ctx, plan).await?;
+        let physical_plan = optimize_plan(&ctx, df_ctx, plan).await?;
 
         debug!(
             "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
-            request_id, physical_plan
+            ctx.request_id, physical_plan
         );
 
         let stream = physical_plan.execute().context(ExecutePhysical)?;
@@ -110,7 +113,7 @@ impl Executor for ExecutorImpl {
 
         info!(
             "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            request_id,
+            ctx.request_id,
             begin_instant.saturating_elapsed().as_millis(),
             physical_plan.metrics_to_string()
         );
@@ -119,17 +122,20 @@ impl Executor for ExecutorImpl {
     }
 }
 
-async fn optimize_plan(ctx: ContextRef, plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-    let mut logical_optimizer = LogicalOptimizerImpl::with_context(ctx.clone());
+async fn optimize_plan(
+    ctx: &Context,
+    df_ctx: SessionContext,
+    plan: QueryPlan,
+) -> Result<PhysicalPlanPtr> {
+    let mut logical_optimizer = LogicalOptimizerImpl::with_context(df_ctx.clone());
     let plan = logical_optimizer.optimize(plan).context(LogicalOptimize)?;
 
     debug!(
         "Executor logical optimization finished, request_id:{}, plan: {:#?}",
-        ctx.request_id(),
-        plan
+        ctx.request_id, plan
     );
 
-    let mut physical_optimizer = PhysicalOptimizerImpl::with_context(ctx);
+    let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
     physical_optimizer
         .optimize(plan)
         .await

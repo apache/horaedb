@@ -3,16 +3,17 @@
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto_deps::ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_types::table::TableName;
+use http::StatusCode;
 use log::warn;
 use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    error::{ErrNoCause, ErrWithCause, Result},
     route::{hash, Router},
 };
 
@@ -79,23 +80,24 @@ impl ClusterBasedRouter {
 
 /// Make a route according to the table name and the raw endpoint.
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
-    let mut route = Route::default();
     let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: format!("Failed to parse endpoint:{}", endpoint),
     })?;
-    route.set_metric(table_name.to_string());
-    route.set_endpoint(endpoint.into());
 
-    Ok(route)
+    Ok(Route {
+        metric: table_name.to_string(),
+        endpoint: Some(endpoint.into()),
+        ..Default::default()
+    })
 }
 
 #[async_trait]
 impl Router for ClusterBasedRouter {
-    async fn route(&self, schema: &str, mut req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
         let route_tables_req = RouteTablesRequest {
             schema_name: schema.to_string(),
-            table_names: req.take_metrics().into(),
+            table_names: req.metrics,
         };
         let route_resp = self
             .cluster

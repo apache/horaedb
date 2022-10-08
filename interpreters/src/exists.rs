@@ -2,7 +2,7 @@
 
 use std::{convert::TryInto, sync::Arc};
 
-use arrow_deps::arrow::{
+use arrow::{
     array::UInt8Array,
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,

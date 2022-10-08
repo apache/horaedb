@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use arrow_deps::datafusion::{
+use datafusion::{
     physical_optimizer::{optimizer::PhysicalOptimizerRule, repartition::Repartition},
     physical_plan::ExecutionPlan,
     prelude::SessionConfig,
@@ -14,21 +14,13 @@ use log::debug;
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
 
 pub struct RepartitionAdapter {
-    original_rule: Repartition,
-}
-
-impl Default for RepartitionAdapter {
-    fn default() -> Self {
-        Self {
-            original_rule: Repartition::new(),
-        }
-    }
+    original_rule: OptimizeRuleRef,
 }
 
 impl Adapter for RepartitionAdapter {
     fn may_adapt(original_rule: OptimizeRuleRef) -> OptimizeRuleRef {
         if original_rule.name() == Repartition::new().name() {
-            Arc::new(Self::default())
+            Arc::new(Self { original_rule })
         } else {
             original_rule
         }
@@ -40,11 +32,11 @@ impl PhysicalOptimizerRule for RepartitionAdapter {
         &self,
         plan: Arc<dyn ExecutionPlan>,
         config: &SessionConfig,
-    ) -> arrow_deps::datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         // the underlying plan maybe requires the order of the output.
         if plan.output_partitioning().partition_count() == 1 {
             debug!(
-                "RepartitionAdapter avoid repartion optimization for plan:{:?}",
+                "RepartitionAdapter avoid repartition optimization for plan:{:?}",
                 plan
             );
             Ok(plan)

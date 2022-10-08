@@ -8,19 +8,17 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow_deps::{
-    arrow::{
-        datatypes::SchemaRef,
-        error::{ArrowError, Result as ArrowResult},
-        record_batch::RecordBatch as ArrowRecordBatch,
-    },
-    datafusion::physical_plan::{
-        RecordBatchStream as DfRecordBatchStream,
-        SendableRecordBatchStream as DfSendableRecordBatchStream,
-    },
+use arrow::{
+    datatypes::SchemaRef,
+    error::{ArrowError, Result as ArrowResult},
+    record_batch::RecordBatch as ArrowRecordBatch,
 };
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use common_util::define_result;
+use datafusion::physical_plan::{
+    RecordBatchStream as DfRecordBatchStream,
+    SendableRecordBatchStream as DfSendableRecordBatchStream,
+};
 use futures::stream::Stream;
 use snafu::{Backtrace, ResultExt, Snafu};
 

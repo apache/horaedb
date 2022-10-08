@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use bytes::Bytes;
+use bytes_ext::Bytes;
 use sqlparser::ast::{BinaryOperator, Expr, Value};
 
 use crate::{
@@ -35,12 +35,14 @@ fn base_schema_builder() -> schema::Builder {
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("field1".to_string(), DatumKind::Double)
+                .is_nullable(true)
                 .build()
                 .expect("should succeed build column schema"),
         )
         .unwrap()
         .add_normal_column(
             column_schema::Builder::new("field2".to_string(), DatumKind::String)
+                .is_nullable(true)
                 .build()
                 .expect("should succeed build column schema"),
         )

@@ -9,16 +9,9 @@ use std::{
     time::Instant,
 };
 
-use arrow_deps::{
-    arrow::{error::Result as ArrowResult, record_batch::RecordBatch},
-    parquet::{
-        arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
-        file::{
-            metadata::RowGroupMetaData, reader::FileReader, serialized_reader::SliceableCursor,
-        },
-    },
-};
+use arrow::{error::Result as ArrowResult, record_batch::RecordBatch};
 use async_trait::async_trait;
+use bytes::Bytes;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
@@ -29,7 +22,11 @@ use futures::Stream;
 use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CachableSerializedFileReader,
+    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
+    file::{metadata::RowGroupMetaData, reader::FileReader},
+};
+use parquet_ext::{
+    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CacheableSerializedFileReader,
     DataCacheRef, MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
@@ -53,7 +50,7 @@ pub async fn read_sst_meta(
     path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
-) -> Result<(CachableSerializedFileReader<SliceableCursor>, SstMetaData)> {
+) -> Result<(CacheableSerializedFileReader<Bytes>, SstMetaData)> {
     let get_result = storage
         .get(path)
         .await
@@ -71,12 +68,10 @@ pub async fn read_sst_meta(
         .map_err(|e| Box::new(e) as _)
         .context(ReadPersist {
             path: path.to_string(),
-        })?
-        .to_vec();
-    let bytes = SliceableCursor::new(Arc::new(bytes));
+        })?;
 
     // generate the file reader
-    let file_reader = CachableSerializedFileReader::new(
+    let file_reader = CacheableSerializedFileReader::new(
         path.to_string(),
         bytes,
         meta_cache.clone(),
@@ -114,7 +109,7 @@ pub struct ParquetSstReader<'a> {
     projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_data: Option<SstMetaData>,
-    file_reader: Option<CachableSerializedFileReader<SliceableCursor>>,
+    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
     /// The batch of rows in one `record_batch`.
     batch_size: usize,
     /// Read the rows in reverse order.
@@ -246,7 +241,7 @@ impl<'a> ParquetSstReader<'a> {
 /// A reader for projection and filter on the parquet file.
 struct ProjectAndFilterReader {
     file_path: String,
-    file_reader: Option<CachableSerializedFileReader<SliceableCursor>>,
+    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
     schema: Schema,
     projected_schema: ProjectedSchema,
     row_projector: RowProjector,
@@ -300,7 +295,7 @@ impl ProjectAndFilterReader {
                 arrow_reader.get_record_reader(self.batch_size)
             } else {
                 let proj_mask = ProjectionMask::leaves(
-                    arrow_reader.get_metadata().file_metadata().schema_descr(),
+                    arrow_reader.metadata().file_metadata().schema_descr(),
                     self.row_projector
                         .existed_source_projection()
                         .iter()

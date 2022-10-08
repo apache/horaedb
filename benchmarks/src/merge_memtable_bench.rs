@@ -28,7 +28,7 @@ use common_types::{
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
-use parquet::{DataCacheRef, MetaCacheRef};
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};

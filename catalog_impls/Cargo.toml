@@ -10,18 +10,18 @@ workspace = true
 
 [dependencies]
 # Workspace dependencies, in alphabetical order
-async-trait = "0.1.53"
-catalog = { path = "../catalog" }
-cluster = { path = "../cluster" }
-common_types = { path = "../common_types" }
-common_util = { path = "../common_util" }
-log = "0.4"
-meta_client = { path = "../meta_client" }
-snafu = { version ="0.6.10", features = ["backtraces"]}
-system_catalog = { path = "../system_catalog" }
-table_engine = { path = "../table_engine" }
-tokio = { version = "1.0", features = ["sync"] }
+async-trait = { workspace = true }
+catalog = { workspace = true }
+cluster = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+log = { workspace = true }
+meta_client = { workspace = true }
+snafu = { workspace = true }
+system_catalog = { workspace = true }
+table_engine = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
-analytic_engine = { path = "../analytic_engine", features = ["test"] }
-server = { path = "../server" }
+analytic_engine = { workspace = true, features = ["test"] }
+server = { workspace = true }

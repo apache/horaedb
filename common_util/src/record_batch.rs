@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use arrow_deps::arrow::util::pretty;
+use arrow::util::pretty;
 use common_types::record_batch::RecordBatch;
 
 /// A helper function to assert record batch.

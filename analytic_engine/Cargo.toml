@@ -14,34 +14,36 @@ test = ["tempfile"]
 [dependencies]
 # In alphabetical order
 arc-swap = "1.4.0"
-arena = { path = "../components/arena" }
-arrow_deps = { path = "../arrow_deps" }
-async-trait = "0.1.53"
-base64 = "0.13"
-common_types = { path = "../common_types" }
-common_util = { path = "../common_util"}
-futures = "0.3"
-lazy_static = "1.4.0"
-log = "0.4"
-object_store = { path = "../components/object_store" }
-parquet = { path = "../components/parquet" }
-prometheus = "0.12"
-proto = { path = "../proto" }
-protobuf = "2.20"
-serde = "1.0"
-serde_derive = "1.0"
+arena = { workspace = true }
+arrow = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+datafusion = { workspace = true }
+futures = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+object_store = { workspace = true }
+parquet = { workspace = true }
+parquet_ext = { workspace = true }
+prometheus = { workspace = true }
+proto = { workspace = true }
+protobuf = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }
-smallvec = "1.6"
-snafu = { version = "0.6.10", features = ["backtraces"] }
-table_engine = { path = "../table_engine" }
-table_kv = { path = "../components/table_kv" }
-tempfile = { version = "3.1.0", optional = true }
-tokio = { version = "1.0", features = ["sync", "time"] }
-wal = { path = "../wal" }
+smallvec = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }
+table_kv = { workspace = true }
+tempfile = { workspace = true, optional = true }
+tokio = { workspace = true }
+wal = { workspace = true }
 
 [dev-dependencies]
-common_types = { path = "../common_types", features = ["test"] }
-common_util = { path = "../common_util", features = ["test"] }
-env_logger = "0.6"
-tempfile = "3.1.0"
-wal = { path = "../wal", features = ["test"] }
+common_types = { workspace = true, features = ["test"] }
+common_util = { workspace = true, features = ["test"] }
+env_logger = { workspace = true }
+wal = { workspace = true, features = ["test"] }

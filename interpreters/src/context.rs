@@ -33,9 +33,11 @@ impl Context {
 
     /// Create a new context of query executor
     pub fn new_query_context(&self) -> Result<QueryContextRef> {
-        let ctx = QueryContext::builder(self.request_id)
-            .default_catalog_and_schema(self.default_catalog.clone(), self.default_schema.clone())
-            .build();
+        let ctx = QueryContext {
+            request_id: self.request_id,
+            default_catalog: self.default_catalog.clone(),
+            default_schema: self.default_schema.clone(),
+        };
         Ok(Arc::new(ctx))
     }
 

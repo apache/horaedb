@@ -2,11 +2,11 @@
 
 //! Frontend
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
-use ceresdbproto_deps::ceresdbproto::prometheus::PrometheusQueryRequest;
+use ceresdbproto::prometheus::PrometheusQueryRequest;
 use common_types::request_id::RequestId;
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;
 
 use crate::{
@@ -33,6 +33,9 @@ pub enum Error {
 
     #[snafu(display("Invalid prom request, err:{}", source))]
     InvalidPromRequest { source: crate::promql::Error },
+
+    #[snafu(display("Expr is not found in prom request.\nBacktrace:\n{}", backtrace))]
+    ExprNotFoundInPromRequest { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -79,12 +82,9 @@ impl<P> Frontend<P> {
     }
 
     /// Parse the request and returns the Expr
-    pub fn parse_promql(
-        &self,
-        _ctx: &mut Context,
-        mut req: PrometheusQueryRequest,
-    ) -> Result<Expr> {
-        req.take_expr().try_into().context(InvalidPromRequest)
+    pub fn parse_promql(&self, _ctx: &mut Context, req: PrometheusQueryRequest) -> Result<Expr> {
+        let expr = req.expr.context(ExprNotFoundInPromRequest)?;
+        Expr::try_from(expr).context(InvalidPromRequest)
     }
 }
 

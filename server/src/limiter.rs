@@ -2,7 +2,7 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use arrow_deps::datafusion::catalog::TableReference;
+use datafusion::catalog::TableReference;
 use sql::plan::Plan;
 
 pub struct Limiter {

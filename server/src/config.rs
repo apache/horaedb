@@ -5,7 +5,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use analytic_engine;
-use ceresdbproto_deps::ceresdbproto::storage;
+use ceresdbproto::storage;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
@@ -59,6 +59,12 @@ impl Endpoint {
     }
 }
 
+impl ToString for Endpoint {
+    fn to_string(&self) -> String {
+        format!("{}:{}", self.addr, self.port)
+    }
+}
+
 impl FromStr for Endpoint {
     type Err = Box<dyn std::error::Error + Send + Sync>;
 
@@ -84,11 +90,10 @@ impl FromStr for Endpoint {
 
 impl From<Endpoint> for storage::Endpoint {
     fn from(endpoint: Endpoint) -> Self {
-        let mut pb_endpoint = storage::Endpoint::default();
-        pb_endpoint.set_ip(endpoint.addr);
-        pb_endpoint.set_port(endpoint.port as u32);
-
-        pb_endpoint
+        storage::Endpoint {
+            ip: endpoint.addr,
+            port: endpoint.port as u32,
+        }
     }
 }
 
@@ -187,8 +192,11 @@ pub struct Config {
     // Config of static router.
     pub static_route: StaticRouteConfig,
 
-    // Analytic engine configs:
+    // Analytic engine configs.
     pub analytic: analytic_engine::Config,
+
+    // Query engine config.
+    pub query: query_engine::Config,
 
     // Deployment configs:
     pub deploy_mode: DeployMode,
@@ -223,6 +231,7 @@ impl Default for Config {
             tracing_log_name: String::from("tracing"),
             tracing_level: String::from("info"),
             static_route: StaticRouteConfig::default(),
+            query: query_engine::Config::default(),
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),

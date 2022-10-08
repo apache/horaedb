@@ -28,8 +28,9 @@ use std::sync::Arc;
 use arrow::{
     array::{self, Array, DictionaryArray},
     datatypes::{
-        ArrowNativeType, ArrowPrimitiveType, DataType, Int16Type, Int32Type, Int64Type, Int8Type,
-        IntervalUnit, TimeUnit, UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+        ArrowNativeType, ArrowPrimitiveType, DataType, Decimal128Type, Decimal256Type, DecimalType,
+        Int16Type, Int32Type, Int64Type, Int8Type, IntervalUnit, TimeUnit, UInt16Type, UInt32Type,
+        UInt64Type, UInt8Type,
     },
     error::{ArrowError, Result},
 };
@@ -252,10 +253,13 @@ macro_rules! make_string_from_fixed_size_list {
 }
 
 #[inline(always)]
-pub fn make_string_from_decimal(column: &Arc<dyn Array>, row: usize) -> Result<String> {
+pub fn make_string_from_decimal<T: DecimalType>(
+    column: &Arc<dyn Array>,
+    row: usize,
+) -> Result<String> {
     let array = column
         .as_any()
-        .downcast_ref::<array::DecimalArray>()
+        .downcast_ref::<array::DecimalArray<T>>()
         .unwrap();
 
     let formatted_decimal = array.value_as_string(row);
@@ -318,7 +322,8 @@ pub fn array_value_to_string(column: &array::ArrayRef, row: usize) -> Result<Str
         DataType::Float16 => make_string!(array::Float16Array, column, row),
         DataType::Float32 => make_string!(array::Float32Array, column, row),
         DataType::Float64 => make_string!(array::Float64Array, column, row),
-        DataType::Decimal(..) => make_string_from_decimal(column, row),
+        DataType::Decimal128(..) => make_string_from_decimal::<Decimal128Type>(column, row),
+        DataType::Decimal256(..) => make_string_from_decimal::<Decimal256Type>(column, row),
         DataType::Timestamp(unit, _) if *unit == TimeUnit::Second => {
             make_string_datetime!(array::TimestampSecondArray, column, row)
         }

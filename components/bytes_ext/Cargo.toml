@@ -1,5 +1,5 @@
 [package]
-name = "bytes"
+name = "bytes_ext"
 version = "0.1.0"
 
 [package.edition]
@@ -8,5 +8,5 @@ workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-upstream = { version = "1.0", package = "bytes" }
-snafu = { version ="0.6.10", features = ["backtraces"]}
+bytes = { workspace = true }
+snafu = { workspace = true }
