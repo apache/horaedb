@@ -12,6 +12,7 @@ use std::{
 use arrow::{
     compute::can_cast_types,
     datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
+    error::ArrowError,
 };
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -61,7 +62,10 @@ pub enum Error {
     DataFusionPlan { source: DataFusionError },
 
     #[snafu(display("Failed to create datafusion schema, err:{}", source))]
-    DataFusionSchema { source: DataFusionError },
+    CreateDataFusionSchema { source: DataFusionError },
+
+    #[snafu(display("Failed to merge arrow schema, err:{}", source))]
+    MergeArrowSchema { source: ArrowError },
 
     #[snafu(display("Failed to generate datafusion expr, err:{}", source))]
     DataFusionExpr { source: DataFusionError },
@@ -429,7 +433,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let options = parse_options(stmt.options)?;
 
         // Analyze default values
-        analyze_column_default_value_options_v2(table_schema.columns(), &self.meta_provider)?;
+        analyze_column_default_value_options(table_schema.columns(), &self.meta_provider)?;
 
         let plan = CreateTablePlan {
             engine: stmt.engine,
@@ -502,7 +506,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     })
                     .collect::<Vec<_>>();
                 let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
-                    .context(DataFusionSchema)?;
+                    .context(CreateDataFusionSchema)?;
                 let df_planner = SqlToRel::new(&self.meta_provider);
 
                 // Index in insert values stmt of each column in table schema
@@ -833,7 +837,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 }
 
 // Analyze default value exprs.
-fn analyze_column_default_value_options_v2<'a, P: MetaProvider>(
+fn analyze_column_default_value_options<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'a, P>,
 ) -> Result<()> {
@@ -879,11 +883,11 @@ fn analyze_column_default_value_options_v2<'a, P: MetaProvider>(
             vec![DFField::from(new_arrow_field.clone())],
             HashMap::new(),
         )
-        .unwrap();
+        .context(CreateDataFusionSchema)?;
         df_schema.merge(to_merged_df_schema);
         arrow_schema =
             ArrowSchema::try_merge(vec![arrow_schema, ArrowSchema::new(vec![new_arrow_field])])
-                .unwrap();
+                .context(MergeArrowSchema)?;
     }
 
     Ok(())

@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use arrow::{array::ArrayRef, record_batch::RecordBatch};
+use arrow::{array::ArrayRef, error::ArrowError, record_batch::RecordBatch};
 use async_trait::async_trait;
 use common_types::{
     column::{ColumnBlock, ColumnBlockBuilder},
@@ -19,9 +19,9 @@ use common_types::{
 };
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
-    common::DFSchema,
     error::DataFusionError,
     logical_expr::ColumnarValue as DfColumnarValue,
+    logical_plan::ToDFSchema,
     optimizer::simplify_expressions::ConstEvaluator,
     physical_expr::{
         create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
@@ -29,7 +29,7 @@ use datafusion::{
 };
 use datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable};
 use df_operator::visitor::find_columns_by_expr;
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
 use table_engine::table::{TableRef, WriteRequest};
 
@@ -49,8 +49,17 @@ pub enum Error {
     ))]
     DataFusionDataType { source: DataFusionError },
 
+    #[snafu(display("Failed to get arrow schema, err:{}", source))]
+    ArrowSchema { source: ArrowError },
+
+    #[snafu(display("Failed to get datafusion schema, err:{}", source))]
+    DatafusionSchema { source: DataFusionError },
+
     #[snafu(display("Failed to evaluate datafusion physical expr, err:{}", source))]
     DataFusionExecutor { source: DataFusionError },
+
+    #[snafu(display("Failed to build arrow record batch, err:{}", source))]
+    BuildArrowRecordBatch { source: ArrowError },
 
     #[snafu(display("Failed to write table, err:{}", source))]
     WriteTable { source: table_engine::table::Error },
@@ -60,8 +69,14 @@ pub enum Error {
         source: common_util::codec::compact::Error,
     },
 
-    #[snafu(display("Failed to convert arrow Array to ColumnBlock, err:{}", source))]
+    #[snafu(display("Failed to convert arrow array to column block, err:{}", source))]
     ConvertColumnBlock { source: common_types::column::Error },
+
+    #[snafu(display("Failed to find input columns of expr"))]
+    FindExpressionInput,
+
+    #[snafu(display("Failed to build column block, err:{}", source))]
+    BuildColumnBlock { source: common_types::column::Error },
 }
 
 define_result!(Error);
@@ -206,9 +221,14 @@ fn fill_default_values(
             .iter()
             .map(|column_name| table.schema().index_of(column_name))
             .collect::<Option<Vec<usize>>>()
-            .unwrap();
-        let input_arrow_schema = table_arrow_schema.project(&required_column_idxes).unwrap();
-        let input_df_schema: DFSchema = input_arrow_schema.clone().try_into().unwrap();
+            .context(FindExpressionInput)?;
+        let input_arrow_schema = table_arrow_schema
+            .project(&required_column_idxes)
+            .context(ArrowSchema)?;
+        let input_df_schema = input_arrow_schema
+            .clone()
+            .to_dfschema()
+            .context(DatafusionSchema)?;
 
         // Create physical expr
         let execution_props = ExecutionProps::default();
@@ -235,9 +255,16 @@ fn fill_default_values(
         let input = if required_column_idxes.is_empty().not() {
             let input_arrays = required_column_idxes
                 .into_iter()
-                .map(|col_idx| get_and_save_column(col_idx, row_groups, &mut cached_columns_map))
-                .collect::<Vec<_>>();
-            RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays).unwrap()
+                .map(|col_idx| {
+                    get_or_extract_column_from_row_groups(
+                        col_idx,
+                        row_groups,
+                        &mut cached_columns_map,
+                    )
+                })
+                .collect::<Result<Vec<_>>>()?;
+            RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays)
+                .context(BuildArrowRecordBatch)?
         } else {
             RecordBatch::new_empty(Arc::new(input_arrow_schema))
         };
@@ -282,27 +309,28 @@ fn fill_column_to_row_group(
     Ok(())
 }
 
-fn get_and_save_column(
+fn get_or_extract_column_from_row_groups(
     column_idx: usize,
     row_groups: &RowGroup,
     cached_columns_map: &mut HashMap<usize, DfColumnarValue>,
-) -> ArrayRef {
+) -> Result<ArrayRef> {
     let num_rows = row_groups.num_rows();
     let column = cached_columns_map
-        .entry(column_idx)
-        .or_insert_with(|| {
+        .get(&column_idx)
+        .map(|c| Ok(c.clone()))
+        .unwrap_or_else(|| {
             let data_type = row_groups.schema().column(column_idx).data_type;
             let iter = row_groups.iter_column(column_idx);
             let mut builder = ColumnBlockBuilder::with_capacity(&data_type, iter.size_hint().0);
 
             for datum in iter {
-                builder.append(datum.clone()).unwrap();
+                builder.append(datum.clone()).context(BuildColumnBlock)?;
             }
 
-            let input_column = builder.build().to_arrow_array_ref();
-            DfColumnarValue::Array(input_column)
-        })
-        .clone();
+            let columnar_value = DfColumnarValue::Array(builder.build().to_arrow_array_ref());
+            cached_columns_map.insert(column_idx, columnar_value.clone());
+            Ok(columnar_value)
+        })?;
 
-    column.into_array(num_rows)
+    Ok(column.into_array(num_rows))
 }
