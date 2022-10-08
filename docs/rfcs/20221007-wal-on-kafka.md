@@ -1,5 +1,5 @@
 - Feature Name: (fill me in with a unique ident, my_awesome_feature)
-- Tracking Issue: (open a issue to track this proposal and link it here)
+- Tracking Issue:  https://github.com/CeresDB/ceresdb/issues/280
 
 # Summary
 The distributed wal implementation based on kafka.
@@ -19,7 +19,7 @@ When using ceresdb of cluster mode, a distributed wal is needed. Although a dist
 | +--------------------+ |         | +-------------------+ |
 | |      Region        | |         | |       Topic       | |
 | |+------------------+| |         | |+-----------------+| |
-| ||   Region_meta    |-------------->| Meta partition  || |
+| ||   Region meta    |-------------->| Meta partition  || |
 | |+------------------+| |         | |+-----------------+| |
 | |+------------------+| |         | |+-----------------+| |
 | ||   Region wal     |-------------->|  Wal partition  || |
