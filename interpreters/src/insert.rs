@@ -308,13 +308,13 @@ fn fill_column_to_row_group(
     Ok(())
 }
 
-/// This method is used to get specific column data. 
+/// This method is used to get specific column data.
 /// There are two path:
 ///  1. get from cached_columns_map
 ///  2. extract from row_groups
-/// 
-/// For performance reasons, we cached the columns which extract from row_groups before, 
-/// and we will also cache the output of the exprs.
+///
+/// For performance reasons, we cached the columns which extract from row_groups
+/// before, and we will also cache the output of the exprs.
 fn get_or_extract_column_from_row_groups(
     column_idx: usize,
     row_groups: &RowGroup,
