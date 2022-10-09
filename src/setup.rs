@@ -225,10 +225,7 @@ async fn create_static_topology_schema(
         default_catalog
             .create_schema(&schema_shard_view.schema)
             .await
-            .expect(&format!(
-                "Fail to create schema:{}",
-                schema_shard_view.schema
-            ));
+            .unwrap_or_else(|_| panic!("Fail to create schema:{}", schema_shard_view.schema));
         info!(
             "Create static topology in default catalog:{}, schema:{}",
             catalog_mgr.default_catalog_name(),
