@@ -4,7 +4,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    ops::{IndexMut, Not},
+    ops::IndexMut,
     sync::Arc,
 };
 
@@ -198,6 +198,7 @@ impl<'a> TsidBuilder<'a> {
     }
 }
 
+/// Fill missing columns which can be calculated via default value expr.
 fn fill_default_values(
     table: TableRef,
     row_groups: &mut RowGroup,
@@ -252,21 +253,17 @@ fn fill_default_values(
         };
 
         // Build input record batch
-        let input = if required_column_idxes.is_empty().not() {
-            let input_arrays = required_column_idxes
-                .into_iter()
-                .map(|col_idx| {
-                    get_or_extract_column_from_row_groups(
-                        col_idx,
-                        row_groups,
-                        &mut cached_columns_map,
-                    )
-                })
-                .collect::<Result<Vec<_>>>()?;
+        let input_arrays = required_column_idxes
+            .into_iter()
+            .map(|col_idx| {
+                get_or_extract_column_from_row_groups(col_idx, row_groups, &mut cached_columns_map)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let input = if input_arrays.is_empty() {
+            RecordBatch::new_empty(Arc::new(input_arrow_schema))
+        } else {
             RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays)
                 .context(BuildArrowRecordBatch)?
-        } else {
-            RecordBatch::new_empty(Arc::new(input_arrow_schema))
         };
 
         let output = casted_physical_expr
@@ -274,6 +271,8 @@ fn fill_default_values(
             .context(DataFusionExecutor)?;
 
         fill_column_to_row_group(*column_idx, &output, row_groups)?;
+
+        // Write output to cache.
         cached_columns_map.insert(*column_idx, output);
     }
 
@@ -309,6 +308,13 @@ fn fill_column_to_row_group(
     Ok(())
 }
 
+/// This method is used to get specific column data. 
+/// There are two path:
+///  1. get from cached_columns_map
+///  2. extract from row_groups
+/// 
+/// For performance reasons, we cached the columns which extract from row_groups before, 
+/// and we will also cache the output of the exprs.
 fn get_or_extract_column_from_row_groups(
     column_idx: usize,
     row_groups: &RowGroup,
