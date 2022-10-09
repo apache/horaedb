@@ -28,7 +28,6 @@ use tokio::{
 use crate::{
     config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
     ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, SchemaNotFound,
-    StartMetaClient,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -298,20 +297,6 @@ impl Cluster for ClusterImpl {
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
 
-        // register the event handler to meta client.
-        self.inner
-            .meta_client
-            .register_event_handler(self.inner.clone())
-            .await
-            .context(MetaClientFailure)?;
-
-        // start the meat_client after registering the event handler.
-        self.inner
-            .meta_client
-            .start()
-            .await
-            .context(StartMetaClient)?;
-
         // start the background loop for sending heartbeat.
         self.start_heartbeat_loop();
 
@@ -321,10 +306,6 @@ impl Cluster for ClusterImpl {
 
     async fn stop(&self) -> Result<()> {
         info!("Cluster is stopping");
-
-        if let Err(e) = self.inner.meta_client.stop().await {
-            error!("Fail to stop meta client, err:{}", e);
-        }
 
         {
             let tx = self.stop_heartbeat_tx.lock().unwrap().take();
