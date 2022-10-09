@@ -46,6 +46,7 @@ tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
 twox-hash = "1.6"
 warp = "0.3"
+bytes = "1.2.1"
 
 [dev-dependencies]
 sql = { workspace = true , features=["test"] }

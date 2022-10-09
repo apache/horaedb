@@ -67,6 +67,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Invalid JSON. body:{}, source:{}.", body, source))]
+    InvalidJSON {
+        body: String,
+        source: serde_json::Error,
+    },
+
     #[snafu(display("Internal err:{}.", source))]
     Internal {
         source: Box<dyn StdError + Send + Sync>,
@@ -76,6 +82,8 @@ pub enum Error {
 define_result!(Error);
 
 impl reject::Reject for Error {}
+
+const MAX_BODY_SIZE: u64 = 4096;
 
 /// Http service
 ///
@@ -116,25 +124,36 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("sql")
             .and(warp::post())
-            // TODO(yingwen): content length limit
-            .and(warp::body::json())
+            .and(warp::header("content-type"))
+            .and(warp::body::content_length_limit(MAX_BODY_SIZE).and(warp::body::bytes()))
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|req, ctx, instance| async {
-                // TODO(yingwen): Wrap common logic such as metrics, trace and error log
-                let result = handlers::sql::handle_sql(ctx, instance, req)
-                    .await
-                    .map_err(|e| {
-                        // TODO(yingwen): Maybe truncate and print the sql
-                        error!("Http service Failed to handle sql, err:{}", e);
-                        Box::new(e)
-                    })
-                    .context(HandleRequest);
-                match result {
-                    Ok(res) => Ok(reply::json(&res)),
-                    Err(e) => Err(reject::custom(e)),
-                }
-            })
+            .and_then(
+                |content_type: String, bytes: bytes::Bytes, ctx, instance| async move {
+                    let req = if content_type.to_lowercase().contains("json") {
+                        serde_json::from_slice(bytes.as_ref())
+                            .with_context(|| InvalidJSON {
+                                body: String::from_utf8_lossy(bytes.as_ref()).to_string(),
+                            })
+                            .map_err(reject::custom)?
+                    } else {
+                        let sql = String::from_utf8_lossy(bytes.as_ref()).to_string();
+                        sql.into()
+                    };
+                    let result = handlers::sql::handle_sql(ctx, instance, req)
+                        .await
+                        .map_err(|e| {
+                            // TODO(yingwen): Maybe truncate and print the sql
+                            error!("Http service Failed to handle sql, err:{}", e);
+                            Box::new(e)
+                        })
+                        .context(HandleRequest);
+                    match result {
+                        Ok(res) => Ok(reply::json(&res)),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            )
     }
 
     fn flush_memtable(
@@ -357,7 +376,7 @@ struct ErrorResponse {
 
 fn error_to_status_code(err: &Error) -> StatusCode {
     match err {
-        Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
+        Error::CreateContext { .. } | Error::InvalidJSON { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
         | Error::MissingRuntimes { .. }
