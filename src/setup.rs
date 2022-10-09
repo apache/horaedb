@@ -230,7 +230,7 @@ async fn create_static_topology_schema(
                 schema_shard_view.schema
             ));
         info!(
-            "Create static topology in default catalog:{} schema:{}",
+            "Create static topology in default catalog:{}, schema:{}",
             catalog_mgr.default_catalog_name(),
             &schema_shard_view.schema
         );
