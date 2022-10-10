@@ -537,15 +537,17 @@ impl ScheduleWorker {
     async fn table_flush(&self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
+
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
             if last_flush_time + self.flush_interval.as_millis_u64()
                 > Instant::now().elapsed().as_millis_u64()
             {
+                // Instance flush the table asynchronously.
                 if let Err(e) =
                     Instance::flush_table(table_data.clone(), TableFlushOptions::default()).await
                 {
-                    info!("schedule flush table failed, err:{}", e);
+                    error!("Failed to flush table, err:{}", e);
                 }
             }
         }

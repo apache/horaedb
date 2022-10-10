@@ -2,7 +2,7 @@
 
 // Flush and compaction logic of instance
 
-use std::{cmp, collections::Bound, sync::Arc};
+use std::{cmp, collections::Bound, sync::Arc, time::Instant};
 
 use common_types::{
     projected_schema::ProjectedSchema,
@@ -12,7 +12,7 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
+use common_util::{config::ReadableDuration, define_result, runtime::Runtime, time::DurationExt};
 use futures::{
     channel::{mpsc, mpsc::channel},
     future::try_join_all,
@@ -412,6 +412,8 @@ impl Instance {
                     .await?
             }
         }
+
+        table_data.set_last_flush_time(Instant::now().elapsed().as_millis_u64());
 
         info!(
             "Instance flush memtables done, table:{}, table_id:{}, request_id:{}",
