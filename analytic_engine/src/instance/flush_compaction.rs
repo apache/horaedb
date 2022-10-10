@@ -22,7 +22,7 @@ use log::{error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
-use wal::manager::RegionId;
+use wal::manager::WalLocation;
 
 use crate::{
     compaction::{
@@ -63,9 +63,13 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Failed to purge wal, region_id:{}, sequence:{}", region_id, sequence))]
+    #[snafu(display(
+        "Failed to purge wal, wal_location:{:?}, sequence:{}",
+        wal_location,
+        sequence
+    ))]
     PurgeWal {
-        region_id: RegionId,
+        wal_location: WalLocation,
         sequence: SequenceNumber,
         source: wal::manager::Error,
     },
@@ -553,10 +557,10 @@ impl Instance {
         // Mark sequence <= flushed_sequence to be deleted.
         self.space_store
             .wal_manager
-            .mark_delete_entries_up_to(table_data.wal_region_id(), flushed_sequence)
+            .mark_delete_entries_up_to(table_data.wal_location(), flushed_sequence)
             .await
             .context(PurgeWal {
-                region_id: table_data.wal_region_id(),
+                wal_location: table_data.wal_location(),
                 sequence: flushed_sequence,
             })?;
 

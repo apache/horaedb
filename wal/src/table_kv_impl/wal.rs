@@ -13,7 +13,7 @@ use table_kv::TableKv;
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, WalManager,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, WalLocation, WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
@@ -98,9 +98,9 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
 
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
-    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
+    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.namespace
-            .last_sequence(region_id)
+            .last_sequence(location.region_id)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Read)
@@ -108,11 +108,11 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
 
     async fn mark_delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.namespace
-            .delete_entries(region_id, sequence_num)
+            .delete_entries(location.region_id, sequence_num)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Delete)

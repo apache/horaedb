@@ -122,19 +122,19 @@ impl Instance {
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.wal_location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    wal_location: table_data.wal_location(),
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            wal_location: table_data.wal_location(),
         })?;
 
         // Write log batch
@@ -290,19 +290,19 @@ impl Instance {
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.wal_location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    wal_location: table_data.wal_location(),
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            wal_location: table_data.wal_location(),
         })?;
 
         // Write log batch

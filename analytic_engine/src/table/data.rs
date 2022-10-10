@@ -26,7 +26,7 @@ use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
-use wal::manager::RegionId;
+use wal::manager::WalLocation;
 
 use crate::{
     instance::write_worker::{WorkerLocal, WriteHandle},
@@ -268,8 +268,8 @@ impl TableData {
     ///
     /// Now we just use table id as region id
     #[inline]
-    pub fn wal_region_id(&self) -> RegionId {
-        self.id.as_u64()
+    pub fn wal_location(&self) -> WalLocation {
+        WalLocation::new(self.id.as_u64(), self.id.as_u64())
     }
 
     /// Get last sequence number
@@ -702,7 +702,7 @@ pub mod tests {
 
         assert_eq!(table_id, table_data.id);
         assert_eq!(table_name, table_data.name);
-        assert_eq!(table_data.id.as_u64(), table_data.wal_region_id());
+        assert_eq!(table_data.id.as_u64(), table_data.wal_location().region_id);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
         assert_eq!(0, table_data.last_file_id());

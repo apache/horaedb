@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
-use wal::manager::{RegionId, SequenceNumber, WriteContext};
+use wal::manager::{SequenceNumber, WalLocation, WriteContext};
 
 use crate::{
     instance::{
@@ -37,26 +37,26 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, region_id:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
         table,
-        region_id,
+        wal_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        region_id: RegionId,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{}, region_id:{}, err:{}",
+        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
         table,
-        region_id,
+        wal_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        region_id: RegionId,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
@@ -398,18 +398,18 @@ impl Instance {
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.wal_location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    wal_location: table_data.wal_location(),
                 })?;
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            wal_location: table_data.wal_location(),
         })?;
 
         // Write to wal manager

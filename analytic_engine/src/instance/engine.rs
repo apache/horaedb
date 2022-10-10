@@ -11,7 +11,7 @@ use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
-use wal::manager::RegionId;
+use wal::manager::WalLocation;
 
 use crate::{
     instance::{write_worker::WriteGroup, Instance},
@@ -192,26 +192,26 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, region_id:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
         table,
-        region_id,
+        wal_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        region_id: RegionId,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{},region_id:{}, err:{}",
+        "Failed to encode payloads, table:{},wal_location:{:?}, err:{}",
         table,
-        region_id,
+        wal_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        region_id: RegionId,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 }

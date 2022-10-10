@@ -8,7 +8,7 @@ use common_util::runtime::Runtime;
 use rand::prelude::*;
 use table_kv::memory::MemoryImpl;
 use wal::{
-    manager::{WalManager, WriteContext},
+    manager::{WalLocation, WalManager, WriteContext},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
 
@@ -75,7 +75,7 @@ impl WalWriteBench {
 
             let values = self.build_value_vec();
             let wal_encoder = wal
-                .encoder(1)
+                .encoder(WalLocation::new(1, 1))
                 .expect("should succeed to create wal encoder");
             let log_batch = wal_encoder
                 .encode_batch::<WritePayload, Vec<u8>>(values.as_slice())

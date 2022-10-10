@@ -273,7 +273,7 @@ impl Instance {
         read_ctx: &ReadContext,
     ) -> Result<()> {
         let read_req = ReadRequest {
-            region_id: table_data.wal_region_id(),
+            location: table_data.wal_location(),
             start: ReadBoundary::Min,
             end: ReadBoundary::Max,
         };

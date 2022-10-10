@@ -20,7 +20,7 @@ use tempfile::TempDir;
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, RegionId, WalManager,
+        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager,
         WalManagerRef, WriteContext,
     },
     rocks_impl::{self, manager::RocksImpl},
@@ -144,14 +144,14 @@ impl<B: WalBuilder> TestEnv<B> {
     pub async fn build_log_batch(
         &self,
         wal: WalManagerRef,
-        region_id: RegionId,
+        location: WalLocation,
         start: u32,
         end: u32,
     ) -> (Vec<TestPayload>, LogWriteBatch) {
         let log_entries = (start..end).collect::<Vec<_>>();
 
         let log_batch_encoder = wal
-            .encoder(region_id)
+            .encoder(location)
             .expect("should succeed to create log batch encoder");
 
         let log_batch = log_batch_encoder

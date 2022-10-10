@@ -30,7 +30,7 @@ use wal::{
     log_batch::LogEntry,
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
-        RegionId, WalManagerRef,
+        WalLocation, WalManagerRef,
     },
 };
 
@@ -132,8 +132,8 @@ impl WalSynchronizer {
     }
 
     #[allow(dead_code)]
-    pub async fn register_table(&self, region_id: RegionId, table: ReaderTable) {
-        self.inner.register_table(region_id, table).await;
+    pub async fn register_table(&self, wal_location: WalLocation, table: ReaderTable) {
+        self.inner.register_table(wal_location, table).await;
     }
 
     pub async fn start(&mut self, runtime: &Runtime) {
@@ -149,18 +149,18 @@ impl WalSynchronizer {
 pub struct Inner {
     wal: WalManagerRef,
     config: WalSynchronizerConfig,
-    tables: RwLock<BTreeMap<RegionId, SynchronizeState>>,
+    tables: RwLock<BTreeMap<WalLocation, SynchronizeState>>,
 }
 
 impl Inner {
     #[allow(dead_code)]
-    pub async fn register_table(&self, region_id: RegionId, table: ReaderTable) {
+    pub async fn register_table(&self, wal_location: WalLocation, table: ReaderTable) {
         let state = SynchronizeState {
-            region_id,
+            wal_location,
             table,
             last_synced_seq: AtomicU64::new(SequenceNumber::MIN),
         };
-        self.tables.write().await.insert(region_id, state);
+        self.tables.write().await.insert(wal_location, state);
     }
 
     pub async fn start_synchronize(self: Arc<Self>, mut stop_listener: Receiver<()>) {
@@ -173,7 +173,7 @@ impl Inner {
         };
 
         loop {
-            let mut invalid_regions = vec![];
+            let mut invalid_tables = vec![];
             let tables = self.tables.read().await;
             // todo: consider clone [SynchronizeState] out to release the read lock.
             let states = tables.values().collect::<Vec<_>>();
@@ -182,7 +182,7 @@ impl Inner {
             for state in states {
                 // check state before polling WAL
                 if !state.check_state() {
-                    invalid_regions.push(state.region_id);
+                    invalid_tables.push(state.wal_location);
                     continue;
                 }
 
@@ -204,7 +204,7 @@ impl Inner {
                 // double check state before writing to table. Error due to
                 // state changed after this check will be treat as normal error.
                 if !state.check_state() {
-                    invalid_regions.push(state.region_id);
+                    invalid_tables.push(state.wal_location);
                     continue;
                 }
 
@@ -215,7 +215,7 @@ impl Inner {
             }
 
             drop(tables);
-            self.purge_invalid_region(&mut invalid_regions).await;
+            self.purge_invalid_tables(&mut invalid_tables).await;
 
             if time::timeout(self.config.interval, stop_listener.recv())
                 .await
@@ -287,26 +287,26 @@ impl Inner {
         Ok(())
     }
 
-    /// Remove invalid regions from poll list. This function will clear the
-    /// `invalid_region` vec.
-    async fn purge_invalid_region(&self, invalid_regions: &mut Vec<RegionId>) {
-        if invalid_regions.is_empty() {
+    /// Remove invalid tables from poll list. This function will clear the
+    /// `invalid_table` vec.
+    async fn purge_invalid_tables(&self, invalid_tables: &mut Vec<WalLocation>) {
+        if invalid_tables.is_empty() {
             return;
         }
         debug!(
             "Removing invalid region from WAL Synchronizer: {:?}",
-            invalid_regions
+            invalid_tables
         );
 
         let mut tables = self.tables.write().await;
-        for region in invalid_regions.drain(..) {
-            tables.remove(&region);
+        for wal_location in invalid_tables.drain(..) {
+            tables.remove(&wal_location);
         }
     }
 }
 
 struct SynchronizeState {
-    region_id: RegionId,
+    wal_location: WalLocation,
     table: ReaderTable,
     /// Atomic version of [SequenceNumber]
     last_synced_seq: AtomicU64,
@@ -315,7 +315,7 @@ struct SynchronizeState {
 impl SynchronizeState {
     pub fn read_req(&self) -> ReadRequest {
         ReadRequest {
-            region_id: self.region_id,
+            location: self.wal_location,
             start: ReadBoundary::Excluded(self.last_synced_seq.load(Ordering::Relaxed)),
             end: ReadBoundary::Max,
         }

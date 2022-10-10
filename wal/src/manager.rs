@@ -19,7 +19,7 @@ pub mod error {
     use common_util::define_result;
     use snafu::{Backtrace, Snafu};
 
-    use crate::manager::RegionId;
+    use crate::manager::WalLocation;
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -45,12 +45,12 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, region_id:{}.\nBacktrace:\n{}",
-            region_id,
+            "Region is not found, location:{:?}.\nBacktrace:\n{}",
+            location,
             backtrace
         ))]
         RegionNotFound {
-            region_id: RegionId,
+            location: WalLocation,
             backtrace: Backtrace,
         },
 
@@ -119,11 +119,27 @@ pub mod error {
     define_result!(Error);
 }
 
-use common_types::{MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use common_types::{table::TableId, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 pub use error::*;
 
 pub type RegionId = u64;
 pub const MAX_REGION_ID: RegionId = u64::MAX;
+
+/// Used to wals of the table.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct WalLocation {
+    pub region_id: RegionId,
+    pub table_id: TableId,
+}
+
+impl WalLocation {
+    pub fn new(region_id: RegionId, table_id: TableId) -> Self {
+        Self {
+            region_id,
+            table_id,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct WriteContext {
@@ -208,7 +224,7 @@ impl ReadBoundary {
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
     /// Region id of the wal to read
-    pub region_id: RegionId,
+    pub location: WalLocation,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
     pub start: ReadBoundary,
@@ -246,13 +262,13 @@ pub trait BatchLogIterator {
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
-    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
@@ -267,8 +283,8 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    fn encoder(&self, region_id: RegionId) -> Result<LogBatchEncoder> {
-        Ok(LogBatchEncoder::create(region_id))
+    fn encoder(&self, location: WalLocation) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(location))
     }
 
     /// Write a batch of log entries to log.
