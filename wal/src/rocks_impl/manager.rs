@@ -180,7 +180,7 @@ impl Region {
                 self.log_encoding
                     .encode_key(
                         &mut key_buf,
-                        &(batch.wal_location.table_id, next_sequence_num),
+                        &(batch.wal_location.region_id, next_sequence_num),
                     )
                     .map_err(|e| Box::new(e) as _)
                     .context(Encoding)?;
@@ -633,7 +633,7 @@ impl WalManager for RocksImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let blocking_iter = if let Some(region) = self.region(req.wal_location.table_id) {
+        let blocking_iter = if let Some(region) = self.region(req.wal_location.region_id) {
             region.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
@@ -649,7 +649,7 @@ impl WalManager for RocksImpl {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let region = self.get_or_create_region(batch.wal_location.table_id);
+        let region = self.get_or_create_region(batch.wal_location.region_id);
         region.write(ctx, batch).await
     }
 

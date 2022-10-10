@@ -550,7 +550,7 @@ impl<T: TableKv> NamespaceInner<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
-        let region_id = batch.wal_location.table_id;
+        let region_id = batch.wal_location.region_id;
         let now = Timestamp::now();
         // Get current bucket to write.
         let bucket = self.get_or_create_bucket(now)?;
@@ -584,7 +584,7 @@ impl<T: TableKv> NamespaceInner<T> {
         // buckets.
         let buckets = self.list_buckets();
 
-        let region_id = req.wal_location.table_id;
+        let region_id = req.wal_location.region_id;
         if let Some(region) = self.get_or_open_region(region_id).await? {
             region
                 .read_log(&self.table_kv, buckets, ctx, req)
@@ -1619,7 +1619,7 @@ mod tests {
             write_test_payloads(&namespace, wal_location, 1005, 1009).await;
 
             namespace
-                .delete_entries(wal_location.table_id, seq1)
+                .delete_entries(wal_location.region_id, seq1)
                 .await
                 .unwrap();
 
@@ -1629,9 +1629,9 @@ mod tests {
             let buckets = inner.list_buckets();
             assert_eq!(1, buckets.len());
 
-            let table = buckets[0].wal_shard_table(wal_location.table_id);
+            let table = buckets[0].wal_shard_table(wal_location.region_id);
             let key_values =
-                direct_read_logs_from_table(&table_kv, table, wal_location.table_id).await;
+                direct_read_logs_from_table(&table_kv, table, wal_location.region_id).await;
 
             // Logs from min sequence to seq1 should be deleted from the table.
             let mut expect_seq = seq1 + 1;

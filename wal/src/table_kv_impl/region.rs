@@ -799,7 +799,7 @@ impl RegionWriter {
         debug!(
             "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
             ctx,
-            log_batch.wal_location.table_id,
+            log_batch.wal_location.region_id,
             log_batch.entries.len()
         );
 
@@ -814,7 +814,7 @@ impl RegionWriter {
                 log_encoding
                     .encode_key(
                         &mut key_buf,
-                        &(log_batch.wal_location.table_id, next_sequence_num),
+                        &(log_batch.wal_location.region_id, next_sequence_num),
                     )
                     .context(LogCodec)?;
                 wb.insert(&key_buf, &entry.payload);
@@ -827,7 +827,7 @@ impl RegionWriter {
 
         let table_kv = table_kv.clone();
         let bucket = bucket.clone();
-        let region_id = log_batch.wal_location.table_id;
+        let region_id = log_batch.wal_location.region_id;
         runtime
             .spawn_blocking(move || {
                 let table_name = bucket.wal_shard_table(region_id);
