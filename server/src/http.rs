@@ -22,7 +22,12 @@ use warp::{
 };
 
 use crate::{
-    config::Endpoint, consts, context::RequestContext, error, handlers, instance::InstanceRef,
+    config::Endpoint,
+    consts,
+    context::RequestContext,
+    error,
+    handlers::{self, sql::Request},
+    instance::InstanceRef,
     metrics,
 };
 
@@ -67,20 +72,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid JSON. body:{}, source:{}.", body, source))]
-    InvalidJSON {
-        body: String,
-        source: serde_json::Error,
-    },
-
-    #[snafu(display(
-        "Only {} and {} content type is allowed, current: {}.",
-        JSON_CONTENT_TYPE,
-        TEXT_CONTENT_TYPE,
-        content_type,
-    ))]
-    InvalidContentType { content_type: String },
-
     #[snafu(display("Internal err:{}.", source))]
     Internal {
         source: Box<dyn StdError + Send + Sync>,
@@ -92,8 +83,6 @@ define_result!(Error);
 impl reject::Reject for Error {}
 
 const MAX_BODY_SIZE: u64 = 4096;
-const JSON_CONTENT_TYPE: &str = "application/json";
-const TEXT_CONTENT_TYPE: &str = "text/plain";
 
 /// Http service
 ///
@@ -132,46 +121,31 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     // TODO(yingwen): Avoid boilterplate code if there are more handlers
     fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        // accept json or plain text
+        let extract_request = warp::body::json()
+            .or(warp::body::bytes().map(Request::from))
+            .unify();
+
         warp::path!("sql")
             .and(warp::post())
             .and(warp::body::content_length_limit(MAX_BODY_SIZE))
-            .and(warp::header("content-type"))
-            .and(warp::body::bytes())
+            .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(
-                |content_type: String, bytes: bytes::Bytes, ctx, instance| async move {
-                    let lower_content_type = content_type.to_lowercase();
-                    let req = if lower_content_type.contains(JSON_CONTENT_TYPE) {
-                        serde_json::from_slice(bytes.as_ref())
-                            .with_context(|| InvalidJSON {
-                                body: String::from_utf8_lossy(bytes.as_ref()).to_string(),
-                            })
-                            .map_err(reject::custom)?
-                    } else if lower_content_type.contains(TEXT_CONTENT_TYPE) {
-                        let sql = String::from_utf8_lossy(bytes.as_ref()).to_string();
-                        sql.into()
-                    } else {
-                        return InvalidContentType {
-                            content_type: lower_content_type,
-                        }
-                        .fail()
-                        .map_err(reject::custom);
-                    };
-                    let result = handlers::sql::handle_sql(ctx, instance, req)
-                        .await
-                        .map_err(|e| {
-                            // TODO(yingwen): Maybe truncate and print the sql
-                            error!("Http service Failed to handle sql, err:{}", e);
-                            Box::new(e)
-                        })
-                        .context(HandleRequest);
-                    match result {
-                        Ok(res) => Ok(reply::json(&res)),
-                        Err(e) => Err(reject::custom(e)),
-                    }
-                },
-            )
+            .and_then(|req, ctx, instance| async move {
+                let result = handlers::sql::handle_sql(ctx, instance, req)
+                    .await
+                    .map_err(|e| {
+                        // TODO(yingwen): Maybe truncate and print the sql
+                        error!("Http service Failed to handle sql, err:{}", e);
+                        Box::new(e)
+                    })
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
     }
 
     fn flush_memtable(
@@ -394,9 +368,7 @@ struct ErrorResponse {
 
 fn error_to_status_code(err: &Error) -> StatusCode {
     match err {
-        Error::CreateContext { .. }
-        | Error::InvalidJSON { .. }
-        | Error::InvalidContentType { .. } => StatusCode::BAD_REQUEST,
+        Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
         | Error::MissingRuntimes { .. }
