@@ -287,7 +287,7 @@ impl TableData {
     /// Get last flush time
     #[inline]
     pub fn last_flush_time(&self) -> u64 {
-        self.last_flush_time_ms.load(Ordering::Acquire)
+        self.last_flush_time_ms.load(Ordering::Relaxed)
     }
 
     /// Set last flush time

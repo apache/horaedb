@@ -9,6 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
+
 pub trait DurationExt {
     /// Convert into u64.
     ///
@@ -39,6 +41,11 @@ impl InstantExt for Instant {
 #[inline]
 pub fn secs_to_nanos(s: u64) -> u64 {
     s * 1000000000
+}
+
+#[inline]
+pub fn current_time_millis() -> u64 {
+    Utc::now().timestamp_millis() as u64
 }
 
 #[cfg(test)]

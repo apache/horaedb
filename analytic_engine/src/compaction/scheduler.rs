@@ -9,7 +9,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, RwLock,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -55,7 +55,7 @@ pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
     pub schedule_interval: ReadableDuration,
     pub max_ongoing_tasks: usize,
-    pub flush_interval: ReadableDuration,
+    pub max_unflushed_duration: ReadableDuration,
 }
 
 // TODO(boyan), a better default value?
@@ -70,7 +70,7 @@ impl Default for SchedulerConfig {
             schedule_interval: ReadableDuration(Duration::from_secs(60 * 30)),
             max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
             // flush_interval default is 5h.
-            flush_interval: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
+            max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
         }
     }
 }
@@ -237,7 +237,7 @@ impl SchedulerImpl {
             schedule_interval: config.schedule_interval.0,
             picker_manager: PickerManager::default(),
             max_ongoing_tasks: config.max_ongoing_tasks,
-            flush_interval: config.flush_interval.0,
+            max_unflushed_duration: config.max_unflushed_duration.0,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -301,7 +301,7 @@ struct ScheduleWorker {
     space_store: Arc<SpaceStore>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
-    flush_interval: Duration,
+    max_unflushed_duration: Duration,
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
     limit: Arc<OngoingTaskLimit>,
@@ -342,8 +342,8 @@ impl ScheduleWorker {
         info!("Compaction schedule loop exit");
     }
 
-    // This function is called seqentially, so we can mark files in compaction
-    // without racy.
+    // This function is called sequentially, so we can mark files in compaction
+    // without race.
     async fn handle_schedule_task(&self, schedule_task: ScheduleTask) {
         let ongoing = self.limit.ongoing_tasks();
         match schedule_task {
@@ -471,11 +471,11 @@ impl ScheduleWorker {
     }
 
     async fn schedule(&mut self) {
-        self.full_ttl_purge();
-        self.table_flush().await;
+        self.purge_tables();
+        self.flush_tables().await;
     }
 
-    fn full_ttl_purge(&mut self) {
+    fn purge_tables(&mut self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
 
@@ -534,14 +534,14 @@ impl ScheduleWorker {
         });
     }
 
-    async fn table_flush(&self) {
+    async fn flush_tables(&self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
 
         for table_data in &tables_buf {
             let last_flush_time = table_data.last_flush_time();
-            if last_flush_time + self.flush_interval.as_millis_u64()
-                > Instant::now().elapsed().as_millis_u64()
+            if last_flush_time + self.max_unflushed_duration.as_millis_u64()
+                > common_util::time::current_time_millis()
             {
                 // Instance flush the table asynchronously.
                 if let Err(e) =
