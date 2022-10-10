@@ -134,8 +134,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         warp::path!("sql")
             .and(warp::post())
+            .and(warp::body::content_length_limit(MAX_BODY_SIZE))
             .and(warp::header("content-type"))
-            .and(warp::body::content_length_limit(MAX_BODY_SIZE).and(warp::body::bytes()))
+            .and(warp::body::bytes())
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(
