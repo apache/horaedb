@@ -19,8 +19,8 @@ use crate::{
         GetShardTablesResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
         RouteTablesResponse, ShardInfo,
     },
-    FailAllocSchemaId, FailAllocTableId, FailConnect, FailDropTable, FailGetTables,
-    FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MetaRpc, MissingHeader, Result,
+    BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
+    FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
 };
 
 type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;
@@ -127,7 +127,7 @@ impl MetaClient for MetaClientImpl {
             .create_table(pb_req)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(FailAllocTableId)?
+            .context(FailCreateTable)?
             .into_inner();
 
         info!("Meta client finish creating table, resp:{:?}", pb_resp);
@@ -249,7 +249,7 @@ fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
     if header.code == 0 {
         Ok(())
     } else {
-        MetaRpc {
+        BadResponse {
             code: header.code,
             msg: header.error.clone(),
         }

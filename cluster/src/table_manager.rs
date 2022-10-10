@@ -10,7 +10,7 @@ use common_types::{
     schema::{CatalogName, SchemaId, SchemaName},
     table::TableId,
 };
-use meta_client::types::{CreateTableCmd, ShardId, ShardInfo, ShardTables, TableInfo};
+use meta_client::types::{ShardId, ShardInfo, ShardTables, TableInfo};
 use table_engine::table::TableRef;
 
 use crate::Result;
@@ -26,21 +26,6 @@ pub struct SchemaInfo {
 pub struct ShardTableInfo {
     pub shard_id: ShardId,
     pub table_info: TableInfo,
-}
-
-impl From<&CreateTableCmd> for ShardTableInfo {
-    fn from(cmd: &CreateTableCmd) -> Self {
-        let table_info = TableInfo {
-            id: cmd.id,
-            name: cmd.name.clone(),
-            schema_id: cmd.schema_id,
-            schema_name: cmd.schema_name.clone(),
-        };
-        ShardTableInfo {
-            shard_id: cmd.shard_id,
-            table_info,
-        }
-    }
 }
 
 /// [TableManager] manages information about tables, shards, schemas and their
@@ -163,6 +148,7 @@ impl TableManager {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn tokens_by_shard(&self, shard_id: ShardId) -> Vec<TableToken> {
         if let Some(tokens) = self.inner.read().unwrap().tokens_by_shard.get(&shard_id) {
             tokens.iter().cloned().collect()

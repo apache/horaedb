@@ -100,6 +100,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
             cluster.start().await.context(StartCluster)?;
         }
 
+        // TODO: Is it necessary to create default schema in cluster mode?
         self.create_default_schema_if_not_exists().await;
 
         self.mysql_service

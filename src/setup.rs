@@ -127,9 +127,7 @@ where
         DeployMode::Standalone => {
             build_in_standalone_mode(&config, builder, analytic, engine_proxy).await
         }
-        DeployMode::Cluster => {
-            build_in_cluster_mode(&config, builder, &runtimes, engine_proxy).await
-        }
+        DeployMode::Cluster => build_in_cluster_mode(&config, builder, &runtimes).await,
     };
 
     // Build and start server
@@ -147,7 +145,6 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     config: &Config,
     builder: Builder<Q>,
     runtimes: &EngineRuntimes,
-    engine_proxy: TableEngineRef,
 ) -> Builder<Q> {
     let meta_client = meta_impl::build_meta_client(
         config.cluster.meta_client.clone(),
@@ -161,7 +158,6 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     let cluster = {
         let cluster_impl = ClusterImpl::new(
             meta_client,
-            engine_proxy,
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )
