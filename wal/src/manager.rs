@@ -45,12 +45,12 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, location:{:?}.\nBacktrace:\n{}",
-            location,
+            "Region is not found, wal_location:{:?}.\nBacktrace:\n{}",
+            wal_location,
             backtrace
         ))]
         RegionNotFound {
-            location: WalLocation,
+            wal_location: WalLocation,
             backtrace: Backtrace,
         },
 
@@ -224,7 +224,7 @@ impl ReadBoundary {
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
     /// WalLocation of the wal to read
-    pub location: WalLocation,
+    pub wal_location: WalLocation,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
     pub start: ReadBoundary,
@@ -235,7 +235,7 @@ pub struct ReadRequest {
 #[derive(Debug, Clone)]
 pub struct ScanRequest {
     /// WalLocation of the wal to read
-    pub location: WalLocation,
+    pub wal_location: WalLocation,
 }
 
 pub type ScanContext = ReadContext;
@@ -270,13 +270,13 @@ pub trait BatchLogIterator {
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
-    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, wal_location: WalLocation) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
-        location: WalLocation,
+        wal_location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
@@ -291,8 +291,8 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    fn encoder(&self, location: WalLocation) -> Result<LogBatchEncoder> {
-        Ok(LogBatchEncoder::create(location))
+    fn encoder(&self, wal_location: WalLocation) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(wal_location))
     }
 
     /// Write a batch of log entries to log.

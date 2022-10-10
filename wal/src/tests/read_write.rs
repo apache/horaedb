@@ -29,12 +29,12 @@ async fn check_write_batch_with_read_request<B: WalBuilder>(
 async fn check_write_batch<B: WalBuilder>(
     env: &TestEnv<B>,
     wal: WalManagerRef,
-    location: WalLocation,
+    wal_location: WalLocation,
     max_seq: SequenceNumber,
     payload_batch: &[TestPayload],
 ) {
     let read_req = ReadRequest {
-        location,
+        wal_location,
         start: ReadBoundary::Included(max_seq + 1 - payload_batch.len() as u64),
         end: ReadBoundary::Included(max_seq),
     };
@@ -44,26 +44,26 @@ async fn check_write_batch<B: WalBuilder>(
 async fn simple_read_write_with_wal<B: WalBuilder>(
     env: impl Deref<Target = TestEnv<B>>,
     wal: WalManagerRef,
-    location: WalLocation,
+    wal_location: WalLocation,
 ) {
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, 0, 10).await;
+    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), wal_location, 0, 10).await;
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
 
-    check_write_batch(&env, wal, location, seq, &payload_batch).await
+    check_write_batch(&env, wal, wal_location, seq, &payload_batch).await
 }
 
-async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, location: WalLocation) {
+async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, wal_location: WalLocation) {
     let wal = env.build_wal().await;
     // Empty region has 0 sequence num.
-    let last_seq = wal.sequence_num(location).await.unwrap();
+    let last_seq = wal.sequence_num(wal_location).await.unwrap();
     assert_eq!(0, last_seq);
 
-    simple_read_write_with_wal(env, wal.clone(), location).await;
+    simple_read_write_with_wal(env, wal.clone(), wal_location).await;
 
-    let last_seq = wal.sequence_num(location).await.unwrap();
+    let last_seq = wal.sequence_num(wal_location).await.unwrap();
     assert_eq!(10, last_seq);
 
     wal.close_gracefully().await.unwrap();
@@ -72,14 +72,14 @@ async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, location: WalLocatio
 /// Test the read with different kinds of boundaries.
 async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     let wal = env.build_wal().await;
-    let location = WalLocation::new(0, 0);
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, 0, 10).await;
+    let wal_location = WalLocation::new(0, 0);
+    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), wal_location, 0, 10).await;
     let end_seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
 
-    let last_seq = wal.sequence_num(location).await.unwrap();
+    let last_seq = wal.sequence_num(wal_location).await.unwrap();
     assert_eq!(end_seq, last_seq);
 
     let start_seq = end_seq + 1 - write_batch.entries.len() as u64;
@@ -87,7 +87,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [min, max]
     {
         let read_req = ReadRequest {
-            location,
+            wal_location,
             start: ReadBoundary::Min,
             end: ReadBoundary::Max,
         };
@@ -98,7 +98,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [0, 10]
     {
         let read_req = ReadRequest {
-            location,
+            wal_location,
             start: ReadBoundary::Included(start_seq),
             end: ReadBoundary::Included(end_seq),
         };
@@ -109,7 +109,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // (0, 10]
     {
         let read_req = ReadRequest {
-            location,
+            wal_location,
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Included(end_seq),
         };
@@ -121,7 +121,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [0, 10)
     {
         let read_req = ReadRequest {
-            location,
+            wal_location,
             start: ReadBoundary::Included(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
@@ -139,7 +139,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // (0, 10)
     {
         let read_req = ReadRequest {
-            location,
+            wal_location,
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
@@ -213,7 +213,7 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
     assert_eq!(seq, last_seq);
 
     let read_req = ReadRequest {
-        location: WalLocation::new(table_id, table_id),
+        wal_location: WalLocation::new(table_id, table_id),
         start: ReadBoundary::Included(seq + 1 - write_batch.entries.len() as u64),
         end: ReadBoundary::Included(seq),
     };
@@ -342,7 +342,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        location: WalLocation::new(table_id, table_id),
+        wal_location: WalLocation::new(table_id, table_id),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };
@@ -387,7 +387,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        location: WalLocation::new(table_id, table_id),
+        wal_location: WalLocation::new(table_id, table_id),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };
@@ -439,7 +439,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        location: WalLocation::new(table_id_1, table_id_1),
+        wal_location: WalLocation::new(table_id_1, table_id_1),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };

@@ -99,9 +99,9 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
 
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
-    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
+    async fn sequence_num(&self, wal_location: WalLocation) -> Result<SequenceNumber> {
         self.namespace
-            .last_sequence(location.region_id)
+            .last_sequence(wal_location.region_id)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Read)
@@ -109,11 +109,11 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
 
     async fn mark_delete_entries_up_to(
         &self,
-        location: WalLocation,
+        wal_location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.namespace
-            .delete_entries(location.region_id, sequence_num)
+            .delete_entries(wal_location.region_id, sequence_num)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Delete)

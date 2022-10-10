@@ -35,18 +35,18 @@ pub struct LogWriteEntry {
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
-    pub(crate) location: WalLocation,
+    pub(crate) wal_location: WalLocation,
     pub(crate) entries: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {
-    pub fn new(location: WalLocation) -> Self {
-        Self::with_capacity(location, 0)
+    pub fn new(wal_location: WalLocation) -> Self {
+        Self::with_capacity(wal_location, 0)
     }
 
-    pub fn with_capacity(location: WalLocation, cap: usize) -> Self {
+    pub fn with_capacity(wal_location: WalLocation, cap: usize) -> Self {
         Self {
-            location,
+            wal_location,
             entries: Vec::with_capacity(cap),
         }
     }

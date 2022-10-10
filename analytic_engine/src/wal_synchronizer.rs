@@ -315,7 +315,7 @@ struct SynchronizeState {
 impl SynchronizeState {
     pub fn read_req(&self) -> ReadRequest {
         ReadRequest {
-            location: self.wal_location,
+            wal_location: self.wal_location,
             start: ReadBoundary::Excluded(self.last_synced_seq.load(Ordering::Relaxed)),
             end: ReadBoundary::Max,
         }

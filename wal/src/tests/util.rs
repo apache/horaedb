@@ -144,14 +144,14 @@ impl<B: WalBuilder> TestEnv<B> {
     pub async fn build_log_batch(
         &self,
         wal: WalManagerRef,
-        location: WalLocation,
+        wal_location: WalLocation,
         start: u32,
         end: u32,
     ) -> (Vec<TestPayload>, LogWriteBatch) {
         let log_entries = (start..end).collect::<Vec<_>>();
 
         let log_batch_encoder = wal
-            .encoder(location)
+            .encoder(wal_location)
             .expect("should succeed to create log batch encoder");
 
         let log_batch = log_batch_encoder

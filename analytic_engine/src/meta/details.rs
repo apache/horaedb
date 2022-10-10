@@ -324,7 +324,7 @@ impl MetaUpdateLogStore for RegionWal {
     async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
         let ctx = ReadContext::default();
         let read_req = ReadRequest {
-            location: self.wal_location,
+            wal_location: self.wal_location,
             start,
             end,
         };

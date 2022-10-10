@@ -523,22 +523,22 @@ impl LogEncoding {
 /// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
-    location: WalLocation,
+    wal_location: WalLocation,
     log_encoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
     /// Create LogBatchEncoder with specific region_id.
-    pub fn create(location: WalLocation) -> Self {
+    pub fn create(wal_location: WalLocation) -> Self {
         Self {
-            location,
+            wal_location,
             log_encoding: LogEncoding::newest(),
         }
     }
 
     /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
     pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
-        let mut write_batch = LogWriteBatch::new(self.location);
+        let mut write_batch = LogWriteBatch::new(self.wal_location);
         let mut buf = BytesMut::new();
         self.log_encoding
             .encode_value(&mut buf, payload)
@@ -562,7 +562,7 @@ impl LogBatchEncoder {
     where
         &'a I: Into<P>,
     {
-        let mut write_batch = LogWriteBatch::new(self.location);
+        let mut write_batch = LogWriteBatch::new(self.wal_location);
         let mut buf = BytesMut::new();
         for raw_payload in raw_payload_batch.iter() {
             self.log_encoding
