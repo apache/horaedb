@@ -136,54 +136,6 @@ pub enum ShardRole {
     PendingFollower,
 }
 
-// TODO: now some commands are empty and fill the concrete information into
-// them.
-#[derive(Debug, Clone)]
-pub enum ActionCmd {
-    MetaNoneCmd(NoneCmd),
-    MetaOpenCmd(OpenCmd),
-    MetaSplitCmd(SplitCmd),
-    MetaCloseCmd(CloseCmd),
-    MetaChangeRoleCmd(ChangeRoleCmd),
-
-    CreateTableCmd(CreateTableCmd),
-    DropTableCmd(DropTableCmd),
-}
-
-#[derive(Debug, Clone)]
-pub struct NoneCmd {}
-
-#[derive(Debug, Clone)]
-pub struct OpenCmd {
-    pub shard_ids: Vec<ShardId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SplitCmd {}
-
-#[derive(Debug, Clone)]
-pub struct CloseCmd {
-    pub shard_ids: Vec<ShardId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateTableCmd {
-    pub schema_name: String,
-    pub name: String,
-    pub shard_id: ShardId,
-    pub schema_id: SchemaId,
-    pub id: TableId,
-}
-
-#[derive(Debug, Clone)]
-pub struct DropTableCmd {
-    pub schema_name: String,
-    pub name: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ChangeRoleCmd {}
-
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct MetaClientConfig {
