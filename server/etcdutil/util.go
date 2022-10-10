@@ -33,6 +33,9 @@ func Scan(ctx context.Context, client *clientv3.Client, startKey, endKey string,
 	if err != nil {
 		return ErrEtcdKVGet.WithCause(err)
 	}
+	if len(resp.Kvs) == 0 {
+		return nil
+	}
 
 	doIfNotEndKey := func(key, val []byte) error {
 		// TODO: avoid such a copy on key.
