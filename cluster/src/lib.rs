@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use common_types::schema::SchemaName;
 use common_util::define_result;
 pub use meta_client::types::{
-    AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
+    AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
     DropTableRequest, GetShardTablesRequest,
 };
 use meta_client::types::{ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId};

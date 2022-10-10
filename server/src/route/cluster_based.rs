@@ -166,9 +166,9 @@ mod tests {
             .enumerate()
             .map(|(idx, is_leader)| {
                 let role = if *is_leader {
-                    ShardRole::LEADER
+                    ShardRole::Leader
                 } else {
-                    ShardRole::FOLLOWER
+                    ShardRole::Follower
                 };
 
                 let shard_info = ShardInfo {

@@ -15,8 +15,8 @@ use catalog::{
     manager::{self, Manager},
     schema::{
         self, CatalogMismatch, CloseOptions, CloseTable, CloseTableRequest, CreateOptions,
-        CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef,
-        OpenOptions, OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
+        CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef, OpenOptions,
+        OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
     },
     Catalog, CatalogRef,
 };
@@ -24,7 +24,7 @@ use common_types::schema::SchemaName;
 use log::{debug, info};
 use meta_client::MetaClientRef;
 use snafu::{ensure, ResultExt};
-use table_engine::table::{SchemaId, TableId, TableRef};
+use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
 
 /// ManagerImpl manages multiple volatile catalogs.
@@ -234,12 +234,6 @@ impl SchemaImpl {
         Ok(tables.get(table_name).cloned())
     }
 
-    fn add_table(&self, table: TableRef) {
-        let mut tables = self.tables.write().unwrap();
-        let old = tables.insert(table.name().to_string(), table);
-        assert!(old.is_none());
-    }
-
     fn remove_table(&self, table_name: &str) -> Option<TableRef> {
         let mut tables = self.tables.write().unwrap();
         tables.remove(table_name)
@@ -265,7 +259,7 @@ impl Schema for SchemaImpl {
     async fn create_table(
         &self,
         request: CreateTableRequest,
-        opts: CreateOptions,
+        _: CreateOptions,
     ) -> schema::Result<TableRef> {
         // FIXME: Error should be returned if create_if_not_exist is false.
         if let Some(table) = self.get_table(
@@ -287,32 +281,7 @@ impl Schema for SchemaImpl {
             return Ok(table);
         }
 
-        let table_id = self
-            .meta_client
-            .alloc_table_id(cluster::AllocTableIdRequest {
-                schema_name: request.schema_name.to_string(),
-                name: request.table_name.to_string(),
-            })
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(schema::AllocateTableId {
-                schema: &self.schema_name,
-                table: &request.table_name,
-            })
-            .map(|v| TableId::from(v.id))?;
-
-        let request = request.into_engine_create_request(table_id);
-
-        // Table engine handles duplicate table creation
-        let table = opts
-            .table_engine
-            .create_table(request)
-            .await
-            .context(CreateTable)?;
-
-        self.add_table(table.clone());
-
-        Ok(table)
+        todo!("The implementation will be removed after cluster implementation is ready");
     }
 
     async fn drop_table(
