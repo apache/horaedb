@@ -9,7 +9,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, RwLock,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -18,6 +18,7 @@ use common_util::{
     config::ReadableDuration,
     define_result,
     runtime::{JoinHandle, Runtime},
+    time::DurationExt,
 };
 use log::{debug, error, info, warn};
 use serde_derive::Deserialize;
@@ -36,8 +37,7 @@ use crate::{
         metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext, CompactionTask,
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
-    instance::SpaceStore,
-    table::data::TableDataRef,
+    instance::{flush_compaction::TableFlushOptions, Instance, SpaceStore},
     TableOptions,
 };
 
@@ -55,6 +55,7 @@ pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
     pub schedule_interval: ReadableDuration,
     pub max_ongoing_tasks: usize,
+    pub flush_interval: ReadableDuration,
 }
 
 // TODO(boyan), a better default value?
@@ -68,6 +69,8 @@ impl Default for SchedulerConfig {
             // 30 minutes schedule interval.
             schedule_interval: ReadableDuration(Duration::from_secs(60 * 30)),
             max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
+            // flush_interval default is 5h.
+            flush_interval: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
         }
     }
 }
@@ -233,8 +236,8 @@ impl SchedulerImpl {
             runtime: runtime.clone(),
             schedule_interval: config.schedule_interval.0,
             picker_manager: PickerManager::default(),
-            tables_buf: Vec::new(),
             max_ongoing_tasks: config.max_ongoing_tasks,
+            flush_interval: config.flush_interval.0,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -298,9 +301,8 @@ struct ScheduleWorker {
     space_store: Arc<SpaceStore>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
+    flush_interval: Duration,
     picker_manager: PickerManager,
-    /// Buffer to hold all tables.
-    tables_buf: Vec<TableDataRef>,
     max_ongoing_tasks: usize,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
@@ -330,7 +332,7 @@ impl ScheduleWorker {
                     // Timeout.
                     info!("Periodical compaction schedule start");
 
-                    self.full_ttl_purge();
+                    self.schedule().await;
 
                     info!("Periodical compaction schedule end");
                 }
@@ -468,14 +470,19 @@ impl ScheduleWorker {
         });
     }
 
+    async fn schedule(&mut self) {
+        self.full_ttl_purge();
+        self.table_flush().await;
+    }
+
     fn full_ttl_purge(&mut self) {
-        self.tables_buf.clear();
-        self.space_store.list_all_tables(&mut self.tables_buf);
+        let mut tables_buf = Vec::new();
+        self.space_store.list_all_tables(&mut tables_buf);
 
         let mut to_purge = Vec::new();
 
         let now = Timestamp::now();
-        for table_data in &self.tables_buf {
+        for table_data in &tables_buf {
             let expire_time = table_data
                 .table_options()
                 .ttl()
@@ -525,6 +532,23 @@ impl ScheduleWorker {
                 }
             }
         });
+    }
+
+    async fn table_flush(&self) {
+        let mut tables_buf = Vec::new();
+        self.space_store.list_all_tables(&mut tables_buf);
+        for table_data in &tables_buf {
+            let last_flush_time = table_data.last_flush_time();
+            if last_flush_time + self.flush_interval.as_millis_u64()
+                > Instant::now().elapsed().as_millis_u64()
+            {
+                if let Err(e) =
+                    Instance::flush_table(table_data.clone(), TableFlushOptions::default()).await
+                {
+                    info!("schedule flush table failed, err:{}", e);
+                }
+            }
+        }
     }
 }
 

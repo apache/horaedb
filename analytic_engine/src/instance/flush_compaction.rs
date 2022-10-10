@@ -192,31 +192,26 @@ pub enum TableFlushPolicy {
 impl Instance {
     /// Flush this table.
     pub async fn flush_table(
-        &self,
-        space_table: &SpaceAndTable,
+        table_data: TableDataRef,
         flush_opts: TableFlushOptions,
     ) -> Result<()> {
         info!(
-            "Instance flush table, space_table:{:?}, flush_opts:{:?}",
-            space_table, flush_opts
+            "Instance flush table, table_data:{:?}, flush_opts:{:?}",
+            table_data, flush_opts
         );
 
         // Create a oneshot channel to send/receive flush result.
         let (tx, rx) = oneshot::channel();
         let cmd = FlushTableCommand {
-            table_data: space_table.table_data().clone(),
+            table_data: table_data.clone(),
             flush_opts,
             tx,
         };
 
         // Actual work is done in flush_table_in_worker().
-        write_worker::process_command_in_write_worker(
-            cmd.into_command(),
-            space_table.table_data(),
-            rx,
-        )
-        .await
-        .context(SendFlushCmd)
+        write_worker::process_command_in_write_worker(cmd.into_command(), &table_data, rx)
+            .await
+            .context(SendFlushCmd)
     }
 
     /// Compact the table manually.
