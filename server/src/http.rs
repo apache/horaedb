@@ -73,6 +73,14 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    #[snafu(display(
+        "Only {} and {} content type is allowed, current: {}.",
+        JSON_CONTENT_TYPE,
+        TEXT_CONTENT_TYPE,
+        content_type,
+    ))]
+    InvalidContentType { content_type: String },
+
     #[snafu(display("Internal err:{}.", source))]
     Internal {
         source: Box<dyn StdError + Send + Sync>,
@@ -84,6 +92,8 @@ define_result!(Error);
 impl reject::Reject for Error {}
 
 const MAX_BODY_SIZE: u64 = 4096;
+const JSON_CONTENT_TYPE: &str = "application/json";
+const TEXT_CONTENT_TYPE: &str = "text/plain";
 
 /// Http service
 ///
@@ -130,15 +140,22 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_instance())
             .and_then(
                 |content_type: String, bytes: bytes::Bytes, ctx, instance| async move {
-                    let req = if content_type.to_lowercase().contains("json") {
+                    let lower_content_type = content_type.to_lowercase();
+                    let req = if lower_content_type.contains(JSON_CONTENT_TYPE) {
                         serde_json::from_slice(bytes.as_ref())
                             .with_context(|| InvalidJSON {
                                 body: String::from_utf8_lossy(bytes.as_ref()).to_string(),
                             })
                             .map_err(reject::custom)?
-                    } else {
+                    } else if lower_content_type.contains(TEXT_CONTENT_TYPE) {
                         let sql = String::from_utf8_lossy(bytes.as_ref()).to_string();
                         sql.into()
+                    } else {
+                        return InvalidContentType {
+                            content_type: lower_content_type,
+                        }
+                        .fail()
+                        .map_err(reject::custom);
                     };
                     let result = handlers::sql::handle_sql(ctx, instance, req)
                         .await
@@ -376,7 +393,9 @@ struct ErrorResponse {
 
 fn error_to_status_code(err: &Error) -> StatusCode {
     match err {
-        Error::CreateContext { .. } | Error::InvalidJSON { .. } => StatusCode::BAD_REQUEST,
+        Error::CreateContext { .. }
+        | Error::InvalidJSON { .. }
+        | Error::InvalidContentType { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
         | Error::MissingRuntimes { .. }
