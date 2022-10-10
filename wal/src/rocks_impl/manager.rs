@@ -26,7 +26,7 @@ use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
-        WalLocation, WalManager, WriteContext, MAX_REGION_ID,
+        ScanContext, ScanRequest, WalLocation, WalManager, WriteContext, MAX_REGION_ID,
     },
 };
 
@@ -648,6 +648,14 @@ impl WalManager for RocksImpl {
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         let region = self.get_or_create_region(batch.location.table_id);
         region.write(ctx, batch).await
+    }
+
+    async fn scan(
+        &self,
+        _ctx: &ScanContext,
+        _req: &ScanRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        todo!()
     }
 }
 

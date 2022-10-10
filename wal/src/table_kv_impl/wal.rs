@@ -13,7 +13,8 @@ use table_kv::TableKv;
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, WalLocation, WalManager,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
+        ScanRequest, WalLocation, WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
@@ -157,5 +158,13 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Write)
+    }
+
+    async fn scan(
+        &self,
+        _ctx: &ScanContext,
+        _req: &ScanRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        todo!()
     }
 }

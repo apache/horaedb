@@ -223,7 +223,7 @@ impl ReadBoundary {
 
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
-    /// Region id of the wal to read
+    /// WalLocation of the wal to read
     pub location: WalLocation,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
@@ -231,6 +231,14 @@ pub struct ReadRequest {
     /// End bound
     pub end: ReadBoundary,
 }
+
+#[derive(Debug, Clone)]
+pub struct ScanRequest {
+    /// WalLocation of the wal to read
+    pub location: WalLocation,
+}
+
+pub type ScanContext = ReadContext;
 
 /// Blocking Iterator abstraction for log entry.
 pub trait BlockingLogIterator: Send + fmt::Debug {
@@ -291,6 +299,9 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ///
     /// Returns the max sequence number for the batch of log entries.
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber>;
+
+    /// Scan all logs from a `Region`.
+    async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.
