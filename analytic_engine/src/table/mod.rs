@@ -24,7 +24,7 @@ use self::data::TableDataRef;
 use crate::{
     instance::{
         flush_compaction::{TableFlushOptions, TableFlushPolicy},
-        InstanceRef,
+        Instance, InstanceRef,
     },
     space::{SpaceAndTable, SpaceId},
 };
@@ -254,8 +254,7 @@ impl Table for TableImpl {
             policy: TableFlushPolicy::Dump,
         };
 
-        self.instance
-            .flush_table(&self.space_table, flush_opts)
+        Instance::flush_table(self.space_table.table_data().clone(), flush_opts)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Flush { table: self.name() })?;

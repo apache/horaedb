@@ -18,6 +18,7 @@ use common_util::{
     config::ReadableDuration,
     define_result,
     runtime::{JoinHandle, Runtime},
+    time::DurationExt,
 };
 use log::{debug, error, info, warn};
 use serde_derive::Deserialize;
@@ -36,8 +37,7 @@ use crate::{
         metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext, CompactionTask,
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
-    instance::SpaceStore,
-    table::data::TableDataRef,
+    instance::{flush_compaction::TableFlushOptions, Instance, SpaceStore},
     TableOptions,
 };
 
@@ -55,6 +55,7 @@ pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
     pub schedule_interval: ReadableDuration,
     pub max_ongoing_tasks: usize,
+    pub max_unflushed_duration: ReadableDuration,
 }
 
 // TODO(boyan), a better default value?
@@ -68,6 +69,8 @@ impl Default for SchedulerConfig {
             // 30 minutes schedule interval.
             schedule_interval: ReadableDuration(Duration::from_secs(60 * 30)),
             max_ongoing_tasks: MAX_GOING_COMPACTION_TASKS,
+            // flush_interval default is 5h.
+            max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
         }
     }
 }
@@ -233,8 +236,8 @@ impl SchedulerImpl {
             runtime: runtime.clone(),
             schedule_interval: config.schedule_interval.0,
             picker_manager: PickerManager::default(),
-            tables_buf: Vec::new(),
             max_ongoing_tasks: config.max_ongoing_tasks,
+            max_unflushed_duration: config.max_unflushed_duration.0,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -298,9 +301,8 @@ struct ScheduleWorker {
     space_store: Arc<SpaceStore>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
+    max_unflushed_duration: Duration,
     picker_manager: PickerManager,
-    /// Buffer to hold all tables.
-    tables_buf: Vec<TableDataRef>,
     max_ongoing_tasks: usize,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
@@ -330,7 +332,7 @@ impl ScheduleWorker {
                     // Timeout.
                     info!("Periodical compaction schedule start");
 
-                    self.full_ttl_purge();
+                    self.schedule().await;
 
                     info!("Periodical compaction schedule end");
                 }
@@ -340,8 +342,8 @@ impl ScheduleWorker {
         info!("Compaction schedule loop exit");
     }
 
-    // This function is called seqentially, so we can mark files in compaction
-    // without racy.
+    // This function is called sequentially, so we can mark files in compaction
+    // without race.
     async fn handle_schedule_task(&self, schedule_task: ScheduleTask) {
         let ongoing = self.limit.ongoing_tasks();
         match schedule_task {
@@ -468,14 +470,19 @@ impl ScheduleWorker {
         });
     }
 
-    fn full_ttl_purge(&mut self) {
-        self.tables_buf.clear();
-        self.space_store.list_all_tables(&mut self.tables_buf);
+    async fn schedule(&mut self) {
+        self.purge_tables();
+        self.flush_tables().await;
+    }
+
+    fn purge_tables(&mut self) {
+        let mut tables_buf = Vec::new();
+        self.space_store.list_all_tables(&mut tables_buf);
 
         let mut to_purge = Vec::new();
 
         let now = Timestamp::now();
-        for table_data in &self.tables_buf {
+        for table_data in &tables_buf {
             let expire_time = table_data
                 .table_options()
                 .ttl()
@@ -525,6 +532,25 @@ impl ScheduleWorker {
                 }
             }
         });
+    }
+
+    async fn flush_tables(&self) {
+        let mut tables_buf = Vec::new();
+        self.space_store.list_all_tables(&mut tables_buf);
+
+        for table_data in &tables_buf {
+            let last_flush_time = table_data.last_flush_time();
+            if last_flush_time + self.max_unflushed_duration.as_millis_u64()
+                > common_util::time::current_time_millis()
+            {
+                // Instance flush the table asynchronously.
+                if let Err(e) =
+                    Instance::flush_table(table_data.clone(), TableFlushOptions::default()).await
+                {
+                    error!("Failed to flush table, err:{}", e);
+                }
+            }
+        }
     }
 }
 

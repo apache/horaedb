@@ -122,6 +122,11 @@ pub struct TableData {
     /// Write to last_file_id require external synchronization
     last_file_id: AtomicU64,
 
+    /// Last flush time
+    ///
+    /// Not persist, used to determine if this table should flush.
+    last_flush_time_ms: AtomicU64,
+
     /// Flag denoting whether the table is dropped
     ///
     /// No write/alter is allowed if the table is dropped.
@@ -196,6 +201,7 @@ impl TableData {
             write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
+            last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
         })
@@ -231,6 +237,7 @@ impl TableData {
             write_handle,
             last_memtable_id: AtomicU64::new(0),
             last_file_id: AtomicU64::new(0),
+            last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
         })
@@ -275,6 +282,18 @@ impl TableData {
     #[inline]
     pub fn set_last_sequence(&self, seq: SequenceNumber) {
         self.last_sequence.store(seq, Ordering::Release);
+    }
+
+    /// Get last flush time
+    #[inline]
+    pub fn last_flush_time(&self) -> u64 {
+        self.last_flush_time_ms.load(Ordering::Relaxed)
+    }
+
+    /// Set last flush time
+    #[inline]
+    pub fn set_last_flush_time(&self, time: u64) {
+        self.last_flush_time_ms.store(time, Ordering::Release);
     }
 
     #[inline]
