@@ -22,7 +22,12 @@ use warp::{
 };
 
 use crate::{
-    config::Endpoint, consts, context::RequestContext, error, handlers, instance::InstanceRef,
+    config::Endpoint,
+    consts,
+    context::RequestContext,
+    error,
+    handlers::{self, sql::Request},
+    instance::InstanceRef,
     metrics,
 };
 
@@ -77,6 +82,8 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
+const MAX_BODY_SIZE: u64 = 4096;
+
 /// Http service
 ///
 /// Note that the service does not owns the runtime
@@ -114,14 +121,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     // TODO(yingwen): Avoid boilterplate code if there are more handlers
     fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        // accept json or plain text
+        let extract_request = warp::body::json()
+            .or(warp::body::bytes().map(Request::from))
+            .unify();
+
         warp::path!("sql")
             .and(warp::post())
-            // TODO(yingwen): content length limit
-            .and(warp::body::json())
+            .and(warp::body::content_length_limit(MAX_BODY_SIZE))
+            .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|req, ctx, instance| async {
-                // TODO(yingwen): Wrap common logic such as metrics, trace and error log
+            .and_then(|req, ctx, instance| async move {
                 let result = handlers::sql::handle_sql(ctx, instance, req)
                     .await
                     .map_err(|e| {

@@ -5086,6 +5086,7 @@ dependencies = [
  "arrow 23.0.0",
  "async-trait",
  "avro-rs",
+ "bytes 1.2.1",
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=165cbd489e864fa3fb1ace9c6bef1de25b6dc11a)",
  "cluster",
