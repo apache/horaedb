@@ -53,11 +53,11 @@ jobs:
           path: |
             ~/.cargo
             ./target
-          key: rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-${{ runner.os }}-ci-${{ hashFiles('rust-toolchain') }}-
-            rust-${{ runner.os }}-ci-
-            rust-${{ runner.os }}
+            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            debug-${{ runner.os }}-
+            debug-${{ runner.os }}
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -92,4 +92,3 @@ jobs:
         run: |
           du -sh .
           df -h
-
