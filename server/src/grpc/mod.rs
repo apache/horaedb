@@ -28,7 +28,7 @@ use ceresdbproto::{
         WriteResponse,
     },
 };
-use cluster::{config::SchemaConfig, ClusterRef};
+use cluster::{config::SchemaConfig, CloseShardsOpts, ClusterRef, OpenShardsOpts};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -256,7 +256,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
 pub struct RpcServices<Q: QueryExecutor + 'static> {
     serve_addr: SocketAddr,
     rpc_server: StorageServiceServer<StorageServiceImpl<Q>>,
-    meta_rpc_server: MetaEventServiceServer<MetaServiceImpl<Q>>,
+    meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q>>>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
@@ -271,9 +271,14 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
         let join_handle = self.runtime.spawn(async move {
             info!("Grpc server starts listening on {}", serve_addr);
 
-            let serve_res = Server::builder()
-                .add_service(rpc_server)
-                .add_service(meta_rpc_server)
+            let mut router = Server::builder().add_service(rpc_server);
+
+            if let Some(s) = meta_rpc_server {
+                info!("Grpc server serves meta rpc service");
+                router = router.add_service(s);
+            };
+
+            let serve_res = router
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
                 .await;
 
@@ -302,6 +307,7 @@ pub struct Builder<Q> {
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
     router: Option<RouterRef>,
+    cluster: Option<ClusterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
 }
 
@@ -312,6 +318,7 @@ impl<Q> Builder<Q> {
             runtimes: None,
             instance: None,
             router: None,
+            cluster: None,
             schema_config_provider: None,
         }
     }
@@ -336,6 +343,12 @@ impl<Q> Builder<Q> {
         self
     }
 
+    // Cluster is an optional field for building [RpcServices].
+    pub fn cluster(mut self, cluster: Option<ClusterRef>) -> Self {
+        self.cluster = cluster;
+        self
+    }
+
     pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
         self.schema_config_provider = Some(provider);
         self
@@ -351,6 +364,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
 
+        let meta_rpc_server = self.cluster.map(|v| {
+            let meta_service = MetaServiceImpl {
+                cluster: v,
+                instance: instance.clone(),
+                runtime: runtimes.meta_runtime.clone(),
+            };
+            MetaEventServiceServer::new(meta_service)
+        });
+
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
             router,
@@ -359,7 +381,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             schema_config_provider,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
-        let meta_rpc_server = MetaEventServiceServer::new(MetaServiceImpl);
+
         let serve_addr = self.endpoint.parse().context(InvalidRpcServeAddr)?;
 
         Ok(RpcServices {
@@ -390,37 +412,167 @@ fn build_ok_header() -> ResponseHeader {
 #[derive(Clone)]
 struct MetaServiceImpl<Q: QueryExecutor + 'static> {
     cluster: ClusterRef,
+    #[allow(dead_code)]
     instance: InstanceRef<Q>,
+    runtime: Arc<Runtime>,
 }
 
 #[async_trait]
 impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
+    // TODO: use macro to remove the boilerplate codes.
     async fn open_shards(
         &self,
         request: tonic::Request<OpenShardsRequest>,
     ) -> std::result::Result<tonic::Response<OpenShardsResponse>, tonic::Status> {
-        todo!()
+        let cluster = self.cluster.clone();
+        let handle = self.runtime.spawn(async move {
+            let request = request.into_inner();
+            cluster
+                .open_shards(&request, OpenShardsOpts::default())
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to open shards in cluster",
+                })
+        });
+
+        let res = handle
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "fail to join task",
+            });
+
+        let mut resp = OpenShardsResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(build_err_header(e));
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn close_shards(
         &self,
-        _request: tonic::Request<CloseShardsRequest>,
+        request: tonic::Request<CloseShardsRequest>,
     ) -> std::result::Result<tonic::Response<CloseShardsResponse>, tonic::Status> {
-        todo!()
+        let cluster = self.cluster.clone();
+        let handle = self.runtime.spawn(async move {
+            let request = request.into_inner();
+            cluster
+                .close_shards(&request, CloseShardsOpts::default())
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to close shards in cluster",
+                })
+        });
+
+        let res = handle
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "fail to join task",
+            });
+
+        let mut resp = CloseShardsResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(build_err_header(e));
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn create_table_on_shard(
         &self,
-        _request: tonic::Request<CreateTableOnShardRequest>,
+        request: tonic::Request<CreateTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<CreateTableOnShardResponse>, tonic::Status> {
-        todo!()
+        let cluster = self.cluster.clone();
+        let handle = self.runtime.spawn(async move {
+            let request = request.into_inner();
+            cluster
+                .create_table_on_shard(&request)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!(
+                        "fail to create table on shard in cluster, req:{:?}",
+                        request
+                    ),
+                })
+        });
+
+        let res = handle
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "fail to join task",
+            });
+
+        let mut resp = CreateTableOnShardResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(build_err_header(e));
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn drop_table_on_shard(
         &self,
-        _request: tonic::Request<DropTableOnShardRequest>,
+        request: tonic::Request<DropTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<DropTableOnShardResponse>, tonic::Status> {
-        todo!()
+        let cluster = self.cluster.clone();
+        let handle = self.runtime.spawn(async move {
+            let request = request.into_inner();
+            cluster
+                .drop_table_on_shard(&request)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("fail to drop table on shard in cluster, req:{:?}", request),
+                })
+        });
+
+        let res = handle
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "fail to join task",
+            });
+
+        let mut resp = DropTableOnShardResponse::default();
+        match res {
+            Ok(Ok(_)) => {
+                resp.header = Some(build_ok_header());
+            }
+            Ok(Err(e)) | Err(e) => {
+                resp.header = Some(build_err_header(e));
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn split_shard(

@@ -11,6 +11,7 @@ workspace = true
 analytic_engine = { workspace = true }
 async-trait = { workspace = true }
 catalog = { workspace = true }
+ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 log = { workspace = true }

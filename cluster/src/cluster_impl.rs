@@ -6,6 +6,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use ceresdbproto::meta_event::{
+    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+};
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
@@ -19,8 +22,8 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result,
+    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardsOpts,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShardsOpts, Result,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -204,6 +207,22 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    async fn open_shards(&self, _req: &OpenShardsRequest, _opts: OpenShardsOpts) -> Result<()> {
+        todo!();
+    }
+
+    async fn close_shards(&self, _req: &CloseShardsRequest, _opts: CloseShardsOpts) -> Result<()> {
+        todo!();
+    }
+
+    async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {
+        todo!();
+    }
+
+    async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
+        todo!();
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
