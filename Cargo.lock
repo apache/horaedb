@@ -1004,6 +1004,7 @@ dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=165cbd489e864fa3fb1ace9c6bef1de25b6dc11a)",
  "common_types 0.1.0",
  "common_util",
  "log",

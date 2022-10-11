@@ -22,7 +22,7 @@ use catalog::{
 };
 use common_types::schema::SchemaName;
 use log::{debug, info};
-use meta_client::MetaClientRef;
+use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
 use snafu::{ensure, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
@@ -127,7 +127,7 @@ impl Catalog for CatalogImpl {
 
         let schema_id = self
             .meta_client
-            .alloc_schema_id(cluster::AllocSchemaIdRequest {
+            .alloc_schema_id(AllocSchemaIdRequest {
                 name: name.to_string(),
             })
             .await
@@ -324,7 +324,7 @@ impl Schema for SchemaImpl {
 
         // Request CeresMeta to drop this table.
         self.meta_client
-            .drop_table(cluster::DropTableRequest {
+            .drop_table(meta_client::types::DropTableRequest {
                 schema_name: schema_name.to_string(),
                 name: table_name.to_string(),
                 id: table.id().as_u64(),

@@ -261,6 +261,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .runtimes(runtimes)
             .instance(instance.clone())
             .router(router)
+            .cluster(self.cluster.clone())
             .schema_config_provider(provider)
             .build()
             .context(BuildGrpcService)?;
