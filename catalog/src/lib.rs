@@ -20,12 +20,26 @@ use crate::schema::{NameRef, SchemaRef};
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display(
+        "Failed to create schema, catalog:{}, schema:{}, msg:{}.\nBacktrace:\nbacktrace:{}",
+        catalog,
+        schema,
+        msg,
+        backtrace,
+    ))]
+    CreateSchema {
+        catalog: String,
+        schema: String,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
         "Failed to create schema, catalog:{}, schema:{}, err:{}",
         catalog,
         schema,
         source
     ))]
-    CreateSchema {
+    CreateSchemaWithCause {
         catalog: String,
         schema: String,
         source: Box<dyn std::error::Error + Send + Sync>,

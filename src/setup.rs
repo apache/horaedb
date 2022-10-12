@@ -153,8 +153,6 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     )
     .expect("fail to build meta client");
 
-    let catalog_manager = { Arc::new(volatile::ManagerImpl::new(meta_client.clone()).await) };
-
     let cluster = {
         let cluster_impl = ClusterImpl::new(
             meta_client,
@@ -163,6 +161,11 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         )
         .unwrap();
         Arc::new(cluster_impl)
+    };
+
+    let catalog_manager = {
+        let table_manager = cluster.table_manager().clone();
+        Arc::new(volatile::ManagerImpl::new(table_manager).await)
     };
 
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
