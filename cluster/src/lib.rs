@@ -39,12 +39,21 @@ pub enum Error {
     #[snafu(display("Meta client execute failed, err:{}.", source))]
     MetaClientFailure { source: meta_client::Error },
 
-    #[snafu(display("Fail to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    OpenShard { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Fail to open shard, msg:{}, source:{}.", msg, source))]
-    OpenShardWithCause {
+    #[snafu(display(
+        "Fail to open shard, shard_id:{}, msg:{}.\nBacktrace:\n{}",
+        shard_id,
+        msg,
+        backtrace
+    ))]
+    OpenShard {
+        shard_id: ShardId,
         msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Fail to open shard, source:{}.", source))]
+    OpenShardWithCause {
+        shard_id: ShardId,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 

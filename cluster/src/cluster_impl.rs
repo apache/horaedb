@@ -178,12 +178,14 @@ impl Inner {
 
     async fn open_shard(&self, req: &OpenShardRequest, _opts: OpenShardOpts) -> Result<()> {
         let shard_info = req.shard.as_ref().context(OpenShard {
+            shard_id: 0u32,
             msg: "missing shard info in the request",
         })?;
 
         if self.table_manager.contains_shard(shard_info.shard_id) {
             OpenShard {
-                msg: format!("shard#{} is already opened", shard_info.shard_id),
+                shard_id: shard_info.shard_id,
+                msg: "shard is already opened",
             }
             .fail()?;
         }
@@ -198,13 +200,14 @@ impl Inner {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(OpenShardWithCause {
-                msg: "fail to get shard tables",
+                shard_id: shard_info.shard_id,
             })?;
 
         ensure!(
             resp.shard_tables.len() == 1,
             OpenShard {
-                msg: format!("expect only one shard tables")
+                shard_id: shard_info.shard_id,
+                msg: "expect only one shard tables"
             }
         );
 
@@ -212,10 +215,8 @@ impl Inner {
             .shard_tables
             .get(&shard_info.shard_id)
             .context(OpenShard {
-                msg: format!(
-                    "shard tables are missing from the response, shard_id:{}",
-                    shard_info.shard_id
-                ),
+                shard_id: shard_info.shard_id,
+                msg: "shard tables are missing from the response",
             })?;
 
         self.table_manager.update_table_info(&resp.shard_tables);
