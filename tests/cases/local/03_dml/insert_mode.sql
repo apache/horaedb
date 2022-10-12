@@ -114,13 +114,15 @@ CREATE TABLE `03_dml_insert_mode_table4` (
     `c1` uint32,
     `c2` string default '123',
     `c3` uint32 default c1 + 1,
+    `c4` uint32 default c3 + 1,
+    `c5` uint32 default c3 + 10,
     timestamp KEY (timestamp)) ENGINE=Analytic
 WITH(
 	 enable_ttl='false'
 );
 
-INSERT INTO `03_dml_insert_mode_table4` (`timestamp`, `c1`)
-    VALUES (1, 10), (2, 20), (3, 30);
+INSERT INTO `03_dml_insert_mode_table4` (`timestamp`, `c1`, `c5`)
+    VALUES (1, 10, 3), (2, 20, 4), (3, 30, 5);
 
 SELECT
     *
