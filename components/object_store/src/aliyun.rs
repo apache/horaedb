@@ -10,8 +10,10 @@ use futures::{
 };
 use oss_rust_sdk::{async_object::AsyncObjectAPI, errors::Error as AliyunError, prelude::OSS};
 use snafu::{ResultExt, Snafu};
+use tokio::io::AsyncWrite;
 use upstream::{
-    path::Path, Error as OssError, GetResult, ListResult, ObjectMeta, ObjectStore, Result,
+    path::Path, Error as OssError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
+    Result,
 };
 
 #[derive(Debug, Snafu)]
@@ -81,6 +83,23 @@ impl ObjectStore for AliyunOSS {
         Ok(())
     }
 
+    async fn put_multipart(
+        &self,
+        _location: &Path,
+    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        Err(Error::Unimplemented {
+            op: "put_multipart".to_string(),
+        }
+        .into())
+    }
+
+    async fn abort_multipart(&self, _location: &Path, _multipart_id: &MultipartId) -> Result<()> {
+        Err(Error::Unimplemented {
+            op: "abort_multipart".to_string(),
+        }
+        .into())
+    }
+
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let bytes = self
             .oss
@@ -137,6 +156,20 @@ impl ObjectStore for AliyunOSS {
     async fn list_with_delimiter(&self, _prefix: Option<&Path>) -> Result<ListResult> {
         Err(Error::Unimplemented {
             op: "list_with_delimiter".to_string(),
+        }
+        .into())
+    }
+
+    async fn copy(&self, _from: &Path, _to: &Path) -> Result<()> {
+        Err(Error::Unimplemented {
+            op: "copy".to_string(),
+        }
+        .into())
+    }
+
+    async fn copy_if_not_exists(&self, _from: &Path, _to: &Path) -> Result<()> {
+        Err(Error::Unimplemented {
+            op: "copy_if_not_exists".to_string(),
         }
         .into())
     }
