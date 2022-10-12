@@ -10,14 +10,14 @@ workspace = true
 async-trait = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
-upstream = { package = "object_store", version = "0.1.0" }
+upstream = { package = "object_store", version = "0.5.1" }
 oss-rust-sdk = "0.4.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 snafu = { workspace = true }
 lru = "0.7.6"
 chrono = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-tokio = { workspace = true }
