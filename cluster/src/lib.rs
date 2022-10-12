@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
 };
 use common_types::schema::SchemaName;
 use common_util::define_result;
@@ -38,6 +38,15 @@ pub enum Error {
 
     #[snafu(display("Meta client execute failed, err:{}.", source))]
     MetaClientFailure { source: meta_client::Error },
+
+    #[snafu(display("Fail to open shard, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    OpenShard { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Fail to open shard, msg:{}, source:{}.", msg, source))]
+    OpenShardWithCause {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display(
         "Shard not found in current node, shard_id:{}.\nBacktrace:\n{}",
@@ -78,18 +87,18 @@ pub struct ClusterNodesResp {
 }
 
 #[derive(Debug, Default)]
-pub struct OpenShardsOpts {}
+pub struct OpenShardOpts {}
 
 #[derive(Debug, Default)]
-pub struct CloseShardsOpts {}
+pub struct CloseShardOpts {}
 
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shards(&self, req: &OpenShardsRequest, opts: OpenShardsOpts) -> Result<()>;
-    async fn close_shards(&self, req: &CloseShardsRequest, opts: CloseShardsOpts) -> Result<()>;
+    async fn open_shard(&self, req: &OpenShardRequest, opts: OpenShardOpts) -> Result<()>;
+    async fn close_shard(&self, req: &CloseShardRequest, opts: CloseShardOpts) -> Result<()>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;

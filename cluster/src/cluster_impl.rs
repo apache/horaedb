@@ -7,23 +7,24 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
 };
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{GetNodesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
     MetaClientRef,
 };
-use snafu::{OptionExt, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
 };
 
 use crate::{
-    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardsOpts,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShardsOpts, Result,
+    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardOpts,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard, OpenShardOpts,
+    OpenShardWithCause, Result,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -174,6 +175,53 @@ impl Inner {
 
         Ok(resp)
     }
+
+    async fn open_shard(&self, req: &OpenShardRequest, _opts: OpenShardOpts) -> Result<()> {
+        let shard_info = req.shard.as_ref().context(OpenShard {
+            msg: "missing shard info in the request",
+        })?;
+
+        if self.table_manager.contains_shard(shard_info.shard_id) {
+            OpenShard {
+                msg: format!("shard#{} is already opened", shard_info.shard_id),
+            }
+            .fail()?;
+        }
+
+        let get_shard_tables_req = GetShardTablesRequest {
+            shard_ids: vec![shard_info.shard_id],
+        };
+
+        let resp = self
+            .meta_client
+            .get_tables(get_shard_tables_req)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenShardWithCause {
+                msg: "fail to get shard tables",
+            })?;
+
+        ensure!(
+            resp.shard_tables.len() == 1,
+            OpenShard {
+                msg: format!("expect only one shard tables")
+            }
+        );
+
+        let _shard_tables = resp
+            .shard_tables
+            .get(&shard_info.shard_id)
+            .context(OpenShard {
+                msg: format!(
+                    "shard tables are missing from the response, shard_id:{}",
+                    shard_info.shard_id
+                ),
+            })?;
+
+        self.table_manager.update_table_info(&resp.shard_tables);
+
+        todo!("Do real open table");
+    }
 }
 
 #[async_trait]
@@ -209,12 +257,12 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn open_shards(&self, _req: &OpenShardsRequest, _opts: OpenShardsOpts) -> Result<()> {
-        todo!();
+    async fn open_shard(&self, req: &OpenShardRequest, opts: OpenShardOpts) -> Result<()> {
+        self.inner.open_shard(req, opts).await
     }
 
-    async fn close_shards(&self, _req: &CloseShardsRequest, _opts: CloseShardsOpts) -> Result<()> {
-        todo!();
+    async fn close_shard(&self, _req: &CloseShardRequest, _opts: CloseShardOpts) -> Result<()> {
+        todo!()
     }
 
     async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {

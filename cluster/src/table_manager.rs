@@ -52,6 +52,14 @@ impl TableManager {
         Ok(())
     }
 
+    pub fn contains_shard(&self, shard_id: ShardId) -> bool {
+        self.inner
+            .read()
+            .unwrap()
+            .shard_infos
+            .contains_key(&shard_id)
+    }
+
     pub fn update_table_info(&self, shard_table: &HashMap<ShardId, ShardTables>) {
         self.inner.write().unwrap().update_table_info(shard_table)
     }
@@ -98,31 +106,8 @@ impl TableManager {
         }
     }
 
-    // todo: should accept schema id as param instead of schema name?
-    pub fn get_all_table_ref(&self, catalog: &str, schema: &str) -> Vec<TableRef> {
-        let schema_id = if let Some(id) = self.inner.read().unwrap().get_schema_id(schema) {
-            id
-        } else {
-            return vec![];
-        };
-
-        self.inner
-            .read()
-            .unwrap()
-            .tables_by_token
-            .iter()
-            .filter_map(|(token, table)| {
-                if token.catalog == catalog && token.schema == schema_id {
-                    Some(table.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     pub fn table_by_name(&self, catalog: &str, schema: &str, table_name: &str) -> Option<TableRef> {
-        let schema_id = self.inner.read().unwrap().get_schema_id(schema)?;
+        let schema_id = self.inner.read().unwrap().get_schema_id(catalog, schema)?;
 
         self.inner
             .read()
@@ -146,6 +131,30 @@ impl TableManager {
         } else {
             vec![]
         }
+    }
+
+    // todo: should accept schema id as param instead of schema name?
+    pub fn tables_by_schema(&self, catalog: &str, schema: &str) -> Vec<TableRef> {
+        let schema_id = if let Some(id) = self.inner.read().unwrap().get_schema_id(catalog, schema)
+        {
+            id
+        } else {
+            return vec![];
+        };
+
+        self.inner
+            .read()
+            .unwrap()
+            .tables_by_token
+            .iter()
+            .filter_map(|(token, table)| {
+                if token.catalog == catalog && token.schema == schema_id {
+                    Some(table.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     #[allow(dead_code)]
@@ -239,11 +248,11 @@ impl Inner {
             .remove(&TableToken::from_table_info(table_info));
     }
 
-    fn get_schema_id(&self, schema_name: &str) -> Option<SchemaId> {
+    fn get_schema_id(&self, catalog: &str, schema: &str) -> Option<SchemaId> {
         self.catalog_infos
-            .get(consts::DEFAULT_CATALOG)
+            .get(catalog)
             .unwrap()
-            .get(schema_name)
+            .get(schema)
             .map(|v| v.id)
     }
 }
