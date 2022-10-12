@@ -216,8 +216,8 @@ pub struct ReadRequest {
 
 #[derive(Debug, Clone)]
 pub struct ScanRequest {
-    /// Location of the wal to read
-    pub location: Location,
+    /// Region id of the wals to be scanned
+    pub region_id: RegionId,
 }
 
 pub type ScanContext = ReadContext;
