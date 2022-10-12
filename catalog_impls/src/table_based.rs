@@ -401,7 +401,7 @@ impl<'a> Visitor for VisitorImpl<'a> {
         let table_name = open_request.table_name.clone();
         let table_opt = self
             .engine_proxy
-            .open_table(open_request)
+            .open_table(open_request.into())
             .await
             .context(VisitorOpenTable)?;
 

@@ -830,7 +830,6 @@ dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
- "cluster",
  "common_types 0.1.0",
  "common_util",
  "log",
@@ -1003,7 +1002,7 @@ version = "0.1.0"
 dependencies = [
  "analytic_engine",
  "async-trait",
- "catalog",
+ "catalog_impls",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=e31f3044bb305e716ea98f2d5d5439139ad6ef14)",
  "common_types 0.1.0",
  "common_util",
@@ -1057,6 +1056,7 @@ dependencies = [
  "arrow_ext",
  "byteorder",
  "bytes_ext",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=e31f3044bb305e716ea98f2d5d5439139ad6ef14)",
  "chrono",
  "datafusion 12.0.0",
  "murmur3",
@@ -3112,7 +3112,6 @@ name = "meta_client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=e31f3044bb305e716ea98f2d5d5439139ad6ef14)",
  "common_types 0.1.0",
  "common_util",

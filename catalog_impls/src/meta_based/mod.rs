@@ -1,8 +1,5 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! A volatile catalog implementation used for storing information about table
-//! and schema in memory.
-
 use std::{
     collections::HashMap,
     string::ToString,
@@ -14,29 +11,33 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTable, CloseTableRequest, CreateOptions,
-        CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef, OpenOptions,
-        OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
+        self, CatalogMismatch, CloseOptions, CloseTableRequest, CreateOptions, CreateTableRequest,
+        DropOptions, DropTableRequest, NameRef, OpenOptions, OpenTableRequest, Schema,
+        SchemaMismatch, SchemaRef,
     },
-    Catalog, CatalogRef,
+    Catalog, CatalogRef, CreateSchemaWithCause,
 };
-use cluster::table_manager::TableManager;
 use common_types::schema::SchemaName;
 use log::info;
-use snafu::{ensure, OptionExt};
+use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
+use snafu::{ensure, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
+use table_manager::TableManager;
 
-/// ManagerImpl manages multiple volatile catalogs.
+pub mod table_manager;
+
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
     table_manager: TableManager,
+    meta_client: MetaClientRef,
 }
 
 impl ManagerImpl {
-    pub async fn new(table_manager: TableManager) -> Self {
+    pub async fn new(table_manager: TableManager, meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
             table_manager,
+            meta_client,
         };
 
         manager.maybe_create_default_catalog().await;
@@ -84,6 +85,7 @@ impl ManagerImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
             table_manager: self.table_manager.clone(),
+            meta_client: self.meta_client.clone(),
         });
 
         self.catalogs.insert(catalog_name, catalog.clone());
@@ -103,6 +105,7 @@ struct CatalogImpl {
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
     table_manager: TableManager,
+    meta_client: MetaClientRef,
 }
 
 #[async_trait]
@@ -125,14 +128,33 @@ impl Catalog for CatalogImpl {
             }
         }
 
-        let schema_id = self
-            .table_manager
-            .get_schema_id(&self.name, name)
-            .with_context(|| catalog::CreateSchema {
-                catalog: &self.name,
-                schema: name.to_string(),
-                msg: "Schema should be created already in table manager",
-            })?;
+        let schema_id = match self.table_manager.get_schema_id(&self.name, name) {
+            Some(v) => v,
+            None => {
+                let req = AllocSchemaIdRequest {
+                    name: name.to_string(),
+                };
+
+                let resp = self
+                    .meta_client
+                    .alloc_schema_id(req)
+                    .await
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| CreateSchemaWithCause {
+                        catalog: self.name.to_string(),
+                        schema: name.to_string(),
+                    })?;
+
+                info!(
+                    "Succeed to allocate schema id({}) for schema({})",
+                    resp.id, name
+                );
+
+                resp.id
+            }
+        };
+
+        // TODO: add the new schema to table_manager.
 
         let mut schemas = self.schemas.write().unwrap();
         if schemas.get(name).is_some() {
@@ -166,9 +188,7 @@ impl Catalog for CatalogImpl {
     }
 }
 
-/// A volatile implementation for [`Schema`].
-///
-/// The implementation is actually a delegation for [`cluster::TableManager`].
+/// An implementation based [`TableManager`] for [`Schema`].
 struct SchemaImpl {
     /// Catalog name
     catalog_name: String,
@@ -254,27 +274,7 @@ impl Schema for SchemaImpl {
             return Ok(table);
         }
 
-        if let Some(table) = self.get_table_with_check(
-            &request.catalog_name,
-            &request.schema_name,
-            &request.table_name,
-        )? {
-            return Ok(table);
-        }
-
-        let table = self
-            .table_manager
-            .table_by_name(
-                &request.catalog_name,
-                &request.schema_name,
-                &request.table_name,
-            )
-            .with_context(|| schema::CreateTable {
-                request,
-                msg: "fail to fetch table from manager",
-            })?;
-
-        Ok(table)
+        todo!()
     }
 
     async fn drop_table(
@@ -282,21 +282,13 @@ impl Schema for SchemaImpl {
         request: DropTableRequest,
         _opts: DropOptions,
     ) -> schema::Result<bool> {
-        let table = self.get_table_with_check(
+        let _table = self.get_table_with_check(
             &request.catalog_name,
             &request.schema_name,
             &request.table_name,
         )?;
 
-        ensure!(
-            table.is_none(),
-            DropTable {
-                request,
-                msg: "Table should be dropped in the table manager already",
-            }
-        );
-
-        Ok(true)
+        todo!();
     }
 
     async fn open_table(
@@ -304,21 +296,13 @@ impl Schema for SchemaImpl {
         request: OpenTableRequest,
         _opts: OpenOptions,
     ) -> schema::Result<Option<TableRef>> {
-        let table = self.get_table_with_check(
+        let _table = self.get_table_with_check(
             &request.catalog_name,
             &request.schema_name,
             &request.table_name,
         )?;
 
-        ensure!(
-            table.is_some(),
-            OpenTable {
-                request,
-                msg: "Table should be opened in the table manager already"
-            }
-        );
-
-        Ok(table)
+        todo!()
     }
 
     async fn close_table(
@@ -326,21 +310,13 @@ impl Schema for SchemaImpl {
         request: CloseTableRequest,
         _opts: CloseOptions,
     ) -> schema::Result<()> {
-        let table = self.get_table_with_check(
+        let _table = self.get_table_with_check(
             &request.catalog_name,
             &request.schema_name,
             &request.table_name,
         )?;
 
-        ensure!(
-            table.is_none(),
-            CloseTable {
-                request,
-                msg: "Table should be closed in the table manager already",
-            }
-        );
-
-        Ok(())
+        todo!()
     }
 
     fn all_tables(&self) -> schema::Result<Vec<TableRef>> {

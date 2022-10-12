@@ -156,7 +156,7 @@ fn pick_node_for_table<'a>(
 
 #[cfg(test)]
 mod tests {
-    use meta_client::types::{ShardInfo, ShardRole};
+    use common_types::shard::{ShardInfo, ShardRole};
 
     use super::*;
 

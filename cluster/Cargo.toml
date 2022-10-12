@@ -10,7 +10,7 @@ workspace = true
 [dependencies]
 analytic_engine = { workspace = true }
 async-trait = { workspace = true }
-catalog = { workspace = true }
+catalog_impls = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }

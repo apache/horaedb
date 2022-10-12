@@ -7,6 +7,7 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
+use common_types::shard::ShardInfo;
 use common_util::{config::ReadableDuration, runtime::Runtime};
 use log::{debug, info};
 use serde_derive::Deserialize;
@@ -17,7 +18,7 @@ use crate::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
         DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
         GetShardTablesResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
-        RouteTablesResponse, ShardInfo,
+        RouteTablesResponse,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
     FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,

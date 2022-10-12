@@ -12,9 +12,9 @@ use system_catalog::{tables::Tables, SystemTableAdapter};
 
 use crate::system_tables::{SystemTables, SystemTablesBuilder};
 
+pub mod meta_based;
 mod system_tables;
 pub mod table_based;
-pub mod volatile;
 
 /// CatalogManagerImpl is a wrapper for system and user tables
 #[derive(Clone)]

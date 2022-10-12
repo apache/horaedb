@@ -6,25 +6,22 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::meta_event::{
-    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
-};
+use catalog_impls::meta_based::table_manager::TableManager;
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{GetNodesRequest, RouteTablesRequest, RouteTablesResponse},
     MetaClientRef,
 };
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::{OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
 };
 
 use crate::{
-    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardOpts,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard, OpenShardOpts,
-    OpenShardWithCause, Result,
+    config::ClusterConfig, topology::ClusterTopology, Cluster, ClusterNodesNotFound,
+    ClusterNodesResp, MetaClientFailure, Result,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -43,11 +40,12 @@ pub struct ClusterImpl {
 
 impl ClusterImpl {
     pub fn new(
+        table_manager: TableManager,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(meta_client)?;
+        let inner = Inner::new(table_manager, meta_client)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -104,17 +102,19 @@ impl ClusterImpl {
 }
 
 struct Inner {
-    table_manager: TableManager,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
+    // TODO: Actually, what we need is just a querier for shard infos rather than the whole
+    // TableManager.
+    table_manager: TableManager,
 }
 
 impl Inner {
-    fn new(meta_client: MetaClientRef) -> Result<Self> {
+    fn new(table_manager: TableManager, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
-            table_manager: TableManager::default(),
             meta_client,
             topology: Default::default(),
+            table_manager,
         })
     }
 
@@ -175,54 +175,6 @@ impl Inner {
 
         Ok(resp)
     }
-
-    async fn open_shard(&self, req: &OpenShardRequest, _opts: OpenShardOpts) -> Result<()> {
-        let shard_info = req.shard.as_ref().context(OpenShard {
-            shard_id: 0u32,
-            msg: "missing shard info in the request",
-        })?;
-
-        if self.table_manager.contains_shard(shard_info.shard_id) {
-            OpenShard {
-                shard_id: shard_info.shard_id,
-                msg: "shard is already opened",
-            }
-            .fail()?;
-        }
-
-        let get_shard_tables_req = GetShardTablesRequest {
-            shard_ids: vec![shard_info.shard_id],
-        };
-
-        let resp = self
-            .meta_client
-            .get_tables(get_shard_tables_req)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(OpenShardWithCause {
-                shard_id: shard_info.shard_id,
-            })?;
-
-        ensure!(
-            resp.shard_tables.len() == 1,
-            OpenShard {
-                shard_id: shard_info.shard_id,
-                msg: "expect only one shard tables"
-            }
-        );
-
-        let _shard_tables = resp
-            .shard_tables
-            .get(&shard_info.shard_id)
-            .context(OpenShard {
-                shard_id: shard_info.shard_id,
-                msg: "shard tables are missing from the response",
-            })?;
-
-        self.table_manager.update_table_info(&resp.shard_tables);
-
-        todo!("Do real open table");
-    }
 }
 
 #[async_trait]
@@ -256,22 +208,6 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
-    }
-
-    async fn open_shard(&self, req: &OpenShardRequest, opts: OpenShardOpts) -> Result<()> {
-        self.inner.open_shard(req, opts).await
-    }
-
-    async fn close_shard(&self, _req: &CloseShardRequest, _opts: CloseShardOpts) -> Result<()> {
-        todo!()
-    }
-
-    async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {
-        todo!();
-    }
-
-    async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
-        todo!();
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {

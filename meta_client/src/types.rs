@@ -2,9 +2,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use ceresdbproto::{cluster, meta_service};
+use ceresdbproto::meta_service;
 use common_types::{
     schema::{SchemaId, SchemaName},
+    shard::{ShardId, ShardInfo, ShardRole},
     table::{TableId, TableName},
 };
 use common_util::config::ReadableDuration;
@@ -13,7 +14,6 @@ use snafu::OptionExt;
 
 use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
 
-pub type ShardId = u32;
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]
@@ -114,28 +114,6 @@ pub struct NodeInfo {
     pub shards_info: Vec<ShardInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ShardInfo {
-    pub shard_id: ShardId,
-    pub role: ShardRole,
-    pub version: u64,
-}
-
-impl ShardInfo {
-    #[inline]
-    pub fn is_leader(&self) -> bool {
-        self.role == ShardRole::Leader
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum ShardRole {
-    Leader,
-    Follower,
-    PendingLeader,
-    PendingFollower,
-}
-
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct MetaClientConfig {
@@ -174,50 +152,6 @@ impl From<NodeInfo> for meta_service::NodeInfo {
             binary_version: node_info.node_meta_info.binary_version,
             shard_infos,
             lease: 0,
-        }
-    }
-}
-
-impl From<ShardInfo> for meta_service::ShardInfo {
-    fn from(shard_info: ShardInfo) -> Self {
-        let role = cluster::ShardRole::from(shard_info.role);
-
-        Self {
-            shard_id: shard_info.shard_id,
-            role: role as i32,
-            version: 0,
-        }
-    }
-}
-
-impl From<meta_service::ShardInfo> for ShardInfo {
-    fn from(pb_shard_info: meta_service::ShardInfo) -> Self {
-        ShardInfo {
-            shard_id: pb_shard_info.shard_id,
-            role: pb_shard_info.role().into(),
-            version: pb_shard_info.version,
-        }
-    }
-}
-
-impl From<ShardRole> for cluster::ShardRole {
-    fn from(shard_role: ShardRole) -> Self {
-        match shard_role {
-            ShardRole::Leader => cluster::ShardRole::Leader,
-            ShardRole::Follower => cluster::ShardRole::Follower,
-            ShardRole::PendingLeader => cluster::ShardRole::PendingLeader,
-            ShardRole::PendingFollower => cluster::ShardRole::PendingFollower,
-        }
-    }
-}
-
-impl From<cluster::ShardRole> for ShardRole {
-    fn from(pb_role: cluster::ShardRole) -> Self {
-        match pb_role {
-            cluster::ShardRole::Leader => ShardRole::Leader,
-            cluster::ShardRole::Follower => ShardRole::Follower,
-            cluster::ShardRole::PendingLeader => ShardRole::PendingLeader,
-            cluster::ShardRole::PendingFollower => ShardRole::PendingFollower,
         }
     }
 }

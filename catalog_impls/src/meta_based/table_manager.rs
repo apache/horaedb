@@ -8,12 +8,11 @@ use std::{
 use catalog::consts::{self, DEFAULT_CATALOG};
 use common_types::{
     schema::{CatalogName, SchemaId, SchemaName},
+    shard::{ShardId, ShardInfo},
     table::TableId,
 };
-use meta_client::types::{ShardId, ShardInfo, ShardTables, TableInfo};
+use meta_client::types::{ShardTables, TableInfo};
 use table_engine::table::TableRef;
-
-use crate::Result;
 
 #[derive(Debug, Clone)]
 pub struct SchemaInfo {
@@ -46,10 +45,8 @@ impl TableManager {
         self.inner.read().unwrap().get_shards_infos()
     }
 
-    pub fn add_shard_table(&self, table_info: TableInfo, table: TableRef) -> Result<()> {
+    pub fn add_shard_table(&self, table_info: TableInfo, table: TableRef) {
         self.inner.write().unwrap().add_table(table_info, table);
-
-        Ok(())
     }
 
     pub fn contains_shard(&self, shard_id: ShardId) -> bool {

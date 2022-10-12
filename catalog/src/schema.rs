@@ -5,11 +5,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::column_schema::ColumnSchema;
+use common_types::{column_schema::ColumnSchema, shard::ShardInfo};
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},
-    table::{SchemaId, TableId, TableRef},
+    table::{SchemaId, TableId, TableInfo, TableRef},
 };
 
 #[derive(Debug, Snafu)]
@@ -251,7 +251,50 @@ pub struct DropOptions {
     pub table_engine: TableEngineRef,
 }
 
-pub type OpenTableRequest = engine::OpenTableRequest;
+#[derive(Debug, Clone)]
+pub struct OpenTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table engine type
+    pub engine: String,
+    /// Shard information
+    pub shard_info: ShardInfo,
+}
+
+impl From<TableInfo> for OpenTableRequest {
+    fn from(table_info: TableInfo) -> Self {
+        Self {
+            catalog_name: table_info.catalog_name,
+            schema_name: table_info.schema_name,
+            schema_id: table_info.schema_id,
+            table_name: table_info.table_name,
+            table_id: table_info.table_id,
+            engine: table_info.engine,
+            shard_info: ShardInfo::default(),
+        }
+    }
+}
+
+impl From<OpenTableRequest> for engine::OpenTableRequest {
+    fn from(src: OpenTableRequest) -> Self {
+        engine::OpenTableRequest {
+            catalog_name: src.catalog_name,
+            schema_name: src.schema_name,
+            schema_id: src.schema_id,
+            table_name: src.table_name,
+            table_id: src.table_id,
+            engine: src.engine,
+        }
+    }
+}
 
 /// Open table options.
 #[derive(Clone)]

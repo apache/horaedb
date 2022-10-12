@@ -28,7 +28,7 @@ use ceresdbproto::{
         WriteResponse,
     },
 };
-use cluster::{config::SchemaConfig, CloseShardOpts, ClusterRef, OpenShardOpts};
+use cluster::{config::SchemaConfig, ClusterRef};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -411,9 +411,11 @@ fn build_ok_header() -> ResponseHeader {
 
 #[derive(Clone)]
 struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+    #[allow(dead_code)]
     cluster: ClusterRef,
     #[allow(dead_code)]
     instance: InstanceRef<Q>,
+    #[allow(dead_code)]
     runtime: Arc<Runtime>,
 }
 
@@ -422,157 +424,30 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
     // TODO: use macro to remove the boilerplate codes.
     async fn open_shard(
         &self,
-        request: tonic::Request<OpenShardRequest>,
+        _request: tonic::Request<OpenShardRequest>,
     ) -> std::result::Result<tonic::Response<OpenShardResponse>, tonic::Status> {
-        let cluster = self.cluster.clone();
-        let handle = self.runtime.spawn(async move {
-            let request = request.into_inner();
-            cluster
-                .open_shard(&request, OpenShardOpts::default())
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "fail to open shards in cluster",
-                })
-        });
-
-        let res = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to join task",
-            });
-
-        let mut resp = OpenShardResponse::default();
-        match res {
-            Ok(Ok(_)) => {
-                resp.header = Some(build_ok_header());
-            }
-            Ok(Err(e)) | Err(e) => {
-                resp.header = Some(build_err_header(e));
-            }
-        };
-
-        Ok(tonic::Response::new(resp))
+        todo!("Do open shard with catalog manager");
     }
 
     async fn close_shard(
         &self,
-        request: tonic::Request<CloseShardRequest>,
+        _request: tonic::Request<CloseShardRequest>,
     ) -> std::result::Result<tonic::Response<CloseShardResponse>, tonic::Status> {
-        let cluster = self.cluster.clone();
-        let handle = self.runtime.spawn(async move {
-            let request = request.into_inner();
-            cluster
-                .close_shard(&request, CloseShardOpts::default())
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "fail to close shards in cluster",
-                })
-        });
-
-        let res = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to join task",
-            });
-
-        let mut resp = CloseShardResponse::default();
-        match res {
-            Ok(Ok(_)) => {
-                resp.header = Some(build_ok_header());
-            }
-            Ok(Err(e)) | Err(e) => {
-                resp.header = Some(build_err_header(e));
-            }
-        };
-
-        Ok(tonic::Response::new(resp))
+        todo!("Do close shard with catalog manager");
     }
 
     async fn create_table_on_shard(
         &self,
-        request: tonic::Request<CreateTableOnShardRequest>,
+        _request: tonic::Request<CreateTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<CreateTableOnShardResponse>, tonic::Status> {
-        let cluster = self.cluster.clone();
-        let handle = self.runtime.spawn(async move {
-            let request = request.into_inner();
-            cluster
-                .create_table_on_shard(&request)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!(
-                        "fail to create table on shard in cluster, req:{:?}",
-                        request
-                    ),
-                })
-        });
-
-        let res = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to join task",
-            });
-
-        let mut resp = CreateTableOnShardResponse::default();
-        match res {
-            Ok(Ok(_)) => {
-                resp.header = Some(build_ok_header());
-            }
-            Ok(Err(e)) | Err(e) => {
-                resp.header = Some(build_err_header(e));
-            }
-        };
-
-        Ok(tonic::Response::new(resp))
+        todo!("Do create table on shard with catalog manager");
     }
 
     async fn drop_table_on_shard(
         &self,
-        request: tonic::Request<DropTableOnShardRequest>,
+        _request: tonic::Request<DropTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<DropTableOnShardResponse>, tonic::Status> {
-        let cluster = self.cluster.clone();
-        let handle = self.runtime.spawn(async move {
-            let request = request.into_inner();
-            cluster
-                .drop_table_on_shard(&request)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!("fail to drop table on shard in cluster, req:{:?}", request),
-                })
-        });
-
-        let res = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to join task",
-            });
-
-        let mut resp = DropTableOnShardResponse::default();
-        match res {
-            Ok(Ok(_)) => {
-                resp.header = Some(build_ok_header());
-            }
-            Ok(Err(e)) | Err(e) => {
-                resp.header = Some(build_err_header(e));
-            }
-        };
-
-        Ok(tonic::Response::new(resp))
+        todo!("Do drop table on shard with catalog manager");
     }
 
     async fn split_shard(

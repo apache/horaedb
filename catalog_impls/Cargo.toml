@@ -12,7 +12,6 @@ workspace = true
 # Workspace dependencies, in alphabetical order
 async-trait = { workspace = true }
 catalog = { workspace = true }
-cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 log = { workspace = true }

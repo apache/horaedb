@@ -18,6 +18,7 @@ pub mod request_id;
 pub mod row;
 #[cfg(feature = "arrow")]
 pub mod schema;
+pub mod shard;
 pub mod string;
 pub mod table;
 pub mod time;

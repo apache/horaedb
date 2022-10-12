@@ -7,9 +7,9 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
+use common_types::shard::ShardId;
 use http::StatusCode;
 use log::info;
-use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use snafu::OptionExt;
 

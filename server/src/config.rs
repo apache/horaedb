@@ -7,8 +7,7 @@ use std::{collections::HashMap, str::FromStr};
 use analytic_engine;
 use ceresdbproto::storage;
 use cluster::config::{ClusterConfig, SchemaConfig};
-use common_types::schema::TIMESTAMP_COLUMN;
-use meta_client::types::ShardId;
+use common_types::{schema::TIMESTAMP_COLUMN, shard::ShardId};
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 

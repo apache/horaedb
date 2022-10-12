@@ -9,7 +9,11 @@ use analytic_engine::{
     setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
 };
 use catalog::manager::ManagerRef;
-use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
+use catalog_impls::{
+    meta_based::{self, table_manager::TableManager},
+    table_based::TableBasedManager,
+    CatalogManagerImpl,
+};
 use cluster::cluster_impl::ClusterImpl;
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
@@ -153,9 +157,11 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     )
     .expect("fail to build meta client");
 
+    let table_manager = TableManager::default();
     let cluster = {
         let cluster_impl = ClusterImpl::new(
-            meta_client,
+            table_manager.clone(),
+            meta_client.clone(),
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )
@@ -163,10 +169,7 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         Arc::new(cluster_impl)
     };
 
-    let catalog_manager = {
-        let table_manager = cluster.table_manager().clone();
-        Arc::new(volatile::ManagerImpl::new(table_manager).await)
-    };
+    let catalog_manager = Arc::new(meta_based::ManagerImpl::new(table_manager, meta_client).await);
 
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));

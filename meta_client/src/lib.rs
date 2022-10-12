@@ -3,12 +3,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use common_types::shard::ShardInfo;
 use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
     DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
-    GetShardTablesResponse, RouteTablesRequest, RouteTablesResponse, ShardInfo,
+    GetShardTablesResponse, RouteTablesRequest, RouteTablesResponse,
 };
 
 pub mod meta_impl;
