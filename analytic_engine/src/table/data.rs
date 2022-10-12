@@ -18,6 +18,7 @@ use arc_swap::ArcSwap;
 use arena::CollectorRef;
 use common_types::{
     schema::{Schema, Version},
+    table::{Location, ShardId},
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
@@ -26,7 +27,6 @@ use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
-use wal::manager::WalLocation;
 
 use crate::{
     instance::write_worker::{WorkerLocal, WriteHandle},
@@ -134,6 +134,9 @@ pub struct TableData {
 
     /// Metrics of this table.
     pub metrics: Metrics,
+
+    /// Shard id
+    pub shard_id: ShardId,
 }
 
 impl fmt::Debug for TableData {
@@ -149,6 +152,7 @@ impl fmt::Debug for TableData {
             .field("last_memtable_id", &self.last_memtable_id)
             .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
+            .field("shard_id", &self.shard_id)
             .finish()
     }
 }
@@ -204,6 +208,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
+            shard_id: request.shard_id,
         })
     }
 
@@ -215,6 +220,7 @@ impl TableData {
         write_handle: WriteHandle,
         purger: &FilePurger,
         mem_usage_collector: CollectorRef,
+        shard_id: ShardId,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -240,6 +246,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
+            shard_id,
         })
     }
 
@@ -268,8 +275,8 @@ impl TableData {
     ///
     /// Now we just use table id as region id
     #[inline]
-    pub fn wal_location(&self) -> WalLocation {
-        WalLocation::new(self.id.as_u64(), self.id.as_u64())
+    pub fn shard_id(&self) -> ShardId {
+        self.shard_id
     }
 
     /// Get last sequence number
@@ -490,6 +497,10 @@ impl TableData {
     pub fn storage_format(&self) -> StorageFormat {
         self.table_options().storage_format
     }
+
+    pub fn location(&self) -> Location {
+        Location::new(self.id.as_u64(), self.shard_id)
+    }
 }
 
 /// Table data reference
@@ -581,7 +592,7 @@ pub mod tests {
     use std::sync::Arc;
 
     use arena::NoopCollector;
-    use common_types::datum::DatumKind;
+    use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
     use common_util::config::ReadableDuration;
     use table_engine::{engine::TableState, table::SchemaId};
 
@@ -626,6 +637,7 @@ pub mod tests {
     pub struct TableDataMocker {
         table_id: TableId,
         table_name: String,
+        shard_id: ShardId,
         write_handle: Option<WriteHandle>,
     }
 
@@ -637,6 +649,11 @@ pub mod tests {
 
         pub fn table_name(mut self, table_name: String) -> Self {
             self.table_name = table_name;
+            self
+        }
+
+        pub fn shard_id(mut self, shard_id: ShardId) -> Self {
+            self.shard_id = shard_id;
             self
         }
 
@@ -659,6 +676,7 @@ pub mod tests {
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 options: HashMap::new(),
                 state: TableState::Stable,
+                shard_id: self.shard_id,
             };
 
             let write_handle = self.write_handle.unwrap_or_else(|| {
@@ -686,6 +704,7 @@ pub mod tests {
             Self {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
+                shard_id: DEFAULT_SHARD_ID,
                 write_handle: None,
             }
         }
@@ -695,6 +714,7 @@ pub mod tests {
     fn test_new_table_data() {
         let table_id = table::new_table_id(100, 30);
         let table_name = "new_table".to_string();
+        let shard_id = 42;
         let table_data = TableDataMocker::default()
             .table_id(table_id)
             .table_name(table_name.clone())
@@ -702,7 +722,7 @@ pub mod tests {
 
         assert_eq!(table_id, table_data.id);
         assert_eq!(table_name, table_data.name);
-        assert_eq!(table_data.id.as_u64(), table_data.wal_location().region_id);
+        assert_eq!(shard_id, table_data.shard_id);
         assert_eq!(0, table_data.last_sequence());
         assert!(!table_data.is_dropped());
         assert_eq!(0, table_data.last_file_id());

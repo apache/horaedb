@@ -4,14 +4,13 @@
 
 use std::sync::Arc;
 
-use common_types::schema::Version;
+use common_types::{schema::Version, table::Location};
 use common_util::define_result;
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
-use wal::manager::WalLocation;
 
 use crate::{
     instance::{write_worker::WriteGroup, Instance},
@@ -192,26 +191,26 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
+        "Failed to get to log batch encoder, table:{}, table_location:{:?}, err:{}",
         table,
-        wal_location,
+        table_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        wal_location: WalLocation,
+        table_location: Location,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{},wal_location:{:?}, err:{}",
+        "Failed to encode payloads, table:{},table_location:{:?}, err:{}",
         table,
-        wal_location,
+        table_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        wal_location: WalLocation,
+        table_location: Location,
         source: wal::manager::Error,
     },
 }
@@ -332,7 +331,7 @@ impl Instance {
     ) -> Result<Option<SpaceAndTable>> {
         let space = self.find_or_create_space(space_id).await?;
 
-        let table_data = self.do_open_table(space.clone(), request.table_id).await?;
+        let table_data = self.do_open_table(space.clone(), request).await?;
 
         Ok(table_data.map(|v| SpaceAndTable::new(space, v)))
     }

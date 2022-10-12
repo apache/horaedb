@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use common_types::SequenceNumber;
+use common_types::{table::Location, SequenceNumber};
 use common_util::{
     define_result,
     runtime::{JoinHandle, Runtime},
@@ -30,7 +30,7 @@ use wal::{
     log_batch::LogEntry,
     manager::{
         BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
-        WalLocation, WalManagerRef,
+        WalManagerRef,
     },
 };
 
@@ -132,8 +132,8 @@ impl WalSynchronizer {
     }
 
     #[allow(dead_code)]
-    pub async fn register_table(&self, wal_location: WalLocation, table: ReaderTable) {
-        self.inner.register_table(wal_location, table).await;
+    pub async fn register_table(&self, location: Location, table: ReaderTable) {
+        self.inner.register_table(location, table).await;
     }
 
     pub async fn start(&mut self, runtime: &Runtime) {
@@ -149,18 +149,18 @@ impl WalSynchronizer {
 pub struct Inner {
     wal: WalManagerRef,
     config: WalSynchronizerConfig,
-    tables: RwLock<BTreeMap<WalLocation, SynchronizeState>>,
+    tables: RwLock<BTreeMap<Location, SynchronizeState>>,
 }
 
 impl Inner {
     #[allow(dead_code)]
-    pub async fn register_table(&self, wal_location: WalLocation, table: ReaderTable) {
+    pub async fn register_table(&self, location: Location, table: ReaderTable) {
         let state = SynchronizeState {
-            wal_location,
+            location,
             table,
             last_synced_seq: AtomicU64::new(SequenceNumber::MIN),
         };
-        self.tables.write().await.insert(wal_location, state);
+        self.tables.write().await.insert(location, state);
     }
 
     pub async fn start_synchronize(self: Arc<Self>, mut stop_listener: Receiver<()>) {
@@ -182,7 +182,7 @@ impl Inner {
             for state in states {
                 // check state before polling WAL
                 if !state.check_state() {
-                    invalid_tables.push(state.wal_location);
+                    invalid_tables.push(state.location);
                     continue;
                 }
 
@@ -204,7 +204,7 @@ impl Inner {
                 // double check state before writing to table. Error due to
                 // state changed after this check will be treat as normal error.
                 if !state.check_state() {
-                    invalid_tables.push(state.wal_location);
+                    invalid_tables.push(state.location);
                     continue;
                 }
 
@@ -289,7 +289,7 @@ impl Inner {
 
     /// Remove invalid tables from poll list. This function will clear the
     /// `invalid_table` vec.
-    async fn purge_invalid_tables(&self, invalid_tables: &mut Vec<WalLocation>) {
+    async fn purge_invalid_tables(&self, invalid_tables: &mut Vec<Location>) {
         if invalid_tables.is_empty() {
             return;
         }
@@ -299,14 +299,14 @@ impl Inner {
         );
 
         let mut tables = self.tables.write().await;
-        for wal_location in invalid_tables.drain(..) {
-            tables.remove(&wal_location);
+        for location in invalid_tables.drain(..) {
+            tables.remove(&location);
         }
     }
 }
 
 struct SynchronizeState {
-    wal_location: WalLocation,
+    location: Location,
     table: ReaderTable,
     /// Atomic version of [SequenceNumber]
     last_synced_seq: AtomicU64,
@@ -315,7 +315,7 @@ struct SynchronizeState {
 impl SynchronizeState {
     pub fn read_req(&self) -> ReadRequest {
         ReadRequest {
-            wal_location: self.wal_location,
+            location: self.location,
             start: ReadBoundary::Excluded(self.last_synced_seq.load(Ordering::Relaxed)),
             end: ReadBoundary::Max,
         }

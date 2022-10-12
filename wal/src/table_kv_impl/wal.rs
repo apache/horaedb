@@ -5,7 +5,7 @@
 use std::{fmt, str, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::SequenceNumber;
+use common_types::{table::Location, SequenceNumber};
 use log::info;
 use snafu::ResultExt;
 use table_kv::TableKv;
@@ -14,7 +14,7 @@ use crate::{
     log_batch::LogWriteBatch,
     manager::{
         self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
-        ScanRequest, WalLocation, WalManager,
+        ScanRequest, WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
@@ -99,9 +99,9 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
 
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
-    async fn sequence_num(&self, wal_location: WalLocation) -> Result<SequenceNumber> {
+    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
         self.namespace
-            .last_sequence(wal_location.region_id)
+            .last_sequence(location.table_id)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Read)
@@ -109,11 +109,11 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
 
     async fn mark_delete_entries_up_to(
         &self,
-        wal_location: WalLocation,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.namespace
-            .delete_entries(wal_location.region_id, sequence_num)
+            .delete_entries(location.table_id, sequence_num)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Delete)

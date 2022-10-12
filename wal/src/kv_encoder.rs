@@ -4,6 +4,7 @@
 
 use common_types::{
     bytes::{self, BytesMut, MemBuf, MemBufMut},
+    table::Location,
     SequenceNumber,
 };
 use common_util::{
@@ -14,7 +15,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload},
-    manager::{self, Encoding, RegionId, WalLocation},
+    manager::{self, Encoding, RegionId},
 };
 
 pub const LOG_KEY_ENCODING_V0: u8 = 0;
@@ -523,22 +524,22 @@ impl LogEncoding {
 /// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
-    wal_location: WalLocation,
+    location: Location,
     log_encoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
     /// Create LogBatchEncoder with specific region_id.
-    pub fn create(wal_location: WalLocation) -> Self {
+    pub fn create(location: Location) -> Self {
         Self {
-            wal_location,
+            location,
             log_encoding: LogEncoding::newest(),
         }
     }
 
     /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
     pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
-        let mut write_batch = LogWriteBatch::new(self.wal_location);
+        let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
         self.log_encoding
             .encode_value(&mut buf, payload)
@@ -562,7 +563,7 @@ impl LogBatchEncoder {
     where
         &'a I: Into<P>,
     {
-        let mut write_batch = LogWriteBatch::new(self.wal_location);
+        let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
         for raw_payload in raw_payload_batch.iter() {
             self.log_encoding

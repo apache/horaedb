@@ -15,7 +15,7 @@ use crate::{
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AddTableMeta, MetaUpdate},
+    meta::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,
@@ -104,7 +104,7 @@ impl Instance {
         });
         self.space_store
             .manifest
-            .store_update(update)
+            .store_update(MetaUpdateRequest::new(table_data.location(), update))
             .await
             .context(WriteManifest {
                 space_id: space.id,

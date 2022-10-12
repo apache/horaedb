@@ -7,6 +7,7 @@ use std::convert::{TryFrom, TryInto};
 use common_types::{
     bytes::{MemBuf, MemBufMut, Writer},
     schema::{Schema, Version},
+    table::Location,
     SequenceNumber,
 };
 use common_util::define_result;
@@ -460,5 +461,20 @@ impl PayloadDecoder for MetaUpdateDecoder {
         let log_entry = MetaUpdateLogEntry::try_from(log_entry_pb)?;
 
         Ok(log_entry)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MetaUpdateRequest {
+    pub location: Location,
+    pub meta_update: MetaUpdate,
+}
+
+impl MetaUpdateRequest {
+    pub fn new(location: Location, meta_update: MetaUpdate) -> Self {
+        Self {
+            location,
+            meta_update,
+        }
     }
 }

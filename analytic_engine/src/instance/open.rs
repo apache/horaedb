@@ -7,11 +7,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common_types::schema::IndexInWriterSchema;
+use common_types::{schema::IndexInWriterSchema, table::Location};
 use log::{debug, error, info, trace, warn};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
-use table_engine::table::TableId;
+use table_engine::engine::OpenTableRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
@@ -130,12 +130,12 @@ impl Instance {
     pub async fn do_open_table(
         self: &Arc<Self>,
         space: SpaceRef,
-        table_id: TableId,
+        request: &OpenTableRequest,
     ) -> Result<Option<TableDataRef>> {
-        if let Some(table_data) = space.find_table_by_id(table_id) {
+        if let Some(table_data) = space.find_table_by_id(request.table_id) {
             return Ok(Some(table_data));
         }
-        let table_data = match self.recover_table_meta_data(table_id).await? {
+        let table_data = match self.recover_table_meta_data(request).await? {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -196,33 +196,39 @@ impl Instance {
     /// Return None if no meta data is found for the table.
     async fn recover_table_meta_data(
         self: &Arc<Self>,
-        table_id: TableId,
+        request: &OpenTableRequest,
     ) -> Result<Option<TableDataRef>> {
-        info!("Instance recover table:{} meta begin", table_id);
+        info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
         let manifest_data = self
             .space_store
             .manifest
-            .load_data(table_id, true)
+            .load_data(
+                Location::new(request.table_id.as_u64(), request.shard_id),
+                true,
+            )
             .await
-            .context(ReadMetaUpdate { table_id })?;
+            .context(ReadMetaUpdate {
+                table_id: request.table_id,
+            })?;
 
         let table_data = if let Some(manifest_data) = manifest_data {
-            Some(self.apply_table_manifest_data(manifest_data).await?)
+            Some(self.recover_table_data(manifest_data, request).await?)
         } else {
             None
         };
 
-        info!("Instance recover table:{} meta end", table_id);
+        info!("Instance recover table:{} meta end", request.table_id);
 
         Ok(table_data)
     }
 
     /// Apply manifest data to instance
-    async fn apply_table_manifest_data(
+    async fn recover_table_data(
         self: &Arc<Self>,
         manifest_data: TableManifestData,
+        request: &OpenTableRequest,
     ) -> Result<TableDataRef> {
         let TableManifestData {
             table_meta,
@@ -243,6 +249,7 @@ impl Instance {
                 write_handle,
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
+                request.shard_id,
             )
             .context(RecoverTableData {
                 space_id: table_meta.space_id,
@@ -273,7 +280,7 @@ impl Instance {
         read_ctx: &ReadContext,
     ) -> Result<()> {
         let read_req = ReadRequest {
-            wal_location: table_data.wal_location(),
+            location: table_data.location(),
             start: ReadBoundary::Min,
             end: ReadBoundary::Max,
         };

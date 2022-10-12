@@ -550,7 +550,7 @@ impl<T: TableKv> NamespaceInner<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
-        let region_id = batch.wal_location.region_id;
+        let region_id = batch.location.table_id;
         let now = Timestamp::now();
         // Get current bucket to write.
         let bucket = self.get_or_create_bucket(now)?;
@@ -584,7 +584,7 @@ impl<T: TableKv> NamespaceInner<T> {
         // buckets.
         let buckets = self.list_buckets();
 
-        let region_id = req.wal_location.region_id;
+        let region_id = req.location.table_id;
         if let Some(region) = self.get_or_open_region(region_id).await? {
             region
                 .read_log(&self.table_kv, buckets, ctx, req)
@@ -1309,7 +1309,10 @@ fn start_bucket_monitor<T: TableKv>(
 mod tests {
     use std::sync::Arc;
 
-    use common_types::bytes::BytesMut;
+    use common_types::{
+        bytes::BytesMut,
+        table::{Location, DEFAULT_SHARD_ID},
+    };
     use common_util::runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
 
@@ -1317,7 +1320,6 @@ mod tests {
     use crate::{
         kv_encoder::{LogBatchEncoder, LogEncoding},
         log_batch::PayloadDecoder,
-        manager::WalLocation,
         table_kv_impl::consts,
         tests::util::{TestPayload, TestPayloadDecoder},
     };
@@ -1613,13 +1615,13 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let wal_location = WalLocation::new(table_id, table_id);
+            let location = Location::new(table_id, DEFAULT_SHARD_ID);
 
-            let seq1 = write_test_payloads(&namespace, wal_location, 1000, 1004).await;
-            write_test_payloads(&namespace, wal_location, 1005, 1009).await;
+            let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
+            write_test_payloads(&namespace, location, 1005, 1009).await;
 
             namespace
-                .delete_entries(wal_location.region_id, seq1)
+                .delete_entries(location.table_id, seq1)
                 .await
                 .unwrap();
 
@@ -1629,9 +1631,8 @@ mod tests {
             let buckets = inner.list_buckets();
             assert_eq!(1, buckets.len());
 
-            let table = buckets[0].wal_shard_table(wal_location.region_id);
-            let key_values =
-                direct_read_logs_from_table(&table_kv, table, wal_location.region_id).await;
+            let table = buckets[0].wal_shard_table(location.table_id);
+            let key_values = direct_read_logs_from_table(&table_kv, table, location.table_id).await;
 
             // Logs from min sequence to seq1 should be deleted from the table.
             let mut expect_seq = seq1 + 1;
@@ -1695,7 +1696,7 @@ mod tests {
 
     async fn write_test_payloads<T: TableKv>(
         namespace: &Namespace<T>,
-        wal_location: WalLocation,
+        location: Location,
         start_sequence: u32,
         end_sequence: u32,
     ) -> SequenceNumber {
@@ -1706,7 +1707,7 @@ mod tests {
         }
 
         let log_entries = (start_sequence..end_sequence).collect::<Vec<_>>();
-        let wal_encoder = LogBatchEncoder::create(wal_location);
+        let wal_encoder = LogBatchEncoder::create(location);
         let log_batch = wal_encoder
             .encode_batch::<TestPayload, u32>(&log_entries)
             .expect("should succeed to encode payload batch");

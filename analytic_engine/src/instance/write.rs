@@ -8,6 +8,7 @@ use common_types::{
     bytes::ByteVec,
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
+    table::Location,
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
@@ -16,7 +17,7 @@ use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
-use wal::manager::{SequenceNumber, WalLocation, WriteContext};
+use wal::manager::{SequenceNumber, WriteContext};
 
 use crate::{
     instance::{
@@ -37,26 +38,26 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
+        "Failed to get to log batch encoder, table:{}, table_location:{:?}, err:{}",
         table,
-        wal_location,
+        table_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        wal_location: WalLocation,
+        table_location: Location,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
+        "Failed to encode payloads, table:{}, table_location:{:?}, err:{}",
         table,
-        wal_location,
+        table_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        wal_location: WalLocation,
+        table_location: Location,
         source: wal::manager::Error,
     },
 
@@ -398,18 +399,18 @@ impl Instance {
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
-        let region_id = table_data.wal_location();
+        let region_id = table_data.location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    wal_location: table_data.wal_location(),
+                    table_location: table_data.location(),
                 })?;
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            wal_location: table_data.wal_location(),
+            table_location: table_data.location(),
         })?;
 
         // Write to wal manager

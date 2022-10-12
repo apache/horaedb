@@ -6,7 +6,9 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
+use common_types::{table::Location, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 use common_util::runtime::Runtime;
+pub use error::*;
 use snafu::ResultExt;
 
 use crate::{
@@ -16,10 +18,9 @@ use crate::{
 };
 
 pub mod error {
+    use common_types::table::Location;
     use common_util::define_result;
     use snafu::{Backtrace, Snafu};
-
-    use crate::manager::WalLocation;
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -45,12 +46,12 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, wal_location:{:?}.\nBacktrace:\n{}",
-            wal_location,
+            "Region is not found, table_location:{:?}.\nBacktrace:\n{}",
+            location,
             backtrace
         ))]
         RegionNotFound {
-            wal_location: WalLocation,
+            location: Location,
             backtrace: Backtrace,
         },
 
@@ -119,27 +120,8 @@ pub mod error {
     define_result!(Error);
 }
 
-use common_types::{table::TableId, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
-pub use error::*;
-
 pub type RegionId = u64;
 pub const MAX_REGION_ID: RegionId = u64::MAX;
-
-/// Used to wals of the table.
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub struct WalLocation {
-    pub region_id: RegionId,
-    pub table_id: TableId,
-}
-
-impl WalLocation {
-    pub fn new(region_id: RegionId, table_id: TableId) -> Self {
-        Self {
-            region_id,
-            table_id,
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct WriteContext {
@@ -223,8 +205,8 @@ impl ReadBoundary {
 
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
-    /// WalLocation of the wal to read
-    pub wal_location: WalLocation,
+    /// Location of the wal to read
+    pub location: Location,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
     pub start: ReadBoundary,
@@ -234,8 +216,8 @@ pub struct ReadRequest {
 
 #[derive(Debug, Clone)]
 pub struct ScanRequest {
-    /// WalLocation of the wal to read
-    pub wal_location: WalLocation,
+    /// Location of the wal to read
+    pub location: Location,
 }
 
 pub type ScanContext = ReadContext;
@@ -270,13 +252,13 @@ pub trait BatchLogIterator {
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
-    async fn sequence_num(&self, wal_location: WalLocation) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
-        wal_location: WalLocation,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
@@ -291,8 +273,8 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    fn encoder(&self, wal_location: WalLocation) -> Result<LogBatchEncoder> {
-        Ok(LogBatchEncoder::create(wal_location))
+    fn encoder(&self, location: Location) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(location))
     }
 
     /// Write a batch of log entries to log.
