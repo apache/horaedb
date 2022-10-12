@@ -207,6 +207,18 @@ impl Predicate {
     pub fn time_range(&self) -> TimeRange {
         self.time_range
     }
+
+    /// Return a DataFusion [`Expr`] predicate representing the
+    /// combination of AND'ing all (`exprs`) and timestamp restriction
+    /// in this Predicate.
+    pub fn filter_expr(&self, time_column_name: impl AsRef<str>) -> Expr {
+        self.exprs
+            .iter()
+            .cloned()
+            .fold(self.time_range.df_expr(time_column_name), |acc, expr| {
+                acc.and(expr)
+            })
+    }
 }
 
 /// Builder for [Predicate]
