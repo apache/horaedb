@@ -433,7 +433,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let options = parse_options(stmt.options)?;
 
         // Analyze default values
-        analyze_column_default_value_options(table_schema.columns(), &self.meta_provider)?;
+        ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
 
         let plan = CreateTablePlan {
             engine: stmt.engine,
@@ -836,8 +836,8 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     })
 }
 
-// Analyze default value exprs.
-fn analyze_column_default_value_options<'a, P: MetaProvider>(
+// Ensure default value exprs of columns valid.
+fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'a, P>,
 ) -> Result<()> {
@@ -910,7 +910,6 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
-        println!("{:#?}", plan);
         assert_eq!(format!("{:#?}", plan), expected);
         Ok(())
     }

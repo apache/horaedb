@@ -72,8 +72,8 @@ pub enum Error {
     #[snafu(display("Failed to convert arrow array to column block, err:{}", source))]
     ConvertColumnBlock { source: common_types::column::Error },
 
-    #[snafu(display("Failed to find input columns of expr"))]
-    FindExpressionInput,
+    #[snafu(display("Failed to find input columns of expr, column_name:{}", column_name))]
+    FindExpressionInput { column_name: String },
 
     #[snafu(display("Failed to build column block, err:{}", source))]
     BuildColumnBlock { source: common_types::column::Error },
@@ -204,7 +204,7 @@ fn fill_default_values(
     row_groups: &mut RowGroup,
     default_value_map: &BTreeMap<usize, DfLogicalExpr>,
 ) -> Result<()> {
-    let mut cached_columns_map: HashMap<usize, DfColumnarValue> = HashMap::new();
+    let mut cached_column_values: HashMap<usize, DfColumnarValue> = HashMap::new();
     let table_arrow_schema = table.schema().to_arrow_schema_ref();
 
     for (column_idx, default_value_expr) in default_value_map.iter() {
@@ -220,9 +220,13 @@ fn fill_default_values(
         // Find input columns
         let required_column_idxes = find_columns_by_expr(&evaluated_expr)
             .iter()
-            .map(|column_name| table.schema().index_of(column_name))
-            .collect::<Option<Vec<usize>>>()
-            .context(FindExpressionInput)?;
+            .map(|column_name| {
+                table
+                    .schema()
+                    .index_of(column_name)
+                    .context(FindExpressionInput { column_name })
+            })
+            .collect::<Result<Vec<usize>>>()?;
         let input_arrow_schema = table_arrow_schema
             .project(&required_column_idxes)
             .context(ArrowSchema)?;
@@ -256,7 +260,11 @@ fn fill_default_values(
         let input_arrays = required_column_idxes
             .into_iter()
             .map(|col_idx| {
-                get_or_extract_column_from_row_groups(col_idx, row_groups, &mut cached_columns_map)
+                get_or_extract_column_from_row_groups(
+                    col_idx,
+                    row_groups,
+                    &mut cached_column_values,
+                )
             })
             .collect::<Result<Vec<_>>>()?;
         let input = if input_arrays.is_empty() {
@@ -273,7 +281,7 @@ fn fill_default_values(
         fill_column_to_row_group(*column_idx, &output, row_groups)?;
 
         // Write output to cache.
-        cached_columns_map.insert(*column_idx, output);
+        cached_column_values.insert(*column_idx, output);
     }
 
     Ok(())
@@ -309,19 +317,19 @@ fn fill_column_to_row_group(
 }
 
 /// This method is used to get specific column data.
-/// There are two path:
-///  1. get from cached_columns_map
+/// There are two pathes:
+///  1. get from cached_column_values
 ///  2. extract from row_groups
 ///
-/// For performance reasons, we cached the columns which extract from row_groups
+/// For performance reasons, we cached the columns extracted from row_groups
 /// before, and we will also cache the output of the exprs.
 fn get_or_extract_column_from_row_groups(
     column_idx: usize,
     row_groups: &RowGroup,
-    cached_columns_map: &mut HashMap<usize, DfColumnarValue>,
+    cached_column_values: &mut HashMap<usize, DfColumnarValue>,
 ) -> Result<ArrayRef> {
     let num_rows = row_groups.num_rows();
-    let column = cached_columns_map
+    let column = cached_column_values
         .get(&column_idx)
         .map(|c| Ok(c.clone()))
         .unwrap_or_else(|| {
@@ -334,7 +342,7 @@ fn get_or_extract_column_from_row_groups(
             }
 
             let columnar_value = DfColumnarValue::Array(builder.build().to_arrow_array_ref());
-            cached_columns_map.insert(column_idx, columnar_value.clone());
+            cached_column_values.insert(column_idx, columnar_value.clone());
             Ok(columnar_value)
         })?;
 
