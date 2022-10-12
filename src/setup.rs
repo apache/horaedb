@@ -8,6 +8,7 @@ use analytic_engine::{
     self,
     setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
 };
+use catalog::manager::ManagerRef;
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::cluster_impl::ClusterImpl;
 use common_util::runtime;
@@ -17,7 +18,7 @@ use logger::RuntimeLevel;
 use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
-    config::{Config, DeployMode, RuntimeConfig},
+    config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
     route::{
         cluster_based::ClusterBasedRouter,
         rule_based::{ClusterView, RuleBasedRouter},
@@ -126,9 +127,7 @@ where
         DeployMode::Standalone => {
             build_in_standalone_mode(&config, builder, analytic, engine_proxy).await
         }
-        DeployMode::Cluster => {
-            build_in_cluster_mode(&config, builder, &runtimes, engine_proxy).await
-        }
+        DeployMode::Cluster => build_in_cluster_mode(&config, builder, &runtimes).await,
     };
 
     // Build and start server
@@ -146,7 +145,6 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     config: &Config,
     builder: Builder<Q>,
     runtimes: &EngineRuntimes,
-    engine_proxy: TableEngineRef,
 ) -> Builder<Q> {
     let meta_client = meta_impl::build_meta_client(
         config.cluster.meta_client.clone(),
@@ -160,7 +158,6 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     let cluster = {
         let cluster_impl = ClusterImpl::new(
             meta_client,
-            engine_proxy,
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )
@@ -190,6 +187,13 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
 
+    // Create schema in default catalog.
+    create_static_topology_schema(
+        catalog_manager.clone(),
+        config.static_route.topology.clone(),
+    )
+    .await;
+
     // Build static router and schema config provider
     let cluster_view = ClusterView::from(&config.static_route.topology);
     let schema_configs = cluster_view.schema_configs.clone();
@@ -203,4 +207,25 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
         .catalog_manager(catalog_manager)
         .router(router)
         .schema_config_provider(schema_config_provider)
+}
+
+async fn create_static_topology_schema(
+    catalog_mgr: ManagerRef,
+    static_topology_config: StaticTopologyConfig,
+) {
+    let default_catalog = catalog_mgr
+        .catalog_by_name(catalog_mgr.default_catalog_name())
+        .expect("Fail to retrieve default catalog")
+        .expect("Default catalog doesn't exist");
+    for schema_shard_view in static_topology_config.schema_shards {
+        default_catalog
+            .create_schema(&schema_shard_view.schema)
+            .await
+            .unwrap_or_else(|_| panic!("Fail to create schema:{}", schema_shard_view.schema));
+        info!(
+            "Create static topology in default catalog:{}, schema:{}",
+            catalog_mgr.default_catalog_name(),
+            &schema_shard_view.schema
+        );
+    }
 }

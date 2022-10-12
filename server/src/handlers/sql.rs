@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use arrow::error::Result as ArrowResult;
 use common_types::{
+    bytes::Bytes,
     datum::{Datum, DatumKind},
     request_id::RequestId,
 };
@@ -95,6 +96,12 @@ impl Serialize for ResponseRows {
 impl From<String> for Request {
     fn from(query: String) -> Self {
         Self { query }
+    }
+}
+
+impl From<Bytes> for Request {
+    fn from(bytes: Bytes) -> Self {
+        Request::from(String::from_utf8_lossy(&bytes).to_string())
     }
 }
 

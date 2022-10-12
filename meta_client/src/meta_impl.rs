@@ -8,20 +8,19 @@ use ceresdbproto::{
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
 use common_util::{config::ReadableDuration, runtime::Runtime};
-use log::{debug, info, warn};
+use log::{debug, info};
 use serde_derive::Deserialize;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
     types::{
-        AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
+        AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
         DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
         GetShardTablesResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
         RouteTablesResponse, ShardInfo,
     },
-    EventHandlerRef, FailAllocSchemaId, FailAllocTableId, FailConnect, FailDropTable,
-    FailGetTables, FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MetaRpc,
-    MissingHeader, Result,
+    BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
+    FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
 };
 
 type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;
@@ -94,21 +93,6 @@ impl MetaClientImpl {
 
 #[async_trait]
 impl MetaClient for MetaClientImpl {
-    async fn start(&self) -> Result<()> {
-        info!("Meta client has started");
-        Ok(())
-    }
-
-    async fn stop(&self) -> Result<()> {
-        info!("Meta client has stopped");
-        Ok(())
-    }
-
-    async fn register_event_handler(&self, _: EventHandlerRef) -> Result<()> {
-        warn!("Event handler has been removed from meta client");
-        Ok(())
-    }
-
     async fn alloc_schema_id(&self, req: AllocSchemaIdRequest) -> Result<AllocSchemaIdResponse> {
         let mut pb_req = meta_service::AllocSchemaIdRequest::from(req);
         pb_req.header = Some(self.request_header().into());
@@ -132,24 +116,24 @@ impl MetaClient for MetaClientImpl {
         Ok(AllocSchemaIdResponse::from(pb_resp))
     }
 
-    async fn alloc_table_id(&self, req: AllocTableIdRequest) -> Result<AllocTableIdResponse> {
-        let mut pb_req = meta_service::AllocTableIdRequest::from(req);
+    async fn create_table(&self, req: CreateTableRequest) -> Result<CreateTableResponse> {
+        let mut pb_req = meta_service::CreateTableRequest::from(req);
         pb_req.header = Some(self.request_header().into());
 
-        info!("Meta client try to alloc table id, req:{:?}", pb_req);
+        info!("Meta client try to create table, req:{:?}", pb_req);
 
         let pb_resp = self
             .client()
-            .alloc_table_id(pb_req)
+            .create_table(pb_req)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(FailAllocTableId)?
+            .context(FailCreateTable)?
             .into_inner();
 
-        info!("Meta client finish allocating table id, resp:{:?}", pb_resp);
+        info!("Meta client finish creating table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(AllocTableIdResponse::from(pb_resp))
+        Ok(CreateTableResponse::from(pb_resp))
     }
 
     async fn drop_table(&self, req: DropTableRequest) -> Result<()> {
@@ -189,7 +173,7 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(&pb_resp.header)?;
 
-        Ok(GetShardTablesResponse::from(pb_resp))
+        GetShardTablesResponse::try_from(pb_resp)
     }
 
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse> {
@@ -265,7 +249,7 @@ fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
     if header.code == 0 {
         Ok(())
     } else {
-        MetaRpc {
+        BadResponse {
             code: header.code,
             msg: header.error.clone(),
         }

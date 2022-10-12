@@ -134,7 +134,11 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             None => {
                 return ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!("Table not found, table:{}", table_name),
+                    msg: format!(
+                        "Table not found, tenant:{}, table:{}",
+                        ctx.tenant(),
+                        table_name
+                    ),
                 }
                 .fail();
             }

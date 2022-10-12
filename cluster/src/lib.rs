@@ -11,12 +11,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use ceresdbproto::meta_event::{
+    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+};
 use common_types::schema::SchemaName;
 use common_util::define_result;
-pub use meta_client::types::{
-    AllocSchemaIdRequest, AllocSchemaIdResponse, AllocTableIdRequest, AllocTableIdResponse,
-    DropTableRequest, GetShardTablesRequest,
-};
 use meta_client::types::{ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId};
 use snafu::{Backtrace, Snafu};
 
@@ -78,11 +77,21 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
+#[derive(Debug, Default)]
+pub struct OpenShardsOpts {}
+
+#[derive(Debug, Default)]
+pub struct CloseShardsOpts {}
+
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+    async fn open_shards(&self, req: &OpenShardsRequest, opts: OpenShardsOpts) -> Result<()>;
+    async fn close_shards(&self, req: &CloseShardsRequest, opts: CloseShardsOpts) -> Result<()>;
+    async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
+    async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
 }

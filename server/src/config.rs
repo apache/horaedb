@@ -138,7 +138,7 @@ impl From<SchemaShardView> for SchemaConfig {
 #[derive(Debug, Default, Deserialize, Clone)]
 #[serde(default)]
 pub struct StaticTopologyConfig {
-    schema_shards: Vec<SchemaShardView>,
+    pub schema_shards: Vec<SchemaShardView>,
 }
 
 impl From<&StaticTopologyConfig> for ClusterView {

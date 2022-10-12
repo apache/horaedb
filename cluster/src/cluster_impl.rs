@@ -6,29 +6,24 @@ use std::{
 };
 
 use async_trait::async_trait;
-use catalog::consts::DEFAULT_CATALOG;
+use ceresdbproto::meta_event::{
+    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+};
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{
-        ActionCmd, GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse,
-    },
-    EventHandler, MetaClientRef,
+    types::{GetNodesRequest, RouteTablesRequest, RouteTablesResponse},
+    MetaClientRef,
 };
 use snafu::{OptionExt, ResultExt};
-use table_engine::{
-    engine::{CloseTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef},
-    ANALYTIC_ENGINE_TYPE,
-};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
 };
 
 use crate::{
-    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, Cluster,
-    ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, Result, SchemaNotFound,
-    StartMetaClient,
+    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardsOpts,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShardsOpts, Result,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -48,11 +43,10 @@ pub struct ClusterImpl {
 impl ClusterImpl {
     pub fn new(
         meta_client: MetaClientRef,
-        table_engine: TableEngineRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(meta_client, table_engine)?;
+        let inner = Inner::new(meta_client)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -111,125 +105,14 @@ impl ClusterImpl {
 struct Inner {
     table_manager: TableManager,
     meta_client: MetaClientRef,
-    table_engine: TableEngineRef,
-    #[allow(dead_code)]
     topology: RwLock<ClusterTopology>,
 }
 
-#[async_trait]
-impl EventHandler for Inner {
-    fn name(&self) -> &str {
-        "cluster_handler_for_meta_service"
-    }
-
-    async fn handle(
-        &self,
-        cmd: &ActionCmd,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        info!("Receive action command:{:?}", cmd);
-
-        match cmd {
-            ActionCmd::MetaOpenCmd(open_cmd) => {
-                let resp = self
-                    .meta_client
-                    .get_tables(GetShardTablesRequest {
-                        shard_ids: open_cmd.shard_ids.clone(),
-                    })
-                    .await
-                    .context(MetaClientFailure)
-                    .map_err(Box::new)?;
-
-                for shard_tables in resp.shard_tables.values() {
-                    for table_info in &shard_tables.tables {
-                        let req = OpenTableRequest {
-                            catalog_name: DEFAULT_CATALOG.to_string(),
-                            schema_name: table_info.schema_name.to_string(),
-                            schema_id: table_info.schema_id.into(),
-                            table_name: table_info.name.to_string(),
-                            table_id: table_info.id.into(),
-                            // TODO: is this hard code appropriate?
-                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-                        };
-                        let table = self.table_engine.open_table(req).await?;
-                        if let Some(table) = table {
-                            self.table_manager
-                                .add_shard_table(table_info.to_owned(), table)?;
-                        }
-                    }
-                }
-                self.table_manager.update_table_info(&resp.shard_tables);
-
-                Ok(())
-            }
-            ActionCmd::CreateTableCmd(_create_cmd) => {
-                // TODO: Modify CreateTableCmd to alias with CreateTableRequest.
-                todo!()
-            }
-            ActionCmd::DropTableCmd(drop_cmd) => {
-                let schema_id = self
-                    .table_manager
-                    .get_schema_id(DEFAULT_CATALOG, &drop_cmd.schema_name)
-                    .context(SchemaNotFound {
-                        schema_name: drop_cmd.schema_name.to_owned(),
-                    })?;
-                let req = DropTableRequest {
-                    catalog_name: DEFAULT_CATALOG.to_owned(),
-                    schema_name: drop_cmd.schema_name.to_owned(),
-                    schema_id: schema_id.into(),
-                    table_name: drop_cmd.name.to_string(),
-                    // TODO: is this hard code appropriate?
-                    engine: ANALYTIC_ENGINE_TYPE.to_string(),
-                };
-
-                self.table_engine.drop_table(req).await?;
-
-                Ok(())
-            }
-            ActionCmd::MetaNoneCmd(_) => Ok(()),
-            ActionCmd::MetaCloseCmd(close_cmd) => {
-                let mut execute_errors = vec![];
-
-                for shard_id in &close_cmd.shard_ids {
-                    let tokens = self.table_manager.tokens_by_shard(*shard_id);
-                    for token in tokens {
-                        // TODO: remove `schema_name` and `table_name` fields in `CloseTableRequest`
-                        let req = CloseTableRequest {
-                            catalog_name: DEFAULT_CATALOG.to_string(),
-                            schema_name: "".to_string(),
-                            schema_id: token.schema.into(),
-                            table_name: "".to_string(),
-                            table_id: token.table.into(),
-                            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-                        };
-                        if let Err(e) = self.table_engine.close_table(req).await {
-                            execute_errors.push(e);
-                        }
-                    }
-                }
-
-                if !execute_errors.is_empty() {
-                    error!("Closing shard encounters errors: {:?}", execute_errors);
-                }
-
-                // TODO: drop those table handlers in TableManager
-
-                Ok(())
-            }
-            ActionCmd::MetaSplitCmd(_) | ActionCmd::MetaChangeRoleCmd(_) => {
-                warn!("Nothing to do for cmd:{:?}", cmd);
-
-                Ok(())
-            }
-        }
-    }
-}
-
 impl Inner {
-    fn new(meta_client: MetaClientRef, table_engine: TableEngineRef) -> Result<Self> {
+    fn new(meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
             table_manager: TableManager::default(),
             meta_client,
-            table_engine,
             topology: Default::default(),
         })
     }
@@ -298,20 +181,6 @@ impl Cluster for ClusterImpl {
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
 
-        // register the event handler to meta client.
-        self.inner
-            .meta_client
-            .register_event_handler(self.inner.clone())
-            .await
-            .context(MetaClientFailure)?;
-
-        // start the meat_client after registering the event handler.
-        self.inner
-            .meta_client
-            .start()
-            .await
-            .context(StartMetaClient)?;
-
         // start the background loop for sending heartbeat.
         self.start_heartbeat_loop();
 
@@ -321,10 +190,6 @@ impl Cluster for ClusterImpl {
 
     async fn stop(&self) -> Result<()> {
         info!("Cluster is stopping");
-
-        if let Err(e) = self.inner.meta_client.stop().await {
-            error!("Fail to stop meta client, err:{}", e);
-        }
 
         {
             let tx = self.stop_heartbeat_tx.lock().unwrap().take();
@@ -342,6 +207,22 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    async fn open_shards(&self, _req: &OpenShardsRequest, _opts: OpenShardsOpts) -> Result<()> {
+        todo!();
+    }
+
+    async fn close_shards(&self, _req: &CloseShardsRequest, _opts: CloseShardsOpts) -> Result<()> {
+        todo!();
+    }
+
+    async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {
+        todo!();
+    }
+
+    async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
+        todo!();
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
