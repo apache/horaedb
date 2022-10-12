@@ -24,11 +24,9 @@ use common_types::{
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
-    optimizer::simplify_expressions::ConstEvaluator,
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     sql::planner::SqlToRel,
 };
-use datafusion_expr::expr_rewriter::ExprRewritable;
 use hashbrown::HashMap as NoStdHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -851,18 +849,15 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
                 .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
                 .context(DataFusionExpr)?;
 
-            // Optimize expr
+            // Create physical expr
             let execution_props = ExecutionProps::default();
-            let mut const_optimizer =
-                ConstEvaluator::try_new(&execution_props).context(DataFusionExpr)?;
-            let evaluated_expr = df_logical_expr
-                .rewrite(&mut const_optimizer)
-                .context(DataFusionExpr)?;
-
-            // Check if the return type of expr can cast to target type
-            let physical_expr =
-                create_physical_expr(&evaluated_expr, &df_schema, &arrow_schema, &execution_props)
-                    .context(DataFusionExpr)?;
+            let physical_expr = create_physical_expr(
+                &df_logical_expr,
+                &df_schema,
+                &arrow_schema,
+                &execution_props,
+            )
+            .context(DataFusionExpr)?;
 
             let from_type = physical_expr
                 .data_type(&arrow_schema)
