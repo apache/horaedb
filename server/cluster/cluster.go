@@ -40,6 +40,7 @@ type Cluster struct {
 	hbstream      *schedule.HeartbeatStreams
 	schemaIDAlloc id.Allocator
 	tableIDAlloc  id.Allocator
+	shardIDAlloc  id.Allocator
 }
 
 func (c *Cluster) GetNodesSize() int {
@@ -88,6 +89,8 @@ func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV
 		nodesCache:    make(map[string]*Node),
 		schemaIDAlloc: id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocSchemaIDPrefix), idAllocatorStep),
 		tableIDAlloc:  id.NewAllocatorImpl(kv, path.Join(rootPath, meta.Name, AllocTableIDPrefix), idAllocatorStep),
+		// TODO: Load ShardTopology when cluster create, pass exist shardID to allocator
+		shardIDAlloc: id.NewReusableAllocatorImpl(make([]uint64, 0), MinShardID),
 
 		storage:  storage,
 		kv:       kv,
@@ -570,6 +573,15 @@ func (c *Cluster) allocTableID(ctx context.Context) (uint64, error) {
 		return 0, errors.WithMessage(err, "alloc table id failed")
 	}
 	return id, nil
+}
+
+// nolint
+func (c *Cluster) allocShardID(ctx context.Context) (uint32, error) {
+	id, err := c.shardIDAlloc.Alloc(ctx)
+	if err != nil {
+		return 0, errors.WithMessage(err, "cluster alloc shard id failed")
+	}
+	return uint32(id), nil
 }
 
 func (c *Cluster) pickOneShardOnNode(nodeName string) (uint32, error) {

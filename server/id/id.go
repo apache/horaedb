@@ -8,4 +8,7 @@ import "context"
 type Allocator interface {
 	// Alloc allocs a unique id.
 	Alloc(ctx context.Context) (uint64, error)
+
+	// Collect collect unused id to reused in alloc
+	Collect(ctx context.Context, id uint64) error
 }

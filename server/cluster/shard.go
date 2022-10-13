@@ -6,6 +6,10 @@ import (
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 )
 
+const (
+	MinShardID = 1
+)
+
 type Shard struct {
 	meta    []*clusterpb.Shard
 	nodes   []*clusterpb.Node

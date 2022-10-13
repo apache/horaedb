@@ -28,7 +28,7 @@ type AllocatorImpl struct {
 	isInitialized bool
 }
 
-func NewAllocatorImpl(kv clientv3.KV, key string, allocStep uint) *AllocatorImpl {
+func NewAllocatorImpl(kv clientv3.KV, key string, allocStep uint) Allocator {
 	return &AllocatorImpl{kv: kv, key: key, allocStep: allocStep}
 }
 
@@ -60,6 +60,10 @@ func (a *AllocatorImpl) Alloc(ctx context.Context) (uint64, error) {
 	ret := a.base
 	a.base++
 	return ret, nil
+}
+
+func (a *AllocatorImpl) Collect(_ context.Context, _ uint64) error {
+	return ErrCollectNotSupported
 }
 
 func (a *AllocatorImpl) slowRebaseLocked(ctx context.Context) error {
