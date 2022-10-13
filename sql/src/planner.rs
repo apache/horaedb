@@ -430,7 +430,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         let options = parse_options(stmt.options)?;
 
-        // Analyze default values
+        // ensure default value options are valid
         ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
 
         let plan = CreateTablePlan {
@@ -834,7 +834,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
     })
 }
 
-// Ensure default value exprs of columns valid.
+// Ensure default value option of columns are valid.
 fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'a, P>,
