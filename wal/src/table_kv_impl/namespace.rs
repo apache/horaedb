@@ -1615,7 +1615,7 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let location = Location::new(table_id, DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id);
 
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;

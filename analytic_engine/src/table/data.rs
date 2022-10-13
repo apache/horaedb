@@ -499,7 +499,7 @@ impl TableData {
     }
 
     pub fn location(&self) -> Location {
-        Location::new(self.id.as_u64(), self.shard_id)
+        Location::new(self.shard_id, self.id.as_u64())
     }
 }
 
@@ -718,6 +718,7 @@ pub mod tests {
         let table_data = TableDataMocker::default()
             .table_id(table_id)
             .table_name(table_name.clone())
+            .shard_id(shard_id)
             .build();
 
         assert_eq!(table_id, table_data.id);

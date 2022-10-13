@@ -205,7 +205,7 @@ impl Instance {
             .space_store
             .manifest
             .load_data(
-                Location::new(request.table_id.as_u64(), request.shard_id),
+                Location::new(request.shard_id, request.table_id.as_u64()),
                 true,
             )
             .await
@@ -224,7 +224,7 @@ impl Instance {
         Ok(table_data)
     }
 
-    /// Apply manifest data to instance
+    /// Recover `TableData` by applying manifest data to instance
     async fn recover_table_data(
         self: &Arc<Self>,
         manifest_data: TableManifestData,

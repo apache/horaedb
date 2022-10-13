@@ -850,7 +850,7 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let add_table = self.meta_update_add_table(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, add_table.clone()))
@@ -865,7 +865,7 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let drop_table = self.meta_update_drop_table(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, drop_table.clone()))
@@ -881,7 +881,7 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
             manifest
                 .store_update(MetaUpdateRequest::new(location, version_edit.clone()))
@@ -928,7 +928,7 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let alter_options = self.meta_update_alter_table_options(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, alter_options.clone()))
@@ -944,7 +944,7 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let alter_schema = self.meta_update_alter_table_schema(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, alter_schema.clone()))
@@ -969,7 +969,7 @@ mod tests {
 
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
 
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let expected_table_manifest_data = manifest_data_builder.build();
             ctx.check_table_manifest_data(location, &expected_table_manifest_data)
                 .await;
@@ -1039,7 +1039,7 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
@@ -1069,7 +1069,7 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
@@ -1214,7 +1214,7 @@ mod tests {
             manifest_builder.build()
         };
 
-        let location = Location::new(table_id.as_u64(), DEFAULT_SHARD_ID);
+        let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
         let log_store = {
             let log_entries: Vec<_> = logs
                 .iter()
