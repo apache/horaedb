@@ -87,9 +87,8 @@ impl From<meta_service::TableInfo> for TableInfo {
 
 #[derive(Clone, Debug)]
 pub struct ShardTables {
-    pub role: ShardRole,
+    pub shard_info: ShardInfo,
     pub tables: Vec<TableInfo>,
-    pub version: u64,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -114,7 +113,7 @@ pub struct NodeInfo {
     pub shards_info: Vec<ShardInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ShardInfo {
     pub shard_id: ShardId,
     pub role: ShardRole,
@@ -128,8 +127,9 @@ impl ShardInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub enum ShardRole {
+    #[default]
     Leader,
     Follower,
     PendingLeader,
@@ -255,9 +255,8 @@ impl TryFrom<meta_service::ShardTables> for ShardTables {
                 msg: "in meta_service::ShardTables",
             })?;
         Ok(Self {
-            role: ShardRole::from(shard_info.role()),
+            shard_info: ShardInfo::from(shard_info),
             tables: pb_shard_tables.tables.into_iter().map(Into::into).collect(),
-            version: shard_info.version,
         })
     }
 }

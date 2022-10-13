@@ -28,7 +28,7 @@ use ceresdbproto::{
         WriteResponse,
     },
 };
-use cluster::{config::SchemaConfig, CloseShardOpts, ClusterRef, OpenShardOpts};
+use cluster::{config::SchemaConfig, ClusterRef};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -428,7 +428,7 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
-                .open_shard(&request, OpenShardOpts::default())
+                .open_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
@@ -466,7 +466,7 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
-                .close_shard(&request, CloseShardOpts::default())
+                .close_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {

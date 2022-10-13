@@ -21,7 +21,7 @@ use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
-pub mod table_manager;
+pub mod shard_table_manager;
 // FIXME: Remove this lint ignore derive when topology about schema tables is
 // finished.
 #[allow(dead_code)]
@@ -95,19 +95,13 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
-#[derive(Debug, Default)]
-pub struct OpenShardOpts {}
-
-#[derive(Debug, Default)]
-pub struct CloseShardOpts {}
-
 /// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shard(&self, req: &OpenShardRequest, opts: OpenShardOpts) -> Result<()>;
-    async fn close_shard(&self, req: &CloseShardRequest, opts: CloseShardOpts) -> Result<()>;
+    async fn open_shard(&self, req: &OpenShardRequest) -> Result<()>;
+    async fn close_shard(&self, req: &CloseShardRequest) -> Result<()>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
