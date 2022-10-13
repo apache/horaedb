@@ -15,10 +15,10 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_event::{
         meta_event_service_server::{MetaEventService, MetaEventServiceServer},
-        ChangeShardRoleRequest, ChangeShardRoleResponse, CloseShardsRequest, CloseShardsResponse,
+        ChangeShardRoleRequest, ChangeShardRoleResponse, CloseShardRequest, CloseShardResponse,
         CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,
-        DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardsRequest,
-        OpenShardsResponse, SplitShardRequest, SplitShardResponse,
+        DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardRequest,
+        OpenShardResponse, SplitShardRequest, SplitShardResponse,
     },
     prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
     storage::{
@@ -28,7 +28,7 @@ use ceresdbproto::{
         WriteResponse,
     },
 };
-use cluster::{config::SchemaConfig, CloseShardsOpts, ClusterRef, OpenShardsOpts};
+use cluster::{config::SchemaConfig, ClusterRef};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
@@ -420,15 +420,15 @@ struct MetaServiceImpl<Q: QueryExecutor + 'static> {
 #[async_trait]
 impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
     // TODO: use macro to remove the boilerplate codes.
-    async fn open_shards(
+    async fn open_shard(
         &self,
-        request: tonic::Request<OpenShardsRequest>,
-    ) -> std::result::Result<tonic::Response<OpenShardsResponse>, tonic::Status> {
+        request: tonic::Request<OpenShardRequest>,
+    ) -> std::result::Result<tonic::Response<OpenShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
-                .open_shards(&request, OpenShardsOpts::default())
+                .open_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
@@ -445,7 +445,7 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
                 msg: "fail to join task",
             });
 
-        let mut resp = OpenShardsResponse::default();
+        let mut resp = OpenShardResponse::default();
         match res {
             Ok(Ok(_)) => {
                 resp.header = Some(build_ok_header());
@@ -458,15 +458,15 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         Ok(tonic::Response::new(resp))
     }
 
-    async fn close_shards(
+    async fn close_shard(
         &self,
-        request: tonic::Request<CloseShardsRequest>,
-    ) -> std::result::Result<tonic::Response<CloseShardsResponse>, tonic::Status> {
+        request: tonic::Request<CloseShardRequest>,
+    ) -> std::result::Result<tonic::Response<CloseShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
-                .close_shards(&request, CloseShardsOpts::default())
+                .close_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
@@ -483,7 +483,7 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
                 msg: "fail to join task",
             });
 
-        let mut resp = CloseShardsResponse::default();
+        let mut resp = CloseShardResponse::default();
         match res {
             Ok(Ok(_)) => {
                 resp.header = Some(build_ok_header());

@@ -10,7 +10,7 @@ use analytic_engine::{
 };
 use catalog::manager::ManagerRef;
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::cluster_impl::ClusterImpl;
+use cluster::{cluster_impl::ClusterImpl, shard_table_manager::ShardTableManager};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use log::info;
@@ -153,17 +153,19 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     )
     .expect("fail to build meta client");
 
-    let catalog_manager = { Arc::new(volatile::ManagerImpl::new(meta_client.clone()).await) };
-
+    let shard_table_manager = ShardTableManager::default();
     let cluster = {
         let cluster_impl = ClusterImpl::new(
-            meta_client,
+            shard_table_manager.clone(),
+            meta_client.clone(),
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )
         .unwrap();
         Arc::new(cluster_impl)
     };
+
+    let catalog_manager = Arc::new(volatile::ManagerImpl::new(shard_table_manager, meta_client));
 
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));

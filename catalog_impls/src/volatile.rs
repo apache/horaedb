@@ -14,33 +14,37 @@ use catalog::{
     self, consts,
     manager::{self, Manager},
     schema::{
-        self, CatalogMismatch, CloseOptions, CloseTable, CloseTableRequest, CreateOptions,
-        CreateTableRequest, DropOptions, DropTable, DropTableRequest, NameRef, OpenOptions,
-        OpenTable, OpenTableRequest, Schema, SchemaMismatch, SchemaRef,
+        self, CatalogMismatch, CloseOptions, CloseTableRequest, CloseTableWithCause, CreateOptions,
+        CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
+        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, OpenTableWithCause, Schema,
+        SchemaMismatch, SchemaRef,
     },
-    Catalog, CatalogRef,
+    Catalog, CatalogRef, CreateSchemaWithCause,
 };
+use cluster::shard_table_manager::ShardTableManager;
 use common_types::schema::SchemaName;
 use log::{debug, info};
 use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
 
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
+    shard_table_manager: ShardTableManager,
     meta_client: MetaClientRef,
 }
 
 impl ManagerImpl {
-    pub async fn new(meta_client: MetaClientRef) -> Self {
+    pub fn new(shard_table_manager: ShardTableManager, meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
+            shard_table_manager,
             meta_client,
         };
 
-        manager.maybe_create_default_catalog().await;
+        manager.maybe_create_default_catalog();
 
         manager
     }
@@ -70,19 +74,20 @@ impl Manager for ManagerImpl {
 }
 
 impl ManagerImpl {
-    async fn maybe_create_default_catalog(&mut self) {
+    fn maybe_create_default_catalog(&mut self) {
+        // TODO: we should delegate this operation to the [TableManager].
         // Try to get default catalog, create it if not exists.
         if self.catalogs.get(consts::DEFAULT_CATALOG).is_none() {
             // Default catalog is not exists, create and store it.
-            self.create_catalog(consts::DEFAULT_CATALOG.to_string())
-                .await;
+            self.create_catalog(consts::DEFAULT_CATALOG.to_string());
         };
     }
 
-    async fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl> {
+    fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl> {
         let catalog = Arc::new(CatalogImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
+            shard_table_manager: self.shard_table_manager.clone(),
             meta_client: self.meta_client.clone(),
         });
 
@@ -102,6 +107,7 @@ struct CatalogImpl {
     name: String,
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
+    shard_table_manager: ShardTableManager,
     meta_client: MetaClientRef,
 }
 
@@ -125,18 +131,21 @@ impl Catalog for CatalogImpl {
             }
         }
 
-        let schema_id = self
-            .meta_client
-            .alloc_schema_id(AllocSchemaIdRequest {
+        let schema_id = {
+            let req = AllocSchemaIdRequest {
                 name: name.to_string(),
-            })
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(catalog::CreateSchema {
-                catalog: &self.name,
-                schema: name,
-            })
-            .map(|resp| SchemaId::from(resp.id))?;
+            };
+            let resp = self
+                .meta_client
+                .alloc_schema_id(req)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| CreateSchemaWithCause {
+                    catalog: &self.name,
+                    schema: name.to_string(),
+                })?;
+            resp.id
+        };
 
         let mut schemas = self.schemas.write().unwrap();
         if schemas.get(name).is_some() {
@@ -146,11 +155,12 @@ impl Catalog for CatalogImpl {
         let schema: SchemaRef = Arc::new(SchemaImpl::new(
             self.name.to_string(),
             name.to_string(),
-            schema_id,
-            self.meta_client.clone(),
+            SchemaId::from_u32(schema_id),
+            self.shard_table_manager.clone(),
         ));
 
         schemas.insert(name.to_string(), schema);
+
         info!(
             "create schema success, catalog:{}, schema:{}",
             &self.name, name
@@ -171,19 +181,18 @@ impl Catalog for CatalogImpl {
 
 /// A volatile implementation for [`Schema`].
 ///
-/// The tables belonging to the schema won't be recovered during initialization
-/// and will be opened afterwards.
+/// The implementation is actually a delegation for [`cluster::TableManager`].
 struct SchemaImpl {
     /// Catalog name
     catalog_name: String,
     /// Schema name
     schema_name: String,
+    schema_id: SchemaId,
+    shard_table_manager: ShardTableManager,
     /// Tables of schema
     tables: RwLock<HashMap<String, TableRef>>,
     /// Guard for creating/dropping table
     create_table_mutex: Mutex<()>,
-    schema_id: SchemaId,
-    meta_client: MetaClientRef,
 }
 
 impl SchemaImpl {
@@ -191,15 +200,15 @@ impl SchemaImpl {
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        meta_client: MetaClientRef,
+        shard_table_manager: ShardTableManager,
     ) -> Self {
         Self {
             catalog_name,
             schema_name,
-            tables: RwLock::new(HashMap::new()),
-            create_table_mutex: Mutex::new(()),
             schema_id,
-            meta_client,
+            shard_table_manager,
+            tables: Default::default(),
+            create_table_mutex: Mutex::new(()),
         }
     }
 
@@ -225,13 +234,23 @@ impl SchemaImpl {
             }
         );
 
-        // Check table existence
         let tables = self.tables.read().unwrap();
         debug!(
-            "Memory catalog impl, get table, table_name:{:?}, tables:{:?}",
+            "Volatile schema impl gets table, table_name:{:?}, all_tables:{:?}",
             table_name, self.tables
         );
         Ok(tables.get(table_name).cloned())
+    }
+
+    fn add_table(&self, table: TableRef) -> Option<TableRef> {
+        let mut tables = self.tables.write().unwrap();
+        tables.insert(table.name().to_string(), table)
+    }
+
+    fn add_new_table(&self, table: TableRef) {
+        let old = self.add_table(table);
+
+        assert!(old.is_none());
     }
 
     fn remove_table(&self, table_name: &str) -> Option<TableRef> {
@@ -259,7 +278,7 @@ impl Schema for SchemaImpl {
     async fn create_table(
         &self,
         request: CreateTableRequest,
-        _: CreateOptions,
+        opts: CreateOptions,
     ) -> schema::Result<TableRef> {
         // FIXME: Error should be returned if create_if_not_exist is false.
         if let Some(table) = self.get_table(
@@ -270,7 +289,7 @@ impl Schema for SchemaImpl {
             return Ok(table);
         }
 
-        // prepare to create table
+        // Prepare to create table.
         let _create_table_guard = self.create_table_mutex.lock().await;
 
         if let Some(table) = self.get_table(
@@ -281,7 +300,32 @@ impl Schema for SchemaImpl {
             return Ok(table);
         }
 
-        todo!("The implementation will be removed after cluster implementation is ready");
+        // Do real create table.
+        let table_with_shards = self
+            .shard_table_manager
+            .find_table_by_name(
+                &request.catalog_name,
+                &request.schema_name,
+                &request.table_name,
+            )
+            .with_context(|| schema::CreateTable {
+                request: request.clone(),
+                msg: "Table with shards is not found in the ShardTableManager",
+            })?;
+
+        let request = request.into_engine_create_request(table_with_shards.table_info.id.into());
+
+        // Table engine is able to handle duplicate table creation.
+        let table = opts
+            .table_engine
+            .create_table(request)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(CreateTableWithCause)?;
+
+        self.add_new_table(table.clone());
+
+        Ok(table)
     }
 
     async fn drop_table(
@@ -300,7 +344,7 @@ impl Schema for SchemaImpl {
             return Ok(false);
         };
 
-        // prepare to drop table
+        // Prepare to drop table
         let _drop_table_guard = self.create_table_mutex.lock().await;
 
         let table = match self.get_table(
@@ -312,32 +356,15 @@ impl Schema for SchemaImpl {
             None => return Ok(false),
         };
 
-        let schema_name = request.schema_name.clone();
-        let table_name = request.table_name.clone();
-
-        // drop the table in the engine first.
+        // Drop the table in the engine first.
         let real_dropped = opts
             .table_engine
             .drop_table(request)
             .await
-            .context(DropTable)?;
-
-        // Request CeresMeta to drop this table.
-        self.meta_client
-            .drop_table(meta_client::types::DropTableRequest {
-                schema_name: schema_name.to_string(),
-                name: table_name.to_string(),
-                id: table.id().as_u64(),
-            })
-            .await
             .map_err(|e| Box::new(e) as _)
-            .context(schema::InvalidateTableId {
-                schema: &self.schema_name,
-                table_name,
-                table_id: table.id(),
-            })?;
+            .context(DropTableWithCause)?;
 
-        // remove the table from the catalog memory.
+        // Remove the table from the memory.
         self.remove_table(table.name());
         Ok(real_dropped)
     }
@@ -356,19 +383,15 @@ impl Schema for SchemaImpl {
             return Ok(table);
         }
 
-        // Table engine handles duplicate table creation
-        let table_name = request.table_name.clone();
         let table = opts
             .table_engine
             .open_table(request)
             .await
-            .context(OpenTable)?;
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenTableWithCause)?;
 
         if let Some(table) = &table {
-            // Now the table engine have create the table, but we may not be the
-            // creator thread
-            let mut tables = self.tables.write().unwrap();
-            tables.entry(table_name).or_insert_with(|| table.clone());
+            self.add_table(table.clone());
         }
 
         Ok(table)
@@ -394,7 +417,8 @@ impl Schema for SchemaImpl {
         opts.table_engine
             .close_table(request)
             .await
-            .context(CloseTable)?;
+            .map_err(|e| Box::new(e) as _)
+            .context(CloseTableWithCause)?;
 
         self.remove_table(&table_name);
 

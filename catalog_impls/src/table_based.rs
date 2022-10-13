@@ -13,9 +13,9 @@ use catalog::{
     manager::{self, Manager},
     schema::{
         self, AllocateTableId, CatalogMismatch, CloseOptions, CloseTableRequest, CreateExistTable,
-        CreateOptions, CreateTable, CreateTableRequest, DropOptions, DropTable, DropTableRequest,
-        NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch, SchemaRef, TooManyTable,
-        WriteTableMeta,
+        CreateOptions, CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
+        DropTableWithCause, NameRef, OpenOptions, OpenTableRequest, Schema, SchemaMismatch,
+        SchemaRef, TooManyTable, WriteTableMeta,
     },
     Catalog, CatalogRef,
 };
@@ -501,7 +501,7 @@ impl Catalog for CatalogImpl {
             .create_schema(request)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(catalog::CreateSchema {
+            .context(catalog::CreateSchemaWithCause {
                 catalog: &self.name,
                 schema: &name.to_string(),
             })?;
@@ -731,7 +731,8 @@ impl Schema for SchemaImpl {
             .table_engine
             .create_table(request.clone())
             .await
-            .context(CreateTable)?;
+            .map_err(|e| Box::new(e) as _)
+            .context(CreateTableWithCause)?;
         assert_eq!(table_name, table.name());
 
         self.catalog_table
@@ -791,7 +792,8 @@ impl Schema for SchemaImpl {
             .table_engine
             .drop_table(request.clone())
             .await
-            .context(DropTable)?;
+            .map_err(|e| Box::new(e) as _)
+            .context(DropTableWithCause)?;
 
         info!(
             "Table engine drop table successfully, request:{:?}, dropped:{}",

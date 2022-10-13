@@ -44,14 +44,73 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display(
+        "Failed to create table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    CreateTable {
+        request: CreateTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Failed to create table, err:{}", source))]
-    CreateTable { source: table_engine::engine::Error },
+    CreateTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-    #[snafu(display("Failed to open table, err:{}", source))]
-    OpenTable { source: table_engine::engine::Error },
+    #[snafu(display(
+        "Failed to drop table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    DropTable {
+        request: DropTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Failed to close table, err:{}", source))]
-    CloseTable { source: table_engine::engine::Error },
+    #[snafu(display("Failed to drop table, err:{}", source))]
+    DropTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to open table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    OpenTable {
+        request: OpenTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to open table, source:{}", source))]
+    OpenTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to close table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    CloseTable {
+        request: CloseTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to close table, source:{}", source))]
+    CloseTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display(
         "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
@@ -113,9 +172,6 @@ pub enum Error {
     AlterTable {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-
-    #[snafu(display("Failed to drop table, err:{}", source))]
-    DropTable { source: table_engine::engine::Error },
 
     #[snafu(display(
         "Too many table, cannot create table, schema:{}, table:{}.\nBacktrace:\n{}",
