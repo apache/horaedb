@@ -76,7 +76,7 @@ impl Inner {
         // TODO: We need a more efficient way to find TableWithShards.
         let mut table_info = None;
         let mut shard_infos = vec![];
-        for (_, shard_tables) in &self.tables_by_shard {
+        for shard_tables in self.tables_by_shard.values() {
             if let Some(v) = shard_tables
                 .tables
                 .iter()
