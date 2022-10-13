@@ -1,12 +1,13 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package grpcservice
+package grpc
 
 import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
+	"github.com/CeresDB/ceresmeta/server/service"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -39,14 +40,14 @@ func (s *Service) getCeresmetaClient(ctx context.Context, addr string) (metaserv
 }
 
 func (s *Service) getForwardedGrpcClient(ctx context.Context, forwardedAddr string) (*grpc.ClientConn, error) {
-	client, ok := s.connConns.Load(forwardedAddr)
+	client, ok := s.conns.Load(forwardedAddr)
 	if !ok {
-		cc, err := getClientConn(ctx, forwardedAddr)
+		cc, err := service.GetClientConn(ctx, forwardedAddr)
 		if err != nil {
 			return nil, err
 		}
 		client = cc
-		s.connConns.Store(forwardedAddr, cc)
+		s.conns.Store(forwardedAddr, cc)
 	}
 	return client.(*grpc.ClientConn), nil
 }
@@ -60,28 +61,4 @@ func (s *Service) getForwardedAddr(ctx context.Context) (string, bool, error) {
 		return "", true, nil
 	}
 	return member.Leader.GetEndpoint(), false, nil
-}
-
-func (s *Service) createHeartbeatForwardedStream(ctx context.Context,
-	client metaservicepb.CeresmetaRpcServiceClient,
-) (metaservicepb.CeresmetaRpcService_NodeHeartbeatClient, error) {
-	forwardedStream, err := client.NodeHeartbeat(ctx)
-	return forwardedStream, err
-}
-
-func forwardRegionHeartbeatRespToClient(forwardedStream metaservicepb.CeresmetaRpcService_NodeHeartbeatClient,
-	server metaservicepb.CeresmetaRpcService_NodeHeartbeatServer,
-	errCh chan error,
-) {
-	for {
-		resp, err := forwardedStream.Recv()
-		if err != nil {
-			errCh <- ErrForward.WithCause(err)
-			return
-		}
-		if err := server.Send(resp); err != nil {
-			errCh <- ErrForward.WithCause(err)
-			return
-		}
-	}
 }

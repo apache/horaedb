@@ -12,7 +12,6 @@ import (
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/id"
-	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -37,7 +36,6 @@ type Cluster struct {
 
 	storage       storage.Storage
 	kv            clientv3.KV
-	hbstream      *schedule.HeartbeatStreams
 	schemaIDAlloc id.Allocator
 	tableIDAlloc  id.Allocator
 	shardIDAlloc  id.Allocator
@@ -80,7 +78,7 @@ func (c *Cluster) GetClusterID() uint32 {
 	return c.clusterID
 }
 
-func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV, hbstream *schedule.HeartbeatStreams, rootPath string, idAllocatorStep uint) *Cluster {
+func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV, rootPath string, idAllocatorStep uint) *Cluster {
 	cluster := &Cluster{
 		clusterID:     meta.GetId(),
 		metaData:      &metaData{cluster: meta},
@@ -92,9 +90,8 @@ func NewCluster(meta *clusterpb.Cluster, storage storage.Storage, kv clientv3.KV
 		// TODO: Load ShardTopology when cluster create, pass exist shardID to allocator
 		shardIDAlloc: id.NewReusableAllocatorImpl(make([]uint64, 0), MinShardID),
 
-		storage:  storage,
-		kv:       kv,
-		hbstream: hbstream,
+		storage: storage,
+		kv:      kv,
 	}
 
 	return cluster
@@ -296,7 +293,11 @@ func (c *Cluster) GetTables(_ context.Context, shardIDs []uint32, nodeName strin
 		for _, table := range shard.tables {
 			tables = append(tables, table)
 		}
-		shardTables[shardID] = &ShardTablesWithRole{shardID: shardID, shardRole: shardRole, tables: tables, version: shard.version}
+		shardTables[shardID] = &ShardTablesWithRole{shard: &ShardInfo{
+			ShardID:   shardID,
+			ShardRole: shardRole,
+			Version:   shard.version,
+		}, tables: tables}
 	}
 
 	return shardTables, nil

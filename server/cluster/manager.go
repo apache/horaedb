@@ -11,7 +11,6 @@ import (
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
-	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -23,45 +22,6 @@ const (
 	AllocSchemaIDPrefix  = "SchemaID"
 	AllocTableIDPrefix   = "TableID"
 )
-
-type TableInfo struct {
-	ID         uint64
-	Name       string
-	SchemaID   uint32
-	SchemaName string
-}
-
-type ShardTables struct {
-	ShardRole clusterpb.ShardRole
-	Tables    []*TableInfo
-	Version   uint64
-}
-
-type ShardInfo struct {
-	ShardID   uint32
-	ShardRole clusterpb.ShardRole
-	Version   uint64
-}
-
-type NodeShard struct {
-	Endpoint  string
-	ShardInfo *ShardInfo
-}
-
-type RouteEntry struct {
-	Table      *TableInfo
-	NodeShards []*NodeShard
-}
-
-type RouteTablesResult struct {
-	Version      uint64
-	RouteEntries map[string]*RouteEntry
-}
-
-type GetNodesResult struct {
-	ClusterTopologyVersion uint64
-	NodeShards             []*NodeShard
-}
 
 type Manager interface {
 	// Start must be called before manager is used.
@@ -89,12 +49,11 @@ type managerImpl struct {
 	storage         storage.Storage
 	kv              clientv3.KV
 	alloc           id.Allocator
-	hbstreams       *schedule.HeartbeatStreams
 	rootPath        string
 	idAllocatorStep uint
 }
 
-func NewManagerImpl(storage storage.Storage, kv clientv3.KV, hbstream *schedule.HeartbeatStreams, rootPath string, idAllocatorStep uint) (Manager, error) {
+func NewManagerImpl(storage storage.Storage, kv clientv3.KV, rootPath string, idAllocatorStep uint) (Manager, error) {
 	alloc := id.NewAllocatorImpl(kv, path.Join(rootPath, AllocClusterIDPrefix), idAllocatorStep)
 
 	manager := &managerImpl{
@@ -102,7 +61,6 @@ func NewManagerImpl(storage storage.Storage, kv clientv3.KV, hbstream *schedule.
 		kv:              kv,
 		alloc:           alloc,
 		clusters:        make(map[string]*Cluster, 0),
-		hbstreams:       hbstream,
 		rootPath:        rootPath,
 		idAllocatorStep: idAllocatorStep,
 	}
@@ -146,7 +104,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, ini
 		return nil, errors.WithMessagef(err, "cluster manager CreateCluster, clusters:%v", clusterPb)
 	}
 
-	cluster := NewCluster(clusterPb, m.storage, m.kv, m.hbstreams, m.rootPath, m.idAllocatorStep)
+	cluster := NewCluster(clusterPb, m.storage, m.kv, m.rootPath, m.idAllocatorStep)
 
 	if err = cluster.init(ctx); err != nil {
 		log.Error("fail to init cluster", zap.Error(err))
@@ -219,7 +177,7 @@ func (m *managerImpl) GetTables(ctx context.Context, clusterName, nodeName strin
 				SchemaID: t.schema.GetId(), SchemaName: t.schema.GetName(),
 			})
 		}
-		ret[shardID] = &ShardTables{ShardRole: shardTables.shardRole, Tables: tableInfos, Version: shardTables.version}
+		ret[shardID] = &ShardTables{Shard: shardTables.shard, Tables: tableInfos}
 	}
 	return ret, nil
 }
@@ -303,7 +261,7 @@ func (m *managerImpl) Start(ctx context.Context) error {
 	m.clusters = make(map[string]*Cluster, len(clusters))
 	for _, clusterPb := range clusters {
 		log.Info("cluster manager start, new cluster", zap.String("cluster", clusterPb.GetName()))
-		cluster := NewCluster(clusterPb, m.storage, m.kv, m.hbstreams, m.rootPath, m.idAllocatorStep)
+		cluster := NewCluster(clusterPb, m.storage, m.kv, m.rootPath, m.idAllocatorStep)
 		if err := cluster.Load(ctx); err != nil {
 			log.Error("cluster manager fail to start, fail to load cluster", zap.Error(err))
 			return errors.WithMessagef(err, "cluster manager start, clusters:%v", cluster)

@@ -13,9 +13,8 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/config"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/grpcservice"
 	"github.com/CeresDB/ceresmeta/server/member"
-	"github.com/CeresDB/ceresmeta/server/schedule"
+	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -31,7 +30,6 @@ type Server struct {
 	etcdCfg *embed.Config
 
 	// The fields below are initialized after Run of server is called.
-	hbStreams      *schedule.HeartbeatStreams
 	clusterManager cluster.Manager
 
 	// member describes membership in ceresmeta cluster.
@@ -59,7 +57,7 @@ func CreateServer(cfg *config.Config) (*Server, error) {
 		etcdCfg: etcdCfg,
 	}
 
-	grpcService := grpcservice.NewService(cfg.GrpcHandleTimeout(), srv)
+	grpcService := metagrpc.NewService(cfg.GrpcHandleTimeout(), srv)
 	etcdCfg.ServiceRegister = func(grpcSrv *grpc.Server) {
 		grpcSrv.RegisterService(&metaservicepb.CeresmetaRpcService_ServiceDesc, grpcService)
 	}
@@ -93,8 +91,6 @@ func (srv *Server) Close() {
 			log.Error("fail to close etcdCli", zap.Error(err))
 		}
 	}
-
-	srv.hbStreams.Close()
 
 	// TODO: release other resources: httpclient, etcd server and so on.
 }
@@ -138,9 +134,7 @@ func (srv *Server) startEtcd(ctx context.Context) error {
 }
 
 // startServer starts involved services.
-func (srv *Server) startServer(ctx context.Context) error {
-	srv.hbStreams = schedule.NewHeartbeatStreams(ctx)
-
+func (srv *Server) startServer(_ context.Context) error {
 	if srv.cfg.MaxScanLimit <= 1 {
 		return ErrStartServer.WithCausef("scan limit must be greater than 1")
 	}
@@ -149,7 +143,7 @@ func (srv *Server) startServer(ctx context.Context) error {
 		MaxScanLimit: srv.cfg.MaxScanLimit, MinScanLimit: srv.cfg.MinScanLimit,
 	})
 
-	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.hbStreams, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
+	manager, err := cluster.NewManagerImpl(storage, srv.etcdCli, srv.cfg.StorageRootPath, srv.cfg.IDAllocatorStep)
 	if err != nil {
 		return errors.WithMessage(err, "start server")
 	}
@@ -230,16 +224,6 @@ func (srv *Server) GetClusterManager() cluster.Manager {
 
 func (srv *Server) GetLeader(ctx context.Context) (*member.GetLeaderResp, error) {
 	return srv.member.GetLeader(ctx)
-}
-
-func (srv *Server) BindHeartbeatStream(_ context.Context, node string, sender grpcservice.HeartbeatStreamSender) error {
-	srv.hbStreams.Bind(node, sender)
-	return nil
-}
-
-func (srv *Server) UnbindHeartbeatStream(_ context.Context, node string) error {
-	srv.hbStreams.Unbind(node)
-	return nil
 }
 
 func (srv *Server) ProcessHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) error {

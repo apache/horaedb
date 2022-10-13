@@ -11,7 +11,6 @@ import (
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
-	"github.com/CeresDB/ceresmeta/server/schedule"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -51,7 +50,7 @@ func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseF
 }
 
 func newClusterManagerWithStorage(storage storage.Storage, kv clientv3.KV) (Manager, error) {
-	return NewManagerImpl(storage, kv, schedule.NewHeartbeatStreams(context.Background()), testRootPath, defaultIDAllocatorStep)
+	return NewManagerImpl(storage, kv, testRootPath, defaultIDAllocatorStep)
 }
 
 func newTestClusterManager(t *testing.T) (Manager, etcdutil.CloseFn) {
@@ -195,7 +194,7 @@ func testGetTables(ctx context.Context, re *require.Assertions, manager Manager,
 
 	tableNum := 0
 	for _, tables := range shardTables {
-		re.Equal(clusterpb.ShardRole_LEADER, tables.ShardRole)
+		re.Equal(clusterpb.ShardRole_LEADER, tables.Shard.ShardRole)
 		tableNum += len(tables.Tables)
 	}
 	re.Equal(num, tableNum)
