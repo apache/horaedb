@@ -2,7 +2,10 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use common_types::SequenceNumber;
+use common_types::{
+    table::{Location, DEFAULT_SHARD_ID},
+    SequenceNumber,
+};
 
 use crate::{
     manager::{ReadBoundary, ReadRequest, RegionId, WalManagerRef},
@@ -29,12 +32,12 @@ async fn check_write_batch_with_read_request<B: WalBuilder>(
 async fn check_write_batch<B: WalBuilder>(
     env: &TestEnv<B>,
     wal: WalManagerRef,
-    region_id: RegionId,
+    location: Location,
     max_seq: SequenceNumber,
     payload_batch: &[TestPayload],
 ) {
     let read_req = ReadRequest {
-        region_id,
+        location,
         start: ReadBoundary::Included(max_seq + 1 - payload_batch.len() as u64),
         end: ReadBoundary::Included(max_seq),
     };
@@ -44,26 +47,26 @@ async fn check_write_batch<B: WalBuilder>(
 async fn simple_read_write_with_wal<B: WalBuilder>(
     env: impl Deref<Target = TestEnv<B>>,
     wal: WalManagerRef,
-    region_id: RegionId,
+    location: Location,
 ) {
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, 0, 10).await;
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
 
-    check_write_batch(&env, wal, region_id, seq, &payload_batch).await
+    check_write_batch(&env, wal, location, seq, &payload_batch).await
 }
 
-async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, region_id: RegionId) {
+async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, location: Location) {
     let wal = env.build_wal().await;
     // Empty region has 0 sequence num.
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal.sequence_num(location).await.unwrap();
     assert_eq!(0, last_seq);
 
-    simple_read_write_with_wal(env, wal.clone(), region_id).await;
+    simple_read_write_with_wal(env, wal.clone(), location).await;
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal.sequence_num(location).await.unwrap();
     assert_eq!(10, last_seq);
 
     wal.close_gracefully().await.unwrap();
@@ -72,14 +75,14 @@ async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, region_id: RegionId)
 /// Test the read with different kinds of boundaries.
 async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     let wal = env.build_wal().await;
-    let region_id = 0;
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let location = Location::new(0, 0);
+    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, 0, 10).await;
     let end_seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal.sequence_num(location).await.unwrap();
     assert_eq!(end_seq, last_seq);
 
     let start_seq = end_seq + 1 - write_batch.entries.len() as u64;
@@ -87,7 +90,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [min, max]
     {
         let read_req = ReadRequest {
-            region_id,
+            location,
             start: ReadBoundary::Min,
             end: ReadBoundary::Max,
         };
@@ -98,7 +101,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [0, 10]
     {
         let read_req = ReadRequest {
-            region_id,
+            location,
             start: ReadBoundary::Included(start_seq),
             end: ReadBoundary::Included(end_seq),
         };
@@ -109,7 +112,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // (0, 10]
     {
         let read_req = ReadRequest {
-            region_id,
+            location,
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Included(end_seq),
         };
@@ -121,7 +124,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // [0, 10)
     {
         let read_req = ReadRequest {
-            region_id,
+            location,
             start: ReadBoundary::Included(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
@@ -139,7 +142,7 @@ async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     // (0, 10)
     {
         let read_req = ReadRequest {
-            region_id,
+            location,
             start: ReadBoundary::Excluded(start_seq),
             end: ReadBoundary::Excluded(end_seq),
         };
@@ -162,12 +165,16 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
     let wal = env.build_wal().await;
     let mut handles = Vec::with_capacity(10);
     for i in 0..5 {
-        let read_write_0 =
-            env.runtime
-                .spawn(simple_read_write_with_wal(env.clone(), wal.clone(), i));
-        let read_write_1 =
-            env.runtime
-                .spawn(simple_read_write_with_wal(env.clone(), wal.clone(), i));
+        let read_write_0 = env.runtime.spawn(simple_read_write_with_wal(
+            env.clone(),
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, i),
+        ));
+        let read_write_1 = env.runtime.spawn(simple_read_write_with_wal(
+            env.clone(),
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, i),
+        ));
         handles.push(read_write_0);
         handles.push(read_write_1);
     }
@@ -183,10 +190,17 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
 
 /// Test whether the written logs can be read after reopen.
 async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let (payload_batch, write_batch, seq) = {
         let wal = env.build_wal().await;
-        let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+        let (payload_batch, write_batch) = env
+            .build_log_batch(
+                wal.clone(),
+                Location::new(DEFAULT_SHARD_ID, table_id),
+                0,
+                10,
+            )
+            .await;
         let seq = wal
             .write(&env.write_ctx, &write_batch)
             .await
@@ -200,11 +214,14 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
     // reopen the wal
     let wal = env.build_wal().await;
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq, last_seq);
 
     let read_req = ReadRequest {
-        region_id,
+        location: Location::new(DEFAULT_SHARD_ID, table_id),
         start: ReadBoundary::Included(seq + 1 - write_batch.entries.len() as u64),
         end: ReadBoundary::Included(seq),
     };
@@ -224,19 +241,29 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
 ///  - Read the part of first batch and second batch.
 async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
     let wal = env.build_wal().await;
-    let region_id = 0;
+    let table_id = 0;
 
     // write two batches
     let (start_val, mid_val, end_val) = (0, 10, 50);
     let (payload_batch1, write_batch_1) = env
-        .build_log_batch(wal.clone(), region_id, start_val, mid_val)
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            start_val,
+            mid_val,
+        )
         .await;
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch_1)
         .await
         .expect("should succeed to write");
     let (payload_batch2, write_batch_2) = env
-        .build_log_batch(wal.clone(), region_id, mid_val, end_val)
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            mid_val,
+            end_val,
+        )
         .await;
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch_2)
@@ -244,13 +271,34 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         .expect("should succeed to write");
 
     // read the first batch
-    check_write_batch(env, wal.clone(), region_id, seq_1, &payload_batch1).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq_1,
+        &payload_batch1,
+    )
+    .await;
     // read the second batch
-    check_write_batch(env, wal.clone(), region_id, seq_2, &payload_batch2).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq_2,
+        &payload_batch2,
+    )
+    .await;
 
     // read the whole batch
     let (seq_3, payload_batch3) = (seq_2, env.build_payload_batch(start_val, end_val));
-    check_write_batch(env, wal.clone(), region_id, seq_3, &payload_batch3).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq_3,
+        &payload_batch3,
+    )
+    .await;
 
     // read the part of batch1 and batch2
     let (seq_4, payload_batch4) = {
@@ -259,31 +307,55 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         let seq = seq_2 - (end_val - new_end) as u64;
         (seq, env.build_payload_batch(new_start, new_end))
     };
-    check_write_batch(env, wal.clone(), region_id, seq_4, &payload_batch4).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq_4,
+        &payload_batch4,
+    )
+    .await;
 
     wal.close_gracefully().await.unwrap();
 }
 
 /// Test whether data can be deleted.
 async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let wal = env.build_wal().await;
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (payload_batch, write_batch) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
-    check_write_batch(env, wal.clone(), region_id, seq, &payload_batch).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq,
+        &payload_batch,
+    )
+    .await;
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq, last_seq);
 
     // delete all logs
-    wal.mark_delete_entries_up_to(region_id, seq)
+    wal.mark_delete_entries_up_to(Location::new(DEFAULT_SHARD_ID, table_id), seq)
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        region_id,
+        location: Location::new(DEFAULT_SHARD_ID, table_id),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };
@@ -294,7 +366,10 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     env.check_log_entries(seq, &[], iter).await;
 
     // Sequence num remains unchanged.
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq, last_seq);
 
     wal.close_gracefully().await.unwrap();
@@ -302,21 +377,35 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
 
 /// Delete half of the written data and check the remaining half can be read.
 async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let wal = env.build_wal().await;
-    let (mut payload_batch, write_batch) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (mut payload_batch, write_batch) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
-    check_write_batch(env, wal.clone(), region_id, seq, &payload_batch).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id),
+        seq,
+        &payload_batch,
+    )
+    .await;
 
     // delete all logs
-    wal.mark_delete_entries_up_to(region_id, seq / 2)
+    wal.mark_delete_entries_up_to(Location::new(DEFAULT_SHARD_ID, table_id), seq / 2)
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        region_id,
+        location: Location::new(DEFAULT_SHARD_ID, table_id),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };
@@ -329,7 +418,10 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
     env.check_log_entries(seq, &payload_batch, iter).await;
 
     // Sequence num remains unchanged.
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq, last_seq);
 
     wal.close_gracefully().await.unwrap();
@@ -337,27 +429,40 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
 
 /// Test delete across multiple regions.
 async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
-    let (region_id_1, region_id_2) = (1, 2);
+    let (table_id_1, table_id_2) = (1, 2);
     let wal = env.build_wal().await;
-    let (_, write_batch_1) = env.build_log_batch(wal.clone(), region_id_1, 0, 10).await;
+    let (_, write_batch_1) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id_1),
+            0,
+            10,
+        )
+        .await;
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch_1)
         .await
         .expect("should succeed to write");
 
-    let (payload_batch2, write_batch_2) =
-        env.build_log_batch(wal.clone(), region_id_2, 10, 20).await;
+    let (payload_batch2, write_batch_2) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id_2),
+            10,
+            20,
+        )
+        .await;
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch_2)
         .await
         .expect("should succeed to write");
 
     // delete all logs of region 1.
-    wal.mark_delete_entries_up_to(region_id_1, seq_1)
+    wal.mark_delete_entries_up_to(Location::new(DEFAULT_SHARD_ID, table_id_1), seq_1)
         .await
         .expect("should succeed to delete");
     let read_req = ReadRequest {
-        region_id: region_id_1,
+        location: Location::new(DEFAULT_SHARD_ID, table_id_1),
         start: ReadBoundary::Min,
         end: ReadBoundary::Max,
     };
@@ -367,26 +472,54 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
         .expect("should succeed to read");
     env.check_log_entries(seq_1, &[], iter).await;
 
-    check_write_batch(env, wal.clone(), region_id_2, seq_2, &payload_batch2).await;
+    check_write_batch(
+        env,
+        wal.clone(),
+        Location::new(DEFAULT_SHARD_ID, table_id_2),
+        seq_2,
+        &payload_batch2,
+    )
+    .await;
 
     wal.close_gracefully().await.unwrap();
 }
 
 /// The sequence number should increase monotonically after multiple writes.
 async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let wal = env.build_wal().await;
-    let (_, write_batch1) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch1) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch1)
         .await
         .expect("should succeed to write");
-    let (_, write_batch2) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch2) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch2)
         .await
         .expect("should succeed to write");
-    let (_, write_batch3) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch3) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
 
     let seq_3 = wal
         .write(&env.write_ctx, &write_batch3)
@@ -402,26 +535,43 @@ async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &Te
 /// The sequence number should increase monotonically after write, delete and
 /// one more write.
 async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let wal = env.build_wal().await;
-    let (_, write_batch1) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch1) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     // write
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch1)
         .await
         .expect("should succeed to write");
     // delete
-    wal.mark_delete_entries_up_to(region_id, seq_1)
+    wal.mark_delete_entries_up_to(Location::new(DEFAULT_SHARD_ID, table_id), seq_1)
         .await
         .expect("should succeed to delete");
-    let (_, write_batch2) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch2) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     // write again
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch2)
         .await
         .expect("should succeed to write");
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq_2, last_seq);
 
     assert!(seq_2 > seq_1);
@@ -432,16 +582,23 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
 /// The sequence number should increase monotonically after write, delete,
 /// reopen and write.
 async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env: &TestEnv<B>) {
-    let region_id = 0;
+    let table_id = 0;
     let wal = env.build_wal().await;
-    let (_, write_batch1) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch1) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     // write
     let seq_1 = wal
         .write(&env.write_ctx, &write_batch1)
         .await
         .expect("should succeed to write");
     // delete
-    wal.mark_delete_entries_up_to(region_id, seq_1)
+    wal.mark_delete_entries_up_to(Location::new(DEFAULT_SHARD_ID, table_id), seq_1)
         .await
         .expect("should succeed to delete");
 
@@ -451,13 +608,23 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
 
     let wal = env.build_wal().await;
     // write again
-    let (_, write_batch2) = env.build_log_batch(wal.clone(), region_id, 0, 10).await;
+    let (_, write_batch2) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id),
+            0,
+            10,
+        )
+        .await;
     let seq_2 = wal
         .write(&env.write_ctx, &write_batch2)
         .await
         .expect("should succeed to write");
 
-    let last_seq = wal.sequence_num(region_id).await.unwrap();
+    let last_seq = wal
+        .sequence_num(Location::new(DEFAULT_SHARD_ID, table_id))
+        .await
+        .unwrap();
     assert_eq!(seq_2, last_seq);
 
     assert!(seq_2 > seq_1);
@@ -467,32 +634,52 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
 
 #[test]
 fn test_simple_read_write_default_batch() {
+    let table_id = 0;
     let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(simple_read_write(&env, 0));
+    env.runtime.block_on(simple_read_write(
+        &env,
+        Location::new(DEFAULT_SHARD_ID, table_id),
+    ));
 
     let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(simple_read_write(&env, 0));
+    env.runtime.block_on(simple_read_write(
+        &env,
+        Location::new(DEFAULT_SHARD_ID, table_id),
+    ));
 
     let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(simple_read_write(&env, 0));
+    env.runtime.block_on(simple_read_write(
+        &env,
+        Location::new(DEFAULT_SHARD_ID, table_id),
+    ));
 }
 
 #[test]
 fn test_simple_read_write_different_batch_size() {
+    let table_id = 0;
     let batch_sizes = [1, 2, 4, 10, 100];
 
     for batch_size in batch_sizes {
         let mut env = RocksTestEnv::new(2, RocksWalBuilder::default());
         env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(&env, 0));
+        env.runtime.block_on(simple_read_write(
+            &env,
+            Location::new(DEFAULT_SHARD_ID, table_id),
+        ));
 
         let mut env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
         env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(&env, 0));
+        env.runtime.block_on(simple_read_write(
+            &env,
+            Location::new(DEFAULT_SHARD_ID, table_id),
+        ));
 
         let mut env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
         env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(&env, 0));
+        env.runtime.block_on(simple_read_write(
+            &env,
+            Location::new(DEFAULT_SHARD_ID, table_id),
+        ));
     }
 }
 

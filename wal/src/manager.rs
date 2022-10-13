@@ -6,7 +6,9 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
+use common_types::{table::Location, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 use common_util::runtime::Runtime;
+pub use error::*;
 use snafu::ResultExt;
 
 use crate::{
@@ -16,10 +18,9 @@ use crate::{
 };
 
 pub mod error {
+    use common_types::table::Location;
     use common_util::define_result;
     use snafu::{Backtrace, Snafu};
-
-    use crate::manager::RegionId;
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -45,12 +46,12 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, region_id:{}.\nBacktrace:\n{}",
-            region_id,
+            "Region is not found, table_location:{:?}.\nBacktrace:\n{}",
+            location,
             backtrace
         ))]
         RegionNotFound {
-            region_id: RegionId,
+            location: Location,
             backtrace: Backtrace,
         },
 
@@ -118,9 +119,6 @@ pub mod error {
 
     define_result!(Error);
 }
-
-use common_types::{MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
-pub use error::*;
 
 pub type RegionId = u64;
 pub const MAX_REGION_ID: RegionId = u64::MAX;
@@ -207,14 +205,22 @@ impl ReadBoundary {
 
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
-    /// Region id of the wal to read
-    pub region_id: RegionId,
+    /// Location of the wal to read
+    pub location: Location,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
     pub start: ReadBoundary,
     /// End bound
     pub end: ReadBoundary,
 }
+
+#[derive(Debug, Clone)]
+pub struct ScanRequest {
+    /// Region id of the wals to be scanned
+    pub region_id: RegionId,
+}
+
+pub type ScanContext = ReadContext;
 
 /// Blocking Iterator abstraction for log entry.
 pub trait BlockingLogIterator: Send + fmt::Debug {
@@ -246,13 +252,13 @@ pub trait BatchLogIterator {
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
-    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
@@ -267,14 +273,17 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    fn encoder(&self, region_id: RegionId) -> Result<LogBatchEncoder> {
-        Ok(LogBatchEncoder::create(region_id))
+    fn encoder(&self, location: Location) -> Result<LogBatchEncoder> {
+        Ok(LogBatchEncoder::create(location))
     }
 
     /// Write a batch of log entries to log.
     ///
     /// Returns the max sequence number for the batch of log entries.
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber>;
+
+    /// Scan all logs from a `Region`.
+    async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter>;
 }
 
 /// Adapter to convert a blocking interator to a batch async iterator.

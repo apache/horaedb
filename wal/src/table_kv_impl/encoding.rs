@@ -92,7 +92,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::table_kv_impl::namespace;
+    use crate::{manager::RegionId, table_kv_impl::namespace};
 
     #[test]
     fn test_format_namespace_key() {

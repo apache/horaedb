@@ -5,7 +5,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::{schema::Schema, time::Timestamp};
+use common_types::{
+    schema::Schema,
+    table::{ShardId, DEFAULT_SHARD_ID},
+    time::Timestamp,
+};
 use common_util::runtime::Runtime;
 use proto::sys_catalog::{TableEntry, TableState as TableStatePb};
 use snafu::{ensure, Backtrace, Snafu};
@@ -155,6 +159,10 @@ pub struct CreateTableRequest {
     pub options: HashMap<String, String>,
     /// Tells state of the table
     pub state: TableState,
+    /// Shard id, shard is the table set about scheduling from nodes
+    /// It will be assigned the default value in standalone mode,
+    /// and just be useful in cluster mode
+    pub shard_id: ShardId,
 }
 
 impl CreateTableRequest {
@@ -226,9 +234,14 @@ pub struct OpenTableRequest {
     pub table_id: TableId,
     /// Table engine type
     pub engine: String,
+    /// Shard id, shard is the table set about scheduling from nodes
+    pub shard_id: ShardId,
 }
 
 impl From<TableInfo> for OpenTableRequest {
+    /// The `shard_id` is not persisted and just assigned a default value
+    /// while recovered from `TableInfo`.
+    /// This conversion will just happen in standalone mode.
     fn from(table_info: TableInfo) -> Self {
         Self {
             catalog_name: table_info.catalog_name,
@@ -237,11 +250,26 @@ impl From<TableInfo> for OpenTableRequest {
             table_name: table_info.table_name,
             table_id: table_info.table_id,
             engine: table_info.engine,
+            shard_id: DEFAULT_SHARD_ID,
         }
     }
 }
 
-pub type CloseTableRequest = OpenTableRequest;
+#[derive(Debug, Clone)]
+pub struct CloseTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table engine type
+    pub engine: String,
+}
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table

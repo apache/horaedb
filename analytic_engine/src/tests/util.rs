@@ -8,6 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{config::ReadableDuration, runtime};
@@ -169,6 +170,7 @@ impl<T: EngineBuilder> TestContext<T> {
                 table_name: table_name.to_string(),
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+                shard_id: DEFAULT_SHARD_ID,
             })
             .await
             .unwrap()
@@ -191,6 +193,7 @@ impl<T: EngineBuilder> TestContext<T> {
                 table_name: table_name.to_string(),
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+                shard_id: DEFAULT_SHARD_ID,
             })
             .await?;
 

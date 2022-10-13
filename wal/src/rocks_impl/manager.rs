@@ -14,7 +14,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{bytes::BytesMut, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use common_types::{
+    bytes::BytesMut, table::Location, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
+};
 use common_util::runtime::Runtime;
 use log::{debug, info, warn};
 use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Writable, WriteBatch, DB};
@@ -26,7 +28,7 @@ use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
-        WalManager, WriteContext, MAX_REGION_ID,
+        ScanContext, ScanRequest, WalManager, WriteContext, MAX_REGION_ID,
     },
 };
 
@@ -178,7 +180,7 @@ impl Region {
 
             for entry in &batch.entries {
                 self.log_encoding
-                    .encode_key(&mut key_buf, &(batch.region_id, next_sequence_num))
+                    .encode_key(&mut key_buf, &(batch.location.table_id, next_sequence_num))
                     .map_err(|e| Box::new(e) as _)
                     .context(Encoding)?;
                 wb.put(&key_buf, &entry.payload)
@@ -599,8 +601,8 @@ impl BlockingLogIterator for RocksLogIterator {
 
 #[async_trait]
 impl WalManager for RocksImpl {
-    async fn sequence_num(&self, region_id: RegionId) -> Result<u64> {
-        if let Some(region) = self.region(region_id) {
+    async fn sequence_num(&self, location: Location) -> Result<u64> {
+        if let Some(region) = self.region(location.table_id) {
             return region.sequence_num();
         }
 
@@ -609,10 +611,10 @@ impl WalManager for RocksImpl {
 
     async fn mark_delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        if let Some(region) = self.region(region_id) {
+        if let Some(region) = self.region(location.table_id) {
             return region.delete_entries_up_to(sequence_num).await;
         }
 
@@ -630,7 +632,7 @@ impl WalManager for RocksImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let blocking_iter = if let Some(region) = self.region(req.region_id) {
+        let blocking_iter = if let Some(region) = self.region(req.location.table_id) {
             region.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
@@ -646,8 +648,16 @@ impl WalManager for RocksImpl {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let region = self.get_or_create_region(batch.region_id);
+        let region = self.get_or_create_region(batch.location.table_id);
         region.write(ctx, batch).await
+    }
+
+    async fn scan(
+        &self,
+        _ctx: &ScanContext,
+        _req: &ScanRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        todo!()
     }
 }
 

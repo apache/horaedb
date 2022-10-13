@@ -7,6 +7,7 @@ use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};
 use async_trait::async_trait;
 use common_types::{
     bytes::{MemBuf, MemBufMut},
+    table::Location,
     SequenceNumber,
 };
 use common_util::{
@@ -20,8 +21,8 @@ use tempfile::TempDir;
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, RegionId, WalManager,
-        WalManagerRef, WriteContext,
+        BatchLogIterator, BatchLogIteratorAdapter, ReadContext, WalManager, WalManagerRef,
+        WriteContext,
     },
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
@@ -144,14 +145,14 @@ impl<B: WalBuilder> TestEnv<B> {
     pub async fn build_log_batch(
         &self,
         wal: WalManagerRef,
-        region_id: RegionId,
+        location: Location,
         start: u32,
         end: u32,
     ) -> (Vec<TestPayload>, LogWriteBatch) {
         let log_entries = (start..end).collect::<Vec<_>>();
 
         let log_batch_encoder = wal
-            .encoder(region_id)
+            .encoder(location)
             .expect("should succeed to create log batch encoder");
 
         let log_batch = log_batch_encoder

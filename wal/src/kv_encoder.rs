@@ -4,6 +4,7 @@
 
 use common_types::{
     bytes::{self, BytesMut, MemBuf, MemBufMut},
+    table::Location,
     SequenceNumber,
 };
 use common_util::{
@@ -116,6 +117,7 @@ pub enum Namespace {
     Log = 1,
 }
 
+/// Log key in old wal design, map the `TableId` to `RegionId`
 pub type LogKey = (RegionId, SequenceNumber);
 
 #[derive(Debug, Clone)]
@@ -522,22 +524,22 @@ impl LogEncoding {
 /// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
-    region_id: RegionId,
+    location: Location,
     log_encoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
     /// Create LogBatchEncoder with specific region_id.
-    pub fn create(region_id: RegionId) -> Self {
+    pub fn create(location: Location) -> Self {
         Self {
-            region_id,
+            location,
             log_encoding: LogEncoding::newest(),
         }
     }
 
     /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
     pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
-        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
         self.log_encoding
             .encode_value(&mut buf, payload)
@@ -561,7 +563,7 @@ impl LogBatchEncoder {
     where
         &'a I: Into<P>,
     {
-        let mut write_batch = LogWriteBatch::new(self.region_id);
+        let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
         for raw_payload in raw_payload_batch.iter() {
             self.log_encoding
