@@ -181,14 +181,14 @@ CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) 
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');. Caused by: Failed to execute create table, err:Failed to create table, name:05_create_tables_t8, err:Failed to create table, err:Invalid arguments, err:Invalid options, space_id:2, table:05_create_tables_t8, table_id:2199023255574, err:Unknown storage format. value:\"unknown\"." })
 
-CREATE TABLE `05_create_tables_t9`(c1 int, c2 bigint default 0, c3 uint32 default 1 + 1, c4 string default 'xxx',  t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
+CREATE TABLE `05_create_tables_t9`(c1 int, c2 bigint default 0, c3 uint32 default 1 + 1, c4 string default 'xxx', c5 uint32 default c3*2 + 1, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
 affected_rows: 0
 
 show create table `05_create_tables_t9`;
 
 Table,Create Table,
-String(StringBytes(b"05_create_tables_t9")),String(StringBytes(b"CREATE TABLE `05_create_tables_t9` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, `c2` bigint DEFAULT 0, `c3` uint32 DEFAULT 1 + 1, `c4` string DEFAULT 'xxx', PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+String(StringBytes(b"05_create_tables_t9")),String(StringBytes(b"CREATE TABLE `05_create_tables_t9` (`t1` timestamp NOT NULL, `tsid` uint64 NOT NULL, `c1` int, `c2` bigint DEFAULT 0, `c3` uint32 DEFAULT 1 + 1, `c4` string DEFAULT 'xxx', `c5` uint32 DEFAULT c3 * 2 + 1, PRIMARY KEY(t1,tsid), TIMESTAMP KEY(t1)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
 
 
 drop table `05_create_tables_t9`;

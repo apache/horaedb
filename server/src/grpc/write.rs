@@ -2,7 +2,7 @@
 
 //! Write handler
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
 use common_types::{
@@ -264,7 +264,7 @@ fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Re
     Ok(InsertPlan {
         table,
         rows: row_group,
-        default_value_map: HashMap::new(),
+        default_value_map: BTreeMap::new(),
     })
 }
 

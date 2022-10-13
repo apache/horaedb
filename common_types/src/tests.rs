@@ -95,6 +95,23 @@ fn default_value_schema_builder() -> schema::Builder {
                 .expect("should succeed build column schema"),
         )
         .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("field4".to_string(), DatumKind::UInt32)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("field5".to_string(), DatumKind::UInt32)
+                .default_value(Some(Expr::BinaryOp {
+                    left: Box::new(Expr::Identifier("field4".into())),
+                    op: BinaryOperator::Plus,
+                    right: Box::new(Expr::Value(Value::Number("2".to_string(), false))),
+                }))
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
 }
 
 /// Build a schema for testing:
@@ -104,8 +121,12 @@ pub fn build_schema() -> Schema {
 }
 
 /// Build a schema for testing:
-/// (key1(varbinary), key2(timestamp), field1(int64, default 10),
-/// field2(uint32, default 20)), field3(uint32, default 1 + 2)
+/// key1(varbinary), key2(timestamp),
+/// field1(int64, default 10),
+/// field2(uint32, default 20),
+/// field3(uint32, default 1 + 2)
+/// field4(uint32),
+/// field5(uint32, default field4 + 2)
 pub fn build_default_value_schema() -> Schema {
     default_value_schema_builder().build().unwrap()
 }
