@@ -15,8 +15,8 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     types::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-        DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
-        GetShardTablesResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
+        DropTableRequest, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
+        GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
         RouteTablesResponse, ShardInfo,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
@@ -155,15 +155,18 @@ impl MetaClient for MetaClientImpl {
         check_response_header(&pb_resp.header)
     }
 
-    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse> {
-        let mut pb_req = meta_service::GetShardTablesRequest::from(req);
+    async fn get_tables_of_shards(
+        &self,
+        req: GetTablesOfShardsRequest,
+    ) -> Result<GetTablesOfShardsResponse> {
+        let mut pb_req = meta_service::GetTablesOfShardsRequest::from(req);
         pb_req.header = Some(self.request_header().into());
 
         debug!("Meta client try to get tables, req:{:?}", pb_req);
 
         let pb_resp = self
             .client()
-            .get_shard_tables(pb_req)
+            .get_tables_of_shards(pb_req)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(FailGetTables)?
@@ -173,7 +176,7 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(&pb_resp.header)?;
 
-        GetShardTablesResponse::try_from(pb_resp)
+        GetTablesOfShardsResponse::try_from(pb_resp)
     }
 
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse> {

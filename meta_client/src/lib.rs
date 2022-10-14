@@ -7,8 +7,8 @@ use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-    DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
-    GetShardTablesResponse, RouteTablesRequest, RouteTablesResponse, ShardInfo,
+    DropTableRequest, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
+    GetTablesOfShardsResponse, RouteTablesRequest, RouteTablesResponse, ShardInfo,
 };
 
 pub mod meta_impl;
@@ -92,7 +92,10 @@ pub trait MetaClient: Send + Sync {
 
     async fn drop_table(&self, req: DropTableRequest) -> Result<()>;
 
-    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse>;
+    async fn get_tables_of_shards(
+        &self,
+        req: GetTablesOfShardsRequest,
+    ) -> Result<GetTablesOfShardsResponse>;
 
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse>;
 

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use meta_client::types::{ShardId, ShardInfo, ShardTables, TableInfo};
+use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
 
 /// [ShardTableManager] manages information about tables and shards, and the
 /// relationship between them is: one shard -> multiple tables.
@@ -44,15 +44,15 @@ impl ShardTableManager {
     }
 
     /// Update the tables of one shard.
-    pub fn update_shard_tables(&self, shard_tables: ShardTables) {
+    pub fn update_tables_of_shard(&self, tables_of_shard: TablesOfShard) {
         self.inner
             .write()
             .unwrap()
-            .update_shard_tables(shard_tables)
+            .update_tables_of_shard(tables_of_shard)
     }
 
     /// Update the tables of multiple shards.
-    pub fn update_tables_by_shard(&self, tables_by_shard: HashMap<ShardId, ShardTables>) {
+    pub fn update_tables_by_shard(&self, tables_by_shard: HashMap<ShardId, TablesOfShard>) {
         self.inner
             .write()
             .unwrap()
@@ -63,7 +63,7 @@ impl ShardTableManager {
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
-    tables_by_shard: HashMap<ShardId, ShardTables>,
+    tables_by_shard: HashMap<ShardId, TablesOfShard>,
 }
 
 impl Inner {
@@ -76,8 +76,8 @@ impl Inner {
         // TODO: We need a more efficient way to find TableWithShards.
         let mut table_info = None;
         let mut shard_infos = vec![];
-        for shard_tables in self.tables_by_shard.values() {
-            if let Some(v) = shard_tables
+        for tables_of_shard in self.tables_by_shard.values() {
+            if let Some(v) = tables_of_shard
                 .tables
                 .iter()
                 .find(|table| table.schema_name == schema_name && table.name == table_name)
@@ -86,7 +86,7 @@ impl Inner {
                     table_info = Some(v.clone());
                 }
 
-                shard_infos.push(shard_tables.shard_info.clone());
+                shard_infos.push(tables_of_shard.shard_info.clone());
             }
         }
 
@@ -107,12 +107,12 @@ impl Inner {
         self.tables_by_shard.contains_key(&shard_id)
     }
 
-    fn update_shard_tables(&mut self, shard_tables: ShardTables) {
+    fn update_tables_of_shard(&mut self, tables_of_shard: TablesOfShard) {
         self.tables_by_shard
-            .insert(shard_tables.shard_info.shard_id, shard_tables);
+            .insert(tables_of_shard.shard_info.id, tables_of_shard);
     }
 
-    fn update_tables_by_shard(&mut self, tables_by_shard: HashMap<ShardId, ShardTables>) {
+    fn update_tables_by_shard(&mut self, tables_by_shard: HashMap<ShardId, TablesOfShard>) {
         for (shard_id, tables) in tables_by_shard {
             self.tables_by_shard.insert(shard_id, tables);
         }

@@ -172,7 +172,7 @@ mod tests {
                 };
 
                 let shard_info = ShardInfo {
-                    shard_id: 0,
+                    id: 0,
                     role,
                     version: 0,
                 };

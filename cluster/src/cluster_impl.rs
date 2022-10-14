@@ -12,7 +12,7 @@ use ceresdbproto::meta_event::{
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{GetNodesRequest, GetShardTablesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse},
     MetaClientRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
@@ -183,44 +183,45 @@ impl Inner {
             msg: "missing shard info in the request",
         })?;
 
-        if self.shard_table_manager.contains_shard(shard_info.shard_id) {
+        if self.shard_table_manager.contains_shard(shard_info.id) {
             OpenShard {
-                shard_id: shard_info.shard_id,
+                shard_id: shard_info.id,
                 msg: "shard is already opened",
             }
             .fail()?;
         }
 
-        let get_shard_tables_req = GetShardTablesRequest {
-            shard_ids: vec![shard_info.shard_id],
+        let req = GetTablesOfShardsRequest {
+            shard_ids: vec![shard_info.id],
         };
 
         let mut resp = self
             .meta_client
-            .get_tables(get_shard_tables_req)
+            .get_tables_of_shards(req)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(OpenShardWithCause {
-                shard_id: shard_info.shard_id,
+                shard_id: shard_info.id,
             })?;
 
         ensure!(
-            resp.shard_tables.len() == 1,
+            resp.tables_by_shard.len() == 1,
             OpenShard {
-                shard_id: shard_info.shard_id,
+                shard_id: shard_info.id,
                 msg: "expect only one shard tables"
             }
         );
 
-        let shard_tables = resp
-            .shard_tables
-            .remove(&shard_info.shard_id)
+        let tables_of_shard = resp
+            .tables_by_shard
+            .remove(&shard_info.id)
             .context(OpenShard {
-                shard_id: shard_info.shard_id,
+                shard_id: shard_info.id,
                 msg: "shard tables are missing from the response",
             })?;
 
-        self.shard_table_manager.update_shard_tables(shard_tables);
+        self.shard_table_manager
+            .update_tables_of_shard(tables_of_shard);
 
         Ok(())
     }

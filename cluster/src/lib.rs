@@ -2,9 +2,9 @@
 
 //! Cluster sub-crate includes serval functionalities for supporting CeresDB
 //! server to running in the distribute mode. Including:
-//! - Catalog / Schema / Table's create, open, close and drop operations.
 //! - Request CeresMeta for reading topology or configuration.
-//! - Accept CeresMeta's command events like create/drop table etc,.
+//! - Accept CeresMeta's commands like open/close shard or create/drop table
+//!   etc.
 //!
 //! The core types are [Cluster] trait and its implementation [ClusterImpl].
 

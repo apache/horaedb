@@ -57,13 +57,13 @@ pub struct DropTableRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct GetShardTablesRequest {
+pub struct GetTablesOfShardsRequest {
     pub shard_ids: Vec<ShardId>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GetShardTablesResponse {
-    pub shard_tables: HashMap<ShardId, ShardTables>,
+pub struct GetTablesOfShardsResponse {
+    pub tables_by_shard: HashMap<ShardId, TablesOfShard>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,7 +86,7 @@ impl From<meta_service::TableInfo> for TableInfo {
 }
 
 #[derive(Clone, Debug)]
-pub struct ShardTables {
+pub struct TablesOfShard {
     pub shard_info: ShardInfo,
     pub tables: Vec<TableInfo>,
 }
@@ -115,7 +115,7 @@ pub struct NodeInfo {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ShardInfo {
-    pub shard_id: ShardId,
+    pub id: ShardId,
     pub role: ShardRole,
     pub version: u64,
 }
@@ -183,7 +183,7 @@ impl From<ShardInfo> for meta_service::ShardInfo {
         let role = cluster::ShardRole::from(shard_info.role);
 
         Self {
-            shard_id: shard_info.shard_id,
+            id: shard_info.id,
             role: role as i32,
             version: 0,
         }
@@ -193,7 +193,7 @@ impl From<ShardInfo> for meta_service::ShardInfo {
 impl From<meta_service::ShardInfo> for ShardInfo {
     fn from(pb_shard_info: meta_service::ShardInfo) -> Self {
         ShardInfo {
-            shard_id: pb_shard_info.shard_id,
+            id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
             version: pb_shard_info.version,
         }
@@ -222,8 +222,8 @@ impl From<cluster::ShardRole> for ShardRole {
     }
 }
 
-impl From<GetShardTablesRequest> for meta_service::GetShardTablesRequest {
-    fn from(req: GetShardTablesRequest) -> Self {
+impl From<GetTablesOfShardsRequest> for meta_service::GetTablesOfShardsRequest {
+    fn from(req: GetTablesOfShardsRequest) -> Self {
         Self {
             header: None,
             shard_ids: req.shard_ids,
@@ -231,32 +231,36 @@ impl From<GetShardTablesRequest> for meta_service::GetShardTablesRequest {
     }
 }
 
-impl TryFrom<meta_service::GetShardTablesResponse> for GetShardTablesResponse {
+impl TryFrom<meta_service::GetTablesOfShardsResponse> for GetTablesOfShardsResponse {
     type Error = Error;
 
-    fn try_from(pb_resp: meta_service::GetShardTablesResponse) -> Result<Self> {
-        let shard_tables = pb_resp
-            .shard_tables
+    fn try_from(pb_resp: meta_service::GetTablesOfShardsResponse) -> Result<Self> {
+        let tables_by_shard = pb_resp
+            .tables_by_shard
             .into_iter()
-            .map(|(k, v)| Ok((k, ShardTables::try_from(v)?)))
+            .map(|(k, v)| Ok((k, TablesOfShard::try_from(v)?)))
             .collect::<Result<HashMap<_, _>>>()?;
 
-        Ok(Self { shard_tables })
+        Ok(Self { tables_by_shard })
     }
 }
 
-impl TryFrom<meta_service::ShardTables> for ShardTables {
+impl TryFrom<meta_service::TablesOfShard> for TablesOfShard {
     type Error = Error;
 
-    fn try_from(pb_shard_tables: meta_service::ShardTables) -> Result<Self> {
-        let shard_info = pb_shard_tables
+    fn try_from(pb_tables_of_shard: meta_service::TablesOfShard) -> Result<Self> {
+        let shard_info = pb_tables_of_shard
             .shard_info
             .with_context(|| MissingShardInfo {
-                msg: "in meta_service::ShardTables",
+                msg: "in meta_service::TablesOfShard",
             })?;
         Ok(Self {
             shard_info: ShardInfo::from(shard_info),
-            tables: pb_shard_tables.tables.into_iter().map(Into::into).collect(),
+            tables: pb_tables_of_shard
+                .tables
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         })
     }
 }
