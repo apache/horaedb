@@ -7,6 +7,7 @@ import "github.com/CeresDB/ceresmeta/pkg/coderr"
 var (
 	ErrCreateCluster           = coderr.NewCodeError(coderr.BadRequest, "create clusters")
 	ErrClusterAlreadyExists    = coderr.NewCodeError(coderr.Internal, "clusters already exists")
+	ErrClusterStateInvalid     = coderr.NewCodeError(coderr.Internal, "cluster state invalid")
 	ErrClusterNotFound         = coderr.NewCodeError(coderr.NotFound, "cluster not found")
 	ErrClusterTopologyNotFound = coderr.NewCodeError(coderr.NotFound, "cluster topology not found")
 	ErrSchemaNotFound          = coderr.NewCodeError(coderr.NotFound, "schema not found")
