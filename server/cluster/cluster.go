@@ -712,7 +712,11 @@ func (c *Cluster) UpdateClusterTopology(ctx context.Context, state clusterpb.Clu
 	}
 	clusterTopology.ShardView = shardView
 	clusterTopology.State = state
-	return c.storage.PutClusterTopology(ctx, c.clusterID, c.metaData.clusterTopology.Version, clusterTopology)
+	if err = c.storage.PutClusterTopology(ctx, c.clusterID, c.metaData.clusterTopology.Version, clusterTopology); err != nil {
+		return err
+	}
+	c.metaData.clusterTopology = clusterTopology
+	return nil
 }
 
 type ShardWithLock struct {
