@@ -7,6 +7,7 @@ use std::sync::Arc;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
+use interpreters::{table_creator, table_dropper};
 use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -218,14 +219,25 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let query_executor = self.query_executor.context(MissingQueryExecutor)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
-        let instance = Instance {
-            catalog_manager,
-            query_executor,
-            table_engine,
-            function_registry,
-            limiter: self.limiter,
+
+        let instance = {
+            let creator = Arc::new(table_creator::catalog_based::TableCreatorImpl::new(
+                catalog_manager.clone(),
+            ));
+            let dropper = Arc::new(table_dropper::catalog_based::TableDropperImpl::new(
+                catalog_manager.clone(),
+            ));
+            let instance = Instance {
+                catalog_manager,
+                query_executor,
+                table_engine,
+                function_registry,
+                limiter: self.limiter,
+                table_creator: creator,
+                table_dropper: dropper,
+            };
+            InstanceRef::new(instance)
         };
-        let instance = InstanceRef::new(instance);
 
         // Create http config
         let http_config = Endpoint {

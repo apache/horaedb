@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use catalog::manager::ManagerRef;
 use df_operator::registry::FunctionRegistryRef;
+use interpreters::{table_creator::TableCreatorRef, table_dropper::TableDropperRef};
 use table_engine::engine::TableEngineRef;
 
 use crate::limiter::Limiter;
@@ -20,6 +21,8 @@ pub struct Instance<Q> {
     // User defined functions registry.
     pub function_registry: FunctionRegistryRef,
     pub limiter: Limiter,
+    pub table_creator: TableCreatorRef,
+    pub table_dropper: TableDropperRef,
 }
 
 /// A reference counted instance pointer

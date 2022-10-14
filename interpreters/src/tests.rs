@@ -19,6 +19,8 @@ use crate::{
     context::Context,
     factory::Factory,
     interpreter::{Output, Result},
+    table_creator::catalog_based::TableCreatorImpl,
+    table_dropper::catalog_based::TableDropperImpl,
 };
 
 async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
@@ -58,10 +60,14 @@ where
 {
     async fn build_factory(&self) -> Factory<ExecutorImpl> {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
+        let table_creator = Arc::new(TableCreatorImpl::new(catalog_manager.clone()));
+        let table_dropper = Arc::new(TableDropperImpl::new(catalog_manager.clone()));
         Factory::new(
             ExecutorImpl::new(query_engine::Config::default()),
             catalog_manager,
             self.engine(),
+            table_creator,
+            table_dropper,
         )
     }
 
@@ -133,10 +139,14 @@ where
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
+        let table_creator = Arc::new(TableCreatorImpl::new(catalog_manager.clone()));
+        let table_dropper = Arc::new(TableDropperImpl::new(catalog_manager.clone()));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
+            table_creator.clone(),
+            table_dropper.clone(),
         );
         let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2, field4) VALUES('tagk', 1638428434000, 1), ('tagk2', 1638428434000, 10);";
 
@@ -155,6 +165,8 @@ where
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),
+            table_creator,
+            table_dropper,
         );
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())

@@ -3,17 +3,14 @@
 //! Interpreter for create statements
 
 use async_trait::async_trait;
-use catalog::{
-    manager::ManagerRef,
-    schema::{CreateOptions, CreateTableRequest},
-};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
-use table_engine::engine::{TableEngineRef, TableState};
+use table_engine::engine::TableEngineRef;
 
 use crate::{
     context::Context,
     interpreter::{Create, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
+    table_creator::TableCreatorRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -53,79 +50,31 @@ define_result!(Error);
 pub struct CreateInterpreter {
     ctx: Context,
     plan: CreateTablePlan,
-    catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
+    table_creator: TableCreatorRef,
 }
 
 impl CreateInterpreter {
     pub fn create(
         ctx: Context,
         plan: CreateTablePlan,
-        catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
+        table_creator: TableCreatorRef,
     ) -> InterpreterPtr {
         Box::new(Self {
             ctx,
             plan,
-            catalog_manager,
             table_engine,
+            table_creator,
         })
     }
 }
 
 impl CreateInterpreter {
     async fn execute_create(self: Box<Self>) -> Result<Output> {
-        let default_catalog = self.ctx.default_catalog();
-        let catalog = self
-            .catalog_manager
-            .catalog_by_name(default_catalog)
-            .context(FindCatalog {
-                name: default_catalog,
-            })?
-            .context(CatalogNotExists {
-                name: default_catalog,
-            })?;
-
-        let default_schema = self.ctx.default_schema();
-        let schema = catalog
-            .schema_by_name(default_schema)
-            .context(FindSchema {
-                name: default_schema,
-            })?
-            .context(SchemaNotExists {
-                name: default_schema,
-            })?;
-
-        let CreateTablePlan {
-            engine,
-            table,
-            table_schema,
-            if_not_exists,
-            options,
-        } = self.plan;
-
-        let request = CreateTableRequest {
-            catalog_name: catalog.name().to_string(),
-            schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
-            table_name: table.clone(),
-            table_schema,
-            engine,
-            options,
-            state: TableState::Stable,
-        };
-
-        let opts = CreateOptions {
-            table_engine: self.table_engine,
-            create_if_not_exists: if_not_exists,
-        };
-
-        schema
-            .create_table(request, opts)
+        self.table_creator
+            .create_table(self.ctx, self.plan, self.table_engine)
             .await
-            .context(SchemaCreateTable { table })?;
-
-        Ok(Output::AffectedRows(0))
     }
 }
 

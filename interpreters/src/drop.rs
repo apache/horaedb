@@ -3,18 +3,18 @@
 //! Interpreter for drop statements
 
 use async_trait::async_trait;
-use catalog::{manager::ManagerRef, schema::DropOptions};
-use log::warn;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use sql::plan::DropTablePlan;
-use table_engine::engine::{DropTableRequest, TableEngineRef};
+use table_engine::engine::TableEngineRef;
 
 use crate::{
     context::Context,
     interpreter::{Drop, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
+    table_dropper::TableDropperRef,
 };
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to find catalog, name:{}, err:{}", name, source))]
     FindCatalog {
@@ -53,71 +53,31 @@ define_result!(Error);
 pub struct DropInterpreter {
     ctx: Context,
     plan: DropTablePlan,
-    catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
+    table_dropper: TableDropperRef,
 }
 
 impl DropInterpreter {
     pub fn create(
         ctx: Context,
         plan: DropTablePlan,
-        catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
+        table_dropper: TableDropperRef,
     ) -> InterpreterPtr {
         Box::new(Self {
             ctx,
             plan,
-            catalog_manager,
             table_engine,
+            table_dropper,
         })
     }
 }
 
 impl DropInterpreter {
     async fn execute_drop(self: Box<Self>) -> Result<Output> {
-        let default_catalog = self.ctx.default_catalog();
-        let catalog = self
-            .catalog_manager
-            .catalog_by_name(default_catalog)
-            .context(FindCatalog {
-                name: default_catalog,
-            })?
-            .context(CatalogNotExists {
-                name: default_catalog,
-            })?;
-
-        let default_schema = self.ctx.default_schema();
-        let schema = catalog
-            .schema_by_name(default_schema)
-            .context(FindSchema {
-                name: default_schema,
-            })?
-            .context(SchemaNotExists {
-                name: default_schema,
-            })?;
-
-        let table = self.plan.table;
-        let request = DropTableRequest {
-            catalog_name: catalog.name().to_string(),
-            schema_name: schema.name().to_string(),
-            schema_id: schema.id(),
-            table_name: table.clone(),
-            engine: self.plan.engine,
-        };
-
-        let opts = DropOptions {
-            table_engine: self.table_engine,
-        };
-
-        if schema
-            .drop_table(request, opts)
+        self.table_dropper
+            .drop_table(self.ctx, self.plan, self.table_engine)
             .await
-            .context(SchemaDropTable { table: &table })?
-        {
-            warn!("Table {} has been dropped already", &table);
-        }
-
-        Ok(Output::AffectedRows(0))
     }
 }
 
