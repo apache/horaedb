@@ -60,6 +60,8 @@ jobs:
             debug-${{ runner.os }}
       - name: Check Disk Quota
         run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
           make check-disk-quota
       - name: Setup Build Environment
         run: |
