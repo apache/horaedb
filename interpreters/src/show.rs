@@ -17,7 +17,6 @@ use sql::{
 
 use crate::{
     context::Context,
-    create::{CatalogNotExists, FindCatalog, FindSchema, SchemaNotExists},
     interpreter::{
         Interpreter, InterpreterPtr, Output, Result as InterpreterResult, ShowCreateTable,
         ShowDatabases, ShowTables,
@@ -32,7 +31,7 @@ const SHOW_DATABASES_COLUMN_SCHEMA: &str = "Schemas";
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display(
-        "Unsupported show create type, type: {:?}, err:{}",
+        "Unsupported show create type, type:{:?}.\nBacktrace:{}",
         obj_type,
         backtrace
     ))]
@@ -58,28 +57,20 @@ pub enum Error {
     #[snafu(display("Failed to fetch databases, err:{}", source))]
     FetchDatabases { source: catalog::Error },
 
+    #[snafu(display("Catalog does not exist, catalog:{}.\nBacktrace\n:{}", name, backtrace))]
+    CatalogNotExists { name: String, backtrace: Backtrace },
+
+    #[snafu(display("Schema does not exist, schema:{}.\nBacktrace\n:{}", name, backtrace))]
+    SchemaNotExists { name: String, backtrace: Backtrace },
+
     #[snafu(display("Failed to fetch catalog, err:{}", source))]
-    FetchCatalog { source: crate::create::Error },
+    FetchCatalog { source: catalog::manager::Error },
 
     #[snafu(display("Failed to fetch schema, err:{}", source))]
-    FetchSchema { source: crate::create::Error },
-
-    #[snafu(display("From create::Error, err:{}", source))]
-    FromCreateError { source: crate::create::Error },
+    FetchSchema { source: catalog::Error },
 }
 
 define_result!(Error);
-
-impl From<crate::create::Error> for Error {
-    fn from(error: crate::create::Error) -> Self {
-        use crate::create::Error::*;
-        match error {
-            FindCatalog { .. } | CatalogNotExists { .. } => Error::FetchCatalog { source: error },
-            FindSchema { .. } | SchemaNotExists { .. } => Error::FetchSchema { source: error },
-            other => Error::FromCreateError { source: other },
-        }
-    }
-}
 
 pub struct ShowInterpreter {
     ctx: Context,
@@ -175,15 +166,12 @@ fn get_default_catalog(
     catalog_manager: &ManagerRef,
 ) -> Result<Arc<dyn Catalog + Send + Sync>> {
     let default_catalog = ctx.default_catalog();
-    let catalog = catalog_manager
+    catalog_manager
         .catalog_by_name(default_catalog)
-        .context(FindCatalog {
-            name: default_catalog,
-        })?
+        .context(FetchCatalog)?
         .context(CatalogNotExists {
             name: default_catalog,
-        })?;
-    Ok(catalog)
+        })
 }
 
 fn get_default_schema(
@@ -193,13 +181,10 @@ fn get_default_schema(
     let catalog = get_default_catalog(ctx, catalog_manager)?;
 
     let default_schema = ctx.default_schema();
-    let schema = catalog
+    catalog
         .schema_by_name(default_schema)
-        .context(FindSchema {
-            name: default_schema,
-        })?
+        .context(FetchSchema)?
         .context(SchemaNotExists {
             name: default_schema,
-        })?;
-    Ok(schema)
+        })
 }

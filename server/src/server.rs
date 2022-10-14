@@ -7,7 +7,7 @@ use std::sync::Arc;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
-use interpreters::{table_creator, table_dropper};
+use interpreters::table_manipulator::catalog_based;
 use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -221,10 +221,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
 
         let instance = {
-            let creator = Arc::new(table_creator::catalog_based::TableCreatorImpl::new(
-                catalog_manager.clone(),
-            ));
-            let dropper = Arc::new(table_dropper::catalog_based::TableDropperImpl::new(
+            let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
                 catalog_manager.clone(),
             ));
             let instance = Instance {
@@ -233,8 +230,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 table_engine,
                 function_registry,
                 limiter: self.limiter,
-                table_creator: creator,
-                table_dropper: dropper,
+                table_manipulator,
             };
             InstanceRef::new(instance)
         };

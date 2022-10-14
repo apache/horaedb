@@ -107,8 +107,7 @@ where
         instance.query_executor.clone(),
         instance.catalog_manager.clone(),
         instance.table_engine.clone(),
-        instance.table_creator.clone(),
-        instance.table_dropper.clone(),
+        instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 

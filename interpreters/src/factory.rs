@@ -11,7 +11,7 @@ use crate::{
     alter_table::AlterTableInterpreter, context::Context, create::CreateInterpreter,
     describe::DescribeInterpreter, drop::DropInterpreter, exists::ExistsInterpreter,
     insert::InsertInterpreter, interpreter::InterpreterPtr, select::SelectInterpreter,
-    show::ShowInterpreter, table_creator::TableCreatorRef, table_dropper::TableDropperRef,
+    show::ShowInterpreter, table_manipulator::TableManipulatorRef,
 };
 
 /// A factory to create interpreters
@@ -19,8 +19,7 @@ pub struct Factory<Q> {
     query_executor: Q,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
-    table_creator: TableCreatorRef,
-    table_dropper: TableDropperRef,
+    table_manipulator: TableManipulatorRef,
 }
 
 impl<Q: Executor + 'static> Factory<Q> {
@@ -28,15 +27,13 @@ impl<Q: Executor + 'static> Factory<Q> {
         query_executor: Q,
         catalog_manager: ManagerRef,
         table_engine: TableEngineRef,
-        table_creator: TableCreatorRef,
-        table_dropper: TableDropperRef,
+        table_manipulator: TableManipulatorRef,
     ) -> Self {
         Self {
             query_executor,
             catalog_manager,
             table_engine,
-            table_creator,
-            table_dropper,
+            table_manipulator,
         }
     }
 
@@ -45,9 +42,11 @@ impl<Q: Executor + 'static> Factory<Q> {
             Plan::Query(p) => SelectInterpreter::create(ctx, p, self.query_executor),
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {
-                CreateInterpreter::create(ctx, p, self.table_engine, self.table_creator)
+                CreateInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
             }
-            Plan::Drop(p) => DropInterpreter::create(ctx, p, self.table_engine, self.table_dropper),
+            Plan::Drop(p) => {
+                DropInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
+            }
             Plan::Describe(p) => DescribeInterpreter::create(p),
             Plan::AlterTable(p) => AlterTableInterpreter::create(p),
             Plan::Show(p) => ShowInterpreter::create(ctx, p, self.catalog_manager),

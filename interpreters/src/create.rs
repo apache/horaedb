@@ -3,45 +3,21 @@
 //! Interpreter for create statements
 
 use async_trait::async_trait;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{
     context::Context,
     interpreter::{Create, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
-    table_creator::TableCreatorRef,
+    table_manipulator::{self, TableManipulatorRef},
 };
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
-    #[snafu(display("Failed to find catalog, name:{}, err:{}", name, source))]
-    FindCatalog {
-        name: String,
-        source: catalog::manager::Error,
-    },
-
-    #[snafu(display("Catalog not exists, name:{}.\nBacktrace:\n{}", name, backtrace))]
-    CatalogNotExists { name: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to find schema, name:{}, err:{}", name, source))]
-    FindSchema {
-        name: String,
-        source: catalog::Error,
-    },
-
-    #[snafu(display("Schema not exists, name:{}.\nBacktrace:\n{}", name, backtrace))]
-    SchemaNotExists { name: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to create table, name:{}, err:{}", table, source))]
-    SchemaCreateTable {
-        table: String,
-        source: catalog::schema::Error,
-    },
-
-    #[snafu(display("Failed to allocate table id, err:{}", source))]
-    AllocTableId { source: catalog::schema::Error },
+    #[snafu(display("Failed to create table by table manipulator, err:{}", source))]
+    ManipulateTable { source: table_manipulator::Error },
 }
 
 define_result!(Error);
@@ -51,7 +27,7 @@ pub struct CreateInterpreter {
     ctx: Context,
     plan: CreateTablePlan,
     table_engine: TableEngineRef,
-    table_creator: TableCreatorRef,
+    table_manipulator: TableManipulatorRef,
 }
 
 impl CreateInterpreter {
@@ -59,22 +35,23 @@ impl CreateInterpreter {
         ctx: Context,
         plan: CreateTablePlan,
         table_engine: TableEngineRef,
-        table_creator: TableCreatorRef,
+        table_manipulator: TableManipulatorRef,
     ) -> InterpreterPtr {
         Box::new(Self {
             ctx,
             plan,
             table_engine,
-            table_creator,
+            table_manipulator,
         })
     }
 }
 
 impl CreateInterpreter {
     async fn execute_create(self: Box<Self>) -> Result<Output> {
-        self.table_creator
+        self.table_manipulator
             .create_table(self.ctx, self.plan, self.table_engine)
             .await
+            .context(ManipulateTable)
     }
 }
 

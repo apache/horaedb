@@ -18,8 +18,7 @@ pub mod insert;
 pub mod interpreter;
 pub mod select;
 pub mod show;
-pub mod table_creator;
-pub mod table_dropper;
+pub mod table_manipulator;
 
 mod show_create;
 
