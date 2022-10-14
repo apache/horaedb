@@ -58,11 +58,13 @@ jobs:
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
             debug-${{ runner.os }}
+      - name: Check Disk Quota
+        run: |
+          make check-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-          sudo rm -rf /var/lib/apt/lists/*
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
@@ -90,5 +92,5 @@ jobs:
       - name: Report Disk Usage
         if: always()
         run: |
-          du -sh .
+          du -sh ./target
           df -h

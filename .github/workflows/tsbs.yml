@@ -28,6 +28,9 @@ jobs:
             release-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             release-${{ runner.os }}-
             release-${{ runner.os }}
+      - name: Check Disk Quota
+        run: |
+          make check-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update

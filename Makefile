@@ -66,3 +66,7 @@ mem-test:
 # only list packages will be tested.
 miri:
 	cd $(DIR); cargo miri test --package arena
+
+check-disk-quota:
+	# ensure the target directory not to exceed 20GB
+	python3 ./scripts/check-clean-target.py ./target 21474836480
