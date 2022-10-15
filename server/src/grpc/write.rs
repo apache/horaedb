@@ -71,6 +71,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             instance.query_executor.clone(),
             instance.catalog_manager.clone(),
             instance.table_engine.clone(),
+            instance.table_manipulator.clone(),
         );
         let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
@@ -221,6 +222,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         instance.query_executor.clone(),
         instance.catalog_manager.clone(),
         instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
