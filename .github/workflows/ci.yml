@@ -47,6 +47,10 @@ jobs:
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
         with:
@@ -60,8 +64,6 @@ jobs:
             debug-${{ runner.os }}
       - name: Ensure Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
           make ensure-disk-quota
       - name: Setup Build Environment
         run: |
