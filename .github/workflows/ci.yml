@@ -58,11 +58,15 @@ jobs:
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
             debug-${{ runner.os }}
+      - name: Ensure Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+          make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-          sudo rm -rf /var/lib/apt/lists/*
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
@@ -90,5 +94,5 @@ jobs:
       - name: Report Disk Usage
         if: always()
         run: |
-          du -sh .
+          du -sh ./target
           df -h
