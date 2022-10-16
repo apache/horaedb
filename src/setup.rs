@@ -149,8 +149,8 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
     let meta_client = meta_impl::build_meta_client(
         config.cluster.meta_client.clone(),
         config.cluster.node.clone(),
-        runtimes.meta_runtime.clone(),
     )
+    .await
     .expect("fail to build meta client");
 
     let shard_table_manager = ShardTableManager::default();
