@@ -1,0 +1,24 @@
+[package]
+name = "message_queue"
+version = "0.1.0"
+
+[package.edition]
+workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common_util = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+snafu = { workspace = true }
+rskafka = { version = "0.3.0", default-features = false, features = ["compression-gzip", "compression-lz4", "compression-snappy"] }
+# rskafka = "0.3.0"
+time = "0.3.15"
+async-trait = { workspace = true }
+dashmap = "5.4.0"
+log = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

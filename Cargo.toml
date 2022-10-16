@@ -29,6 +29,7 @@ members = [
     "components/skiplist",
     "components/table_kv",
     "components/tracing_util",
+    "components/message_queue",
     "df_operator",
     "interpreters",
     "meta_client",
@@ -96,6 +97,7 @@ tracing_util = { path = "components/tracing_util" }
 tonic = "0.8.1"
 tokio = { version = "1.0", features = ["full"] }
 wal = { path = "wal" }
+message_queue = { path = "components/message_queue" }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
