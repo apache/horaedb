@@ -899,22 +899,22 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
+source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=1a130a468c64d4d7bd51f17e5f3109d407c687c9#1a130a468c64d4d7bd51f17e5f3109d407c687c9"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d#2c10152d021cd5a26b9c870cdede6a0317adca3d"
 dependencies = [
  "futures 0.3.21",
  "grpcio",
  "protobuf",
  "protobuf-builder",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "0.1.0"
-source = "git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=622a002dc60565c4ee19e26f6f415b4965a7e563#622a002dc60565c4ee19e26f6f415b4965a7e563"
-dependencies = [
- "prost",
- "tonic",
- "tonic-build",
 ]
 
 [[package]]
@@ -1003,7 +1003,7 @@ version = "0.1.0"
 dependencies = [
  "analytic_engine",
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=622a002dc60565c4ee19e26f6f415b4965a7e563)",
+ "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=1a130a468c64d4d7bd51f17e5f3109d407c687c9)",
  "common_types 0.1.0",
  "common_util",
  "log",
@@ -3113,7 +3113,7 @@ name = "meta_client"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=622a002dc60565c4ee19e26f6f415b4965a7e563)",
+ "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=1a130a468c64d4d7bd51f17e5f3109d407c687c9)",
  "common_types 0.1.0",
  "common_util",
  "futures 0.3.21",
@@ -5070,7 +5070,7 @@ dependencies = [
  "avro-rs",
  "bytes 1.2.1",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=622a002dc60565c4ee19e26f6f415b4965a7e563)",
+ "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=1a130a468c64d4d7bd51f17e5f3109d407c687c9)",
  "cluster",
  "common_types 0.1.0",
  "common_util",
@@ -5391,7 +5391,7 @@ version = "0.1.0"
 dependencies = [
  "arrow 23.0.0",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=622a002dc60565c4ee19e26f6f415b4965a7e563)",
+ "ceresdbproto 0.1.0 (git+https://github.com/ShiKaiWi/ceresdbproto.git?rev=1a130a468c64d4d7bd51f17e5f3109d407c687c9)",
  "common_types 0.1.0",
  "common_util",
  "datafusion 12.0.0",

@@ -99,7 +99,7 @@ wal = { path = "wal" }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/ShiKaiWi/ceresdbproto.git"
-rev = "622a002dc60565c4ee19e26f6f415b4965a7e563"
+rev = "1a130a468c64d4d7bd51f17e5f3109d407c687c9"
 
 [workspace.dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"

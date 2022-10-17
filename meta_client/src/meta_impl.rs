@@ -132,7 +132,7 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client finish creating table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(CreateTableResponse::from(pb_resp))
+        CreateTableResponse::try_from(pb_resp)
     }
 
     async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse> {

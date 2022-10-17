@@ -21,8 +21,8 @@ pub enum Error {
     #[snafu(display("Missing shard info, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     MissingShardInfo { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Missing table info in NodeShard.\nBacktrace:\n{}", backtrace))]
-    MissingTableInfo { backtrace: Backtrace },
+    #[snafu(display("Missing table info, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    MissingTableInfo { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Missing header in rpc response.\nBacktrace:\n{}", backtrace))]
     MissingHeader { backtrace: Backtrace },
