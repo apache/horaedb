@@ -48,6 +48,11 @@ pub mod error {
         #[snafu(display("Invalid schema, err:{}", source))]
         InvalidSchema { source: common_types::schema::Error },
 
+        #[snafu(display("datafusion error:{}", source))]
+        DataFusionError {
+            source: datafusion::error::DataFusionError,
+        },
+
         #[snafu(display("Other kind of error:{}", source))]
         Other {
             source: Box<dyn std::error::Error + Send + Sync>,

@@ -6,7 +6,4 @@ pub mod builder;
 #[allow(deprecated)]
 pub mod encoding;
 mod hybrid;
-#[allow(deprecated)]
 pub mod reader;
-
-pub mod new_reader;

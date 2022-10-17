@@ -1,186 +1,146 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
-
-//! Sst reader implementation based on parquet.
-
 use std::{
+    ops::Range,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
     time::Instant,
 };
 
-use arrow::{error::Result as ArrowResult, record_batch::RecordBatch};
+use arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::Schema,
 };
 use common_util::runtime::Runtime;
-use futures::Stream;
-use log::{debug, error, trace};
-use object_store::{ObjectStoreRef, Path};
-use parquet::{
-    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
-    file::{metadata::RowGroupMetaData, reader::FileReader},
+use datafusion::{
+    datasource::{file_format, listing::PartitionedFile, object_store::ObjectStoreUrl},
+    execution::context::TaskContext,
+    physical_plan::{
+        execute_stream,
+        file_format::{
+            FileMeta, FileScanConfig, ParquetExec, ParquetFileMetrics, ParquetFileReaderFactory,
+        },
+        metrics::ExecutionPlanMetricsSet,
+        stream::RecordBatchStreamAdapter,
+        SendableRecordBatchStream, Statistics,
+    },
+    prelude::{Expr, SessionContext},
 };
-use parquet_ext::{
-    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CacheableSerializedFileReader,
-    DataCacheRef, MetaCacheRef,
+use futures::{
+    future::{self, BoxFuture},
+    FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt,
 };
+use log::{debug, error};
+use object_store::{ObjectMeta, ObjectStoreRef, Path};
+use parquet::arrow::async_reader::AsyncFileReader;
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::{
+    runtime::Handle,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
+use super::encoding;
 use crate::{
     sst::{
         factory::SstReaderOptions,
         file::SstMetaData,
-        parquet::encoding::{self, ParquetDecoder},
-        reader::{error::*, SstReader},
+        reader::{self, Result, SstReader},
     },
     table_options::StorageFormatOptions,
 };
 
-const DEFAULT_CHANNEL_CAP: usize = 1000;
-
-pub async fn read_sst_meta(
-    storage: &ObjectStoreRef,
-    path: &Path,
-    meta_cache: &Option<MetaCacheRef>,
-    data_cache: &Option<DataCacheRef>,
-) -> Result<(CacheableSerializedFileReader<Bytes>, SstMetaData)> {
-    let get_result = storage
-        .get(path)
-        .await
-        .map_err(|e| Box::new(e) as _)
-        .with_context(|| ReadPersist {
-            path: path.to_string(),
-        })?;
-    // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
-    // read. So under this situation it would be better to pass a local file to
-    // it, avoiding consumes lots of memory. Once parquet support stream data source
-    // we can feed the `GetResult` to it directly.
-    let bytes = get_result
-        .bytes()
-        .await
-        .map_err(|e| Box::new(e) as _)
-        .context(ReadPersist {
-            path: path.to_string(),
-        })?;
-
-    // generate the file reader
-    let file_reader = CacheableSerializedFileReader::new(
-        path.to_string(),
-        bytes,
-        meta_cache.clone(),
-        data_cache.clone(),
-    )
-    .map_err(|e| Box::new(e) as _)
-    .with_context(|| ReadPersist {
-        path: path.to_string(),
-    })?;
-
-    // parse sst meta data
-    let sst_meta = {
-        let kv_metas = file_reader
-            .metadata()
-            .file_metadata()
-            .key_value_metadata()
-            .context(SstMetaNotFound)?;
-
-        ensure!(!kv_metas.is_empty(), EmptySstMeta);
-
-        encoding::decode_sst_meta_data(&kv_metas[0])
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeSstMeta)?
-    };
-
-    Ok((file_reader, sst_meta))
-}
-
-/// The implementation of sst based on parquet and object storage.
 pub struct ParquetSstReader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
     storage: &'a ObjectStoreRef,
+    runtime: Arc<Runtime>,
     projected_schema: ProjectedSchema,
-    predicate: PredicateRef,
+    reader_factory: Arc<dyn ParquetFileReaderFactory>,
+    /// init this field in `init_if_necessary`
     meta_data: Option<SstMetaData>,
-    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
-    /// The batch of rows in one `record_batch`.
-    batch_size: usize,
-    /// Read the rows in reverse order.
-    reverse: bool,
+    object_meta: Option<ObjectMeta>,
+
     channel_cap: usize,
 
+    schema: ArrowSchemaRef,
     meta_cache: Option<MetaCacheRef>,
     data_cache: Option<DataCacheRef>,
-
-    runtime: Arc<Runtime>,
+    predicate: PredicateRef,
 }
+
+const DEFAULT_CHANNEL_CAP: usize = 1000;
 
 impl<'a> ParquetSstReader<'a> {
     pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
+        let schema_to_read = options.projected_schema.to_projected_arrow_schema();
+        let reader_factory = Arc::new(CachableParquetFileReaderFactory {
+            storage: storage.clone(),
+            meta_cache: options.meta_cache.clone(),
+            data_cache: options.data_cache.clone(),
+        });
         Self {
             path,
             storage,
-            projected_schema: options.projected_schema.clone(),
-            predicate: options.predicate.clone(),
+            reader_factory,
             meta_data: None,
-            file_reader: None,
-            batch_size: options.read_batch_row_num,
-            reverse: options.reverse,
+            object_meta: None,
+            runtime: options.runtime.clone(),
+            projected_schema: options.projected_schema.clone(),
             channel_cap: DEFAULT_CHANNEL_CAP,
+            schema: schema_to_read,
             meta_cache: options.meta_cache.clone(),
             data_cache: options.data_cache.clone(),
-            runtime: options.runtime.clone(),
+            predicate: options.predicate.clone(),
         }
     }
-}
 
-impl<'a> ParquetSstReader<'a> {
-    async fn init_if_necessary(&mut self) -> Result<()> {
-        if self.meta_data.is_some() {
-            return Ok(());
-        }
+    fn send_record_batch_with_key(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
+        assert!(self.meta_data.is_some());
 
-        let (file_reader, sst_meta) =
-            read_sst_meta(self.storage, self.path, &self.meta_cache, &self.data_cache).await?;
+        let meta_data = self.meta_data.as_ref().unwrap();
+        let object_meta = self.object_meta.as_ref().unwrap().clone();
 
-        self.file_reader = Some(file_reader);
-        self.meta_data = Some(sst_meta);
-
-        Ok(())
-    }
-
-    fn read_record_batches(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
-        let path = self.path.to_string();
-        ensure!(self.file_reader.is_some(), ReadAgain { path });
-
-        let file_reader = self.file_reader.take().unwrap();
-        let batch_size = self.batch_size;
-        let schema = {
-            let meta_data = self.meta_data.as_ref().unwrap();
-            meta_data.schema.clone()
+        let storage_format_opts = meta_data.storage_format_opts.clone();
+        let schema = meta_data.schema.clone();
+        let arrow_schema = schema.to_arrow_schema_ref();
+        let storage = self.storage.clone();
+        let scan_config = FileScanConfig {
+            object_store_url: ObjectStoreUrl::parse("ceresdb://ceresdb/")
+                .expect("valid object store URL"),
+            file_schema: arrow_schema.clone(),
+            file_groups: vec![vec![PartitionedFile {
+                object_meta: object_meta.clone(),
+                partition_values: vec![],
+                range: None,
+                extensions: None,
+            }]],
+            statistics: Statistics::default(),
+            projection: None,
+            limit: None,
+            table_partition_cols: vec![],
         };
-        let projected_schema = self.projected_schema.clone();
-        let row_projector = projected_schema
+        let filter_expr = self.predicate.filter_expr(schema.timestamp_name());
+        debug!(
+            "send record_batch, object_meta:{:?}, filter:{:?}, scan_config:{:?}",
+            object_meta, filter_expr, scan_config
+        );
+
+        let reader_factory = self.reader_factory.clone();
+        let row_projector = self
+            .projected_schema
             .try_project_with_key(&schema)
             .map_err(|e| Box::new(e) as _)
-            .context(Projection)?;
-        let predicate = self.predicate.clone();
-        let reverse = self.reverse;
+            .context(reader::error::Projection)?;
 
-        let meta_data = self.meta_data.take().unwrap();
-        let _ = self.runtime.spawn_blocking(move || {
-            debug!(
-                "begin reading record batch from the sst:{}, predicate:{:?}, projection:{:?}",
-                path, predicate, projected_schema,
-            );
+        let rt = self.runtime.clone();
+        // let handle = Handle::current();
 
+        self.runtime.spawn_blocking(move || {
             let mut send_failed = false;
             let send = |v| -> Result<()> {
                 tx.blocking_send(v)
@@ -188,29 +148,29 @@ impl<'a> ParquetSstReader<'a> {
                         send_failed = true;
                         Box::new(e) as _
                     })
-                    .context(Other)?;
+                    .context(reader::error::Other)?;
                 Ok(())
             };
 
             let reader = ProjectAndFilterReader {
-                file_path: path.clone(),
-                file_reader: Some(file_reader),
-                schema,
-                projected_schema,
+                storage,
+                object_meta,
+                arrow_schema,
+                scan_config,
+                filter_expr,
+                reader_factory,
                 row_projector,
-                predicate,
-                batch_size,
-                reverse,
-                storage_format_opts: meta_data.storage_format_opts,
+                storage_format_opts,
             };
 
             let start_fetch = Instant::now();
-            match reader.fetch_and_send_record_batch(send) {
+            debug!("begin fetch:{:?}", start_fetch);
+            match rt.block_on(reader.fetch_and_send_record_batch(send)) {
                 Ok(row_num) => {
                     debug!(
                         "finish reading record batch({} rows) from the sst:{}, time cost:{:?}",
                         row_num,
-                        path,
+                        "",
                         start_fetch.elapsed(),
                     );
                 }
@@ -218,141 +178,274 @@ impl<'a> ParquetSstReader<'a> {
                     if send_failed {
                         error!("fail to send the fetched record batch result, err:{}", e);
                     } else {
-                        error!(
-                            "failed to read record batch from the sst:{}, err:{}",
-                            path, e
-                        );
+                        error!("failed to read record batch from the sst:{}, err:{}", "", e);
                         let _ = tx.blocking_send(Err(e));
                     }
                 }
             }
         });
+        // let source_schema = &self.meta_data.as_ref().unwrap().schema;
+        // let row_projector = self
+        //     .projected_schema
+        //     .try_project_with_key(source_schema)
+        //     .unwrap();
+        // let arrow_record_batch_projector =
+        // ArrowRecordBatchProjector::from(row_projector); let record_batches =
+        // self.read_record_batches().await?; record_batches.map(|record_batch|
+        // {     let record_batch = record_batch
+        //         .map_err(|e| Box::new(e) as _)
+        //         .context(reader::error::Other {})?;
+
+        //     arrow_record_batch_projector
+        //         .project_to_record_batch_with_key(record_batch)
+        //         .map_err(|e| Box::new(e) as _)
+        //         .context(reader::error::Other {})
+        // });
+
+        // let mut rows = 0;
+        // while let Some(record_batch) = record_batches.next().await {
+        //     let record_batch = record_batch
+        //         .map_err(|e| Box::new(e) as _)
+        //         .context(reader::error::Other {})?;
+
+        //     rows += record_batch.num_rows();
+        //     let record_batch_with_key = arrow_record_batch_projector
+        //         .project_to_record_batch_with_key(record_batch)
+        //         .map_err(|e| Box::new(e) as _)
+        //         .context(reader::error::Other {});
+
+        //     tx.blocking_send(record_batch_with_key)
+        //         .map_err(|e| Box::new(e) as _)
+        //         .context(reader::error::Other {})?;
+        // }
 
         Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) async fn row_groups(&mut self) -> &[RowGroupMetaData] {
-        self.init_if_necessary().await.unwrap();
-        self.file_reader.as_ref().unwrap().metadata().row_groups()
+    async fn init_if_necessary(&mut self) -> Result<()> {
+        if self.meta_data.is_some() {
+            return Ok(());
+        }
+
+        let object_meta = self
+            .storage
+            .head(self.path)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(reader::error::Other {})?;
+        self.object_meta = Some(object_meta.clone());
+
+        let mut reader = self
+            .reader_factory
+            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
+            .map_err(|e| Box::new(e) as _)
+            .context(reader::error::Other {})?;
+
+        reader
+            .get_metadata()
+            .map_ok(|metadata| -> Result<()> {
+                if let Some(cache) = &self.meta_cache {
+                    cache.put(self.path.to_string(), metadata.clone());
+                }
+                let kv_metas = metadata
+                    .file_metadata()
+                    .key_value_metadata()
+                    .context(reader::error::SstMetaNotFound)?;
+                ensure!(!kv_metas.is_empty(), reader::error::EmptySstMeta);
+
+                let sst_meta = encoding::decode_sst_meta_data(&kv_metas[0])
+                    .map_err(|e| Box::new(e) as _)
+                    .context(reader::error::DecodeSstMeta)?;
+
+                debug!("read sst_meta, path:{}, meta:{:?}", &self.path, sst_meta);
+                self.meta_data = Some(sst_meta);
+                Ok(())
+            })
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(reader::error::Other {})?
     }
 }
 
-/// A reader for projection and filter on the parquet file.
 struct ProjectAndFilterReader {
-    file_path: String,
-    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
-    schema: Schema,
-    projected_schema: ProjectedSchema,
+    storage: ObjectStoreRef,
+    arrow_schema: ArrowSchemaRef,
+    object_meta: ObjectMeta,
+    scan_config: FileScanConfig,
+    filter_expr: Expr,
+    reader_factory: Arc<dyn ParquetFileReaderFactory>,
     row_projector: RowProjector,
-    predicate: PredicateRef,
-    batch_size: usize,
-    reverse: bool,
     storage_format_opts: StorageFormatOptions,
 }
 
 impl ProjectAndFilterReader {
-    #[allow(clippy::type_complexity)]
-    fn build_row_group_predicate(&self) -> Box<dyn Fn(&RowGroupMetaData, usize) -> bool + 'static> {
-        assert!(self.file_reader.is_some());
-
-        let row_groups = self.file_reader.as_ref().unwrap().metadata().row_groups();
-        let filter_results = self.predicate.filter_row_groups(&self.schema, row_groups);
-
-        trace!("Finish build row group predicate, predicate:{:?}, schema:{:?}, filter_results:{:?}, row_groups meta data:{:?}", self.predicate, self.schema, filter_results, row_groups);
-
-        Box::new(move |_, idx: usize| filter_results[idx])
-    }
-
-    /// Generate the reader which has processed projection and filter.
-    /// This `file_reader` is consumed after calling this method.
-    fn project_and_filter_reader(
-        &mut self,
-    ) -> Result<Box<dyn Iterator<Item = ArrowResult<RecordBatch>>>> {
-        assert!(self.file_reader.is_some());
-
-        let row_group_predicate = self.build_row_group_predicate();
-        let mut file_reader = self.file_reader.take().unwrap();
-        file_reader.filter_row_groups(&row_group_predicate);
-
-        if self.reverse {
-            let mut builder =
-                ReverseRecordBatchReaderBuilder::new(Arc::new(file_reader), self.batch_size);
-            if !self.projected_schema.is_all_projection() {
-                builder = builder.projection(Some(self.row_projector.existed_source_projection()));
-            }
-
-            let reverse_reader = builder
-                .build()
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeRecordBatch)?;
-
-            Ok(Box::new(reverse_reader))
-        } else {
-            let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(file_reader));
-
-            let reader = if self.projected_schema.is_all_projection() {
-                arrow_reader.get_record_reader(self.batch_size)
-            } else {
-                let proj_mask = ProjectionMask::leaves(
-                    arrow_reader.metadata().file_metadata().schema_descr(),
-                    self.row_projector
-                        .existed_source_projection()
-                        .iter()
-                        .copied(),
-                );
-                arrow_reader.get_record_reader_by_columns(proj_mask, self.batch_size)
-            };
-            let reader = reader
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeRecordBatch)?;
-
-            Ok(Box::new(reader))
-        }
-    }
-
-    /// Fetch the record batch from the `reader` and send them.
-    /// Returns the fetched row number.
-    fn fetch_and_send_record_batch(
-        mut self,
+    async fn fetch_and_send_record_batch(
+        self,
         mut send: impl FnMut(Result<RecordBatchWithKey>) -> Result<()>,
     ) -> Result<usize> {
-        let reader = self.project_and_filter_reader()?;
-
-        let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
-        let parquet_decoder = ParquetDecoder::new(self.storage_format_opts);
         let mut row_num = 0;
-        for record_batch in reader {
-            trace!(
-                "Fetch one record batch from sst:{}, num_rows:{:?}",
-                self.file_path,
-                record_batch.as_ref().map(|v| v.num_rows())
-            );
-
-            match record_batch
+        let mut record_batches = self.fetch_record_batch().await?;
+        let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
+        while let Some(record_batch) = record_batches.next().await {
+            let record_batch = record_batch
                 .map_err(|e| Box::new(e) as _)
-                .context(DecodeRecordBatch)
-            {
-                Ok(record_batch) => {
-                    let record_batch = parquet_decoder
-                        .decode_record_batch(record_batch)
-                        .map_err(|e| Box::new(e) as _)
-                        .context(DecodeRecordBatch)?;
-                    row_num += record_batch.num_rows();
-                    let record_batch_with_key = arrow_record_batch_projector
-                        .project_to_record_batch_with_key(record_batch)
-                        .map_err(|e| Box::new(e) as _)
-                        .context(DecodeRecordBatch);
-                    send(record_batch_with_key)?;
-                }
-                Err(e) => {
-                    send(Err(e))?;
-                    break;
-                }
-            };
+                .context(reader::error::Other {})?;
+
+            row_num += record_batch.num_rows();
+            let record_batch_with_key = arrow_record_batch_projector
+                .project_to_record_batch_with_key(record_batch)
+                .map_err(|e| Box::new(e) as _)
+                .context(reader::error::Other {});
+
+            send(record_batch_with_key)?;
         }
 
         Ok(row_num)
+    }
+
+    async fn fetch_record_batch(&self) -> Result<SendableRecordBatchStream> {
+        let exec = ParquetExec::new(
+            self.scan_config.clone(),
+            Some(self.filter_expr.clone()),
+            None,
+        )
+        .with_parquet_file_reader_factory(self.reader_factory.clone());
+
+        // set up "fake" DataFusion session
+        let session_ctx = SessionContext::new();
+        let task_ctx = Arc::new(TaskContext::from(&session_ctx));
+        task_ctx
+            .runtime_env()
+            .register_object_store("ceresdb", "ceresdb", self.storage.clone());
+
+        execute_stream(Arc::new(exec), task_ctx)
+            .await
+            .context(reader::error::DataFusionError {})
+        // Ok(Box::pin(RecordBatchStreamAdapter::new(
+        //     self.arrow_schema.clone(),
+        //     futures::stream::once(execute_stream(Arc::new(exec),
+        // task_ctx)).try_flatten(), )))
+    }
+}
+/*
+impl Stream for ProjectAndFilterReader {
+    type Item = Result<RecordBatchWithKey>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let reader = self.get_mut();
+        match reader.fetch_record_batch().poll() {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(record_batch)) => {
+                let arrow_record_batch_projector =
+                    ArrowRecordBatchProjector::from(self.row_projector);
+                let record_batch = record_batch
+                    .map_err(|e| Box::new(e) as _)
+                    .context(reader::error::Other {})?;
+
+                let x = arrow_record_batch_projector
+                    .project_to_record_batch_with_key(record_batch)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(reader::error::Other {});
+                Poll::from(Some(x))
+            }
+        }
+    }
+}
+*/
+
+#[derive(Debug)]
+struct CachableParquetFileReaderFactory {
+    storage: ObjectStoreRef,
+    data_cache: Option<DataCacheRef>,
+    meta_cache: Option<MetaCacheRef>,
+}
+
+impl ParquetFileReaderFactory for CachableParquetFileReaderFactory {
+    fn create_reader(
+        &self,
+        partition_index: usize,
+        file_meta: FileMeta,
+        metadata_size_hint: Option<usize>,
+        metrics: &ExecutionPlanMetricsSet,
+    ) -> datafusion::error::Result<Box<dyn AsyncFileReader + Send>> {
+        let parquet_file_metrics =
+            ParquetFileMetrics::new(partition_index, file_meta.location().as_ref(), metrics);
+
+        Ok(Box::new(CachableParquetFileReader {
+            storage: self.storage.clone(),
+            data_cache: self.data_cache.clone(),
+            meta_cache: self.meta_cache.clone(),
+            meta: file_meta.object_meta,
+            metadata_size_hint,
+            metrics: parquet_file_metrics,
+        }))
+    }
+}
+
+struct CachableParquetFileReader {
+    storage: ObjectStoreRef,
+    data_cache: Option<DataCacheRef>,
+    meta_cache: Option<MetaCacheRef>,
+    meta: ObjectMeta,
+    metrics: ParquetFileMetrics,
+    metadata_size_hint: Option<usize>,
+}
+
+impl CachableParquetFileReader {
+    fn format_page_data_key(name: &str, start: usize, end: usize) -> String {
+        format!("{}_{}_{}", name, start, end)
+    }
+}
+
+impl AsyncFileReader for CachableParquetFileReader {
+    fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
+        self.metrics.bytes_scanned.add(range.end - range.start);
+        if let Some(cache) = &self.data_cache {
+            let key =
+                Self::format_page_data_key(self.meta.location.as_ref(), range.start, range.end);
+            if let Some(cached_bytes) = cache.get(&key) {
+                return Box::pin(future::ok(Bytes::from(cached_bytes.to_vec())));
+            };
+        }
+
+        let cache = self.data_cache.clone();
+        let key = Self::format_page_data_key(self.meta.location.as_ref(), range.start, range.end);
+        self.storage
+            .get_range(&self.meta.location, range)
+            .map_ok(move |bytes| {
+                if let Some(cache) = cache {
+                    cache.put(key, Arc::new(bytes.to_vec()));
+                }
+                bytes
+            })
+            .map_err(|e| {
+                parquet::errors::ParquetError::General(format!(
+                    "CachableParquetFileReader::get_bytes error: {}",
+                    e
+                ))
+            })
+            .boxed()
+    }
+
+    fn get_metadata(
+        &mut self,
+    ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
+        Box::pin(async move {
+            let metadata = file_format::parquet::fetch_parquet_metadata(
+                self.storage.as_ref(),
+                &self.meta,
+                self.metadata_size_hint,
+            )
+            .await
+            .map_err(|e| {
+                parquet::errors::ParquetError::General(format!(
+                    "CachableParquetFileReader::get_metadata error: {}",
+                    e
+                ))
+            })?;
+            Ok(Arc::new(metadata))
+        })
     }
 }
 
@@ -375,20 +468,12 @@ impl<'a> SstReader for ParquetSstReader<'a> {
         Ok(self.meta_data.as_ref().unwrap())
     }
 
-    // TODO(yingwen): Project the schema in parquet
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
-        debug!(
-            "read sst:{}, projected_schema:{:?}, predicate:{:?}",
-            self.path.to_string(),
-            self.projected_schema,
-            self.predicate
-        );
-
         self.init_if_necessary().await?;
         let (tx, rx) = mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap);
-        self.read_record_batches(tx)?;
+        self.send_record_batch_with_key(tx)?;
 
         Ok(Box::new(RecordBatchReceiver { rx }))
     }
