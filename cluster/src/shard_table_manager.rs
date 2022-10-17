@@ -43,6 +43,11 @@ impl ShardTableManager {
         self.inner.read().unwrap().contains_shard(shard_id)
     }
 
+    /// Remove the shard.
+    pub fn remove_shard(&self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.inner.write().unwrap().remove_shard(shard_id)
+    }
+
     /// Update the tables of one shard.
     pub fn update_tables_of_shard(&self, tables_of_shard: TablesOfShard) {
         self.inner
@@ -63,6 +68,7 @@ impl ShardTableManager {
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
+    // TODO: take considerations about the role.
     tables_by_shard: HashMap<ShardId, TablesOfShard>,
 }
 
@@ -105,6 +111,10 @@ impl Inner {
 
     fn contains_shard(&self, shard_id: ShardId) -> bool {
         self.tables_by_shard.contains_key(&shard_id)
+    }
+
+    fn remove_shard(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.tables_by_shard.remove(&shard_id)
     }
 
     fn update_tables_of_shard(&mut self, tables_of_shard: TablesOfShard) {
