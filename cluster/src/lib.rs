@@ -16,12 +16,14 @@ use ceresdbproto::meta_event::{
 };
 use common_types::schema::SchemaName;
 use common_util::define_result;
-use meta_client::types::{ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId};
+use meta_client::types::{
+    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, TablesOfShard,
+};
 use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
-pub mod shard_table_manager;
+pub mod shard_tables_cache;
 // FIXME: Remove this lint ignore derive when topology about schema tables is
 // finished.
 #[allow(dead_code)]
@@ -100,8 +102,8 @@ pub struct ClusterNodesResp {
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    async fn open_shard(&self, req: &OpenShardRequest) -> Result<()>;
-    async fn close_shard(&self, req: &CloseShardRequest) -> Result<()>;
+    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard>;
+    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;

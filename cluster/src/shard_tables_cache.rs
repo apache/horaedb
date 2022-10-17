@@ -7,10 +7,10 @@ use std::{
 
 use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
 
-/// [ShardTableManager] manages information about tables and shards, and the
+/// [ShardTablesCache] caches the information about tables and shards, and the
 /// relationship between them is: one shard -> multiple tables.
 #[derive(Debug, Default, Clone)]
-pub struct ShardTableManager {
+pub struct ShardTablesCache {
     inner: Arc<RwLock<Inner>>,
 }
 
@@ -20,7 +20,7 @@ pub struct TableWithShards {
     pub shard_infos: Vec<ShardInfo>,
 }
 
-impl ShardTableManager {
+impl ShardTablesCache {
     pub fn find_table_by_name(
         &self,
         catalog: &str,
@@ -38,31 +38,29 @@ impl ShardTableManager {
         self.inner.read().unwrap().all_shard_infos()
     }
 
-    // Check whether the manager contains the shard.
-    pub fn contains_shard(&self, shard_id: ShardId) -> bool {
-        self.inner.read().unwrap().contains_shard(shard_id)
+    // Check whether the cache contains the shard.
+    pub fn contains(&self, shard_id: ShardId) -> bool {
+        self.inner.read().unwrap().contains(shard_id)
     }
 
-    /// Update the tables of one shard.
-    pub fn update_tables_of_shard(&self, tables_of_shard: TablesOfShard) {
+    /// Remove the shard.
+    pub fn remove(&self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.inner.write().unwrap().remove(shard_id)
+    }
+
+    /// Insert or update the tables of one shard.
+    pub fn insert_or_update(&self, tables_of_shard: TablesOfShard) {
         self.inner
             .write()
             .unwrap()
-            .update_tables_of_shard(tables_of_shard)
-    }
-
-    /// Update the tables of multiple shards.
-    pub fn update_tables_by_shard(&self, tables_by_shard: HashMap<ShardId, TablesOfShard>) {
-        self.inner
-            .write()
-            .unwrap()
-            .update_tables_by_shard(tables_by_shard)
+            .insert_or_update(tables_of_shard)
     }
 }
 
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
+    // TODO: The shard roles should be also taken into considerations.
     tables_by_shard: HashMap<ShardId, TablesOfShard>,
 }
 
@@ -103,18 +101,16 @@ impl Inner {
             .collect()
     }
 
-    fn contains_shard(&self, shard_id: ShardId) -> bool {
+    fn contains(&self, shard_id: ShardId) -> bool {
         self.tables_by_shard.contains_key(&shard_id)
     }
 
-    fn update_tables_of_shard(&mut self, tables_of_shard: TablesOfShard) {
-        self.tables_by_shard
-            .insert(tables_of_shard.shard_info.id, tables_of_shard);
+    fn remove(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.tables_by_shard.remove(&shard_id)
     }
 
-    fn update_tables_by_shard(&mut self, tables_by_shard: HashMap<ShardId, TablesOfShard>) {
-        for (shard_id, tables) in tables_by_shard {
-            self.tables_by_shard.insert(shard_id, tables);
-        }
+    fn insert_or_update(&mut self, tables_of_shard: TablesOfShard) {
+        self.tables_by_shard
+            .insert(tables_of_shard.shard_info.id, tables_of_shard);
     }
 }

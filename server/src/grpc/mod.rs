@@ -11,6 +11,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use catalog::schema::{CloseOptions, OpenOptions, OpenTableRequest};
 use ceresdbproto::{
     common::ResponseHeader,
     meta_event::{
@@ -49,7 +50,10 @@ use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
-use table_engine::engine::EngineRuntimes;
+use table_engine::{
+    engine::{CloseTableRequest, EngineRuntimes},
+    table::{SchemaId, TableId},
+};
 use tokio::sync::{
     mpsc,
     oneshot::{self, Sender},
@@ -62,7 +66,7 @@ use tonic::{
 
 use crate::{
     consts,
-    error::{ErrWithCause, Result as ServerResult, ServerError},
+    error::{ErrNoCause, ErrWithCause, Result as ServerResult, ServerError},
     grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     instance::InstanceRef,
     route::{Router, RouterRef},
@@ -412,7 +416,6 @@ fn build_ok_header() -> ResponseHeader {
 #[derive(Clone)]
 struct MetaServiceImpl<Q: QueryExecutor + 'static> {
     cluster: ClusterRef,
-    #[allow(dead_code)]
     instance: InstanceRef<Q>,
     runtime: Arc<Runtime>,
 }
@@ -425,16 +428,75 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         request: tonic::Request<OpenShardRequest>,
     ) -> std::result::Result<tonic::Response<OpenShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
+        let catalog_manager = self.instance.catalog_manager.clone();
+        let table_engine = self.instance.table_engine.clone();
+
         let handle = self.runtime.spawn(async move {
+            // FIXME: Data race about the operations on the shards should be taken into
+            // considerations.
+
             let request = request.into_inner();
-            cluster
+            let tables_of_shard = cluster
                 .open_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: "fail to open shards in cluster",
-                })
+                })?;
+
+            let default_catalog_name = catalog_manager.default_catalog_name();
+            let default_catalog = catalog_manager
+                .catalog_by_name(default_catalog_name)
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to get default catalog",
+                })?
+                .context(ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: "default catalog is not found",
+                })?;
+
+            let shard_info = tables_of_shard.shard_info;
+            let opts = OpenOptions { table_engine };
+            for table in tables_of_shard.tables {
+                let schema = default_catalog
+                    .schema_by_name(&table.schema_name)
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to get schema of table, table_info:{:?}", table),
+                    })?
+                    .with_context(|| ErrNoCause {
+                        code: StatusCode::NOT_FOUND,
+                        msg: format!("schema of table is not found, table_info:{:?}", table),
+                    })?;
+
+                let open_request = OpenTableRequest {
+                    catalog_name: default_catalog_name.to_string(),
+                    schema_name: table.schema_name,
+                    schema_id: SchemaId::from(table.schema_id),
+                    table_name: table.name.clone(),
+                    table_id: TableId::new(table.id),
+                    engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+                    shard_id: shard_info.id,
+                };
+                schema
+                    .open_table(open_request.clone(), opts.clone())
+                    .await
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to open table, open_request:{:?}", open_request),
+                    })?
+                    .with_context(|| ErrNoCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("no table is opened, open_request:{:?}", open_request),
+                    })?;
+            }
+
+            Ok(())
         });
 
         let res = handle
@@ -463,16 +525,66 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         request: tonic::Request<CloseShardRequest>,
     ) -> std::result::Result<tonic::Response<CloseShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
+        let catalog_manager = self.instance.catalog_manager.clone();
+        let table_engine = self.instance.table_engine.clone();
+
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
-            cluster
+            let tables_of_shard = cluster
                 .close_shard(&request)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: "fail to close shards in cluster",
-                })
+                })?;
+
+            let default_catalog_name = catalog_manager.default_catalog_name();
+            let default_catalog = catalog_manager
+                .catalog_by_name(default_catalog_name)
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to get default catalog",
+                })?
+                .context(ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: "default catalog is not found",
+                })?;
+
+            let opts = CloseOptions { table_engine };
+            for table in tables_of_shard.tables {
+                let schema = default_catalog
+                    .schema_by_name(&table.schema_name)
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to get schema of table, table_info:{:?}", table),
+                    })?
+                    .with_context(|| ErrNoCause {
+                        code: StatusCode::NOT_FOUND,
+                        msg: format!("schema of table is not found, table_info:{:?}", table),
+                    })?;
+
+                let close_request = CloseTableRequest {
+                    catalog_name: default_catalog_name.to_string(),
+                    schema_name: table.schema_name,
+                    schema_id: SchemaId::from(table.schema_id),
+                    table_name: table.name.clone(),
+                    table_id: TableId::new(table.id),
+                    engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+                };
+                schema
+                    .close_table(close_request.clone(), opts.clone())
+                    .await
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: format!("fail to close table, close_request:{:?}", close_request),
+                    })?;
+            }
+
+            Ok(())
         });
 
         let res = handle
