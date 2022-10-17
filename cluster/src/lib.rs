@@ -23,7 +23,7 @@ use snafu::{Backtrace, Snafu};
 
 pub mod cluster_impl;
 pub mod config;
-pub mod shard_table_manager;
+pub mod shard_tables_cache;
 // FIXME: Remove this lint ignore derive when topology about schema tables is
 // finished.
 #[allow(dead_code)]

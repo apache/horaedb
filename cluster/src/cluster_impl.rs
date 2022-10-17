@@ -25,7 +25,7 @@ use tokio::{
 };
 
 use crate::{
-    config::ClusterConfig, shard_table_manager::ShardTableManager, topology::ClusterTopology,
+    config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard,
     OpenShardWithCause, Result, ShardNotFound,
 };
@@ -46,12 +46,12 @@ pub struct ClusterImpl {
 
 impl ClusterImpl {
     pub fn new(
-        shard_table_manager: ShardTableManager,
+        shard_tables_cache: ShardTablesCache,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(shard_table_manager, meta_client)?;
+        let inner = Inner::new(shard_tables_cache, meta_client)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -70,7 +70,7 @@ impl ClusterImpl {
 
         let handle = self.runtime.spawn(async move {
             loop {
-                let shards_info = inner.shard_table_manager.all_shard_infos();
+                let shards_info = inner.shard_tables_cache.all_shard_infos();
                 info!("Node heartbeat to meta, shards info:{:?}", shards_info);
 
                 let resp = inner.meta_client.send_heartbeat(shards_info).await;
@@ -102,21 +102,21 @@ impl ClusterImpl {
         self.config.meta_client.lease.0 / 2
     }
 
-    pub fn shard_table_manager(&self) -> &ShardTableManager {
-        &self.inner.shard_table_manager
+    pub fn shard_tables_cache(&self) -> &ShardTablesCache {
+        &self.inner.shard_tables_cache
     }
 }
 
 struct Inner {
-    shard_table_manager: ShardTableManager,
+    shard_tables_cache: ShardTablesCache,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(shard_table_manager: ShardTableManager, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
-            shard_table_manager,
+            shard_tables_cache,
             meta_client,
             topology: Default::default(),
         })
@@ -186,7 +186,7 @@ impl Inner {
             msg: "missing shard info in the request",
         })?;
 
-        if self.shard_table_manager.contains_shard(shard_info.id) {
+        if self.shard_tables_cache.contains(shard_info.id) {
             OpenShard {
                 shard_id: shard_info.id,
                 msg: "shard is already opened",
@@ -223,15 +223,15 @@ impl Inner {
                 msg: "shard tables are missing from the response",
             })?;
 
-        self.shard_table_manager
-            .update_tables_of_shard(tables_of_shard.clone());
+        self.shard_tables_cache
+            .insert_or_update(tables_of_shard.clone());
 
         Ok(tables_of_shard)
     }
 
     fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
-        self.shard_table_manager
-            .remove_shard(req.shard_id)
+        self.shard_tables_cache
+            .remove(req.shard_id)
             .context(ShardNotFound {
                 shard_id: req.shard_id,
             })
