@@ -1222,9 +1222,8 @@ mod tests {
         time::Timestamp,
     };
 
-    #[test]
-    fn test_schema() {
-        let schema = Builder::new()
+    fn build_test_schema() -> Schema {
+        Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
                 column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
@@ -1251,7 +1250,27 @@ mod tests {
             )
             .unwrap()
             .build()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[test]
+    fn test_schema_encoding() {
+        let schema = build_test_schema();
+        let encoder = SchemaEncoder::default();
+        let encoded_schema = encoder
+            .encode(&schema)
+            .expect("Should succeed in encode schema");
+
+        let decoded_schema = encoder
+            .decode(&encoded_schema)
+            .expect("Should succeed in decoding schema");
+
+        assert_eq!(schema, decoded_schema);
+    }
+
+    #[test]
+    fn test_schema() {
+        let schema = build_test_schema();
 
         // Length related test
         assert_eq!(4, schema.columns().len());
@@ -1408,7 +1427,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mulitple_timestamp() {
+    fn test_multiple_timestamp() {
         Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
