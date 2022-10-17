@@ -68,7 +68,7 @@ impl ShardTableManager {
 #[derive(Debug, Default)]
 struct Inner {
     // Tables organized by shard.
-    // TODO: take considerations about the role.
+    // TODO: The shard roles should be also taken into considerations.
     tables_by_shard: HashMap<ShardId, TablesOfShard>,
 }
 

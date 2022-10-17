@@ -416,7 +416,6 @@ fn build_ok_header() -> ResponseHeader {
 #[derive(Clone)]
 struct MetaServiceImpl<Q: QueryExecutor + 'static> {
     cluster: ClusterRef,
-    #[allow(dead_code)]
     instance: InstanceRef<Q>,
     runtime: Arc<Runtime>,
 }
@@ -433,6 +432,9 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         let table_engine = self.instance.table_engine.clone();
 
         let handle = self.runtime.spawn(async move {
+            // FIXME: Data race about the operations on the shards should be taken into
+            // considerations.
+
             let request = request.into_inner();
             let tables_of_shard = cluster
                 .open_shard(&request)
