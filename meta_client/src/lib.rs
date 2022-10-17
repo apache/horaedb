@@ -27,11 +27,13 @@ pub enum Error {
     MissingHeader { backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to connect the service endpoint, err:{}\nBacktrace:\n{}",
+        "Failed to connect the service endpoint:{}, err:{}\nBacktrace:\n{}",
+        addr,
         source,
         backtrace
     ))]
     FailConnect {
+        addr: String,
         source: Box<dyn std::error::Error + Send + Sync>,
         backtrace: Backtrace,
     },

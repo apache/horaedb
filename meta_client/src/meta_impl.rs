@@ -7,7 +7,7 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
-use common_util::{config::ReadableDuration, runtime::Runtime};
+use common_util::config::ReadableDuration;
 use log::{debug, info};
 use serde_derive::Deserialize;
 use snafu::{OptionExt, ResultExt};
@@ -55,21 +55,20 @@ pub struct MetaClientImpl {
 }
 
 impl MetaClientImpl {
-    pub fn new(
-        config: MetaClientConfig,
-        node_meta_info: NodeMetaInfo,
-        runtime: Arc<Runtime>,
-    ) -> Result<Self> {
-        // TODO: make the `new` method as async so that no need for the `runtime`.
-        let client = runtime.block_on(async {
+    pub async fn connect(config: MetaClientConfig, node_meta_info: NodeMetaInfo) -> Result<Self> {
+        let client = {
             let endpoint = tonic::transport::Endpoint::from_shared(config.meta_addr.to_string())
                 .map_err(|e| Box::new(e) as _)
-                .context(FailConnect)?;
+                .context(FailConnect {
+                    addr: &config.meta_addr,
+                })?;
             MetaServiceGrpcClient::connect(endpoint)
                 .await
                 .map_err(|e| Box::new(e) as _)
-                .context(FailConnect)
-        })?;
+                .context(FailConnect {
+                    addr: &config.meta_addr,
+                })?
+        };
 
         Ok(Self {
             config,
@@ -261,11 +260,10 @@ fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
 }
 
 /// Create a meta client with given `config`.
-pub fn build_meta_client(
+pub async fn build_meta_client(
     config: MetaClientConfig,
     node_meta_info: NodeMetaInfo,
-    runtime: Arc<Runtime>,
 ) -> Result<MetaClientRef> {
-    let meta_client = MetaClientImpl::new(config, node_meta_info, runtime)?;
+    let meta_client = MetaClientImpl::connect(config, node_meta_info).await?;
     Ok(Arc::new(meta_client))
 }
