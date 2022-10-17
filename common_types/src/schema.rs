@@ -17,9 +17,11 @@ use std::{
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
 use proto::common as common_pb;
+use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
+    bytes::Writer,
     column_schema::{self, ColumnId, ColumnSchema},
     datum::DatumKind,
     row::{contiguous, RowView},
@@ -151,18 +153,44 @@ pub enum Error {
 
     #[snafu(display("Arrow schema meta key not found.\nerr:\n{}", source))]
     ColumnSchemaDeserializeFailed { source: crate::column_schema::Error },
+
+    #[snafu(display("Failed to encode schema by protobuf, err:{}", source))]
+    EncodePbSchema {
+        source: protobuf::error::ProtobufError,
+    },
+
+    #[snafu(display("Encoded schema content is empty.\nBacktrace:\n{}", backtrace))]
+    EmptyEncodedSchema { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Invalid schema encoding version, version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    InvalidSchemaEncodingVersion { version: u8, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to decode schema from protobuf bytes, buf:{:?}, err:{}",
+        buf,
+        source,
+    ))]
+    DecodeSchemaFromPb {
+        buf: Vec<u8>,
+        source: protobuf::error::ProtobufError,
+    },
 }
 
 pub type CatalogName = String;
 pub type SchemaId = u32;
 pub type SchemaName = String;
+pub type Result<T> = std::result::Result<T, Error>;
+
 // TODO: make these constants configurable
 pub const TSID_COLUMN: &str = "tsid";
 pub const TIMESTAMP_COLUMN: &str = "timestamp";
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 const DEFAULT_SCHEMA_VERSION: Version = 1;
+const DEFAULT_SCHEMA_ENCODING_VERSION: u8 = 0;
 
 #[derive(Debug, Snafu)]
 pub enum CompatError {
@@ -840,8 +868,8 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     }
 }
 
-impl From<Schema> for common_pb::TableSchema {
-    fn from(schema: Schema) -> Self {
+impl From<&Schema> for common_pb::TableSchema {
+    fn from(schema: &Schema) -> Self {
         let mut table_schema = common_pb::TableSchema::new();
 
         for column in schema.columns() {
@@ -1135,6 +1163,55 @@ impl Builder {
     }
 }
 
+/// Encoder for schema with version control.
+#[derive(Clone, Debug)]
+pub struct SchemaEncoder {
+    version: u8,
+}
+
+impl Default for SchemaEncoder {
+    fn default() -> Self {
+        Self::new(DEFAULT_SCHEMA_ENCODING_VERSION)
+    }
+}
+
+impl SchemaEncoder {
+    fn new(version: u8) -> Self {
+        Self { version }
+    }
+
+    pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
+        let pb_schema = common_pb::TableSchema::from(schema);
+        let mut buf = Vec::with_capacity(1 + pb_schema.compute_size() as usize);
+        buf.push(self.version);
+
+        let mut writer = Writer::new(&mut buf);
+        pb_schema
+            .write_to_writer(&mut writer)
+            .context(EncodePbSchema)?;
+
+        Ok(buf)
+    }
+
+    pub fn decode(&self, buf: &[u8]) -> Result<Schema> {
+        ensure!(!buf.is_empty(), EmptyEncodedSchema);
+
+        self.ensure_version(buf[0])?;
+
+        let pb_schema = common_pb::TableSchema::parse_from_bytes(&buf[1..])
+            .context(DecodeSchemaFromPb { buf })?;
+        Schema::try_from(pb_schema)
+    }
+
+    fn ensure_version(&self, version: u8) -> Result<()> {
+        ensure!(
+            self.version == version,
+            InvalidSchemaEncodingVersion { version }
+        );
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1213,7 +1290,7 @@ mod tests {
         assert!(schema.index_of("not exists").is_none());
 
         // Test pb convert
-        let schema_pb = common_pb::TableSchema::from(schema.clone());
+        let schema_pb = common_pb::TableSchema::from(&schema);
         let schema_from_pb = Schema::try_from(schema_pb).unwrap();
         assert_eq!(schema, schema_from_pb);
     }

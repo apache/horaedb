@@ -12,7 +12,7 @@ use common_types::{
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
-use proto::table_requests;
+use proto::{common as common_pb, table_requests};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
@@ -394,7 +394,7 @@ impl Instance {
         let mut write_req_pb = table_requests::WriteRequest::new();
         // Use the table schema instead of the schema in request to avoid schema
         // mismatch during replaying
-        write_req_pb.set_schema(table_data.schema().into());
+        write_req_pb.set_schema(common_pb::TableSchema::from(&table_data.schema()));
         write_req_pb.set_rows(encoded_rows.into());
 
         // Encode payload

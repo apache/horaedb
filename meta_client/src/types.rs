@@ -33,14 +33,17 @@ pub struct AllocSchemaIdResponse {
     pub id: SchemaId,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CreateTableRequest {
     pub schema_name: String,
     pub name: String,
-    pub create_sql: String,
+    pub encoded_schema: Vec<u8>,
+    pub engine: String,
+    pub create_if_not_exist: bool,
+    pub options: HashMap<String, String>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CreateTableResponse {
     pub schema_name: String,
     pub name: String,
@@ -53,7 +56,11 @@ pub struct CreateTableResponse {
 pub struct DropTableRequest {
     pub schema_name: String,
     pub name: String,
-    pub id: TableId,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableResponse {
+    pub dropped_table: Option<TableInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -298,7 +305,10 @@ impl From<CreateTableRequest> for meta_service::CreateTableRequest {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
-            create_sql: req.create_sql,
+            encoded_schema: req.encoded_schema,
+            engine: req.engine,
+            create_if_not_exist: req.create_if_not_exist,
+            options: req.options,
         }
     }
 }
@@ -321,7 +331,14 @@ impl From<DropTableRequest> for meta_service::DropTableRequest {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
-            id: req.id,
+        }
+    }
+}
+
+impl From<meta_service::DropTableResponse> for DropTableResponse {
+    fn from(pb_resp: meta_service::DropTableResponse) -> Self {
+        Self {
+            dropped_table: pb_resp.dropped_table.map(TableInfo::from),
         }
     }
 }
