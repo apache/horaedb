@@ -40,7 +40,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RowProjector {
     schema_with_key: RecordSchemaWithKey,
     source_schema: Schema,
@@ -116,6 +116,10 @@ impl ProjectedSchema {
 
     pub fn is_all_projection(&self) -> bool {
         self.0.is_all_projection()
+    }
+
+    pub fn projection(&self) -> Option<Vec<usize>> {
+        self.0.projection()
     }
 
     /// Returns the [RowProjector] to project the rows with source schema to
@@ -204,6 +208,21 @@ impl ProjectedSchemaInner {
     /// Selecting all the columns is the all projection.
     fn is_all_projection(&self) -> bool {
         self.projection.is_none()
+    }
+
+    fn projection(&self) -> Option<Vec<usize>> {
+        if self.is_all_projection() {
+            return None;
+        }
+
+        let mut projection_with_key: Vec<_> =
+            (0..self.original_schema.key_columns().len()).collect();
+
+        if let Some(p) = &self.projection {
+            projection_with_key.extend_from_slice(p);
+        }
+
+        Some(projection_with_key)
     }
 
     // TODO(yingwen): We can fill missing not null column with default value instead

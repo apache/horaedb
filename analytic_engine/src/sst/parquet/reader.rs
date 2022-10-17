@@ -1,3 +1,7 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Sst reader implementation based on parquet.
+
 use std::{
     ops::Range,
     pin::Pin,
@@ -99,7 +103,7 @@ impl<'a> ParquetSstReader<'a> {
         }
     }
 
-    fn send_record_batch_with_key(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
+    async fn fetch_record_batch_stream(&mut self) -> Result<SendableRecordBatchStream> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
@@ -108,11 +112,11 @@ impl<'a> ParquetSstReader<'a> {
         let storage_format_opts = meta_data.storage_format_opts.clone();
         let schema = meta_data.schema.clone();
         let arrow_schema = schema.to_arrow_schema_ref();
-        let storage = self.storage.clone();
+
         let scan_config = FileScanConfig {
             object_store_url: ObjectStoreUrl::parse("ceresdb://ceresdb/")
                 .expect("valid object store URL"),
-            file_schema: arrow_schema.clone(),
+            file_schema: arrow_schema,
             file_groups: vec![vec![PartitionedFile {
                 object_meta: object_meta.clone(),
                 partition_values: vec![],
@@ -120,7 +124,7 @@ impl<'a> ParquetSstReader<'a> {
                 extensions: None,
             }]],
             statistics: Statistics::default(),
-            projection: None,
+            projection: self.projected_schema.projection(),
             limit: None,
             table_partition_cols: vec![],
         };
@@ -130,96 +134,19 @@ impl<'a> ParquetSstReader<'a> {
             object_meta, filter_expr, scan_config
         );
 
-        let reader_factory = self.reader_factory.clone();
-        let row_projector = self
-            .projected_schema
-            .try_project_with_key(&schema)
-            .map_err(|e| Box::new(e) as _)
-            .context(reader::error::Projection)?;
+        let exec = ParquetExec::new(scan_config, Some(filter_expr), Some(object_meta.size))
+            .with_parquet_file_reader_factory(self.reader_factory.clone());
 
-        let rt = self.runtime.clone();
-        // let handle = Handle::current();
+        // set up "fake" DataFusion session
+        let session_ctx = SessionContext::new();
+        let task_ctx = Arc::new(TaskContext::from(&session_ctx));
+        task_ctx
+            .runtime_env()
+            .register_object_store("ceresdb", "ceresdb", self.storage.clone());
 
-        self.runtime.spawn_blocking(move || {
-            let mut send_failed = false;
-            let send = |v| -> Result<()> {
-                tx.blocking_send(v)
-                    .map_err(|e| {
-                        send_failed = true;
-                        Box::new(e) as _
-                    })
-                    .context(reader::error::Other)?;
-                Ok(())
-            };
-
-            let reader = ProjectAndFilterReader {
-                storage,
-                object_meta,
-                arrow_schema,
-                scan_config,
-                filter_expr,
-                reader_factory,
-                row_projector,
-                storage_format_opts,
-            };
-
-            let start_fetch = Instant::now();
-            debug!("begin fetch:{:?}", start_fetch);
-            match rt.block_on(reader.fetch_and_send_record_batch(send)) {
-                Ok(row_num) => {
-                    debug!(
-                        "finish reading record batch({} rows) from the sst:{}, time cost:{:?}",
-                        row_num,
-                        "",
-                        start_fetch.elapsed(),
-                    );
-                }
-                Err(e) => {
-                    if send_failed {
-                        error!("fail to send the fetched record batch result, err:{}", e);
-                    } else {
-                        error!("failed to read record batch from the sst:{}, err:{}", "", e);
-                        let _ = tx.blocking_send(Err(e));
-                    }
-                }
-            }
-        });
-        // let source_schema = &self.meta_data.as_ref().unwrap().schema;
-        // let row_projector = self
-        //     .projected_schema
-        //     .try_project_with_key(source_schema)
-        //     .unwrap();
-        // let arrow_record_batch_projector =
-        // ArrowRecordBatchProjector::from(row_projector); let record_batches =
-        // self.read_record_batches().await?; record_batches.map(|record_batch|
-        // {     let record_batch = record_batch
-        //         .map_err(|e| Box::new(e) as _)
-        //         .context(reader::error::Other {})?;
-
-        //     arrow_record_batch_projector
-        //         .project_to_record_batch_with_key(record_batch)
-        //         .map_err(|e| Box::new(e) as _)
-        //         .context(reader::error::Other {})
-        // });
-
-        // let mut rows = 0;
-        // while let Some(record_batch) = record_batches.next().await {
-        //     let record_batch = record_batch
-        //         .map_err(|e| Box::new(e) as _)
-        //         .context(reader::error::Other {})?;
-
-        //     rows += record_batch.num_rows();
-        //     let record_batch_with_key = arrow_record_batch_projector
-        //         .project_to_record_batch_with_key(record_batch)
-        //         .map_err(|e| Box::new(e) as _)
-        //         .context(reader::error::Other {});
-
-        //     tx.blocking_send(record_batch_with_key)
-        //         .map_err(|e| Box::new(e) as _)
-        //         .context(reader::error::Other {})?;
-        // }
-
-        Ok(())
+        execute_stream(Arc::new(exec), task_ctx)
+            .await
+            .context(reader::error::DataFusionError {})
     }
 
     async fn init_if_necessary(&mut self) -> Result<()> {
@@ -267,93 +194,6 @@ impl<'a> ParquetSstReader<'a> {
     }
 }
 
-struct ProjectAndFilterReader {
-    storage: ObjectStoreRef,
-    arrow_schema: ArrowSchemaRef,
-    object_meta: ObjectMeta,
-    scan_config: FileScanConfig,
-    filter_expr: Expr,
-    reader_factory: Arc<dyn ParquetFileReaderFactory>,
-    row_projector: RowProjector,
-    storage_format_opts: StorageFormatOptions,
-}
-
-impl ProjectAndFilterReader {
-    async fn fetch_and_send_record_batch(
-        self,
-        mut send: impl FnMut(Result<RecordBatchWithKey>) -> Result<()>,
-    ) -> Result<usize> {
-        let mut row_num = 0;
-        let mut record_batches = self.fetch_record_batch().await?;
-        let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
-        while let Some(record_batch) = record_batches.next().await {
-            let record_batch = record_batch
-                .map_err(|e| Box::new(e) as _)
-                .context(reader::error::Other {})?;
-
-            row_num += record_batch.num_rows();
-            let record_batch_with_key = arrow_record_batch_projector
-                .project_to_record_batch_with_key(record_batch)
-                .map_err(|e| Box::new(e) as _)
-                .context(reader::error::Other {});
-
-            send(record_batch_with_key)?;
-        }
-
-        Ok(row_num)
-    }
-
-    async fn fetch_record_batch(&self) -> Result<SendableRecordBatchStream> {
-        let exec = ParquetExec::new(
-            self.scan_config.clone(),
-            Some(self.filter_expr.clone()),
-            None,
-        )
-        .with_parquet_file_reader_factory(self.reader_factory.clone());
-
-        // set up "fake" DataFusion session
-        let session_ctx = SessionContext::new();
-        let task_ctx = Arc::new(TaskContext::from(&session_ctx));
-        task_ctx
-            .runtime_env()
-            .register_object_store("ceresdb", "ceresdb", self.storage.clone());
-
-        execute_stream(Arc::new(exec), task_ctx)
-            .await
-            .context(reader::error::DataFusionError {})
-        // Ok(Box::pin(RecordBatchStreamAdapter::new(
-        //     self.arrow_schema.clone(),
-        //     futures::stream::once(execute_stream(Arc::new(exec),
-        // task_ctx)).try_flatten(), )))
-    }
-}
-/*
-impl Stream for ProjectAndFilterReader {
-    type Item = Result<RecordBatchWithKey>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let reader = self.get_mut();
-        match reader.fetch_record_batch().poll() {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Ready(Some(record_batch)) => {
-                let arrow_record_batch_projector =
-                    ArrowRecordBatchProjector::from(self.row_projector);
-                let record_batch = record_batch
-                    .map_err(|e| Box::new(e) as _)
-                    .context(reader::error::Other {})?;
-
-                let x = arrow_record_batch_projector
-                    .project_to_record_batch_with_key(record_batch)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(reader::error::Other {});
-                Poll::from(Some(x))
-            }
-        }
-    }
-}
-*/
-
 #[derive(Debug)]
 struct CachableParquetFileReaderFactory {
     storage: ObjectStoreRef,
@@ -375,7 +215,6 @@ impl ParquetFileReaderFactory for CachableParquetFileReaderFactory {
         Ok(Box::new(CachableParquetFileReader {
             storage: self.storage.clone(),
             data_cache: self.data_cache.clone(),
-            meta_cache: self.meta_cache.clone(),
             meta: file_meta.object_meta,
             metadata_size_hint,
             metrics: parquet_file_metrics,
@@ -386,7 +225,6 @@ impl ParquetFileReaderFactory for CachableParquetFileReaderFactory {
 struct CachableParquetFileReader {
     storage: ObjectStoreRef,
     data_cache: Option<DataCacheRef>,
-    meta_cache: Option<MetaCacheRef>,
     meta: ObjectMeta,
     metrics: ParquetFileMetrics,
     metadata_size_hint: Option<usize>,
@@ -449,15 +287,37 @@ impl AsyncFileReader for CachableParquetFileReader {
     }
 }
 
-struct RecordBatchReceiver {
-    rx: Receiver<Result<RecordBatchWithKey>>,
+struct RecordBatchProjector {
+    stream: SendableRecordBatchStream,
+    row_projector: RowProjector,
 }
 
-impl Stream for RecordBatchReceiver {
+impl Stream for RecordBatchProjector {
     type Item = Result<RecordBatchWithKey>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.as_mut().rx.poll_recv(cx)
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let reader = self.get_mut();
+
+        match reader.stream.poll_next_unpin(cx) {
+            Poll::Ready(Some(record_batch)) => {
+                let record_batch = record_batch
+                    .map_err(|e| Box::new(e) as _)
+                    .context(reader::error::Other {})
+                    .unwrap();
+
+                let arrow_record_batch_projector =
+                    ArrowRecordBatchProjector::from(reader.row_projector.clone());
+
+                let x = arrow_record_batch_projector
+                    .project_to_record_batch_with_key(record_batch)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(reader::error::Other {});
+
+                Poll::Ready(Some(x))
+            }
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+        }
     }
 }
 
@@ -465,6 +325,7 @@ impl Stream for RecordBatchReceiver {
 impl<'a> SstReader for ParquetSstReader<'a> {
     async fn meta_data(&mut self) -> Result<&SstMetaData> {
         self.init_if_necessary().await?;
+
         Ok(self.meta_data.as_ref().unwrap())
     }
 
@@ -472,9 +333,22 @@ impl<'a> SstReader for ParquetSstReader<'a> {
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
         self.init_if_necessary().await?;
-        let (tx, rx) = mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap);
-        self.send_record_batch_with_key(tx)?;
 
-        Ok(Box::new(RecordBatchReceiver { rx }))
+        let stream = self.fetch_record_batch_stream().await?;
+        let schema = &self.meta_data.as_ref().unwrap().schema;
+        debug!(
+            "projected schema:{:?}, raw schema:{:?}",
+            self.projected_schema, schema
+        );
+        let row_projector = self
+            .projected_schema
+            .try_project_with_key(schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(reader::error::Projection)?;
+
+        Ok(Box::new(RecordBatchProjector {
+            stream,
+            row_projector,
+        }))
     }
 }
