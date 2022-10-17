@@ -29,7 +29,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, table::TableId};
 
 use crate::{
-    instance::write_worker::{WorkerLocal, WriteHandle},
+    instance::write_worker::{WorkerLocal, WriteHandle,find_worker},
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
@@ -568,7 +568,7 @@ impl TableDataSet {
     ) -> Option<TableDataRef> {
         self.table_datas
             .values()
-            .filter(|t| t.id.as_u64() as usize % worker_num == worker_index)
+            .filter(|t| find_worker(t.id.as_u64() as usize, worker_num) == worker_index)
             .max_by_key(|t| t.memtable_memory_usage())
             .cloned()
     }
