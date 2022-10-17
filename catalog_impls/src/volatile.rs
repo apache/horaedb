@@ -21,7 +21,7 @@ use catalog::{
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
-use cluster::shard_table_manager::ShardTableManager;
+use cluster::shard_tables_cache::ShardTablesCache;
 use common_types::schema::SchemaName;
 use log::{debug, info};
 use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
@@ -32,15 +32,15 @@ use tokio::sync::Mutex;
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
-    shard_table_manager: ShardTableManager,
+    shard_tables_cache: ShardTablesCache,
     meta_client: MetaClientRef,
 }
 
 impl ManagerImpl {
-    pub fn new(shard_table_manager: ShardTableManager, meta_client: MetaClientRef) -> Self {
+    pub fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
-            shard_table_manager,
+            shard_tables_cache,
             meta_client,
         };
 
@@ -87,7 +87,7 @@ impl ManagerImpl {
         let catalog = Arc::new(CatalogImpl {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
-            shard_table_manager: self.shard_table_manager.clone(),
+            shard_tables_cache: self.shard_tables_cache.clone(),
             meta_client: self.meta_client.clone(),
         });
 
@@ -107,7 +107,7 @@ struct CatalogImpl {
     name: String,
     /// All the schemas belonging to the catalog.
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
-    shard_table_manager: ShardTableManager,
+    shard_tables_cache: ShardTablesCache,
     meta_client: MetaClientRef,
 }
 
@@ -156,7 +156,7 @@ impl Catalog for CatalogImpl {
             self.name.to_string(),
             name.to_string(),
             SchemaId::from_u32(schema_id),
-            self.shard_table_manager.clone(),
+            self.shard_tables_cache.clone(),
         ));
 
         schemas.insert(name.to_string(), schema);
@@ -188,7 +188,7 @@ struct SchemaImpl {
     /// Schema name
     schema_name: String,
     schema_id: SchemaId,
-    shard_table_manager: ShardTableManager,
+    shard_tables_cache: ShardTablesCache,
     /// Tables of schema
     tables: RwLock<HashMap<String, TableRef>>,
     /// Guard for creating/dropping table
@@ -200,13 +200,13 @@ impl SchemaImpl {
         catalog_name: String,
         schema_name: String,
         schema_id: SchemaId,
-        shard_table_manager: ShardTableManager,
+        shard_tables_cache: ShardTablesCache,
     ) -> Self {
         Self {
             catalog_name,
             schema_name,
             schema_id,
-            shard_table_manager,
+            shard_tables_cache,
             tables: Default::default(),
             create_table_mutex: Mutex::new(()),
         }
@@ -302,7 +302,7 @@ impl Schema for SchemaImpl {
 
         // Do real create table.
         let table_with_shards = self
-            .shard_table_manager
+            .shard_tables_cache
             .find_table_by_name(
                 &request.catalog_name,
                 &request.schema_name,
