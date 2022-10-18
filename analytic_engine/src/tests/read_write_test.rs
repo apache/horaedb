@@ -722,11 +722,13 @@ fn test_table_write_read_reverse<T: EngineBuilder>() {
 }
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_rocks() {
     test_table_write_read_reverse_after_flush::<RocksEngineBuilder>();
 }
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_mem_wal() {
     test_table_write_read_reverse_after_flush::<MemWalEngineBuilder>();
 }

@@ -16,7 +16,7 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use datafusion::{
-    datasource::{file_format, listing::PartitionedFile, object_store::ObjectStoreUrl},
+    datasource::{file_format, object_store::ObjectStoreUrl},
     execution::context::TaskContext,
     physical_plan::{
         execute_stream,
@@ -91,19 +91,18 @@ impl<'a> ParquetSstReader<'a> {
 
         let schema = meta_data.schema.clone();
         let arrow_schema = schema.to_arrow_schema_ref();
-
+        let row_projector = self
+            .projected_schema
+            .try_project_with_key(&meta_data.schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(Projection)?;
         let scan_config = FileScanConfig {
             object_store_url: ObjectStoreUrl::parse("ceresdb://ceresdb/")
                 .expect("valid object store URL"),
             file_schema: arrow_schema,
-            file_groups: vec![vec![PartitionedFile {
-                object_meta: object_meta.clone(),
-                partition_values: vec![],
-                range: None,
-                extensions: None,
-            }]],
+            file_groups: vec![vec![object_meta.clone().into()]],
             statistics: Statistics::default(),
-            projection: self.projected_schema.projection(),
+            projection: Some(row_projector.existed_source_projection()),
             limit: None,
             table_partition_cols: vec![],
         };
