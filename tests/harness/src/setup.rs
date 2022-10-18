@@ -23,8 +23,8 @@ impl Environment {
     pub fn start_server() -> Self {
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
         let config = env::var(CONFIG_PATH_ENV).expect("Cannot parse config path env");
-        let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse config path env");
-        let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse config path env");
+        let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
+        let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
 
         let stdout = File::create(stdout).expect("Cannot create stdout");
         let stderr = File::create(stderr).expect("Cannot create stderr");
