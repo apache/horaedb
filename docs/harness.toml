@@ -1,7 +1,7 @@
 bind_addr = "0.0.0.0"
 http_port = 5440
 grpc_port = 8831
-log_level = "info"
+log_level = "debug"
 enable_cluster = true
 
 [query]
