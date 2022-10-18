@@ -28,10 +28,7 @@ use tokio::{
 };
 use wal::{
     log_batch::LogEntry,
-    manager::{
-        BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
-        WalManagerRef,
-    },
+    manager::{BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
 };
 
 use self::role_table::ReaderTable;

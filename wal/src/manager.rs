@@ -232,17 +232,13 @@ pub trait BlockingLogIterator: Send + fmt::Debug {
 
 /// Vectorwise log entry iterator.
 #[async_trait]
-pub trait BatchLogIterator {
+pub trait AsyncLogIterator: Send + fmt::Debug {
     /// Fetch next batch of log entries from the iterator to the provided
     /// `buffer`. This iterator should clear the `buffer` before using it.
     ///
     /// Returns the entries if there are remaining log entries, or empty `Vec`
     /// if the iterator is exhausted.
-    async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
-        &mut self,
-        decoder: D,
-        buffer: VecDeque<LogEntry<D::Target>>,
-    ) -> Result<VecDeque<LogEntry<D::Target>>>;
+    async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>>;
 }
 
 /// Management of multi-region Wals.
@@ -288,42 +284,39 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
 
 /// Adapter to convert a blocking interator to a batch async iterator.
 #[derive(Debug)]
+pub enum InnerIterator {
+    Blocking(Box<dyn BlockingLogIterator>, Arc<Runtime>),
+    Async(Box<dyn AsyncLogIterator>),
+}
+
+#[derive(Debug)]
 pub struct BatchLogIteratorAdapter {
-    blocking_iter: Option<Box<dyn BlockingLogIterator>>,
-    runtime: Arc<Runtime>,
+    inner_iterator: Option<InnerIterator>,
     batch_size: usize,
 }
 
 impl BatchLogIteratorAdapter {
-    pub fn new(
-        blocking_iter: Box<dyn BlockingLogIterator>,
-        runtime: Arc<Runtime>,
-        batch_size: usize,
-    ) -> Self {
+    pub fn new(inner_iterator: InnerIterator, batch_size: usize) -> Self {
         Self {
-            blocking_iter: Some(blocking_iter),
-            runtime,
+            inner_iterator: Some(inner_iterator),
             batch_size,
         }
     }
 }
 
-#[async_trait]
-impl BatchLogIterator for BatchLogIteratorAdapter {
-    async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
+impl BatchLogIteratorAdapter {
+    async fn simulated_async_next<D: PayloadDecoder + Send + 'static>(
         &mut self,
         decoder: D,
+        runtime: Arc<Runtime>,
+        blocking_iter: Box<dyn BlockingLogIterator>,
         mut buffer: VecDeque<LogEntry<D::Target>>,
-    ) -> Result<VecDeque<LogEntry<D::Target>>> {
-        if self.blocking_iter.is_none() {
-            return Ok(VecDeque::new());
-        }
+    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<InnerIterator>)> {
         buffer.clear();
 
-        let mut iter = self.blocking_iter.take().unwrap();
+        let mut iter = blocking_iter;
         let batch_size = self.batch_size;
-        let (log_entries, iter) = self
-            .runtime
+        let (log_entries, iter_opt) = runtime
             .spawn_blocking(move || {
                 for _ in 0..batch_size {
                     if let Some(raw_log_entry) = iter.next_log_entry()? {
@@ -347,8 +340,62 @@ impl BatchLogIterator for BatchLogIteratorAdapter {
             .await
             .context(RuntimeExec)??;
 
-        self.blocking_iter = iter;
+        match iter_opt {
+            Some(iter) => Ok((log_entries, Some(InnerIterator::Blocking(iter, runtime)))),
+            None => Ok((log_entries, None)),
+        }
+    }
 
+    async fn async_next<D: PayloadDecoder + Send + 'static>(
+        &mut self,
+        decoder: D,
+        async_iter: Box<dyn AsyncLogIterator>,
+        mut buffer: VecDeque<LogEntry<D::Target>>,
+    ) -> Result<(VecDeque<LogEntry<D::Target>>, Option<InnerIterator>)> {
+        buffer.clear();
+
+        let mut async_iter = async_iter;
+        for _ in 0..self.batch_size {
+            if let Some(raw_log_entry) = async_iter.next_log_entry().await? {
+                let mut raw_payload = raw_log_entry.payload;
+                let payload = decoder
+                    .decode(&mut raw_payload)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(manager::Decoding)?;
+                let log_entry = LogEntry {
+                    sequence: raw_log_entry.sequence,
+                    payload,
+                };
+                buffer.push_back(log_entry);
+            } else {
+                return Ok((buffer, None));
+            }
+        }
+
+        Ok((buffer, Some(InnerIterator::Async(async_iter))))
+    }
+
+    pub async fn next_log_entries<D: PayloadDecoder + Send + 'static>(
+        &mut self,
+        decoder: D,
+        buffer: VecDeque<LogEntry<D::Target>>,
+    ) -> Result<VecDeque<LogEntry<D::Target>>> {
+        if self.inner_iterator.is_none() {
+            return Ok(VecDeque::new());
+        }
+
+        let inner_iterator = self.inner_iterator.take().unwrap();
+        let (log_entries, inner_iterator) = match inner_iterator {
+            InnerIterator::Blocking(blocking_iter, runtime) => {
+                self.simulated_async_next(decoder, runtime, blocking_iter, buffer)
+                    .await?
+            }
+            InnerIterator::Async(async_iter) => {
+                self.async_next(decoder, async_iter, buffer).await?
+            }
+        };
+
+        self.inner_iterator = inner_iterator;
         Ok(log_entries)
     }
 }
