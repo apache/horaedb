@@ -467,6 +467,7 @@ dependencies = [
  "common_types 0.4.0-alpha",
  "common_util",
  "criterion",
+ "datafusion 12.0.0",
  "env_logger",
  "futures 0.3.21",
  "log",

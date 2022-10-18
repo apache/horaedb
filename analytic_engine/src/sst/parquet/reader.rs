@@ -140,34 +140,66 @@ impl<'a> ParquetSstReader<'a> {
             .context(ObjectStoreError {})?;
         self.object_meta = Some(object_meta.clone());
 
-        let mut reader = self
-            .reader_factory
-            // partition_index set to dummy 0
-            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
-            .context(DataFusionError {})?;
+        let sst_meta = Self::read_sst_meta(
+            &self.storage,
+            self.path,
+            Some(object_meta),
+            &self.meta_cache,
+            &self.reader_factory,
+        )
+        .await?;
+        self.meta_data = Some(sst_meta);
 
-        reader
-            .get_metadata()
-            .map_ok(|metadata| -> Result<()> {
-                if let Some(cache) = &self.meta_cache {
-                    cache.put(self.path.to_string(), metadata.clone());
-                }
-                let kv_metas = metadata
-                    .file_metadata()
-                    .key_value_metadata()
-                    .context(SstMetaNotFound)?;
-                ensure!(!kv_metas.is_empty(), EmptySstMeta);
+        Ok(())
+    }
 
-                let sst_meta = encoding::decode_sst_meta_data(&kv_metas[0])
-                    .map_err(|e| Box::new(e) as _)
-                    .context(DecodeSstMeta)?;
+    pub async fn read_sst_meta(
+        storage: &ObjectStoreRef,
+        path: &Path,
+        object_meta: Option<ObjectMeta>,
+        meta_cache: &Option<MetaCacheRef>,
+        reader_factory: &Arc<dyn ParquetFileReaderFactory>,
+    ) -> Result<SstMetaData> {
+        let get_metadata_from_storage = || async {
+            let object_meta = if let Some(v) = object_meta {
+                v
+            } else {
+                storage.head(path).await.context(ObjectStoreError {})?
+            };
 
-                debug!("read sst_meta, path:{}, meta:{:?}", &self.path, sst_meta);
-                self.meta_data = Some(sst_meta);
-                Ok(())
-            })
-            .await
-            .context(ParquetError {})?
+            let mut reader = reader_factory
+                // partition_index set to dummy 0
+                .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
+                .context(DataFusionError {})?;
+            let metadata = reader.get_metadata().await.context(ParquetError {})?;
+
+            debug!("read sst_meta, path:{}, meta:{:?}", &path, metadata);
+
+            if let Some(cache) = meta_cache {
+                cache.put(path.to_string(), metadata.clone());
+            }
+            Ok(metadata)
+        };
+
+        let metadata = if let Some(cache) = meta_cache {
+            if let Some(cached_data) = cache.get(path.as_ref()) {
+                cached_data.clone()
+            } else {
+                get_metadata_from_storage().await?
+            }
+        } else {
+            get_metadata_from_storage().await?
+        };
+
+        let kv_metas = metadata
+            .file_metadata()
+            .key_value_metadata()
+            .context(SstMetaNotFound)?;
+        ensure!(!kv_metas.is_empty(), EmptySstMeta);
+
+        encoding::decode_sst_meta_data(&kv_metas[0])
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeSstMeta)
     }
 
     #[cfg(test)]
@@ -184,9 +216,18 @@ impl<'a> ParquetSstReader<'a> {
 }
 
 #[derive(Debug)]
-struct CachableParquetFileReaderFactory {
+pub struct CachableParquetFileReaderFactory {
     storage: ObjectStoreRef,
     data_cache: Option<DataCacheRef>,
+}
+
+impl CachableParquetFileReaderFactory {
+    pub fn new(storage: ObjectStoreRef, data_cache: Option<DataCacheRef>) -> Self {
+        Self {
+            storage,
+            data_cache,
+        }
+    }
 }
 
 impl ParquetFileReaderFactory for CachableParquetFileReaderFactory {

@@ -15,6 +15,7 @@ base64 = { workspace = true }
 clap = "2.0"
 common_types = { workspace = true }
 common_util = { workspace = true }
+datafusion = { workspace = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }

@@ -210,6 +210,10 @@ impl ProjectedSchemaInner {
         self.projection.is_none()
     }
 
+    /// `None` means select all columns
+    ///
+    /// Note: Projection will always contain key columns, since they are
+    /// required for `ProjectedSchema::try_project_with_key`
     fn projection(&self) -> Option<Vec<usize>> {
         if self.is_all_projection() {
             return None;

@@ -11,7 +11,7 @@ use analytic_engine::{
         factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
-        parquet::reader,
+        parquet::reader::{CachableParquetFileReaderFactory, ParquetSstReader},
     },
     table::sst_util,
 };
@@ -24,6 +24,7 @@ use common_util::{
     define_result,
     runtime::{self, Runtime},
 };
+use datafusion::physical_plan::file_format::ParquetFileReaderFactory;
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet_ext::{DataCacheRef, MetaCacheRef};
@@ -51,11 +52,13 @@ pub async fn meta_from_sst(
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
 ) -> SstMetaData {
-    let (_, sst_meta) = reader::read_sst_meta(store, sst_path, meta_cache, data_cache)
-        .await
-        .unwrap();
+    let reader_factory: Arc<dyn ParquetFileReaderFactory> = Arc::new(
+        CachableParquetFileReaderFactory::new(store.clone(), data_cache.clone()),
+    );
 
-    sst_meta
+    ParquetSstReader::read_sst_meta(store, sst_path, None, meta_cache, &reader_factory)
+        .await
+        .unwrap()
 }
 
 pub async fn schema_from_sst(
