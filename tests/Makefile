@@ -8,6 +8,8 @@ export CERESDB_CONFIG_PATH ?= $(ROOT)/../docs/harness.toml
 export CERESDB_SERVER_ENDPOINT ?= 127.0.0.1:8831
 export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases
 export CERESDB_TEST_HARNESS ?= $(ROOT)/../target/$(MODE)/ceresdb-test
+export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
+export CERESDB_STDERR_FILE ?= /tmp/ceresdb-stderr.log
 
 clean:
 	rm -rf $(DATA_DIR)
