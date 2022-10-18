@@ -388,6 +388,24 @@ impl TestEnv {
     }
 }
 
+/// `Env` represents where unit test run
+enum Env {
+    /// CI refer to GitHub Actions...
+    CI,
+    /// Local usually means developer's laptop
+    Local,
+}
+
+impl From<&str> for Env {
+    fn from(str: &str) -> Self {
+        if str.eq_ignore_ascii_case("ci") {
+            return Self::CI;
+        }
+
+        Self::Local
+    }
+}
+
 pub struct Builder {
     num_workers: usize,
 }
@@ -395,12 +413,29 @@ pub struct Builder {
 impl Builder {
     pub fn build(self) -> TestEnv {
         let dir = tempfile::tempdir().unwrap();
+        let env = Env::from(
+            std::env::var("CERESDB_RUN_ENVIRONMENT")
+                .unwrap_or_default()
+                .as_str(),
+        );
+        // When running tests in CI, there will be error like
+        // /tmp/.tmpIGahGc/store/100/2199023255554/29.sst not found: No such file or
+        // directory
+        let (data_path, wal_path) = match env {
+            Env::CI => {
+                let now = Timestamp::now();
+                let data_dir = format!("data-{}", now.as_i64());
+                (data_dir.clone(), data_dir)
+            }
+            _ => {
+                let tmp = dir.path().to_str().unwrap().to_string();
+                (tmp.clone(), tmp)
+            }
+        };
 
         let config = Config {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
-            }),
-            wal_path: dir.path().to_str().unwrap().to_string(),
+            storage: StorageOptions::Local(LocalOptions { data_path }),
+            wal_path,
             ..Default::default()
         };
 

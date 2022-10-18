@@ -31,6 +31,7 @@ on:
 env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
+  CERESDB_RUN_ENVIRONMENT: CI
 
 jobs:
   linux-ci:
@@ -61,7 +62,6 @@ jobs:
           restore-keys: |
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
-            debug-${{ runner.os }}
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
