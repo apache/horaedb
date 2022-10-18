@@ -141,7 +141,7 @@ impl<'a> ParquetSstReader<'a> {
         self.object_meta = Some(object_meta.clone());
 
         let sst_meta = Self::read_sst_meta(
-            &self.storage,
+            self.storage,
             self.path,
             Some(object_meta),
             &self.meta_cache,
@@ -183,7 +183,7 @@ impl<'a> ParquetSstReader<'a> {
 
         let metadata = if let Some(cache) = meta_cache {
             if let Some(cached_data) = cache.get(path.as_ref()) {
-                cached_data.clone()
+                cached_data
             } else {
                 get_metadata_from_storage().await?
             }
