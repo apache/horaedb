@@ -12,7 +12,7 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
-    projected_schema::{ProjectedSchema, RowProjector},
+    projected_schema::ProjectedSchema,
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use datafusion::{
@@ -315,7 +315,7 @@ impl AsyncFileReader for CachableParquetFileReader {
 
 struct RecordBatchProjector {
     stream: SendableRecordBatchStream,
-    row_projector: RowProjector,
+    row_projector: ArrowRecordBatchProjector,
     storage_format_opts: StorageFormatOptions,
     row_num: usize,
 }
@@ -340,8 +340,6 @@ impl Stream for RecordBatchProjector {
                 {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
-                        let arrow_record_batch_projector =
-                            ArrowRecordBatchProjector::from(projector.row_projector.clone());
                         let parquet_decoder =
                             ParquetDecoder::new(projector.storage_format_opts.clone());
                         let record_batch = parquet_decoder
@@ -351,7 +349,8 @@ impl Stream for RecordBatchProjector {
 
                         projector.row_num += record_batch.num_rows();
 
-                        let projected_batch = arrow_record_batch_projector
+                        let projected_batch = projector
+                            .row_projector
                             .project_to_record_batch_with_key(record_batch)
                             .map_err(|e| Box::new(e) as _)
                             .context(DecodeRecordBatch {});
@@ -392,6 +391,7 @@ impl<'a> SstReader for ParquetSstReader<'a> {
             .try_project_with_key(&metadata.schema)
             .map_err(|e| Box::new(e) as _)
             .context(Projection)?;
+        let row_projector = ArrowRecordBatchProjector::from(row_projector);
         let storage_format_opts = metadata.storage_format_opts.clone();
 
         Ok(Box::new(RecordBatchProjector {

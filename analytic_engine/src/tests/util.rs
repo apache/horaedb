@@ -13,7 +13,7 @@ use common_types::{
 };
 use common_util::{config::ReadableDuration, runtime};
 use futures::stream::StreamExt;
-use log::info;
+use log::{error, info};
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
@@ -421,10 +421,14 @@ impl Builder {
         // When running tests in CI, there will be error like
         // /tmp/.tmpIGahGc/store/100/2199023255554/29.sst not found: No such file or
         // directory
+        // So we use test-data directory in current working directory when running in CI
         let (data_path, wal_path) = match env {
             Env::CI => {
-                let now = Timestamp::now();
-                let data_dir = format!("data-{}", now.as_i64());
+                let data_dir = format!("test-data-{}", Timestamp::now().as_i64());
+                if let Err(e) = std::fs::remove_dir_all(&data_dir) {
+                    error!("delete data dir failed, dir:{}, err:{}", &data_dir, e);
+                }
+
                 (data_dir.clone(), data_dir)
             }
             _ => {
