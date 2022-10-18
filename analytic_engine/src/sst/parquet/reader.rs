@@ -169,6 +169,18 @@ impl<'a> ParquetSstReader<'a> {
             .await
             .context(ParquetError {})?
     }
+
+    #[cfg(test)]
+    pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
+        let object_meta = self.storage.head(self.path).await.unwrap();
+        let mut reader = self
+            .reader_factory
+            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
+            .unwrap();
+
+        let metadata = reader.get_metadata().await.unwrap();
+        metadata.row_groups().to_vec()
+    }
 }
 
 #[derive(Debug)]
