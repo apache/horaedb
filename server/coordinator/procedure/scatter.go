@@ -73,8 +73,8 @@ func scatterPrepareCallback(event *fsm.Event) {
 	for _, shard := range shards {
 		openShardRequest := &eventdispatch.OpenShardRequest{
 			Shard: &cluster.ShardInfo{
-				ShardID:   shard.GetId(),
-				ShardRole: clusterpb.ShardRole_LEADER,
+				ID:   shard.GetId(),
+				Role: clusterpb.ShardRole_LEADER,
 			},
 		}
 

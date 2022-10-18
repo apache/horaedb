@@ -170,9 +170,9 @@ func transferLeaderCallback(event *fsm.Event) {
 	// Send event to CeresDB, waiting for response.
 	// TODO: add shardInfo in FollowerCallbackRequest
 	req := &eventdispatch.OpenShardRequest{Shard: &cluster.ShardInfo{
-		ShardID:   shardID,
-		ShardRole: clusterpb.ShardRole_LEADER,
-		Version:   0,
+		ID:      shardID,
+		Role:    clusterpb.ShardRole_LEADER,
+		Version: 0,
 	}}
 	if err := d.OpenShard(ctx, node, req); err != nil {
 		event.Cancel(errors.Wrap(err, EventTransferLeader))

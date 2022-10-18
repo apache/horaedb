@@ -194,7 +194,7 @@ func testGetTables(ctx context.Context, re *require.Assertions, manager Manager,
 
 	tableNum := 0
 	for _, tables := range shardTables {
-		re.Equal(clusterpb.ShardRole_LEADER, tables.Shard.ShardRole)
+		re.Equal(clusterpb.ShardRole_LEADER, tables.Shard.Role)
 		tableNum += len(tables.Tables)
 	}
 	re.Equal(num, tableNum)
@@ -207,7 +207,7 @@ func testRouteTables(ctx context.Context, re *require.Assertions, manager Manage
 	re.Equal(len(tableNames), len(ret.RouteEntries))
 	for _, entry := range ret.RouteEntries {
 		re.Equal(1, len(entry.NodeShards))
-		re.Equal(clusterpb.ShardRole_LEADER, entry.NodeShards[0].ShardInfo.ShardRole)
+		re.Equal(clusterpb.ShardRole_LEADER, entry.NodeShards[0].ShardInfo.Role)
 	}
 }
 

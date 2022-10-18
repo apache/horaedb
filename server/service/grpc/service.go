@@ -87,44 +87,24 @@ func (s *Service) AllocSchemaID(ctx context.Context, req *metaservicepb.AllocSch
 	}, nil
 }
 
-// GetShardTables implements gRPC CeresmetaServer.
-func (s *Service) GetShardTables(ctx context.Context, req *metaservicepb.GetShardTablesRequest) (*metaservicepb.GetShardTablesResponse, error) {
+// GetTablesOfShards implements gRPC CeresmetaServer.
+func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetTablesOfShardsRequest) (*metaservicepb.GetTablesOfShardsResponse, error) {
 	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
 	if err != nil {
-		return &metaservicepb.GetShardTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
+		return &metaservicepb.GetTablesOfShardsResponse{Header: responseHeader(err, "grpc get tables of shards")}, nil
 	}
 
 	// Forward request to the leader.
 	if ceresmetaClient != nil {
-		return ceresmetaClient.GetShardTables(ctx, req)
+		return ceresmetaClient.GetTablesOfShards(ctx, req)
 	}
 
 	tables, err := s.h.GetClusterManager().GetTables(ctx, req.GetHeader().GetClusterName(), req.GetHeader().GetNode(), req.GetShardIds())
 	if err != nil {
-		return &metaservicepb.GetShardTablesResponse{Header: responseHeader(err, "grpc get tables")}, nil
+		return &metaservicepb.GetTablesOfShardsResponse{Header: responseHeader(err, "grpc get tables of shards")}, nil
 	}
 
-	tablesPb := make(map[uint32]*metaservicepb.ShardTables, len(tables))
-	for shardID, shardTables := range tables {
-		tablesOfShardPb := make([]*metaservicepb.TableInfo, 0, len(shardTables.Tables))
-		for _, table := range shardTables.Tables {
-			tablesOfShardPb = append(tablesOfShardPb, &metaservicepb.TableInfo{
-				Id:         table.ID,
-				Name:       table.Name,
-				SchemaId:   table.SchemaID,
-				SchemaName: table.SchemaName,
-			})
-		}
-		tablesPb[shardID] = &metaservicepb.ShardTables{
-			ShardInfo: cluster.ConvertShardsInfoToPB(shardTables.Shard),
-			Tables:    tablesOfShardPb,
-		}
-	}
-
-	return &metaservicepb.GetShardTablesResponse{
-		Header:      okResponseHeader(),
-		ShardTables: tablesPb,
-	}, nil
+	return convertToGetTablesOfShardsResponse(tables), nil
 }
 
 // CreateTable implements gRPC CeresmetaServer.
@@ -177,7 +157,25 @@ func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesReque
 		return &metaservicepb.GetNodesResponse{Header: responseHeader(err, "grpc get nodes")}, nil
 	}
 
-	return convertGetNodesResult(nodesResult), nil
+	return convertToGetNodesResponse(nodesResult), nil
+}
+
+func convertToGetTablesOfShardsResponse(shardTables map[uint32]*cluster.ShardTables) *metaservicepb.GetTablesOfShardsResponse {
+	tablesByShard := make(map[uint32]*metaservicepb.TablesOfShard, len(shardTables))
+	for id, shardTable := range shardTables {
+		tables := make([]*metaservicepb.TableInfo, 0, len(shardTable.Tables))
+		for _, table := range shardTable.Tables {
+			tables = append(tables, cluster.ConvertTableInfoToPB(table))
+		}
+		tablesByShard[id] = &metaservicepb.TablesOfShard{
+			ShardInfo: cluster.ConvertShardsInfoToPB(shardTable.Shard),
+			Tables:    tables,
+		}
+	}
+	return &metaservicepb.GetTablesOfShardsResponse{
+		Header:        okResponseHeader(),
+		TablesByShard: tablesByShard,
+	}
 }
 
 func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *metaservicepb.RouteTablesResponse {
@@ -188,19 +186,14 @@ func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *meta
 			nodeShards = append(nodeShards, &metaservicepb.NodeShard{
 				Endpoint: nodeShard.Endpoint,
 				ShardInfo: &metaservicepb.ShardInfo{
-					ShardId: nodeShard.ShardInfo.ShardID,
-					Role:    nodeShard.ShardInfo.ShardRole,
+					Id:   nodeShard.ShardInfo.ID,
+					Role: nodeShard.ShardInfo.Role,
 				},
 			})
 		}
 
 		entries[tableName] = &metaservicepb.RouteEntry{
-			Table: &metaservicepb.TableInfo{
-				Id:         entry.Table.ID,
-				Name:       entry.Table.Name,
-				SchemaId:   entry.Table.SchemaID,
-				SchemaName: entry.Table.SchemaName,
-			},
+			Table:      cluster.ConvertTableInfoToPB(entry.Table),
 			NodeShards: nodeShards,
 		}
 	}
@@ -212,7 +205,7 @@ func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *meta
 	}
 }
 
-func convertGetNodesResult(nodesResult *cluster.GetNodesResult) *metaservicepb.GetNodesResponse {
+func convertToGetNodesResponse(nodesResult *cluster.GetNodesResult) *metaservicepb.GetNodesResponse {
 	nodeShards := make([]*metaservicepb.NodeShard, 0, len(nodesResult.NodeShards))
 	for _, nodeShard := range nodesResult.NodeShards {
 		nodeShards = append(nodeShards, &metaservicepb.NodeShard{

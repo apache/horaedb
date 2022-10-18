@@ -129,7 +129,7 @@ func transferLeaderPrepareCallback(event *fsm.Event) {
 	}
 
 	openShardRequest := &eventdispatch.OpenShardRequest{
-		Shard: &cluster.ShardInfo{ShardID: request.newLeader.Id, ShardRole: clusterpb.ShardRole_LEADER},
+		Shard: &cluster.ShardInfo{ID: request.newLeader.Id, Role: clusterpb.ShardRole_LEADER},
 	}
 	if err := request.dispatch.OpenShard(ctx, request.newLeader.Node, openShardRequest); err != nil {
 		cancelEventWithLog(event, err, "open shard failed", zap.Uint32("shardId", request.newLeader.Id))

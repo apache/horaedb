@@ -20,9 +20,9 @@ type ShardTables struct {
 }
 
 type ShardInfo struct {
-	ShardID   uint32
-	ShardRole clusterpb.ShardRole
-	Version   uint64
+	ID      uint32
+	Role    clusterpb.ShardRole
+	Version uint64
 }
 
 type NodeShard struct {
@@ -47,8 +47,8 @@ type GetNodesResult struct {
 
 func ConvertShardsInfoToPB(shard *ShardInfo) *metaservicepb.ShardInfo {
 	return &metaservicepb.ShardInfo{
-		ShardId: shard.ShardID,
-		Role:    shard.ShardRole,
+		Id:      shard.ID,
+		Role:    shard.Role,
 		Version: shard.Version,
 	}
 }

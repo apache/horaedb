@@ -294,9 +294,9 @@ func (c *Cluster) GetTables(_ context.Context, shardIDs []uint32, nodeName strin
 			tables = append(tables, table)
 		}
 		shardTables[shardID] = &ShardTablesWithRole{shard: &ShardInfo{
-			ShardID:   shardID,
-			ShardRole: shardRole,
-			Version:   shard.version,
+			ID:      shardID,
+			Role:    shardRole,
+			Version: shard.version,
 		}, tables: tables}
 	}
 
@@ -617,8 +617,8 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 				nodeShards = append(nodeShards, &NodeShard{
 					Endpoint: node.GetName(),
 					ShardInfo: &ShardInfo{
-						ShardID:   shard.meta[i].GetId(),
-						ShardRole: shard.meta[i].GetShardRole(),
+						ID:   shard.meta[i].GetId(),
+						Role: shard.meta[i].GetShardRole(),
 					},
 				})
 			}
@@ -665,9 +665,9 @@ func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
 			nodeShards = append(nodeShards, &NodeShard{
 				Endpoint: nodeName,
 				ShardInfo: &ShardInfo{
-					ShardID:   shardID,
-					ShardRole: shardRole,
-					Version:   shard.version,
+					ID:      shardID,
+					Role:    shardRole,
+					Version: shard.version,
 				},
 			})
 		}
