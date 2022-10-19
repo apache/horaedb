@@ -1259,7 +1259,7 @@ mod tests {
         let encoder = SchemaEncoder::default();
         let encoded_schema = encoder
             .encode(&schema)
-            .expect("Should succeed in encode schema");
+            .expect("Should succeed in encoding schema");
 
         let decoded_schema = encoder
             .decode(&encoded_schema)

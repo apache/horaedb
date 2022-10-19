@@ -58,7 +58,7 @@ impl TableManipulator for TableManipulatorImpl {
             })?;
 
         info!(
-            "Create table by meta succeeds, req:{:?}, resp:{:?}",
+            "Create table by meta successfully, req:{:?}, resp:{:?}",
             req, resp
         );
 
@@ -86,7 +86,7 @@ impl TableManipulator for TableManipulatorImpl {
             })?;
 
         info!(
-            "Drop table by meta succeeds, req:{:?}, resp:{:?}",
+            "Drop table by meta successfully, req:{:?}, resp:{:?}",
             req, resp
         );
 
