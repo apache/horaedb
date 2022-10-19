@@ -155,7 +155,7 @@ pub enum Error {
     ColumnSchemaDeserializeFailed { source: crate::column_schema::Error },
 
     #[snafu(display("Failed to encode schema by protobuf, err:{}", source))]
-    EncodePbSchema {
+    EncodeSchemaToPb {
         source: protobuf::error::ProtobufError,
     },
 
@@ -1188,7 +1188,7 @@ impl SchemaEncoder {
         let mut writer = Writer::new(&mut buf);
         pb_schema
             .write_to_writer(&mut writer)
-            .context(EncodePbSchema)?;
+            .context(EncodeSchemaToPb)?;
 
         Ok(buf)
     }
