@@ -226,7 +226,7 @@ impl AddTableMeta {
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());
         target.set_table_name(self.table_name);
-        target.set_schema(common_pb::TableSchema::from(self.schema));
+        target.set_schema(common_pb::TableSchema::from(&self.schema));
         target.set_options(analytic_common::TableOptions::from(self.opts));
 
         target
@@ -364,7 +364,7 @@ impl AlterSchemaMeta {
         let mut target = meta_pb::AlterSchemaMeta::new();
         target.set_space_id(self.space_id);
         target.set_table_id(self.table_id.as_u64());
-        target.set_schema(common_pb::TableSchema::from(self.schema));
+        target.set_schema(common_pb::TableSchema::from(&self.schema));
         target.set_pre_schema_version(self.pre_schema_version);
 
         target

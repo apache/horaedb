@@ -16,6 +16,7 @@ define_result!(Error);
 /// Interpreter context
 ///
 /// Contains information that all interpreters need
+#[derive(Debug, Clone)]
 pub struct Context {
     request_id: RequestId,
     default_catalog: String,

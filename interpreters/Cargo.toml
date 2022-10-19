@@ -18,6 +18,7 @@ datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 log = { workspace = true }
+meta_client = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
