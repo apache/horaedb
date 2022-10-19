@@ -98,8 +98,8 @@ tokio = { version = "1.0", features = ["full"] }
 wal = { path = "wal" }
 
 [workspace.dependencies.ceresdbproto]
-git = "https://github.com/ShiKaiWi/ceresdbproto.git"
-rev = "1a130a468c64d4d7bd51f17e5f3109d407c687c9"
+git = "https://github.com/CeresDB/ceresdbproto.git"
+rev = "29cb0c6fba76401fd9a4ae5b8cacc9002ad78650"
 
 [workspace.dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
