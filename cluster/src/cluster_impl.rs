@@ -255,8 +255,22 @@ impl Inner {
         )
     }
 
-    fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
-        todo!();
+    fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in DropTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in CreateTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_remove_table_from_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
     }
 }
 

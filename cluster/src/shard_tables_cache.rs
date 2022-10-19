@@ -8,7 +8,7 @@ use std::{
 use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
-use crate::{Result, ShardNotFound, ShardVersionMismatch};
+use crate::{Result, ShardNotFound, ShardVersionMismatch, TableAlreadyExists, TableNotFound};
 
 /// [ShardTablesCache] caches the information about tables and shards, and the
 /// relationship between them is: one shard -> multiple tables.
@@ -61,8 +61,11 @@ impl ShardTablesCache {
 
     /// Try to insert a new table to the shard with a newer version.
     ///
-    /// It will fail if the shard doesn't exist or the shard version in the
-    /// cache is not equal to the provided `prev_shard_version`.
+    /// It will fail if:
+    ///  - the shard doesn't exist, or
+    ///  - the shard version in the cache is not equal to the provided
+    ///    `prev_shard_version`, or
+    ///  - the table already exists.
     pub fn try_insert_table_to_shard(
         &self,
         prev_shard_version: u64,
@@ -70,6 +73,26 @@ impl ShardTablesCache {
         new_table: TableInfo,
     ) -> Result<()> {
         self.inner.write().unwrap().try_insert_table_to_shard(
+            prev_shard_version,
+            curr_shard,
+            new_table,
+        )
+    }
+
+    /// Try to remove a table from the shard with a newer version.
+    ///
+    /// It will fail if:
+    ///  - the shard doesn't exist, or
+    ///  - the shard version in the cache is not equal to the provided
+    ///    `prev_shard_version`, or
+    ///  - the table doesn't exist.
+    pub fn try_remove_table_from_shard(
+        &self,
+        prev_shard_version: u64,
+        curr_shard: ShardInfo,
+        new_table: TableInfo,
+    ) -> Result<()> {
+        self.inner.write().unwrap().try_remove_table_from_shard(
             prev_shard_version,
             curr_shard,
             new_table,
@@ -158,9 +181,56 @@ impl Inner {
             }
         );
 
+        let table = tables_of_shard.tables.iter().find(|v| v.id == new_table.id);
+        ensure!(
+            table.is_none(),
+            TableAlreadyExists {
+                msg: "the table to insert already exists",
+            }
+        );
+
         // Update the tables of shard.
         tables_of_shard.shard_info = curr_shard;
         tables_of_shard.tables.push(new_table);
+
+        Ok(())
+    }
+
+    fn try_remove_table_from_shard(
+        &mut self,
+        prev_shard_version: u64,
+        curr_shard: ShardInfo,
+        new_table: TableInfo,
+    ) -> Result<()> {
+        let tables_of_shard = self
+            .tables_by_shard
+            .get_mut(&curr_shard.id)
+            .with_context(|| ShardNotFound {
+                msg: format!(
+                    "remove table from a non-existent shard, shard_id:{}",
+                    curr_shard.id
+                ),
+            })?;
+
+        ensure!(
+            tables_of_shard.shard_info.version == prev_shard_version,
+            ShardVersionMismatch {
+                shard_info: tables_of_shard.shard_info.clone(),
+                expect_version: prev_shard_version,
+            }
+        );
+
+        let table_idx = tables_of_shard
+            .tables
+            .iter()
+            .position(|v| v.id == new_table.id)
+            .with_context(|| TableNotFound {
+                msg: format!("the table to remove is not found, table:{:?}", new_table),
+            })?;
+
+        // Update the tables of shard.
+        tables_of_shard.shard_info = curr_shard;
+        tables_of_shard.tables.swap_remove(table_idx);
 
         Ok(())
     }

@@ -12,7 +12,8 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::schema::{
-    CloseOptions, CreateOptions, CreateTableRequest, OpenOptions, OpenTableRequest,
+    CloseOptions, CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, OpenOptions,
+    OpenTableRequest,
 };
 use ceresdbproto::{
     common::ResponseHeader,
@@ -55,6 +56,7 @@ use sql::plan::CreateTablePlan;
 use table_engine::{
     engine::{CloseTableRequest, EngineRuntimes, TableState},
     table::{SchemaId, TableId},
+    ANALYTIC_ENGINE_TYPE,
 };
 use tokio::sync::{
     mpsc,
@@ -739,6 +741,9 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         request: tonic::Request<DropTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<DropTableOnShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
+        let catalog_manager = self.instance.catalog_manager.clone();
+        let table_engine = self.instance.table_engine.clone();
+
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
@@ -748,6 +753,56 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: format!("fail to drop table on shard in cluster, req:{:?}", request),
+                })?;
+
+            let table = request.table_info.context(ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "table info is missing in the CreateTableOnShardRequest",
+            })?;
+
+            // Drop the table by catalog manager afterwards.
+            let default_catalog_name = catalog_manager.default_catalog_name();
+            let default_catalog = catalog_manager
+                .catalog_by_name(default_catalog_name)
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to get default catalog",
+                })?
+                .context(ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: "default catalog is not found",
+                })?;
+
+            let schema = default_catalog
+                .schema_by_name(&table.schema_name)
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("fail to get schema of table, table_info:{:?}", table),
+                })?
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: format!("schema of table is not found, table_info:{:?}", table),
+                })?;
+
+            let drop_table_request = DropTableRequest {
+                catalog_name: default_catalog_name.to_string(),
+                schema_name: table.schema_name,
+                schema_id: SchemaId::from_u32(table.schema_id),
+                table_name: table.name,
+                // FIXME: the engine type should not use the default one.
+                engine: ANALYTIC_ENGINE_TYPE.to_string(),
+            };
+            let drop_opts = DropOptions { table_engine };
+
+            schema
+                .drop_table(drop_table_request.clone(), drop_opts)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("fail to drop table with request:{:?}", drop_table_request),
                 })
         });
 

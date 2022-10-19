@@ -65,6 +65,9 @@ pub enum Error {
     #[snafu(display("Table not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotFound { msg: String, backtrace: Backtrace },
 
+    #[snafu(display("Table already exists, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    TableAlreadyExists { msg: String, backtrace: Backtrace },
+
     #[snafu(display(
         "Schema not found in current node, schema name:{}.\nBacktrace:\n{}",
         schema_name,
