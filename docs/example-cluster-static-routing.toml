@@ -17,7 +17,7 @@ write_group_command_channel_cap = 1024
 
 [analytic.storage]
 type = "Local"
-data_path = "/tmp/ceresdbx/"
+data_path = "/tmp/ceresdb/"
 
 [analytic.table_opts]
 arena_block_size = 2097152
