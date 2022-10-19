@@ -56,7 +56,7 @@ pub async fn meta_from_sst(
         CachableParquetFileReaderFactory::new(store.clone(), data_cache.clone()),
     );
 
-    ParquetSstReader::read_sst_meta(store, sst_path, None, meta_cache, &reader_factory)
+    ParquetSstReader::read_sst_meta(store, sst_path, meta_cache, &reader_factory)
         .await
         .unwrap()
 }

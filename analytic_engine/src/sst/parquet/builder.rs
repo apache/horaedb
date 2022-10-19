@@ -264,7 +264,14 @@ mod tests {
             };
 
             let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-            assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+            let sst_meta_readback = {
+                // size of SstMetaData is not what this file's size, so overwrite it
+                // https://github.com/CeresDB/ceresdb/issues/321
+                let mut meta = reader.meta_data().await.unwrap().clone();
+                meta.size = sst_meta.size;
+                meta
+            };
+            assert_eq!(&sst_meta_readback, &sst_meta);
             assert_eq!(
                 expected_num_rows,
                 reader

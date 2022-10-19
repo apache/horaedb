@@ -101,8 +101,9 @@ impl Executor for ExecutorImpl {
         let physical_plan = optimize_plan(&ctx, df_ctx, plan).await?;
 
         debug!(
-            "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
-            ctx.request_id, physical_plan
+            "Executor physical optimization finished, request_id:{}, physical_plan: {:?}, cost:{}ms",
+            ctx.request_id, physical_plan,
+            begin_instant.saturating_elapsed().as_millis()
         );
 
         let stream = physical_plan.execute().context(ExecutePhysical)?;
@@ -112,7 +113,7 @@ impl Executor for ExecutorImpl {
         let record_batches = collect(stream).await?;
 
         info!(
-            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
+            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics:\n{}",
             ctx.request_id,
             begin_instant.saturating_elapsed().as_millis(),
             physical_plan.metrics_to_string()

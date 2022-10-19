@@ -12,12 +12,24 @@ pub trait MetaCache: Debug {
     fn get(&self, key: &str) -> Option<Arc<ParquetMetaData>>;
 
     fn put(&self, key: String, value: Arc<ParquetMetaData>);
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait DataCache: Debug {
     fn get(&self, key: &str) -> Option<Arc<Vec<u8>>>;
 
     fn put(&self, key: String, value: Arc<Vec<u8>>);
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 #[derive(Debug)]
@@ -41,6 +53,10 @@ impl MetaCache for LruMetaCache {
     fn put(&self, key: String, value: Arc<ParquetMetaData>) {
         self.cache.write().unwrap().put(key, value);
     }
+
+    fn len(&self) -> usize {
+        self.cache.read().unwrap().len()
+    }
 }
 
 #[derive(Debug)]
@@ -63,5 +79,9 @@ impl DataCache for LruDataCache {
 
     fn put(&self, key: String, value: Arc<Vec<u8>>) {
         self.cache.write().unwrap().put(key, value);
+    }
+
+    fn len(&self) -> usize {
+        self.cache.read().unwrap().len()
     }
 }
