@@ -11,7 +11,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use catalog::schema::{CloseOptions, OpenOptions, OpenTableRequest};
+use catalog::schema::{
+    CloseOptions, CreateOptions, CreateTableRequest, OpenOptions, OpenTableRequest,
+};
 use ceresdbproto::{
     common::ResponseHeader,
     meta_event::{
@@ -33,7 +35,7 @@ use cluster::{config::SchemaConfig, ClusterRef};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::DatumKind,
-    schema::{Builder as SchemaBuilder, Error as SchemaError, Schema, TSID_COLUMN},
+    schema::{Builder as SchemaBuilder, Error as SchemaError, Schema, SchemaEncoder, TSID_COLUMN},
 };
 use common_util::{
     define_result,
@@ -51,7 +53,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sql::plan::CreateTablePlan;
 use table_engine::{
-    engine::{CloseTableRequest, EngineRuntimes},
+    engine::{CloseTableRequest, EngineRuntimes, TableState},
     table::{SchemaId, TableId},
 };
 use tokio::sync::{
@@ -613,6 +615,9 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
         request: tonic::Request<CreateTableOnShardRequest>,
     ) -> std::result::Result<tonic::Response<CreateTableOnShardResponse>, tonic::Status> {
         let cluster = self.cluster.clone();
+        let catalog_manager = self.instance.catalog_manager.clone();
+        let table_engine = self.instance.table_engine.clone();
+
         let handle = self.runtime.spawn(async move {
             let request = request.into_inner();
             cluster
@@ -624,6 +629,86 @@ impl<Q: QueryExecutor + 'static> MetaEventService for MetaServiceImpl<Q> {
                     msg: format!(
                         "fail to create table on shard in cluster, req:{:?}",
                         request
+                    ),
+                })?;
+
+            let shard_info = request
+                .update_shard_info
+                .context(ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: "update shard info is missing in the CreateTableOnShardRequest",
+                })?
+                .curr_shard_info
+                .context(ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: "current shard info is missing ine CreateTableOnShardRequest",
+                })?;
+            let table = request.table_info.context(ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "table info is missing in the CreateTableOnShardRequest",
+            })?;
+
+            // Create the table by catalog manager afterwards.
+            let default_catalog_name = catalog_manager.default_catalog_name();
+            let default_catalog = catalog_manager
+                .catalog_by_name(default_catalog_name)
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to get default catalog",
+                })?
+                .context(ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: "default catalog is not found",
+                })?;
+
+            let schema = default_catalog
+                .schema_by_name(&table.schema_name)
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!("fail to get schema of table, table_info:{:?}", table),
+                })?
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::NOT_FOUND,
+                    msg: format!("schema of table is not found, table_info:{:?}", table),
+                })?;
+
+            let table_schema = SchemaEncoder::default()
+                .decode(&request.encoded_schema)
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: format!(
+                        "fail to decode encoded schema bytes, raw_bytes:{:?}",
+                        request.encoded_schema
+                    ),
+                })?;
+            let create_table_request = CreateTableRequest {
+                catalog_name: default_catalog_name.to_string(),
+                schema_name: table.schema_name,
+                schema_id: SchemaId::from_u32(table.schema_id),
+                table_name: table.name,
+                table_schema,
+                engine: request.engine,
+                options: request.options,
+                state: TableState::Stable,
+                shard_id: shard_info.id,
+            };
+            let create_opts = CreateOptions {
+                table_engine,
+                create_if_not_exists: request.create_if_not_exist,
+            };
+
+            schema
+                .create_table(create_table_request.clone(), create_opts)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: format!(
+                        "fail to create table with request:{:?}",
+                        create_table_request
                     ),
                 })
         });

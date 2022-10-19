@@ -14,7 +14,7 @@ use log::{error, info, warn};
 use meta_client::{
     types::{
         GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,
-        TablesOfShard,
+        ShardInfo, TableInfo, TablesOfShard,
     },
     MetaClientRef,
 };
@@ -27,7 +27,7 @@ use tokio::{
 use crate::{
     config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard,
-    OpenShardWithCause, Result, ShardNotFound,
+    OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -232,9 +232,31 @@ impl Inner {
     fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
         self.shard_tables_cache
             .remove(req.shard_id)
-            .context(ShardNotFound {
-                shard_id: req.shard_id,
+            .with_context(|| ShardNotFound {
+                msg: format!("close non-existent shard, shard_id:{}", req.shard_id),
             })
+    }
+
+    fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in CreateTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in CreateTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_insert_table_to_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
+    }
+
+    fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
+        todo!();
     }
 }
 
@@ -279,12 +301,12 @@ impl Cluster for ClusterImpl {
         self.inner.close_shard(req)
     }
 
-    async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {
-        todo!();
+    async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
+        self.inner.create_table_on_shard(req)
     }
 
-    async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
-        todo!();
+    async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
+        self.inner.drop_table_on_shard(req)
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
