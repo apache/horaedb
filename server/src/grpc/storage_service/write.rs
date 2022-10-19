@@ -23,7 +23,10 @@ use table_engine::table::TableRef;
 
 use crate::{
     error::{ErrNoCause, ErrWithCause, Result},
-    grpc::{self, HandlerContext},
+    grpc::{
+        self,
+        storage_service::{self, HandlerContext},
+    },
 };
 
 pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
@@ -188,7 +191,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     write_metric: &WriteMetric,
     request_id: RequestId,
 ) -> Result<()> {
-    let create_table_plan = grpc::write_metric_to_create_table_plan(ctx, write_metric)
+    let create_table_plan = storage_service::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
