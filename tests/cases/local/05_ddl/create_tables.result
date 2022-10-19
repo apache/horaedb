@@ -177,10 +177,6 @@ drop table `05_create_tables_t8`;
 
 affected_rows: 0
 
-CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');
-
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: CREATE TABLE `05_create_tables_t8`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic with (storage_format= 'unknown');. Caused by: Failed to execute create table, err:Failed to create table by table manipulator, err:Failed to create table, name:05_create_tables_t8, err:Failed to create table, err:Invalid arguments, err:Invalid options, space_id:2, table:05_create_tables_t8, table_id:2199023255662, err:Unknown storage format. value:\"unknown\"." })
-
 CREATE TABLE `05_create_tables_t9`(c1 int, c2 bigint default 0, c3 uint32 default 1 + 1, c4 string default 'xxx', c5 uint32 default c3*2 + 1, t1 timestamp NOT NULL TIMESTAMP KEY) ENGINE = Analytic;
 
 affected_rows: 0
