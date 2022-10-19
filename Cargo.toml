@@ -131,7 +131,8 @@ vergen = { version = "5", default-features = false, features = ["build", "git"] 
 
 [profile.release]
 debug = true
-opt-level = 2
+opt-level = "z"
+lto = true
 overflow-checks = true
 
 [profile.bench]
