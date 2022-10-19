@@ -40,16 +40,16 @@ var (
 )
 
 type TransferLeaderProcedure struct {
-	// Protect the state.
-	lock  sync.RWMutex
-	state State
-
-	fsm       *fsm.FSM
 	id        uint64
+	fsm       *fsm.FSM
 	dispatch  eventdispatch.Dispatch
 	cluster   *cluster.Cluster
 	oldLeader *clusterpb.Shard
 	newLeader *clusterpb.Shard
+
+	// Protect the state.
+	lock  sync.RWMutex
+	state State
 }
 
 // TransferLeaderCallbackRequest is fsm callbacks param
@@ -69,7 +69,7 @@ func NewTransferLeaderProcedure(dispatch eventdispatch.Dispatch, cluster *cluste
 		transferLeaderCallbacks,
 	)
 
-	return &TransferLeaderProcedure{fsm: transferLeaderOperationFsm, dispatch: dispatch, cluster: cluster, id: id, state: StateInit, oldLeader: oldLeader, newLeader: newLeader}
+	return &TransferLeaderProcedure{id: id, fsm: transferLeaderOperationFsm, dispatch: dispatch, cluster: cluster, oldLeader: oldLeader, newLeader: newLeader, state: StateInit}
 }
 
 func (p *TransferLeaderProcedure) ID() uint64 {
@@ -92,13 +92,16 @@ func (p *TransferLeaderProcedure) Start(ctx context.Context) error {
 	}
 
 	if err := p.fsm.Event(eventTransferLeaderPrepare, transferLeaderRequest); err != nil {
-		err := p.fsm.Event(eventTransferLeaderFailed, transferLeaderRequest)
+		err1 := p.fsm.Event(eventTransferLeaderFailed, transferLeaderRequest)
 		p.updateStateWithLock(StateFailed)
-		return errors.WithMessage(err, "coordinator transferLeaderShard start")
+		if err1 != nil {
+			err = errors.WithMessagef(err, "transferLeader procedure start, fail to send eventTransferLeaderFailed err:%v", err1)
+		}
+		return errors.WithMessage(err, "transferLeader procedure start")
 	}
 
 	if err := p.fsm.Event(eventTransferLeaderSuccess, transferLeaderRequest); err != nil {
-		return errors.WithMessage(err, "coordinator transferLeaderShard start")
+		return errors.WithMessage(err, "transferLeader procedure start")
 	}
 
 	p.updateStateWithLock(StateFinished)

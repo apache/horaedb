@@ -5,6 +5,7 @@ package procedure
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -15,6 +16,8 @@ import (
 )
 
 const (
+	testTableName            = "testTable"
+	testSchemaName           = "testSchemaName"
 	nodeName0                = "node0"
 	nodeName1                = "node1"
 	testRootPath             = "/rootPath"
@@ -58,6 +61,18 @@ func newTestCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
 	re.NoError(err)
 
 	cluster, err := manager.CreateCluster(ctx, clusterName, defaultNodeCount, defaultReplicationFactor, defaultShardTotal)
+	re.NoError(err)
+	return cluster
+}
+
+// Prepare a test cluster which has scattered shards and created test schema.
+// Notice: sleep(5s) will be called in this function.
+func prepare(t *testing.T) *cluster.Cluster {
+	re := require.New(t)
+	cluster := newClusterAndRegisterNode(t)
+	// Wait for the cluster to be ready.
+	time.Sleep(time.Second * 5)
+	_, _, err := cluster.GetOrCreateSchema(context.Background(), testSchemaName)
 	re.NoError(err)
 	return cluster
 }

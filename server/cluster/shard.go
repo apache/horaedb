@@ -21,6 +21,15 @@ func (s *Shard) dropTableLocked(tableID uint64) {
 	delete(s.tables, tableID)
 }
 
+func (s *Shard) GetLeader() *clusterpb.Shard {
+	for i, shard := range s.meta {
+		if clusterpb.ShardRole_LEADER == shard.ShardRole {
+			return s.meta[i]
+		}
+	}
+	return nil
+}
+
 type ShardTablesWithRole struct {
 	shard  *ShardInfo
 	tables []*Table

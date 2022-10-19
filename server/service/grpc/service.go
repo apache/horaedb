@@ -75,7 +75,7 @@ func (s *Service) AllocSchemaID(ctx context.Context, req *metaservicepb.AllocSch
 		return ceresmetaClient.AllocSchemaID(ctx, req)
 	}
 
-	schemaID, err := s.h.GetClusterManager().AllocSchemaID(ctx, req.GetHeader().GetClusterName(), req.GetName())
+	schemaID, _, err := s.h.GetClusterManager().AllocSchemaID(ctx, req.GetHeader().GetClusterName(), req.GetName())
 	if err != nil {
 		return &metaservicepb.AllocSchemaIdResponse{Header: responseHeader(err, "grpc alloc schema id")}, nil
 	}
@@ -108,7 +108,7 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 }
 
 // CreateTable implements gRPC CeresmetaServer.
-func (s *Service) CreateTable(_ context.Context, _ *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
+func (s *Service) CreateTable(_ context.Context, _ *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
 	// TODO: impl later
 	return nil, nil
 }

@@ -171,7 +171,7 @@ func testRegisterNode(ctx context.Context, re *require.Assertions, manager Manag
 func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Manager,
 	cluster, schema string, schemaID uint32,
 ) {
-	id, err := manager.AllocSchemaID(ctx, cluster, schema)
+	id, _, err := manager.AllocSchemaID(ctx, cluster, schema)
 	re.NoError(err)
 	re.Equal(schemaID, id)
 }
@@ -179,7 +179,7 @@ func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Mana
 func testAllocTableID(ctx context.Context, re *require.Assertions, manager Manager,
 	node, cluster, schema, tableName string, tableID uint64,
 ) {
-	table, err := manager.AllocTableID(ctx, cluster, schema, tableName, node)
+	table, _, err := manager.AllocTableID(ctx, cluster, schema, tableName, node)
 	re.NoError(err)
 	re.Equal(tableID, table.GetID())
 }
