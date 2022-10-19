@@ -29,7 +29,7 @@ use common_util::{
 };
 use log::{debug, error, info};
 use object_store::ObjectStoreRef;
-use proto::{common::TimeRange as TimeRangePb, sst::SstMetaData as SstMetaDataPb};
+use proto::{common as common_pb, sst::SstMetaData as SstMetaDataPb};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
@@ -445,9 +445,9 @@ impl From<SstMetaData> for SstMetaDataPb {
         target.set_min_key(src.min_key.to_vec());
         target.set_max_key(src.max_key.to_vec());
         target.set_max_sequence(src.max_sequence);
-        let time_range = TimeRangePb::from(src.time_range);
+        let time_range = common_pb::TimeRange::from(src.time_range);
         target.set_time_range(time_range);
-        target.set_schema(src.schema.into());
+        target.set_schema(common_pb::TableSchema::from(&src.schema));
         target.set_size(src.size);
         target.set_row_num(src.row_num);
 
