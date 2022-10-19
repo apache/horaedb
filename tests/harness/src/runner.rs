@@ -5,7 +5,7 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use ceresdb_client_rs::client::Client;
 use prettydiff::{basic::DiffOp, diff_lines};
 use tokio::{
@@ -37,53 +37,49 @@ impl Runner {
         }
     }
 
-    pub async fn run(&self) {
+    pub async fn run(&self) -> Result<()> {
         let case_paths = self.collect_cases();
         let case_count = case_paths.len();
         let mut diff_cases = vec![];
+        let start = Instant::now();
         for path in case_paths {
-            let result: Result<()> = try {
-                let case = TestCase::from_file(path.with_extension(TEST_CASE_EXTENSION)).await?;
-                let output_path = path.with_extension(OUTPUT_FILE_EXTENSION);
-                let mut output_file = Self::open_output_file(&output_path).await?;
+            let case = TestCase::from_file(path.with_extension(TEST_CASE_EXTENSION)).await?;
+            let output_path = path.with_extension(OUTPUT_FILE_EXTENSION);
+            let mut output_file = Self::open_output_file(&output_path).await?;
 
-                let timer = Instant::now();
-                case.execute(&self.client, &mut output_file).await?;
-                let elapsed = timer.elapsed();
+            let timer = Instant::now();
+            case.execute(&self.client, &mut output_file).await?;
+            let elapsed = timer.elapsed();
 
-                output_file.flush().await?;
-                let is_different = self.compare(&path).await?;
-                if !is_different {
-                    remove_file(output_path).await?;
-                } else {
-                    diff_cases.push(path.as_os_str().to_str().unwrap().to_owned());
-                }
-
-                println!(
-                    "Takes {:?}. Diff: {}. Test case {} finished.",
-                    elapsed, is_different, case
-                );
-            };
-
-            if result.is_err() {
-                println!(
-                    "Error: Failed to run test {:?}, {:?}",
-                    path.with_extension(""),
-                    result
-                );
+            output_file.flush().await?;
+            let is_different = self.compare(&path).await?;
+            if !is_different {
+                remove_file(output_path).await?;
+            } else {
+                diff_cases.push(path.as_os_str().to_str().unwrap().to_owned());
             }
+
+            println!(
+                "Test case {} finished, cost:{}ms",
+                case,
+                elapsed.as_millis()
+            );
         }
 
-        // print result.
         println!(
-            "Run {} finished. {} cases are different.",
+            "Run {} cases finished, cost:{}ms",
             case_count,
-            diff_cases.len()
+            start.elapsed().as_millis()
         );
-        if !diff_cases.is_empty() {
-            println!("Different cases:");
-            println!("{:#?}", diff_cases);
+
+        if diff_cases.is_empty() {
+            return Ok(());
         }
+
+        println!("Different cases:");
+        println!("{:#?}", diff_cases);
+
+        bail!("There are {} cases not passed", diff_cases.len())
     }
 
     /// Collects all the file in ".sql" extension under the `root` dir. The

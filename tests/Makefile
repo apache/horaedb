@@ -22,6 +22,10 @@ build-harness:
 
 build: build-ceresdb build-harness
 
+# rename ${case}.out to ${case}.result automatically. fd is required
+# https://github.com/sharkdp/fd
+fix:
+	fd -t f out --exec mv {} {.}.result \;
 
 run: clean build
 	cd harness && $(CERESDB_TEST_HARNESS)
