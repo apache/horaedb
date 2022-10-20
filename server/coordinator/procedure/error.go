@@ -4,4 +4,7 @@ package procedure
 
 import "github.com/CeresDB/ceresmeta/pkg/coderr"
 
-var ErrShardLeaderNotFound = coderr.NewCodeError(coderr.Internal, "shard leader not found")
+var (
+	ErrShardLeaderNotFound = coderr.NewCodeError(coderr.Internal, "shard leader not found")
+	ErrProcedureNotFound   = coderr.NewCodeError(coderr.Internal, "procedure not found")
+)

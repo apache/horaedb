@@ -12,7 +12,10 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
+	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -31,6 +34,11 @@ type Server struct {
 
 	// The fields below are initialized after Run of server is called.
 	clusterManager cluster.Manager
+
+	// procedureFactory create procedure for all cluster.
+	procedureFactory *procedure.Factory
+	// procedureManager process procedure for all cluster.
+	procedureManager procedure.Manager
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -149,6 +157,14 @@ func (srv *Server) startServer(_ context.Context) error {
 	}
 	srv.clusterManager = manager
 
+	procedureManager, err := procedure.NewManagerImpl(srv.etcdCli, srv.cfg.StorageRootPath)
+	if err != nil {
+		return errors.WithMessage(err, "start server")
+	}
+	srv.procedureManager = procedureManager
+	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, "procedure", 5), eventdispatch.NewDispatchImpl())
+	srv.procedureFactory = procedureFactory
+
 	log.Info("server started")
 	return nil
 }
@@ -203,6 +219,28 @@ func (srv *Server) createDefaultCluster(ctx context.Context) {
 		} else {
 			log.Info("create default cluster succeed", zap.String("cluster", cluster.Name()))
 		}
+		// Create and submit scatter procedure for default cluster
+		if cluster != nil {
+			shardIDs := make([]uint32, 0)
+			for i := uint32(0); i < cluster.GetClusterShardTotal(); i++ {
+				shardID, err := cluster.AllocShardID(ctx)
+				if err != nil {
+					log.Error("alloc shard id failed")
+					return
+				}
+				shardIDs = append(shardIDs, shardID)
+			}
+			scatterRequest := &procedure.ScatterRequest{Cluster: cluster, ShardIDs: shardIDs}
+			scatterProcedure, err := srv.procedureFactory.CreateScatterProcedure(ctx, scatterRequest)
+			if err != nil {
+				log.Error("create scatter procedure failed")
+				return
+			}
+			if err := srv.procedureManager.Submit(ctx, scatterProcedure); err != nil {
+				log.Error("submit scatter procedure failed")
+				return
+			}
+		}
 	}
 }
 
@@ -238,11 +276,18 @@ func (c *leadershipEventCallbacks) AfterElected(ctx context.Context) {
 	if err := c.srv.clusterManager.Start(ctx); err != nil {
 		panic(fmt.Sprintf("cluster manager fail to start, err:%v", err))
 	}
+	if err := c.srv.procedureManager.Start(ctx); err != nil {
+		panic(fmt.Sprintf("procedure manager fail to start, err:%v", err))
+	}
 	c.srv.createDefaultCluster(ctx)
 }
 
 func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
 	if err := c.srv.clusterManager.Stop(ctx); err != nil {
 		panic(fmt.Sprintf("cluster manager fail to stop, err:%v", err))
+	}
+
+	if err := c.srv.clusterManager.Stop(ctx); err != nil {
+		panic(fmt.Sprintf("procedure manager fail to stop, err:%v", err))
 	}
 }

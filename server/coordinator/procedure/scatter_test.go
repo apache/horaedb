@@ -11,7 +11,6 @@ import (
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
-	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,8 +25,11 @@ func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
 		ShardInfos: nil,
 	}
 
-	allocator := id.NewReusableAllocatorImpl(make([]uint64, 0), 0)
-	p := NewScatterProcedure(dispatch, cluster, 1, allocator)
+	shardIDs := make([]uint32, 0)
+	for i := uint32(0); i < cluster.GetClusterShardTotal(); i++ {
+		shardIDs = append(shardIDs, i)
+	}
+	p := NewScatterProcedure(dispatch, cluster, 1, shardIDs)
 	go func() {
 		err := p.Start(ctx)
 		re.NoError(err)
@@ -89,10 +91,13 @@ func TestAllocNodeShard(t *testing.T) {
 		}
 		nodeList = append(nodeList, nodeInfo)
 	}
-	allocator := id.NewReusableAllocatorImpl(make([]uint64, 0), 0)
+	shardIDs := make([]uint32, 0)
+	for i := uint32(0); i < uint32(shardTotal); i++ {
+		shardIDs = append(shardIDs, i)
+	}
 	// NodeCount = 4, shardTotal = 2
 	// Two shard distributed in node0,node1
-	shardView, err := allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, allocator)
+	shardView, err := allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].Node)
@@ -109,8 +114,11 @@ func TestAllocNodeShard(t *testing.T) {
 	}
 	// NodeCount = 2, shardTotal = 3
 	// Three shard distributed in node0,node0,node1
-	allocator = id.NewReusableAllocatorImpl(make([]uint64, 0), 0)
-	shardView, err = allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, allocator)
+	shardIDs = make([]uint32, 0)
+	for i := uint32(0); i < uint32(shardTotal); i++ {
+		shardIDs = append(shardIDs, i)
+	}
+	shardView, err = allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].Node)

@@ -26,16 +26,15 @@ type EtcdStorageImpl struct {
 	rootPath  string
 }
 
-func NewEtcdStorageImpl(client *clientv3.Client, clusterID uint32, rootPath string) Storage {
+func NewEtcdStorageImpl(client *clientv3.Client, rootPath string) Storage {
 	return &EtcdStorageImpl{
-		client:    client,
-		clusterID: clusterID,
-		rootPath:  rootPath,
+		client:   client,
+		rootPath: rootPath,
 	}
 }
 
 // CreateOrUpdate example:
-// /{rootPath}/v1/procedure/{clusterID}/{procedureID} -> {procedureType} + {procedureState} + {data}
+// /{rootPath}/v1/procedure/{procedureID} -> {procedureType} + {procedureState} + {data}
 func (e EtcdStorageImpl) CreateOrUpdate(ctx context.Context, meta *Meta) error {
 	s, err := encode(meta)
 	if err != nil {

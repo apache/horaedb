@@ -78,11 +78,20 @@ func createTablePrepareCallback(event *fsm.Event) {
 	}
 }
 
-func createTableSuccessCallback(_ *fsm.Event) {
+func createTableSuccessCallback(event *fsm.Event) {
+	request := event.Args[0].(*CreateTableCallbackRequest)
+
+	if err := request.onSuccess(); err != nil {
+		log.Error("exec success callback failed")
+	}
 }
 
-func createTableFailedCallback(_ *fsm.Event) {
-	// TODO: Use RollbackProcedure to rollback transfer failed
+func createTableFailedCallback(event *fsm.Event) {
+	request := event.Args[0].(*CreateTableCallbackRequest)
+
+	if err := request.onFailed(); err != nil {
+		log.Error("exec success callback failed")
+	}
 }
 
 // CreateTableCallbackRequest is fsm callbacks param.
@@ -95,15 +104,19 @@ type CreateTableCallbackRequest struct {
 	tableName  string
 	nodeName   string
 	createSQL  string
+
+	// TODO: correct callback input params
+	onSuccess func() error
+	onFailed  func() error
 }
 
-func NewCreateTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.CreateTableRequest) Procedure {
+func NewCreateTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.CreateTableRequest, onSuccess func() error, onFailed func() error) Procedure {
 	createTableProcedureFsm := fsm.NewFSM(
 		stateCreateTableBegin,
 		createTableEvents,
 		createTableCallbacks,
 	)
-	return &CreateTableProcedure{id: id, fsm: createTableProcedureFsm, cluster: cluster, dispatch: dispatch, req: req, state: StateInit}
+	return &CreateTableProcedure{id: id, fsm: createTableProcedureFsm, cluster: cluster, dispatch: dispatch, req: req, state: StateInit, onSuccess: onSuccess, onFailed: onFailed}
 }
 
 type CreateTableProcedure struct {
@@ -112,6 +125,9 @@ type CreateTableProcedure struct {
 	cluster  *cluster.Cluster
 	dispatch eventdispatch.Dispatch
 	req      *metaservicepb.CreateTableRequest
+	// TODO: correct callback input params
+	onSuccess func() error
+	onFailed  func() error
 
 	lock  sync.RWMutex
 	state State

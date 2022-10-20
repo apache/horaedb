@@ -20,7 +20,7 @@ const (
 
 func newTestStorage(t *testing.T) Storage {
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
-	storage := NewEtcdStorageImpl(client, uint32(TestClusterID), TestRootPath)
+	storage := NewEtcdStorageImpl(client, TestRootPath)
 	return storage
 }
 

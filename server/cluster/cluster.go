@@ -589,8 +589,7 @@ func (c *Cluster) allocTableID(ctx context.Context) (uint64, error) {
 	return id, nil
 }
 
-// nolint
-func (c *Cluster) allocShardID(ctx context.Context) (uint32, error) {
+func (c *Cluster) AllocShardID(ctx context.Context) (uint32, error) {
 	id, err := c.shardIDAlloc.Alloc(ctx)
 	if err != nil {
 		return 0, errors.WithMessage(err, "cluster alloc shard id failed")

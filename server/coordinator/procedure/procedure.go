@@ -48,29 +48,9 @@ type Procedure interface {
 	State() State
 }
 
-// nolint
-type Manager struct {
-	storage    *Storage
-	procedures []Procedure
-}
-
-func NewProcedure(operationType Typ) *Procedure {
-	switch operationType {
-	case Create:
-		return nil
-	case Delete:
-		return nil
-	case TransferLeader:
-		return nil
-	case Migrate:
-		return nil
-	case Split:
-		return nil
-	case Merge:
-		return nil
-	case Scatter:
-		return nil
-	}
-
-	return nil
+// Info is used to provide immutable description procedure information.
+type Info struct {
+	ID    uint64
+	Typ   Typ
+	State State
 }

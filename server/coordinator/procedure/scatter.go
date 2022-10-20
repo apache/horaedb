@@ -11,7 +11,6 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
-	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -64,7 +63,7 @@ func scatterPrepareCallback(event *fsm.Event) {
 		nodeList = append(nodeList, v.GetMeta())
 	}
 
-	shards, err := allocNodeShards(ctx, shardTotal, minNodeCount, nodeList, request.allocator)
+	shards, err := allocNodeShards(ctx, shardTotal, minNodeCount, nodeList, request.shardIDs)
 	if err != nil {
 		cancelEventWithLog(event, err, "alloc node shards failed")
 		return
@@ -103,7 +102,7 @@ func waitForNodesReady(c *cluster.Cluster) {
 	}
 }
 
-func allocNodeShards(cxt context.Context, shardTotal uint32, minNodeCount uint32, nodeList []*clusterpb.Node, allocator id.Allocator) ([]*clusterpb.Shard, error) {
+func allocNodeShards(_ context.Context, shardTotal uint32, minNodeCount uint32, nodeList []*clusterpb.Node, shardIDs []uint32) ([]*clusterpb.Shard, error) {
 	shards := make([]*clusterpb.Shard, 0, shardTotal)
 
 	perNodeShardCount := shardTotal / minNodeCount
@@ -113,12 +112,8 @@ func allocNodeShards(cxt context.Context, shardTotal uint32, minNodeCount uint32
 
 	for i := uint32(0); i < minNodeCount; i++ {
 		for j := uint32(0); j < perNodeShardCount; j++ {
-			ID, err := allocator.Alloc(cxt)
-			shardID := uint32(ID)
-			if err != nil {
-				return nil, errors.WithMessage(err, "alloc shard id failed")
-			}
-			if shardID < shardTotal {
+			if uint32(len(shards)) < shardTotal {
+				shardID := shardIDs[len(shards)]
 				// TODO: consider nodesCache state
 				shards = append(shards, &clusterpb.Shard{
 					Id:        shardID,
@@ -147,27 +142,28 @@ func scatterFailedCallback(_ *fsm.Event) {
 
 // ScatterCallbackRequest is fsm callbacks param.
 type ScatterCallbackRequest struct {
-	cluster   *cluster.Cluster
-	ctx       context.Context
-	dispatch  eventdispatch.Dispatch
-	allocator id.Allocator
+	cluster  *cluster.Cluster
+	ctx      context.Context
+	dispatch eventdispatch.Dispatch
+	shardIDs []uint32
 }
 
-func NewScatterProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, shardIDAllocator id.Allocator) Procedure {
+func NewScatterProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, shardIDs []uint32) Procedure {
 	scatterProcedureFsm := fsm.NewFSM(
 		stateScatterBegin,
 		scatterEvents,
 		scatterCallbacks,
 	)
-	return &ScatterProcedure{id: id, fsm: scatterProcedureFsm, cluster: cluster, dispatch: dispatch, allocator: shardIDAllocator, state: StateInit}
+
+	return &ScatterProcedure{id: id, state: StateInit, fsm: scatterProcedureFsm, dispatch: dispatch, cluster: cluster, shardIDs: shardIDs}
 }
 
 type ScatterProcedure struct {
-	id        uint64
-	fsm       *fsm.FSM
-	cluster   *cluster.Cluster
-	dispatch  eventdispatch.Dispatch
-	allocator id.Allocator
+	id       uint64
+	fsm      *fsm.FSM
+	dispatch eventdispatch.Dispatch
+	cluster  *cluster.Cluster
+	shardIDs []uint32
 
 	lock  sync.RWMutex
 	state State
@@ -185,10 +181,10 @@ func (p *ScatterProcedure) Start(ctx context.Context) error {
 	p.updateStateWithLock(StateRunning)
 
 	scatterCallbackRequest := &ScatterCallbackRequest{
-		cluster:   p.cluster,
-		ctx:       ctx,
-		dispatch:  p.dispatch,
-		allocator: p.allocator,
+		cluster:  p.cluster,
+		ctx:      ctx,
+		dispatch: p.dispatch,
+		shardIDs: p.shardIDs,
 	}
 
 	if err := p.fsm.Event(eventScatterPrepare, scatterCallbackRequest); err != nil {

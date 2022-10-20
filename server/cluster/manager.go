@@ -30,6 +30,7 @@ type Manager interface {
 	Stop(ctx context.Context) error
 
 	CreateCluster(ctx context.Context, clusterName string, nodeCount, replicationFactor, shardTotal uint32) (*Cluster, error)
+	GetCluster(ctx context.Context, clusterName string) (*Cluster, error)
 	// AllocSchemaID means get or create schema.
 	// The second output parameter bool: Returns true if the table was newly created.
 	AllocSchemaID(ctx context.Context, clusterName, schemaName string) (uint32, bool, error)
@@ -123,6 +124,16 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, ini
 	m.clusters[clusterName] = cluster
 
 	return cluster, nil
+}
+
+func (m *managerImpl) GetCluster(_ context.Context, clusterName string) (*Cluster, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+	cluster, exist := m.clusters[clusterName]
+	if exist {
+		return cluster, nil
+	}
+	return nil, ErrClusterNotFound
 }
 
 func (m *managerImpl) AllocSchemaID(ctx context.Context, clusterName, schemaName string) (uint32, bool, error) {
