@@ -121,8 +121,8 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
         record_stream: RecordBatchStream,
     ) -> Result<SstInfo> {
         debug!(
-            "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
-            request_id, meta, self.num_rows_per_row_group
+            "Build parquet file, request_id:{}, path:{}, meta:{:?}, num_rows_per_row_group:{}",
+            request_id, self.path, meta, self.num_rows_per_row_group
         );
 
         let total_row_num = Arc::new(AtomicUsize::new(0));

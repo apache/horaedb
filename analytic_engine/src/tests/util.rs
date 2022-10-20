@@ -13,7 +13,7 @@ use common_types::{
 };
 use common_util::{config::ReadableDuration, runtime};
 use futures::stream::StreamExt;
-use log::{error, info};
+use log::info;
 use table_engine::{
     engine::{
         CreateTableRequest, DropTableRequest, EngineRuntimes, OpenTableRequest,
@@ -34,6 +34,16 @@ use crate::{
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+
+#[cfg(test)]
+static INIT_LOG: std::sync::Once = std::sync::Once::new();
+
+#[cfg(test)]
+pub fn init_log_for_test() {
+    INIT_LOG.call_once(|| {
+        env_logger::init();
+    });
+}
 
 /// Helper struct to create a null datum.
 pub struct Null;
@@ -388,24 +398,6 @@ impl TestEnv {
     }
 }
 
-/// `Env` represents where unit test run
-enum Env {
-    /// CI refer to GitHub Actions...
-    CI,
-    /// Local usually means developer's laptop
-    Local,
-}
-
-impl From<&str> for Env {
-    fn from(str: &str) -> Self {
-        if str.eq_ignore_ascii_case("ci") {
-            return Self::CI;
-        }
-
-        Self::Local
-    }
-}
-
 pub struct Builder {
     num_workers: usize,
 }
@@ -413,28 +405,9 @@ pub struct Builder {
 impl Builder {
     pub fn build(self) -> TestEnv {
         let dir = tempfile::tempdir().unwrap();
-        let env = Env::from(
-            std::env::var("CERESDB_RUN_ENVIRONMENT")
-                .unwrap_or_default()
-                .as_str(),
-        );
-        // When running tests in CI, there will be error like
-        // /tmp/.tmpIGahGc/store/100/2199023255554/29.sst not found: No such file or
-        // directory
-        // So we use test-data directory in current working directory when running in CI
-        let (data_path, wal_path) = match env {
-            Env::CI => {
-                let data_dir = format!("test-data-{}", Timestamp::now().as_i64());
-                if let Err(e) = std::fs::remove_dir_all(&data_dir) {
-                    error!("delete data dir failed, dir:{}, err:{}", &data_dir, e);
-                }
-
-                (data_dir.clone(), data_dir)
-            }
-            _ => {
-                let tmp = dir.path().to_str().unwrap().to_string();
-                (tmp.clone(), tmp)
-            }
+        let (data_path, wal_path) = {
+            let tmp = dir.path().to_str().unwrap().to_string();
+            (tmp.clone(), tmp)
         };
 
         let config = Config {

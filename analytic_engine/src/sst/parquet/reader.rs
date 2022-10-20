@@ -61,6 +61,7 @@ pub struct ParquetSstReader<'a> {
     reader_factory: Arc<dyn ParquetFileReaderFactory>,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
+    batch_size: usize,
 
     df_plan: Option<Arc<dyn ExecutionPlan>>,
 
@@ -74,6 +75,8 @@ impl<'a> ParquetSstReader<'a> {
             storage: storage.clone(),
             data_cache: options.data_cache.clone(),
         });
+        let batch_size = options.read_batch_row_num;
+
         Self {
             path,
             storage,
@@ -81,6 +84,7 @@ impl<'a> ParquetSstReader<'a> {
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
+            batch_size,
             df_plan: None,
             meta_data: None,
         }
@@ -127,7 +131,8 @@ impl<'a> ParquetSstReader<'a> {
         // There are some options can be configured for execution, such as
         // `DATAFUSION_EXECUTION_BATCH_SIZE`. More refer:
         // https://arrow.apache.org/datafusion/user-guide/configs.html
-        let session_ctx = SessionContext::with_config(SessionConfig::from_env());
+        let session_ctx =
+            SessionContext::with_config(SessionConfig::from_env().with_batch_size(self.batch_size));
         let task_ctx = Arc::new(TaskContext::from(&session_ctx));
         task_ctx
             .runtime_env()
@@ -343,6 +348,31 @@ impl AsyncFileReader for CachableParquetFileReader {
                 ))
             })
             .boxed()
+    }
+
+    // TODO: add cache
+    fn get_byte_ranges(
+        &mut self,
+        ranges: Vec<Range<usize>>,
+    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>>
+    where
+        Self: Send,
+    {
+        let total = ranges.iter().map(|r| r.end - r.start).sum();
+        self.metrics.bytes_scanned.add(total);
+
+        async move {
+            self.storage
+                .get_ranges(&self.meta.location, &ranges)
+                .await
+                .map_err(|e| {
+                    parquet::errors::ParquetError::General(format!(
+                        "CachableParquetFileReader::get_byte_ranges error: {}",
+                        e
+                    ))
+                })
+        }
+        .boxed()
     }
 
     fn get_metadata(
