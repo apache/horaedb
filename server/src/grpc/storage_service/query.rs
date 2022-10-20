@@ -23,7 +23,7 @@ use sql::{
 use crate::{
     avro_util,
     error::{ErrNoCause, ErrWithCause, Result},
-    grpc::HandlerContext,
+    grpc::storage_service::HandlerContext,
 };
 
 /// Schema name of the record

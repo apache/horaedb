@@ -6,7 +6,7 @@ use ceresdbproto::storage::{RouteRequest, RouteResponse};
 
 use crate::{
     error::Result,
-    grpc::{self, HandlerContext},
+    grpc::{self, storage_service::HandlerContext},
 };
 
 pub async fn handle_route<Q>(
