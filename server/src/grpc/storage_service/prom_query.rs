@@ -28,7 +28,7 @@ use sql::{
 
 use crate::{
     error::{ErrNoCause, ErrWithCause, Result, ServerError},
-    grpc::HandlerContext,
+    grpc::storage_service::HandlerContext,
 };
 
 fn is_table_not_found_error(e: &FrontendError) -> bool {
