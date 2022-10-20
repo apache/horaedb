@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use meta_client::types::{ShardId, ShardInfo, TableInfo, TablesOfShard};
+use meta_client::types::{ShardId, ShardInfo, ShardVersion, TableInfo, TablesOfShard};
 use snafu::{ensure, OptionExt};
 
 use crate::{Result, ShardNotFound, ShardVersionMismatch, TableAlreadyExists, TableNotFound};
@@ -68,7 +68,7 @@ impl ShardTablesCache {
     ///  - the table already exists.
     pub fn try_insert_table_to_shard(
         &self,
-        prev_shard_version: u64,
+        prev_shard_version: ShardVersion,
         curr_shard: ShardInfo,
         new_table: TableInfo,
     ) -> Result<()> {
@@ -88,7 +88,7 @@ impl ShardTablesCache {
     ///  - the table doesn't exist.
     pub fn try_remove_table_from_shard(
         &self,
-        prev_shard_version: u64,
+        prev_shard_version: ShardVersion,
         curr_shard: ShardInfo,
         new_table: TableInfo,
     ) -> Result<()> {
@@ -159,7 +159,7 @@ impl Inner {
 
     fn try_insert_table_to_shard(
         &mut self,
-        prev_shard_version: u64,
+        prev_shard_version: ShardVersion,
         curr_shard: ShardInfo,
         new_table: TableInfo,
     ) -> Result<()> {
@@ -185,11 +185,11 @@ impl Inner {
         ensure!(
             table.is_none(),
             TableAlreadyExists {
-                msg: "the table to insert already exists",
+                msg: "the table to insert has already existed",
             }
         );
 
-        // Update the tables of shard.
+        // Update tables of shard.
         tables_of_shard.shard_info = curr_shard;
         tables_of_shard.tables.push(new_table);
 
@@ -198,7 +198,7 @@ impl Inner {
 
     fn try_remove_table_from_shard(
         &mut self,
-        prev_shard_version: u64,
+        prev_shard_version: ShardVersion,
         curr_shard: ShardInfo,
         new_table: TableInfo,
     ) -> Result<()> {
@@ -228,7 +228,7 @@ impl Inner {
                 msg: format!("the table to remove is not found, table:{:?}", new_table),
             })?;
 
-        // Update the tables of shard.
+        // Update tables of shard.
         tables_of_shard.shard_info = curr_shard;
         tables_of_shard.tables.swap_remove(table_idx);
 

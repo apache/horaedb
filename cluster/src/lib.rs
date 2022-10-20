@@ -17,7 +17,8 @@ use ceresdbproto::meta_event::{
 use common_types::schema::SchemaName;
 use common_util::define_result;
 use meta_client::types::{
-    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, TablesOfShard,
+    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
+    TablesOfShard,
 };
 use snafu::{Backtrace, Snafu};
 
@@ -86,7 +87,7 @@ pub enum Error {
     ))]
     ShardVersionMismatch {
         shard_info: ShardInfo,
-        expect_version: u64,
+        expect_version: ShardVersion,
         backtrace: Backtrace,
     },
 
