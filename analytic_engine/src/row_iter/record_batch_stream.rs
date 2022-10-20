@@ -1,11 +1,24 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::ops::Bound;
+use std::{
+    ops::{Bound, Not},
+    sync::Arc,
+};
 
+use arrow::{
+    array::BooleanArray,
+    datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
+};
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
 };
 use common_util::define_result;
+use datafusion::{
+    error::DataFusionError,
+    logical_plan::{combine_filters, ToDFSchema},
+    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    physical_plan::PhysicalExpr,
+};
 use futures::stream::{self, Stream, StreamExt};
 use log::{error, trace};
 use object_store::ObjectStoreRef;
@@ -46,6 +59,23 @@ pub enum Error {
 
     #[snafu(display("Fail to scan memtable, err:{}", source))]
     ScanMemtable { source: crate::memtable::Error },
+
+    #[snafu(display("Fail to execute filter expression, err:{}", source))]
+    FilterExec { source: DataFusionError },
+
+    #[snafu(display("Fail to downcast boolean array, actual data type:{:?}", data_type))]
+    DowncastBooleanArray { data_type: ArrowDataType },
+
+    #[snafu(display("Failed to get datafusion schema, err:{}", source))]
+    DatafusionSchema { source: DataFusionError },
+
+    #[snafu(display("Failed to generate datafusion physical expr, err:{}", source))]
+    DatafusionExpr { source: DataFusionError },
+
+    #[snafu(display("Failed to select from reord batch, err:{}", source))]
+    SelectBatchData {
+        source: common_types::record_batch::Error,
+    },
 }
 
 define_result!(Error);
@@ -76,6 +106,35 @@ pub type SequencedRecordBatchStream = Box<
         > + Send
         + Unpin,
 >;
+
+fn filter_batch(
+    mut sequenced_record_batch: SequencedRecordBatch,
+    predicate: Arc<dyn PhysicalExpr>,
+) -> Result<Option<SequencedRecordBatch>> {
+    let record_batch = sequenced_record_batch.record_batch.as_arrow_record_batch();
+    let filter_array = predicate
+        .evaluate(record_batch)
+        .map(|v| v.into_array(record_batch.num_rows()))
+        .context(FilterExec)?;
+    let selected_rows = filter_array
+        .as_any()
+        .downcast_ref::<BooleanArray>()
+        .context(DowncastBooleanArray {
+            data_type: filter_array.as_ref().data_type().clone(),
+        })?;
+
+    sequenced_record_batch
+        .record_batch
+        .select_data_v2(selected_rows)
+        .context(SelectBatchData)?;
+
+    sequenced_record_batch
+        .record_batch
+        .is_empty()
+        .not()
+        .then_some(Ok(sequenced_record_batch))
+        .transpose()
+}
 
 /// Filter the `sequenced_record_batch` according to the `filter` if necessary.
 /// Returns the original batch if only a small proportion of the batch is
@@ -136,24 +195,40 @@ fn maybe_filter_record_batch(
 /// of the `predicate`.
 pub fn filter_stream(
     origin_stream: SequencedRecordBatchStream,
+    input_schema: ArrowSchemaRef,
     predicate: &Predicate,
-) -> SequencedRecordBatchStream {
-    if predicate.exprs().is_empty() {
-        return origin_stream;
+) -> Result<SequencedRecordBatchStream> {
+    let filter = combine_filters(predicate.exprs());
+    if let Some(filter) = filter {
+        let input_df_schema = input_schema
+            .clone()
+            .to_dfschema()
+            .context(DatafusionSchema)?;
+        let execution_props = ExecutionProps::new();
+        let predicate = create_physical_expr(
+            &filter,
+            &input_df_schema,
+            input_schema.as_ref(),
+            &execution_props,
+        )
+        .context(DatafusionExpr)?;
+
+        let stream = origin_stream.filter_map(move |sequence_record_batch| {
+            let v = match sequence_record_batch {
+                // Ok(v) => maybe_filter_record_batch(v, &filter, &mut select_row_buf).map(Ok),
+                Ok(v) => filter_batch(v, predicate.clone())
+                    .map_err(|e| Box::new(e) as _)
+                    .transpose(),
+                Err(e) => Some(Err(e)),
+            };
+
+            futures::future::ready(v)
+        });
+
+        Ok(Box::new(stream))
+    } else {
+        Ok(origin_stream)
     }
-
-    let mut select_row_buf = Vec::new();
-    let filter = RecordBatchFilter::from(predicate.exprs());
-    let stream = origin_stream.filter_map(move |sequence_record_batch| {
-        let v = match sequence_record_batch {
-            Ok(v) => maybe_filter_record_batch(v, &filter, &mut select_row_buf).map(Ok),
-            Err(e) => Some(Err(e)),
-        };
-
-        futures::future::ready(v)
-    });
-
-    Box::new(stream)
 }
 
 /// Build filtered (by `predicate`) [SequencedRecordBatchStream] from a
@@ -165,8 +240,17 @@ pub fn filtered_stream_from_memtable(
     reverse: bool,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    stream_from_memtable(projected_schema, need_dedup, memtable, reverse)
-        .map(|origin_stream| filter_stream(origin_stream, predicate))
+    stream_from_memtable(projected_schema.clone(), need_dedup, memtable, reverse).and_then(
+        |origin_stream| {
+            filter_stream(
+                origin_stream,
+                projected_schema
+                    .as_record_schema_with_key()
+                    .to_arrow_schema_ref(),
+                predicate,
+            )
+        },
+    )
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
@@ -218,7 +302,16 @@ pub async fn filtered_stream_from_sst_file(
         store,
     )
     .await
-    .map(|origin_stream| filter_stream(origin_stream, sst_reader_options.predicate.as_ref()))
+    .and_then(|origin_stream| {
+        filter_stream(
+            origin_stream,
+            sst_reader_options
+                .projected_schema
+                .as_record_schema_with_key()
+                .to_arrow_schema_ref(),
+            sst_reader_options.predicate.as_ref(),
+        )
+    })
 }
 
 /// Build the [SequencedRecordBatchStream] from a sst.

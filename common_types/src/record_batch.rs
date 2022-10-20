@@ -5,8 +5,8 @@
 use std::{cmp, convert::TryFrom, mem};
 
 use arrow::{
-    datatypes::SchemaRef as ArrowSchemaRef, error::ArrowError,
-    record_batch::RecordBatch as ArrowRecordBatch,
+    array::BooleanArray, compute::filter_record_batch, datatypes::SchemaRef as ArrowSchemaRef,
+    error::ArrowError, record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -344,6 +344,10 @@ impl RecordBatchWithKey {
         }
     }
 
+    pub fn as_arrow_record_batch(&self) -> &ArrowRecordBatch {
+        &self.data.arrow_record_batch
+    }
+
     #[inline]
     pub fn schema_with_key(&self) -> &RecordSchemaWithKey {
         &self.schema_with_key
@@ -401,6 +405,18 @@ impl RecordBatchWithKey {
             .context(SelectRecordBatchData)?;
 
         self.data = selected_data;
+
+        Ok(())
+    }
+
+    pub fn select_data_v2(&mut self, filter_array: &BooleanArray) -> Result<()> {
+        assert_eq!(self.num_rows(), filter_array.len());
+        let selected_record_batch =
+            filter_record_batch(&self.data.arrow_record_batch, filter_array).unwrap();
+
+        self.data = RecordBatchData::try_from(selected_record_batch)
+            .map_err(|e| Box::new(e) as _)
+            .context(SelectRecordBatchData)?;
 
         Ok(())
     }

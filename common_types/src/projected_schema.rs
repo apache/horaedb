@@ -132,7 +132,7 @@ impl ProjectedSchema {
         self.0.schema_with_key.clone()
     }
 
-    pub(crate) fn as_record_schema_with_key(&self) -> &RecordSchemaWithKey {
+    pub fn as_record_schema_with_key(&self) -> &RecordSchemaWithKey {
         &self.0.schema_with_key
     }
 
