@@ -6,7 +6,7 @@ use std::convert::{TryFrom, TryInto};
 
 use common_types::{bytes::Bytes, schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::meta_update as meta_pb;
+use proto::{common as common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -55,7 +55,7 @@ impl AddFile {
         target.set_max_key(self.file.meta.max_key.to_vec());
         target.set_time_range(self.file.meta.time_range.into());
         target.set_max_seq(self.file.meta.max_sequence);
-        target.set_schema(self.file.meta.schema.into());
+        target.set_schema(common_pb::TableSchema::from(&self.file.meta.schema));
         target.set_size(self.file.meta.size);
         target.set_row_num(self.file.meta.row_num);
 

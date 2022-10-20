@@ -52,6 +52,18 @@ pub enum Error {
         table: String,
         source: table_engine::engine::Error,
     },
+
+    #[snafu(display("Failed to create table, msg:{}, err:{}", msg, source))]
+    CreateWithCause {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to drop table, msg:{}, err:{}", msg, source))]
+    DropWithCause {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 define_result!(Error);

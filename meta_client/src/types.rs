@@ -33,27 +33,34 @@ pub struct AllocSchemaIdResponse {
     pub id: SchemaId,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CreateTableRequest {
     pub schema_name: String,
     pub name: String,
-    pub create_sql: String,
+    pub encoded_schema: Vec<u8>,
+    pub engine: String,
+    pub create_if_not_exist: bool,
+    pub options: HashMap<String, String>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CreateTableResponse {
-    pub schema_name: String,
-    pub name: String,
-    pub shard_id: ShardId,
-    pub schema_id: SchemaId,
-    pub id: TableId,
+    pub created_table: TableInfo,
+    pub shard_info: ShardInfo,
 }
 
 #[derive(Debug, Clone)]
 pub struct DropTableRequest {
     pub schema_name: String,
     pub name: String,
-    pub id: TableId,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropTableResponse {
+    /// The dropped table.
+    ///
+    /// And it will be None if drop a non-exist table.
+    pub dropped_table: Option<TableInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -298,20 +305,29 @@ impl From<CreateTableRequest> for meta_service::CreateTableRequest {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
-            create_sql: req.create_sql,
+            encoded_schema: req.encoded_schema,
+            engine: req.engine,
+            create_if_not_exist: req.create_if_not_exist,
+            options: req.options,
         }
     }
 }
 
-impl From<meta_service::CreateTableResponse> for CreateTableResponse {
-    fn from(pb_resp: meta_service::CreateTableResponse) -> Self {
-        Self {
-            schema_name: pb_resp.schema_name,
-            name: pb_resp.name,
-            shard_id: pb_resp.shard_id,
-            schema_id: pb_resp.schema_id,
-            id: pb_resp.id,
-        }
+impl TryFrom<meta_service::CreateTableResponse> for CreateTableResponse {
+    type Error = Error;
+
+    fn try_from(pb_resp: meta_service::CreateTableResponse) -> Result<Self> {
+        let pb_table_info = pb_resp.created_table.context(MissingTableInfo {
+            msg: "created table is not found in the create table response",
+        })?;
+        let pb_shard_info = pb_resp.shard_info.context(MissingShardInfo {
+            msg: "shard info is not found in the create table response",
+        })?;
+
+        Ok(Self {
+            created_table: TableInfo::from(pb_table_info),
+            shard_info: ShardInfo::from(pb_shard_info),
+        })
     }
 }
 
@@ -321,7 +337,14 @@ impl From<DropTableRequest> for meta_service::DropTableRequest {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
-            id: req.id,
+        }
+    }
+}
+
+impl From<meta_service::DropTableResponse> for DropTableResponse {
+    fn from(pb_resp: meta_service::DropTableResponse) -> Self {
+        Self {
+            dropped_table: pb_resp.dropped_table.map(TableInfo::from),
         }
     }
 }
@@ -392,7 +415,9 @@ impl TryFrom<meta_service::RouteEntry> for RouteEntry {
             node_shards.push(node_shard);
         }
 
-        let table_info = pb_entry.table.context(MissingTableInfo)?;
+        let table_info = pb_entry.table.context(MissingTableInfo {
+            msg: "table info is missing in route entry",
+        })?;
         Ok(RouteEntry {
             table: TableInfo::from(table_info),
             node_shards,
