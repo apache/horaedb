@@ -52,12 +52,12 @@ addr = '127.0.0.2'
 port = 8831
 
 # Route rules: test
-[[static_route.rule_list.prefix_rules]]
+[[static_route.rules.prefix_rules]]
 schema = 'test'
 prefix = 'BIZ'
 shard = 0
 
-[[static_route.rule_list.hash_rules]]
+[[static_route.rules.hash_rules]]
 schema = 'test'
 shards = [ 1 ]
 

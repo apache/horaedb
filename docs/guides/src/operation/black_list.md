@@ -1,9 +1,6 @@
----
-slug: /docs/guides/src/operation/black_list
----
+# Black list
 
-# Read black list
-
+## Read black list
 If you want to reject to query to a table, you can add table to 'read_reject_list'.
 
 ### Example
@@ -17,7 +14,7 @@ curl --location --request POST 'http://localhost:5000/reject' \
 }'
 ```
 
-# Write black list
+## Write black list
 
 If you want to reject to write to a table, you can add table to 'write_reject_list'
 
