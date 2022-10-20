@@ -260,6 +260,9 @@ func (s *metaStorageImpl) CreateTable(ctx context.Context, clusterID uint32, sch
 
 func (s *metaStorageImpl) GetTable(ctx context.Context, clusterID uint32, schemaID uint32, tableName string) (*clusterpb.Table, bool, error) {
 	value, err := etcdutil.Get(ctx, s.client, makeNameToIDKey(s.rootPath, clusterID, schemaID, tableName))
+	if err == etcdutil.ErrEtcdKVGetNotFound {
+		return nil, false, nil
+	}
 	if err != nil {
 		return nil, false, errors.WithMessagef(err, "fail to get table id, clusterID:%d, schemaID:%d, table name:%s", clusterID, schemaID, tableName)
 	}

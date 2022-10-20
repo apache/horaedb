@@ -7,10 +7,12 @@ import (
 	"sync"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const (
@@ -45,6 +47,7 @@ func createTablePrepareCallback(event *fsm.Event) {
 		return
 	}
 	if exists {
+		log.Warn("create an existing table", zap.String("schema", request.schemaName), zap.String("table", request.tableName))
 		return
 	}
 
