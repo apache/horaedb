@@ -7,7 +7,7 @@ use common_util::define_result;
 use http::StatusCode;
 use snafu::Snafu;
 
-use crate::route;
+use crate::{error_util, route};
 
 define_result!(Error);
 
@@ -40,18 +40,11 @@ impl Error {
 
             Error::ErrWithCause { msg, source, .. } => {
                 let err_string = source.to_string();
-                let first_line = first_line_in_error(&err_string);
+                let first_line = error_util::first_line_in_error(&err_string);
                 format!("{}. Caused by: {}", msg, first_line)
             }
         }
     }
-}
-
-/// Returns first line in error message, now we use this hack to exclude
-/// backtrace from error message that returned to user.
-// TODO: Consider a better way to get the error message.
-pub fn first_line_in_error(err_string: &str) -> &str {
-    err_string.split('\n').next().unwrap_or(err_string)
 }
 
 pub fn build_err_header(err: Error) -> ResponseHeader {
