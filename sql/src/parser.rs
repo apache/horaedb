@@ -234,16 +234,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_show_tables(&mut self) -> Result<Statement> {
-        let (if_fuzzy, fuzzy_target)= match self.parser.next_token() {
-            Token::Word(w) =>
-                match w.keyword {
-                    Keyword::LIKE => (true, Some(self.parser.next_token().to_string())),
-                    _ => (false, None)
-                },
-
+        let (if_fuzzy, fuzzy_target) = match self.parser.next_token() {
+            Token::Word(w) => match w.keyword {
+                Keyword::LIKE => (true, Some(self.parser.next_token().to_string())),
+                _ => (false, None)
+            },
             _ => (false, None),
         };
-        Ok(Statement::ShowTables(ShowTables{
+        Ok(Statement::ShowTables(ShowTables {
             if_fuzzy,
             fuzzy_target,
         }))

@@ -39,7 +39,7 @@ use table_engine::table::TableRef;
 use crate::{
     ast::{
         AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-        ShowCreate, Statement, TableName, ShowTables
+        ShowCreate, ShowTables, Statement, TableName,
     },
     container::TableReference,
     parser,
@@ -598,9 +598,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowCreatePlan(plan)))
     }
 
-    fn show_tables_to_plan(&self,show_tables: ShowTables) -> Result<Plan> {
+    fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
         let plan = ShowTablesPlan {
-            if_fuzzy : show_tables.if_fuzzy,
+            if_fuzzy: show_tables.if_fuzzy,
             fuzzy_target: show_tables.fuzzy_target,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))

@@ -12,9 +12,8 @@ use catalog::{manager::ManagerRef, schema::Schema, Catalog};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
-    plan::{ShowCreatePlan, ShowPlan},
+    plan::{ShowCreatePlan, ShowPlan, ShowTablesPlan},
 };
-use sql::plan::ShowTablesPlan;
 
 use crate::{
     context::Context,
@@ -95,11 +94,15 @@ impl ShowInterpreter {
         show_create.execute_show_create()
     }
 
-    fn show_tables(ctx: Context, catalog_manager: ManagerRef,plan: ShowTablesPlan) -> Result<Output> {
+    fn show_tables(
+        ctx: Context,
+        catalog_manager: ManagerRef,
+        plan: ShowTablesPlan,
+    ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names =  match plan.if_fuzzy  {
-            true  => schema
+        let tables_names =  match plan.if_fuzzy {
+            true => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
@@ -122,8 +125,7 @@ impl ShowInterpreter {
         let record_batch = RecordBatch::try_new(
             Arc::new(schema),
             vec![Arc::new(StringArray::from(tables_names))],
-        )
-            .context(CreateRecordBatch)?;
+        ).context(CreateRecordBatch)?;
 
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
