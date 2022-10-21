@@ -46,6 +46,10 @@ impl Error {
     }
 }
 
+/// A set of codes for meta event service.
+///
+/// Note that such a set of codes is different with the codes (alias to http
+/// status code) used by storage service.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StatusCode {
     #[default]
@@ -55,16 +59,23 @@ pub enum StatusCode {
     Internal = 500,
 }
 
+impl StatusCode {
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
+}
+
 pub fn build_err_header(err: Error) -> ResponseHeader {
     ResponseHeader {
-        code: err.code() as u32,
+        code: err.code().as_u32(),
         error: err.error_message(),
     }
 }
 
 pub fn build_ok_header() -> ResponseHeader {
     ResponseHeader {
-        code: StatusCode::Ok as u32,
+        code: StatusCode::Ok.as_u32(),
         ..Default::default()
     }
 }
