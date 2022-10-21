@@ -21,8 +21,8 @@ use tokio::sync::Mutex;
 use wal::{
     log_batch::LogEntry,
     manager::{
-        BatchLogIterator, BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest,
-        RegionId, SequenceNumber, WalManagerRef, WriteContext,
+        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
+        WalManagerRef, WriteContext,
     },
 };
 

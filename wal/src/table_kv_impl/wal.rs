@@ -133,7 +133,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let blocking_iter = self
+        let sync_iter = self
             .namespace
             .read_log(ctx, req)
             .await
@@ -141,8 +141,8 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .context(Read)?;
         let runtime = self.namespace.read_runtime().clone();
 
-        Ok(BatchLogIteratorAdapter::new(
-            Box::new(blocking_iter),
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(sync_iter),
             runtime,
             ctx.batch_size,
         ))
