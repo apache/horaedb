@@ -27,8 +27,8 @@ use crate::{
     kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, BlockingLogIterator, ReadContext, ReadRequest, RegionId,
-        ScanContext, ScanRequest, WalManager, WriteContext, MAX_REGION_ID,
+        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
+        ScanRequest, SyncLogIterator, WalManager, WriteContext, MAX_REGION_ID,
     },
 };
 
@@ -553,7 +553,7 @@ impl RocksLogIterator {
     }
 }
 
-impl BlockingLogIterator for RocksLogIterator {
+impl SyncLogIterator for RocksLogIterator {
     fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data {
             return Ok(None);
@@ -632,7 +632,7 @@ impl WalManager for RocksImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let blocking_iter = if let Some(region) = self.region(req.location.table_id) {
+        let sync_iter = if let Some(region) = self.region(req.location.table_id) {
             region.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
@@ -640,8 +640,8 @@ impl WalManager for RocksImpl {
         };
         let runtime = self.runtime.clone();
 
-        Ok(BatchLogIteratorAdapter::new(
-            Box::new(blocking_iter),
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(sync_iter),
             runtime,
             ctx.batch_size,
         ))

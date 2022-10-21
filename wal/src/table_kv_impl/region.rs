@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use crate::{
     kv_encoder::{LogEncoding, LogKey},
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
+    manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber, SyncLogIterator},
     table_kv_impl::{encoding, model::RegionEntry, namespace::BucketRef, WalRuntimes},
 };
 
@@ -661,7 +661,7 @@ impl<T: TableKv> TableLogIterator<T> {
     }
 }
 
-impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
+impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
     fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data() {
             return Ok(None);
