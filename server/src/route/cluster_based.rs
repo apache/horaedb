@@ -6,15 +6,13 @@ use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
 use common_types::table::TableName;
-use http::StatusCode;
 use log::warn;
 use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, ErrWithCause, Result},
-    route::{hash, Router},
+    route::{hash, OtherNoCause, OtherWithCause, ParseEndpoint, Result, Router},
 };
 
 pub struct ClusterBasedRouter {
@@ -44,8 +42,7 @@ impl ClusterBasedRouter {
             .fetch_nodes()
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            .context(OtherWithCause {
                 msg: "Failed to fetch cluster nodes",
             })?;
 
@@ -62,8 +59,7 @@ impl ClusterBasedRouter {
 
             let picked_node_shard =
                 pick_node_for_table(table_name, &cluster_nodes_resp.cluster_nodes).with_context(
-                    || ErrNoCause {
-                        code: StatusCode::NOT_FOUND,
+                    || OtherNoCause {
                         msg: format!(
                             "No valid node for table({}), cluster nodes:{:?}",
                             table_name, cluster_nodes_resp
@@ -80,10 +76,7 @@ impl ClusterBasedRouter {
 
 /// Make a route according to the table name and the raw endpoint.
 fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
-    let endpoint: Endpoint = endpoint.parse().with_context(|| ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: format!("Failed to parse endpoint:{}", endpoint),
-    })?;
+    let endpoint: Endpoint = endpoint.parse().context(ParseEndpoint { endpoint })?;
 
     Ok(Route {
         metric: table_name.to_string(),
@@ -104,9 +97,11 @@ impl Router for ClusterBasedRouter {
             .route_tables(&route_tables_req)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to route tables by cluster",
+            .with_context(|| OtherWithCause {
+                msg: format!(
+                    "Failed to route tables by cluster, req:{:?}",
+                    route_tables_req
+                ),
             })?;
 
         let mut routes = Vec::with_capacity(route_resp.entries.len());

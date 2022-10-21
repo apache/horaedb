@@ -26,9 +26,9 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
-use crate::{
-    error::{ErrNoCause, ErrWithCause, Result, ServerError},
-    grpc::storage_service::HandlerContext,
+use crate::grpc::storage_service::{
+    error::{ErrNoCause, ErrWithCause, Error, Result},
+    HandlerContext,
 };
 
 fn is_table_not_found_error(e: &FrontendError) -> bool {
@@ -83,7 +83,7 @@ where
             } else {
                 StatusCode::INTERNAL_SERVER_ERROR
             };
-            ServerError::ErrWithCause {
+            Error::ErrWithCause {
                 code,
                 msg: "Failed to create plan".to_string(),
                 source: Box::new(e),

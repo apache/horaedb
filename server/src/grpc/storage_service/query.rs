@@ -22,8 +22,10 @@ use sql::{
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result},
-    grpc::storage_service::HandlerContext,
+    grpc::storage_service::{
+        error::{ErrNoCause, ErrWithCause, Result},
+        HandlerContext,
+    },
 };
 
 /// Schema name of the record
