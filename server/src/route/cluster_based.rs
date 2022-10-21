@@ -43,7 +43,7 @@ impl ClusterBasedRouter {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(OtherWithCause {
-                msg: "Failed to fetch cluster nodes",
+                msg: "failed to fetch cluster nodes",
             })?;
 
         if cluster_nodes_resp.cluster_nodes.is_empty() {

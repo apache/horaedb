@@ -72,7 +72,7 @@ where
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
-            msg: "Invalid request",
+            msg: "invalid request",
         })?;
 
     let (plan, column_name) = frontend
@@ -85,7 +85,7 @@ where
             };
             Error::ErrWithCause {
                 code,
-                msg: "Failed to create plan".to_string(),
+                msg: "failed to create plan".to_string(),
                 source: Box::new(e),
             }
         })?;
@@ -93,7 +93,7 @@ where
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
             code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "Query limited by reject list",
+            msg: "query limited by reject list",
         }
         .fail()?;
     }
@@ -117,14 +117,14 @@ where
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
+            msg: "failed to execute interpreter",
         })?;
 
     let resp = convert_output(output, column_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to convert output",
+            msg: "failed to convert output",
         })?;
 
     Ok(resp)
@@ -212,13 +212,13 @@ impl RecordConverter {
             .index_of(TSID_COLUMN)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "Failed to find Tsid column".to_string(),
+                msg: "failed to find Tsid column".to_string(),
             })?;
         let timestamp_idx = record_schema
             .index_of(&column_name.timestamp)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "Failed to find Timestamp column".to_string(),
+                msg: "failed to find Timestamp column".to_string(),
             })?;
         ensure!(
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,

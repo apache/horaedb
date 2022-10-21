@@ -82,7 +82,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to execute interpreter",
+                msg: "failed to execute interpreter",
             })? {
             Output::AffectedRows(n) => n,
             _ => unreachable!(),
@@ -233,7 +233,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
+            msg: "failed to execute interpreter",
         })? {
         Output::AffectedRows(n) => n,
         _ => unreachable!(),

@@ -208,7 +208,7 @@ macro_rules! handle_request {
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
-                                msg: "Invalid header",
+                                msg: "invalid header",
                             })?;
                     $mod_name::$handle_fn(&handler_ctx, request.into_inner())
                         .await
@@ -279,7 +279,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "Invalid header",
+                msg: "invalid header",
             })?;
 
         let mut total_success = 0;
@@ -289,7 +289,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         while let Some(req) = stream.next().await {
             let write_req = req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to fetch request",
+                msg: "failed to fetch request",
             })?;
 
             let write_result = write::handle_write(
@@ -340,7 +340,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: "Invalid header",
+                    msg: "invalid header",
                 })?;
 
             let query_req = request.into_inner();
