@@ -7,7 +7,7 @@ use std::sync::Arc;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
-use interpreters::table_manipulator::catalog_based;
+use interpreters::table_manipulator::TableManipulatorRef;
 use log::warn;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -44,6 +44,9 @@ pub enum Error {
 
     #[snafu(display("Missing table engine.\nBacktrace:\n{}", backtrace))]
     MissingTableEngine { backtrace: Backtrace },
+
+    #[snafu(display("Missing table manipulator.\nBacktrace:\n{}", backtrace))]
+    MissingTableManipulator { backtrace: Backtrace },
 
     #[snafu(display("Missing function registry.\nBacktrace:\n{}", backtrace))]
     MissingFunctionRegistry { backtrace: Backtrace },
@@ -141,6 +144,7 @@ pub struct Builder<Q> {
     catalog_manager: Option<ManagerRef>,
     query_executor: Option<Q>,
     table_engine: Option<TableEngineRef>,
+    table_manipulator: Option<TableManipulatorRef>,
     function_registry: Option<FunctionRegistryRef>,
     limiter: Limiter,
     cluster: Option<ClusterRef>,
@@ -156,6 +160,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             catalog_manager: None,
             query_executor: None,
             table_engine: None,
+            table_manipulator: None,
             function_registry: None,
             limiter: Limiter::default(),
             cluster: None,
@@ -181,6 +186,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
     pub fn table_engine(mut self, val: TableEngineRef) -> Self {
         self.table_engine = Some(val);
+        self
+    }
+
+    pub fn table_manipulator(mut self, val: TableManipulatorRef) -> Self {
+        self.table_manipulator = Some(val);
         self
     }
 
@@ -218,12 +228,10 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let catalog_manager = self.catalog_manager.context(MissingCatalogManager)?;
         let query_executor = self.query_executor.context(MissingQueryExecutor)?;
         let table_engine = self.table_engine.context(MissingTableEngine)?;
+        let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
 
         let instance = {
-            let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
-                catalog_manager.clone(),
-            ));
             let instance = Instance {
                 catalog_manager,
                 query_executor,

@@ -189,7 +189,7 @@ impl Expr {
             meta_provider
                 .try_into_container()
                 .context(MetaProviderError {
-                    msg: "Failed to find meta",
+                    msg: "failed to find meta",
                 })?,
         );
         Ok((
@@ -368,7 +368,7 @@ impl Expr {
                     Ok((plan, column_name, table_name))
                 }
                 SubExpr::Binary(_) => InvalidExpr {
-                    msg: "Binary Expr not supported",
+                    msg: "binary Expr not supported",
                 }
                 .fail(),
             },

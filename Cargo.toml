@@ -127,6 +127,7 @@ server = { workspace = true }
 signal-hook = "0.3"
 table_engine = { workspace = true }
 tracing_util = { workspace = true }
+interpreters = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "5", default-features = false, features = ["build", "git"] }

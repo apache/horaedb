@@ -25,7 +25,7 @@ use crate::{
     config::Endpoint,
     consts,
     context::RequestContext,
-    error,
+    error_util,
     handlers::{self, sql::Request},
     instance::InstanceRef,
     metrics,
@@ -392,7 +392,7 @@ async fn handle_rejection(
     } else if let Some(err) = rejection.find() {
         code = error_to_status_code(err);
         let err_string = err.to_string();
-        message = error::first_line_in_error(&err_string).to_string();
+        message = error_util::first_line_in_error(&err_string).to_string();
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
