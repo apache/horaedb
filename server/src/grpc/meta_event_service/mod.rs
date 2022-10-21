@@ -22,7 +22,6 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::runtime::Runtime;
-use http::StatusCode;
 use log::info;
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -34,10 +33,11 @@ use table_engine::{
 };
 
 use crate::{
-    error::{ErrNoCause, ErrWithCause, Result as ServerResult},
-    grpc,
+    grpc::meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     instance::InstanceRef,
 };
+
+pub(crate) mod error;
 
 #[derive(Clone)]
 pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
@@ -66,17 +66,17 @@ macro_rules! handle_request {
                     .await
                     .map_err(|e| Box::new(e) as _)
                     .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        code: StatusCode::Internal,
                         msg: "fail to join task",
                     });
 
                 let mut resp = $resp_ty::default();
                 match res {
                     Ok(Ok(_)) => {
-                        resp.header = Some(grpc::build_ok_header());
+                        resp.header = Some(error::build_ok_header());
                     }
                     Ok(Err(e)) | Err(e) => {
-                        resp.header = Some(grpc::build_err_header(e));
+                        resp.header = Some(error::build_err_header(e));
                     }
                 };
 
@@ -120,18 +120,18 @@ struct HandlerContext {
 }
 
 impl HandlerContext {
-    fn default_catalog(&self) -> ServerResult<CatalogRef> {
+    fn default_catalog(&self) -> Result<CatalogRef> {
         let default_catalog_name = self.catalog_manager.default_catalog_name();
         let default_catalog = self
             .catalog_manager
             .catalog_by_name(default_catalog_name)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: "fail to get default catalog",
             })?
             .context(ErrNoCause {
-                code: StatusCode::NOT_FOUND,
+                code: StatusCode::NotFound,
                 msg: "default catalog is not found",
             })?;
 
@@ -139,14 +139,14 @@ impl HandlerContext {
     }
 }
 
-async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> ServerResult<()> {
+async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
     let tables_of_shard = ctx
         .cluster
         .open_shard(&request)
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: "fail to open shards in cluster",
         })?;
 
@@ -160,11 +160,11 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Se
             .schema_by_name(&table.schema_name)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: format!("fail to get schema of table, table_info:{:?}", table),
             })?
             .with_context(|| ErrNoCause {
-                code: StatusCode::NOT_FOUND,
+                code: StatusCode::NotFound,
                 msg: format!("schema of table is not found, table_info:{:?}", table),
             })?;
 
@@ -182,11 +182,11 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Se
             .await
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: format!("fail to open table, open_request:{:?}", open_request),
             })?
             .with_context(|| ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: format!("no table is opened, open_request:{:?}", open_request),
             })?;
     }
@@ -194,14 +194,14 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Se
     Ok(())
 }
 
-async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> ServerResult<()> {
+async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
     let tables_of_shard = ctx
         .cluster
         .close_shard(&request)
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: "fail to close shards in cluster",
         })?;
 
@@ -215,11 +215,11 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
             .schema_by_name(&table.schema_name)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: format!("fail to get schema of table, table_info:{:?}", table),
             })?
             .with_context(|| ErrNoCause {
-                code: StatusCode::NOT_FOUND,
+                code: StatusCode::NotFound,
                 msg: format!("schema of table is not found, table_info:{:?}", table),
             })?;
 
@@ -236,7 +236,7 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
             .await
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+                code: StatusCode::Internal,
                 msg: format!("fail to close table, close_request:{:?}", close_request),
             })?;
     }
@@ -247,13 +247,13 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
 async fn handle_create_table_on_shard(
     ctx: HandlerContext,
     request: CreateTableOnShardRequest,
-) -> ServerResult<()> {
+) -> Result<()> {
     ctx.cluster
         .create_table_on_shard(&request)
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!(
                 "fail to create table on shard in cluster, req:{:?}",
                 request
@@ -263,16 +263,16 @@ async fn handle_create_table_on_shard(
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: StatusCode::BadRequest,
             msg: "update shard info is missing in the CreateTableOnShardRequest",
         })?
         .curr_shard_info
         .context(ErrNoCause {
-            code: StatusCode::BAD_REQUEST,
+            code: StatusCode::BadRequest,
             msg: "current shard info is missing ine CreateTableOnShardRequest",
         })?;
     let table = request.table_info.context(ErrNoCause {
-        code: StatusCode::BAD_REQUEST,
+        code: StatusCode::BadRequest,
         msg: "table info is missing in the CreateTableOnShardRequest",
     })?;
 
@@ -283,11 +283,11 @@ async fn handle_create_table_on_shard(
         .schema_by_name(&table.schema_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!("fail to get schema of table, table_info:{:?}", table),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::NOT_FOUND,
+            code: StatusCode::NotFound,
             msg: format!("schema of table is not found, table_info:{:?}", table),
         })?;
 
@@ -295,7 +295,7 @@ async fn handle_create_table_on_shard(
         .decode(&request.encoded_schema)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
+            code: StatusCode::BadRequest,
             msg: format!(
                 "fail to decode encoded schema bytes, raw_bytes:{:?}",
                 request.encoded_schema
@@ -322,7 +322,7 @@ async fn handle_create_table_on_shard(
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!(
                 "fail to create table with request:{:?}",
                 create_table_request
@@ -335,18 +335,18 @@ async fn handle_create_table_on_shard(
 async fn handle_drop_table_on_shard(
     ctx: HandlerContext,
     request: DropTableOnShardRequest,
-) -> ServerResult<()> {
+) -> Result<()> {
     ctx.cluster
         .drop_table_on_shard(&request)
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!("fail to drop table on shard in cluster, req:{:?}", request),
         })?;
 
     let table = request.table_info.context(ErrNoCause {
-        code: StatusCode::BAD_REQUEST,
+        code: StatusCode::BadRequest,
         msg: "table info is missing in the CreateTableOnShardRequest",
     })?;
 
@@ -357,11 +357,11 @@ async fn handle_drop_table_on_shard(
         .schema_by_name(&table.schema_name)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!("fail to get schema of table, table_info:{:?}", table),
         })?
         .with_context(|| ErrNoCause {
-            code: StatusCode::NOT_FOUND,
+            code: StatusCode::NotFound,
             msg: format!("schema of table is not found, table_info:{:?}", table),
         })?;
 
@@ -382,7 +382,7 @@ async fn handle_drop_table_on_shard(
         .await
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+            code: StatusCode::Internal,
             msg: format!("fail to drop table with request:{:?}", drop_table_request),
         })?;
 

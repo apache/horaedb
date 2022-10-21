@@ -12,7 +12,7 @@ mod avro_util;
 pub mod config;
 mod consts;
 mod context;
-mod error;
+pub(crate) mod error_util;
 mod grpc;
 mod handlers;
 mod http;
