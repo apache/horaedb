@@ -403,7 +403,7 @@ mod tests {
     use std::{collections::VecDeque, sync::Arc};
 
     use async_trait::async_trait;
-    use common_util::runtime;
+    use common_util::runtime::{self, Runtime};
 
     use super::{AsyncLogIterator, BatchLogIteratorAdapter, InnerIterator, SyncLogIterator};
     use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
@@ -452,40 +452,14 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_iterator_adapting() {
+    #[test]
+    fn test_iterator_adapting() {
         let test_data = vec![1_u32, 2, 3, 4, 5, 6];
         let test_iterator = TestIterator {
             test_logs: test_data.iter().map(|u| u.to_be_bytes().to_vec()).collect(),
             cursor: 0,
             terminate: test_data.len(),
         };
-        let res1 = test_async_iterator_adapting(test_iterator.clone()).await;
-        let res2 = test_sync_iterator_adapting(test_iterator.clone()).await;
-
-        assert_eq!(test_data, res1);
-        assert_eq!(test_data, res2);
-    }
-
-    async fn test_async_iterator_adapting(test_iterator: TestIterator) -> Vec<u32> {
-        let mut res = Vec::new();
-        let mut iter =
-            BatchLogIteratorAdapter::new(InnerIterator::Async(Box::new(test_iterator)), 3);
-        let mut buffer = VecDeque::with_capacity(3);
-        while !buffer.is_empty() {
-            buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
-                .await
-                .unwrap();
-            for entry in buffer.iter() {
-                res.push(entry.payload.val);
-            }
-        }
-
-        res
-    }
-
-    async fn test_sync_iterator_adapting(test_iterator: TestIterator) -> Vec<u32> {
         let runtime = Arc::new(
             runtime::Builder::default()
                 .worker_threads(1)
@@ -494,17 +468,59 @@ mod tests {
                 .unwrap(),
         );
 
+        runtime.block_on(async {
+            let res1 = test_async_iterator_adapting(test_iterator.clone()).await;
+            assert_eq!(test_data, res1);
+        });
+
+        runtime.block_on(async {
+            let res2 = test_sync_iterator_adapting(test_iterator.clone(), runtime.clone()).await;
+            assert_eq!(test_data, res2);
+        });
+    }
+
+    async fn test_async_iterator_adapting(test_iterator: TestIterator) -> Vec<u32> {
         let mut res = Vec::new();
         let mut iter =
-            BatchLogIteratorAdapter::new(InnerIterator::Sync(Box::new(test_iterator), runtime), 3);
+            BatchLogIteratorAdapter::new(InnerIterator::Async(Box::new(test_iterator)), 3);
         let mut buffer = VecDeque::with_capacity(3);
-        while !buffer.is_empty() {
+
+        loop {
             buffer = iter
                 .next_log_entries(TestPayloadDecoder, buffer)
                 .await
                 .unwrap();
             for entry in buffer.iter() {
                 res.push(entry.payload.val);
+            }
+
+            if buffer.is_empty() {
+                break;
+            }
+        }
+
+        res
+    }
+
+    async fn test_sync_iterator_adapting(
+        test_iterator: TestIterator,
+        runtime: Arc<Runtime>,
+    ) -> Vec<u32> {
+        let mut res = Vec::new();
+        let mut iter =
+            BatchLogIteratorAdapter::new(InnerIterator::Sync(Box::new(test_iterator), runtime), 3);
+        let mut buffer = VecDeque::with_capacity(3);
+        loop {
+            buffer = iter
+                .next_log_entries(TestPayloadDecoder, buffer)
+                .await
+                .unwrap();
+            for entry in buffer.iter() {
+                res.push(entry.payload.val);
+            }
+
+            if buffer.is_empty() {
+                break;
             }
         }
 
