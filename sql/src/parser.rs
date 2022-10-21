@@ -16,7 +16,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
     AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, Statement,
+    ShowCreate, ShowCreateObject, Statement, ShowTables,
 };
 
 define_result!(ParserError);
@@ -223,7 +223,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_show(&mut self) -> Result<Statement> {
         if self.consume_token("TABLES") {
-            Ok(Statement::ShowTables)
+            Ok(self.parse_show_tables()?)
         } else if self.consume_token("DATABASES") {
             Ok(Statement::ShowDatabases)
         } else if self.consume_token("CREATE") {
@@ -231,6 +231,22 @@ impl<'a> Parser<'a> {
         } else {
             self.expected("create/tables/databases", self.parser.peek_token())
         }
+    }
+
+    fn parse_show_tables(&mut self) -> Result<Statement> {
+        let (if_fuzzy, fuzzy_target)= match self.parser.next_token() {
+            Token::Word(w) =>
+                match w.keyword {
+                    Keyword::LIKE => (true, Some(self.parser.next_token().to_string())),
+                    _ => (false, None)
+                },
+
+            _ => (false, None),
+        };
+        Ok(Statement::ShowTables(ShowTables{
+            if_fuzzy,
+            fuzzy_target,
+        }))
     }
 
     fn parse_show_create(&mut self) -> Result<Statement> {

@@ -14,6 +14,7 @@ use sql::{
     ast::ShowCreateObject,
     plan::{ShowCreatePlan, ShowPlan},
 };
+use sql::plan::ShowTablesPlan;
 
 use crate::{
     context::Context,
@@ -94,16 +95,25 @@ impl ShowInterpreter {
         show_create.execute_show_create()
     }
 
-    fn show_tables(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
+    fn show_tables(ctx: Context, catalog_manager: ManagerRef,plan: ShowTablesPlan) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names = schema
-            .all_tables()
-            .context(FetchTables)?
-            .iter()
-            .map(|t| t.name().to_string())
-            .collect::<Vec<_>>();
-
+        let tables_names =  match plan.if_fuzzy  {
+            true  => schema
+                .all_tables()
+                .context(FetchTables)?
+                .iter()
+                .filter(|t| t.name().contains(plan.fuzzy_target.as_ref().unwrap().as_ref()))
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>(),
+            false =>
+                schema
+                    .all_tables()
+                    .context(FetchTables)?
+                    .iter()
+                    .map(|t| t.name().to_string())
+                    .collect::<Vec<_>>(),
+        };
         let schema = DataSchema::new(vec![Field::new(
             SHOW_TABLES_COLUMN_SCHEMA,
             DataType::Utf8,
@@ -113,7 +123,7 @@ impl ShowInterpreter {
             Arc::new(schema),
             vec![Arc::new(StringArray::from(tables_names))],
         )
-        .context(CreateRecordBatch)?;
+            .context(CreateRecordBatch)?;
 
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
@@ -151,8 +161,8 @@ impl Interpreter for ShowInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         match self.plan {
             ShowPlan::ShowCreatePlan(t) => Self::show_create(t).context(ShowCreateTable),
-            ShowPlan::ShowTables => {
-                Self::show_tables(self.ctx, self.catalog_manager).context(ShowTables)
+            ShowPlan::ShowTablesPlan(t) => {
+                Self::show_tables(self.ctx, self.catalog_manager, t).context(ShowTables)
             }
             ShowPlan::ShowDatabase => {
                 Self::show_databases(self.ctx, self.catalog_manager).context(ShowDatabases)

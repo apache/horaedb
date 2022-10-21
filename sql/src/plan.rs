@@ -156,12 +156,18 @@ pub struct ShowCreatePlan {
     pub obj_type: ShowCreateObject,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ShowTablesPlan {
+    pub if_fuzzy: bool,
+    pub fuzzy_target: Option<String>,
+}
+
 #[derive(Debug)]
 pub enum ShowPlan {
     /// show create table
     ShowCreatePlan(ShowCreatePlan),
     /// show tables
-    ShowTables,
+    ShowTablesPlan(ShowTablesPlan),
     /// show database
     ShowDatabase,
 }
