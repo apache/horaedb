@@ -205,7 +205,7 @@ func TestTables(t *testing.T) {
 	re.NoError(err)
 
 	value, exist, err = s.GetTable(ctx, defaultClusterID, defaultSchemaID, name1)
-	re.Error(err)
+	re.NoError(err)
 	re.Empty(value)
 	re.True(!exist)
 }

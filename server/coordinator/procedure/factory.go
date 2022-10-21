@@ -23,7 +23,6 @@ type ScatterRequest struct {
 	ShardIDs []uint32
 }
 
-// nolint
 type TransferLeaderRequest struct {
 	Cluster   *cluster.Cluster
 	OldLeader clusterpb.Shard
@@ -39,7 +38,6 @@ type CreateTableRequest struct {
 	onFailed  func() error
 }
 
-// nolint
 func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch) *Factory {
 	return &Factory{
 		idAllocator: allocator,

@@ -10,7 +10,6 @@ type Write interface {
 	CreateOrUpdate(ctx context.Context, meta *Meta) error
 }
 
-// nolint
 type Meta struct {
 	ID      uint64
 	Typ     Typ

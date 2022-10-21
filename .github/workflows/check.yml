@@ -19,3 +19,4 @@ jobs:
       - run: |
           make install-tools
           make check
+          make test
