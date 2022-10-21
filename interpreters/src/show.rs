@@ -103,7 +103,7 @@ impl ShowInterpreter {
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
-                .filter(|t| t.name().contains(plan.fuzzy_target.as_ref().unwrap().as_ref()))
+                .filter(|t| t.name().contains::<&str>(plan.fuzzy_target.as_ref().unwrap().as_ref()))
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
             false =>
