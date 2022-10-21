@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "analytic_engine"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arc-swap 1.5.1",
  "arena",
@@ -90,18 +90,18 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bytes 1.2.1",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "env_logger",
  "futures 0.3.21",
  "lazy_static",
  "log",
- "object_store 0.4.0",
+ "object_store 0.4.0-alpha",
  "parquet 23.0.0",
  "parquet_ext",
  "prometheus 0.12.0",
- "proto 0.4.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -144,7 +144,7 @@ checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
 name = "arena"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "parking_lot 0.11.2",
 ]
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "uncover",
@@ -456,7 +456,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "benchmarks"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -464,13 +464,13 @@ dependencies = [
  "arrow2",
  "base64 0.13.0",
  "clap",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "criterion",
  "env_logger",
  "futures 0.3.21",
  "log",
- "object_store 0.4.0",
+ "object_store 0.4.0-alpha",
  "parquet 23.0.0",
  "parquet_ext",
  "rand 0.7.3",
@@ -789,7 +789,7 @@ checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
 
 [[package]]
 name = "bytes_ext"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "bytes 1.2.1",
  "snafu 0.6.10",
@@ -814,10 +814,10 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "snafu 0.6.10",
  "table_engine",
@@ -825,13 +825,13 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
  "cluster",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "log",
  "meta_client",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -999,12 +999,12 @@ dependencies = [
 
 [[package]]
 name = "cluster"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "log",
  "meta_client",
@@ -1068,7 +1068,7 @@ dependencies = [
 
 [[package]]
 name = "common_types"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "arrow_ext",
@@ -1078,7 +1078,7 @@ dependencies = [
  "datafusion 12.0.0",
  "murmur3",
  "paste 1.0.8",
- "proto 0.4.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -1089,12 +1089,12 @@ dependencies = [
 
 [[package]]
 name = "common_util"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "backtrace",
  "chrono",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "crossbeam-utils 0.8.11",
  "env_logger",
  "gag",
@@ -1105,7 +1105,7 @@ dependencies = [
  "nix 0.22.3",
  "pin-project-lite",
  "prometheus 0.12.0",
- "proto 0.4.0",
+ "proto 0.4.0-alpha",
  "serde",
  "serde_derive",
  "slog",
@@ -1695,13 +1695,13 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "base64 0.13.0",
  "bincode",
  "chrono",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -2654,14 +2654,14 @@ dependencies = [
 
 [[package]]
 name = "interpreters"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 23.0.0",
  "async-trait",
  "catalog",
  "catalog_impls",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -3008,7 +3008,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "chrono",
  "log",
@@ -3110,11 +3110,11 @@ dependencies = [
 
 [[package]]
 name = "meta_client"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "futures 0.3.21",
  "log",
@@ -3562,7 +3562,7 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
  "bytes 1.2.1",
@@ -3908,7 +3908,7 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "arrow_ext",
@@ -4129,7 +4129,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -4257,7 +4257,7 @@ dependencies = [
 
 [[package]]
 name = "proto"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "protobuf",
  "protobuf-builder",
@@ -4330,11 +4330,11 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -5062,7 +5062,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 23.0.0",
@@ -5072,7 +5072,7 @@ dependencies = [
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
  "cluster",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "df_operator",
@@ -5223,7 +5223,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arena",
  "bytes 1.2.1",
@@ -5387,12 +5387,12 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "sql"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -5595,16 +5595,16 @@ dependencies = [
 
 [[package]]
 name = "system_catalog"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
  "catalog",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "futures 0.3.21",
  "log",
- "proto 0.4.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "snafu 0.6.10",
  "table_engine",
@@ -5613,18 +5613,18 @@ dependencies = [
 
 [[package]]
 name = "table_engine"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
  "futures 0.3.21",
  "log",
  "parquet 23.0.0",
- "proto 0.4.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -5635,7 +5635,7 @@ dependencies = [
 
 [[package]]
 name = "table_kv"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "common_util",
  "log",
@@ -6304,7 +6304,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "lazy_static",
  "tracing",
@@ -6544,11 +6544,11 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "wal"
-version = "0.4.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
  "chrono",
- "common_types 0.4.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "env_logger",
  "futures 0.3.21",
