@@ -32,7 +32,7 @@ type NodeShard struct {
 
 type CreateTableResult struct {
 	Table       *Table
-	ID          uint32
+	ShardID     uint32
 	CurrVersion uint64
 	PrevVersion uint64
 }

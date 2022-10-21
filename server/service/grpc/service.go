@@ -7,11 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/commonpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"go.uber.org/zap"
 )
@@ -37,6 +39,8 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 type Handler interface {
 	GetClusterManager() cluster.Manager
 	GetLeader(ctx context.Context) (*member.GetLeaderResp, error)
+	GetProcedureFactory() *procedure.Factory
+	GetProcedureManager() procedure.Manager
 
 	// TODO: define the methods for handling other grpc requests.
 }
@@ -108,15 +112,113 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 }
 
 // CreateTable implements gRPC CeresmetaServer.
-func (s *Service) CreateTable(_ context.Context, _ *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
-	// TODO: impl later
-	return nil, nil
+func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
+	clusterManager := s.h.GetClusterManager()
+	factory := s.h.GetProcedureFactory()
+	manager := s.h.GetProcedureManager()
+	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
+	if err != nil {
+		log.Error("fail to create table", zap.Error(err))
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+	}
+
+	errorCh := make(chan error, 1)
+	resultCh := make(chan *cluster.CreateTableResult, 1)
+
+	onSucceeded := func(ret *cluster.CreateTableResult) error {
+		resultCh <- ret
+		return nil
+	}
+	onFailed := func(err error) error {
+		errorCh <- err
+		return nil
+	}
+
+	procedure, err := factory.CreateCreateTableProcedure(ctx, &procedure.CreateTableRequest{
+		Cluster:     c,
+		SourceReq:   req,
+		OnSucceeded: onSucceeded,
+		OnFailed:    onFailed,
+	})
+	if err != nil {
+		log.Error("fail to create table", zap.Error(err))
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+	}
+	err = manager.Submit(ctx, procedure)
+	if err != nil {
+		log.Error("fail to create table, manager submit procedure", zap.Error(err))
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+	}
+
+	select {
+	case ret := <-resultCh:
+		return &metaservicepb.CreateTableResponse{
+			Header: okResponseHeader(),
+			CreatedTable: &metaservicepb.TableInfo{
+				Id:         ret.Table.GetID(),
+				Name:       ret.Table.GetName(),
+				SchemaId:   ret.Table.GetSchemaID(),
+				SchemaName: ret.Table.GetSchemaName(),
+			},
+			ShardInfo: &metaservicepb.ShardInfo{
+				Id:      ret.ShardID,
+				Role:    clusterpb.ShardRole_LEADER,
+				Version: ret.CurrVersion,
+			},
+		}, nil
+	case err = <-errorCh:
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+	}
 }
 
 // DropTable implements gRPC CeresmetaServer.
-func (s *Service) DropTable(_ context.Context, _ *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
-	// TODO: impl later
-	return nil, nil
+func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
+	clusterManager := s.h.GetClusterManager()
+	factory := s.h.GetProcedureFactory()
+	manager := s.h.GetProcedureManager()
+	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
+	if err != nil {
+		log.Error("fail to drop table", zap.Error(err))
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
+	}
+
+	errorCh := make(chan error, 1)
+	resultCh := make(chan *cluster.TableInfo, 1)
+
+	onSucceeded := func(ret *cluster.TableInfo) error {
+		resultCh <- ret
+		return nil
+	}
+	onFailed := func(err error) error {
+		errorCh <- err
+		return nil
+	}
+
+	procedure, err := factory.CreateDropTableProcedure(ctx, &procedure.DropTableRequest{
+		Cluster:     c,
+		SourceReq:   req,
+		OnSucceeded: onSucceeded,
+		OnFailed:    onFailed,
+	})
+	if err != nil {
+		log.Error("fail to drop table", zap.Error(err))
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
+	}
+	err = manager.Submit(ctx, procedure)
+	if err != nil {
+		log.Error("fail to drop table, manager submit procedure", zap.Error(err))
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
+	}
+
+	select {
+	case ret := <-resultCh:
+		return &metaservicepb.DropTableResponse{
+			Header:       okResponseHeader(),
+			DroppedTable: cluster.ConvertTableInfoToPB(ret),
+		}, nil
+	case err = <-errorCh:
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
+	}
 }
 
 // RouteTables implements gRPC CeresmetaServer.

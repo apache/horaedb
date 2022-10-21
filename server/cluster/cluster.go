@@ -448,7 +448,7 @@ func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName s
 	table := c.updateTableCacheLocked(shardID, schema, tablePb)
 	return &CreateTableResult{
 		Table:       table,
-		ID:          shardID,
+		ShardID:     shardID,
 		CurrVersion: shardTopology.GetVersion(),
 		PrevVersion: prevShard.version,
 	}, nil

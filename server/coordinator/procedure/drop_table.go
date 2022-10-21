@@ -80,13 +80,24 @@ func dropTablePrepareCallback(event *fsm.Event) {
 		cancelEventWithLog(event, err, "dispatch drop table on shard")
 		return
 	}
+
+	request.ret = table.GetInfo()
 }
 
-func dropTableSuccessCallback(_ *fsm.Event) {
+func dropTableSuccessCallback(event *fsm.Event) {
+	req := event.Args[0].(*dropTableCallbackRequest)
+
+	if err := req.onSucceeded(&req.ret); err != nil {
+		log.Error("exec success callback failed")
+	}
 }
 
-func dropTableFailedCallback(_ *fsm.Event) {
-	// TODO: Use RollbackProcedure to rollback transfer failed
+func dropTableFailedCallback(event *fsm.Event) {
+	req := event.Args[0].(*dropTableCallbackRequest)
+
+	if err := req.onFailed(event.Err); err != nil {
+		log.Error("exec failed callback failed")
+	}
 }
 
 // dropTableCallbackRequest is fsm callbacks param.
@@ -96,15 +107,20 @@ type dropTableCallbackRequest struct {
 	dispatch eventdispatch.Dispatch
 
 	rawReq *metaservicepb.DropTableRequest
+
+	onSucceeded func(*cluster.TableInfo) error
+	onFailed    func(error) error
+
+	ret cluster.TableInfo
 }
 
-func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.DropTableRequest) Procedure {
+func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.DropTableRequest, onSucceeded func(*cluster.TableInfo) error, onFailed func(error) error) Procedure {
 	fsm := fsm.NewFSM(
 		stateDropTableBegin,
 		dropTableEvents,
 		dropTableCallbacks,
 	)
-	return &DropTableProcedure{id: id, fsm: fsm, cluster: cluster, dispatch: dispatch, req: req, state: StateInit}
+	return &DropTableProcedure{id: id, fsm: fsm, cluster: cluster, dispatch: dispatch, req: req, onSucceeded: onSucceeded, onFailed: onFailed, state: StateInit}
 }
 
 type DropTableProcedure struct {
@@ -113,6 +129,9 @@ type DropTableProcedure struct {
 	cluster  *cluster.Cluster
 	dispatch eventdispatch.Dispatch
 	req      *metaservicepb.DropTableRequest
+
+	onSucceeded func(*cluster.TableInfo) error
+	onFailed    func(error) error
 
 	lock  sync.RWMutex
 	state State
@@ -130,10 +149,12 @@ func (p *DropTableProcedure) Start(ctx context.Context) error {
 	p.updateState(StateRunning)
 
 	req := &dropTableCallbackRequest{
-		cluster:  p.cluster,
-		ctx:      ctx,
-		dispatch: p.dispatch,
-		rawReq:   p.req,
+		cluster:     p.cluster,
+		ctx:         ctx,
+		dispatch:    p.dispatch,
+		rawReq:      p.req,
+		onSucceeded: p.onSucceeded,
+		onFailed:    p.onFailed,
 	}
 
 	if err := p.fsm.Event(eventDropTablePrepare, req); err != nil {

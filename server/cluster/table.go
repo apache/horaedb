@@ -10,6 +10,15 @@ type Table struct {
 	meta    *clusterpb.Table
 }
 
+func (t *Table) GetInfo() TableInfo {
+	return TableInfo{
+		ID:         t.GetID(),
+		Name:       t.GetName(),
+		SchemaID:   t.GetSchemaID(),
+		SchemaName: t.GetSchemaName(),
+	}
+}
+
 func (t *Table) GetID() uint64 {
 	return t.meta.GetId()
 }
