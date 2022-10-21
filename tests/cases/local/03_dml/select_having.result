@@ -2,15 +2,36 @@ DROP TABLE IF EXISTS `03_dml_select_having_table1`;
 
 affected_rows: 0
 
-CREATE TABLE `03_dml_select_having_table1` (    `timestamp` timestamp NOT NULL,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false');
+CREATE TABLE `03_dml_select_having_table1` (
+    `timestamp` timestamp NOT NULL,
+    `value` int,
+    timestamp KEY (timestamp)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false'
+);
 
 affected_rows: 0
 
-INSERT INTO `03_dml_select_having_table1`    (`timestamp`, `value`)VALUES    (1, 101),    (2, 1002),    (3, 203),    (4, 30004),    (5, 4405),    (6, 406);
+INSERT INTO `03_dml_select_having_table1`
+    (`timestamp`, `value`)
+VALUES
+    (1, 101),
+    (2, 1002),
+    (3, 203),
+    (4, 30004),
+    (5, 4405),
+    (6, 406);
 
 affected_rows: 6
 
-SELECT    `timestamp`,    `value`FROM    `03_dml_select_having_table1`    having `value` > 500ORDER BY    `value` ASC;
+SELECT
+    `timestamp`,
+    `value`
+FROM
+    `03_dml_select_having_table1`
+    having `value` > 500
+ORDER BY
+    `value` ASC;
 
 timestamp,value,
 Timestamp(Timestamp(2)),Int32(1002),
@@ -18,11 +39,25 @@ Timestamp(Timestamp(5)),Int32(4405),
 Timestamp(Timestamp(4)),Int32(30004),
 
 
-SELECT    `timestamp`,    `value`FROM    `03_dml_select_having_table1`HAVING    1 = 2;
+SELECT
+    `timestamp`,
+    `value`
+FROM
+    `03_dml_select_having_table1`
+HAVING
+    1 = 2;
 
 affected_rows: 0
 
-SELECT    `value` % 3,    MAX(`value`) AS maxFROM    `03_dml_select_having_table1`GROUP BY    `value` % 3ORDER BY    max ASC;
+SELECT
+    `value` % 3,
+    MAX(`value`) AS max
+FROM
+    `03_dml_select_having_table1`
+GROUP BY
+    `value` % 3
+ORDER BY
+    max ASC;
 
 03_dml_select_having_table1.value % Int64(3),max,
 Int64(2),Int32(203),
@@ -30,7 +65,17 @@ Int64(0),Int32(1002),
 Int64(1),Int32(30004),
 
 
-SELECT    `value` % 3,    MAX(`value`) AS maxFROM    `03_dml_select_having_table1`GROUP BY    `value` % 3HAVING    max > 10000ORDER BY    max ASC;
+SELECT
+    `value` % 3,
+    MAX(`value`) AS max
+FROM
+    `03_dml_select_having_table1`
+GROUP BY
+    `value` % 3
+HAVING
+    max > 10000
+ORDER BY
+    max ASC;
 
 03_dml_select_having_table1.value % Int64(3),max,
 Int64(1),Int32(30004),
