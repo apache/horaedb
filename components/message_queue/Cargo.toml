@@ -12,13 +12,17 @@ common_util = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 snafu = { workspace = true }
-rskafka = { version = "0.3.0", default-features = false, features = ["compression-gzip", "compression-lz4", "compression-snappy"] }
-# rskafka = "0.3.0"
-time = "0.3.15"
+chrono = { workspace = true }
 async-trait = { workspace = true }
-dashmap = "5.4.0"
 log = { workspace = true }
 futures = { workspace = true }
+tokio = { workspace = true }
+
+[dependencies.rskafka]
+git = "https://github.com/influxdata/rskafka.git"
+rev = "00988a564b1db0249d858065fc110476c075efad"
+default-features = false
+features = ["compression-gzip", "compression-lz4", "compression-snappy"]
 
 [dev-dependencies]
-rand = { workspace = true }
+uuid = { version = "1.0", features = ["v4"] }

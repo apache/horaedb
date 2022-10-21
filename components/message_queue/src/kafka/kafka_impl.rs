@@ -1,8 +1,11 @@
-use std::{cmp::Ordering, fmt::Display, sync::Arc};
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Kafka implementation's detail
+
+use std::{cmp::Ordering, collections::HashMap, fmt::Display, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
-use dashmap::DashMap;
 use futures::StreamExt;
 use log::info;
 use rskafka::{
@@ -10,22 +13,26 @@ use rskafka::{
         consumer::{StartOffset, StreamConsumer, StreamConsumerBuilder},
         controller::ControllerClient,
         error::{Error as RskafkaError, ProtocolError},
-        partition::{Compression, OffsetAt, PartitionClient},
+        partition::{Compression, OffsetAt, PartitionClient, UnknownTopicHandling},
         Client, ClientBuilder,
     },
     record::{Record, RecordAndOffset},
 };
-use snafu::{ensure, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use tokio::sync::RwLock;
 
-use super::config::WalConfig;
-use crate::{kafka::config::Config, ConsumeAllIterator, Message, MessageAndOffset, MessageQueue};
+use crate::{
+    kafka::config::{Config, ConsumerConfig},
+    ConsumeIterator, Message, MessageAndOffset, MessageQueue, Offset,
+};
 
-/// The topic(with just one partition) client for Kafka
+/// The topic (with just one partition) client for Kafka
 //
-/// `Arc` is needed to ensure its lifetime. Because in future's gc process,
-/// it may has removed from pool but still is still being used.
+/// `Arc` is needed to ensure its lifetime because in future's gc process,
+/// it may has removed from pool but be still in use.
 type TopicClientRef = Arc<PartitionClient>;
-const PARTITIONS_NUM: i32 = 1;
+const PARTITION_NUM: i32 = 1;
+const DEFAULT_PARTITION: i32 = 0;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -60,19 +67,24 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Race happened in scanning partition in topic:{}, when:{}",
+        "Race happened in scanning partition in topic:{}, when:{}, msg:[{}], backtrace:{}",
         topic_name,
-        when
+        when,
+        msg,
+        backtrace
     ))]
     ConsumeAllRace {
         topic_name: String,
         when: ConsumeAllWhen,
+        msg: String,
+        backtrace: Backtrace,
     },
 
-    #[snafu(display("Timeout happened while polling the stream for consuming all data in topic:{}, timeout_opt:{}", topic_name, timeout_opt))]
+    #[snafu(display("Timeout happened while polling the stream for consuming all data in topic:{}, timeout_opt:{}, backtrace:{}", topic_name, timeout_opt, backtrace))]
     ConsumeAllTimeout {
         topic_name: String,
         timeout_opt: String,
+        backtrace: Backtrace,
     },
 
     #[snafu(display(
@@ -87,9 +99,11 @@ pub enum Error {
         source: RskafkaError,
     },
 
-    #[snafu(display("Unknown error occurred, msg:{}", msg))]
-    Unknown { msg: String },
+    #[snafu(display("Unknown error occurred, msg:[{}], backtrace:{}", msg, backtrace))]
+    Unknown { msg: String, backtrace: Backtrace },
 }
+
+define_result!(Error);
 
 #[derive(Debug)]
 pub enum ConsumeAllWhen {
@@ -108,14 +122,12 @@ impl Display for ConsumeAllWhen {
     }
 }
 
-define_result!(Error);
-
-struct KafkaImpl {
+pub struct KafkaImpl {
     config: Config,
     client: Client,
     controller_client: ControllerClient,
     // TODO: maybe gc is needed for `partition_client_pool`.
-    topic_client_pool: DashMap<String, TopicClientRef>,
+    topic_client_pool: RwLock<HashMap<String, TopicClientRef>>,
 }
 
 impl KafkaImpl {
@@ -123,7 +135,7 @@ impl KafkaImpl {
         info!("Kafka init, config:{:?}", config);
 
         if config.client_config.boost_broker.is_none() {
-            panic!("The boost_broker must be set");
+            panic!("The boost broker must be set");
         }
 
         let mut client_builder =
@@ -140,55 +152,79 @@ impl KafkaImpl {
             config,
             client,
             controller_client,
-            topic_client_pool: DashMap::default(),
+            topic_client_pool: RwLock::new(HashMap::new()),
         })
     }
 
-    fn get_or_create_topic_client(
+    async fn get_or_create_topic_client(
         &self,
         topic_name: &str,
     ) -> std::result::Result<TopicClientRef, RskafkaError> {
-        Ok(self
-            .topic_client_pool
-            .entry(topic_name.to_string())
-            .or_insert(Arc::new(
-                self.client.partition_client(topic_name, PARTITIONS_NUM)?,
-            ))
-            .clone())
+        {
+            let topic_client_pool = self.topic_client_pool.read().await;
+            // If found, just return it
+            if let Some(client) = topic_client_pool.get(topic_name) {
+                return Ok(client.clone());
+            }
+        }
+
+        // Otherwise, we should make a double-check first,
+        // and if still not found(other thread may has inserted it),
+        // we should create it.
+        let mut topic_client_pool = self.topic_client_pool.write().await;
+        if let Some(client) = topic_client_pool.get(topic_name) {
+            Ok(client.clone())
+        } else {
+            let client = Arc::new(
+                self.client
+                    .partition_client(topic_name, DEFAULT_PARTITION, UnknownTopicHandling::Retry)
+                    .await?,
+            );
+            topic_client_pool.insert(topic_name.to_string(), client.clone());
+            Ok(client)
+        }
     }
 }
 
 #[async_trait]
 impl MessageQueue for KafkaImpl {
-    type ConsumeAllIterator = KafkaConsumeAllIterator;
+    type ConsumeIterator = KafkaConsumeIterator;
     type Error = Error;
 
     async fn create_topic_if_not_exist(&self, topic_name: &str) -> Result<()> {
         // Check in partition_client_pool first, maybe has exist.
-        if self.topic_client_pool.contains_key(topic_name) {
-            info!(
-                "Topic:{} has exist in kafka and connection to the topic is still alive.",
-                topic_name
-            );
-            return Ok(());
+        {
+            let topic_client_pool = self.topic_client_pool.read().await;
+
+            if topic_client_pool.contains_key(topic_name) {
+                info!(
+                    "Topic:{} has exist in kafka and connection to the topic is still alive",
+                    topic_name
+                );
+                return Ok(());
+            }
         }
 
         // Create topic in Kafka.
-        let topic_creation_config = &self.config.topic_creation_config;
+        let topic_management_config = &self.config.topic_management_config;
         info!("Try to create topic:{} in kafka", topic_name);
         let result = self
             .controller_client
             .create_topic(
                 topic_name,
-                PARTITIONS_NUM,
-                topic_creation_config.replication_factor,
-                topic_creation_config.timeout_ms,
+                PARTITION_NUM,
+                topic_management_config.create_replication_factor,
+                topic_management_config.create_max_wait_ms,
             )
             .await;
 
         match result {
             // Race condition between check and creation action, that's OK.
-            Ok(_) | Err(RskafkaError::ServerError(ProtocolError::TopicAlreadyExists, ..)) => Ok(()),
+            Ok(_)
+            | Err(RskafkaError::ServerError {
+                protocol_error: ProtocolError::TopicAlreadyExists,
+                ..
+            }) => Ok(()),
 
             Err(e) => Err(e).context(CreateTopic {
                 topic_name: topic_name.to_string(),
@@ -196,14 +232,15 @@ impl MessageQueue for KafkaImpl {
         }
     }
 
-    async fn produce(&self, topic_name: &str, message: Vec<Message>) -> Result<Vec<i64>> {
+    async fn produce(&self, topic_name: &str, messages: Vec<Message>) -> Result<Vec<Offset>> {
         let topic_client = self
             .get_or_create_topic_client(topic_name)
+            .await
             .context(Produce {
                 topic_name: topic_name.to_string(),
             })?;
 
-        let records: Vec<Record> = message.into_iter().map(|m| m.into()).collect();
+        let records: Vec<Record> = messages.into_iter().map(|m| m.into()).collect();
         Ok(topic_client
             .produce(records, Compression::default())
             .await
@@ -212,48 +249,64 @@ impl MessageQueue for KafkaImpl {
             })?)
     }
 
-    async fn consume_all(&self, topic_name: &str) -> Result<KafkaConsumeAllIterator> {
-        let topic_client = self
-            .get_or_create_topic_client(topic_name)
-            .context(ConsumeAll {
-                topic_name: topic_name.to_string(),
-                when: ConsumeAllWhen::Start,
-            })?;
-        KafkaConsumeAllIterator::new(topic_name, self.config.wal_config.clone(), topic_client).await
+    async fn consume_all(&self, topic_name: &str) -> Result<KafkaConsumeIterator> {
+        info!("Need to consume all data in kafka topic:{}", topic_name);
+
+        let topic_client =
+            self.get_or_create_topic_client(topic_name)
+                .await
+                .context(ConsumeAll {
+                    topic_name: topic_name.to_string(),
+                    when: ConsumeAllWhen::Start,
+                })?;
+        KafkaConsumeIterator::new(
+            topic_name,
+            self.config.consumer_config.clone(),
+            topic_client,
+        )
+        .await
     }
 
-    async fn delete_up_to(&self, topic_name: &str, offset: i64) -> Result<()> {
-        let topic_client = self
-            .get_or_create_topic_client(topic_name)
-            .context(DeleteUpTo {
-                topic_name: topic_name.to_string(),
-                offset,
-            })?;
+    async fn delete_up_to(&self, topic_name: &str, offset: Offset) -> Result<()> {
+        let topic_client =
+            self.get_or_create_topic_client(topic_name)
+                .await
+                .context(DeleteUpTo {
+                    topic_name: topic_name.to_string(),
+                    offset,
+                })?;
+
         topic_client
-            .delete_records(offset, self.config.wal_config.reader_max_wait_ms.unwrap())
+            .delete_records(
+                offset,
+                self.config.topic_management_config.delete_max_wait_ms,
+            )
             .await
             .context(DeleteUpTo {
                 topic_name: topic_name.to_string(),
                 offset,
             })?;
+
         Ok(())
     }
 
     // TODO: should design a stream consume method for slave node to fetch wals.
 }
 
-struct KafkaConsumeAllIterator {
+pub struct KafkaConsumeIterator {
     topic_name: String,
-    consuming_stream: Option<StreamConsumer>,
+    stream_consumer: Option<StreamConsumer>,
     high_watermark: i64,
 }
 
-impl KafkaConsumeAllIterator {
+impl KafkaConsumeIterator {
     pub async fn new(
         topic_name: &str,
-        config: WalConfig,
+        config: ConsumerConfig,
         topic_client: TopicClientRef,
     ) -> Result<Self> {
+        info!("Init consumer of topic:{}, config:{:?}", topic_name, config);
+
         // We should make sure the partition is not empty firstly.
         let start_offset =
             topic_client
@@ -274,24 +327,28 @@ impl KafkaConsumeAllIterator {
         ensure!(
             start_offset <= high_watermark,
             ConsumeAllRace {
-                topic_name: topic_name.to_string(),
+                topic_name,
+                msg: format!(
+                    "high watermark:{} is smaller than start offset:{}",
+                    high_watermark, start_offset
+                ),
                 when: ConsumeAllWhen::InitIterator
             }
         );
 
         let mut stream_builder = StreamConsumerBuilder::new(topic_client, StartOffset::Earliest);
-        let consuming_stream = if start_offset < high_watermark {
+        let stream_consumer = if start_offset < high_watermark {
             // If not empty, make consuming stream.
-            if let Some(reader_max_wait_ms) = config.reader_max_wait_ms {
-                stream_builder = stream_builder.with_max_wait_ms(reader_max_wait_ms)
+            if let Some(max_wait_ms) = config.max_wait_ms {
+                stream_builder = stream_builder.with_max_wait_ms(max_wait_ms)
             }
 
-            if let Some(reader_min_batch_size) = config.reader_min_batch_size {
-                stream_builder = stream_builder.with_min_batch_size(reader_min_batch_size)
+            if let Some(min_batch_size) = config.min_batch_size {
+                stream_builder = stream_builder.with_min_batch_size(min_batch_size)
             }
 
-            if let Some(reader_max_batch_size) = config.reader_max_batch_size {
-                stream_builder = stream_builder.with_min_batch_size(reader_max_batch_size)
+            if let Some(max_batch_size) = config.max_batch_size {
+                stream_builder = stream_builder.with_min_batch_size(max_batch_size)
             }
 
             Some(stream_builder.build())
@@ -299,20 +356,20 @@ impl KafkaConsumeAllIterator {
             None
         };
 
-        Ok(KafkaConsumeAllIterator {
+        Ok(KafkaConsumeIterator {
             topic_name: topic_name.to_string(),
-            consuming_stream,
+            stream_consumer,
             high_watermark,
         })
     }
 }
 
 #[async_trait]
-impl ConsumeAllIterator for KafkaConsumeAllIterator {
+impl ConsumeIterator for KafkaConsumeIterator {
     type Error = Error;
 
     async fn next_message(&mut self) -> Option<Result<MessageAndOffset>> {
-        let stream = match &mut self.consuming_stream {
+        let stream = match &mut self.stream_consumer {
             Some(stream) => stream,
             None => {
                 return None;
@@ -325,6 +382,7 @@ impl ConsumeAllIterator for KafkaConsumeAllIterator {
                 Ordering::Greater => Some(
                     ConsumeAllRace {
                         topic_name: self.topic_name.clone(),
+                        msg: format!("remote high watermark:{} is greater than local:{}", high_watermark, self.high_watermark),
                         when: ConsumeAllWhen::PollStream,
                     }
                     .fail(),
@@ -333,7 +391,9 @@ impl ConsumeAllIterator for KafkaConsumeAllIterator {
                 Ordering::Less => Some(
                     Unknown {
                         msg: format!(
-                            "High watermark decrease while consuming all data in topic:{}",
+                            "remote high watermark:{} is less than local:{} in topic:{}, it shouldn't decrease while consuming all data",
+                            high_watermark,
+                            self.high_watermark,
                             self.topic_name
                         ),
                     }
@@ -343,7 +403,7 @@ impl ConsumeAllIterator for KafkaConsumeAllIterator {
                 Ordering::Equal => {
                     if record.offset + 1 == self.high_watermark {
                         info!("Consume all data successfully in topic:{}", self.topic_name);
-                        self.consuming_stream = None;
+                        self.stream_consumer = None;
                     }
 
                     Some(Ok(record.into()))
@@ -358,7 +418,7 @@ impl ConsumeAllIterator for KafkaConsumeAllIterator {
             None => Some(
                 Unknown {
                     msg: format!(
-                        "Consuming stream return None due to unknown cause, topic:{}",
+                        "consuming stream return None due to unknown cause, topic:{}",
                         self.topic_name
                     ),
                 }

@@ -1425,19 +1425,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dashmap"
-version = "5.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
-dependencies = [
- "cfg-if 1.0.0",
- "hashbrown",
- "lock_api 0.4.9",
- "once_cell",
- "parking_lot_core 0.9.3",
-]
-
-[[package]]
 name = "datafusion"
 version = "9.0.0"
 source = "git+https://github.com/waynexia/arrow-datafusion.git?rev=bb3e002a4d89f9a5104bba34511b4c593a9c0d05#bb3e002a4d89f9a5104bba34511b4c593a9c0d05"
@@ -3133,16 +3120,16 @@ name = "message_queue"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "common_util",
- "dashmap 5.4.0",
  "futures 0.3.21",
  "log",
- "rand 0.7.3",
  "rskafka",
  "serde",
  "serde_derive",
  "snafu 0.6.10",
- "time 0.3.15",
+ "tokio 1.20.1",
+ "uuid 1.1.2",
 ]
 
 [[package]]
@@ -4840,11 +4827,11 @@ dependencies = [
 [[package]]
 name = "rskafka"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47f86cd4975252119d94a5c202548a0ef037f7263b44be3130577bc4e4e9288a"
+source = "git+https://github.com/influxdata/rskafka.git?rev=00988a564b1db0249d858065fc110476c075efad#00988a564b1db0249d858065fc110476c075efad"
 dependencies = [
  "async-trait",
  "bytes 1.2.1",
+ "chrono",
  "crc32c",
  "flate2",
  "futures 0.3.21",
@@ -4855,7 +4842,6 @@ dependencies = [
  "rand 0.8.5",
  "snap",
  "thiserror",
- "time 0.3.15",
  "tokio 1.20.1",
  "tracing",
 ]
@@ -6938,7 +6924,7 @@ version = "0.0.1"
 source = "git+https://github.com/tikv/yatp.git?rev=4b71f8abd86890f0d1e95778c2b6bf5a9ee4c502#4b71f8abd86890f0d1e95778c2b6bf5a9ee4c502"
 dependencies = [
  "crossbeam-deque 0.7.4",
- "dashmap 3.11.10",
+ "dashmap",
  "fail",
  "lazy_static",
  "num_cpus",
