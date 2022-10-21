@@ -21,6 +21,12 @@ pub struct TableManipulatorImpl {
     meta_client: MetaClientRef,
 }
 
+impl TableManipulatorImpl {
+    pub fn new(meta_client: MetaClientRef) -> Self {
+        Self { meta_client }
+    }
+}
+
 #[async_trait]
 impl TableManipulator for TableManipulatorImpl {
     async fn create_table(
