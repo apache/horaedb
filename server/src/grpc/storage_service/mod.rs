@@ -38,17 +38,16 @@ use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
 use crate::{
     consts,
-    error::{ErrWithCause, Result as ServerResult},
     grpc::{
-        self, metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC, BuildColumnSchema, BuildTableSchema,
-        GetSchemaConfig, InvalidArgument, InvalidColumnSchema, ParseCatalogName, ParseSchemaName,
-        Result,
+        metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        storage_service::error::{ErrNoCause, ErrWithCause, Result},
     },
     instance::InstanceRef,
     route::{Router, RouterRef},
     schema_config_provider::SchemaConfigProviderRef,
 };
 
+pub(crate) mod error;
 mod prom_query;
 mod query;
 mod route;
@@ -115,19 +114,31 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .get(consts::CATALOG_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
-            .context(ParseCatalogName)?
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "fail to parse catalog name",
+            })?
             .unwrap_or_else(|| default_catalog.to_string());
 
         let schema = header
             .get(consts::TENANT_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
-            .context(ParseSchemaName)?
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "fail to parse schema name",
+            })?
             .unwrap_or_else(|| default_schema.to_string());
 
         let schema_config = schema_config_provider
             .schema_config(&schema)
-            .context(GetSchemaConfig)?;
+            .map_err(|e| Box::new(e) as _)
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("fail to fetch schema config, schema_name:{}", schema),
+            })?;
 
         Ok(Self {
             header,
@@ -197,7 +208,7 @@ macro_rules! handle_request {
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
-                                msg: "Invalid header",
+                                msg: "invalid header",
                             })?;
                     $mod_name::$handle_fn(&handler_ctx, request.into_inner())
                         .await
@@ -228,7 +239,7 @@ macro_rules! handle_request {
                     Ok(Ok(v)) => v,
                     Ok(Err(e)) | Err(e) => {
                         let mut resp = $resp_ty::default();
-                        let header = grpc::build_err_header(e);
+                        let header = error::build_err_header(e);
                         resp.header = Some(header);
                         resp
                     },
@@ -257,7 +268,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn stream_write_internal(
         &self,
         request: tonic::Request<tonic::Streaming<WriteRequest>>,
-    ) -> ServerResult<WriteResponse> {
+    ) -> Result<WriteResponse> {
         let begin_instant = Instant::now();
         let router = self.router.clone();
         let header = RequestHeader::from(request.metadata());
@@ -268,7 +279,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "Invalid header",
+                msg: "invalid header",
             })?;
 
         let mut total_success = 0;
@@ -278,7 +289,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         while let Some(req) = stream.next().await {
             let write_req = req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to fetch request",
+                msg: "failed to fetch request",
             })?;
 
             let write_result = write::handle_write(
@@ -294,7 +305,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             match write_result {
                 Ok(write_resp) => total_success += write_resp.success,
                 Err(e) => {
-                    resp.header = Some(grpc::build_err_header(e));
+                    resp.header = Some(error::build_err_header(e));
                     has_err = true;
                     break;
                 }
@@ -302,7 +313,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         }
 
         if !has_err {
-            resp.header = Some(grpc::build_ok_header());
+            resp.header = Some(error::build_ok_header());
             resp.success = total_success as u32;
         }
 
@@ -310,13 +321,13 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_write
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        ServerResult::Ok(resp)
+        Result::Ok(resp)
     }
 
     async fn stream_query_internal(
         &self,
         request: tonic::Request<QueryRequest>,
-    ) -> ServerResult<ReceiverStream<ServerResult<QueryResponse>>> {
+    ) -> Result<ReceiverStream<Result<QueryResponse>>> {
         let begin_instant = Instant::now();
         let router = self.router.clone();
         let header = RequestHeader::from(request.metadata());
@@ -324,12 +335,12 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let schema_config_provider = self.schema_config_provider.clone();
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let _: JoinHandle<ServerResult<()>> = self.runtimes.read_runtime.spawn(async move {
+        let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
             let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: "Invalid header",
+                    msg: "invalid header",
                 })?;
 
             let query_req = request.into_inner();
@@ -349,11 +360,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 }
             } else {
                 let resp = QueryResponse {
-                    header: Some(grpc::build_ok_header()),
+                    header: Some(error::build_ok_header()),
                     ..Default::default()
                 };
 
-                if tx.send(ServerResult::Ok(resp)).await.is_err() {
+                if tx.send(Result::Ok(resp)).await.is_err() {
                     error!(
                         "Failed to send handler result, mod:stream_query, handler:handle_stream_query"
                     );
@@ -367,7 +378,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        ServerResult::Ok(ReceiverStream::new(rx))
+        Result::Ok(ReceiverStream::new(rx))
     }
 }
 
@@ -410,7 +421,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         let resp = match self.stream_write_internal(request).await {
             Ok(resp) => resp,
             Err(e) => WriteResponse {
-                header: Some(grpc::build_err_header(e)),
+                header: Some(error::build_err_header(e)),
                 ..Default::default()
             },
         };
@@ -427,7 +438,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
                     Ok(resp) => Ok(resp),
                     Err(e) => {
                         let resp = QueryResponse {
-                            header: Some(grpc::build_err_header(e)),
+                            header: Some(error::build_err_header(e)),
                             ..Default::default()
                         };
                         Ok(resp)
@@ -438,7 +449,7 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
             }
             Err(e) => {
                 let resp = QueryResponse {
-                    header: Some(grpc::build_err_header(e)),
+                    header: Some(error::build_err_header(e)),
                     ..Default::default()
                 };
                 let stream = stream::once(async { Ok(resp) });
@@ -473,7 +484,13 @@ fn build_column_schema(
         .is_nullable(true)
         .is_tag(is_tag);
 
-    builder.build().context(BuildColumnSchema { column_name })
+    builder
+        .build()
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid column schema",
+        })
 }
 
 fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) -> Result<Schema> {
@@ -489,8 +506,9 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
 
     ensure!(
         !write_entries.is_empty(),
-        InvalidArgument {
-            msg: format!("Empty write entires to write table:{}", table_name),
+        ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: format!("empty write entires to write table:{}", table_name),
         }
     );
 
@@ -501,7 +519,8 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
             let name_index = tag.name_index as usize;
             ensure!(
                 name_index < tag_names.len(),
-                InvalidArgument {
+                ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!(
                         "tag index {} is not found in tag_names:{:?}, table:{}",
                         name_index, tag_names, table_name,
@@ -514,7 +533,8 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
             let tag_value = tag
                 .value
                 .as_ref()
-                .with_context(|| InvalidArgument {
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!(
                         "Tag({}) value is needed, table_name:{} ",
                         tag_name, table_name
@@ -522,7 +542,8 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                 })?
                 .value
                 .as_ref()
-                .with_context(|| InvalidArgument {
+                .with_context(|| ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!(
                         "Tag({}) value type is not supported, table_name:{}",
                         tag_name, table_name
@@ -546,7 +567,8 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                     let field_value = field
                         .value
                         .as_ref()
-                        .with_context(|| InvalidArgument {
+                        .with_context(|| ErrNoCause {
+                            code: StatusCode::BAD_REQUEST,
                             msg: format!(
                                 "Field({}) value is needed, table:{}",
                                 field_name, table_name
@@ -554,7 +576,8 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                         })?
                         .value
                         .as_ref()
-                        .with_context(|| InvalidArgument {
+                        .with_context(|| ErrNoCause {
+                            code: StatusCode::BAD_REQUEST,
                             msg: format!(
                                 "Field({}) value type is not supported, table:{}",
                                 field_name, table_name
@@ -587,8 +610,10 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
     )
     .is_nullable(false)
     .build()
-    .context(InvalidColumnSchema {
-        column_name: TSID_COLUMN,
+    .map_err(|e| Box::new(e) as _)
+    .context(ErrWithCause {
+        code: StatusCode::BAD_REQUEST,
+        msg: "invalid timestamp column schema to build",
     })?;
 
     // Use (timestamp, tsid) as primary key.
@@ -596,26 +621,44 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
             .is_nullable(false)
             .build()
-            .context(InvalidColumnSchema {
-                column_name: TSID_COLUMN,
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "invalid tsid column schema to build",
             })?;
 
     schema_builder = schema_builder
         .enable_tsid_primary_key(true)
         .add_key_column(timestamp_column_schema)
-        .with_context(|| BuildTableSchema { metric: table_name })?
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid timestamp column to add",
+        })?
         .add_key_column(tsid_column_schema)
-        .with_context(|| BuildTableSchema { metric: table_name })?;
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid tsid column to add",
+        })?;
 
     for col in name_column_map.into_values() {
         schema_builder = schema_builder
             .add_normal_column(col)
-            .with_context(|| BuildTableSchema { metric: table_name })?;
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "invalid normal column to add",
+            })?;
     }
 
-    schema_builder.build().context(BuildTableSchema {
-        metric: &metric.metric,
-    })
+    schema_builder
+        .build()
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid schema to build",
+        })
 }
 
 fn ensure_data_type_compatible(
@@ -627,22 +670,26 @@ fn ensure_data_type_compatible(
 ) -> Result<()> {
     ensure!(
         column_schema.is_tag == is_tag,
-        InvalidArgument {
+        ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Duplicated column: {} in fields and tags for table: {}",
                 column_name, table_name,
             ),
         }
     );
+
     ensure!(
         column_schema.data_type == data_type,
-        InvalidArgument {
+        ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Column: {} in table: {} data type is not same, expected: {}, actual: {}",
                 column_name, table_name, column_schema.data_type, data_type,
             ),
         }
     );
+
     Ok(())
 }
 

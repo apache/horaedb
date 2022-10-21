@@ -21,12 +21,10 @@ use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{InsertPlan, Plan};
 use table_engine::table::TableRef;
 
-use crate::{
-    error::{ErrNoCause, ErrWithCause, Result},
-    grpc::{
-        self,
-        storage_service::{self, HandlerContext},
-    },
+use crate::grpc::storage_service::{
+    self,
+    error::{self, ErrNoCause, ErrWithCause, Result},
+    HandlerContext,
 };
 
 pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
@@ -84,7 +82,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to execute interpreter",
+                msg: "failed to execute interpreter",
             })? {
             Output::AffectedRows(n) => n,
             _ => unreachable!(),
@@ -94,7 +92,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     }
 
     let resp = WriteResponse {
-        header: Some(grpc::build_ok_header()),
+        header: Some(error::build_ok_header()),
         success: success as u32,
         failed: 0,
     };
@@ -235,7 +233,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
+            msg: "failed to execute interpreter",
         })? {
         Output::AffectedRows(n) => n,
         _ => unreachable!(),
