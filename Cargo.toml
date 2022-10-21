@@ -131,11 +131,22 @@ tracing_util = { workspace = true }
 [build-dependencies]
 vergen = { version = "5", default-features = false, features = ["build", "git"] }
 
+[profile.bench]
+debug = true
+
+# This profile optimizes for runtime performance and small binary size at the expense of longer
+# build times. It's most suitable for final release builds.
 [profile.release]
 debug = true
 opt-level = "z"
 lto = true
 overflow-checks = true
 
-[profile.bench]
-debug = true
+# This profile optimizes for short build times at the expense of larger binary size and slower
+# runtime performance. It's most suitable for development iterations.
+[profile.quick-release]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+incremental = true
