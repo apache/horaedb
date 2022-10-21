@@ -27,8 +27,8 @@ use crate::{
     kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, InnerIterator, ReadContext, ReadRequest, RegionId,
-        ScanContext, ScanRequest, SyncLogIterator, WalManager, WriteContext, MAX_REGION_ID,
+        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
+        ScanRequest, SyncLogIterator, WalManager, WriteContext, MAX_REGION_ID,
     },
 };
 
@@ -640,8 +640,9 @@ impl WalManager for RocksImpl {
         };
         let runtime = self.runtime.clone();
 
-        Ok(BatchLogIteratorAdapter::new(
-            InnerIterator::Sync(Box::new(sync_iter), runtime),
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(sync_iter),
+            runtime,
             ctx.batch_size,
         ))
     }
