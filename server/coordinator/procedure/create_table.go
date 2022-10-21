@@ -6,6 +6,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
@@ -40,18 +41,24 @@ var (
 )
 
 func createTablePrepareCallback(event *fsm.Event) {
-	request := event.Args[0].(*CreateTableCallbackRequest)
-	table, exists, err := request.cluster.GetOrCreateTable(request.ctx, request.nodeName, request.schemaName, request.tableName)
+	req := event.Args[0].(*createTableCallbackRequest)
+	_, exists, err := req.cluster.GetTable(req.ctx, req.rawReq.GetSchemaName(), req.rawReq.GetName())
 	if err != nil {
-		cancelEventWithLog(event, err, "cluster get or create table")
+		cancelEventWithLog(event, err, "cluster get table")
 		return
 	}
 	if exists {
-		log.Warn("create an existing table", zap.String("schema", request.schemaName), zap.String("table", request.tableName))
+		log.Warn("create an existing table", zap.String("schema", req.rawReq.GetSchemaName()), zap.String("table", req.rawReq.GetName()))
 		return
 	}
 
-	shard, err := request.cluster.GetShardByID(table.GetShardID())
+	ret, err := req.cluster.CreateTable(req.ctx, req.rawReq.GetHeader().GetNode(), req.rawReq.GetSchemaName(), req.rawReq.GetName())
+	if err != nil {
+		cancelEventWithLog(event, err, "cluster get table")
+		return
+	}
+
+	shard, err := req.cluster.GetShardByID(ret.Table.GetShardID())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get shard by id")
 		return
@@ -63,14 +70,26 @@ func createTablePrepareCallback(event *fsm.Event) {
 		return
 	}
 
-	err = request.dispatch.CreateTableOnShard(request.ctx, leader.Node, &eventdispatch.CreateTableOnShardRequest{
-		TableInfo: &cluster.TableInfo{
-			ID:         table.GetID(),
-			Name:       table.GetName(),
-			SchemaID:   table.GetSchemaID(),
-			SchemaName: table.GetSchemaName(),
+	err = req.dispatch.CreateTableOnShard(req.ctx, leader.Node, &eventdispatch.CreateTableOnShardRequest{
+		UpdateShardInfo: &eventdispatch.UpdateShardInfo{
+			CurrShardInfo: &cluster.ShardInfo{
+				ID: ret.ID,
+				// TODO: dispatch CreateTableOnShard to followers?
+				Role:    clusterpb.ShardRole_LEADER,
+				Version: ret.CurrVersion,
+			},
+			PrevVersion: ret.PrevVersion,
 		},
-		CreateSQL: request.createSQL,
+		TableInfo: &cluster.TableInfo{
+			ID:         ret.Table.GetID(),
+			Name:       ret.Table.GetName(),
+			SchemaID:   ret.Table.GetSchemaID(),
+			SchemaName: ret.Table.GetSchemaName(),
+		},
+		EncodedSchema:    req.rawReq.EncodedSchema,
+		Engine:           req.rawReq.Engine,
+		CreateIfNotExist: req.rawReq.CreateIfNotExist,
+		Options:          req.rawReq.Options,
 	})
 	if err != nil {
 		cancelEventWithLog(event, err, "dispatch create table on shard")
@@ -79,31 +98,43 @@ func createTablePrepareCallback(event *fsm.Event) {
 }
 
 func createTableSuccessCallback(event *fsm.Event) {
-	request := event.Args[0].(*CreateTableCallbackRequest)
+	req := event.Args[0].(*createTableCallbackRequest)
 
-	if err := request.onSuccess(); err != nil {
+	if err := req.onSuccess(); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
 
 func createTableFailedCallback(event *fsm.Event) {
-	request := event.Args[0].(*CreateTableCallbackRequest)
+	req := event.Args[0].(*createTableCallbackRequest)
 
-	if err := request.onFailed(); err != nil {
+	table, exists, err := req.cluster.GetTable(req.ctx, req.rawReq.GetSchemaName(), req.rawReq.GetName())
+	if err != nil {
+		log.Error("create table failed, get table failed", zap.String("schemaName", req.rawReq.GetSchemaName()), zap.String("tableName", req.rawReq.GetName()))
+		return
+	}
+	if !exists {
+		return
+	}
+
+	// Rollback, drop table in ceresmeta.
+	err = req.cluster.DropTable(req.ctx, table.GetSchemaName(), table.GetName(), table.GetID())
+	if err != nil {
+		log.Error("drop table failed, get table failed", zap.String("schemaName", table.GetSchemaName()), zap.String("tableName", table.GetName()), zap.Uint64("tableID", table.GetID()))
+		return
+	}
+	if err := req.onFailed(); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
 
-// CreateTableCallbackRequest is fsm callbacks param.
-type CreateTableCallbackRequest struct {
+// createTableCallbackRequest is fsm callbacks param.
+type createTableCallbackRequest struct {
 	ctx      context.Context
 	cluster  *cluster.Cluster
 	dispatch eventdispatch.Dispatch
 
-	schemaName string
-	tableName  string
-	nodeName   string
-	createSQL  string
+	rawReq *metaservicepb.CreateTableRequest
 
 	// TODO: correct callback input params
 	onSuccess func() error
@@ -111,12 +142,12 @@ type CreateTableCallbackRequest struct {
 }
 
 func NewCreateTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.CreateTableRequest, onSuccess func() error, onFailed func() error) Procedure {
-	createTableProcedureFsm := fsm.NewFSM(
+	fsm := fsm.NewFSM(
 		stateCreateTableBegin,
 		createTableEvents,
 		createTableCallbacks,
 	)
-	return &CreateTableProcedure{id: id, fsm: createTableProcedureFsm, cluster: cluster, dispatch: dispatch, req: req, state: StateInit, onSuccess: onSuccess, onFailed: onFailed}
+	return &CreateTableProcedure{id: id, fsm: fsm, cluster: cluster, dispatch: dispatch, req: req, state: StateInit, onSuccess: onSuccess, onFailed: onFailed}
 }
 
 type CreateTableProcedure struct {
@@ -142,46 +173,49 @@ func (p *CreateTableProcedure) Typ() Typ {
 }
 
 func (p *CreateTableProcedure) Start(ctx context.Context) error {
-	p.updateStateWithLock(StateRunning)
+	p.updateState(StateRunning)
 
-	createTableCallbackRequest := &CreateTableCallbackRequest{
-		cluster:    p.cluster,
-		ctx:        ctx,
-		dispatch:   p.dispatch,
-		tableName:  p.req.GetName(),
-		schemaName: p.req.GetSchemaName(),
-		nodeName:   p.req.GetHeader().GetNode(),
-		createSQL:  p.req.GetCreateSql(),
+	req := &createTableCallbackRequest{
+		cluster:   p.cluster,
+		ctx:       ctx,
+		dispatch:  p.dispatch,
+		rawReq:    p.req,
+		onSuccess: p.onSuccess,
+		onFailed:  p.onFailed,
 	}
 
-	if err := p.fsm.Event(eventCreateTablePrepare, createTableCallbackRequest); err != nil {
-		err1 := p.fsm.Event(eventCreateTableFailed, createTableCallbackRequest)
-		p.updateStateWithLock(StateFailed)
+	if err := p.fsm.Event(eventCreateTablePrepare, req); err != nil {
+		err1 := p.fsm.Event(eventCreateTableFailed, req)
+		p.updateState(StateFailed)
 		if err1 != nil {
-			err = errors.WithMessagef(err, "createTable procedure start, fail to send eventCreateTableFailed err:%v", err1)
+			err = errors.WithMessagef(err, "send eventCreateTableFailed, err:%v", err1)
 		}
-		return errors.WithMessage(err, "createTable procedure start")
+		return errors.WithMessage(err, "send eventCreateTablePrepare")
 	}
 
-	if err := p.fsm.Event(eventCreateTableSuccess, createTableCallbackRequest); err != nil {
-		return errors.WithMessage(err, "createTable procedure start")
+	if err := p.fsm.Event(eventCreateTableSuccess, req); err != nil {
+		return errors.WithMessage(err, "send eventCreateTableSuccess")
 	}
 
-	p.updateStateWithLock(StateFinished)
+	p.updateState(StateFinished)
 	return nil
 }
 
 func (p *CreateTableProcedure) Cancel(_ context.Context) error {
-	p.updateStateWithLock(StateCancelled)
+	p.updateState(StateCancelled)
 	return nil
 }
 
 func (p *CreateTableProcedure) State() State {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
 	return p.state
 }
 
-func (p *CreateTableProcedure) updateStateWithLock(state State) {
+func (p *CreateTableProcedure) updateState(state State) {
 	p.lock.Lock()
+	defer p.lock.Unlock()
+
 	p.state = state
-	p.lock.Unlock()
 }

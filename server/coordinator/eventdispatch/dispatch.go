@@ -23,13 +23,21 @@ type CloseShardRequest struct {
 	ShardID uint32
 }
 
+type UpdateShardInfo struct {
+	CurrShardInfo *cluster.ShardInfo
+	PrevVersion   uint64
+}
+
 type CreateTableOnShardRequest struct {
-	TableInfo *cluster.TableInfo
-	CreateSQL string
+	UpdateShardInfo  *UpdateShardInfo
+	TableInfo        *cluster.TableInfo
+	EncodedSchema    []byte
+	Engine           string
+	CreateIfNotExist bool
+	Options          map[string]string
 }
 
 type DropTableOnShardRequest struct {
-	ShardInfo   *cluster.ShardInfo
-	PrevVersion uint64
-	TableInfo   *cluster.TableInfo
+	UpdateShardInfo *UpdateShardInfo
+	TableInfo       *cluster.TableInfo
 }

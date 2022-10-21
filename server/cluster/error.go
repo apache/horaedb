@@ -5,8 +5,8 @@ package cluster
 import "github.com/CeresDB/ceresmeta/pkg/coderr"
 
 var (
-	ErrCreateCluster           = coderr.NewCodeError(coderr.BadRequest, "create clusters")
-	ErrClusterAlreadyExists    = coderr.NewCodeError(coderr.Internal, "clusters already exists")
+	ErrCreateCluster           = coderr.NewCodeError(coderr.BadRequest, "create cluster")
+	ErrClusterAlreadyExists    = coderr.NewCodeError(coderr.Internal, "cluster already exists")
 	ErrClusterStateInvalid     = coderr.NewCodeError(coderr.Internal, "cluster state invalid")
 	ErrClusterNotFound         = coderr.NewCodeError(coderr.NotFound, "cluster not found")
 	ErrClusterTopologyNotFound = coderr.NewCodeError(coderr.NotFound, "cluster topology not found")
@@ -16,4 +16,5 @@ var (
 	ErrNodeNotFound            = coderr.NewCodeError(coderr.NotFound, "node not found")
 	ErrNodeShardsIsEmpty       = coderr.NewCodeError(coderr.Internal, "node's shard list is empty")
 	ErrGetShardTopology        = coderr.NewCodeError(coderr.Internal, "get shard topology")
+	ErrTableAlreadyExists      = coderr.NewCodeError(coderr.Internal, "table already exists")
 )

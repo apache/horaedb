@@ -30,6 +30,13 @@ type NodeShard struct {
 	ShardInfo *ShardInfo
 }
 
+type CreateTableResult struct {
+	Table       *Table
+	ID          uint32
+	CurrVersion uint64
+	PrevVersion uint64
+}
+
 type RouteEntry struct {
 	Table      *TableInfo
 	NodeShards []*NodeShard

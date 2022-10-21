@@ -30,6 +30,10 @@ func (s *Shard) GetLeader() *clusterpb.Shard {
 	return nil
 }
 
+func (s *Shard) GetVersion() uint64 {
+	return s.version
+}
+
 type ShardTablesWithRole struct {
 	shard  *ShardInfo
 	tables []*Table

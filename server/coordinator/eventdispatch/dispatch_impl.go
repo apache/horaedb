@@ -6,9 +6,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/CeresDB/ceresmeta/pkg/coderr"
-
 	"github.com/CeresDB/ceresdbproto/pkg/metaeventpb"
+	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/service"
 	"github.com/pkg/errors"
@@ -112,18 +111,25 @@ func (d *DispatchImpl) getMetaEventClient(ctx context.Context, addr string) (met
 
 func convertCreateTableOnShardRequestToPB(request *CreateTableOnShardRequest) *metaeventpb.CreateTableOnShardRequest {
 	return &metaeventpb.CreateTableOnShardRequest{
-		UpdateShardInfo: nil,
-		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
-		CreateSql:       request.CreateSQL,
+		UpdateShardInfo:  convertUpdateShardInfoToPB(request.UpdateShardInfo),
+		TableInfo:        cluster.ConvertTableInfoToPB(request.TableInfo),
+		EncodedSchema:    request.EncodedSchema,
+		Engine:           request.Engine,
+		CreateIfNotExist: request.CreateIfNotExist,
+		Options:          request.Options,
 	}
 }
 
 func convertDropTableOnShardRequestToPB(request *DropTableOnShardRequest) *metaeventpb.DropTableOnShardRequest {
 	return &metaeventpb.DropTableOnShardRequest{
-		UpdateShardInfo: &metaeventpb.UpdateShardInfo{
-			CurrShardInfo: cluster.ConvertShardsInfoToPB(request.ShardInfo),
-			PrevVersion:   request.PrevVersion,
-		},
-		TableInfo: cluster.ConvertTableInfoToPB(request.TableInfo),
+		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
+		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
+	}
+}
+
+func convertUpdateShardInfoToPB(updateShardInfo *UpdateShardInfo) *metaeventpb.UpdateShardInfo {
+	return &metaeventpb.UpdateShardInfo{
+		CurrShardInfo: cluster.ConvertShardsInfoToPB(updateShardInfo.CurrShardInfo),
+		PrevVersion:   updateShardInfo.PrevVersion,
 	}
 }

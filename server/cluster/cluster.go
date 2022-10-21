@@ -352,61 +352,106 @@ func (c *Cluster) GetOrCreateSchema(ctx context.Context, schemaName string) (*Sc
 	return schema, false, nil
 }
 
-// GetOrCreateTable the second output parameter bool: Returns true if the table was newly created.
-func (c *Cluster) GetOrCreateTable(ctx context.Context, nodeName string, schemaName string, tableName string) (*Table, bool, error) {
+func (c *Cluster) GetTable(ctx context.Context, schemaName, tableName string) (*Table, bool, error) {
+	c.lock.RLock()
+	schema, ok := c.schemasCache[schemaName]
+	if !ok {
+		c.lock.RUnlock()
+		return nil, false, ErrSchemaNotFound.WithCausef("schemaName:%s", schemaName)
+	}
+
+	table, exists := schema.getTable(tableName)
+	if exists {
+		c.lock.RUnlock()
+		return table, true, nil
+	}
+	c.lock.RUnlock()
+
+	// Search Table in storage.
+	tablePb, exists, err := c.storage.GetTable(ctx, c.clusterID, schema.GetID(), tableName)
+	if err != nil {
+		return nil, false, errors.WithMessage(err, "get table from storage")
+	}
+	if exists {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+
+		shardID, err := c.getTableShardIDLocked(tablePb.GetId())
+		if err != nil {
+			return nil, false, errors.WithMessage(err, "get shard id")
+		}
+		table = c.updateTableCacheLocked(shardID, schema, tablePb)
+		return table, true, nil
+	}
+
+	return nil, false, nil
+}
+
+func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName string, tableName string) (*CreateTableResult, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	// Check provided schema if exists.
 	schema, exists := c.getSchemaLocked(schemaName)
 	if !exists {
-		return nil, false, ErrSchemaNotFound.WithCausef("schemaName", schemaName)
+		return nil, ErrSchemaNotFound.WithCausef("schemaName:%s", schemaName)
 	}
 
 	// check if exists
-	table, exists := c.getTableLocked(schemaName, tableName)
+	_, exists = c.getTableLocked(schemaName, tableName)
 	if exists {
-		return table, true, nil
+		return nil, ErrTableAlreadyExists
 	}
 
-	// create new schemasCache
 	shardID, err := c.pickOneShardOnNode(nodeName)
 	if err != nil {
-		return nil, false, errors.WithMessagef(err, "cluster AllocTableID, clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", c.Name(), schemaName, tableName, nodeName)
+		return nil, errors.WithMessagef(err, "pick one shard on node, clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", c.Name(), schemaName, tableName, nodeName)
 	}
 
-	// alloc table id
+	prevShard, err := c.getShardByIDLocked(shardID)
+	if err != nil {
+		return nil, errors.WithMessagef(err, "get shard, clusterName:%s, schemaName:%s, tableName:%s, nodeName:%s", c.Name(), schemaName, tableName, nodeName)
+	}
+
+	// Alloc table id.
 	tableID, err := c.allocTableID(ctx)
 	if err != nil {
-		return nil, false, errors.WithMessagef(err, "cluster AllocTableID, schemaName:%s, tableName:%s", schemaName, tableName)
+		return nil, errors.WithMessagef(err, "alloc table id, schemaName:%s, tableName:%s", schemaName, tableName)
 	}
 
 	// Save table in storage.
 	tablePb := &clusterpb.Table{Id: tableID, Name: tableName, SchemaId: schema.GetID(), ShardId: shardID}
 	tablePb, err = c.storage.CreateTable(ctx, c.clusterID, schema.GetID(), tablePb)
 	if err != nil {
-		return nil, false, errors.WithMessage(err, "cluster CreateTable")
+		return nil, errors.WithMessage(err, "cluster CreateTable")
 	}
 
 	// Update shardTopology in storage.
 	shardTopologies, err := c.storage.ListShardTopologies(ctx, c.clusterID, []uint32{shardID})
 	if err != nil {
-		return nil, false, errors.WithMessage(err, "get or create table")
+		return nil, errors.WithMessage(err, "get shard topology from storage")
 	}
 	if len(shardTopologies) != 1 {
-		return nil, false, ErrGetShardTopology.WithCausef("cluster CreateTable, shard has more than one shardTopology, shardID:%d, shardTopologies:%v",
+		return nil, ErrGetShardTopology.WithCausef("shard has more than one shardTopology, shardID:%d, shardTopologies:%v",
 			shardID, shardTopologies)
 	}
 
 	shardTopology := shardTopologies[0]
 	shardTopology.TableIds = append(shardTopology.TableIds, tableID)
-	if err = c.storage.PutShardTopology(ctx, c.clusterID, shardTopology.GetVersion(), shardTopology); err != nil {
-		return nil, false, errors.WithMessage(err, "cluster CreateTable")
+	oldVersion := shardTopology.Version
+	shardTopology.Version = oldVersion + 1
+	if err = c.storage.PutShardTopology(ctx, c.clusterID, oldVersion, shardTopology); err != nil {
+		return nil, errors.WithMessage(err, "put shard topology")
 	}
 
 	// Update tableCache in memory.
-	table = c.updateTableCacheLocked(shardID, schema, tablePb)
-	return table, false, nil
+	table := c.updateTableCacheLocked(shardID, schema, tablePb)
+	return &CreateTableResult{
+		Table:       table,
+		ID:          shardID,
+		CurrVersion: shardTopology.GetVersion(),
+		PrevVersion: prevShard.version,
+	}, nil
 }
 
 func (c *Cluster) loadClusterTopologyLocked(ctx context.Context) (map[uint32][]*clusterpb.Shard, []uint32, error) {
@@ -498,46 +543,16 @@ func (c *Cluster) getTableLocked(schemaName string, tableName string) (*Table, b
 	return table, ok
 }
 
-func (c *Cluster) GetTable(ctx context.Context, schemaName, tableName string) (*Table, bool, error) {
-	c.lock.RLock()
-	schema, ok := c.schemasCache[schemaName]
-	if !ok {
-		c.lock.RUnlock()
-		return nil, false, ErrSchemaNotFound.WithCausef("schemaName:%s", schemaName)
-	}
-
-	table, exists := schema.getTable(tableName)
-	if exists {
-		c.lock.RUnlock()
-		return table, true, nil
-	}
-	c.lock.RUnlock()
-
-	// Search Table in storage.
-	tablePb, exists, err := c.storage.GetTable(ctx, c.clusterID, schema.GetID(), tableName)
-	if err != nil {
-		return nil, false, errors.WithMessage(err, "cluster GetTable")
-	}
-	if exists {
-		c.lock.Lock()
-		defer c.lock.Unlock()
-
-		shardID, err := c.getTableShardIDLocked(tablePb.GetId())
-		if err != nil {
-			return nil, false, errors.WithMessage(err, "cluster GetTable")
-		}
-		table = c.updateTableCacheLocked(shardID, schema, tablePb)
-		return table, true, nil
-	}
-
-	return nil, false, nil
-}
-
 // GetShardByID return immutable `Shard`.
 func (c *Cluster) GetShardByID(id uint32) (*Shard, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
+	return c.getShardByIDLocked(id)
+}
+
+// GetShardByID return immutable `Shard`.
+func (c *Cluster) getShardByIDLocked(id uint32) (*Shard, error) {
 	shard, ok := c.shardsCache[id]
 	if !ok {
 		return nil, ErrShardNotFound.WithCausef("cluster GetShardByID, shardID:%s", id)

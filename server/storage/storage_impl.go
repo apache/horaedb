@@ -386,18 +386,18 @@ func (s *metaStorageImpl) ListShardTopologies(ctx context.Context, clusterID uin
 		key := makeShardLatestVersionKey(s.rootPath, clusterID, shardID)
 		version, err := etcdutil.Get(ctx, s.client, key)
 		if err != nil {
-			return nil, errors.WithMessagef(err, "fail to list shard topology latest version, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
+			return nil, errors.WithMessagef(err, "list shard topology latest version, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
 		}
 
 		key = makeShardTopologyKey(s.rootPath, clusterID, shardID, version)
 		value, err := etcdutil.Get(ctx, s.client, key)
 		if err != nil {
-			return nil, errors.WithMessagef(err, "fail to list shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
+			return nil, errors.WithMessagef(err, "list shard topology, clusterID:%d, shardID:%d, key:%s", clusterID, shardID, key)
 		}
 
 		shardTopology := &clusterpb.ShardTopology{}
 		if err = proto.Unmarshal([]byte(value), shardTopology); err != nil {
-			return nil, ErrEncodeShardTopology.WithCausef("fail to encode shard topology, clusterID:%d, shardID:%d, err:%v", clusterID, shardID, err)
+			return nil, ErrEncodeShardTopology.WithCausef("encode shard topology, clusterID:%d, shardID:%d, err:%v", clusterID, shardID, err)
 		}
 		shardTopologies = append(shardTopologies, shardTopology)
 	}
@@ -407,15 +407,15 @@ func (s *metaStorageImpl) ListShardTopologies(ctx context.Context, clusterID uin
 func (s *metaStorageImpl) PutShardTopology(ctx context.Context, clusterID uint32, latestVersion uint64, shardTopology *clusterpb.ShardTopology) error {
 	value, err := proto.Marshal(shardTopology)
 	if err != nil {
-		return ErrDecodeShardTopology.WithCausef("fail to decode shard topology, clusterID:%d, shardID:%d, err:%v", clusterID, shardTopology.ShardId, err)
+		return ErrDecodeShardTopology.WithCausef("decode shard topology, clusterID:%d, shardID:%d, err:%v", clusterID, shardTopology.ShardId, err)
 	}
 
-	key := makeShardTopologyKey(s.rootPath, clusterID, shardTopology.ShardId, fmtID(shardTopology.Version))
+	key := makeShardTopologyKey(s.rootPath, clusterID, shardTopology.ShardId, fmtID(shardTopology.GetVersion()))
 	latestVersionKey := makeShardLatestVersionKey(s.rootPath, clusterID, shardTopology.ShardId)
 
 	// Check whether the latest version is equal to that in etcd. If it is equal，update shard topology and latest version; Otherwise, return an error.
 	latestVersionEquals := clientv3.Compare(clientv3.Value(latestVersionKey), "=", fmtID(latestVersion))
-	opPutLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(shardTopology.Version))
+	opPutLatestVersion := clientv3.OpPut(latestVersionKey, fmtID(shardTopology.GetVersion()))
 	opPutShardTopology := clientv3.OpPut(key, string(value))
 
 	resp, err := s.client.Txn(ctx).
