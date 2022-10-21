@@ -6,11 +6,15 @@ use std::{sync::Arc, time::Instant};
 
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
+use futures::TryStreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use parquet::arrow::{
+    arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
+};
 use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
+use tokio::fs::File;
 
 use crate::{config::SstBenchConfig, util};
 
@@ -22,6 +26,8 @@ pub struct ParquetBench {
     _schema: Schema,
     _predicate: PredicateRef,
     runtime: Arc<Runtime>,
+    is_async: bool,
+    batch_size: usize,
 }
 
 impl ParquetBench {
@@ -49,6 +55,8 @@ impl ParquetBench {
             _schema: schema,
             _predicate: config.predicate.into_predicate(),
             runtime: Arc::new(runtime),
+            is_async: config.is_async,
+            batch_size: config.read_batch_row_num,
         }
     }
 
@@ -68,6 +76,14 @@ impl ParquetBench {
     }
 
     pub fn run_bench(&self) {
+        if self.is_async {
+            return self.run_async_bench();
+        }
+
+        self.run_sync_bench()
+    }
+
+    pub fn run_sync_bench(&self) {
         let sst_path = Path::from(self.sst_file_name.clone());
 
         self.runtime.block_on(async {
@@ -94,7 +110,46 @@ impl ParquetBench {
             }
 
             info!(
-                "\nParquetBench total rows of sst:{}, total batch num:{},
+                "\nParquetBench Sync total rows of sst:{}, total batch num:{},
+                open cost:{:?}, filter cost:{:?}, iter cost:{:?}",
+                total_rows,
+                batch_num,
+                open_cost,
+                filter_cost,
+                iter_begin_instant.elapsed(),
+            );
+        });
+    }
+
+    pub fn run_async_bench(&self) {
+        self.runtime.block_on(async {
+            let open_instant = Instant::now();
+            let file = File::open(&self.sst_file_name)
+                .await
+                .expect("failed to open file");
+
+            let open_cost = open_instant.elapsed();
+
+            let filter_begin_instant = Instant::now();
+            let stream = ParquetRecordBatchStreamBuilder::new(file)
+                .await
+                .unwrap()
+                .with_batch_size(self.batch_size)
+                .build()
+                .unwrap();
+            let filter_cost = filter_begin_instant.elapsed();
+
+            let mut total_rows = 0;
+            let mut batch_num = 0;
+            let iter_begin_instant = Instant::now();
+            for record_batch in stream.try_collect::<Vec<_>>().await.unwrap() {
+                let num_rows = record_batch.num_rows();
+                total_rows += num_rows;
+                batch_num += 1;
+            }
+
+            info!(
+                "\nParquetBench Async total rows of sst:{}, total batch num:{},
                 open cost:{:?}, filter cost:{:?}, iter cost:{:?}",
                 total_rows,
                 batch_num,
