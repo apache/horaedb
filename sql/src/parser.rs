@@ -16,7 +16,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
     AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, ShowTables, Statement
+    ShowCreate, ShowCreateObject, ShowTables, Statement,
 };
 
 define_result!(ParserError);

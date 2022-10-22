@@ -101,7 +101,7 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names= match plan.if_fuzzy {
+        let tables_names = match plan.if_fuzzy {
             true => schema
                 .all_tables()
                 .context(FetchTables)?
