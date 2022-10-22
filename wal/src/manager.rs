@@ -337,6 +337,7 @@ impl BatchLogIteratorAdapter {
                             .map_err(|e| Box::new(e) as _)
                             .context(manager::Decoding)?;
                         let log_entry = LogEntry {
+                            location: raw_log_entry.location,
                             sequence: raw_log_entry.sequence,
                             payload,
                         };
@@ -374,6 +375,7 @@ impl BatchLogIteratorAdapter {
                     .map_err(|e| Box::new(e) as _)
                     .context(manager::Decoding)?;
                 let log_entry = LogEntry {
+                    location: raw_log_entry.location,
                     sequence: raw_log_entry.sequence,
                     payload,
                 };
@@ -416,6 +418,7 @@ mod tests {
     use std::{collections::VecDeque, sync::Arc};
 
     use async_trait::async_trait;
+    use common_types::table::Location;
     use common_util::runtime::{self, Runtime};
 
     use super::{AsyncLogIterator, BatchLogIteratorAdapter, SyncLogIterator};
@@ -437,6 +440,7 @@ mod tests {
             }
 
             let log_entry = LogEntry {
+                location: Location::default(),
                 sequence: 0,
                 payload: self.test_logs[self.cursor].as_slice(),
             };
@@ -456,6 +460,7 @@ mod tests {
             }
 
             let log_entry = LogEntry {
+                location: Location::default(),
                 sequence: 0,
                 payload: self.test_logs[self.cursor].as_slice(),
             };

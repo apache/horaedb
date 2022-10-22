@@ -588,7 +588,10 @@ impl SyncLogIterator for RocksLogIterator {
                 .decode_value(self.iter.value())
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
+
+            // FIXME: meaningful location should be set and returned.
             let log_entry = LogEntry {
+                location: Location::default(),
                 sequence: curr_log_key.1,
                 payload,
             };

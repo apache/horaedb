@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use common_types::bytes::BytesMut;
+use common_types::{bytes::BytesMut, table::Location};
 use common_util::{define_result, runtime::Runtime};
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -703,7 +703,9 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             .map_err(|e| Box::new(e) as _)
             .context(manager::Read)?;
 
+        // FIXME: meaningful location should be set and return.
         let log_entry = LogEntry {
+            location: Location::default(),
             sequence: self.current_log_key.1,
             payload: self.previous_value.as_slice(),
         };

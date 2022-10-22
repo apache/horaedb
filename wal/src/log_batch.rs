@@ -21,6 +21,7 @@ pub trait Payload: Send + Sync + Debug {
 
 #[derive(Debug)]
 pub struct LogEntry<P> {
+    pub location: Location,
     pub sequence: SequenceNumber,
     pub payload: P,
 }
