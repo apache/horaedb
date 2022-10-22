@@ -1,0 +1,28 @@
+[package]
+name = "message_queue"
+version = "0.1.0"
+
+[package.edition]
+workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common_util = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+snafu = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+log = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+
+[dependencies.rskafka]
+git = "https://github.com/influxdata/rskafka.git"
+rev = "00988a564b1db0249d858065fc110476c075efad"
+default-features = false
+features = ["compression-gzip", "compression-lz4", "compression-snappy"]
+
+[dev-dependencies]
+uuid = { version = "1.0", features = ["v4"] }
