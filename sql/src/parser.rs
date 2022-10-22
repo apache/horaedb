@@ -16,7 +16,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
     AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, Statement, ShowTables,
+    ShowCreate, ShowCreateObject, ShowTables, Statement
 };
 
 define_result!(ParserError);
@@ -237,7 +237,7 @@ impl<'a> Parser<'a> {
         let (if_fuzzy, fuzzy_target) = match self.parser.next_token() {
             Token::Word(w) => match w.keyword {
                 Keyword::LIKE => (true, Some(self.parser.next_token().to_string())),
-                _ => (false, None)
+                _ => (false, None),
             },
             _ => (false, None),
         };

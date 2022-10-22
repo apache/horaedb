@@ -101,21 +101,23 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names =  match plan.if_fuzzy {
+        let tables_names= match plan.if_fuzzy {
             true => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
-                .filter(|t| t.name().contains::<&str>(plan.fuzzy_target.as_ref().unwrap().as_ref()))
+                .filter(|t| {
+                    t.name()
+                        .contains::<&str>(plan.fuzzy_target.as_ref().unwrap().as_ref())
+                })
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
-            false =>
-                schema
-                    .all_tables()
-                    .context(FetchTables)?
-                    .iter()
-                    .map(|t| t.name().to_string())
-                    .collect::<Vec<_>>(),
+            false => schema
+                .all_tables()
+                .context(FetchTables)?
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>(),
         };
         let schema = DataSchema::new(vec![Field::new(
             SHOW_TABLES_COLUMN_SCHEMA,
@@ -125,7 +127,8 @@ impl ShowInterpreter {
         let record_batch = RecordBatch::try_new(
             Arc::new(schema),
             vec![Arc::new(StringArray::from(tables_names))],
-        ).context(CreateRecordBatch)?;
+        )
+        .context(CreateRecordBatch)?;
 
         let record_batch = record_batch.try_into().context(ToCommonRecordType)?;
 
