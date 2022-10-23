@@ -417,58 +417,10 @@ pub type WalManagerRef = Arc<dyn WalManager>;
 mod tests {
     use std::{collections::VecDeque, sync::Arc};
 
-    use async_trait::async_trait;
-    use common_types::table::Location;
     use common_util::runtime::{self, Runtime};
 
-    use super::{AsyncLogIterator, BatchLogIteratorAdapter, SyncLogIterator};
-    use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
-
-    #[derive(Debug, Clone)]
-    struct TestIterator {
-        test_logs: Vec<Vec<u8>>,
-        cursor: usize,
-        terminate: usize,
-    }
-
-    impl SyncLogIterator for TestIterator {
-        fn next_log_entry(
-            &mut self,
-        ) -> super::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
-            if self.cursor == self.terminate {
-                return Ok(None);
-            }
-
-            let log_entry = LogEntry {
-                location: Location::default(),
-                sequence: 0,
-                payload: self.test_logs[self.cursor].as_slice(),
-            };
-            self.cursor += 1;
-
-            Ok(Some(log_entry))
-        }
-    }
-
-    #[async_trait]
-    impl AsyncLogIterator for TestIterator {
-        async fn next_log_entry(
-            &mut self,
-        ) -> super::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
-            if self.cursor == self.terminate {
-                return Ok(None);
-            }
-
-            let log_entry = LogEntry {
-                location: Location::default(),
-                sequence: 0,
-                payload: self.test_logs[self.cursor].as_slice(),
-            };
-            self.cursor += 1;
-
-            Ok(Some(log_entry))
-        }
-    }
+    use super::BatchLogIteratorAdapter;
+    use crate::tests::util::{TestIterator, TestPayloadDecoder};
 
     #[test]
     fn test_iterator_adapting() {

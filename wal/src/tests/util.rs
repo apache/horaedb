@@ -19,8 +19,11 @@ use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
 
 use crate::{
-    log_batch::{LogWriteBatch, Payload, PayloadDecoder},
-    manager::{BatchLogIteratorAdapter, ReadContext, WalManager, WalManagerRef, WriteContext},
+    log_batch::{LogEntry, LogWriteBatch, Payload, PayloadDecoder},
+    manager::{
+        AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, Result, SyncLogIterator,
+        WalManager, WalManagerRef, WriteContext,
+    },
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -212,7 +215,7 @@ impl Payload for TestPayload {
         4
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
+    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> std::result::Result<(), Self::Error> {
         buf.write_u32(self.val).expect("must write");
         Ok(())
     }
@@ -230,8 +233,54 @@ impl PayloadDecoder for TestPayloadDecoder {
     type Error = Error;
     type Target = TestPayload;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
+    fn decode<B: MemBuf>(&self, buf: &mut B) -> std::result::Result<Self::Target, Self::Error> {
         let val = buf.read_u32().expect("should succeed to read u32");
         Ok(TestPayload { val })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TestIterator {
+    pub test_logs: Vec<Vec<u8>>,
+    pub cursor: usize,
+    pub terminate: usize,
+}
+
+impl SyncLogIterator for TestIterator {
+    fn next_log_entry(
+        &mut self,
+    ) -> crate::manager::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
+        if self.cursor == self.terminate {
+            return Ok(None);
+        }
+
+        let log_entry = LogEntry {
+            location: Location::default(),
+            sequence: 0,
+            payload: self.test_logs[self.cursor].as_slice(),
+        };
+        self.cursor += 1;
+
+        Ok(Some(log_entry))
+    }
+}
+
+#[async_trait]
+impl AsyncLogIterator for TestIterator {
+    async fn next_log_entry(
+        &mut self,
+    ) -> crate::manager::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
+        if self.cursor == self.terminate {
+            return Ok(None);
+        }
+
+        let log_entry = LogEntry {
+            location: Location::default(),
+            sequence: 0,
+            payload: self.test_logs[self.cursor].as_slice(),
+        };
+        self.cursor += 1;
+
+        Ok(Some(log_entry))
     }
 }
