@@ -6,6 +6,7 @@ mod kv_encoder;
 pub mod log_batch;
 pub mod manager;
 pub mod rocks_impl;
+pub mod shard_based_impl;
 pub mod table_kv_impl;
 
 #[cfg(any(test, feature = "test"))]
