@@ -59,6 +59,8 @@ macro_rules! handle_request {
                     // considerations.
 
                     let request = request.into_inner();
+                    info!("Receive request from meta, req:{:?}", request);
+
                     [<handle_ $mod_name>](ctx, request).await
                 });
 
@@ -80,6 +82,7 @@ macro_rules! handle_request {
                     }
                 };
 
+                info!("Finish handling request from meta, resp:{:?}", resp);
                 Ok(tonic::Response::new(resp))
             }
         }
