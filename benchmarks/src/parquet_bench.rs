@@ -20,6 +20,7 @@ use crate::{config::SstBenchConfig, util};
 
 pub struct ParquetBench {
     store: ObjectStoreRef,
+    store_path: String,
     pub sst_file_name: String,
     max_projections: usize,
     projection: Vec<usize>,
@@ -32,7 +33,7 @@ pub struct ParquetBench {
 
 impl ParquetBench {
     pub fn new(config: SstBenchConfig) -> Self {
-        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
+        let store = Arc::new(LocalFileSystem::new_with_prefix(&config.store_path).unwrap()) as _;
 
         let runtime = util::new_runtime(config.runtime_thread_num);
 
@@ -49,6 +50,7 @@ impl ParquetBench {
 
         ParquetBench {
             store,
+            store_path: config.store_path,
             sst_file_name: config.sst_file_name,
             max_projections: config.max_projections,
             projection: Vec::new(),
@@ -124,7 +126,7 @@ impl ParquetBench {
     pub fn run_async_bench(&self) {
         self.runtime.block_on(async {
             let open_instant = Instant::now();
-            let file = File::open(&self.sst_file_name)
+            let file = File::open(format!("{}/{}", self.store_path, self.sst_file_name))
                 .await
                 .expect("failed to open file");
 
