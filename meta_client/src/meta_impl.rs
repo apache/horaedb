@@ -219,10 +219,10 @@ impl MetaClient for MetaClientImpl {
         GetNodesResponse::try_from(pb_resp)
     }
 
-    async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
+    async fn send_heartbeat(&self, shard_infos: Vec<ShardInfo>) -> Result<()> {
         let node_info = NodeInfo {
             node_meta_info: self.node_meta_info.clone(),
-            shards_info,
+            shard_infos,
         };
         let pb_req = meta_service::NodeHeartbeatRequest {
             header: Some(self.request_header().into()),

@@ -118,7 +118,7 @@ impl NodeMetaInfo {
 #[derive(Debug, Clone)]
 pub struct NodeInfo {
     pub node_meta_info: NodeMetaInfo,
-    pub shards_info: Vec<ShardInfo>,
+    pub shard_infos: Vec<ShardInfo>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -171,7 +171,7 @@ impl Default for MetaClientConfig {
 impl From<NodeInfo> for meta_service::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
         let shard_infos = node_info
-            .shards_info
+            .shard_infos
             .into_iter()
             .map(meta_service::ShardInfo::from)
             .collect();
@@ -193,7 +193,7 @@ impl From<ShardInfo> for meta_service::ShardInfo {
         Self {
             id: shard_info.id,
             role: role as i32,
-            version: 0,
+            version: shard_info.version,
         }
     }
 }
