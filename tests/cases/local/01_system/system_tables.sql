@@ -25,3 +25,5 @@ WHERE
 
 -- FIXME
 SHOW TABLES `name` LIKE '01_system_table1';
+
+SHOW TABLES LIKE '01%';
