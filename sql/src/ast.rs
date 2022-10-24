@@ -98,7 +98,6 @@ pub struct AlterAddColumn {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ShowTables {
-    pub if_fuzzy: bool,
     pub fuzzy_target: Option<String>,
 }
 

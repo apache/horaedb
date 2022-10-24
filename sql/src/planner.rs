@@ -600,7 +600,6 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
         let plan = ShowTablesPlan {
-            if_fuzzy: show_tables.if_fuzzy,
             fuzzy_target: show_tables.fuzzy_target,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
@@ -1643,9 +1642,7 @@ mod tests {
         let sql = "SHOW TABLES;";
         quick_test(
             sql,
-            r#"Show(
-    ShowTables,
-)"#,
+            r#""Show(\n    ShowTablesPlan(\n        ShowTablesPlan {\n          fuzzy_target: None,\n        },\n    ),\n)""#,
         )
         .unwrap();
     }

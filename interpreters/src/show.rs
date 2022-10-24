@@ -9,6 +9,7 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use regex::Regex;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
@@ -101,18 +102,15 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names = match plan.if_fuzzy {
-            true => schema
+        let tables_names = match plan.fuzzy_target {
+            Some(sc) => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
-                .filter(|t| {
-                    t.name()
-                        .contains::<&str>(plan.fuzzy_target.as_ref().unwrap().as_ref())
-                })
+                .filter(|t| search_str(t.name(), &sc))
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
-            false => schema
+            None => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
@@ -159,6 +157,12 @@ impl ShowInterpreter {
 
         Ok(Output::Records(vec![record_batch]))
     }
+}
+
+fn search_str(str: &str, search_re: &str) -> bool {
+    let regex_str = search_re.replace('_', ".").replace('%', ".*");
+    let re = Regex::new(&regex_str).unwrap();
+    re.is_match(str)
 }
 
 #[async_trait]
