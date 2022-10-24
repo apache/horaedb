@@ -20,13 +20,9 @@ use datafusion::{
     physical_plan::PhysicalExpr,
 };
 use futures::stream::{self, Stream, StreamExt};
-use log::{error, trace};
 use object_store::ObjectStoreRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{
-    predicate::{filter_record_batch::RecordBatchFilter, Predicate},
-    table::TableId,
-};
+use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
@@ -72,15 +68,13 @@ pub enum Error {
     #[snafu(display("Failed to generate datafusion physical expr, err:{}", source))]
     DatafusionExpr { source: DataFusionError },
 
-    #[snafu(display("Failed to select from reord batch, err:{}", source))]
+    #[snafu(display("Failed to select from record batch, err:{}", source))]
     SelectBatchData {
         source: common_types::record_batch::Error,
     },
 }
 
 define_result!(Error);
-
-const REBUILD_FILTERED_RECORD_BATCH_MAGNIFICATION: usize = 2;
 
 // TODO(yingwen): Can we move sequence to RecordBatchWithKey and remove this
 // struct? But what is the sequence after merge?
@@ -107,7 +101,10 @@ pub type SequencedRecordBatchStream = Box<
         + Unpin,
 >;
 
-fn filter_batch(
+/// Filter the `sequenced_record_batch` according to the `predicate` if
+/// necessary. Returns the original batch if only a small proportion of the
+/// batch is filtered out.
+fn maybe_filter_record_batch(
     mut sequenced_record_batch: SequencedRecordBatch,
     predicate: Arc<dyn PhysicalExpr>,
 ) -> Result<Option<SequencedRecordBatch>> {
@@ -125,7 +122,7 @@ fn filter_batch(
 
     sequenced_record_batch
         .record_batch
-        .select_data_v2(selected_rows)
+        .select_data(selected_rows)
         .context(SelectBatchData)?;
 
     sequenced_record_batch
@@ -134,60 +131,6 @@ fn filter_batch(
         .not()
         .then_some(Ok(sequenced_record_batch))
         .transpose()
-}
-
-/// Filter the `sequenced_record_batch` according to the `filter` if necessary.
-/// Returns the original batch if only a small proportion of the batch is
-/// filtered out.
-/// The `selected_rows_buf` is for reuse.
-fn maybe_filter_record_batch(
-    mut sequenced_record_batch: SequencedRecordBatch,
-    filter: &RecordBatchFilter,
-    selected_rows_buf: &mut Vec<bool>,
-) -> Option<SequencedRecordBatch> {
-    if filter.is_empty() {
-        return Some(sequenced_record_batch);
-    }
-
-    // The filter requires the `selected_rows_buf.len() >=
-    // sequenced_record_batch.num_rows()`.
-    selected_rows_buf.resize(sequenced_record_batch.num_rows(), true);
-    let num_selected_rows = filter.filter(
-        &sequenced_record_batch.record_batch,
-        selected_rows_buf.as_mut_slice(),
-    );
-
-    trace!(
-        "filter record batch, selected_rows:{}, origin_rows:{}",
-        num_selected_rows,
-        sequenced_record_batch.num_rows()
-    );
-
-    // No row is selected.
-    if num_selected_rows == 0 {
-        return None;
-    }
-
-    if num_selected_rows
-        > sequenced_record_batch.num_rows() / REBUILD_FILTERED_RECORD_BATCH_MAGNIFICATION
-    {
-        // just use the original record batch because only a small proportion is
-        // filtered out.
-        return Some(sequenced_record_batch);
-    }
-
-    // select the rows according to the filter result.
-    if let Err(e) = sequenced_record_batch
-        .record_batch
-        .select_data(selected_rows_buf.as_slice())
-    {
-        error!(
-            "Fail to select record batch, data:{:?}, selected_rows:{:?}, err:{}",
-            sequenced_record_batch, selected_rows_buf, e,
-        );
-    }
-
-    Some(sequenced_record_batch)
 }
 
 /// Filter the sequenced record batch stream by applying the `predicate`.
@@ -215,8 +158,7 @@ pub fn filter_stream(
 
         let stream = origin_stream.filter_map(move |sequence_record_batch| {
             let v = match sequence_record_batch {
-                // Ok(v) => maybe_filter_record_batch(v, &filter, &mut select_row_buf).map(Ok),
-                Ok(v) => filter_batch(v, predicate.clone())
+                Ok(v) => maybe_filter_record_batch(v, predicate.clone())
                     .map_err(|e| Box::new(e) as _)
                     .transpose(),
                 Err(e) => Some(Err(e)),
