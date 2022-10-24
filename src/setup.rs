@@ -162,14 +162,15 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
             config.cluster.clone(),
             runtimes.meta_runtime.clone(),
         )
-        .unwrap();
+        .expect("Should succeed in initializing cluster");
         Arc::new(cluster_impl)
     };
 
-    let catalog_manager = Arc::new(volatile::ManagerImpl::new(
-        shard_tables_cache,
-        meta_client.clone(),
-    ));
+    let catalog_manager = Arc::new(
+        volatile::ManagerImpl::init(shard_tables_cache, meta_client.clone())
+            .await
+            .expect("Should succeed in initializing catalog manager"),
+    );
     let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));

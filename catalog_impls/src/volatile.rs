@@ -37,16 +37,19 @@ pub struct ManagerImpl {
 }
 
 impl ManagerImpl {
-    pub fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Self {
+    pub async fn init(
+        shard_tables_cache: ShardTablesCache,
+        meta_client: MetaClientRef,
+    ) -> manager::Result<Self> {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
             shard_tables_cache,
             meta_client,
         };
 
-        manager.maybe_create_default_catalog();
+        manager.maybe_create_default_catalog_and_schema().await?;
 
-        manager
+        Ok(manager)
     }
 }
 
@@ -74,13 +77,36 @@ impl Manager for ManagerImpl {
 }
 
 impl ManagerImpl {
-    fn maybe_create_default_catalog(&mut self) {
+    async fn maybe_create_default_catalog_and_schema(&mut self) -> manager::Result<()> {
         // TODO: we should delegate this operation to the [TableManager].
         // Try to get default catalog, create it if not exists.
-        if self.catalogs.get(consts::DEFAULT_CATALOG).is_none() {
-            // Default catalog is not exists, create and store it.
-            self.create_catalog(consts::DEFAULT_CATALOG.to_string());
+        let default_catalog = match self.catalogs.get(consts::DEFAULT_CATALOG).cloned() {
+            Some(v) => v.clone(),
+            None => {
+                // Default catalog is not exists, create and store it.
+                self.create_catalog(consts::DEFAULT_CATALOG.to_string())
+            }
         };
+
+        let default_schema_exists = default_catalog
+            .schema_by_name(consts::DEFAULT_SCHEMA)
+            .map_err(|e| Box::new(e) as _)
+            .with_context(|| manager::Init {
+                msg: format!("fail to find default schema:{}", consts::DEFAULT_SCHEMA),
+            })?
+            .is_none();
+
+        if !default_schema_exists {
+            default_catalog
+                .create_schema(consts::DEFAULT_SCHEMA)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| manager::Init {
+                    msg: format!("fail to create default schema:{}", consts::DEFAULT_SCHEMA),
+                })?;
+        }
+
+        Ok(())
     }
 
     fn create_catalog(&mut self, catalog_name: String) -> Arc<CatalogImpl> {
@@ -92,7 +118,6 @@ impl ManagerImpl {
         });
 
         self.catalogs.insert(catalog_name, catalog.clone());
-
         catalog
     }
 }

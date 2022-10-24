@@ -9,7 +9,14 @@ use snafu::Snafu;
 use crate::{schema::NameRef, CatalogRef};
 
 #[derive(Debug, Snafu)]
-pub struct Error;
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display("Failed to do initialization, msg:{}, err:{}", msg, source))]
+    Init {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
 
 define_result!(Error);
 
