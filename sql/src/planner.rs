@@ -1642,7 +1642,13 @@ mod tests {
         let sql = "SHOW TABLES;";
         quick_test(
             sql,
-            r#""Show(\n    ShowTablesPlan(\n        ShowTablesPlan {\n          fuzzy_target: None,\n        },\n    ),\n)""#,
+            r#""Show(
+                            ShowTablesPlan(
+                                ShowTablesPlan {
+                                          fuzzy_target: None,
+                                },
+                                ),
+                            )""#,
         )
         .unwrap();
     }
