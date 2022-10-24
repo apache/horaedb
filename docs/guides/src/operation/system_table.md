@@ -3,12 +3,12 @@
 ## Query Table Information
 Like Mysql's `information_schema.tables`, Ceresdb provides `system.public.tables` to save tables information.
 Columns:
-* timestamp([TimeStamp](./xx))
-* catalog([String](./xx))
-* schema([String](./xx))
-* table_name([String](./xx))
-* table_id([Uint64](./xx))
-* engine([String](./xx))
+* timestamp([TimeStamp])
+* catalog([String])
+* schema([String])
+* table_name([String])
+* table_id([Uint64])
+* engine([String])
 
 ### Example
 
