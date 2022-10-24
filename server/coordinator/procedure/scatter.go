@@ -53,11 +53,15 @@ func scatterPrepareCallback(event *fsm.Event) {
 	shardTotal := c.GetClusterShardTotal()
 	minNodeCount := c.GetClusterMinNodeCount()
 
-	// When CeresMeta leader node restarts after the cluster has been initialized, the clusterTopology state is STABLE which is not an illegal state, that is to say, there is no need to do scatter work.
-	// Just print some warning log and return, do not cancel event
-	if !(c.GetClusterState() == clusterpb.ClusterTopology_EMPTY) {
-		log.Warn("cluster topology state is not empty")
-		return
+	// If cluster topology state equal to STABLE, it means cluster has been created and need to be rebuilt.
+	if c.GetClusterState() == clusterpb.ClusterTopology_STABLE {
+		// Try to rebuild cluster topology by metadata.
+		err := reopenShards(ctx, c, request.dispatch)
+		// If rebuild topology failed, cancel event.
+		if err != nil {
+			cancelEventWithLog(event, err, "reopen shards failed")
+			return
+		}
 	}
 
 	nodeList := make([]*clusterpb.Node, 0, len(nodeCache))
@@ -98,8 +102,9 @@ func scatterPrepareCallback(event *fsm.Event) {
 	for _, shard := range shards {
 		openShardRequest := &eventdispatch.OpenShardRequest{
 			Shard: &cluster.ShardInfo{
-				ID:   shard.GetId(),
-				Role: clusterpb.ShardRole_LEADER,
+				ID:      shard.GetId(),
+				Role:    clusterpb.ShardRole_LEADER,
+				Version: 0,
 			},
 		}
 		if err := request.dispatch.OpenShard(ctx, shard.Node, openShardRequest); err != nil {
@@ -249,4 +254,20 @@ func (p *ScatterProcedure) updateStateWithLock(state State) {
 	p.lock.Lock()
 	p.state = state
 	p.lock.Unlock()
+}
+
+func reopenShards(ctx context.Context, c *cluster.Cluster, dispatch eventdispatch.Dispatch) error {
+	nodeShardsResult, err := c.GetNodeShards(ctx)
+	if err != nil {
+		return errors.WithMessage(err, "get cluster node shards result failed")
+	}
+	for _, nodeShard := range nodeShardsResult.NodeShards {
+		err := dispatch.OpenShard(ctx, nodeShard.Endpoint, &eventdispatch.OpenShardRequest{
+			Shard: &cluster.ShardInfo{ID: nodeShard.ShardInfo.ID, Role: nodeShard.ShardInfo.Role, Version: nodeShard.ShardInfo.Version},
+		})
+		if err != nil {
+			return errors.WithMessage(err, "open shard failed")
+		}
+	}
+	return nil
 }
