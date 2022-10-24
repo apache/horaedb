@@ -6,7 +6,7 @@ pub mod kafka;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use std::{collections::BTreeMap, result::Result};
+use std::{collections::BTreeMap, fmt::Display, result::Result};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -20,12 +20,25 @@ pub trait MessageQueue: Send + Sync + 'static {
     type ConsumeIterator: ConsumeIterator + Send;
 
     async fn create_topic_if_not_exist(&self, topic_name: &str) -> Result<(), Self::Error>;
+
+    async fn fetch_offset(
+        &self,
+        topic_name: &str,
+        offset_type: OffsetType,
+    ) -> Result<Offset, Self::Error>;
+
     async fn produce(
         &self,
         topic_name: &str,
         messages: Vec<Message>,
     ) -> Result<Vec<Offset>, Self::Error>;
-    async fn consume_all(&self, topic_name: &str) -> Result<Self::ConsumeIterator, Self::Error>;
+
+    async fn consume(
+        &self,
+        topic_name: &str,
+        start_offset: StartOffset,
+    ) -> Result<Self::ConsumeIterator, Self::Error>;
+
     async fn delete_up_to(&self, topic_name: &str, offset: Offset) -> Result<(), Self::Error>;
     // TODO: should design a stream consume method for slave node to fetch wals.
 }
@@ -50,5 +63,40 @@ pub struct MessageAndOffset {
 pub trait ConsumeIterator {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    async fn next_message(&mut self) -> Option<Result<MessageAndOffset, Self::Error>>;
+    async fn next_message(&mut self) -> Result<(MessageAndOffset, Offset), Self::Error>;
+}
+
+/// At which position shall the stream start.
+#[derive(Debug, Clone, Copy)]
+pub enum StartOffset {
+    /// At the earliest known offset.
+    ///
+    /// This might be larger than 0 if some records were already deleted due to
+    /// a retention policy or delete operations.
+    Earliest,
+
+    /// At the latest known offset.
+    ///
+    /// This is helpful if you only want to process new data.
+    Latest,
+
+    /// At a specific offset.
+    ///
+    /// Note that specifying an offset that is unknown will result in the error.
+    At(Offset),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OffsetType {
+    EarliestOffset,
+    HighWaterMark,
+}
+
+impl Display for OffsetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OffsetType::EarliestOffset => f.write_str("earliest_offset"),
+            OffsetType::HighWaterMark => f.write_str("high_watermark"),
+        }
+    }
 }
