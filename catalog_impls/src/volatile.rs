@@ -78,7 +78,6 @@ impl Manager for ManagerImpl {
 
 impl ManagerImpl {
     async fn maybe_create_default_catalog_and_schema(&mut self) -> manager::Result<()> {
-        // TODO: we should delegate this operation to the [TableManager].
         // Try to get default catalog, create it if not exists.
         let default_catalog = match self.catalogs.get(consts::DEFAULT_CATALOG).cloned() {
             Some(v) => v.clone(),
@@ -88,6 +87,7 @@ impl ManagerImpl {
             }
         };
 
+        // Try to create default catalog if it does not exist.
         let default_schema_exists = default_catalog
             .schema_by_name(consts::DEFAULT_SCHEMA)
             .map_err(|e| Box::new(e) as _)
