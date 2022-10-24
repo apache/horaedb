@@ -1636,20 +1636,18 @@ mod tests {
         )
         .unwrap();
     }
-
     #[test]
     fn test_show_tables_statement_to_plan() {
         let sql = "SHOW TABLES;";
         quick_test(
             sql,
-            r#""Show(
-                            ShowTablesPlan(
-                                ShowTablesPlan {
-                                          fuzzy_target: None,
-                                },
-                                ),
-                            )""#,
-        )
+            r#"Show(
+    ShowTablesPlan(
+        ShowTablesPlan {
+            fuzzy_target: None,
+        },
+    ),
+)""#, )
         .unwrap();
     }
 
