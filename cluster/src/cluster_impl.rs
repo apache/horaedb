@@ -186,12 +186,21 @@ impl Inner {
             msg: "missing shard info in the request",
         })?;
 
-        if self.shard_tables_cache.contains(shard_info.id) {
-            OpenShard {
-                shard_id: shard_info.id,
-                msg: "shard is already opened",
+        if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
+            if tables_of_shard.shard_info.version == shard_info.version {
+                info!(
+                    "No need to open the exactly same shard again, shard_info:{:?}",
+                    shard_info
+                );
+                return Ok(tables_of_shard);
             }
-            .fail()?;
+            ensure!(
+                tables_of_shard.shard_info.version < shard_info.version,
+                OpenShard {
+                    shard_id: shard_info.id,
+                    msg: format!("open a shard with a smaller version, curr_shard_info:{:?}, new_shard_info:{:?}", tables_of_shard.shard_info, shard_info),
+                }
+            );
         }
 
         let req = GetTablesOfShardsRequest {
