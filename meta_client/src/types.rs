@@ -14,6 +14,7 @@ use snafu::OptionExt;
 use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
 
 pub type ShardId = u32;
+pub type ShardVersion = u64;
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]
@@ -124,7 +125,7 @@ pub struct NodeInfo {
 pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
-    pub version: u64,
+    pub version: ShardVersion,
 }
 
 impl ShardInfo {

@@ -4,9 +4,9 @@
 
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
 
-use crate::{
-    error::Result,
-    grpc::{self, HandlerContext},
+use crate::grpc::storage_service::{
+    error::{self, Result},
+    HandlerContext,
 };
 
 pub async fn handle_route<Q>(
@@ -16,7 +16,7 @@ pub async fn handle_route<Q>(
     let routes = ctx.router.route(ctx.tenant(), req).await?;
 
     let resp = RouteResponse {
-        header: Some(grpc::build_ok_header()),
+        header: Some(error::build_ok_header()),
         routes,
     };
 

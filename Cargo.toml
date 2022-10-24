@@ -1,12 +1,14 @@
 [package]
 name = "ceresdb"
-version = "0.1.0"
+version = "0.4.0-alpha"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.package]
+version = "0.4.0-alpha"
+authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 [workspace]
@@ -29,6 +31,7 @@ members = [
     "components/skiplist",
     "components/table_kv",
     "components/tracing_util",
+    "components/message_queue",
     "df_operator",
     "interpreters",
     "meta_client",
@@ -96,6 +99,7 @@ tracing_util = { path = "components/tracing_util" }
 tonic = "0.8.1"
 tokio = { version = "1.0", features = ["full"] }
 wal = { path = "wal" }
+message_queue = { path = "components/message_queue" }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
@@ -125,14 +129,27 @@ server = { workspace = true }
 signal-hook = "0.3"
 table_engine = { workspace = true }
 tracing_util = { workspace = true }
+interpreters = { workspace = true }
 
 [build-dependencies]
 vergen = { version = "5", default-features = false, features = ["build", "git"] }
 
-[profile.release]
-debug = true
-opt-level = 2
-overflow-checks = true
-
 [profile.bench]
 debug = true
+
+# This profile optimizes for runtime performance and small binary size at the expense of longer
+# build times. It's most suitable for final release builds.
+[profile.release]
+debug = true
+opt-level = "z"
+lto = true
+overflow-checks = true
+
+# This profile optimizes for short build times at the expense of larger binary size and slower
+# runtime performance. It's most suitable for development iterations.
+[profile.quick-release]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+incremental = true

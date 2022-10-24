@@ -25,7 +25,7 @@ Timestamp(Timestamp(1651737067001)),Int64(-6317898613073581291),String(StringByt
 
 CREATE TABLE "DeMo"("nAmE" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE \"DeMo\"(\"nAmE\" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: \"DeMo\"" })
+Failed to execute query, err: Server(ServerError { code: 400, msg: "failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE \"DeMo\"(\"nAmE\" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: \"DeMo\"" })
 
 SELECT "name" FROM demo;
 

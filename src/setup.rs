@@ -13,6 +13,7 @@ use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl
 use cluster::{cluster_impl::ClusterImpl, shard_tables_cache::ShardTablesCache};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
+use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
 use meta_client::meta_impl;
@@ -165,12 +166,16 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         Arc::new(cluster_impl)
     };
 
-    let catalog_manager = Arc::new(volatile::ManagerImpl::new(shard_tables_cache, meta_client));
-
+    let catalog_manager = Arc::new(volatile::ManagerImpl::new(
+        shard_tables_cache,
+        meta_client.clone(),
+    ));
+    let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
     builder
         .catalog_manager(catalog_manager)
+        .table_manipulator(table_manipulator)
         .cluster(cluster)
         .router(router)
         .schema_config_provider(schema_config_provider)
@@ -188,6 +193,9 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
+    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
+        catalog_manager.clone(),
+    ));
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -207,6 +215,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
 
     builder
         .catalog_manager(catalog_manager)
+        .table_manipulator(table_manipulator)
         .router(router)
         .schema_config_provider(schema_config_provider)
 }

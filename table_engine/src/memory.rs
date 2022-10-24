@@ -219,7 +219,7 @@ fn row_group_to_record_batch(
             .index_of(&column.name)
             .with_context(|| ErrNoSource {
                 msg: format!(
-                    "Failed to convert RowGroup to RecordBatch, column not found, column:{}",
+                    "failed to convert RowGroup to RecordBatch, column not found, column:{}",
                     &column.name
                 ),
             })?;
@@ -231,7 +231,7 @@ fn row_group_to_record_batch(
     RecordBatch::new(record_schema.clone(), column_blocks)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithSource {
-            msg: "Failed to create RecordBatch",
+            msg: "failed to create RecordBatch",
         })
 }
 
@@ -245,7 +245,7 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
             .append(datum.clone())
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithSource {
-                msg: "Append datum",
+                msg: "append datum",
             })?;
     }
     Ok(builder.build())
