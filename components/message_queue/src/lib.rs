@@ -6,7 +6,7 @@ pub mod kafka;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use std::{collections::BTreeMap, result::Result};
+use std::{collections::BTreeMap, fmt::Display, result::Result};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -21,9 +21,11 @@ pub trait MessageQueue: Send + Sync + 'static {
 
     async fn create_topic_if_not_exist(&self, topic_name: &str) -> Result<(), Self::Error>;
 
-    async fn get_earliest_offset(&self, topic_name: &str) -> Result<Offset, Self::Error>;
-
-    async fn get_high_watermark(&self, topic_name: &str) -> Result<Offset, Self::Error>;
+    async fn fetch_offset(
+        &self,
+        topic_name: &str,
+        offset_type: OffsetType,
+    ) -> Result<Offset, Self::Error>;
 
     async fn produce(
         &self,
@@ -67,21 +69,34 @@ pub trait ConsumeIterator {
 /// At which position shall the stream start.
 #[derive(Debug, Clone, Copy)]
 pub enum StartOffset {
-    /// At the earlist known offset.
+    /// At the earliest known offset.
     ///
     /// This might be larger than 0 if some records were already deleted due to
-    /// a retention policy or delete records.
+    /// a retention policy or delete operations.
     Earliest,
 
     /// At the latest known offset.
     ///
-    /// This is helpful if you only want ot process new data.
+    /// This is helpful if you only want to process new data.
     Latest,
 
     /// At a specific offset.
     ///
-    /// NOTICE: if the setting start offset smaller than the earliest
-    /// offset in topic('s partition), it will be reset to the earliest
-    /// offset automatically.
+    /// Note that specifying an offset that is unknown will result in the error.
     At(Offset),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OffsetType {
+    EarliestOffset,
+    HighWaterMark,
+}
+
+impl Display for OffsetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OffsetType::EarliestOffset => f.write_str("earliest_offset"),
+            OffsetType::HighWaterMark => f.write_str("high_watermark"),
+        }
+    }
 }

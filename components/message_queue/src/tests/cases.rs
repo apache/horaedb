@@ -9,7 +9,7 @@ use tokio::time::timeout;
 use crate::{
     kafka::{config::Config, kafka_impl::KafkaImpl},
     tests::util::{generate_test_data, random_topic_name},
-    ConsumeIterator, Message, MessageQueue, StartOffset,
+    ConsumeIterator, Message, MessageQueue, OffsetType, StartOffset,
 };
 
 #[tokio::test]
@@ -92,7 +92,10 @@ async fn consume_all_and_compare<T: MessageQueue>(
     let iter = message_queue
         .consume(topic_name, StartOffset::Earliest)
         .await;
-    let high_watermark = message_queue.get_high_watermark(topic_name).await.unwrap();
+    let high_watermark = message_queue
+        .fetch_offset(topic_name, OffsetType::HighWaterMark)
+        .await
+        .unwrap();
     assert!(iter.is_ok());
     let mut iter = iter.unwrap();
     let mut offset = start_offset;
@@ -143,10 +146,13 @@ async fn test_consume_fetch_offset<T: MessageQueue>(message_queue: &T) {
     // At the beginning, the topic's partition is empty, earliest offset and high
     // watermark should be zero.
     let earliest_offset = message_queue
-        .get_earliest_offset(&topic_name)
+        .fetch_offset(&topic_name, OffsetType::EarliestOffset)
         .await
         .unwrap();
-    let high_watermark = message_queue.get_high_watermark(&topic_name).await.unwrap();
+    let high_watermark = message_queue
+        .fetch_offset(&topic_name, OffsetType::HighWaterMark)
+        .await
+        .unwrap();
     assert_eq!(earliest_offset, 0);
     assert_eq!(high_watermark, 0);
 
@@ -158,10 +164,13 @@ async fn test_consume_fetch_offset<T: MessageQueue>(message_queue: &T) {
         .await
         .is_ok());
     let earliest_offset = message_queue
-        .get_earliest_offset(&topic_name)
+        .fetch_offset(&topic_name, OffsetType::EarliestOffset)
         .await
         .unwrap();
-    let high_watermark = message_queue.get_high_watermark(&topic_name).await.unwrap();
+    let high_watermark = message_queue
+        .fetch_offset(&topic_name, OffsetType::HighWaterMark)
+        .await
+        .unwrap();
     assert_eq!(earliest_offset, 0);
     assert_eq!(high_watermark, 10);
 
@@ -169,10 +178,13 @@ async fn test_consume_fetch_offset<T: MessageQueue>(message_queue: &T) {
     // which is deleted to.
     assert!(message_queue.delete_up_to(&topic_name, 3).await.is_ok());
     let earliest_offset = message_queue
-        .get_earliest_offset(&topic_name)
+        .fetch_offset(&topic_name, OffsetType::EarliestOffset)
         .await
         .unwrap();
-    let high_watermark = message_queue.get_high_watermark(&topic_name).await.unwrap();
+    let high_watermark = message_queue
+        .fetch_offset(&topic_name, OffsetType::HighWaterMark)
+        .await
+        .unwrap();
     assert_eq!(earliest_offset, 3);
     assert_eq!(high_watermark, 10);
 }

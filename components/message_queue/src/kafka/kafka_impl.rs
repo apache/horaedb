@@ -23,7 +23,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     kafka::config::{Config, ConsumerConfig},
-    ConsumeIterator, Message, MessageAndOffset, MessageQueue, Offset, StartOffset,
+    ConsumeIterator, Message, MessageAndOffset, MessageQueue, Offset, OffsetType, StartOffset,
 };
 
 /// The topic (with just one partition) client for Kafka
@@ -107,21 +107,6 @@ impl Display for ConsumeWhen {
         match self {
             ConsumeWhen::Start => f.write_str("start"),
             ConsumeWhen::PollStream => f.write_str("poll_stream"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum OffsetType {
-    EarliestOffset,
-    HighWaterMark,
-}
-
-impl Display for OffsetType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OffsetType::EarliestOffset => f.write_str("earliest_offset"),
-            OffsetType::HighWaterMark => f.write_str("high_watermark"),
         }
     }
 }
@@ -253,39 +238,21 @@ impl MessageQueue for KafkaImpl {
             })?)
     }
 
-    async fn get_earliest_offset(&self, topic_name: &str) -> Result<Offset> {
+    async fn fetch_offset(&self, topic_name: &str, offset_type: OffsetType) -> Result<Offset> {
         let topic_client =
             self.get_or_create_topic_client(topic_name)
                 .await
                 .context(FetchOffset {
                     topic_name: topic_name.to_string(),
-                    offset_type: OffsetType::EarliestOffset,
+                    offset_type,
                 })?;
 
         topic_client
-            .get_offset(OffsetAt::Earliest)
+            .get_offset(offset_type.into())
             .await
             .context(FetchOffset {
                 topic_name: topic_name.to_string(),
-                offset_type: OffsetType::EarliestOffset,
-            })
-    }
-
-    async fn get_high_watermark(&self, topic_name: &str) -> Result<Offset> {
-        let topic_client =
-            self.get_or_create_topic_client(topic_name)
-                .await
-                .context(FetchOffset {
-                    topic_name: topic_name.to_string(),
-                    offset_type: OffsetType::HighWaterMark,
-                })?;
-
-        topic_client
-            .get_offset(OffsetAt::Latest)
-            .await
-            .context(FetchOffset {
-                topic_name: topic_name.to_string(),
-                offset_type: OffsetType::HighWaterMark,
+                offset_type,
             })
     }
 
@@ -433,6 +400,15 @@ impl From<StartOffset> for KafkaStartOffset {
             StartOffset::Earliest => KafkaStartOffset::Earliest,
             StartOffset::Latest => KafkaStartOffset::Latest,
             StartOffset::At(offset) => KafkaStartOffset::At(offset),
+        }
+    }
+}
+
+impl From<OffsetType> for OffsetAt {
+    fn from(offset_type: OffsetType) -> Self {
+        match offset_type {
+            OffsetType::EarliestOffset => OffsetAt::Earliest,
+            OffsetType::HighWaterMark => OffsetAt::Latest,
         }
     }
 }
