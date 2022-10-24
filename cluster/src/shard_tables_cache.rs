@@ -41,9 +41,9 @@ impl ShardTablesCache {
         self.inner.read().unwrap().all_shard_infos()
     }
 
-    // Check whether the cache contains the shard.
-    pub fn contains(&self, shard_id: ShardId) -> bool {
-        self.inner.read().unwrap().contains(shard_id)
+    // Get the shard by its id.
+    pub fn get(&self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.inner.read().unwrap().get(shard_id)
     }
 
     /// Remove the shard.
@@ -144,8 +144,8 @@ impl Inner {
             .collect()
     }
 
-    fn contains(&self, shard_id: ShardId) -> bool {
-        self.tables_by_shard.contains_key(&shard_id)
+    fn get(&self, shard_id: ShardId) -> Option<TablesOfShard> {
+        self.tables_by_shard.get(&shard_id).cloned()
     }
 
     fn remove(&mut self, shard_id: ShardId) -> Option<TablesOfShard> {
