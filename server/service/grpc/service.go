@@ -253,7 +253,7 @@ func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesReque
 		return ceresmetaClient.GetNodes(ctx, req)
 	}
 
-	nodesResult, err := s.h.GetClusterManager().GetNodes(ctx, req.GetHeader().GetClusterName())
+	nodesResult, err := s.h.GetClusterManager().GetNodeShards(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
 		log.Error("fail to get nodes", zap.Error(err))
 		return &metaservicepb.GetNodesResponse{Header: responseHeader(err, "grpc get nodes")}, nil
@@ -307,7 +307,7 @@ func convertRouteTableResult(routeTablesResult *cluster.RouteTablesResult) *meta
 	}
 }
 
-func convertToGetNodesResponse(nodesResult *cluster.GetNodesResult) *metaservicepb.GetNodesResponse {
+func convertToGetNodesResponse(nodesResult *cluster.GetNodeShardsResult) *metaservicepb.GetNodesResponse {
 	nodeShards := make([]*metaservicepb.NodeShard, 0, len(nodesResult.NodeShards))
 	for _, nodeShard := range nodesResult.NodeShards {
 		nodeShards = append(nodeShards, &metaservicepb.NodeShard{

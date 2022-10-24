@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"net/url"
 
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"google.golang.org/grpc"
@@ -20,12 +19,7 @@ var (
 func GetClientConn(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 	opt := grpc.WithTransportCredentials(insecure.NewCredentials())
 
-	u, err := url.Parse(addr)
-	if err != nil {
-		return nil, ErrParseURL.WithCause(err)
-	}
-
-	cc, err := grpc.DialContext(ctx, u.Host, opt)
+	cc, err := grpc.DialContext(ctx, addr, opt)
 	if err != nil {
 		return nil, ErrGRPCDial.WithCause(err)
 	}

@@ -16,3 +16,7 @@ func (n Node) GetShardIDs() []uint32 {
 func (n Node) GetMeta() *clusterpb.Node {
 	return n.meta
 }
+
+func (n Node) IsAvailable() bool {
+	return n.meta.State == clusterpb.NodeState_ONLINE
+}

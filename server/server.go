@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/config"
@@ -205,7 +206,7 @@ func (srv *Server) watchEtcdLeaderPriority(_ context.Context) {
 	defer srv.bgJobWg.Done()
 }
 
-func (srv *Server) createDefaultCluster(ctx context.Context) {
+func (srv *Server) createDefaultCluster(ctx context.Context) error {
 	leaderResp, err := srv.member.GetLeader(ctx)
 	if err != nil {
 		log.Warn("get leader failed", zap.Error(err))
@@ -213,35 +214,37 @@ func (srv *Server) createDefaultCluster(ctx context.Context) {
 
 	// Create default cluster by the leader.
 	if leaderResp.IsLocal {
-		cluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName, uint32(srv.cfg.DefaultClusterNodeCount), uint32(srv.cfg.DefaultClusterReplicationFactor), uint32(srv.cfg.DefaultClusterShardTotal))
+		defaultCluster, err := srv.clusterManager.CreateCluster(ctx, srv.cfg.DefaultClusterName, uint32(srv.cfg.DefaultClusterNodeCount), uint32(srv.cfg.DefaultClusterReplicationFactor), uint32(srv.cfg.DefaultClusterShardTotal))
 		if err != nil {
 			log.Warn("create default cluster failed", zap.Error(err))
-		} else {
-			log.Info("create default cluster succeed", zap.String("cluster", cluster.Name()))
-		}
-		// Create and submit scatter procedure for default cluster
-		if cluster != nil {
-			shardIDs := make([]uint32, 0)
-			for i := uint32(0); i < cluster.GetClusterShardTotal(); i++ {
-				shardID, err := cluster.AllocShardID(ctx)
+			if coderr.Is(err, cluster.ErrClusterAlreadyExists.Code()) {
+				defaultCluster, err = srv.clusterManager.GetCluster(ctx, srv.cfg.DefaultClusterName)
 				if err != nil {
-					log.Error("alloc shard id failed")
-					return
+					return errors.WithMessage(err, "get default cluster failed")
 				}
-				shardIDs = append(shardIDs, shardID)
 			}
-			scatterRequest := &procedure.ScatterRequest{Cluster: cluster, ShardIDs: shardIDs}
-			scatterProcedure, err := srv.procedureFactory.CreateScatterProcedure(ctx, scatterRequest)
+		} else {
+			log.Info("create default cluster succeed", zap.String("cluster", defaultCluster.Name()))
+		}
+		// Create and submit scatter procedure for default cluster.
+		shardIDs := make([]uint32, 0, defaultCluster.GetClusterShardTotal())
+		for i := uint32(0); i < defaultCluster.GetClusterShardTotal(); i++ {
+			shardID, err := defaultCluster.AllocShardID(ctx)
 			if err != nil {
-				log.Error("create scatter procedure failed")
-				return
+				return errors.WithMessage(err, "alloc shard id failed")
 			}
-			if err := srv.procedureManager.Submit(ctx, scatterProcedure); err != nil {
-				log.Error("submit scatter procedure failed")
-				return
-			}
+			shardIDs = append(shardIDs, shardID)
+		}
+		scatterRequest := &procedure.ScatterRequest{Cluster: defaultCluster, ShardIDs: shardIDs}
+		scatterProcedure, err := srv.procedureFactory.CreateScatterProcedure(ctx, scatterRequest)
+		if err != nil {
+			return errors.WithMessage(err, "create scatter procedure failed")
+		}
+		if err := srv.procedureManager.Submit(ctx, scatterProcedure); err != nil {
+			return errors.WithMessage(err, "submit scatter procedure failed")
 		}
 	}
+	return nil
 }
 
 type leaderWatchContext struct {
@@ -287,7 +290,9 @@ func (c *leadershipEventCallbacks) AfterElected(ctx context.Context) {
 	if err := c.srv.procedureManager.Start(ctx); err != nil {
 		panic(fmt.Sprintf("procedure manager fail to start, err:%v", err))
 	}
-	c.srv.createDefaultCluster(ctx)
+	if err := c.srv.createDefaultCluster(ctx); err != nil {
+		panic(fmt.Sprintf("create default cluster failed, err:%v", err))
+	}
 }
 
 func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
@@ -295,7 +300,7 @@ func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
 		panic(fmt.Sprintf("cluster manager fail to stop, err:%v", err))
 	}
 
-	if err := c.srv.clusterManager.Stop(ctx); err != nil {
+	if err := c.srv.procedureManager.Stop(ctx); err != nil {
 		panic(fmt.Sprintf("procedure manager fail to stop, err:%v", err))
 	}
 }

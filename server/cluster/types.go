@@ -47,7 +47,7 @@ type RouteTablesResult struct {
 	RouteEntries map[string]*RouteEntry
 }
 
-type GetNodesResult struct {
+type GetNodeShardsResult struct {
 	ClusterTopologyVersion uint64
 	NodeShards             []*NodeShard
 }
@@ -66,5 +66,16 @@ func ConvertTableInfoToPB(table *TableInfo) *metaservicepb.TableInfo {
 		Name:       table.Name,
 		SchemaId:   table.SchemaID,
 		SchemaName: table.SchemaName,
+	}
+}
+
+func ConvertNodeToPB(node *Node) *clusterpb.Node {
+	return &clusterpb.Node{
+		Name:                  node.meta.Name,
+		NodeStats:             node.meta.NodeStats,
+		CreateTime:            node.meta.CreateTime,
+		LastTouchTime:         node.meta.LastTouchTime,
+		State:                 node.meta.State,
+		HeartbeatSamplingInfo: node.meta.HeartbeatSamplingInfo,
 	}
 }

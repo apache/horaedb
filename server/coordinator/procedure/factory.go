@@ -25,8 +25,8 @@ type ScatterRequest struct {
 
 type TransferLeaderRequest struct {
 	Cluster   *cluster.Cluster
-	OldLeader clusterpb.Shard
-	NewLeader clusterpb.Shard
+	OldLeader *clusterpb.Shard
+	NewLeader *clusterpb.Shard
 }
 
 type CreateTableRequest struct {
@@ -66,7 +66,7 @@ func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request *Tr
 	if err != nil {
 		return nil, err
 	}
-	procedure := NewTransferLeaderProcedure(f.dispatch, request.Cluster, &request.OldLeader, &request.NewLeader, id)
+	procedure := NewTransferLeaderProcedure(f.dispatch, request.Cluster, request.OldLeader, request.NewLeader, id)
 	return procedure, nil
 }
 

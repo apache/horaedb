@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"path"
 	"sync"
@@ -41,16 +42,25 @@ type Cluster struct {
 	shardIDAlloc  id.Allocator
 }
 
-func (c *Cluster) GetNodesSize() int {
+func (c *Cluster) GetNodes() []*Node {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return len(c.nodesCache)
+
+	nodes := make([]*Node, 0, len(c.nodesCache))
+	for _, node := range c.nodesCache {
+		nodes = append(nodes, &Node{
+			meta:     ConvertNodeToPB(node),
+			shardIDs: node.shardIDs,
+		})
+	}
+	return nodes
 }
 
 func (c *Cluster) GetClusterNodeCache() map[string]*Node {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	newNodes := make(map[string]*Node)
+
+	newNodes := map[string]*Node{}
 	for key, value := range c.nodesCache {
 		newNodes[key] = value
 	}
@@ -60,6 +70,7 @@ func (c *Cluster) GetClusterNodeCache() map[string]*Node {
 func (c *Cluster) GetClusterShardView() ([]*clusterpb.Shard, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	shardView := c.metaData.clusterTopology.ShardView
 	newShardView := make([]*clusterpb.Shard, 0)
 	// TODO: We need to use the general deep copy tool method to replace
@@ -116,18 +127,6 @@ func (c *Cluster) init(ctx context.Context) error {
 	}
 
 	c.metaData.clusterTopology = clusterTopologyPb
-
-	shardTopologies := make([]*clusterpb.ShardTopology, 0, c.metaData.cluster.ShardTotal)
-	for i := uint32(0); i < c.metaData.cluster.ShardTotal; i++ {
-		shardTopologies = append(shardTopologies, &clusterpb.ShardTopology{
-			ShardId:  i,
-			TableIds: make([]uint64, 0),
-			Version:  0,
-		})
-	}
-	if shardTopologies, err := c.storage.CreateShardTopologies(ctx, c.clusterID, shardTopologies); err != nil {
-		return errors.WithMessagef(err, "cluster init shard topolgies, shardTopologies:%v", shardTopologies)
-	}
 	return nil
 }
 
@@ -465,7 +464,7 @@ func (c *Cluster) loadClusterTopologyLocked(ctx context.Context) (map[uint32][]*
 		return nil, nil, ErrClusterTopologyNotFound.WithCausef("cluster:%v", c)
 	}
 
-	shardMap := make(map[uint32][]*clusterpb.Shard)
+	shardMap := map[uint32][]*clusterpb.Shard{}
 	for _, shard := range c.metaData.clusterTopology.ShardView {
 		shardMap[shard.Id] = append(shardMap[shard.Id], shard)
 	}
@@ -484,8 +483,8 @@ func (c *Cluster) loadShardTopologyLocked(ctx context.Context, shardIDs []uint32
 		return nil, errors.WithMessage(err, "cluster loadShardTopologyLocked")
 	}
 	shardTopologyMap := make(map[uint32]*clusterpb.ShardTopology, len(shardIDs))
-	for i, topology := range topologies {
-		shardTopologyMap[shardIDs[i]] = topology
+	for _, topology := range topologies {
+		shardTopologyMap[topology.GetShardId()] = topology
 	}
 	return shardTopologyMap, nil
 }
@@ -630,14 +629,22 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 
 	schema, ok := c.schemasCache[schemaName]
 	if !ok {
-		return nil, ErrSchemaNotFound.WithCausef("schemaName:%s", schemaName)
+		routeEntries := make(map[string]*RouteEntry)
+
+		return &RouteTablesResult{
+			Version:      c.metaData.clusterTopology.Version,
+			RouteEntries: routeEntries,
+		}, nil
 	}
 
 	routeEntries := make(map[string]*RouteEntry, len(tableNames))
 	for _, tableName := range tableNames {
 		table, exists := schema.getTable(tableName)
 		if exists {
-			shard := c.shardsCache[table.GetShardID()]
+			shard, err := c.GetShardByID(table.GetShardID())
+			if err != nil {
+				return nil, errors.WithMessage(err, fmt.Sprintf("shard not found, shardID:%d", table.GetShardID()))
+			}
 
 			nodeShards := make([]*NodeShard, 0, len(shard.nodes))
 			for i, node := range shard.nodes {
@@ -668,7 +675,7 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 	}, nil
 }
 
-func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
+func (c *Cluster) GetNodeShards(_ context.Context) (*GetNodeShardsResult, error) {
 	nodeShards := make([]*NodeShard, 0, len(c.nodesCache))
 
 	c.lock.RLock()
@@ -700,7 +707,7 @@ func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
 		}
 	}
 
-	return &GetNodesResult{
+	return &GetNodeShardsResult{
 		ClusterTopologyVersion: c.metaData.clusterTopology.GetVersion(),
 		NodeShards:             nodeShards,
 	}, nil
@@ -709,24 +716,28 @@ func (c *Cluster) GetNodes(_ context.Context) (*GetNodesResult, error) {
 func (c *Cluster) GetClusterVersion() uint64 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	return c.metaData.clusterTopology.Version
 }
 
 func (c *Cluster) GetClusterMinNodeCount() uint32 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	return c.metaData.cluster.MinNodeCount
 }
 
 func (c *Cluster) GetClusterShardTotal() uint32 {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	return c.metaData.cluster.ShardTotal
 }
 
 func (c *Cluster) GetClusterState() clusterpb.ClusterTopology_ClusterState {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	return c.metaData.clusterTopology.State
 }
 
@@ -743,6 +754,14 @@ func (c *Cluster) UpdateClusterTopology(ctx context.Context, state clusterpb.Clu
 		return err
 	}
 	c.metaData.clusterTopology = clusterTopology
+	return nil
+}
+
+func (c *Cluster) CreateShardTopologies(ctx context.Context, shardTopologies []*clusterpb.ShardTopology) error {
+	_, err := c.storage.CreateShardTopologies(ctx, c.clusterID, shardTopologies)
+	if err != nil {
+		return errors.WithMessage(err, "cluster create shard topologies failed")
+	}
 	return nil
 }
 
@@ -787,4 +806,17 @@ func (c *Cluster) UnlockShardByID(shardID uint32) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	delete(c.shardLock, shardID)
+}
+
+func (c *Cluster) UpdateNodeState(ctx context.Context, node string, state clusterpb.NodeState) error {
+	for _, n := range c.nodesCache {
+		if n.GetMeta().GetName() == node {
+			n.GetMeta().State = state
+			_, err := c.storage.CreateOrUpdateNode(ctx, c.clusterID, n.GetMeta())
+			if err != nil {
+				return errors.WithMessage(err, "update node state failed")
+			}
+		}
+	}
+	return ErrNodeNotFound
 }

@@ -15,8 +15,9 @@ const (
 	Internal           = http.StatusInternalServerError
 
 	// HTTPCodeUpperBound is a bound under which any Code should have the same meaning with the http status code.
-	HTTPCodeUpperBound = Code(1000)
-	PrintHelpUsage     = 1001
+	HTTPCodeUpperBound   = Code(1000)
+	PrintHelpUsage       = 1001
+	ClusterAlreadyExists = 1002
 )
 
 // ToHTTPCode converts the Code to http code.
