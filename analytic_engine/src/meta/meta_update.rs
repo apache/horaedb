@@ -238,7 +238,6 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
     fn try_from(mut src: meta_pb::AddTableMeta) -> Result<Self> {
         let table_schema = src.take_schema();
         let opts = src.take_options();
-
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),

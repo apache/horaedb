@@ -54,6 +54,8 @@ message TableSchema {
     uint32 timestamp_index = 4;
     // Enable auto generated tsid as primary key
     bool enable_tsid_primary_key = 5;
+    // Primary key index
+    repeated uint64 primary_key_index = 6;
 }
 
 // Time range of [start, end)
