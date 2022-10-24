@@ -1,7 +1,7 @@
 # Black list
 
-## Read black list
-If you want to reject to query to a table, you can add table to 'read_reject_list'.
+## Add black list
+If you want to reject query for a table, you can add table name to 'read_reject_list'.
 
 ### Example
 ```
@@ -13,19 +13,49 @@ curl --location --request POST 'http://localhost:5000/reject' \
     "read_reject_list":["my_table"]
 }'
 ```
+### Response
+```json
+{"write_reject_list":[],"read_reject_list":["my_table"]}
+```
 
-## Write black list
+## Set black list
 
-If you want to reject to write to a table, you can add table to 'write_reject_list'
+You can use set operation to clear exist tables and set new tables to 'read_reject_list' like following example.
 
 ### Example
+``` json
+curl --location --request POST 'http://localhost:5000/reject' \
+--header 'Content-Type: application/json' \
+-d '{
+    "operation":"Set",
+    "write_reject_list":[],
+    "read_reject_list":["my_table1","my_table2"]
+}'
+```
 
+### Response
+
+```json
+{"write_reject_list":[],"read_reject_list":["my_table1","my_table2"]}
+```
+
+## Remove black list
+
+You can remove tables from  'read_reject_list' like following example.
+
+### Example
 ```
 curl --location --request POST 'http://localhost:5000/reject' \
 --header 'Content-Type: application/json' \
 -d '{
-    "operation":"Add",
-    "write_reject_list":["my_table"],
-    "read_reject_list":[]
+    "operation":"Remove",
+    "write_reject_list":[],
+    "read_reject_list":["my_table1"]
 }'
+```
+
+### Response
+
+```json
+{"write_reject_list":[],"read_reject_list":["my_table2"]}
 ```
