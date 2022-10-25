@@ -49,15 +49,8 @@ func scatterPrepareCallback(event *fsm.Event) {
 
 	waitForNodesReady(c)
 
-	// If cluster topology state equal to STABLE, it means cluster has been created and need to be rebuilt.
 	if c.GetClusterState() == clusterpb.ClusterTopology_STABLE {
-		// Try to rebuild cluster topology by metadata.
-		err := reopenShards(ctx, c, request.dispatch)
-		// If rebuild topology failed, cancel event.
-		if err != nil {
-			cancelEventWithLog(event, err, "reopen shards failed")
-			return
-		}
+		return
 	}
 
 	registeredNodes := c.GetRegisteredNodes()
@@ -254,20 +247,4 @@ func (p *ScatterProcedure) updateStateWithLock(state State) {
 	p.lock.Lock()
 	p.state = state
 	p.lock.Unlock()
-}
-
-func reopenShards(ctx context.Context, c *cluster.Cluster, dispatch eventdispatch.Dispatch) error {
-	nodeShardsResult, err := c.GetNodeShards(ctx)
-	if err != nil {
-		return errors.WithMessage(err, "get cluster node shards result failed")
-	}
-	for _, nodeShard := range nodeShardsResult.NodeShards {
-		err := dispatch.OpenShard(ctx, nodeShard.Endpoint, &eventdispatch.OpenShardRequest{
-			Shard: &cluster.ShardInfo{ID: nodeShard.ShardInfo.ID, Role: nodeShard.ShardInfo.Role, Version: nodeShard.ShardInfo.Version},
-		})
-		if err != nil {
-			return errors.WithMessage(err, "open shard failed")
-		}
-	}
-	return nil
 }

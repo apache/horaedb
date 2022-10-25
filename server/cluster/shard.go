@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	MinShardID = 1
+	MinShardID = 0
 )
 
 type Shard struct {

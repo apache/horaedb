@@ -2,7 +2,9 @@
 
 package cluster
 
-import "github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+import (
+	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+)
 
 type RegisteredNode struct {
 	meta       *clusterpb.Node
@@ -26,4 +28,8 @@ func (n *RegisteredNode) GetMeta() *clusterpb.Node {
 
 func (n *RegisteredNode) IsOnline() bool {
 	return n.meta.State == clusterpb.NodeState_ONLINE
+}
+
+func (n RegisteredNode) IsExpired(now uint64, aliveThreshold uint64) bool {
+	return now >= aliveThreshold+n.GetMeta().LastTouchTime
 }

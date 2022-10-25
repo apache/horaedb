@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
@@ -25,6 +26,11 @@ import (
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+)
+
+const (
+	defaultProcedurePrefixKey = "procedure"
+	defaultAllocStep          = 5
 )
 
 type Server struct {
@@ -40,6 +46,8 @@ type Server struct {
 	procedureFactory *procedure.Factory
 	// procedureManager process procedure for all cluster.
 	procedureManager procedure.Manager
+	// scheduler schedule procedure for all cluster.
+	scheduler *coordinator.Scheduler
 
 	// member describes membership in ceresmeta cluster.
 	member  *member.Member
@@ -163,8 +171,10 @@ func (srv *Server) startServer(_ context.Context) error {
 		return errors.WithMessage(err, "start server")
 	}
 	srv.procedureManager = procedureManager
-	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, "procedure", 5), eventdispatch.NewDispatchImpl())
+	dispatch := eventdispatch.NewDispatchImpl()
+	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch)
 	srv.procedureFactory = procedureFactory
+	srv.scheduler = coordinator.NewScheduler(manager, procedureManager, procedureFactory, dispatch)
 
 	log.Info("server started")
 	return nil
@@ -293,6 +303,9 @@ func (c *leadershipEventCallbacks) AfterElected(ctx context.Context) {
 	if err := c.srv.createDefaultCluster(ctx); err != nil {
 		panic(fmt.Sprintf("create default cluster failed, err:%v", err))
 	}
+	if err := c.srv.scheduler.Start(ctx); err != nil {
+		panic(fmt.Sprintf("procedure scheduler fail to start, err:%v", err))
+	}
 }
 
 func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
@@ -302,5 +315,8 @@ func (c *leadershipEventCallbacks) BeforeTransfer(ctx context.Context) {
 
 	if err := c.srv.procedureManager.Stop(ctx); err != nil {
 		panic(fmt.Sprintf("procedure manager fail to stop, err:%v", err))
+	}
+	if err := c.srv.scheduler.Stop(ctx); err != nil {
+		panic(fmt.Sprintf("procedure scheduler fail to stop, err:%v", err))
 	}
 }
