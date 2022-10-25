@@ -1647,7 +1647,7 @@ mod tests {
             fuzzy_target: None,
         },
     ),
-)""#,
+)"#,
         )
         .unwrap();
     }
