@@ -14,6 +14,10 @@ func (s *Schema) GetID() uint32 {
 	return s.meta.GetId()
 }
 
+func (s *Schema) GetName() string {
+	return s.meta.GetName()
+}
+
 func (s *Schema) getTable(tableName string) (*Table, bool) {
 	table, ok := s.tableMap[tableName]
 	return table, ok

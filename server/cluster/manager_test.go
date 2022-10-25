@@ -101,8 +101,8 @@ func TestManagerSingleThread(t *testing.T) {
 
 	testRouteTables(ctx, re, manager, cluster1, defaultSchema, []string{table1, table2, table3, table4})
 
-	testDropTable(ctx, re, manager, cluster1, defaultSchema, table1, tableID1)
-	testDropTable(ctx, re, manager, cluster1, defaultSchema, table3, tableID3)
+	testDropTable(ctx, re, manager, cluster1, defaultSchema, table1)
+	testDropTable(ctx, re, manager, cluster1, defaultSchema, table3)
 
 	testGetTables(ctx, re, manager, node1, cluster1, 1)
 	testGetTables(ctx, re, manager, node2, cluster1, 1)
@@ -153,7 +153,7 @@ func testCluster(ctx context.Context, re *require.Assertions, manager Manager, c
 
 	testAllocTableIDMultiThread(ctx, re, manager, clusterName, tableID1)
 
-	testDropTable(ctx, re, manager, clusterName, defaultSchema, table1, tableID1)
+	testDropTable(ctx, re, manager, clusterName, defaultSchema, table1)
 
 	testAllocTableIDMultiThread(ctx, re, manager, clusterName, tableID2)
 }
@@ -216,8 +216,8 @@ func testRouteTables(ctx context.Context, re *require.Assertions, manager Manage
 	}
 }
 
-func testDropTable(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, tableName string, tableID uint64) {
-	err := manager.DropTable(ctx, clusterName, schemaName, tableName, tableID)
+func testDropTable(ctx context.Context, re *require.Assertions, manager Manager, clusterName string, schemaName string, tableName string) {
+	err := manager.DropTable(ctx, clusterName, schemaName, tableName)
 	re.NoError(err)
 }
 

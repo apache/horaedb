@@ -46,10 +46,10 @@ func (s *metaStorageImpl) ListClusters(ctx context.Context) ([]*clusterpb.Cluste
 	rangeLimit := s.opts.MaxScanLimit
 
 	clusters := make([]*clusterpb.Cluster, 0)
-	do := func(_ string, value []byte) error {
+	do := func(key string, value []byte) error {
 		cluster := &clusterpb.Cluster{}
 		if err := proto.Unmarshal(value, cluster); err != nil {
-			return ErrEncodeCluster.WithCausef("fail to encode cluster, err:%v", err)
+			return ErrEncodeCluster.WithCausef("fail to encode cluster, key:%s, value:%v, err:%v", key, value, err)
 		}
 
 		clusters = append(clusters, cluster)
@@ -179,10 +179,10 @@ func (s *metaStorageImpl) ListSchemas(ctx context.Context, clusterID uint32) ([]
 	rangeLimit := s.opts.MaxScanLimit
 
 	schemas := make([]*clusterpb.Schema, 0)
-	do := func(_ string, value []byte) error {
+	do := func(key string, value []byte) error {
 		schema := &clusterpb.Schema{}
 		if err := proto.Unmarshal(value, schema); err != nil {
-			return ErrEncodeSchema.WithCausef("fail to encode schema, clusterID:%d, err:%v", clusterID, err)
+			return ErrEncodeSchema.WithCausef("fail to encode schema, key:%s, value:%v, clusterID:%d, err:%v", key, value, clusterID, err)
 		}
 
 		schemas = append(schemas, schema)
@@ -280,7 +280,7 @@ func (s *metaStorageImpl) GetTable(ctx context.Context, clusterID uint32, schema
 
 	table := &clusterpb.Table{}
 	if err = proto.Unmarshal([]byte(value), table); err != nil {
-		return nil, false, ErrEncodeTable.WithCausef("fail to encode table, clusterID:%d, schemaID:%d, tableID:%d, err:%v", clusterID, schemaID, tableID, err)
+		return nil, false, ErrDecodeTable.WithCausef("fail to decode table, clusterID:%d, schemaID:%d, tableID:%d, err:%v", clusterID, schemaID, tableID, err)
 	}
 
 	return table, true, nil
@@ -292,10 +292,10 @@ func (s *metaStorageImpl) ListTables(ctx context.Context, clusterID uint32, sche
 	rangeLimit := s.opts.MaxScanLimit
 
 	tables := make([]*clusterpb.Table, 0)
-	do := func(_ string, value []byte) error {
+	do := func(key string, value []byte) error {
 		table := &clusterpb.Table{}
 		if err := proto.Unmarshal(value, table); err != nil {
-			return ErrEncodeTable.WithCausef("fail to encode table, clusterID:%d, schemaID:%d, err:%v", clusterID, schemaID, err)
+			return ErrDecodeTable.WithCausef("fail to decode table, key:%s, value:%v, clusterID:%d, schemaID:%d, err:%v", key, value, clusterID, schemaID, err)
 		}
 
 		tables = append(tables, table)
@@ -438,10 +438,10 @@ func (s *metaStorageImpl) ListNodes(ctx context.Context, clusterID uint32) ([]*c
 	rangeLimit := s.opts.MaxScanLimit
 
 	nodes := make([]*clusterpb.Node, 0)
-	do := func(_ string, value []byte) error {
+	do := func(key string, value []byte) error {
 		node := &clusterpb.Node{}
 		if err := proto.Unmarshal(value, node); err != nil {
-			return ErrEncodeNode.WithCausef("fail to encode node, clusterID:%d, err:%v", clusterID, err)
+			return ErrEncodeNode.WithCausef("fail to encode node, key:%s, value:%v, clusterID:%d, err:%v", key, value, clusterID, err)
 		}
 
 		nodes = append(nodes, node)

@@ -42,12 +42,18 @@ var (
 
 func createTablePrepareCallback(event *fsm.Event) {
 	req := event.Args[0].(*createTableCallbackRequest)
-	_, exists, err := req.cluster.GetTable(req.ctx, req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
+	table, exists, err := req.cluster.GetTable(req.ctx, req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get table")
 		return
 	}
 	if exists {
+		req.createTableResult = &cluster.CreateTableResult{
+			Table: table,
+			ShardVersionUpdate: &cluster.ShardVersionUpdate{
+				ShardID: table.GetShardID(),
+			},
+		}
 		log.Warn("create an existing table", zap.String("schema", req.sourceReq.GetSchemaName()), zap.String("table", req.sourceReq.GetName()))
 		return
 	}
@@ -73,12 +79,12 @@ func createTablePrepareCallback(event *fsm.Event) {
 	err = req.dispatch.CreateTableOnShard(req.ctx, leader.Node, &eventdispatch.CreateTableOnShardRequest{
 		UpdateShardInfo: &eventdispatch.UpdateShardInfo{
 			CurrShardInfo: &cluster.ShardInfo{
-				ID: createTableResult.ShardID,
+				ID: createTableResult.ShardVersionUpdate.ShardID,
 				// TODO: dispatch CreateTableOnShard to followers?
 				Role:    clusterpb.ShardRole_LEADER,
-				Version: createTableResult.CurrVersion,
+				Version: createTableResult.ShardVersionUpdate.CurrVersion,
 			},
-			PrevVersion: createTableResult.PrevVersion,
+			PrevVersion: createTableResult.ShardVersionUpdate.PrevVersion,
 		},
 		TableInfo: &cluster.TableInfo{
 			ID:         createTableResult.Table.GetID(),
@@ -124,7 +130,7 @@ func createTableFailedCallback(event *fsm.Event) {
 	}
 
 	// Rollback, drop table in ceresmeta.
-	err = req.cluster.DropTable(req.ctx, table.GetSchemaName(), table.GetName(), table.GetID())
+	_, err = req.cluster.DropTable(req.ctx, table.GetSchemaName(), table.GetName())
 	if err != nil {
 		log.Error("drop table failed, get table failed", zap.String("schemaName", table.GetSchemaName()), zap.String("tableName", table.GetName()), zap.Uint64("tableID", table.GetID()))
 		return
