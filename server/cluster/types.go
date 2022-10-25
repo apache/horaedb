@@ -25,6 +25,11 @@ type ShardInfo struct {
 	Version uint64
 }
 
+type ShardsOfNode struct {
+	Endpoint string
+	ShardIDs []uint32
+}
+
 type NodeShard struct {
 	Endpoint  string
 	ShardInfo *ShardInfo
@@ -77,7 +82,7 @@ func ConvertTableInfoToPB(table *TableInfo) *metaservicepb.TableInfo {
 	}
 }
 
-func ConvertNodeToPB(node *Node) *clusterpb.Node {
+func ConvertNodeToPB(node *RegisteredNode) *clusterpb.Node {
 	return &clusterpb.Node{
 		Name:                  node.meta.Name,
 		NodeStats:             node.meta.NodeStats,

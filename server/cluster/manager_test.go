@@ -190,7 +190,7 @@ func testAllocTableID(ctx context.Context, re *require.Assertions, manager Manag
 }
 
 func testGetTables(ctx context.Context, re *require.Assertions, manager Manager, node, cluster string, num int) {
-	shardIDs, err := manager.GetShards(ctx, cluster, node)
+	shardIDs, err := manager.GetShardIDs(ctx, cluster, node)
 	re.NoError(err)
 
 	shardTables, err := manager.GetTables(ctx, cluster, node, shardIDs)

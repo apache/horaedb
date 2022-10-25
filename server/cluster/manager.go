@@ -40,10 +40,12 @@ type Manager interface {
 	AllocTableID(ctx context.Context, clusterName, schemaName, tableName, nodeName string) (*Table, bool, error)
 	GetTables(ctx context.Context, clusterName, nodeName string, shardIDs []uint32) (map[uint32]*ShardTables, error)
 	DropTable(ctx context.Context, clusterName, schemaName, tableName string) error
-	RegisterNode(ctx context.Context, clusterName string, nodeInfo *metaservicepb.NodeInfo) error
-	GetShards(ctx context.Context, clusterName, nodeName string) ([]uint32, error)
+	GetShardIDs(ctx context.Context, clusterName, nodeName string) ([]uint32, error)
 	RouteTables(ctx context.Context, clusterName, schemaName string, tableNames []string) (*RouteTablesResult, error)
 	GetNodeShards(ctx context.Context, clusterName string) (*GetNodeShardsResult, error)
+
+	RegisterNode(ctx context.Context, clusterName string, nodeInfo *metaservicepb.NodeInfo) error
+	GetRegisteredNode(ctx context.Context, clusterName string, node string) (*metaservicepb.NodeInfo, error)
 }
 
 type managerImpl struct {
@@ -255,7 +257,34 @@ func (m *managerImpl) RegisterNode(ctx context.Context, clusterName string, node
 	return nil
 }
 
-func (m *managerImpl) GetShards(_ context.Context, clusterName, nodeName string) ([]uint32, error) {
+func (m *managerImpl) GetRegisteredNode(_ context.Context, clusterName string, nodeName string) (*metaservicepb.NodeInfo, error) {
+	cluster, err := m.getCluster(clusterName)
+	if err != nil {
+		log.Error("cluster not found", zap.Error(err))
+		return nil, errors.WithMessage(err, "cluster manager GetRegisteredNode")
+	}
+
+	node, ok := cluster.GetRegisteredNode(nodeName)
+	if !ok {
+		return nil, ErrNodeNotFound.WithCausef("node is not found, node:%s, cluster:%s", nodeName, clusterName)
+	}
+	meta := node.GetMeta()
+	shardInfos := make([]*metaservicepb.ShardInfo, 0, len(node.GetShardInfos()))
+	for _, shardInfo := range node.GetShardInfos() {
+		shardInfos = append(shardInfos, ConvertShardsInfoToPB(shardInfo))
+	}
+	nodeInfo := metaservicepb.NodeInfo{
+		Endpoint:      meta.Name,
+		Lease:         meta.NodeStats.Lease,
+		Zone:          meta.NodeStats.Zone,
+		BinaryVersion: meta.NodeStats.NodeVersion,
+		ShardInfos:    shardInfos,
+	}
+
+	return &nodeInfo, nil
+}
+
+func (m *managerImpl) GetShardIDs(_ context.Context, clusterName, nodeName string) ([]uint32, error) {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
 		log.Error("cluster not found", zap.Error(err))

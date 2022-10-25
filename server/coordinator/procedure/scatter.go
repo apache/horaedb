@@ -49,10 +49,6 @@ func scatterPrepareCallback(event *fsm.Event) {
 
 	waitForNodesReady(c)
 
-	nodeCache := c.GetClusterNodeCache()
-	shardTotal := c.GetClusterShardTotal()
-	minNodeCount := c.GetClusterMinNodeCount()
-
 	// If cluster topology state equal to STABLE, it means cluster has been created and need to be rebuilt.
 	if c.GetClusterState() == clusterpb.ClusterTopology_STABLE {
 		// Try to rebuild cluster topology by metadata.
@@ -64,12 +60,11 @@ func scatterPrepareCallback(event *fsm.Event) {
 		}
 	}
 
-	nodeList := make([]*clusterpb.Node, 0, len(nodeCache))
-	for _, v := range nodeCache {
-		nodeList = append(nodeList, v.GetMeta())
-	}
+	registeredNodes := c.GetRegisteredNodes()
+	shardTotal := c.GetTotalShardNum()
+	minNodeCount := c.GetClusterMinNodeCount()
 
-	shards, err := allocNodeShards(ctx, shardTotal, minNodeCount, nodeList, request.shardIDs)
+	shards, err := allocNodeShards(shardTotal, minNodeCount, registeredNodes, request.shardIDs)
 	if err != nil {
 		cancelEventWithLog(event, err, "alloc node shards failed")
 		return
@@ -117,10 +112,13 @@ func scatterPrepareCallback(event *fsm.Event) {
 func waitForNodesReady(c *cluster.Cluster) {
 	for {
 		time.Sleep(defaultCheckNodeNumTimeInterval)
-		nodes := c.GetNodes()
-		currNodeNum := getAvailableNodesNum(nodes)
+
+		nodes := c.GetRegisteredNodes()
+
+		currNodeNum := computeOnlineNodeNum(nodes)
 		expectNodeNum := c.GetClusterMinNodeCount()
 		log.Warn("wait for cluster node register", zap.Uint32("currNodeNum", currNodeNum), zap.Uint32("expectNodeNum", expectNodeNum))
+
 		if currNodeNum < expectNodeNum {
 			continue
 		}
@@ -128,17 +126,19 @@ func waitForNodesReady(c *cluster.Cluster) {
 	}
 }
 
-func getAvailableNodesNum(nodes []*cluster.Node) uint32 {
-	nodeSize := uint32(0)
+// Compute the total number of the available nodes.
+func computeOnlineNodeNum(nodes []*cluster.RegisteredNode) uint32 {
+	onlineNodeNum := uint32(0)
 	for _, node := range nodes {
-		if node.IsAvailable() {
-			nodeSize++
+		if node.IsOnline() {
+			onlineNodeNum++
 		}
 	}
-	return nodeSize
+	return onlineNodeNum
 }
 
-func allocNodeShards(_ context.Context, shardTotal uint32, minNodeCount uint32, nodeList []*clusterpb.Node, shardIDs []uint32) ([]*clusterpb.Shard, error) {
+// Allocates shard ids across the registered nodes, and caller should ensure `minNodeCount <= len(allNodes)`.
+func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []*cluster.RegisteredNode, shardIDs []uint32) ([]*clusterpb.Shard, error) {
 	shards := make([]*clusterpb.Shard, 0, shardTotal)
 
 	perNodeShardCount := shardTotal / minNodeCount
@@ -154,7 +154,7 @@ func allocNodeShards(_ context.Context, shardTotal uint32, minNodeCount uint32, 
 				shards = append(shards, &clusterpb.Shard{
 					Id:        shardID,
 					ShardRole: clusterpb.ShardRole_LEADER,
-					Node:      nodeList[i].GetName(),
+					Node:      allNodes[i].GetMeta().GetName(),
 				})
 			}
 		}

@@ -11,10 +11,23 @@ const (
 )
 
 type Shard struct {
+	// FIXME: The relationship between shard and node is missing here.
 	meta    []*clusterpb.Shard
 	nodes   []*clusterpb.Node
 	tables  map[uint64]*Table // table_id => table
 	version uint64
+}
+
+// FIXME: avoid returning *clusterpb.Shard.
+func (s *Shard) FindShardByNode(nodeName string) (*clusterpb.Shard, bool) {
+	for i := range s.nodes {
+		if s.nodes[i].GetName() == nodeName {
+			shard := s.meta[i]
+			return shard, true
+		}
+	}
+
+	return nil, false
 }
 
 func (s *Shard) dropTableLocked(tableID uint64) {

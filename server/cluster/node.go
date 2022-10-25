@@ -4,19 +4,26 @@ package cluster
 
 import "github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 
-type Node struct {
-	meta     *clusterpb.Node
-	shardIDs []uint32
+type RegisteredNode struct {
+	meta       *clusterpb.Node
+	shardInfos []*ShardInfo
 }
 
-func (n Node) GetShardIDs() []uint32 {
-	return n.shardIDs
+func NewRegisteredNode(meta *clusterpb.Node, shardInfos []*ShardInfo) *RegisteredNode {
+	return &RegisteredNode{
+		meta,
+		shardInfos,
+	}
 }
 
-func (n Node) GetMeta() *clusterpb.Node {
+func (n *RegisteredNode) GetShardInfos() []*ShardInfo {
+	return n.shardInfos
+}
+
+func (n *RegisteredNode) GetMeta() *clusterpb.Node {
 	return n.meta
 }
 
-func (n Node) IsAvailable() bool {
+func (n *RegisteredNode) IsOnline() bool {
 	return n.meta.State == clusterpb.NodeState_ONLINE
 }

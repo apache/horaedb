@@ -25,8 +25,9 @@ func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
 		ShardInfos: nil,
 	}
 
-	shardIDs := make([]uint32, 0)
-	for i := uint32(0); i < cluster.GetClusterShardTotal(); i++ {
+	totalShardNum := cluster.GetTotalShardNum()
+	shardIDs := make([]uint32, 0, totalShardNum)
+	for i := uint32(0); i < totalShardNum; i++ {
 		shardIDs = append(shardIDs, i)
 	}
 	p := NewScatterProcedure(dispatch, cluster, 1, shardIDs)
@@ -80,24 +81,24 @@ func TestScatter(t *testing.T) {
 
 func TestAllocNodeShard(t *testing.T) {
 	re := require.New(t)
-	ctx := context.Background()
 
 	minNodeCount := 4
 	shardTotal := 2
-	nodeList := make([]*clusterpb.Node, 0)
+	nodeList := make([]*cluster.RegisteredNode, 0, minNodeCount)
 	for i := 0; i < minNodeCount; i++ {
-		nodeInfo := &clusterpb.Node{
+		nodeMeta := &clusterpb.Node{
 			Name: fmt.Sprintf("node%d", i),
 		}
-		nodeList = append(nodeList, nodeInfo)
+		node := cluster.NewRegisteredNode(nodeMeta, []*cluster.ShardInfo{})
+		nodeList = append(nodeList, node)
 	}
-	shardIDs := make([]uint32, 0)
+	shardIDs := make([]uint32, 0, shardTotal)
 	for i := uint32(0); i < uint32(shardTotal); i++ {
 		shardIDs = append(shardIDs, i)
 	}
 	// NodeCount = 4, shardTotal = 2
 	// Two shard distributed in node0,node1
-	shardView, err := allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
+	shardView, err := allocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].Node)
@@ -105,12 +106,13 @@ func TestAllocNodeShard(t *testing.T) {
 
 	minNodeCount = 2
 	shardTotal = 3
-	nodeList = make([]*clusterpb.Node, 0)
+	nodeList = make([]*cluster.RegisteredNode, 0, minNodeCount)
 	for i := 0; i < minNodeCount; i++ {
-		nodeInfo := &clusterpb.Node{
+		nodeMeta := &clusterpb.Node{
 			Name: fmt.Sprintf("node%d", i),
 		}
-		nodeList = append(nodeList, nodeInfo)
+		node := cluster.NewRegisteredNode(nodeMeta, []*cluster.ShardInfo{})
+		nodeList = append(nodeList, node)
 	}
 	// NodeCount = 2, shardTotal = 3
 	// Three shard distributed in node0,node0,node1
@@ -118,7 +120,7 @@ func TestAllocNodeShard(t *testing.T) {
 	for i := uint32(0); i < uint32(shardTotal); i++ {
 		shardIDs = append(shardIDs, i)
 	}
-	shardView, err = allocNodeShards(ctx, uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
+	shardView, err = allocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].Node)
