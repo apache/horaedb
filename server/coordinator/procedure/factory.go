@@ -5,7 +5,6 @@ package procedure
 import (
 	"context"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -21,12 +20,6 @@ type Factory struct {
 type ScatterRequest struct {
 	Cluster  *cluster.Cluster
 	ShardIDs []uint32
-}
-
-type TransferLeaderRequest struct {
-	Cluster   *cluster.Cluster
-	OldLeader *clusterpb.Shard
-	NewLeader *clusterpb.Shard
 }
 
 type CreateTableRequest struct {
@@ -58,15 +51,6 @@ func (f *Factory) CreateScatterProcedure(ctx context.Context, request *ScatterRe
 		return nil, err
 	}
 	procedure := NewScatterProcedure(f.dispatch, request.Cluster, id, request.ShardIDs)
-	return procedure, nil
-}
-
-func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request *TransferLeaderRequest) (Procedure, error) {
-	id, err := f.allocProcedureID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	procedure := NewTransferLeaderProcedure(f.dispatch, request.Cluster, request.OldLeader, request.NewLeader, id)
 	return procedure, nil
 }
 

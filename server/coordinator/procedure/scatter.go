@@ -72,18 +72,8 @@ func scatterPrepareCallback(event *fsm.Event) {
 		})
 	}
 
-	if err := c.CreateShardTopologies(ctx, shardTopologies); err != nil {
+	if err := c.CreateShardTopologies(ctx, clusterpb.ClusterTopology_STABLE, shardTopologies, shards); err != nil {
 		cancelEventWithLog(event, err, "create shard topologies failed")
-		return
-	}
-
-	if err := c.UpdateClusterTopology(ctx, clusterpb.ClusterTopology_STABLE, shards); err != nil {
-		cancelEventWithLog(event, err, "update cluster topology failed")
-		return
-	}
-
-	if err := request.cluster.Load(request.ctx); err != nil {
-		cancelEventWithLog(event, err, "cluster load data failed")
 		return
 	}
 
@@ -156,13 +146,7 @@ func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []*cluster
 	return shards, nil
 }
 
-func scatterSuccessCallback(event *fsm.Event) {
-	request := event.Args[0].(*ScatterCallbackRequest)
-
-	if err := request.cluster.Load(request.ctx); err != nil {
-		cancelEventWithLog(event, err, "cluster load data failed")
-		return
-	}
+func scatterSuccessCallback(_ *fsm.Event) {
 	log.Info("scatter procedure execute finish")
 }
 

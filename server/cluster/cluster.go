@@ -195,6 +195,12 @@ func (c *Cluster) loadCacheLocked(
 		}
 	}
 
+	// Load registeredNodeCache.
+	for _, node := range nodesLoaded {
+		registerNode := NewRegisteredNode(node, []*ShardInfo{})
+		c.registeredNodesCache[node.Name] = registerNode
+	}
+
 	// Load shardsCache.
 	for shardID, shardTopology := range shardTopologies {
 		tables := make(map[uint64]*Table, len(shardTopology.TableIds))
@@ -225,12 +231,6 @@ func (c *Cluster) loadCacheLocked(
 			tables:  tables,
 			version: shardTopology.Version,
 		}
-	}
-
-	// Load registeredNodeCache.
-	for _, node := range nodesLoaded {
-		registerNode := NewRegisteredNode(node, []*ShardInfo{})
-		c.registeredNodesCache[node.Name] = registerNode
 	}
 
 	return nil
@@ -872,9 +872,14 @@ func (c *Cluster) GetClusterState() clusterpb.ClusterTopology_ClusterState {
 	return c.metaData.clusterTopology.State
 }
 
-func (c *Cluster) UpdateClusterTopology(ctx context.Context, state clusterpb.ClusterTopology_ClusterState, shardView []*clusterpb.Shard) error {
+func (c *Cluster) CreateShardTopologies(ctx context.Context, state clusterpb.ClusterTopology_ClusterState, shardTopologies []*clusterpb.ShardTopology, shardView []*clusterpb.Shard) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	_, err := c.storage.CreateShardTopologies(ctx, c.clusterID, shardTopologies)
+	if err != nil {
+		return errors.WithMessage(err, "cluster create shard topologies failed")
+	}
 
 	clusterTopology, err := c.storage.GetClusterTopology(ctx, c.GetClusterID())
 	if err != nil {
@@ -882,17 +887,67 @@ func (c *Cluster) UpdateClusterTopology(ctx context.Context, state clusterpb.Clu
 	}
 	clusterTopology.ShardView = shardView
 	clusterTopology.State = state
+
 	if err = c.storage.PutClusterTopology(ctx, c.clusterID, c.metaData.clusterTopology.Version, clusterTopology); err != nil {
 		return err
 	}
 	c.metaData.clusterTopology = clusterTopology
-	return nil
+
+	return c.updateTopologyCache(shardTopologies, shardView)
 }
 
-func (c *Cluster) CreateShardTopologies(ctx context.Context, shardTopologies []*clusterpb.ShardTopology) error {
-	_, err := c.storage.CreateShardTopologies(ctx, c.clusterID, shardTopologies)
-	if err != nil {
-		return errors.WithMessage(err, "cluster create shard topologies failed")
+func (c *Cluster) updateTopologyCache(shardTopologies []*clusterpb.ShardTopology, shardView []*clusterpb.Shard) error {
+	shardsByID := make(map[uint32]*clusterpb.Shard, len(shardView))
+	for _, shard := range shardView {
+		shardsByID[shard.Id] = shard
 	}
+
+	newNodeShardsCache := map[string]*ShardsOfNode{}
+	newShardsCache := make(map[uint32]*Shard, len(shardTopologies))
+
+	for _, shardTopology := range shardTopologies {
+		shard, ok := shardsByID[shardTopology.ShardId]
+		if !ok {
+			return ErrShardNotFound.WithCausef("updateTopologyCache missing shard in shardView, shard_id:%d", shardTopology.ShardId)
+		}
+		nodeName := shard.Node
+
+		nodeShards, ok := newNodeShardsCache[nodeName]
+		if !ok {
+			nodeShards = &ShardsOfNode{
+				Endpoint: nodeName,
+				ShardIDs: []uint32{},
+			}
+			newNodeShardsCache[nodeName] = nodeShards
+		}
+		nodeShards.ShardIDs = append(nodeShards.ShardIDs, shardTopology.ShardId)
+
+		cachedShard, ok := newShardsCache[shardTopology.ShardId]
+		if !ok {
+			cachedShard = &Shard{
+				meta:    []*clusterpb.Shard{},
+				nodes:   []*clusterpb.Node{},
+				tables:  map[uint64]*Table{},
+				version: shardTopology.Version,
+			}
+			newShardsCache[shardTopology.ShardId] = cachedShard
+		}
+		cachedShard.meta = append(cachedShard.meta, shard)
+		// TODO: Here shardsCache should not contain the register node information (shardsCache will be refactored in the future),
+		//  so here no need to set these missing fields in clusterpb.Node.
+		nodePb := &clusterpb.Node{
+			Name: shard.Node,
+		}
+		cachedShard.nodes = append(cachedShard.nodes, nodePb)
+	}
+
+	for nodeName, shardsOfNode := range newNodeShardsCache {
+		c.nodeShardsCache[nodeName] = shardsOfNode
+	}
+
+	for shardID, shard := range newShardsCache {
+		c.shardsCache[shardID] = shard
+	}
+
 	return nil
 }
