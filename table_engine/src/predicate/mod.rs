@@ -215,7 +215,7 @@ impl Predicate {
         self.exprs
             .iter()
             .cloned()
-            .fold(self.time_range.df_expr(time_column_name), |acc, expr| {
+            .fold(self.time_range.to_df_expr(time_column_name), |acc, expr| {
                 acc.and(expr)
             })
     }

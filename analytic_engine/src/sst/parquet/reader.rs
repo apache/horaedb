@@ -16,7 +16,7 @@ use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::time::InstantExt;
+use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::{
     datasource::{file_format, object_store::ObjectStoreUrl},
     execution::context::TaskContext,
@@ -35,24 +35,28 @@ use futures::{
     future::{self, BoxFuture},
     FutureExt, Stream, StreamExt, TryFutureExt,
 };
-use log::{debug, info};
+use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet_ext::{DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::encoding::{self, ParquetDecoder};
 use crate::{
     sst::{
         factory::SstReaderOptions,
         file::SstMetaData,
+        parquet::encoding::{self, ParquetDecoder},
         reader::{error::*, Result, SstReader},
     },
     table_options::StorageFormatOptions,
 };
 
-pub struct ParquetSstReader<'a> {
+const CERESDB_SCHEME: &str = "ceresdb";
+const CERESDB_HOST: &str = "ceresdb";
+
+pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
@@ -69,7 +73,7 @@ pub struct ParquetSstReader<'a> {
     meta_data: Option<SstMetaData>,
 }
 
-impl<'a> ParquetSstReader<'a> {
+impl<'a> Reader<'a> {
     pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
         let reader_factory = Arc::new(CachableParquetFileReaderFactory {
             storage: storage.clone(),
@@ -109,8 +113,11 @@ impl<'a> ParquetSstReader<'a> {
             .map_err(|e| Box::new(e) as _)
             .context(Projection)?;
         let scan_config = FileScanConfig {
-            object_store_url: ObjectStoreUrl::parse("ceresdb://ceresdb/")
-                .expect("valid object store URL"),
+            object_store_url: ObjectStoreUrl::parse(format!(
+                "{}://{}",
+                CERESDB_SCHEME, CERESDB_HOST
+            ))
+            .expect("valid object store URL"),
             file_schema: arrow_schema,
             file_groups: vec![vec![object_meta.clone().into()]],
             statistics: Statistics::default(),
@@ -134,9 +141,11 @@ impl<'a> ParquetSstReader<'a> {
         let session_ctx =
             SessionContext::with_config(SessionConfig::from_env().with_batch_size(self.batch_size));
         let task_ctx = Arc::new(TaskContext::from(&session_ctx));
-        task_ctx
-            .runtime_env()
-            .register_object_store("ceresdb", "ceresdb", self.storage.clone());
+        task_ctx.runtime_env().register_object_store(
+            CERESDB_SCHEME,
+            CERESDB_HOST,
+            self.storage.clone(),
+        );
 
         self.df_plan = Some(exec.clone());
         execute_stream(exec, task_ctx)
@@ -226,7 +235,7 @@ impl<'a> ParquetSstReader<'a> {
     }
 }
 
-impl<'a> Drop for ParquetSstReader<'a> {
+impl<'a> Drop for Reader<'a> {
     fn drop(&mut self) {
         if self.df_plan.is_none() {
             return;
@@ -234,7 +243,7 @@ impl<'a> Drop for ParquetSstReader<'a> {
 
         let df_plan = self.df_plan.take().unwrap();
         info!(
-            "ParquetSstReader plan metrics:\n{}",
+            "Reader plan metrics:\n{}",
             DisplayableExecutionPlan::with_metrics(&*df_plan)
                 .indent()
                 .to_string()
@@ -320,6 +329,7 @@ impl Drop for CachableParquetFileReader {
         );
     }
 }
+
 impl AsyncFileReader for CachableParquetFileReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned.add(range.end - range.start);
@@ -348,31 +358,6 @@ impl AsyncFileReader for CachableParquetFileReader {
                 ))
             })
             .boxed()
-    }
-
-    // TODO: add cache
-    fn get_byte_ranges(
-        &mut self,
-        ranges: Vec<Range<usize>>,
-    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>>
-    where
-        Self: Send,
-    {
-        let total = ranges.iter().map(|r| r.end - r.start).sum();
-        self.metrics.bytes_scanned.add(total);
-
-        async move {
-            self.storage
-                .get_ranges(&self.meta.location, &ranges)
-                .await
-                .map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "CachableParquetFileReader::get_byte_ranges error: {}",
-                        e
-                    ))
-                })
-        }
-        .boxed()
     }
 
     fn get_metadata(
@@ -472,12 +457,12 @@ impl Stream for RecordBatchProjector {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
+        self.stream.size_hint()
     }
 }
 
 #[async_trait]
-impl<'a> SstReader for ParquetSstReader<'a> {
+impl<'a> SstReader for Reader<'a> {
     async fn meta_data(&mut self) -> Result<&SstMetaData> {
         self.init_if_necessary().await?;
 
@@ -504,5 +489,70 @@ impl<'a> SstReader for ParquetSstReader<'a> {
             row_projector,
             storage_format_opts,
         )))
+    }
+}
+
+struct RecordBatchReceiver {
+    rx: Receiver<Result<RecordBatchWithKey>>,
+}
+
+impl Stream for RecordBatchReceiver {
+    type Item = Result<RecordBatchWithKey>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.as_mut().rx.poll_recv(cx)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, None)
+    }
+}
+
+const DEFAULT_CHANNEL_CAP: usize = 1024;
+
+/// Spawn a new thread to read record_batches
+pub struct ThreadedReader<'a> {
+    inner: Reader<'a>,
+    runtime: Arc<Runtime>,
+
+    channel_cap: usize,
+}
+
+impl<'a> ThreadedReader<'a> {
+    pub fn new(reader: Reader<'a>, runtime: Arc<Runtime>) -> Self {
+        Self {
+            inner: reader,
+            runtime,
+            channel_cap: DEFAULT_CHANNEL_CAP,
+        }
+    }
+
+    async fn read_record_batches(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
+        let mut stream = self.inner.read().await?;
+        self.runtime.spawn(async move {
+            while let Some(batch) = stream.next().await {
+                if let Err(e) = tx.send(batch).await {
+                    error!("fail to send the fetched record batch result, err:{}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<'a> SstReader for ThreadedReader<'a> {
+    async fn meta_data(&mut self) -> Result<&SstMetaData> {
+        self.inner.meta_data().await
+    }
+
+    async fn read(
+        &mut self,
+    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+        let (tx, rx) = mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap);
+        self.read_record_batches(tx).await?;
+
+        Ok(Box::new(RecordBatchReceiver { rx }))
     }
 }

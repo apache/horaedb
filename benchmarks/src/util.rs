@@ -11,7 +11,7 @@ use analytic_engine::{
         factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
-        parquet::reader::{CachableParquetFileReaderFactory, ParquetSstReader},
+        parquet::{CachableParquetFileReaderFactory, ParquetSstReader},
     },
     table::sst_util,
 };

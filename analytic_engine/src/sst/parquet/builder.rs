@@ -173,7 +173,7 @@ mod tests {
         row_iter::tests::build_record_batch_with_key,
         sst::{
             factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
-            parquet::reader::ParquetSstReader,
+            parquet::reader::Reader,
             reader::{tests::check_stream, SstReader},
         },
         table_options::{self, StorageFormatOptions},
@@ -263,9 +263,9 @@ mod tests {
                 runtime: runtime.clone(),
             };
 
-            let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
+            let mut reader = Reader::new(&sst_file_path, &store, &sst_reader_options);
             let sst_meta_readback = {
-                // size of SstMetaData is not what this file's size, so overwrite it
+                // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                 // https://github.com/CeresDB/ceresdb/issues/321
                 let mut meta = reader.meta_data().await.unwrap().clone();
                 meta.size = sst_meta.size;

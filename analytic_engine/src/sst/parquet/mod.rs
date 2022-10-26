@@ -6,4 +6,6 @@ pub mod builder;
 #[allow(deprecated)]
 pub mod encoding;
 mod hybrid;
-pub mod reader;
+mod reader;
+
+pub use reader::{CachableParquetFileReaderFactory, Reader as ParquetSstReader, ThreadedReader};

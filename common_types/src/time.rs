@@ -283,7 +283,7 @@ impl TimeRange {
 
     /// Creates expression like:
     /// start <= time && time < end
-    pub fn df_expr(&self, column_name: impl AsRef<str>) -> Expr {
+    pub fn to_df_expr(&self, column_name: impl AsRef<str>) -> Expr {
         let ts_start = ScalarValue::TimestampMillisecond(Some(self.inclusive_start.as_i64()), None);
         let ts_end = ScalarValue::TimestampMillisecond(Some(self.exclusive_end.as_i64()), None);
 
