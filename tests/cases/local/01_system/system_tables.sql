@@ -24,5 +24,4 @@ WHERE
 
 
 -- FIXME
-
 SHOW TABLES LIKE '01%';
