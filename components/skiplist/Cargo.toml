@@ -1,10 +1,9 @@
 [package]
 name = "skiplist"
-version = "0.1.0"
-authors = ["Jay Lee <busyjaylee@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors = ["Jay Lee <busyjaylee@gmail.com>", "CeresDB Authors <ceresdbservice@gmail.com>"]
 
-[package.edition]
-workspace = true
 
 [dependencies]
 rand = { workspace = true }

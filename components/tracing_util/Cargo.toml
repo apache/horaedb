@@ -1,12 +1,10 @@
 [package]
 name = "tracing_util"
-version = "0.1.0"
-authors = ["Databend Authors <opensource@datafuselabs.com>"]
+version.workspace = true
+edition.workspace = true
+authors = ["Databend Authors <opensource@datafuselabs.com>", "CeresDB Authors <ceresdbservice@gmail.com>"]
 license = "Apache-2.0"
 publish = false
-
-[package.edition]
-workspace = true
 
 [dependencies] # In alphabetical order
 lazy_static = { workspace = true }

@@ -2,11 +2,26 @@ DROP TABLE IF EXISTS `01_system_table1`;
 
 affected_rows: 0
 
-CREATE TABLE `01_system_table1` (    `timestamp` timestamp NOT NULL,    `arch` string TAG,    `datacenter` string TAG,    `hostname` string TAG,    `value` double,    timestamp KEY (timestamp)) ENGINE=Analytic;
+CREATE TABLE `01_system_table1` (
+    `timestamp` timestamp NOT NULL,
+    `arch` string TAG,
+    `datacenter` string TAG,
+    `hostname` string TAG,
+    `value` double,
+    timestamp KEY (timestamp)) ENGINE=Analytic;
 
 affected_rows: 0
 
-SELECT    `timestamp`,    `catalog`,    `schema`,    `table_name`,    `engine`FROM    system.public.tablesWHERE    table_name = '01_system_table1';
+SELECT
+    `timestamp`,
+    `catalog`,
+    `schema`,
+    `table_name`,
+    `engine`
+FROM
+    system.public.tables
+WHERE
+    table_name = '01_system_table1';
 
 timestamp,catalog,schema,table_name,engine,
 Timestamp(Timestamp(0)),String(StringBytes(b"ceresdb")),String(StringBytes(b"public")),String(StringBytes(b"01_system_table1")),String(StringBytes(b"Analytic")),
@@ -14,5 +29,5 @@ Timestamp(Timestamp(0)),String(StringBytes(b"ceresdb")),String(StringBytes(b"pub
 
 SHOW TABLES `name` LIKE '01_system_table1';
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "Failed to parse sql. Caused by: Invalid sql, sql: SHOW TABLES `name` LIKE '01_system_table1';, err:sql parser error: Expected end of statement, found: `name`" })
+Failed to execute query, err: Server(ServerError { code: 400, msg: "failed to parse sql. Caused by: Invalid sql, sql: SHOW TABLES `name` LIKE '01_system_table1';, err:sql parser error: Expected end of statement, found: `name`" })
 

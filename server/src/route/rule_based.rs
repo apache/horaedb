@@ -7,16 +7,14 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
-use http::StatusCode;
 use log::info;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
-use snafu::OptionExt;
+use snafu::{ensure, OptionExt};
 
 use crate::{
     config::Endpoint,
-    error::{ErrNoCause, Result},
-    route::{hash, Router},
+    route::{hash, Result, RouteNotFound, Router, ShardNotFound},
 };
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
@@ -149,13 +147,7 @@ impl RuleBasedRouter {
 impl Router for RuleBasedRouter {
     async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
-            if shard_nodes.is_empty() {
-                return ErrNoCause {
-                    code: StatusCode::NOT_FOUND,
-                    msg: "No valid shard is found",
-                }
-                .fail();
-            }
+            ensure!(!shard_nodes.is_empty(), RouteNotFound { schema });
 
             // Get rule list of this schema.
             let rule_list_opt = self.schema_rules.get(schema);
@@ -166,9 +158,9 @@ impl Router for RuleBasedRouter {
             for metric in req.metrics {
                 let shard_id = Self::route_metric(&metric, rule_list_opt, total_shards);
 
-                let endpoint = shard_nodes.get(&shard_id).with_context(|| ErrNoCause {
-                    code: StatusCode::NOT_FOUND,
-                    msg: format!("Shard not found, metric:{}, shard_id:{}", metric, shard_id),
+                let endpoint = shard_nodes.get(&shard_id).with_context(|| ShardNotFound {
+                    schema,
+                    table: &metric,
                 })?;
 
                 let pb_endpoint = storage::Endpoint::from(endpoint.clone());

@@ -15,7 +15,7 @@ use table_engine::engine::OpenTableRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{BatchLogIterator, ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
 };
 
 use crate::{

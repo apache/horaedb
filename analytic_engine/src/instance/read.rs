@@ -332,7 +332,7 @@ where
                     record_batch
                         .map_err(|e| Box::new(e) as _)
                         .context(ErrWithSource {
-                            msg: "Read record batch",
+                            msg: "read record batch",
                         });
 
                 // Apply the projection to RecordBatchWithKey and gets the final RecordBatch.
@@ -343,7 +343,7 @@ where
                         .try_project(&projected_schema)
                         .map_err(|e| Box::new(e) as _)
                         .context(ErrWithSource {
-                            msg: "Project record batch",
+                            msg: "project record batch",
                         })
                 });
 

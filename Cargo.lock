@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "analytic_engine"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arc-swap 1.5.1",
  "arena",
@@ -90,18 +90,18 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bytes 1.2.1",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "env_logger",
  "futures 0.3.21",
  "lazy_static",
  "log",
- "object_store 0.1.0",
+ "object_store 0.4.0-alpha",
  "parquet 23.0.0",
  "parquet_ext",
  "prometheus 0.12.0",
- "proto 0.1.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -144,7 +144,7 @@ checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
 name = "arena"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "parking_lot 0.11.2",
 ]
@@ -287,7 +287,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "uncover",
@@ -456,7 +456,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "benchmarks"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -464,13 +464,13 @@ dependencies = [
  "arrow2",
  "base64 0.13.0",
  "clap",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "criterion",
  "env_logger",
  "futures 0.3.21",
  "log",
- "object_store 0.1.0",
+ "object_store 0.4.0-alpha",
  "parquet 23.0.0",
  "parquet_ext",
  "rand 0.7.3",
@@ -789,7 +789,7 @@ checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
 
 [[package]]
 name = "bytes_ext"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "bytes 1.2.1",
  "snafu 0.6.10",
@@ -814,10 +814,10 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "snafu 0.6.10",
  "table_engine",
@@ -825,13 +825,13 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
  "cluster",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "log",
  "meta_client",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -862,6 +862,7 @@ dependencies = [
  "cluster",
  "common_util",
  "df_operator",
+ "interpreters",
  "log",
  "logger",
  "meta_client",
@@ -881,7 +882,7 @@ dependencies = [
  "async-trait",
  "avro-rs",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=2c10152d021cd5a26b9c870cdede6a0317adca3d)",
- "common_types 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
+ "common_types 0.1.0",
  "grpcio",
 ]
 
@@ -999,12 +1000,12 @@ dependencies = [
 
 [[package]]
 name = "cluster"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "log",
  "meta_client",
@@ -1051,6 +1052,24 @@ dependencies = [
 [[package]]
 name = "common_types"
 version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+dependencies = [
+ "arrow_deps",
+ "byteorder",
+ "bytes 0.1.0",
+ "chrono",
+ "murmur3",
+ "paste 1.0.8",
+ "proto 0.1.0",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "sqlparser 0.18.0",
+]
+
+[[package]]
+name = "common_types"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "arrow_ext",
@@ -1060,7 +1079,7 @@ dependencies = [
  "datafusion 12.0.0",
  "murmur3",
  "paste 1.0.8",
- "proto 0.1.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -1070,31 +1089,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "common_types"
-version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
-dependencies = [
- "arrow_deps",
- "byteorder",
- "bytes 0.1.0",
- "chrono",
- "murmur3",
- "paste 1.0.8",
- "proto 0.1.0 (git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8)",
- "serde",
- "serde_derive",
- "snafu 0.6.10",
- "sqlparser 0.18.0",
-]
-
-[[package]]
 name = "common_util"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "backtrace",
  "chrono",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "crossbeam-utils 0.8.11",
  "env_logger",
  "gag",
@@ -1105,7 +1106,7 @@ dependencies = [
  "nix 0.22.3",
  "pin-project-lite",
  "prometheus 0.12.0",
- "proto 0.1.0",
+ "proto 0.4.0-alpha",
  "serde",
  "serde_derive",
  "slog",
@@ -1203,6 +1204,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59a6001667ab124aebae2a495118e11d30984c3a653e99d86d58971708cf5e4b"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crc32c"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dfea2db42e9927a3845fb268a10a72faed6d416065f77873f05e411457c363e"
+dependencies = [
+ "rustc_version 0.4.0",
 ]
 
 [[package]]
@@ -1695,13 +1705,13 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "base64 0.13.0",
  "bincode",
  "chrono",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -2082,9 +2092,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3083ce4b914124575708913bca19bfe887522d6e2e6d0952943f5eac4a74010"
+checksum = "30bdd20c28fadd505d0fd6712cdfcb0d4b5648baf45faef7f852afb2399bb050"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -2092,9 +2102,9 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c09fd04b7e4073ac7156a9539b57a484a8ea920f79c7c675d05d289ab6110d3"
+checksum = "4e5aa3de05362c3fb88de6531e6296e85cde7739cccad4b9dfeeb7f6ebce56bf"
 
 [[package]]
 name = "futures-cpupool"
@@ -2119,15 +2129,15 @@ dependencies = [
 
 [[package]]
 name = "futures-io"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc4045962a5a5e935ee2fdedaa4e08284547402885ab326734432bed5d12966b"
+checksum = "bbf4d2a7a308fd4578637c0b17c7e1c7ba127b8f6ba00b29f717e9655d85eb68"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33c1e13800337f4d4d7a316bf45a567dbcb6ffe087f16424852d97e97a91f512"
+checksum = "42cd15d1c7456c04dbdf7e88bcd69760d74f3a798d6444e16974b505b0e62f17"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2136,21 +2146,21 @@ dependencies = [
 
 [[package]]
 name = "futures-sink"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21163e139fa306126e6eedaf49ecdb4588f939600f0b1e770f4205ee4b7fa868"
+checksum = "21b20ba5a92e727ba30e72834706623d94ac93a725410b6a6b6fbc1b07f7ba56"
 
 [[package]]
 name = "futures-task"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c66a976bf5909d801bbef33416c41372779507e7a6b3a5e25e4749c58f776a"
+checksum = "a6508c467c73851293f390476d4491cf4d227dbabcd4170f3bb6044959b294f1"
 
 [[package]]
 name = "futures-util"
-version = "0.3.21"
+version = "0.3.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8b7abd5d659d9b90c8cba917f6ec750a74e2dc23902ef9cd4cc8c8b22e6036a"
+checksum = "44fb6cb1be61cc1d2e43b262516aafcf63b241cffdb1d3fa115f91d9c7b09c90"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -2654,14 +2664,14 @@ dependencies = [
 
 [[package]]
 name = "interpreters"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 23.0.0",
  "async-trait",
  "catalog",
  "catalog_impls",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -2989,9 +2999,9 @@ dependencies = [
 
 [[package]]
 name = "lock_api"
-version = "0.4.7"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "327fa5b6a6940e4699ec49a9beae1ea4845c6bab9314e4f84ac68742139d8c53"
+checksum = "435011366fe56583b16cf956f9df0095b405b82d76425bc8981c0e22e60ec4df"
 dependencies = [
  "autocfg 1.1.0",
  "scopeguard",
@@ -3008,7 +3018,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "chrono",
  "log",
@@ -3109,12 +3119,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "meta_client"
+name = "message_queue"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
+ "common_util",
+ "futures 0.3.21",
+ "log",
+ "rskafka",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "tokio 1.20.1",
+ "uuid 1.1.2",
+]
+
+[[package]]
+name = "meta_client"
+version = "0.4.0-alpha"
+dependencies = [
+ "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "futures 0.3.21",
  "log",
@@ -3350,7 +3377,7 @@ dependencies = [
  "smallvec 1.9.0",
  "subprocess",
  "thiserror",
- "time 0.3.12",
+ "time 0.3.15",
  "uuid 1.1.2",
 ]
 
@@ -3562,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
  "bytes 1.2.1",
@@ -3633,9 +3660,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.13.0"
+version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
+checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
 
 [[package]]
 name = "oorandom"
@@ -3768,7 +3795,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
 dependencies = [
  "instant",
- "lock_api 0.4.7",
+ "lock_api 0.4.9",
  "parking_lot_core 0.8.5",
 ]
 
@@ -3778,7 +3805,7 @@ version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3742b2c103b9f06bc9fff0a37ff4912935851bee6d36f3c02bcc755bcfec228f"
 dependencies = [
- "lock_api 0.4.7",
+ "lock_api 0.4.9",
  "parking_lot_core 0.9.3",
 ]
 
@@ -3908,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "arrow_ext",
@@ -4129,7 +4156,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -4249,6 +4276,7 @@ dependencies = [
 [[package]]
 name = "proto"
 version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
 dependencies = [
  "protobuf",
  "protobuf-builder",
@@ -4256,8 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "proto"
-version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb.git?rev=f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8#f6c9a5b03e23b04e6a06c4f73756f1be9551c0f8"
+version = "0.4.0-alpha"
 dependencies = [
  "protobuf",
  "protobuf-builder",
@@ -4330,11 +4357,11 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -4781,6 +4808,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rskafka"
+version = "0.3.0"
+source = "git+https://github.com/influxdata/rskafka.git?rev=00988a564b1db0249d858065fc110476c075efad#00988a564b1db0249d858065fc110476c075efad"
+dependencies = [
+ "async-trait",
+ "bytes 1.2.1",
+ "chrono",
+ "crc32c",
+ "flate2",
+ "futures 0.3.21",
+ "integer-encoding 3.0.4",
+ "lz4",
+ "parking_lot 0.12.1",
+ "pin-project-lite",
+ "rand 0.8.5",
+ "snap",
+ "thiserror",
+ "tokio 1.20.1",
+ "tracing",
+]
+
+[[package]]
 name = "rust-argon2"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5062,7 +5111,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "analytic_engine",
  "arrow 23.0.0",
@@ -5072,7 +5121,7 @@ dependencies = [
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
  "cluster",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "df_operator",
@@ -5223,7 +5272,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arena",
  "bytes 1.2.1",
@@ -5280,7 +5329,7 @@ dependencies = [
  "slog",
  "term 0.7.0",
  "thread_local",
- "time 0.3.12",
+ "time 0.3.15",
 ]
 
 [[package]]
@@ -5387,12 +5436,12 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "sql"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "catalog",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=29cb0c6fba76401fd9a4ae5b8cacc9002ad78650)",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
@@ -5595,16 +5644,16 @@ dependencies = [
 
 [[package]]
 name = "system_catalog"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
  "catalog",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "futures 0.3.21",
  "log",
- "proto 0.1.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "snafu 0.6.10",
  "table_engine",
@@ -5613,18 +5662,18 @@ dependencies = [
 
 [[package]]
 name = "table_engine"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "datafusion 12.0.0",
  "datafusion-expr 12.0.0",
  "futures 0.3.21",
  "log",
  "parquet 23.0.0",
- "proto 0.1.0",
+ "proto 0.4.0-alpha",
  "protobuf",
  "serde",
  "serde_derive",
@@ -5635,7 +5684,7 @@ dependencies = [
 
 [[package]]
 name = "table_kv"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "common_util",
  "log",
@@ -5787,12 +5836,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.12"
+version = "0.3.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74b7cc93fc23ba97fde84f7eea56c55d1ba183f495c6715defdfc7b9cb8c870f"
+checksum = "d634a985c4d4238ec39cacaed2e7ae552fbd3c476b552c1deac3021b7d7eaf0c"
 dependencies = [
  "itoa 1.0.3",
- "js-sys",
  "libc",
  "num_threads",
  "time-macros",
@@ -6304,7 +6352,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "lazy_static",
  "tracing",
@@ -6544,11 +6592,11 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "wal"
-version = "0.1.0"
+version = "0.4.0-alpha"
 dependencies = [
  "async-trait",
  "chrono",
- "common_types 0.1.0",
+ "common_types 0.4.0-alpha",
  "common_util",
  "env_logger",
  "futures 0.3.21",

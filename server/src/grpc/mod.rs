@@ -9,7 +9,7 @@ use std::{
 };
 
 use ceresdbproto::{
-    common::ResponseHeader, meta_event::meta_event_service_server::MetaEventServiceServer,
+    meta_event::meta_event_service_server::MetaEventServiceServer,
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
@@ -22,7 +22,6 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
 };
 use futures::FutureExt;
-use http::StatusCode;
 use log::{info, warn};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -31,7 +30,6 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    error::ServerError,
     grpc::{meta_event_service::MetaServiceImpl, storage_service::StorageServiceImpl},
     instance::InstanceRef,
     route::RouterRef,
@@ -263,19 +261,5 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             stop_tx: None,
             join_handle: None,
         })
-    }
-}
-
-pub fn build_err_header(err: ServerError) -> ResponseHeader {
-    ResponseHeader {
-        code: err.code().as_u16() as u32,
-        error: err.error_message(),
-    }
-}
-
-pub fn build_ok_header() -> ResponseHeader {
-    ResponseHeader {
-        code: StatusCode::OK.as_u16() as u32,
-        ..Default::default()
     }
 }
