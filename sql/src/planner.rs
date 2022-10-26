@@ -1644,7 +1644,7 @@ mod tests {
             r#"Show(
     ShowTablesPlan(
         ShowTablesPlan {
-            fuzzy_target: None,
+            pattern: None,
         },
     ),
 )"#,
