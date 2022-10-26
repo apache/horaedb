@@ -158,7 +158,8 @@ pub struct ShowCreatePlan {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ShowTablesPlan {
-    pub fuzzy_target: Option<String>,
+    /// Like pattern
+    pub pattern: Option<String>,
 }
 
 #[derive(Debug)]

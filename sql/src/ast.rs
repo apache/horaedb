@@ -98,7 +98,8 @@ pub struct AlterAddColumn {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ShowTables {
-    pub fuzzy_target: Option<String>,
+    /// Like pattern
+    pub pattern: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

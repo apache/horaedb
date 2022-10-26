@@ -102,12 +102,12 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
 
-        let tables_names = match plan.fuzzy_target {
+        let tables_names = match plan.pattern {
             Some(sc) => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
-                .filter(|t| search_str(t.name(), &sc))
+                .filter(|t| is_table_matched(t.name(), &sc).unwrap())
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
             None => schema
@@ -159,10 +159,10 @@ impl ShowInterpreter {
     }
 }
 
-fn search_str(str: &str, search_re: &str) -> bool {
+fn is_table_matched(str: &str, search_re: &str) -> Result<bool> {
     let regex_str = search_re.replace('_', ".").replace('%', ".*");
     let re = Regex::new(&regex_str).unwrap();
-    re.is_match(str)
+    Ok(re.is_match(str))
 }
 
 #[async_trait]
@@ -206,4 +206,14 @@ fn get_default_schema(
         .context(SchemaNotExists {
             name: default_schema,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::show::is_table_matched;
+    #[test]
+    fn test_is_table_matched() {
+        assert!(is_table_matched("01_system_table1", "01%").is_ok());
+        assert!(is_table_matched("01_system_table1", "01_%").is_ok());
+    }
 }

@@ -600,7 +600,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
         let plan = ShowTablesPlan {
-            fuzzy_target: show_tables.fuzzy_target,
+            pattern: show_tables.pattern,
         };
         Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
     }

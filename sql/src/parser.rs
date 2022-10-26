@@ -234,14 +234,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_show_tables(&mut self) -> Result<Statement> {
-        let fuzzy_target = match self.parser.next_token() {
+        let pattern = match self.parser.next_token() {
             Token::Word(w) => match w.keyword {
                 Keyword::LIKE => self.get_all_like_tokens(),
                 _ => None,
             },
             _ => None,
         };
-        Ok(Statement::ShowTables(ShowTables { fuzzy_target }))
+        Ok(Statement::ShowTables(ShowTables { pattern }))
     }
 
     fn get_all_like_tokens(&mut self) -> Option<String> {
