@@ -394,7 +394,7 @@ impl RecordBatchWithKey {
     pub fn select_data(&mut self, filter_array: &BooleanArray) -> Result<()> {
         assert_eq!(self.num_rows(), filter_array.len());
         let selected_record_batch =
-            filter_record_batch(&self.data.arrow_record_batch, filter_array)
+            compute::filter_record_batch(&self.data.arrow_record_batch, filter_array)
                 .map_err(|e| Box::new(e) as _)
                 .context(SelectRecordBatchData)?;
 
