@@ -24,6 +24,9 @@ table_kv = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true }
 tempfile = { workspace = true, optional = true }
+proto = { workspace = true }
+protobuf = { workspace = true }
+message_queue = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true, features = ["async-await"] }
