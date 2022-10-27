@@ -72,7 +72,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to manipulate table data, this table:{} does not belong to this worker: {}",
+        "Failed to manipulate table data, table({}) does not belong to worker({})",
         table,
         worker_id
     ))]
