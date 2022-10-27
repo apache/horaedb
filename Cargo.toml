@@ -140,8 +140,6 @@ debug = true
 # This profile optimizes for good runtime performance.
 [profile.release]
 debug = true
-opt-level = 3
-lto = false
 overflow-checks = true
 
 # This profile optimizes for best runtime performance but with more memory consumption.
