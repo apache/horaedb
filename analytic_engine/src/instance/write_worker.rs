@@ -72,11 +72,16 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to manipulate table data, table({}) does not belong to worker({})",
+        "Disallowed to manipulate table data, table does not belong to the worker, table:{}, worker:{}.\nBacktrace:\n{}",
         table,
-        worker_id
+        worker_id,
+        backtrace,
     ))]
-    DataNotLegal { table: String, worker_id: usize },
+    Permission {
+        table: String,
+        worker_id: usize,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -297,7 +302,9 @@ impl WorkerLocal {
         self.data.as_ref().id
     }
 
-    pub fn validate_table_data(
+    /// Use this to ensure the worker has the permission to operate on this
+    /// table.
+    pub fn ensure_permission(
         &self,
         table_name: &str,
         table_id: usize,
@@ -305,7 +312,7 @@ impl WorkerLocal {
     ) -> Result<()> {
         let worker_id = self.data.as_ref().id;
         if choose_worker(table_id, worker_num) != worker_id {
-            return DataNotLegal {
+            return Permission {
                 table: table_name,
                 worker_id,
             }

@@ -315,7 +315,7 @@ impl Instance {
 
         let worker_id = worker_local.worker_id();
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -383,7 +383,7 @@ impl Instance {
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
