@@ -5,7 +5,7 @@
 use std::{cmp, convert::TryFrom, mem};
 
 use arrow::{
-    array::BooleanArray, compute::filter_record_batch, datatypes::SchemaRef as ArrowSchemaRef,
+    array::BooleanArray, compute, datatypes::SchemaRef as ArrowSchemaRef,
     error::ArrowError, record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;

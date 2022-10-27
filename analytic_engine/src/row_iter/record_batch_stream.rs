@@ -14,8 +14,9 @@ use common_types::{
 };
 use common_util::define_result;
 use datafusion::{
+    common::ToDFSchema,
     error::DataFusionError,
-    logical_plan::{self, ToDFSchema},
+    logical_expr::expr_fn,
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };
@@ -139,7 +140,7 @@ pub fn filter_stream(
     input_schema: ArrowSchemaRef,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    let filter = logical_plan::combine_filters(predicate.exprs());
+    let filter = expr_fn::combine_filters(predicate.exprs());
     if let Some(filter) = filter {
         let input_df_schema = input_schema
             .clone()
