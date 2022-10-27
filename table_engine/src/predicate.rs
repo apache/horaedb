@@ -23,8 +23,6 @@ use log::{debug, error, trace};
 use parquet::file::statistics::Statistics as ParquetStatistics;
 use snafu::{ResultExt, Snafu};
 
-pub mod filter_record_batch;
-
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
