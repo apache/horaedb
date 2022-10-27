@@ -302,7 +302,7 @@ impl WorkerLocal {
         self.data.as_ref().id
     }
 
-    /// Use this to ensure the worker has the permission to operate on this
+    /// Used to ensure the worker has the permission to operate on this
     /// table.
     pub fn ensure_permission(
         &self,
