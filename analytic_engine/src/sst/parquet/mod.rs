@@ -3,8 +3,6 @@
 //! Sst implementation based on parquet.
 
 pub mod builder;
-#[allow(deprecated)]
 pub mod encoding;
 mod hybrid;
-#[allow(deprecated)]
 pub mod reader;

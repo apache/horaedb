@@ -115,6 +115,20 @@ impl<R: 'static + ChunkReader> CacheableSerializedFileReader<R> {
     }
 }
 
+impl<R: 'static + ChunkReader> Length for CacheableSerializedFileReader<R> {
+    fn len(&self) -> u64 {
+        self.chunk_reader.len()
+    }
+}
+
+impl<R: 'static + ChunkReader> ChunkReader for CacheableSerializedFileReader<R> {
+    type T = R::T;
+
+    fn get_read(&self, start: u64, length: usize) -> Result<Self::T> {
+        self.chunk_reader.get_read(start, length)
+    }
+}
+
 impl<R: 'static + ChunkReader> FileReader for CacheableSerializedFileReader<R> {
     fn metadata(&self) -> &ParquetMetaData {
         &self.metadata

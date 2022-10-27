@@ -22,7 +22,7 @@ use futures::Stream;
 use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
-    arrow::{ArrowReader, ParquetFileArrowReader, ProjectionMask},
+    arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
     file::{metadata::RowGroupMetaData, reader::FileReader},
 };
 use parquet_ext::{
@@ -289,21 +289,25 @@ impl ProjectAndFilterReader {
 
             Ok(Box::new(reverse_reader))
         } else {
-            let mut arrow_reader = ParquetFileArrowReader::new(Arc::new(file_reader));
+            let builder = ParquetRecordBatchReaderBuilder::try_new(file_reader)
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeRecordBatch)?
+                .with_batch_size(self.batch_size);
 
-            let reader = if self.projected_schema.is_all_projection() {
-                arrow_reader.get_record_reader(self.batch_size)
+            let builder = if self.projected_schema.is_all_projection() {
+                builder
             } else {
                 let proj_mask = ProjectionMask::leaves(
-                    arrow_reader.metadata().file_metadata().schema_descr(),
+                    builder.metadata().file_metadata().schema_descr(),
                     self.row_projector
                         .existed_source_projection()
                         .iter()
                         .copied(),
                 );
-                arrow_reader.get_record_reader_by_columns(proj_mask, self.batch_size)
+                builder.with_projection(proj_mask)
             };
-            let reader = reader
+            let reader = builder
+                .build()
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeRecordBatch)?;
 
