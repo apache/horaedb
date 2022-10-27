@@ -92,7 +92,7 @@ pub enum Error {
     #[snafu(display(
         "Table must contain only one timestamp key and it's data type must be TIMESTAMP"
     ))]
-    InvalidTimetampKey,
+    InvalidTimestampKey,
 
     #[snafu(display("Invalid unsign type: {}.\nBacktrace:\n{}", kind, backtrace))]
     InvalidUnsignType {
@@ -345,7 +345,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             }
         );
 
-        // Find timestamp key and primary key contraint
+        // Find timestamp key and primary key constraint.
         let mut primary_key_constraint_idx = None;
         let mut timestamp_name = None;
         for (idx, constraint) in stmt.constraints.iter().enumerate() {
@@ -359,9 +359,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     primary_key_constraint_idx = Some(idx);
                 } else if parser::is_timestamp_key_constraint(constraint) {
                     // Only one timestamp key constraint
-                    ensure!(timestamp_name.is_none(), InvalidTimetampKey);
+                    ensure!(timestamp_name.is_none(), InvalidTimestampKey);
                     // Only one column in constraint
-                    ensure!(columns.len() == 1, InvalidTimetampKey);
+                    ensure!(columns.len() == 1, InvalidTimestampKey);
 
                     let name = &columns[0].value;
                     let timestamp_column = name_column_map
@@ -370,7 +370,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     // Ensure type is timestamp
                     ensure!(
                         timestamp_column.data_type == DatumKind::Timestamp,
-                        InvalidTimetampKey
+                        InvalidTimestampKey
                     );
 
                     timestamp_name = Some(name.clone());
