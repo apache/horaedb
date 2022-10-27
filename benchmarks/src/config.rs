@@ -46,6 +46,7 @@ pub struct SstBenchConfig {
     pub store_path: String,
     pub sst_file_name: String,
     pub runtime_thread_num: usize,
+    pub is_async: bool,
 
     pub bench_measurement_time: ReadableDuration,
     pub bench_sample_size: usize,

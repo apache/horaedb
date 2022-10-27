@@ -7,7 +7,8 @@ runtime_thread_num = 1
 bench_measurement_time = "30s"
 bench_sample_size = 30
 max_projections = 5
-read_batch_row_num = 500
+read_batch_row_num = 8192
+is_async = false
 reverse = false
 
 [sst_bench.predicate]

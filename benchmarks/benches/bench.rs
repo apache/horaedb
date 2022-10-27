@@ -15,6 +15,7 @@ use benchmarks::{
     wal_write_bench::WalWriteBench,
 };
 use criterion::*;
+use pprof::criterion::{Output, PProfProfiler};
 
 static INIT_LOG: Once = Once::new();
 
@@ -221,13 +222,15 @@ fn bench_wal_write(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = bench_parquet,
     bench_read_sst,
     bench_merge_sst,
-    bench_parquet,
     bench_scan_memtable,
     bench_merge_memtable,
     bench_arrow2,
     bench_wal_write,
 );
+
 criterion_main!(benches);

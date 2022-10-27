@@ -70,10 +70,10 @@ impl ClusterImpl {
 
         let handle = self.runtime.spawn(async move {
             loop {
-                let shards_info = inner.shard_tables_cache.all_shard_infos();
-                info!("Node heartbeat to meta, shards info:{:?}", shards_info);
+                let shard_infos = inner.shard_tables_cache.all_shard_infos();
+                info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
 
-                let resp = inner.meta_client.send_heartbeat(shards_info).await;
+                let resp = inner.meta_client.send_heartbeat(shard_infos).await;
                 let wait = match resp {
                     Ok(()) => interval,
                     Err(e) => {
@@ -186,12 +186,21 @@ impl Inner {
             msg: "missing shard info in the request",
         })?;
 
-        if self.shard_tables_cache.contains(shard_info.id) {
-            OpenShard {
-                shard_id: shard_info.id,
-                msg: "shard is already opened",
+        if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
+            if tables_of_shard.shard_info.version == shard_info.version {
+                info!(
+                    "No need to open the exactly same shard again, shard_info:{:?}",
+                    shard_info
+                );
+                return Ok(tables_of_shard);
             }
-            .fail()?;
+            ensure!(
+                tables_of_shard.shard_info.version < shard_info.version,
+                OpenShard {
+                    shard_id: shard_info.id,
+                    msg: format!("open a shard with a smaller version, curr_shard_info:{:?}, new_shard_info:{:?}", tables_of_shard.shard_info, shard_info),
+                }
+            );
         }
 
         let req = GetTablesOfShardsRequest {
