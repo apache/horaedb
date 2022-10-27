@@ -11,7 +11,7 @@ use std::{
 
 // Should not use bytes crate outside of this mod so we can replace the actual
 // implementations if needed
-pub use bytes::{Buf, BufMut, Bytes, BytesMut};
+pub use bytes::{buf, Buf, BufMut, Bytes, BytesMut};
 use snafu::{ensure, Backtrace, GenerateBacktrace, Snafu};
 
 /// Error of MemBuf/MemBufMut

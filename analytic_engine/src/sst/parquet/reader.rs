@@ -3,6 +3,7 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
+    io::Read,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -11,7 +12,7 @@ use std::{
 
 use arrow::{error::Result as ArrowResult, record_batch::RecordBatch};
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
@@ -20,10 +21,14 @@ use common_types::{
 use common_util::runtime::Runtime;
 use futures::Stream;
 use log::{debug, error, trace};
-use object_store::{ObjectStoreRef, Path};
+use object_store::{GetResult, ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
-    file::{metadata::RowGroupMetaData, reader::FileReader},
+    errors::ParquetError,
+    file::{
+        metadata::RowGroupMetaData,
+        reader::{ChunkReader, FileReader, Length},
+    },
 };
 use parquet_ext::{
     reverse_reader::Builder as ReverseRecordBatchReaderBuilder, CacheableSerializedFileReader,
@@ -31,7 +36,10 @@ use parquet_ext::{
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    Mutex,
+};
 
 use crate::{
     sst::{
@@ -45,7 +53,74 @@ use crate::{
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
 
+struct GetResultReader {
+    inner: Mutex<Option<GetResult>>,
+    size: u64,
+    bytes: Mutex<Option<Bytes>>,
+    runtime: Arc<Runtime>,
+}
+
+impl GetResultReader {
+    fn init_if_necessary(&self) -> Result<()> {
+        self.runtime.block_on(async {
+            let mut b = self.bytes.lock().await;
+            if b.is_some() {
+                return Ok(());
+            }
+
+            let inner = self.inner.lock().await.take().unwrap();
+            let bytes = inner
+                .bytes()
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(ReadPersist {
+                    path: "".to_string(),
+                })?;
+
+            *b = Some(bytes);
+            Ok(())
+        })
+    }
+}
+
+impl Length for GetResultReader {
+    fn len(&self) -> u64 {
+        self.size
+    }
+}
+
+impl ChunkReader for GetResultReader {
+    type T = common_types::bytes::buf::Reader<Bytes>;
+
+    fn get_read(&self, start: u64, length: usize) -> parquet::errors::Result<Self::T> {
+        self.init_if_necessary()
+            .map_err(|e| ParquetError::General(e.to_string()))?;
+
+        let read_bytes = self.runtime.block_on(async {
+            let lock = self.bytes.lock().await;
+            let bytes = lock.as_ref().unwrap();
+            bytes.slice(start as usize..start as usize + length)
+        });
+
+        Ok(read_bytes.reader())
+    }
+
+    fn get_bytes(&self, start: u64, length: usize) -> parquet::errors::Result<Bytes> {
+        let mut buffer = Vec::with_capacity(length);
+        let read = self.get_read(start, length)?.read_to_end(&mut buffer)?;
+
+        if read != length {
+            return Err(ParquetError::EOF(format!(
+                "Expected to read {} bytes, read only {}",
+                length, read,
+            )));
+        }
+        Ok(buffer.into())
+    }
+}
+
 pub async fn read_sst_meta(
+    runtime: Arc<Runtime>,
     storage: &ObjectStoreRef,
     path: &Path,
     meta_cache: &Option<MetaCacheRef>,
@@ -58,6 +133,12 @@ pub async fn read_sst_meta(
         .with_context(|| ReadPersist {
             path: path.to_string(),
         })?;
+    let reader = GetResultReader {
+        inner: Mutex::new(Some(get_result)),
+        size: 0,
+        bytes: Mutex::new(None),
+        runtime: runtime.clone(),
+    };
     // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
     // read. So under this situation it would be better to pass a local file to
     // it, avoiding consumes lots of memory. Once parquet support stream data source
@@ -73,7 +154,7 @@ pub async fn read_sst_meta(
     // generate the file reader
     let file_reader = CacheableSerializedFileReader::new(
         path.to_string(),
-        bytes,
+        reader,
         meta_cache.clone(),
         data_cache.clone(),
     )
