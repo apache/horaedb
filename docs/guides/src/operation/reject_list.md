@@ -4,7 +4,7 @@
 If you want to reject query for a table, you can add table name to 'read_reject_list'.
 
 ### Example
-```
+```shell
 curl --location --request POST 'http://localhost:5000/reject' \
 --header 'Content-Type: application/json' \
 -d '{
@@ -30,7 +30,7 @@ curl --location --request POST 'http://localhost:5000/reject' \
 You can use set operation to clear exist tables and set new tables to 'read_reject_list' like following example.
 
 ### Example
-``` json
+```shell
 curl --location --request POST 'http://localhost:5000/reject' \
 --header 'Content-Type: application/json' \
 -d '{
@@ -59,7 +59,8 @@ curl --location --request POST 'http://localhost:5000/reject' \
 You can remove tables from  'read_reject_list' like following example.
 
 ### Example
-```
+
+```shell
 curl --location --request POST 'http://localhost:5000/reject' \
 --header 'Content-Type: application/json' \
 -d '{
