@@ -1,6 +1,6 @@
-# Reject List
+# Block List
 
-## Add reject list
+## Add block list
 If you want to reject query for a table, you can add table name to 'read_reject_list'.
 
 ### Example
@@ -25,7 +25,7 @@ curl --location --request POST 'http://localhost:5000/reject' \
 }
 ```
 
-## Set reject list
+## Set block list
 
 You can use set operation to clear exist tables and set new tables to 'read_reject_list' like following example.
 
@@ -54,7 +54,7 @@ curl --location --request POST 'http://localhost:5000/reject' \
 }
 ```
 
-## Remove reject list
+## Remove block list
 
 You can remove tables from  'read_reject_list' like following example.
 
