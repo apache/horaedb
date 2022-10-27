@@ -302,11 +302,7 @@ impl WorkerLocal {
         self.data.as_ref().id
     }
 
-<<<<<<< HEAD
     /// Used to ensure the worker has the permission to operate on this
-=======
-    /// Use this to ensure the worker has the permission to operate on this
->>>>>>> c24e69c (chore: fix error message for DataNotLegal)
     /// table.
     pub fn ensure_permission(
         &self,
