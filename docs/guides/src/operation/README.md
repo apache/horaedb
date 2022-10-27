@@ -4,5 +4,5 @@ This guide introduces the operation and maintenance of CeresDB, including cluste
 
 * [Table](./table.md) 
 * [System table](./system_table.md) 
-* [Black list](./blacklist.md) 
+* [Black list](./reject_list.md) 
 
