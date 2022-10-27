@@ -1,13 +1,13 @@
 [package]
 name = "ceresdb"
-version = "0.4.0-alpha"
+version = "0.4.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.package]
-version = "0.4.0-alpha"
+version = "0.4.0"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
 
@@ -137,19 +137,12 @@ vergen = { version = "5", default-features = false, features = ["build", "git"] 
 [profile.bench]
 debug = true
 
-# This profile optimizes for runtime performance and small binary size at the expense of longer
-# build times. It's most suitable for final release builds.
+# This profile optimizes for good runtime performance.
 [profile.release]
 debug = true
-opt-level = "z"
-lto = true
 overflow-checks = true
 
-# This profile optimizes for short build times at the expense of larger binary size and slower
-# runtime performance. It's most suitable for development iterations.
-[profile.quick-release]
+# This profile optimizes for best runtime performance but with more memory consumption.
+[profile.better-release]
 inherits = "release"
-opt-level = 2
-lto = false
-codegen-units = 16
-incremental = true
+lto = true

@@ -29,6 +29,7 @@ table_engine = { workspace = true }
 table_kv = { workspace = true }
 tokio = { workspace = true }
 wal = { workspace = true }
+pprof = { version = "0.10", features = ["flamegraph", "criterion"] }
 
 [dev-dependencies]
 criterion = { workspace = true }
