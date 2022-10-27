@@ -51,7 +51,8 @@ pub async fn meta_from_sst(
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
 ) -> SstMetaData {
-    let (_, sst_meta) = reader::read_sst_meta(store, sst_path, meta_cache, data_cache)
+    let rt = Arc::new(new_runtime(1));
+    let (_, sst_meta) = reader::read_sst_meta(rt, store, sst_path, meta_cache, data_cache)
         .await
         .unwrap();
 

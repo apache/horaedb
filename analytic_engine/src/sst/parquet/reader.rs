@@ -53,11 +53,14 @@ use crate::{
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
 
-struct GetResultReader {
+/// GetResultReader is a wrapper GetResult, so we can get bytes in lazy way
+pub struct GetResultReader {
+    runtime: Arc<Runtime>,
     inner: Mutex<Option<GetResult>>,
+    // size of GetResult
     size: u64,
     bytes: Mutex<Option<Bytes>>,
-    runtime: Arc<Runtime>,
+    path: String,
 }
 
 impl GetResultReader {
@@ -74,7 +77,7 @@ impl GetResultReader {
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(ReadPersist {
-                    path: "".to_string(),
+                    path: self.path.clone(),
                 })?;
 
             *b = Some(bytes);
@@ -125,7 +128,7 @@ pub async fn read_sst_meta(
     path: &Path,
     meta_cache: &Option<MetaCacheRef>,
     data_cache: &Option<DataCacheRef>,
-) -> Result<(CacheableSerializedFileReader<Bytes>, SstMetaData)> {
+) -> Result<(CacheableSerializedFileReader<GetResultReader>, SstMetaData)> {
     let get_result = storage
         .get(path)
         .await
@@ -133,23 +136,20 @@ pub async fn read_sst_meta(
         .with_context(|| ReadPersist {
             path: path.to_string(),
         })?;
-    let reader = GetResultReader {
-        inner: Mutex::new(Some(get_result)),
-        size: 0,
-        bytes: Mutex::new(None),
-        runtime: runtime.clone(),
-    };
-    // TODO: The `ChunkReader` (trait from parquet crate) doesn't support async
-    // read. So under this situation it would be better to pass a local file to
-    // it, avoiding consumes lots of memory. Once parquet support stream data source
-    // we can feed the `GetResult` to it directly.
-    let bytes = get_result
-        .bytes()
+    let object_meta = storage
+        .head(path)
         .await
         .map_err(|e| Box::new(e) as _)
-        .context(ReadPersist {
+        .with_context(|| ReadPersist {
             path: path.to_string(),
         })?;
+    let reader = GetResultReader {
+        inner: Mutex::new(Some(get_result)),
+        size: object_meta.size as u64,
+        bytes: Mutex::new(None),
+        runtime: runtime.clone(),
+        path: path.to_string(),
+    };
 
     // generate the file reader
     let file_reader = CacheableSerializedFileReader::new(
@@ -190,7 +190,7 @@ pub struct ParquetSstReader<'a> {
     projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_data: Option<SstMetaData>,
-    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
+    file_reader: Option<CacheableSerializedFileReader<GetResultReader>>,
     /// The batch of rows in one `record_batch`.
     batch_size: usize,
     /// Read the rows in reverse order.
@@ -228,8 +228,14 @@ impl<'a> ParquetSstReader<'a> {
             return Ok(());
         }
 
-        let (file_reader, sst_meta) =
-            read_sst_meta(self.storage, self.path, &self.meta_cache, &self.data_cache).await?;
+        let (file_reader, sst_meta) = read_sst_meta(
+            self.runtime.clone(),
+            self.storage,
+            self.path,
+            &self.meta_cache,
+            &self.data_cache,
+        )
+        .await?;
 
         self.file_reader = Some(file_reader);
         self.meta_data = Some(sst_meta);
@@ -322,7 +328,7 @@ impl<'a> ParquetSstReader<'a> {
 /// A reader for projection and filter on the parquet file.
 struct ProjectAndFilterReader {
     file_path: String,
-    file_reader: Option<CacheableSerializedFileReader<Bytes>>,
+    file_reader: Option<CacheableSerializedFileReader<GetResultReader>>,
     schema: Schema,
     projected_schema: ProjectedSchema,
     row_projector: RowProjector,
