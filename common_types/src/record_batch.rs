@@ -5,8 +5,8 @@
 use std::{cmp, convert::TryFrom, mem};
 
 use arrow::{
-    array::BooleanArray, compute, datatypes::SchemaRef as ArrowSchemaRef,
-    error::ArrowError, record_batch::RecordBatch as ArrowRecordBatch,
+    array::BooleanArray, compute, datatypes::SchemaRef as ArrowSchemaRef, error::ArrowError,
+    record_batch::RecordBatch as ArrowRecordBatch,
 };
 use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};

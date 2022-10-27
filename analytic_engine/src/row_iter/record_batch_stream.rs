@@ -66,8 +66,15 @@ pub enum Error {
     #[snafu(display("Failed to get datafusion schema, err:{}", source))]
     DatafusionSchema { source: DataFusionError },
 
-    #[snafu(display("Failed to generate datafusion physical expr, err:{}", source))]
-    DatafusionExpr { source: DataFusionError },
+    #[snafu(display(
+        "Failed to generate datafusion physical expr, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    DatafusionExpr {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display("Failed to select from record batch, err:{}", source))]
     SelectBatchData {
@@ -103,7 +110,7 @@ pub type SequencedRecordBatchStream = Box<
 >;
 
 /// Filter the `sequenced_record_batch` according to the `predicate`.
-fn maybe_filter_record_batch(
+fn filter_record_batch(
     mut sequenced_record_batch: SequencedRecordBatch,
     predicate: Arc<dyn PhysicalExpr>,
 ) -> Result<Option<SequencedRecordBatch>> {
@@ -133,8 +140,6 @@ fn maybe_filter_record_batch(
 }
 
 /// Filter the sequenced record batch stream by applying the `predicate`.
-/// However, the output record batches is not ensured to meet the requirements
-/// of the `predicate`.
 pub fn filter_stream(
     origin_stream: SequencedRecordBatchStream,
     input_schema: ArrowSchemaRef,
@@ -157,7 +162,7 @@ pub fn filter_stream(
 
         let stream = origin_stream.filter_map(move |sequence_record_batch| {
             let v = match sequence_record_batch {
-                Ok(v) => maybe_filter_record_batch(v, predicate.clone())
+                Ok(v) => filter_record_batch(v, predicate.clone())
                     .map_err(|e| Box::new(e) as _)
                     .transpose(),
                 Err(e) => Some(Err(e)),
