@@ -6,17 +6,12 @@ use std::{collections::HashMap, string::ToString, time::Duration};
 
 use common_types::time::Timestamp;
 use common_util::{
-    config::{ReadableDuration, ReadableSize},
+    config::{ReadableDuration, ReadableSize, TimeUnit},
     define_result,
     time::DurationExt,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use proto::analytic_common::{
-    CompactionOptions as CompactionOptionsPb, CompactionStrategy as CompactionStrategyPb,
-    Compression as CompressionPb, StorageFormat as StorageFormatPb,
-    StorageFormatOptions as StorageFormatOptionsPb, TableOptions as TableOptionsPb,
-    UpdateMode as UpdateModePb,
-};
+use proto::analytic_common as common_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
@@ -174,24 +169,24 @@ impl ToString for Compression {
     }
 }
 
-impl From<Compression> for CompressionPb {
+impl From<Compression> for common_pb::Compression {
     fn from(compression: Compression) -> Self {
         match compression {
-            Compression::Uncompressed => CompressionPb::UNCOMPRESSED,
-            Compression::Lz4 => CompressionPb::LZ4,
-            Compression::Snappy => CompressionPb::SNAPPY,
-            Compression::Zstd => CompressionPb::ZSTD,
+            Compression::Uncompressed => common_pb::Compression::Uncompressed,
+            Compression::Lz4 => common_pb::Compression::Lz4,
+            Compression::Snappy => common_pb::Compression::Snappy,
+            Compression::Zstd => common_pb::Compression::Zstd,
         }
     }
 }
 
-impl From<CompressionPb> for Compression {
-    fn from(compression: CompressionPb) -> Self {
+impl From<common_pb::Compression> for Compression {
+    fn from(compression: common_pb::Compression) -> Self {
         match compression {
-            CompressionPb::UNCOMPRESSED => Compression::Uncompressed,
-            CompressionPb::LZ4 => Compression::Lz4,
-            CompressionPb::SNAPPY => Compression::Snappy,
-            CompressionPb::ZSTD => Compression::Zstd,
+            common_pb::Compression::Uncompressed => Compression::Uncompressed,
+            common_pb::Compression::Lz4 => Compression::Lz4,
+            common_pb::Compression::Snappy => Compression::Snappy,
+            common_pb::Compression::Zstd => Compression::Zstd,
         }
     }
 }
@@ -246,7 +241,7 @@ pub enum StorageFormat {
     Hybrid,
 }
 
-impl From<StorageFormat> for StorageFormatPb {
+impl From<StorageFormat> for common_pb::StorageFormat {
     fn from(format: StorageFormat) -> Self {
         match format {
             StorageFormat::Columnar => Self::Columnar,
@@ -255,11 +250,11 @@ impl From<StorageFormat> for StorageFormatPb {
     }
 }
 
-impl From<StorageFormatPb> for StorageFormat {
-    fn from(format: StorageFormatPb) -> Self {
+impl From<common_pb::StorageFormat> for StorageFormat {
+    fn from(format: common_pb::StorageFormat) -> Self {
         match format {
-            StorageFormatPb::Columnar => Self::Columnar,
-            StorageFormatPb::Hybrid => Self::Hybrid,
+            common_pb::StorageFormat::Columnar => Self::Columnar,
+            common_pb::StorageFormat::Hybrid => Self::Hybrid,
         }
     }
 }
@@ -308,20 +303,21 @@ impl StorageFormatOptions {
     }
 }
 
-impl From<StorageFormatOptions> for StorageFormatOptionsPb {
-    fn from(format_opts: StorageFormatOptions) -> Self {
-        let mut format_opts_pb = StorageFormatOptionsPb::default();
-        format_opts_pb.set_format(format_opts.format.into());
-        format_opts_pb.set_collapsible_cols_idx(format_opts.collapsible_cols_idx);
-        format_opts_pb
+impl From<StorageFormatOptions> for common_pb::StorageFormatOptions {
+    fn from(v: StorageFormatOptions) -> Self {
+        common_pb::StorageFormatOptions {
+            format: common_pb::StorageFormat::from(v.format) as i32,
+            collapsible_cols_idx: v.collapsible_cols_idx,
+        }
     }
 }
 
-impl From<StorageFormatOptionsPb> for StorageFormatOptions {
-    fn from(mut format_opts_pb: StorageFormatOptionsPb) -> Self {
+impl From<common_pb::StorageFormatOptions> for StorageFormatOptions {
+    fn from(v: common_pb::StorageFormatOptions) -> Self {
+        let format = v.format();
         Self {
-            format: format_opts_pb.get_format().into(),
-            collapsible_cols_idx: format_opts_pb.take_collapsible_cols_idx(),
+            format: StorageFormat::from(format),
+            collapsible_cols_idx: v.collapsible_cols_idx,
         }
     }
 }
@@ -453,114 +449,123 @@ impl TableOptions {
     }
 }
 
-impl From<SizeTieredCompactionOptions> for CompactionOptionsPb {
+impl From<SizeTieredCompactionOptions> for common_pb::CompactionOptions {
     fn from(opts: SizeTieredCompactionOptions) -> Self {
-        let mut target = CompactionOptionsPb::new();
-        target.set_bucket_low(opts.bucket_low);
-        target.set_bucket_high(opts.bucket_high);
-        target.set_min_sstable_size(opts.min_sstable_size.0 as u32);
-        target.set_max_threshold(opts.max_threshold as u32);
-        target.set_min_threshold(opts.min_threshold as u32);
-
-        target
+        common_pb::CompactionOptions {
+            bucket_low: opts.bucket_low,
+            bucket_high: opts.bucket_high,
+            min_sstable_size: opts.min_sstable_size.0 as u32,
+            min_threshold: opts.min_threshold as u32,
+            max_threshold: opts.max_threshold as u32,
+            // FIXME: Is it ok to use the default timestamp resolution here?
+            timestamp_resolution: common_pb::TimeUnit::Nanoseconds as i32,
+        }
     }
 }
 
-impl From<CompactionOptionsPb> for SizeTieredCompactionOptions {
-    fn from(opts: CompactionOptionsPb) -> Self {
+impl From<common_pb::CompactionOptions> for SizeTieredCompactionOptions {
+    fn from(opts: common_pb::CompactionOptions) -> Self {
         Self {
             bucket_low: opts.bucket_low,
             bucket_high: opts.bucket_high,
-            min_sstable_size: ReadableSize(opts.min_sstable_size.into()),
+            min_sstable_size: ReadableSize(opts.min_sstable_size as u64),
             min_threshold: opts.min_threshold as usize,
             max_threshold: opts.max_threshold as usize,
         }
     }
 }
 
-impl From<TimeWindowCompactionOptions> for CompactionOptionsPb {
-    fn from(opts: TimeWindowCompactionOptions) -> Self {
-        let mut target = CompactionOptionsPb::new();
-        target.set_bucket_low(opts.size_tiered.bucket_low);
-        target.set_bucket_high(opts.size_tiered.bucket_high);
-        target.set_min_sstable_size(opts.size_tiered.min_sstable_size.0 as u32);
-        target.set_min_threshold(opts.size_tiered.min_threshold as u32);
-        target.set_max_threshold(opts.size_tiered.max_threshold as u32);
-        target.set_timestamp_resolution(opts.timestamp_resolution.into());
-
-        target
+impl From<TimeWindowCompactionOptions> for common_pb::CompactionOptions {
+    fn from(v: TimeWindowCompactionOptions) -> Self {
+        common_pb::CompactionOptions {
+            bucket_low: v.size_tiered.bucket_low,
+            bucket_high: v.size_tiered.bucket_high,
+            min_sstable_size: v.size_tiered.min_sstable_size.0 as u32,
+            min_threshold: v.size_tiered.min_threshold as u32,
+            max_threshold: v.size_tiered.max_threshold as u32,
+            timestamp_resolution: common_pb::TimeUnit::from(v.timestamp_resolution) as i32,
+        }
     }
 }
 
-impl From<CompactionOptionsPb> for TimeWindowCompactionOptions {
-    fn from(opts: CompactionOptionsPb) -> Self {
+impl From<common_pb::CompactionOptions> for TimeWindowCompactionOptions {
+    fn from(opts: common_pb::CompactionOptions) -> Self {
         let size_tiered: SizeTieredCompactionOptions = opts.clone().into();
 
         Self {
             size_tiered,
-            timestamp_resolution: opts.timestamp_resolution.into(),
+            timestamp_resolution: TimeUnit::from(opts.timestamp_resolution()),
         }
     }
 }
 
-impl From<TableOptions> for TableOptionsPb {
+impl From<TableOptions> for common_pb::TableOptions {
     fn from(opts: TableOptions) -> Self {
-        let mut target = TableOptionsPb::new();
-        if let Some(segment_duration) = opts.segment_duration {
-            target.set_segment_duration(segment_duration.0.as_millis_u64());
-            target.set_sampling_segment_duration(false);
-        } else {
-            // The segment duration is unknown.
-            target.set_sampling_segment_duration(true);
+        let segment_duration = opts
+            .segment_duration
+            .map(|v| v.0.as_millis_u64())
+            .unwrap_or(0);
+        let sampling_segment_duration = opts.segment_duration.is_none();
+
+        let (compaction_strategy, compaction_options) = match opts.compaction_strategy {
+            CompactionStrategy::Default => (common_pb::CompactionStrategy::Default, None),
+            CompactionStrategy::SizeTiered(v) => (
+                common_pb::CompactionStrategy::SizeTiered,
+                Some(common_pb::CompactionOptions::from(v)),
+            ),
+            CompactionStrategy::TimeWindow(v) => (
+                common_pb::CompactionStrategy::TimeWindow,
+                Some(common_pb::CompactionOptions::from(v)),
+            ),
+        };
+
+        common_pb::TableOptions {
+            segment_duration,
+            enable_ttl: opts.enable_ttl,
+            ttl: opts.ttl.0.as_millis_u64(),
+            arena_block_size: opts.arena_block_size,
+            num_rows_per_row_group: opts.num_rows_per_row_group as u64,
+            compaction_strategy: compaction_strategy as i32,
+            compaction_options,
+            update_mode: common_pb::UpdateMode::from(opts.update_mode) as i32,
+            write_buffer_size: opts.write_buffer_size,
+            compression: common_pb::Compression::from(opts.compression) as i32,
+            sampling_segment_duration,
+            storage_format: common_pb::StorageFormat::from(opts.storage_format) as i32,
         }
-        target.set_enable_ttl(opts.enable_ttl);
-        target.set_ttl(opts.ttl.0.as_millis_u64());
-        target.set_arena_block_size(opts.arena_block_size);
-        target.set_num_rows_per_row_group(opts.num_rows_per_row_group as u64);
-
-        match opts.compaction_strategy {
-            CompactionStrategy::Default => {
-                target.set_compaction_strategy(CompactionStrategyPb::DEFAULT);
-            }
-            CompactionStrategy::SizeTiered(opts) => {
-                target.set_compaction_strategy(CompactionStrategyPb::SIZE_TIERED);
-                target.set_compaction_options(opts.into());
-            }
-            CompactionStrategy::TimeWindow(opts) => {
-                target.set_compaction_strategy(CompactionStrategyPb::TIME_WINDOW);
-                target.set_compaction_options(opts.into());
-            }
-        }
-
-        match opts.update_mode {
-            UpdateMode::Overwrite => {
-                target.set_update_mode(UpdateModePb::Overwrite);
-            }
-            UpdateMode::Append => {
-                target.set_update_mode(UpdateModePb::Append);
-            }
-        }
-
-        target.set_write_buffer_size(opts.write_buffer_size);
-        target.set_compression(opts.compression.into());
-        target.set_storage_format(opts.storage_format.into());
-
-        target
     }
 }
 
-impl From<TableOptionsPb> for TableOptions {
-    fn from(opts: TableOptionsPb) -> Self {
-        let compaction_strategy = match opts.compaction_strategy {
-            CompactionStrategyPb::DEFAULT => CompactionStrategy::default(),
-            CompactionStrategyPb::SIZE_TIERED => {
+impl From<UpdateMode> for common_pb::UpdateMode {
+    fn from(v: UpdateMode) -> Self {
+        match v {
+            UpdateMode::Overwrite => common_pb::UpdateMode::Overwrite,
+            UpdateMode::Append => common_pb::UpdateMode::Append,
+        }
+    }
+}
+
+impl From<common_pb::UpdateMode> for UpdateMode {
+    fn from(v: common_pb::UpdateMode) -> Self {
+        match v {
+            common_pb::UpdateMode::Overwrite => UpdateMode::Overwrite,
+            common_pb::UpdateMode::Append => UpdateMode::Append,
+        }
+    }
+}
+
+impl From<common_pb::TableOptions> for TableOptions {
+    fn from(opts: common_pb::TableOptions) -> Self {
+        let compaction_strategy = match opts.compaction_strategy() {
+            common_pb::CompactionStrategy::Default => CompactionStrategy::default(),
+            common_pb::CompactionStrategy::SizeTiered => {
                 let opts = opts
                     .compaction_options
                     .map(SizeTieredCompactionOptions::from)
                     .unwrap_or_default();
                 CompactionStrategy::SizeTiered(opts)
             }
-            CompactionStrategyPb::TIME_WINDOW => {
+            common_pb::CompactionStrategy::TimeWindow => {
                 let opts = opts
                     .compaction_options
                     .map(TimeWindowCompactionOptions::from)
@@ -569,10 +574,6 @@ impl From<TableOptionsPb> for TableOptions {
             }
         };
 
-        let update_mode = match opts.update_mode {
-            UpdateModePb::Overwrite => UpdateMode::Overwrite,
-            UpdateModePb::Append => UpdateMode::Append,
-        };
         let segment_duration = if opts.sampling_segment_duration {
             None
         } else if opts.segment_duration == 0 {
@@ -585,6 +586,9 @@ impl From<TableOptionsPb> for TableOptions {
             Some(Duration::from_millis(opts.segment_duration).into())
         };
 
+        let compression = opts.compression();
+        let storage_format = opts.storage_format();
+
         Self {
             segment_duration,
             enable_ttl: opts.enable_ttl,
@@ -592,10 +596,10 @@ impl From<TableOptionsPb> for TableOptions {
             arena_block_size: opts.arena_block_size,
             compaction_strategy,
             num_rows_per_row_group: opts.num_rows_per_row_group as usize,
-            update_mode,
+            update_mode: UpdateMode::from(opts.update_mode()),
             write_buffer_size: opts.write_buffer_size,
-            compression: opts.compression.into(),
-            storage_format: opts.storage_format.into(),
+            compression: Compression::from(compression),
+            storage_format: StorageFormat::from(storage_format),
         }
     }
 }

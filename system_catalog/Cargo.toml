@@ -16,7 +16,7 @@ common_util = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 proto = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }

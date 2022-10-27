@@ -6,8 +6,8 @@ use std::convert::{TryFrom, TryInto};
 
 use common_types::{bytes::Bytes, schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::{common as common_pb, meta_update as meta_pb};
-use snafu::{Backtrace, ResultExt, Snafu};
+use proto::{analytic_common as analytic_common_pb, common as common_pb, meta_update as meta_pb};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     sst::{
@@ -32,6 +32,12 @@ pub enum Error {
 
     #[snafu(display("Fail to convert table schema, err:{}", source))]
     ConvertTableSchema { source: common_types::schema::Error },
+
+    #[snafu(display("Time range is not found.\nBacktrace:\n{}", backtrace))]
+    TimeRangeNotFound { backtrace: Backtrace },
+
+    #[snafu(display("Table schema is not found.\nBacktrace:\n{}", backtrace))]
+    TableSchemaNotFound { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -45,21 +51,22 @@ pub struct AddFile {
     pub file: FileMeta,
 }
 
-impl AddFile {
+impl From<AddFile> for meta_pb::AddFileMeta {
     /// Convert into protobuf struct
-    pub fn into_pb(self) -> meta_pb::AddFileMeta {
-        let mut target = meta_pb::AddFileMeta::new();
-        target.set_level(self.level.into());
-        target.set_file_id(self.file.id);
-        target.set_min_key(self.file.meta.min_key.to_vec());
-        target.set_max_key(self.file.meta.max_key.to_vec());
-        target.set_time_range(self.file.meta.time_range.into());
-        target.set_max_seq(self.file.meta.max_sequence);
-        target.set_schema(common_pb::TableSchema::from(&self.file.meta.schema));
-        target.set_size(self.file.meta.size);
-        target.set_row_num(self.file.meta.row_num);
-
-        target
+    fn from(v: AddFile) -> meta_pb::AddFileMeta {
+        meta_pb::AddFileMeta {
+            level: v.level as u32,
+            file_id: v.file.id,
+            min_key: v.file.meta.min_key.to_vec(),
+            max_key: v.file.meta.max_key.to_vec(),
+            time_range: Some(v.file.meta.time_range.into()),
+            max_seq: v.file.meta.max_sequence,
+            schema: Some(common_pb::TableSchema::from(&v.file.meta.schema)),
+            size: v.file.meta.size,
+            row_num: v.file.meta.row_num,
+            storage_format: analytic_common_pb::StorageFormat::from(v.file.meta.storage_format())
+                as i32,
+        }
     }
 }
 
@@ -67,8 +74,14 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
     type Error = Error;
 
     fn try_from(mut src: meta_pb::AddFileMeta) -> Result<Self> {
-        let time_range = TimeRange::try_from(src.take_time_range()).context(ConvertTimeRange)?;
-        let schema = Schema::try_from(src.take_schema()).context(ConvertTableSchema)?;
+        let time_range = {
+            let time_range = src.time_range.context(TimeRangeNotFound)?;
+            TimeRange::try_from(time_range).context(ConvertTimeRange)?
+        };
+        let schema = {
+            let schema = src.schema.context(TableSchemaNotFound)?;
+            Schema::try_from(schema).context(ConvertTableSchema)?
+        };
         Ok(Self {
             level: src
                 .level
@@ -84,7 +97,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                     schema,
                     size: src.size,
                     row_num: src.row_num,
-                    storage_format_opts: StorageFormatOptions::new(src.storage_format.into()),
+                    storage_format_opts: StorageFormatOptions::new(src.storage_format().into()),
                 },
             },
         })
@@ -100,14 +113,12 @@ pub struct DeleteFile {
     pub file_id: FileId,
 }
 
-impl DeleteFile {
-    /// Convert into protobuf struct
-    pub fn into_pb(self) -> meta_pb::DeleteFileMeta {
-        let mut target = meta_pb::DeleteFileMeta::new();
-        target.set_level(self.level.into());
-        target.set_file_id(self.file_id);
-
-        target
+impl From<DeleteFile> for meta_pb::DeleteFileMeta {
+    fn from(v: DeleteFile) -> Self {
+        meta_pb::DeleteFileMeta {
+            level: v.level as u32,
+            file_id: v.file_id,
+        }
     }
 }
 

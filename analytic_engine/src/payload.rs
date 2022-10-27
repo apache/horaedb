@@ -2,8 +2,7 @@
 
 //! Payloads to write to wal
 
-use std::convert::TryInto;
-
+use bytes::BufMut;
 use common_types::{
     bytes::{MemBuf, MemBufMut, Writer},
     row::{RowGroup, RowGroupBuilder},
@@ -13,9 +12,9 @@ use common_util::{
     codec::{row::WalRowDecoder, Decoder},
     define_result,
 };
+use prost::Message;
 use proto::{meta_update, table_requests};
-use protobuf::Message;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
 use crate::TableOptions;
@@ -27,7 +26,7 @@ pub enum Error {
 
     #[snafu(display("Failed to encode body, err:{}.\nBacktrace:\n{}", source, backtrace))]
     EncodeBody {
-        source: protobuf::ProtobufError,
+        source: prost::EncodeError,
         backtrace: Backtrace,
     },
 
@@ -43,7 +42,7 @@ pub enum Error {
 
     #[snafu(display("Failed to decode body, err:{}.\nBacktrace:\n{}", source, backtrace))]
     DecodeBody {
-        source: protobuf::ProtobufError,
+        source: prost::DecodeError,
         backtrace: Backtrace,
     },
 
@@ -54,6 +53,18 @@ pub enum Error {
     DecodeRow {
         source: common_util::codec::row::Error,
     },
+
+    #[snafu(display(
+        "Table schema is not found in the write request.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    TableSchemaNotFound { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Table options is not found in the write request.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    TableOptionsNotFound { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -102,9 +113,9 @@ impl<'a> Payload for WritePayload<'a> {
 
     fn encode_size(&self) -> usize {
         let body_size = match self {
-            WritePayload::Write(req) => req.compute_size(),
-            WritePayload::AlterSchema(req) => req.compute_size(),
-            WritePayload::AlterOption(req) => req.compute_size(),
+            WritePayload::Write(req) => req.encoded_len(),
+            WritePayload::AlterSchema(req) => req.encoded_len(),
+            WritePayload::AlterOption(req) => req.encoded_len(),
         };
 
         HEADER_SIZE + body_size as usize
@@ -114,18 +125,15 @@ impl<'a> Payload for WritePayload<'a> {
         match self {
             WritePayload::Write(req) => {
                 write_header(Header::Write, buf)?;
-                let mut writer = Writer::new(buf);
-                req.write_to_writer(&mut writer).context(EncodeBody)
+                req.encode(&mut buf).context(EncodeBody)
             }
             WritePayload::AlterSchema(req) => {
                 write_header(Header::AlterSchema, buf)?;
-                let mut writer = Writer::new(buf);
-                req.write_to_writer(&mut writer).context(EncodeBody)
+                req.encode(&mut buf).context(EncodeBody)
             }
             WritePayload::AlterOption(req) => {
                 write_header(Header::AlterOption, buf)?;
-                let mut writer = Writer::new(buf);
-                req.write_to_writer(&mut writer).context(EncodeBody)
+                req.encode(&mut buf).context(EncodeBody)
             }
         }
     }
@@ -148,16 +156,17 @@ pub enum ReadPayload {
 impl ReadPayload {
     fn decode_write_from_pb(buf: &[u8]) -> Result<Self> {
         let mut write_req_pb: table_requests::WriteRequest =
-            Message::parse_from_bytes(buf).context(DecodeBody)?;
+            Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
         let schema: Schema = write_req_pb
-            .take_schema()
+            .schema
+            .context(TableSchemaNotFound)?
             .try_into()
             .context(DecodeSchema)?;
 
         // Consume and convert rows in pb
-        let encoded_rows = write_req_pb.take_rows().into_vec();
+        let encoded_rows = write_req_pb.rows;
         let mut builder = RowGroupBuilder::with_capacity(schema.clone(), encoded_rows.len());
         let row_decoder = WalRowDecoder::new(&schema);
         for row_bytes in &encoded_rows {
@@ -175,11 +184,12 @@ impl ReadPayload {
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
         let mut alter_schema_meta_pb: meta_update::AlterSchemaMeta =
-            Message::parse_from_bytes(buf).context(DecodeBody)?;
+            Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
         let schema: Schema = alter_schema_meta_pb
-            .take_schema()
+            .schema
+            .context(TableSchemaNotFound)?
             .try_into()
             .context(DecodeSchema)?;
 
@@ -188,10 +198,13 @@ impl ReadPayload {
 
     fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
         let mut alter_option_meta_pb: meta_update::AlterOptionsMeta =
-            Message::parse_from_bytes(buf).context(DecodeBody)?;
+            Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert options in pb
-        let options: TableOptions = alter_option_meta_pb.take_options().into();
+        let options: TableOptions = alter_option_meta_pb
+            .options
+            .context(TableOptionsNotFound)?
+            .into();
 
         Ok(Self::AlterOptions { options })
     }

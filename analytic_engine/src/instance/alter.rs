@@ -118,7 +118,7 @@ impl Instance {
         };
 
         // Write AlterSchema to Data Wal
-        let alter_schema_pb = manifest_update.clone().into_pb();
+        let alter_schema_pb = manifest_update.clone().into();
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
@@ -286,7 +286,7 @@ impl Instance {
         // options.
 
         // Write AlterOptions to Data Wal
-        let alter_options_pb = manifest_update.clone().into_pb();
+        let alter_options_pb = manifest_update.clone().into();
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload

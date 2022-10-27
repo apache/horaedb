@@ -391,11 +391,14 @@ impl Instance {
             .context(Write)?;
 
         // Convert into pb
-        let mut write_req_pb = table_requests::WriteRequest::new();
-        // Use the table schema instead of the schema in request to avoid schema
-        // mismatch during replaying
-        write_req_pb.set_schema(common_pb::TableSchema::from(&table_data.schema()));
-        write_req_pb.set_rows(encoded_rows.into());
+        let write_req_pb = table_requests::WriteRequest {
+            // FIXME: Shall we avoid the magic number here?
+            version: 0,
+            // Use the table schema instead of the schema in request to avoid schema
+            // mismatch during replaying
+            schema: Some(common_pb::TableSchema::from(&table_data.schema())),
+            rows: encoded_rows.into(),
+        };
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);

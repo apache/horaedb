@@ -186,27 +186,7 @@ impl ColumnSchema {
         }
     }
 
-    /// Convert `self` to [proto::common::ColumnSchema]
-    ///
-    /// The `is_key` is needed because it is maintained by
-    /// [crate::schema::Schema]
-    pub fn to_pb(&self) -> common_pb::ColumnSchema {
-        let mut column_schema = common_pb::ColumnSchema::new();
-        column_schema.set_name(self.name.clone());
-        column_schema.set_data_type(self.data_type.into());
-        column_schema.set_is_nullable(self.is_nullable);
-        column_schema.set_id(self.id);
-        column_schema.set_is_tag(self.is_tag);
-        column_schema.set_comment(self.comment.clone());
-
-        if let Some(default_value) = &self.default_value {
-            column_schema.set_default_value(serde_json::to_vec(default_value).unwrap());
-        }
-
-        column_schema
-    }
-
-    /// Convert `self` to [arrow::datatypes::Field]
+    /// Convert `self` to [`arrow::datatypes::Field`]
     pub fn to_arrow_field(&self) -> Field {
         From::from(self)
     }
@@ -271,19 +251,16 @@ impl TryFrom<common_pb::ColumnSchema> for ColumnSchema {
 
     fn try_from(column_schema: common_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
-        let default_value_bytes = column_schema.get_default_value();
-        let default_value = if !default_value_bytes.is_empty() {
-            let expr = serde_json::from_slice::<Expr>(default_value_bytes)
-                .context(InvalidDefaultValueData)?;
-            Some(expr)
-        } else {
-            None
+        let data_type = column_schema.data_type();
+        let default_value = match column_schema.default_value {
+            Some(v) => Some(serde_json::from_slice::<Expr>(&v).context(InvalidDefaultValueData)?),
+            None => None,
         };
 
         Ok(Self {
             id: column_schema.id,
             name: column_schema.name,
-            data_type: DatumKind::from(column_schema.data_type),
+            data_type: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
             comment: column_schema.comment,
@@ -459,6 +436,20 @@ impl Builder {
     }
 }
 
+impl From<ColumnSchema> for common_pb::ColumnSchema {
+    fn from(src: ColumnSchema) -> Self {
+        common_pb::ColumnSchema {
+            name: src.name,
+            data_type: src.data_type as i32,
+            is_nullable: src.is_nullable,
+            id: src.id,
+            is_tag: src.is_tag,
+            comment: src.comment,
+            default_value: src.default_value.map(|v| serde_json::to_vec(&v).unwrap()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -495,7 +486,7 @@ mod tests {
     #[test]
     fn test_pb_convert() {
         let column_schema = new_test_column_schema();
-        let pb_schema = column_schema.to_pb();
+        let pb_schema = common_pb::ColumnSchema::from(column_schema.clone());
         // Check pb specific fields
         assert!(pb_schema.is_tag);
 
