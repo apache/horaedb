@@ -57,14 +57,35 @@ pub enum Error {
     #[snafu(display("Fail to scan memtable, err:{}", source))]
     ScanMemtable { source: crate::memtable::Error },
 
-    #[snafu(display("Fail to execute filter expression, err:{}", source))]
-    FilterExec { source: DataFusionError },
+    #[snafu(display(
+        "Fail to execute filter expression, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    FilterExec {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Fail to downcast boolean array, actual data type:{:?}", data_type))]
-    DowncastBooleanArray { data_type: ArrowDataType },
+    #[snafu(display(
+        "Fail to downcast boolean array, actual data type:{:?}.\nBacktrace:\n{}",
+        data_type,
+        backtrace
+    ))]
+    DowncastBooleanArray {
+        data_type: ArrowDataType,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Failed to get datafusion schema, err:{}", source))]
-    DatafusionSchema { source: DataFusionError },
+    #[snafu(display(
+        "Failed to get datafusion schema, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    DatafusionSchema {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display(
         "Failed to generate datafusion physical expr, err:{}.\nBacktrace:\n{}",
