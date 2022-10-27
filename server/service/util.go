@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"google.golang.org/grpc"
@@ -19,7 +21,16 @@ var (
 func GetClientConn(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 	opt := grpc.WithTransportCredentials(insecure.NewCredentials())
 
-	cc, err := grpc.DialContext(ctx, addr, opt)
+	host := addr
+	if strings.HasPrefix(addr, "http") {
+		u, err := url.Parse(addr)
+		if err != nil {
+			return nil, ErrParseURL.WithCause(err)
+		}
+		host = u.Host
+	}
+
+	cc, err := grpc.DialContext(ctx, host, opt)
 	if err != nil {
 		return nil, ErrGRPCDial.WithCause(err)
 	}
