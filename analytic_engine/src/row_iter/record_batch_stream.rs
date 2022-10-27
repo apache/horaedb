@@ -101,9 +101,7 @@ pub type SequencedRecordBatchStream = Box<
         + Unpin,
 >;
 
-/// Filter the `sequenced_record_batch` according to the `predicate` if
-/// necessary. Returns the original batch if only a small proportion of the
-/// batch is filtered out.
+/// Filter the `sequenced_record_batch` according to the `predicate`.
 fn maybe_filter_record_batch(
     mut sequenced_record_batch: SequencedRecordBatch,
     predicate: Arc<dyn PhysicalExpr>,
