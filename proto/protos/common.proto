@@ -7,59 +7,59 @@ package common;
 // Data type of column
 // TODO(yingwen): Do we need a null type?
 enum DataType {
-    NULL = 0;
-    TIMESTAMP = 1;
-    DOUBLE = 2;
-    VARBINARY = 3;
-    STRING = 4;
-    UINT64 = 5;
-    FLOAT = 6;
-    INT64 = 7;
-    INT32 = 8;
-    INT16 = 9;
-    INT8 = 10;
-    UINT32 = 11;
-    UINT16 = 12;
-    UINT8 = 13;
-    BOOL = 14;
+  NULL = 0;
+  TIMESTAMP = 1;
+  DOUBLE = 2;
+  VARBINARY = 3;
+  STRING = 4;
+  UINT64 = 5;
+  FLOAT = 6;
+  INT64 = 7;
+  INT32 = 8;
+  INT16 = 9;
+  INT8 = 10;
+  UINT32 = 11;
+  UINT16 = 12;
+  UINT8 = 13;
+  BOOL = 14;
 }
 
 // Column schema
 message ColumnSchema {
-    // Column name
-    string name = 1;
-    // Column type
-    DataType data_type = 2;
-    // Is the column nullable
-    bool is_nullable = 3;
-    // Id of the column
-    uint32 id = 4;
-    // Is the column used as tag
-    bool is_tag = 5;
-    // Comment of the column
-    string comment = 6;
-    // Default value expr of the column
-    optional bytes default_value = 7;
+  // Column name
+  string name = 1;
+  // Column type
+  DataType data_type = 2;
+  // Is the column nullable
+  bool is_nullable = 3;
+  // Id of the column
+  uint32 id = 4;
+  // Is the column used as tag
+  bool is_tag = 5;
+  // Comment of the column
+  string comment = 6;
+  // Default value expr of the column
+  bytes default_value = 7;
 }
 
 // Table Schema
 message TableSchema {
-    // Schema of each column
-    repeated ColumnSchema columns = 1;
-    // Version of the schema
-    uint32 version = 2;
-    // Key column num
-    uint32 num_key_columns = 3;
-    // Timestamp index in columns
-    uint32 timestamp_index = 4;
-    // Enable auto generated tsid as primary key
-    bool enable_tsid_primary_key = 5;
+  // Schema of each column
+  repeated ColumnSchema columns = 1;
+  // Version of the schema
+  uint32 version = 2;
+  // Key column num
+  uint32 num_key_columns = 3;
+  // Timestamp index in columns
+  uint32 timestamp_index = 4;
+  // Enable auto generated tsid as primary key
+  bool enable_tsid_primary_key = 5;
 }
 
 // Time range of [start, end)
 message TimeRange {
-    // inclusive start
-    int64 start = 1;
-    // exclusive end
-    int64 end = 2;
+  // inclusive start
+  int64 start = 1;
+  // exclusive end
+  int64 end = 2;
 }
