@@ -618,6 +618,11 @@ impl Schema {
         self.column_schemas.num_columns()
     }
 
+    /// Returns true if idx is primary key idnex
+    pub fn contains_primary_key_index(&self, idx: &usize) -> bool {
+        self.primary_key_index.contains(idx)
+    }
+
     /// Returns an immutable reference of a specific [ColumnSchema] selected by
     /// name.
     pub fn column_with_name(&self, name: &str) -> Option<&ColumnSchema> {
