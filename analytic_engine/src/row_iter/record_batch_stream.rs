@@ -17,7 +17,7 @@ use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
     logical_expr::expr_fn,
-    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    physical_expr::{self, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };
 use futures::stream::{self, Stream, StreamExt};
@@ -166,36 +166,36 @@ pub fn filter_stream(
     input_schema: ArrowSchemaRef,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    let filter = expr_fn::combine_filters(predicate.exprs());
-    if let Some(filter) = filter {
-        let input_df_schema = input_schema
-            .clone()
-            .to_dfschema()
-            .context(DatafusionSchema)?;
-        let execution_props = ExecutionProps::new();
-        let predicate = create_physical_expr(
-            &filter,
-            &input_df_schema,
-            input_schema.as_ref(),
-            &execution_props,
-        )
-        .context(DatafusionExpr)?;
+    let filter = match expr_fn::combine_filters(predicate.exprs()) {
+        Some(filter) => filter,
+        None => return Ok(origin_stream),
+    };
 
-        let stream = origin_stream.filter_map(move |sequence_record_batch| {
-            let v = match sequence_record_batch {
-                Ok(v) => filter_record_batch(v, predicate.clone())
-                    .map_err(|e| Box::new(e) as _)
-                    .transpose(),
-                Err(e) => Some(Err(e)),
-            };
+    let input_df_schema = input_schema
+        .clone()
+        .to_dfschema()
+        .context(DatafusionSchema)?;
+    let execution_props = ExecutionProps::new();
+    let predicate = physical_expr::create_physical_expr(
+        &filter,
+        &input_df_schema,
+        input_schema.as_ref(),
+        &execution_props,
+    )
+    .context(DatafusionExpr)?;
 
-            futures::future::ready(v)
-        });
+    let stream = origin_stream.filter_map(move |sequence_record_batch| {
+        let v = match sequence_record_batch {
+            Ok(v) => filter_record_batch(v, predicate.clone())
+                .map_err(|e| Box::new(e) as _)
+                .transpose(),
+            Err(e) => Some(Err(e)),
+        };
 
-        Ok(Box::new(stream))
-    } else {
-        Ok(origin_stream)
-    }
+        futures::future::ready(v)
+    });
+
+    Ok(Box::new(stream))
 }
 
 /// Build filtered (by `predicate`) [SequencedRecordBatchStream] from a
