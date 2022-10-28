@@ -2728,6 +2728,7 @@ dependencies = [
  "log",
  "meta_client",
  "query_engine",
+ "regex",
  "snafu 0.6.10",
  "sql",
  "table_engine",
