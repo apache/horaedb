@@ -16,7 +16,7 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{
-    bytes::{BufMut, MemBufMut},
+    bytes::{BufMut, SafeBufMut},
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
@@ -176,7 +176,7 @@ impl Header {
 }
 
 fn write_header<B: BufMut>(header: Header, buf: &mut B) -> Result<()> {
-    buf.write_u8(header.to_u8()).context(WriteHeader)
+    buf.try_put_u8(header.to_u8()).context(WriteHeader)
 }
 
 #[derive(Debug)]
@@ -192,7 +192,7 @@ impl<'a> Payload for WritePayload<'a> {
 
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
         write_header(Header::Write, buf)?;
-        buf.write_slice(self.0).context(WriteBody)
+        buf.try_put(self.0).context(WriteBody)
     }
 }
 

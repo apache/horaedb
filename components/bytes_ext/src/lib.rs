@@ -32,36 +32,36 @@ pub type ByteVec = Vec<u8>;
 ///
 /// Unlike [`bytes::Buf`], failed read operations will throw error rather than
 /// panic.
-pub trait MemBuf {
-    /// Return the remaining byte slice
-    fn remaining_slice(&self) -> &[u8];
-
-    /// Advance the internal cursor of the buffer, panic if overflow
-    fn must_advance(&mut self, cnt: usize);
-
-    /// Read bytes from self into dst.
+pub trait SafeBuf {
+    /// Copy bytes from self into dst.
     ///
     /// The cursor is advanced by the number of bytes copied.
     ///
     /// Returns error if self does not have enough remaining bytes to fill dst.
-    fn read_to_slice(&mut self, dst: &mut [u8]) -> Result<()>;
+    fn try_copy_to_slice(&mut self, dst: &mut [u8]) -> Result<()>;
+
+    /// Advance the internal cursor of the Buf
+    ///
+    /// Returns error if the `cnt > self.remaining()`. Note the `remaining`
+    /// method is provided by [`bytes::Buf`].
+    fn try_advance(&mut self, cnt: usize) -> Result<()>;
 
     /// Gets an unsigned 8 bit integer from self and advance current position
     ///
     /// Returns error if the capacity is not enough
-    fn read_u8(&mut self) -> Result<u8> {
+    fn try_get_u8(&mut self) -> Result<u8> {
         let mut buf = [0; 1];
-        self.read_to_slice(&mut buf)?;
+        self.try_copy_to_slice(&mut buf)?;
         Ok(buf[0])
     }
 
-    /// Gets an unsighed 32 bit integer from self in big-endian byte order and
+    /// Gets an unsigned 32 bit integer from self in big-endian byte order and
     /// advance current position
     ///
     /// Returns error if the capacity is not enough
-    fn read_u32(&mut self) -> Result<u32> {
+    fn try_get_u32(&mut self) -> Result<u32> {
         let mut buf = [0; 4];
-        self.read_to_slice(&mut buf)?;
+        self.try_copy_to_slice(&mut buf)?;
         Ok(u32::from_be_bytes(buf))
     }
 
@@ -69,81 +69,81 @@ pub trait MemBuf {
     /// advance current position
     ///
     /// Returns error if the capacity is not enough
-    fn read_u64(&mut self) -> Result<u64> {
+    fn try_get_u64(&mut self) -> Result<u64> {
         let mut buf = [0; 8];
-        self.read_to_slice(&mut buf)?;
+        self.try_copy_to_slice(&mut buf)?;
         Ok(u64::from_be_bytes(buf))
     }
 
-    fn read_f64(&mut self) -> Result<f64> {
+    fn try_get_f64(&mut self) -> Result<f64> {
         let mut buf = [0; 8];
-        self.read_to_slice(&mut buf)?;
+        self.try_copy_to_slice(&mut buf)?;
         Ok(f64::from_be_bytes(buf))
     }
 
-    fn read_f32(&mut self) -> Result<f32> {
+    fn try_get_f32(&mut self) -> Result<f32> {
         let mut buf = [0; 4];
-        self.read_to_slice(&mut buf)?;
+        self.try_copy_to_slice(&mut buf)?;
         Ok(f32::from_be_bytes(buf))
     }
 }
 
-/// Write bytes to a buffer
+/// Write bytes to a buffer.
 ///
 /// Unlike [`bytes::BufMut`], failed write operations will throw error rather
 /// than panic.
-pub trait MemBufMut {
+pub trait SafeBufMut {
     /// Write bytes into self from src, advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_slice(&mut self, src: &[u8]) -> Result<()>;
+    fn try_put(&mut self, src: &[u8]) -> Result<()>;
 
     /// Write an unsigned 8 bit integer to self, advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_u8(&mut self, n: u8) -> Result<()> {
+    fn try_put_u8(&mut self, n: u8) -> Result<()> {
         let src = [n];
-        self.write_slice(&src)
+        self.try_put(&src)
     }
 
     /// Writes an unsigned 32 bit integer to self in the big-endian byte order,
     /// advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_u32(&mut self, n: u32) -> Result<()> {
-        self.write_slice(&n.to_be_bytes())
+    fn try_put_u32(&mut self, n: u32) -> Result<()> {
+        self.try_put(&n.to_be_bytes())
     }
 
     /// Writes an unsigned 64 bit integer to self in the big-endian byte order,
     /// advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_u64(&mut self, n: u64) -> Result<()> {
-        self.write_slice(&n.to_be_bytes())
+    fn try_put_u64(&mut self, n: u64) -> Result<()> {
+        self.try_put(&n.to_be_bytes())
     }
 
     /// Writes an float 64 to self in the big-endian byte order,
     /// advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_f64(&mut self, n: f64) -> Result<()> {
-        self.write_slice(&n.to_be_bytes())
+    fn try_put_f64(&mut self, n: f64) -> Result<()> {
+        self.try_put(&n.to_be_bytes())
     }
 
     /// Writes an float 32 to self in the big-endian byte order,
     /// advance the buffer position
     ///
     /// Returns error if the capacity is not enough
-    fn write_f32(&mut self, n: f32) -> Result<()> {
-        self.write_slice(&n.to_be_bytes())
+    fn try_put_f32(&mut self, n: f32) -> Result<()> {
+        self.try_put(&n.to_be_bytes())
     }
 }
 
-impl<T> MemBufMut for T
+impl<T> SafeBufMut for T
 where
     T: BufMut,
 {
-    fn write_slice(&mut self, src: &[u8]) -> Result<()> {
+    fn try_put(&mut self, src: &[u8]) -> Result<()> {
         ensure!(self.remaining_mut() >= src.len(), WouldOverflow);
         self.put(src);
 
@@ -151,19 +151,18 @@ where
     }
 }
 
-impl<T> MemBuf for T
+impl<T> SafeBuf for T
 where
     T: Buf,
 {
-    fn remaining_slice(&self) -> &[u8] {
-        self.chunk()
+    fn try_advance(&mut self, cnt: usize) -> Result<()> {
+        ensure!(self.remaining() >= cnt, UnexpectedEof);
+        self.advance(cnt);
+
+        Ok(())
     }
 
-    fn must_advance(&mut self, cnt: usize) {
-        self.advance(cnt)
-    }
-
-    fn read_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
+    fn try_copy_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
         ensure!(self.remaining() >= dst.len(), UnexpectedEof);
         self.copy_to_slice(dst);
 
@@ -179,27 +178,30 @@ mod tests {
     fn test_bytes_mut_mem_buf() {
         let hello = b"hello";
         let mut buffer = BytesMut::new();
-        buffer.write_u8(8).unwrap();
-        buffer.write_u64(u64::MAX - 5).unwrap();
-        buffer.write_slice(hello).unwrap();
+        buffer.try_put_u8(8).unwrap();
+        buffer.try_put_u64(u64::MAX - 5).unwrap();
+        buffer.try_put(hello).unwrap();
 
-        assert_eq!(&buffer, buffer.remaining_slice());
-        assert_eq!(8, buffer.read_u8().unwrap());
-        assert_eq!(u64::MAX - 5, buffer.read_u64().unwrap());
+        assert_eq!(&buffer, buffer.chunk());
+        assert_eq!(8, buffer.try_get_u8().unwrap());
+        assert_eq!(u64::MAX - 5, buffer.try_get_u64().unwrap());
         let mut dst = [0; 5];
-        buffer.read_to_slice(&mut dst).unwrap();
+        buffer.try_copy_to_slice(&mut dst).unwrap();
         assert_eq!(hello, &dst);
 
-        assert!(buffer.remaining_slice().is_empty());
+        assert!(buffer.chunk().is_empty());
     }
 
     #[test]
     fn test_bytes_mut_empty() {
         let mut buffer = BytesMut::new();
-        assert!(buffer.remaining_slice().is_empty());
-        assert!(matches!(buffer.read_u8(), Err(Error::UnexpectedEof { .. })));
+        assert!(buffer.chunk().is_empty());
         assert!(matches!(
-            buffer.read_u64(),
+            buffer.try_get_u8(),
+            Err(Error::UnexpectedEof { .. })
+        ));
+        assert!(matches!(
+            buffer.try_get_u64(),
             Err(Error::UnexpectedEof { .. })
         ));
     }
@@ -207,19 +209,19 @@ mod tests {
     #[test]
     fn test_bytes_mem_buf() {
         let mut buffer = Bytes::from_static(b"hello world");
-        assert_eq!(b"hello world", buffer.remaining_slice());
+        assert_eq!(b"hello world", buffer.chunk());
 
         let mut dst = [0; 5];
-        buffer.read_to_slice(&mut dst).unwrap();
+        buffer.try_copy_to_slice(&mut dst).unwrap();
         assert_eq!(b"hello", &dst);
 
-        assert_eq!(b" world", buffer.remaining_slice());
-        buffer.must_advance(1);
-        assert_eq!(b"world", buffer.remaining_slice());
+        assert_eq!(b" world", buffer.chunk());
+        buffer.advance(1);
+        assert_eq!(b"world", buffer.chunk());
 
         let mut dst = [0; 50];
         assert!(matches!(
-            buffer.read_to_slice(&mut dst),
+            buffer.try_copy_to_slice(&mut dst),
             Err(Error::UnexpectedEof { .. })
         ));
     }
@@ -229,14 +231,14 @@ mod tests {
         let hello = b"hello world";
         let mut buf = &hello[..];
 
-        assert_eq!(hello, buf.remaining_slice());
+        assert_eq!(hello, buf.chunk());
         let mut dst = [0; 6];
-        buf.read_to_slice(&mut dst).unwrap();
+        buf.try_copy_to_slice(&mut dst).unwrap();
         assert_eq!(b"hello ", &dst);
-        assert_eq!(b"world", buf.remaining_slice());
+        assert_eq!(b"world", buf.chunk());
 
-        buf.must_advance(1);
-        assert_eq!(b"orld", buf.remaining_slice());
+        buf.advance(1);
+        assert_eq!(b"orld", buf.chunk());
     }
 
     #[test]
@@ -245,22 +247,22 @@ mod tests {
         {
             let mut buf = &mut dst[..];
 
-            buf.write_slice(b"abcde").unwrap();
+            buf.try_put(b"abcde").unwrap();
             assert_eq!(b"abcdexxxxxx", &dst);
         }
 
         {
             let mut buf = &mut dst[..];
 
-            buf.write_slice(b"hello").unwrap();
-            buf.write_slice(b" world").unwrap();
+            buf.try_put(b"hello").unwrap();
+            buf.try_put(b" world").unwrap();
             assert_eq!(b"hello world", &dst);
         }
 
         let mut dst = [0; 3];
         let mut buf = &mut dst[..];
         assert!(matches!(
-            buf.write_slice(b"a long long long slice"),
+            buf.try_put(b"a long long long slice"),
             Err(Error::WouldOverflow { .. })
         ));
     }
@@ -268,7 +270,7 @@ mod tests {
     #[test]
     fn test_vec_mem_buf_mut() {
         let mut buf = Vec::new();
-        buf.write_slice(b"hello").unwrap();
+        buf.try_put(b"hello").unwrap();
         assert_eq!(b"hello", &buf[..]);
     }
 }

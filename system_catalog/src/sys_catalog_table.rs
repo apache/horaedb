@@ -7,7 +7,7 @@ use std::{collections::HashMap, mem};
 use async_trait::async_trait;
 use catalog::consts;
 use common_types::{
-    bytes::{BufMut, Bytes, BytesMut, MemBuf, MemBufMut},
+    bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::ProjectedSchema,
@@ -648,7 +648,7 @@ impl KeyType {
     }
 
     fn decode_from_bytes(mut buf: &[u8]) -> Result<Self> {
-        let v = buf.read_u8().context(ReadKeyHeader)?;
+        let v = buf.try_get_u8().context(ReadKeyHeader)?;
 
         match v {
             v if v == Self::CreateCatalog as u8 => Ok(Self::CreateCatalog),
@@ -687,7 +687,7 @@ impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &CatalogKey) -> Result<()> {
-        buf.write_u8(KeyType::CreateCatalog.to_u8())
+        buf.try_put_u8(KeyType::CreateCatalog.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder
@@ -705,7 +705,7 @@ impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &SchemaKey) -> Result<()> {
-        buf.write_u8(KeyType::CreateSchema.to_u8())
+        buf.try_put_u8(KeyType::CreateSchema.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder
@@ -728,7 +728,7 @@ impl<'a> Encoder<TableKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
-        buf.write_u8(KeyType::TableEntry.to_u8())
+        buf.try_put_u8(KeyType::TableEntry.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder

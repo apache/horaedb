@@ -14,7 +14,7 @@ use arrow::{
     util::bit_util,
 };
 use common_types::{
-    bytes::{BytesMut, MemBufMut},
+    bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
 };
@@ -172,7 +172,7 @@ pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
     let meta_data_pb = SstMetaDataPb::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() as usize + 1);
-    buf.write_u8(META_VALUE_HEADER)
+    buf.try_put_u8(META_VALUE_HEADER)
         .expect("Should write header into the buffer successfully");
 
     // encode the sst meta data into protobuf binary

@@ -4,9 +4,8 @@
 
 use std::convert::TryFrom;
 
-use bytes::BufMut;
+use bytes::{Buf, BufMut};
 use common_types::{
-    bytes::MemBuf,
     schema::{Schema, Version},
     table::Location,
     SequenceNumber,
@@ -437,9 +436,9 @@ impl PayloadDecoder for MetaUpdateDecoder {
     type Error = Error;
     type Target = MetaUpdateLogEntry;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
         let log_entry_pb =
-            meta_pb::MetaUpdateLogEntry::decode(buf.remaining_slice()).context(DecodePayloadPb)?;
+            meta_pb::MetaUpdateLogEntry::decode(buf.chunk()).context(DecodePayloadPb)?;
 
         let log_entry = MetaUpdateLogEntry::try_from(log_entry_pb)?;
 

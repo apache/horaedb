@@ -4,13 +4,13 @@
 
 use std::convert::TryFrom;
 
-use common_types::bytes::{Buf, BufMut, Bytes, BytesMut, MemBuf, MemBufMut};
+use common_types::bytes::{Buf, BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use snafu::{ensure, ResultExt};
 
 use crate::codec::{
     compact::{
         DecodeEmptyValue, DecodeValue, DecodeVarint, EncodeValue, EncodeVarint, Error,
-        MemCompactDecoder, MemCompactEncoder, Result, TryIntoUsize,
+        MemCompactDecoder, MemCompactEncoder, Result, SkipDecodedValue, TryIntoUsize,
     },
     consts, varint, DecodeTo, Encoder,
 };
@@ -21,9 +21,9 @@ impl Encoder<[u8]> for MemCompactEncoder {
     // EncodeCompactBytes joins bytes with its length into a byte slice. It is more
     // efficient in both space and time compare to EncodeBytes. Note that the
     // encoded result is not memcomparable.
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &[u8]) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &[u8]) -> Result<()> {
         varint::encode_varint(buf, value.len() as i64).context(EncodeVarint)?;
-        buf.write_slice(value).context(EncodeValue)?;
+        buf.try_put(value).context(EncodeValue)?;
         Ok(())
     }
 
@@ -50,11 +50,9 @@ impl DecodeTo<BytesMut> for MemCompactDecoder {
     fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut BytesMut) -> Result<()> {
         let v = usize::try_from(varint::decode_varint(buf).context(DecodeVarint)?)
             .context(TryIntoUsize)?;
-        ensure!(buf.remaining_slice().len() >= v, DecodeEmptyValue);
-        value
-            .write_slice(&buf.remaining_slice()[..v])
-            .context(DecodeValue)?;
-        buf.must_advance(v);
+        ensure!(buf.remaining() >= v, DecodeEmptyValue);
+        value.try_put(&buf.chunk()[..v]).context(DecodeValue)?;
+        buf.try_advance(v).context(SkipDecodedValue)?;
         Ok(())
     }
 }

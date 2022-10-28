@@ -2,7 +2,7 @@
 
 //! Number format
 
-use common_types::bytes::{MemBuf, MemBufMut};
+use common_types::bytes::{Buf, SafeBufMut};
 use snafu::ResultExt;
 
 use crate::codec::{
@@ -13,7 +13,7 @@ use crate::codec::{
 impl Encoder<i64> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &i64) -> Result<()> {
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &i64) -> Result<()> {
         varint::encode_varint(buf, *value).context(EncodeVarint)?;
         Ok(())
     }
@@ -26,7 +26,7 @@ impl Encoder<i64> for MemCompactEncoder {
 impl DecodeTo<i64> for MemCompactDecoder {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut i64) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut i64) -> Result<()> {
         *value = varint::decode_varint(buf).context(DecodeVarint)?;
         Ok(())
     }
@@ -35,7 +35,7 @@ impl DecodeTo<i64> for MemCompactDecoder {
 impl Encoder<u64> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &u64) -> Result<()> {
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &u64) -> Result<()> {
         varint::encode_uvarint(buf, *value).context(EncodeVarint)?;
         Ok(())
     }
@@ -48,7 +48,7 @@ impl Encoder<u64> for MemCompactEncoder {
 impl DecodeTo<u64> for MemCompactDecoder {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut u64) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut u64) -> Result<()> {
         *value = varint::decode_uvarint(buf).context(DecodeVarint)?;
         Ok(())
     }

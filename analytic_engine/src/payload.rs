@@ -3,7 +3,7 @@
 //! Payloads to write to wal
 
 use common_types::{
-    bytes::{Buf, BufMut, MemBuf, MemBufMut},
+    bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -92,7 +92,7 @@ impl Header {
 }
 
 fn write_header<B: BufMut>(header: Header, buf: &mut B) -> Result<()> {
-    buf.write_u8(header.to_u8()).context(EncodeHeader)
+    buf.try_put_u8(header.to_u8()).context(EncodeHeader)
 }
 
 /// Header size in bytes
@@ -217,7 +217,7 @@ impl PayloadDecoder for WalDecoder {
     type Target = ReadPayload;
 
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
-        let header_value = buf.read_u8().context(DecodeHeader)?;
+        let header_value = buf.try_get_u8().context(DecodeHeader)?;
         let header = match Header::from_u8(header_value) {
             Some(header) => header,
             None => {
@@ -228,10 +228,11 @@ impl PayloadDecoder for WalDecoder {
             }
         };
 
+        let chunk = buf.chunk();
         let payload = match header {
-            Header::Write => ReadPayload::decode_write_from_pb(buf.remaining_slice())?,
-            Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(buf.remaining_slice())?,
-            Header::AlterOption => ReadPayload::decode_alter_option_from_pb(buf.remaining_slice())?,
+            Header::Write => ReadPayload::decode_write_from_pb(chunk)?,
+            Header::AlterSchema => ReadPayload::decode_alter_schema_from_pb(chunk)?,
+            Header::AlterOption => ReadPayload::decode_alter_option_from_pb(chunk)?,
         };
 
         Ok(payload)
