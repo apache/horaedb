@@ -1,17 +1,17 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Provides utilities for byte arrays
+//! Provides utilities for byte arrays.
 //!
-//! Use Bytes instead of Vec<u8>. Currently just re-export bytes crate
+//! Use Bytes instead of Vec<u8>. Currently just re-export bytes crate.
 
 // Should not use bytes crate outside of this mod so we can replace the actual
-// implementations if needed
+// implementations if needed.
 pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 use snafu::{ensure, Backtrace, Snafu};
 
-/// Error of MemBuf/MemBufMut
+/// Error of MemBuf/MemBufMut.
 ///
-/// We do not use `std::io::Error` because it is too large
+/// We do not use `std::io::Error` because it is too large.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
@@ -30,7 +30,8 @@ pub type ByteVec = Vec<u8>;
 
 /// Read bytes from a buffer.
 ///
-/// Unlike `bytes::Buf`, the underlying storage is in contiguous memory
+/// Unlike [`bytes::Buf`], failed read operations will throw error rather than
+/// panic.
 pub trait MemBuf {
     /// Return the remaining byte slice
     fn remaining_slice(&self) -> &[u8];
@@ -64,7 +65,7 @@ pub trait MemBuf {
         Ok(u32::from_be_bytes(buf))
     }
 
-    /// Gets an unsighed 64 bit integer from self in big-endian byte order and
+    /// Gets an unsigned 64 bit integer from self in big-endian byte order and
     /// advance current position
     ///
     /// Returns error if the capacity is not enough
@@ -89,7 +90,8 @@ pub trait MemBuf {
 
 /// Write bytes to a buffer
 ///
-/// Unlike `bytes::BufMut`, write operations may fail
+/// Unlike [`bytes::BufMut`], failed write operations will throw error rather
+/// than panic.
 pub trait MemBufMut {
     /// Write bytes into self from src, advance the buffer position
     ///
@@ -137,83 +139,6 @@ pub trait MemBufMut {
     }
 }
 
-// macro_rules! impl_mem_buf {
-//     () => {
-//         #[inline]
-//         fn remaining_slice(&self) -> &[u8] {
-//             &self
-//         }
-
-//         #[inline]
-//         fn must_advance(&mut self, cnt: usize) {
-//             self.advance(cnt);
-//         }
-
-//         #[inline]
-//         fn read_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
-//             ensure!(self.remaining() >= dst.len(), UnexpectedEof);
-//             self.copy_to_slice(dst);
-//             Ok(())
-//         }
-//     };
-// }
-
-// impl MemBuf for Bytes {
-//     impl_mem_buf!();
-// }
-
-// impl MemBuf for BytesMut {
-//     impl_mem_buf!();
-// }
-
-// impl MemBufMut for BytesMut {
-//     fn write_slice(&mut self, src: &[u8]) -> Result<()> {
-//         ensure!(self.remaining_mut() >= src.len(), WouldOverflow);
-//         self.put_slice(src);
-//         Ok(())
-//     }
-// }
-
-// impl MemBuf for &[u8] {
-//     #[inline]
-//     fn remaining_slice(&self) -> &[u8] {
-//         self
-//     }
-
-//     #[inline]
-//     fn must_advance(&mut self, cnt: usize) {
-//         *self = &self[cnt..];
-//     }
-
-//     #[inline]
-//     fn read_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
-//         // slice::read_exact() only throws UnexpectedEof error, see
-//         //
-//         // https://doc.rust-lang.org/src/std/io/impls.rs.html#264-281
-//         self.read_exact(dst).map_err(|_| Error::UnexpectedEof {
-//             backtrace: Backtrace::generate(),
-//         })
-//     }
-// }
-
-// impl MemBufMut for &mut [u8] {
-//     fn write_slice(&mut self, src: &[u8]) -> Result<()> {
-//         // slice::write_all() actually wont fail, see
-//         //
-//         // https://doc.rust-lang.org/src/std/io/impls.rs.html#344-350
-//         self.write_all(src).map_err(|_| Error::WouldOverflow {
-//             backtrace: Backtrace::generate(),
-//         })
-//     }
-// }
-
-// impl MemBufMut for Vec<u8> {
-//     fn write_slice(&mut self, src: &[u8]) -> Result<()> {
-//         self.extend_from_slice(src);
-//         Ok(())
-//     }
-// }
-
 impl<T> MemBufMut for T
 where
     T: BufMut,
@@ -245,34 +170,6 @@ where
         Ok(())
     }
 }
-
-// /// A `MemBufMut` adapter which implements [std::io::Write] for the inner
-// value #[derive(Debug)]
-// pub struct Writer<'a> {
-//     buf: &'a mut dyn MemBufMut,
-// }
-
-// impl<'a> Writer<'a> {
-//     /// Create a new Writer from a mut ref to buf
-//     pub fn new(buf: &'a mut dyn MemBufMut) -> Self {
-//         Self { buf }
-//     }
-// }
-
-// impl<'a> Write for Writer<'a> {
-//     fn write(&mut self, src: &[u8]) -> io::Result<usize> {
-//         self.buf.write_slice(src).map_err(|e| match &e {
-//             Error::UnexpectedEof { .. } =>
-// io::Error::new(io::ErrorKind::UnexpectedEof, e),
-// Error::WouldOverflow { .. } => io::Error::new(io::ErrorKind::WriteZero, e),
-//         })?;
-//         Ok(src.len())
-//     }
-
-//     fn flush(&mut self) -> io::Result<()> {
-//         Ok(())
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
