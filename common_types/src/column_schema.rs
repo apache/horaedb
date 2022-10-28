@@ -252,9 +252,12 @@ impl TryFrom<common_pb::ColumnSchema> for ColumnSchema {
     fn try_from(column_schema: common_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let data_type = column_schema.data_type();
-        let default_value = match column_schema.default_value {
-            Some(v) => Some(serde_json::from_slice::<Expr>(&v).context(InvalidDefaultValueData)?),
-            None => None,
+        let default_value = if column_schema.default_value.is_empty() {
+            None
+        } else {
+            let default_value = serde_json::from_slice::<Expr>(&column_schema.default_value)
+                .context(InvalidDefaultValueData)?;
+            Some(default_value)
         };
 
         Ok(Self {
@@ -438,6 +441,11 @@ impl Builder {
 
 impl From<ColumnSchema> for common_pb::ColumnSchema {
     fn from(src: ColumnSchema) -> Self {
+        let default_value = src
+            .default_value
+            .map(|v| serde_json::to_vec(&v).unwrap())
+            .unwrap_or_default();
+
         common_pb::ColumnSchema {
             name: src.name,
             data_type: src.data_type as i32,
@@ -445,7 +453,7 @@ impl From<ColumnSchema> for common_pb::ColumnSchema {
             id: src.id,
             is_tag: src.is_tag,
             comment: src.comment,
-            default_value: src.default_value.map(|v| serde_json::to_vec(&v).unwrap()),
+            default_value,
         }
     }
 }
