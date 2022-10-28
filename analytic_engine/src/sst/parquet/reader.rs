@@ -71,7 +71,7 @@ pub async fn read_sst_meta(
         })?;
 
     // generate the file reader
-    let file_reader = CacheableSerializedFileReader::new(
+    let file_reader = CacheableSerializedFileReader::try_new(
         path.to_string(),
         bytes,
         meta_cache.clone(),

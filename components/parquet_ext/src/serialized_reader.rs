@@ -71,7 +71,7 @@ pub struct CacheableSerializedFileReader<R: ChunkReader> {
 impl<R: 'static + ChunkReader> CacheableSerializedFileReader<R> {
     /// Creates file reader from a Parquet file.
     /// Returns error if Parquet file does not exist or is corrupt.
-    pub fn new(
+    pub fn try_new(
         name: String,
         chunk_reader: R,
         meta_cache: Option<MetaCacheRef>,
@@ -279,14 +279,22 @@ mod tests {
             .read_to_end(&mut buf)
             .unwrap();
         let cursor = Bytes::from(buf);
-        let read_from_cursor =
-            CacheableSerializedFileReader::new("read_from_cursor".to_string(), cursor, None, None)
-                .unwrap();
+        let read_from_cursor = CacheableSerializedFileReader::try_new(
+            "read_from_cursor".to_string(),
+            cursor,
+            None,
+            None,
+        )
+        .unwrap();
 
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
-        let read_from_file =
-            CacheableSerializedFileReader::new("read_from_file".to_string(), test_file, None, None)
-                .unwrap();
+        let read_from_file = CacheableSerializedFileReader::try_new(
+            "read_from_file".to_string(),
+            test_file,
+            None,
+            None,
+        )
+        .unwrap();
 
         let file_iter = read_from_file.get_row_iter(None).unwrap();
         let cursor_iter = read_from_cursor.get_row_iter(None).unwrap();
@@ -301,7 +309,8 @@ mod tests {
         // (without necessarily reading the entire column).
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
         let reader =
-            CacheableSerializedFileReader::new("test".to_string(), test_file, None, None).unwrap();
+            CacheableSerializedFileReader::try_new("test".to_string(), test_file, None, None)
+                .unwrap();
         let row_group = reader.get_row_group(0).unwrap();
 
         let mut page_readers = Vec::new();
@@ -320,7 +329,7 @@ mod tests {
         let data_cache: Option<DataCacheRef> = Some(Arc::new(LruDataCache::new(1000)));
         let meta_cache: Option<MetaCacheRef> = Some(Arc::new(LruMetaCache::new(1000)));
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
-        let reader_result = CacheableSerializedFileReader::new(
+        let reader_result = CacheableSerializedFileReader::try_new(
             "test".to_string(),
             test_file,
             meta_cache.clone(),
@@ -417,8 +426,9 @@ mod tests {
     #[test]
     fn test_file_reader() {
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
-        let reader = CacheableSerializedFileReader::new("test".to_string(), test_file, None, None)
-            .expect("Should succeed to build test reader");
+        let reader =
+            CacheableSerializedFileReader::try_new("test".to_string(), test_file, None, None)
+                .expect("Should succeed to build test reader");
         test_with_file_reader(&reader);
     }
 
@@ -435,7 +445,7 @@ mod tests {
     fn test_file_reader_datapage_v2() {
         let test_file = crate::tests::get_test_file("datapage_v2.snappy.parquet");
         let reader_result =
-            CacheableSerializedFileReader::new("test".to_string(), test_file, None, None);
+            CacheableSerializedFileReader::try_new("test".to_string(), test_file, None, None);
         assert!(reader_result.is_ok());
         let reader = reader_result.unwrap();
 
@@ -534,7 +544,7 @@ mod tests {
     fn test_page_iterator() {
         let file = crate::tests::get_test_file("alltypes_plain.parquet");
         let file_reader = Arc::new(
-            CacheableSerializedFileReader::new("test".to_string(), file, None, None).unwrap(),
+            CacheableSerializedFileReader::try_new("test".to_string(), file, None, None).unwrap(),
         );
 
         let mut page_iterator = FilePageIterator::new(0, file_reader.clone()).unwrap();
@@ -566,7 +576,7 @@ mod tests {
     fn test_file_reader_key_value_metadata() {
         let file = crate::tests::get_test_file("binary.parquet");
         let file_reader = Arc::new(
-            CacheableSerializedFileReader::new("test".to_string(), file, None, None).unwrap(),
+            CacheableSerializedFileReader::try_new("test".to_string(), file, None, None).unwrap(),
         );
 
         let metadata = file_reader
@@ -593,7 +603,7 @@ mod tests {
     fn test_file_reader_filter_row_groups() -> Result<()> {
         let test_file = crate::tests::get_test_file("alltypes_plain.parquet");
         let mut reader =
-            CacheableSerializedFileReader::new("test".to_string(), test_file, None, None)?;
+            CacheableSerializedFileReader::try_new("test".to_string(), test_file, None, None)?;
 
         // test initial number of row groups
         let metadata = reader.metadata();
