@@ -2,6 +2,8 @@
 
 //! Protobuf messages
 
+#![allow(clippy::all)]
+
 mod protos {
     include!("./protos/mod.rs");
 }

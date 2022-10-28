@@ -6,7 +6,7 @@ use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::{
-    bytes::{MemBuf, MemBufMut},
+    bytes::{BufMut, MemBuf, MemBufMut},
     table::Location,
     SequenceNumber,
 };
@@ -212,7 +212,7 @@ impl Payload for TestPayload {
         4
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
         buf.write_u32(self.val).expect("must write");
         Ok(())
     }

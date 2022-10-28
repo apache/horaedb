@@ -2,7 +2,7 @@
 
 //! Bytes format
 
-use common_types::bytes::{Bytes, BytesMut, MemBuf, MemBufMut};
+use common_types::bytes::{BufMut, Bytes, BytesMut, MemBuf, MemBufMut};
 use snafu::{ensure, ResultExt};
 
 use crate::codec::{
@@ -67,7 +67,7 @@ impl Encoder<[u8]> for MemComparable {
 impl Encoder<Bytes> for MemComparable {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
         self.encode(buf, &value[..])
     }
 

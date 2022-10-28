@@ -2,9 +2,8 @@
 
 //! Payloads to write to wal
 
-use bytes::BufMut;
 use common_types::{
-    bytes::{MemBuf, MemBufMut, Writer},
+    bytes::{Buf, BufMut, MemBuf, MemBufMut},
     row::{RowGroup, RowGroupBuilder},
     schema::Schema,
 };
@@ -92,9 +91,8 @@ impl Header {
     }
 }
 
-fn write_header(header: Header, buf: &mut dyn MemBufMut) -> Result<()> {
-    buf.write_u8(header.to_u8()).context(EncodeHeader)?;
-    Ok(())
+fn write_header<B: BufMut>(header: Header, buf: &mut B) -> Result<()> {
+    buf.write_u8(header.to_u8()).context(EncodeHeader)
 }
 
 /// Header size in bytes
@@ -121,19 +119,19 @@ impl<'a> Payload for WritePayload<'a> {
         HEADER_SIZE + body_size as usize
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
         match self {
             WritePayload::Write(req) => {
                 write_header(Header::Write, buf)?;
-                req.encode(&mut buf).context(EncodeBody)
+                req.encode(buf).context(EncodeBody)
             }
             WritePayload::AlterSchema(req) => {
                 write_header(Header::AlterSchema, buf)?;
-                req.encode(&mut buf).context(EncodeBody)
+                req.encode(buf).context(EncodeBody)
             }
             WritePayload::AlterOption(req) => {
                 write_header(Header::AlterOption, buf)?;
-                req.encode(&mut buf).context(EncodeBody)
+                req.encode(buf).context(EncodeBody)
             }
         }
     }
@@ -155,7 +153,7 @@ pub enum ReadPayload {
 
 impl ReadPayload {
     fn decode_write_from_pb(buf: &[u8]) -> Result<Self> {
-        let mut write_req_pb: table_requests::WriteRequest =
+        let write_req_pb: table_requests::WriteRequest =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
@@ -183,7 +181,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
-        let mut alter_schema_meta_pb: meta_update::AlterSchemaMeta =
+        let alter_schema_meta_pb: meta_update::AlterSchemaMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
@@ -197,7 +195,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
-        let mut alter_option_meta_pb: meta_update::AlterOptionsMeta =
+        let alter_option_meta_pb: meta_update::AlterOptionsMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert options in pb
@@ -218,7 +216,7 @@ impl PayloadDecoder for WalDecoder {
     type Error = Error;
     type Target = ReadPayload;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
         let header_value = buf.read_u8().context(DecodeHeader)?;
         let header = match Header::from_u8(header_value) {
             Some(header) => header,

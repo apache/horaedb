@@ -12,6 +12,7 @@
 
 use std::mem;
 
+use bytes::BufMut;
 use common_types::{
     bytes::{BytesMut, MemBuf, MemBufMut},
     row::Row,
@@ -118,7 +119,7 @@ impl<'a> ComparableInternalKey<'a> {
 impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
         for idx in 0..self.schema.num_key_columns() {
             // Encode each column in primary key
@@ -148,7 +149,7 @@ struct SequenceCodec;
 impl Encoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &KeySequence) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &KeySequence) -> Result<()> {
         // Encode sequence number and index in descend order
         encode_sequence_number(buf, value.sequence())?;
         let reversed_index = RowIndex::MAX - value.row_index();

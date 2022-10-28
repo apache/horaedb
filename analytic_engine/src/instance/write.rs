@@ -397,7 +397,7 @@ impl Instance {
             // Use the table schema instead of the schema in request to avoid schema
             // mismatch during replaying
             schema: Some(common_pb::TableSchema::from(&table_data.schema())),
-            rows: encoded_rows.into(),
+            rows: encoded_rows,
         };
 
         // Encode payload

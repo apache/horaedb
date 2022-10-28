@@ -556,6 +556,10 @@ impl From<common_pb::UpdateMode> for UpdateMode {
 
 impl From<common_pb::TableOptions> for TableOptions {
     fn from(opts: common_pb::TableOptions) -> Self {
+        let compression = opts.compression();
+        let storage_format = opts.storage_format();
+        let update_mode = opts.update_mode();
+
         let compaction_strategy = match opts.compaction_strategy() {
             common_pb::CompactionStrategy::Default => CompactionStrategy::default(),
             common_pb::CompactionStrategy::SizeTiered => {
@@ -586,9 +590,6 @@ impl From<common_pb::TableOptions> for TableOptions {
             Some(Duration::from_millis(opts.segment_duration).into())
         };
 
-        let compression = opts.compression();
-        let storage_format = opts.storage_format();
-
         Self {
             segment_duration,
             enable_ttl: opts.enable_ttl,
@@ -596,7 +597,7 @@ impl From<common_pb::TableOptions> for TableOptions {
             arena_block_size: opts.arena_block_size,
             compaction_strategy,
             num_rows_per_row_group: opts.num_rows_per_row_group as usize,
-            update_mode: UpdateMode::from(opts.update_mode()),
+            update_mode: UpdateMode::from(update_mode),
             write_buffer_size: opts.write_buffer_size,
             compression: Compression::from(compression),
             storage_format: StorageFormat::from(storage_format),

@@ -4,7 +4,7 @@
 
 use std::convert::TryFrom;
 
-use common_types::bytes::{Bytes, BytesMut, MemBuf, MemBufMut};
+use common_types::bytes::{Buf, BufMut, Bytes, BytesMut, MemBuf, MemBufMut};
 use snafu::{ensure, ResultExt};
 
 use crate::codec::{
@@ -35,7 +35,7 @@ impl Encoder<[u8]> for MemCompactEncoder {
 impl Encoder<Bytes> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
         self.encode(buf, &value[..])
     }
 
@@ -47,7 +47,7 @@ impl Encoder<Bytes> for MemCompactEncoder {
 impl DecodeTo<BytesMut> for MemCompactDecoder {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut BytesMut) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut BytesMut) -> Result<()> {
         let v = usize::try_from(varint::decode_varint(buf).context(DecodeVarint)?)
             .context(TryIntoUsize)?;
         ensure!(buf.remaining_slice().len() >= v, DecodeEmptyValue);

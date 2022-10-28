@@ -2,12 +2,12 @@
 
 //! Table to store system catalog
 
-use std::{collections::HashMap, convert::TryFrom, mem};
+use std::{collections::HashMap, mem};
 
 use async_trait::async_trait;
 use catalog::consts;
 use common_types::{
-    bytes::{Bytes, BytesMut, MemBuf, MemBufMut},
+    bytes::{BufMut, Bytes, BytesMut, MemBuf, MemBufMut},
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::ProjectedSchema,
@@ -686,7 +686,7 @@ struct EntryKeyEncoder;
 impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &CatalogKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &CatalogKey) -> Result<()> {
         buf.write_u8(KeyType::CreateCatalog.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
@@ -704,7 +704,7 @@ impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
 impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &SchemaKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &SchemaKey) -> Result<()> {
         buf.write_u8(KeyType::CreateSchema.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
@@ -727,7 +727,7 @@ impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
 impl<'a> Encoder<TableKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
         buf.write_u8(KeyType::TableEntry.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
@@ -969,7 +969,7 @@ impl TableWriter {
             TableRequestType::Drop => table_entry.modified_time = now,
         }
 
-        let buf = table_entry.write_to_bytes().context(EncodeEntryPb)?;
+        let buf = table_entry.encode_to_vec();
         Ok(buf.into())
     }
 

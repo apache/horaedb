@@ -73,7 +73,8 @@ impl From<AddFile> for meta_pb::AddFileMeta {
 impl TryFrom<meta_pb::AddFileMeta> for AddFile {
     type Error = Error;
 
-    fn try_from(mut src: meta_pb::AddFileMeta) -> Result<Self> {
+    fn try_from(src: meta_pb::AddFileMeta) -> Result<Self> {
+        let storage_format = src.storage_format();
         let time_range = {
             let time_range = src.time_range.context(TimeRangeNotFound)?;
             TimeRange::try_from(time_range).context(ConvertTimeRange)?
@@ -82,7 +83,8 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
             let schema = src.schema.context(TableSchemaNotFound)?;
             Schema::try_from(schema).context(ConvertTableSchema)?
         };
-        Ok(Self {
+
+        let target = Self {
             level: src
                 .level
                 .try_into()
@@ -97,10 +99,12 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                     schema,
                     size: src.size,
                     row_num: src.row_num,
-                    storage_format_opts: StorageFormatOptions::new(src.storage_format().into()),
+                    storage_format_opts: StorageFormatOptions::new(storage_format.into()),
                 },
             },
-        })
+        };
+
+        Ok(target)
     }
 }
 

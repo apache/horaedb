@@ -4,8 +4,9 @@
 
 use std::convert::TryFrom;
 
+use bytes::BufMut;
 use common_types::{
-    bytes::{MemBuf, MemBufMut, Writer},
+    bytes::MemBuf,
     schema::{Schema, Version},
     table::Location,
     SequenceNumber,
@@ -112,12 +113,10 @@ impl TryFrom<meta_pb::MetaUpdateLogEntry> for MetaUpdateLogEntry {
             meta_pb::meta_update_log_entry::Entry::Normal(v) => {
                 MetaUpdateLogEntry::Normal(MetaUpdate::try_from(v)?)
             }
-            meta_pb::meta_update_log_entry::Entry::Snapshot(mut v) => {
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: v.sequence,
-                    meta_update: MetaUpdate::try_from(v.meta_update.context(EmptyMetaUpdate)?)?,
-                }
-            }
+            meta_pb::meta_update_log_entry::Entry::Snapshot(v) => MetaUpdateLogEntry::Snapshot {
+                sequence: v.sequence,
+                meta_update: MetaUpdate::try_from(v.meta_update.context(EmptyMetaUpdate)?)?,
+            },
             meta_pb::meta_update_log_entry::Entry::SnapshotStart(v) => {
                 MetaUpdateLogEntry::SnapshotStart(v.sequence)
             }
@@ -225,7 +224,7 @@ impl From<AddTableMeta> for meta_pb::AddTableMeta {
 impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
     type Error = Error;
 
-    fn try_from(mut src: meta_pb::AddTableMeta) -> Result<Self> {
+    fn try_from(src: meta_pb::AddTableMeta) -> Result<Self> {
         let table_schema = src.schema.context(EmptyTableSchema)?;
         let opts = src.options.context(EmptyTableOptions)?;
 
@@ -358,7 +357,7 @@ impl From<AlterSchemaMeta> for meta_pb::AlterSchemaMeta {
 impl TryFrom<meta_pb::AlterSchemaMeta> for AlterSchemaMeta {
     type Error = Error;
 
-    fn try_from(mut src: meta_pb::AlterSchemaMeta) -> Result<Self> {
+    fn try_from(src: meta_pb::AlterSchemaMeta) -> Result<Self> {
         let table_schema = src.schema.context(EmptyTableSchema)?;
 
         Ok(Self {
@@ -391,7 +390,7 @@ impl From<AlterOptionsMeta> for meta_pb::AlterOptionsMeta {
 impl TryFrom<meta_pb::AlterOptionsMeta> for AlterOptionsMeta {
     type Error = Error;
 
-    fn try_from(mut src: meta_pb::AlterOptionsMeta) -> Result<Self> {
+    fn try_from(src: meta_pb::AlterOptionsMeta) -> Result<Self> {
         let table_options = src.options.context(EmptyTableOptions)?;
 
         Ok(Self {
@@ -426,8 +425,8 @@ impl Payload for MetaUpdatePayload {
         self.0.encoded_len()
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
-        self.0.write_to_writer(buf).context(EncodePayloadPb)
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
+        self.0.encode(buf).context(EncodePayloadPb)
     }
 }
 

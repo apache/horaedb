@@ -3,7 +3,7 @@
 //! Common Encoding for Wal logs
 
 use common_types::{
-    bytes::{self, BytesMut, MemBuf, MemBufMut},
+    bytes::{self, BufMut, BytesMut, MemBuf, MemBufMut},
     table::Location,
     SequenceNumber,
 };
@@ -223,7 +223,7 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
     /// +--------------------+---------+
     /// | version_header(u8) | payload |
     /// +--------------------+---------+
-    fn encode<B: MemBufMut>(&self, buf: &mut B, payload: &T) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, payload: &T) -> Result<()> {
         buf.write_u8(self.version).context(EncodeLogValueHeader)?;
 
         payload

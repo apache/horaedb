@@ -3,7 +3,7 @@
 //! Datum compact codec
 
 use common_types::{
-    bytes::{BytesMut, MemBuf, MemBufMut},
+    bytes::{Buf, BufMut, BytesMut, MemBufMut},
     datum::Datum,
     string::StringBytes,
     time::Timestamp,
@@ -19,7 +19,7 @@ use crate::codec::{
 impl Encoder<Datum> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
         match value {
             Datum::Null => buf.write_u8(consts::NULL_FLAG).context(EncodeKey),
             Datum::Timestamp(ts) => {
@@ -139,7 +139,7 @@ impl DecodeTo<Datum> for MemCompactDecoder {
     /// REQUIRE: The datum type should match the type in buf
     ///
     /// For string datum, the utf8 check will be skipped.
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut Datum) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut Datum) -> Result<()> {
         let actual = match self.maybe_read_null(buf)? {
             Some(v) => v,
             None => {

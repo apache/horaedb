@@ -466,7 +466,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
 impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
     type Error = Error;
 
-    fn try_from(mut src: sst_pb::SstMetaData) -> Result<Self> {
+    fn try_from(src: sst_pb::SstMetaData) -> Result<Self> {
         let time_range = {
             let time_range = src.time_range.context(TimeRangeNotFound)?;
             TimeRange::try_from(time_range).context(ConvertTimeRange)?

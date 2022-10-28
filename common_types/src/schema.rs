@@ -21,7 +21,6 @@ use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    bytes::Writer,
     column_schema::{self, ColumnId, ColumnSchema},
     datum::DatumKind,
     row::{contiguous, RowView},
