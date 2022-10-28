@@ -56,7 +56,7 @@ define_result!(Error);
 
 // TODO: will be made use of later.
 #[allow(unused)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct RegionMeta {
     inner: RwLock<RegionMetaInner>,
 }
@@ -64,9 +64,10 @@ pub struct RegionMeta {
 // TODO: will be made use of later.
 #[allow(unused)]
 impl RegionMeta {
-     // TODO: Need to implement the init method using the [RegionMetaSnapshot] which will be persisted.
+    // TODO: Need to implement the init method using the [RegionMetaSnapshot] which
+    // will be persisted.
 
-     pub async fn prepare_for_table_write(&self, table_id: TableId) -> Result<SequenceNumber> {
+    pub async fn prepare_for_table_write(&self, table_id: TableId) -> Result<SequenceNumber> {
         {
             let inner = self.inner.read().await;
             if let Some(table_meta) = inner.table_metas.get(&table_id) {
@@ -88,8 +89,8 @@ impl RegionMeta {
     pub async fn update_after_table_write(
         &self,
         table_id: TableId,
-        next_sequence_num: SequenceNumber,
-        offset: Offset,
+        updated_start_offset: Offset,
+        updated_num: u64,
     ) -> Result<()> {
         let inner = self.inner.read().await;
         let table_meta = inner
@@ -103,13 +104,17 @@ impl RegionMeta {
                 ),
             })?;
         table_meta
-            .update_after_write(next_sequence_num, offset)
+            .update_after_write(updated_start_offset, updated_num)
             .await;
+
+        inner
+            .local_latest_offset
+            .fetch_add(updated_num as i64, Ordering::Relaxed);
 
         Ok(())
     }
 
-    pub  async fn mark_table_deleted(
+    pub async fn mark_table_deleted(
         &self,
         table_id: TableId,
         next_sequence_num: SequenceNumber,
@@ -122,15 +127,17 @@ impl RegionMeta {
                 table_id,
                 msg: format!("table:{}'s meta not found while mark its deleted", table_id),
             })?;
-        table_meta.mark_deleted(next_sequence_num);
+        table_meta.mark_deleted(next_sequence_num).await;
 
         Ok(())
     }
 
-    /// Scan the table meta entry in it and get the safe(minimum) offset among them to return.
-    /// 
-    /// NOTICE: Need to freeze the whole region meta on high-level before calling. 
-    pub  async fn get_safe_delete_offset(&self) -> Result<Offset> {
+    /// Scan the table meta entry in it and get the safe(minimum) offset among
+    /// them to return.
+    ///
+    /// NOTICE: Need to freeze the whole region meta on high-level before
+    /// calling.
+    pub async fn get_safe_delete_offset(&self) -> Result<Offset> {
         let inner = self.inner.read().await;
         let mut min_offset = Offset::MAX;
         // Calc the min offset in message queue.
@@ -153,9 +160,11 @@ impl RegionMeta {
         }
     }
 
-    /// Scan the table meta entry in it and get the snapshot about tables' next sequences.
-    /// 
-    /// NOTICE: Need to freeze the whole region meta on high-level before calling. 
+    /// Scan the table meta entry in it and get the snapshot about tables' next
+    /// sequences.
+    ///
+    /// NOTICE: Need to freeze the whole region meta on high-level before
+    /// calling.
     pub async fn get_snapshot(&self) -> Result<RegionMetaSnapshot> {
         let inner = self.inner.read().await;
         // Calc the min offset in message queue.
@@ -173,7 +182,7 @@ impl RegionMeta {
 }
 
 /// Region meta data.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct RegionMetaInner {
     table_metas: HashMap<TableId, TableMeta>,
     /// It will fall behind the high watermark for ensuring successive
@@ -187,7 +196,7 @@ struct RegionMetaInner {
 #[derive(Debug)]
 struct TableMeta {
     table_id: TableId,
-    /// The race condition may occur between writer thread 
+    /// The race condition may occur between writer thread
     /// and background flush tread.
     inner: Mutex<TableMetaInner>,
 }
@@ -207,38 +216,39 @@ impl TableMeta {
         inner.next_sequence_num
     }
 
-    async fn update_after_write(&self, next_sequence_num: SequenceNumber, offset: Offset) {
+    async fn update_after_write(&self, updated_start_offset: Offset, updated_num: u64) {
         let mut inner = self.inner.lock().await;
-        inner.next_sequence_num = next_sequence_num;
+        let old_next_sequence_num = inner.next_sequence_num;
+        inner.next_sequence_num += updated_num;
 
         // Update the mapping.
-        let _ = inner.seq_hw_mapping.insert(next_sequence_num, offset);
+        let _ = inner
+            .seq_hw_mapping
+            .insert(old_next_sequence_num, updated_start_offset);
     }
 
     async fn mark_deleted(&self, latest_marked_deleted: SequenceNumber) {
         let mut inner = self.inner.lock().await;
+        assert!(latest_marked_deleted <= inner.next_sequence_num);
         inner.latest_marked_deleted = latest_marked_deleted;
 
         // Update the mapping, keep the range in description.
         inner
             .seq_hw_mapping
-            .retain(|k, _| k < &latest_marked_deleted);
+            .retain(|k, _| k >= &latest_marked_deleted);
     }
 
     async fn get_meta_data(&self) -> Result<TableMetaData> {
         let inner = self.inner.lock().await;
 
-        // TODO: make a state to represent it?
-        if inner.seq_hw_mapping.is_empty() {
-            ensure!(inner.next_sequence_num == inner.latest_marked_deleted,
-                GetMetaData {
-                    table_id: self.table_id,
-                    msg: format!("unexpected state, next sequence should equal to latest marked deleted
-                        while has flushed/init but not written, but now are {} and {}", inner.next_sequence_num,
-                        inner.latest_marked_deleted),
-                });
-
+        // Only two situations exist:
+        // + no log of the table has ever been written
+        //  (next sequence num == latest marked deleted).
+        // + all logs of the table can be deleted
+        //  (next_sequence_num > latest_marked_deleted).
+        if inner.next_sequence_num == inner.latest_marked_deleted {
             Ok(TableMetaData {
+                table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
                 safe_deleted_offset: None,
@@ -254,9 +264,10 @@ impl TableMeta {
                 });
 
             Ok(TableMetaData {
+                table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
-                safe_deleted_offset: None,
+                safe_deleted_offset: offset.copied(),
             })
         }
     }
@@ -278,11 +289,9 @@ struct TableMetaInner {
     /// It will be updated while having flushed successfully.
     latest_marked_deleted: SequenceNumber,
 
-    /// Map next sequence number to message queue high watermark.
-    ///
-    /// It will keep the mapping information among following range:
-    /// (next sequence number while last marked deleted,  
-    /// next sequence number while latest marked deleted].
+    /// Map the start sequence number to start offset in every write.
+    /// 
+    /// It will be removed to the mark deleted sequence number after flushing.
     seq_hw_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 
@@ -290,6 +299,7 @@ struct TableMetaInner {
 #[allow(unused)]
 #[derive(Debug, Default)]
 pub struct TableMetaData {
+    pub table_id: TableId,
     pub next_sequence_num: SequenceNumber,
     pub latest_marked_deleted: SequenceNumber,
     pub safe_deleted_offset: Option<Offset>,
@@ -301,4 +311,258 @@ pub struct TableMetaData {
 pub struct RegionMetaSnapshot {
     pub next_offset: Offset,
     pub entries: Vec<TableMetaData>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+
+    use common_types::{table::TableId, SequenceNumber};
+    use tokio::time;
+
+    use super::RegionMeta;
+
+    #[tokio::test]
+    async fn test_basic_work_flow() {
+        let region_meta = RegionMeta::default();
+
+        // New table meta.
+        let init_seq = region_meta.prepare_for_table_write(0).await.unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, SequenceNumber::MIN);
+        assert_eq!(
+            snapshot.entries[0].latest_marked_deleted,
+            snapshot.entries[0].next_sequence_num
+        );
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, None);
+
+        // Update.
+        region_meta
+            .update_after_table_write(0, 20, 10)
+            .await
+            .unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 10);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(20));
+
+        // Update again, and delete to a fall behind point.
+        region_meta
+            .update_after_table_write(0, 42, 10)
+            .await
+            .unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(20));
+
+        region_meta
+            .mark_table_deleted(0, init_seq + 10)
+            .await
+            .unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 10);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(42));
+
+        // delete to latest
+        region_meta
+            .mark_table_deleted(0, init_seq + 20)
+            .await
+            .unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 20);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, None);
+    }
+
+    #[tokio::test]
+    async fn test_table_write_delete_race() {
+        for _ in 0..50 {
+            test_table_write_delete_race_once().await;
+        }
+    }
+
+    async fn test_table_write_delete_race_once() {
+        let region_meta = Arc::new(RegionMeta::default());
+        let mut expected_start_offset = 42;
+        let mut expected_next_sequence_num = 0;
+
+        // New table meta.
+        create_and_check_table_meta(&region_meta, 0).await;
+
+        // Spawn a task for deletion, and simultaneously update in current task.
+        let can_delete = Arc::new(AtomicBool::new(false));
+
+        let region_meta_clone = region_meta.clone();
+        let can_delete_clone = can_delete.clone();
+        let expected_next_sequence_num_copy = expected_next_sequence_num;
+        let expected_start_offset_copy = expected_start_offset;
+        let handle = tokio::spawn(async move {
+            let region_meta = region_meta_clone;
+
+            while !can_delete_clone.load(Ordering::SeqCst) {
+                time::sleep(Duration::from_millis(1)).await;
+            }
+
+            region_meta
+                .mark_table_deleted(0, expected_next_sequence_num_copy + 10)
+                .await
+                .unwrap();
+            let snapshot = region_meta.get_snapshot().await.unwrap();
+            assert_eq!(snapshot.entries.len(), 1);
+            assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
+            assert_eq!(
+                snapshot.entries[0].safe_deleted_offset,
+                Some(expected_start_offset_copy + 10)
+            );
+        });
+
+        // Update once and make deletion task able to continue.
+        expected_next_sequence_num += 10;
+        region_meta
+            .update_after_table_write(0, expected_start_offset, 10)
+            .await
+            .unwrap();
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(
+            snapshot.entries[0].next_sequence_num,
+            expected_next_sequence_num
+        );
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
+        assert_eq!(
+            snapshot.entries[0].safe_deleted_offset,
+            Some(expected_start_offset)
+        );
+        expected_start_offset += 10;
+
+        let rnd_ms = rand::random::<u64>() % 30;
+        time::sleep(Duration::from_millis(rnd_ms)).await;
+
+        can_delete.store(true, Ordering::SeqCst);
+
+        // Continue to update.
+        update_and_check_table_meta(
+            region_meta.clone(),
+            0,
+            expected_start_offset,
+            expected_next_sequence_num,
+            5,
+        )
+        .await;
+
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 1);
+        assert_eq!(snapshot.entries[0].next_sequence_num, 60);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(52));
+
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_region_write_create_race() {
+        for _ in 0..50 {
+            test_region_write_create_race_once().await;
+        }
+    }
+
+    async fn test_region_write_create_race_once() {
+        let region_meta = Arc::new(RegionMeta::default());
+        let expected_start_offset = 42;
+        let expected_next_sequence_num = 0;
+
+        // Spawn a task to create and update, and simultaneously update in current task.
+        let region_meta_clone = region_meta.clone();
+        let expected_next_sequence_num_copy = expected_next_sequence_num;
+        let expected_start_offset_copy = expected_start_offset;
+        let handle = tokio::spawn(async move {
+            let region_meta = region_meta_clone;
+
+            create_and_check_table_meta(&region_meta, 0).await;
+            update_and_check_table_meta(
+                region_meta.clone(),
+                0,
+                expected_start_offset_copy,
+                expected_next_sequence_num_copy,
+                5,
+            )
+            .await;
+        });
+
+        create_and_check_table_meta(&region_meta, 1).await;
+        update_and_check_table_meta(
+            region_meta.clone(),
+            1,
+            expected_start_offset,
+            expected_next_sequence_num,
+            5,
+        )
+        .await;
+
+        handle.await.unwrap();
+
+        // Check final result.
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.entries.len(), 2);
+        assert_eq!(snapshot.entries[0].next_sequence_num, 50);
+        assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
+        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(42));
+        assert_eq!(snapshot.entries[1].next_sequence_num, 50);
+        assert_eq!(snapshot.entries[1].latest_marked_deleted, 0);
+        assert_eq!(snapshot.entries[1].safe_deleted_offset, Some(42));
+    }
+
+    async fn update_and_check_table_meta(
+        region_meta: Arc<RegionMeta>,
+        table_id: TableId,
+        expected_start_offset: i64,
+        expected_next_sequence_num: u64,
+        cnt: u64,
+    ) {
+        let mut expected_start_offset = expected_start_offset;
+        let mut expected_next_sequence_num = expected_next_sequence_num;
+        for _ in 0..cnt {
+            expected_next_sequence_num += 10;
+
+            region_meta
+                .update_after_table_write(table_id, expected_start_offset, 10)
+                .await
+                .unwrap();
+            let snapshot = region_meta.get_snapshot().await.unwrap();
+            for entry in snapshot.entries {
+                if entry.table_id == table_id {
+                    assert_eq!(entry.next_sequence_num, expected_next_sequence_num);
+                }
+            }
+
+            expected_start_offset += 10;
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    async fn create_and_check_table_meta(region_meta: &RegionMeta, table_id: TableId) {
+        let init_seq = region_meta.prepare_for_table_write(table_id).await.unwrap();
+        assert_eq!(init_seq, 0);
+        let snapshot = region_meta.get_snapshot().await.unwrap();
+        for entry in snapshot.entries {
+            if entry.table_id == table_id {
+                assert_eq!(entry.next_sequence_num, SequenceNumber::MIN);
+                assert_eq!(entry.latest_marked_deleted, entry.next_sequence_num);
+                assert_eq!(entry.safe_deleted_offset, None);
+            }
+        }
+    }
 }

@@ -29,6 +29,7 @@ message_queue = { workspace = true }
 [dev-dependencies]
 futures = { workspace = true, features = ["async-await"] }
 env_logger = { workspace = true }
+rand = "0.8.5"
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
