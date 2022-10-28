@@ -1,5 +1,3 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
-
 # Benchmarks
 
 ## Test Data
@@ -21,5 +19,7 @@ RUST_LOG=info ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench -p benc
 
 Run specific bench:
 ```bash
-ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench -p benchmarks -- read_parquet
+ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench --bench bench -p benchmarks -- read_parquet
 ```
+
+If you want to enable pprof, add `--profile-time 60`, see [pprof-rs#127](https://github.com/tikv/pprof-rs/issues/127)

@@ -229,14 +229,18 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
 
                 Ok(table_source)
             }
-            Ok(None) => Err(DataFusionError::Execution(
-                "MetaProvider not found".to_string(),
-            )),
+            Ok(None) => Err(DataFusionError::Execution(format!(
+                "Table is not found, {:?}",
+                format_table_reference(name),
+            ))),
             Err(e) => {
+                let err_msg = format!(
+                    "fail to find table, {:?}, err:{}",
+                    format_table_reference(name),
+                    e
+                );
                 self.maybe_set_err(e);
-                Err(DataFusionError::Execution(
-                    "MetaProvider not found".to_string(),
-                ))
+                Err(DataFusionError::Execution(err_msg))
             }
         }
     }
@@ -371,5 +375,19 @@ impl CatalogProvider for CatalogProviderAdapter {
             .get(name)
             .cloned()
             .map(|v| v as Arc<dyn SchemaProvider>)
+    }
+}
+
+/// Provide the description string for [`TableReference`] which hasn't derive
+/// [`Debug`] or implement [`std::fmt::Display`].
+fn format_table_reference(table_ref: TableReference) -> String {
+    match table_ref {
+        TableReference::Bare { table } => format!("table:{}", table),
+        TableReference::Partial { schema, table } => format!("schema:{}, table:{}", schema, table),
+        TableReference::Full {
+            catalog,
+            schema,
+            table,
+        } => format!("catalog:{}, schema:{}, table:{}", catalog, schema, table),
     }
 }
