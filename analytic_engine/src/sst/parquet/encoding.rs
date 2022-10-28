@@ -746,10 +746,7 @@ mod tests {
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
     };
-    use parquet::{
-        arrow::{ArrowReader, ParquetFileArrowReader},
-        file::serialized_reader::SerializedFileReader,
-    };
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     use super::*;
     use crate::table_options::StorageFormatOptions;
@@ -946,9 +943,10 @@ mod tests {
 
         // read encoded records back, and then compare with input records
         let encoded_bytes = encoder.close().unwrap();
-        let reader = SerializedFileReader::new(Bytes::from(encoded_bytes)).unwrap();
-        let mut reader = ParquetFileArrowReader::new(Arc::new(reader));
-        let mut reader = reader.get_record_reader(2048).unwrap();
+        let mut reader = ParquetRecordBatchReaderBuilder::try_new(Bytes::from(encoded_bytes))
+            .unwrap()
+            .build()
+            .unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
         collect_collapsible_cols_idx(
             &meta_data.schema,
