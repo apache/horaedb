@@ -26,6 +26,10 @@
     - [Static Routing](deploy/static_routing.md)
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
+- [Operation](operation/README.md)
+    - [Table](operation/table.md)
+    - [System Table](operation/system_table.md)
+    - [Block List](operation/block_list.md)
 
 # Dev Guide
 - [Supported Platform](dev/platform.md)

@@ -75,7 +75,7 @@ impl Instance {
         }
 
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
