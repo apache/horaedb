@@ -30,4 +30,4 @@ Timestamp(Timestamp(0)),String(StringBytes(b"ceresdb")),String(StringBytes(b"pub
 
 SHOW TABLES LIKE '01%';
 
-Tables,
+"Tables":"01_system_table1"
