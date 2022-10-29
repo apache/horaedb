@@ -89,7 +89,7 @@ impl RegionMeta {
     pub async fn update_after_table_write(
         &self,
         table_id: TableId,
-        updated_start_offset: Offset,
+        write_offset_range: (Offset, Offset),
         updated_num: u64,
     ) -> Result<()> {
         let inner = self.inner.read().await;
@@ -104,7 +104,7 @@ impl RegionMeta {
                 ),
             })?;
         table_meta
-            .update_after_write(updated_start_offset, updated_num)
+            .update_after_write(write_offset_range, updated_num)
             .await;
 
         inner
@@ -139,24 +139,26 @@ impl RegionMeta {
     /// calling.
     pub async fn get_safe_delete_offset(&self) -> Result<Offset> {
         let inner = self.inner.read().await;
-        let mut min_offset = Offset::MAX;
+        let mut safe_delete_offset = Offset::MAX;
+        let mut high_watermark = 0;
         // Calc the min offset in message queue.
         for table_meta in inner.table_metas.values() {
             let meta_data = table_meta.get_meta_data().await?;
-            if let Some(offset) = meta_data.safe_deleted_offset {
-                min_offset = cmp::min(min_offset, offset);
+            if let Some(offset) = meta_data.safe_delete_offset {
+                safe_delete_offset = cmp::min(safe_delete_offset, offset);
             }
+            high_watermark = cmp::max(high_watermark, meta_data.current_high_watermark);
         }
 
-        if min_offset == Offset::MAX {
+        if safe_delete_offset == Offset::MAX {
             // All tables are in such states:
             // + has init, but not written
             // + has written, but not flushed
             // + has flushed, but not written again
-            // So, we can directly delete it up to the latest offset.
-            Ok(inner.local_latest_offset.load(Ordering::Relaxed))
+            // So, we can directly delete it up to the high_watermark.
+            Ok(high_watermark)
         } else {
-            Ok(min_offset)
+            Ok(safe_delete_offset)
         }
     }
 
@@ -216,15 +218,16 @@ impl TableMeta {
         inner.next_sequence_num
     }
 
-    async fn update_after_write(&self, updated_start_offset: Offset, updated_num: u64) {
+    async fn update_after_write(&self, write_offset_range: (Offset, Offset), updated_num: u64) {
         let mut inner = self.inner.lock().await;
         let old_next_sequence_num = inner.next_sequence_num;
         inner.next_sequence_num += updated_num;
 
-        // Update the mapping.
+        // Update the mapping and high water mark.
         let _ = inner
-            .seq_hw_mapping
-            .insert(old_next_sequence_num, updated_start_offset);
+            .start_sequence_offset_mapping
+            .insert(old_next_sequence_num, write_offset_range.0);
+        inner.current_high_watermark = write_offset_range.1 + 1;
     }
 
     async fn mark_deleted(&self, latest_marked_deleted: SequenceNumber) {
@@ -234,7 +237,7 @@ impl TableMeta {
 
         // Update the mapping, keep the range in description.
         inner
-            .seq_hw_mapping
+            .start_sequence_offset_mapping
             .retain(|k, _| k >= &latest_marked_deleted);
     }
 
@@ -251,10 +254,13 @@ impl TableMeta {
                 table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
-                safe_deleted_offset: None,
+                current_high_watermark: inner.current_high_watermark,
+                safe_delete_offset: None,
             })
         } else {
-            let offset = inner.seq_hw_mapping.get(&inner.latest_marked_deleted);
+            let offset = inner
+                .start_sequence_offset_mapping
+                .get(&inner.latest_marked_deleted);
             ensure!(inner.next_sequence_num > inner.latest_marked_deleted && offset.is_some(),
                 GetMetaData {
                     table_id: self.table_id,
@@ -267,7 +273,8 @@ impl TableMeta {
                 table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
-                safe_deleted_offset: offset.copied(),
+                current_high_watermark: inner.current_high_watermark,
+                safe_delete_offset: offset.copied(),
             })
         }
     }
@@ -289,10 +296,13 @@ struct TableMetaInner {
     /// It will be updated while having flushed successfully.
     latest_marked_deleted: SequenceNumber,
 
+    /// The high watermark after this table's latest writing.
+    current_high_watermark: Offset,
+
     /// Map the start sequence number to start offset in every write.
-    /// 
+    ///
     /// It will be removed to the mark deleted sequence number after flushing.
-    seq_hw_mapping: BTreeMap<SequenceNumber, Offset>,
+    start_sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 
 // TODO: will be made use of later.
@@ -302,7 +312,8 @@ pub struct TableMetaData {
     pub table_id: TableId,
     pub next_sequence_num: SequenceNumber,
     pub latest_marked_deleted: SequenceNumber,
-    pub safe_deleted_offset: Option<Offset>,
+    pub current_high_watermark: Offset,
+    pub safe_delete_offset: Option<Offset>,
 }
 
 /// Message queue implementation's meta value.
@@ -324,6 +335,7 @@ mod tests {
     };
 
     use common_types::{table::TableId, SequenceNumber};
+    use message_queue::Offset;
     use tokio::time;
 
     use super::RegionMeta;
@@ -341,29 +353,31 @@ mod tests {
             snapshot.entries[0].latest_marked_deleted,
             snapshot.entries[0].next_sequence_num
         );
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, None);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, None);
 
         // Update.
         region_meta
-            .update_after_table_write(0, 20, 10)
+            .update_after_table_write(0, (20, 29), 10)
             .await
             .unwrap();
         let snapshot = region_meta.get_snapshot().await.unwrap();
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 10);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(20));
+        assert_eq!(snapshot.entries[0].current_high_watermark, 30);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, Some(20));
 
         // Update again, and delete to a fall behind point.
         region_meta
-            .update_after_table_write(0, 42, 10)
+            .update_after_table_write(0, (42, 51), 10)
             .await
             .unwrap();
         let snapshot = region_meta.get_snapshot().await.unwrap();
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(20));
+        assert_eq!(snapshot.entries[0].current_high_watermark, 52);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, Some(20));
 
         region_meta
             .mark_table_deleted(0, init_seq + 10)
@@ -373,7 +387,8 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 10);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(42));
+        assert_eq!(snapshot.entries[0].current_high_watermark, 52);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, Some(42));
 
         // delete to latest
         region_meta
@@ -384,7 +399,8 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 20);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, None);
+        assert_eq!(snapshot.entries[0].current_high_watermark, 52);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, None);
     }
 
     #[tokio::test]
@@ -396,7 +412,7 @@ mod tests {
 
     async fn test_table_write_delete_race_once() {
         let region_meta = Arc::new(RegionMeta::default());
-        let mut expected_start_offset = 42;
+        let mut expected_offset_range = (42, 51);
         let mut expected_next_sequence_num = 0;
 
         // New table meta.
@@ -408,7 +424,7 @@ mod tests {
         let region_meta_clone = region_meta.clone();
         let can_delete_clone = can_delete.clone();
         let expected_next_sequence_num_copy = expected_next_sequence_num;
-        let expected_start_offset_copy = expected_start_offset;
+        let expected_offset_range_copy = expected_offset_range;
         let handle = tokio::spawn(async move {
             let region_meta = region_meta_clone;
 
@@ -424,15 +440,15 @@ mod tests {
             assert_eq!(snapshot.entries.len(), 1);
             assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
             assert_eq!(
-                snapshot.entries[0].safe_deleted_offset,
-                Some(expected_start_offset_copy + 10)
+                snapshot.entries[0].safe_delete_offset,
+                Some(expected_offset_range_copy.0 + 10)
             );
         });
 
         // Update once and make deletion task able to continue.
         expected_next_sequence_num += 10;
         region_meta
-            .update_after_table_write(0, expected_start_offset, 10)
+            .update_after_table_write(0, expected_offset_range, 10)
             .await
             .unwrap();
         let snapshot = region_meta.get_snapshot().await.unwrap();
@@ -443,10 +459,15 @@ mod tests {
         );
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
         assert_eq!(
-            snapshot.entries[0].safe_deleted_offset,
-            Some(expected_start_offset)
+            snapshot.entries[0].safe_delete_offset,
+            Some(expected_offset_range.0)
         );
-        expected_start_offset += 10;
+        assert_eq!(
+            snapshot.entries[0].current_high_watermark,
+            expected_offset_range.1 + 1
+        );
+        expected_offset_range.0 += 10;
+        expected_offset_range.1 += 10;
 
         let rnd_ms = rand::random::<u64>() % 30;
         time::sleep(Duration::from_millis(rnd_ms)).await;
@@ -455,9 +476,9 @@ mod tests {
 
         // Continue to update.
         update_and_check_table_meta(
-            region_meta.clone(),
+            &region_meta,
             0,
-            expected_start_offset,
+            expected_offset_range,
             expected_next_sequence_num,
             5,
         )
@@ -467,7 +488,8 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, 60);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(52));
+        assert_eq!(snapshot.entries[0].current_high_watermark, 102);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, Some(52));
 
         handle.await.unwrap();
     }
@@ -481,21 +503,21 @@ mod tests {
 
     async fn test_region_write_create_race_once() {
         let region_meta = Arc::new(RegionMeta::default());
-        let expected_start_offset = 42;
+        let expected_offset_range = (42, 51);
         let expected_next_sequence_num = 0;
 
         // Spawn a task to create and update, and simultaneously update in current task.
         let region_meta_clone = region_meta.clone();
         let expected_next_sequence_num_copy = expected_next_sequence_num;
-        let expected_start_offset_copy = expected_start_offset;
+        let expected_offset_range_copy = expected_offset_range;
         let handle = tokio::spawn(async move {
             let region_meta = region_meta_clone;
 
             create_and_check_table_meta(&region_meta, 0).await;
             update_and_check_table_meta(
-                region_meta.clone(),
+                &region_meta,
                 0,
-                expected_start_offset_copy,
+                expected_offset_range_copy,
                 expected_next_sequence_num_copy,
                 5,
             )
@@ -504,9 +526,9 @@ mod tests {
 
         create_and_check_table_meta(&region_meta, 1).await;
         update_and_check_table_meta(
-            region_meta.clone(),
+            &region_meta,
             1,
-            expected_start_offset,
+            expected_offset_range,
             expected_next_sequence_num,
             5,
         )
@@ -519,36 +541,40 @@ mod tests {
         assert_eq!(snapshot.entries.len(), 2);
         assert_eq!(snapshot.entries[0].next_sequence_num, 50);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
-        assert_eq!(snapshot.entries[0].safe_deleted_offset, Some(42));
+        assert_eq!(snapshot.entries[0].current_high_watermark, 92);
+        assert_eq!(snapshot.entries[0].safe_delete_offset, Some(42));
         assert_eq!(snapshot.entries[1].next_sequence_num, 50);
         assert_eq!(snapshot.entries[1].latest_marked_deleted, 0);
-        assert_eq!(snapshot.entries[1].safe_deleted_offset, Some(42));
+        assert_eq!(snapshot.entries[1].current_high_watermark, 92);
+        assert_eq!(snapshot.entries[1].safe_delete_offset, Some(42));
     }
 
     async fn update_and_check_table_meta(
-        region_meta: Arc<RegionMeta>,
+        region_meta: &RegionMeta,
         table_id: TableId,
-        expected_start_offset: i64,
+        expected_offset_range: (Offset, Offset),
         expected_next_sequence_num: u64,
         cnt: u64,
     ) {
-        let mut expected_start_offset = expected_start_offset;
+        let mut expected_offset_range = expected_offset_range;
         let mut expected_next_sequence_num = expected_next_sequence_num;
         for _ in 0..cnt {
             expected_next_sequence_num += 10;
 
             region_meta
-                .update_after_table_write(table_id, expected_start_offset, 10)
+                .update_after_table_write(table_id, expected_offset_range, 10)
                 .await
                 .unwrap();
             let snapshot = region_meta.get_snapshot().await.unwrap();
             for entry in snapshot.entries {
                 if entry.table_id == table_id {
                     assert_eq!(entry.next_sequence_num, expected_next_sequence_num);
+                    assert_eq!(entry.current_high_watermark, expected_offset_range.1 + 1);
                 }
             }
 
-            expected_start_offset += 10;
+            expected_offset_range.0 += 10;
+            expected_offset_range.1 += 10;
             time::sleep(Duration::from_millis(10)).await;
         }
     }
@@ -561,7 +587,8 @@ mod tests {
             if entry.table_id == table_id {
                 assert_eq!(entry.next_sequence_num, SequenceNumber::MIN);
                 assert_eq!(entry.latest_marked_deleted, entry.next_sequence_num);
-                assert_eq!(entry.safe_deleted_offset, None);
+                assert_eq!(entry.current_high_watermark, 0);
+                assert_eq!(entry.safe_delete_offset, None);
             }
         }
     }
