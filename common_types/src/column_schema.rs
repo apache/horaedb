@@ -448,7 +448,7 @@ impl From<ColumnSchema> for common_pb::ColumnSchema {
 
         common_pb::ColumnSchema {
             name: src.name,
-            data_type: src.data_type as i32,
+            data_type: common_pb::DataType::from(src.data_type) as i32,
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,

@@ -77,7 +77,6 @@ pub enum DatumKind {
     Int32,
     Int16,
     Int8,
-    // DatumKind::Boolean as usize = 14
     Boolean,
 }
 

@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use ceresdbproto::{cluster, meta_service};
+use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
@@ -82,8 +82,8 @@ pub struct TableInfo {
     pub schema_name: String,
 }
 
-impl From<meta_service::TableInfo> for TableInfo {
-    fn from(pb_table_info: meta_service::TableInfo) -> Self {
+impl From<meta_service_pb::TableInfo> for TableInfo {
+    fn from(pb_table_info: meta_service_pb::TableInfo) -> Self {
         TableInfo {
             id: pb_table_info.id,
             name: pb_table_info.name,
@@ -168,12 +168,12 @@ impl Default for MetaClientConfig {
     }
 }
 
-impl From<NodeInfo> for meta_service::NodeInfo {
+impl From<NodeInfo> for meta_service_pb::NodeInfo {
     fn from(node_info: NodeInfo) -> Self {
         let shard_infos = node_info
             .shard_infos
             .into_iter()
-            .map(meta_service::ShardInfo::from)
+            .map(meta_service_pb::ShardInfo::from)
             .collect();
 
         Self {
@@ -186,9 +186,9 @@ impl From<NodeInfo> for meta_service::NodeInfo {
     }
 }
 
-impl From<ShardInfo> for meta_service::ShardInfo {
+impl From<ShardInfo> for meta_service_pb::ShardInfo {
     fn from(shard_info: ShardInfo) -> Self {
-        let role = cluster::ShardRole::from(shard_info.role);
+        let role = cluster_pb::ShardRole::from(shard_info.role);
 
         Self {
             id: shard_info.id,
@@ -198,8 +198,8 @@ impl From<ShardInfo> for meta_service::ShardInfo {
     }
 }
 
-impl From<meta_service::ShardInfo> for ShardInfo {
-    fn from(pb_shard_info: meta_service::ShardInfo) -> Self {
+impl From<meta_service_pb::ShardInfo> for ShardInfo {
+    fn from(pb_shard_info: meta_service_pb::ShardInfo) -> Self {
         ShardInfo {
             id: pb_shard_info.id,
             role: pb_shard_info.role().into(),
@@ -208,29 +208,29 @@ impl From<meta_service::ShardInfo> for ShardInfo {
     }
 }
 
-impl From<ShardRole> for cluster::ShardRole {
+impl From<ShardRole> for cluster_pb::ShardRole {
     fn from(shard_role: ShardRole) -> Self {
         match shard_role {
-            ShardRole::Leader => cluster::ShardRole::Leader,
-            ShardRole::Follower => cluster::ShardRole::Follower,
-            ShardRole::PendingLeader => cluster::ShardRole::PendingLeader,
-            ShardRole::PendingFollower => cluster::ShardRole::PendingFollower,
+            ShardRole::Leader => cluster_pb::ShardRole::Leader,
+            ShardRole::Follower => cluster_pb::ShardRole::Follower,
+            ShardRole::PendingLeader => cluster_pb::ShardRole::PendingLeader,
+            ShardRole::PendingFollower => cluster_pb::ShardRole::PendingFollower,
         }
     }
 }
 
-impl From<cluster::ShardRole> for ShardRole {
-    fn from(pb_role: cluster::ShardRole) -> Self {
+impl From<cluster_pb::ShardRole> for ShardRole {
+    fn from(pb_role: cluster_pb::ShardRole) -> Self {
         match pb_role {
-            cluster::ShardRole::Leader => ShardRole::Leader,
-            cluster::ShardRole::Follower => ShardRole::Follower,
-            cluster::ShardRole::PendingLeader => ShardRole::PendingLeader,
-            cluster::ShardRole::PendingFollower => ShardRole::PendingFollower,
+            cluster_pb::ShardRole::Leader => ShardRole::Leader,
+            cluster_pb::ShardRole::Follower => ShardRole::Follower,
+            cluster_pb::ShardRole::PendingLeader => ShardRole::PendingLeader,
+            cluster_pb::ShardRole::PendingFollower => ShardRole::PendingFollower,
         }
     }
 }
 
-impl From<GetTablesOfShardsRequest> for meta_service::GetTablesOfShardsRequest {
+impl From<GetTablesOfShardsRequest> for meta_service_pb::GetTablesOfShardsRequest {
     fn from(req: GetTablesOfShardsRequest) -> Self {
         Self {
             header: None,
@@ -239,10 +239,10 @@ impl From<GetTablesOfShardsRequest> for meta_service::GetTablesOfShardsRequest {
     }
 }
 
-impl TryFrom<meta_service::GetTablesOfShardsResponse> for GetTablesOfShardsResponse {
+impl TryFrom<meta_service_pb::GetTablesOfShardsResponse> for GetTablesOfShardsResponse {
     type Error = Error;
 
-    fn try_from(pb_resp: meta_service::GetTablesOfShardsResponse) -> Result<Self> {
+    fn try_from(pb_resp: meta_service_pb::GetTablesOfShardsResponse) -> Result<Self> {
         let tables_by_shard = pb_resp
             .tables_by_shard
             .into_iter()
@@ -253,14 +253,14 @@ impl TryFrom<meta_service::GetTablesOfShardsResponse> for GetTablesOfShardsRespo
     }
 }
 
-impl TryFrom<meta_service::TablesOfShard> for TablesOfShard {
+impl TryFrom<meta_service_pb::TablesOfShard> for TablesOfShard {
     type Error = Error;
 
-    fn try_from(pb_tables_of_shard: meta_service::TablesOfShard) -> Result<Self> {
+    fn try_from(pb_tables_of_shard: meta_service_pb::TablesOfShard) -> Result<Self> {
         let shard_info = pb_tables_of_shard
             .shard_info
             .with_context(|| MissingShardInfo {
-                msg: "in meta_service::TablesOfShard",
+                msg: "in meta_service_pb::TablesOfShard",
             })?;
         Ok(Self {
             shard_info: ShardInfo::from(shard_info),
@@ -273,7 +273,7 @@ impl TryFrom<meta_service::TablesOfShard> for TablesOfShard {
     }
 }
 
-impl From<RequestHeader> for meta_service::RequestHeader {
+impl From<RequestHeader> for meta_service_pb::RequestHeader {
     fn from(req: RequestHeader) -> Self {
         Self {
             node: req.node,
@@ -282,7 +282,7 @@ impl From<RequestHeader> for meta_service::RequestHeader {
     }
 }
 
-impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
+impl From<AllocSchemaIdRequest> for meta_service_pb::AllocSchemaIdRequest {
     fn from(req: AllocSchemaIdRequest) -> Self {
         Self {
             header: None,
@@ -291,8 +291,8 @@ impl From<AllocSchemaIdRequest> for meta_service::AllocSchemaIdRequest {
     }
 }
 
-impl From<meta_service::AllocSchemaIdResponse> for AllocSchemaIdResponse {
-    fn from(pb_resp: meta_service::AllocSchemaIdResponse) -> Self {
+impl From<meta_service_pb::AllocSchemaIdResponse> for AllocSchemaIdResponse {
+    fn from(pb_resp: meta_service_pb::AllocSchemaIdResponse) -> Self {
         Self {
             name: pb_resp.name,
             id: pb_resp.id,
@@ -300,7 +300,7 @@ impl From<meta_service::AllocSchemaIdResponse> for AllocSchemaIdResponse {
     }
 }
 
-impl From<CreateTableRequest> for meta_service::CreateTableRequest {
+impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
     fn from(req: CreateTableRequest) -> Self {
         Self {
             header: None,
@@ -314,10 +314,10 @@ impl From<CreateTableRequest> for meta_service::CreateTableRequest {
     }
 }
 
-impl TryFrom<meta_service::CreateTableResponse> for CreateTableResponse {
+impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
     type Error = Error;
 
-    fn try_from(pb_resp: meta_service::CreateTableResponse) -> Result<Self> {
+    fn try_from(pb_resp: meta_service_pb::CreateTableResponse) -> Result<Self> {
         let pb_table_info = pb_resp.created_table.context(MissingTableInfo {
             msg: "created table is not found in the create table response",
         })?;
@@ -332,7 +332,7 @@ impl TryFrom<meta_service::CreateTableResponse> for CreateTableResponse {
     }
 }
 
-impl From<DropTableRequest> for meta_service::DropTableRequest {
+impl From<DropTableRequest> for meta_service_pb::DropTableRequest {
     fn from(req: DropTableRequest) -> Self {
         Self {
             header: None,
@@ -342,8 +342,8 @@ impl From<DropTableRequest> for meta_service::DropTableRequest {
     }
 }
 
-impl From<meta_service::DropTableResponse> for DropTableResponse {
-    fn from(pb_resp: meta_service::DropTableResponse) -> Self {
+impl From<meta_service_pb::DropTableResponse> for DropTableResponse {
+    fn from(pb_resp: meta_service_pb::DropTableResponse) -> Self {
         Self {
             dropped_table: pb_resp.dropped_table.map(TableInfo::from),
         }
@@ -382,7 +382,7 @@ impl RouteTablesResponse {
     }
 }
 
-impl From<RouteTablesRequest> for meta_service::RouteTablesRequest {
+impl From<RouteTablesRequest> for meta_service_pb::RouteTablesRequest {
     fn from(req: RouteTablesRequest) -> Self {
         Self {
             header: None,
@@ -392,12 +392,12 @@ impl From<RouteTablesRequest> for meta_service::RouteTablesRequest {
     }
 }
 
-impl TryFrom<meta_service::NodeShard> for NodeShard {
+impl TryFrom<meta_service_pb::NodeShard> for NodeShard {
     type Error = Error;
 
-    fn try_from(pb: meta_service::NodeShard) -> Result<Self> {
+    fn try_from(pb: meta_service_pb::NodeShard) -> Result<Self> {
         let pb_shard_info = pb.shard_info.with_context(|| MissingShardInfo {
-            msg: "in meta_service::NodeShard",
+            msg: "in meta_service_pb::NodeShard",
         })?;
         Ok(NodeShard {
             endpoint: pb.endpoint,
@@ -406,10 +406,10 @@ impl TryFrom<meta_service::NodeShard> for NodeShard {
     }
 }
 
-impl TryFrom<meta_service::RouteEntry> for RouteEntry {
+impl TryFrom<meta_service_pb::RouteEntry> for RouteEntry {
     type Error = Error;
 
-    fn try_from(pb_entry: meta_service::RouteEntry) -> Result<Self> {
+    fn try_from(pb_entry: meta_service_pb::RouteEntry) -> Result<Self> {
         let mut node_shards = Vec::with_capacity(pb_entry.node_shards.len());
         for pb_node_shard in pb_entry.node_shards {
             let node_shard = NodeShard::try_from(pb_node_shard)?;
@@ -426,10 +426,10 @@ impl TryFrom<meta_service::RouteEntry> for RouteEntry {
     }
 }
 
-impl TryFrom<meta_service::RouteTablesResponse> for RouteTablesResponse {
+impl TryFrom<meta_service_pb::RouteTablesResponse> for RouteTablesResponse {
     type Error = Error;
 
-    fn try_from(pb_resp: meta_service::RouteTablesResponse) -> Result<Self> {
+    fn try_from(pb_resp: meta_service_pb::RouteTablesResponse) -> Result<Self> {
         let mut entries = HashMap::with_capacity(pb_resp.entries.len());
         for (table_name, entry) in pb_resp.entries {
             let route_entry = RouteEntry::try_from(entry)?;
@@ -451,16 +451,16 @@ pub struct GetNodesResponse {
     pub node_shards: Vec<NodeShard>,
 }
 
-impl From<GetNodesRequest> for meta_service::GetNodesRequest {
+impl From<GetNodesRequest> for meta_service_pb::GetNodesRequest {
     fn from(_: GetNodesRequest) -> Self {
-        meta_service::GetNodesRequest::default()
+        meta_service_pb::GetNodesRequest::default()
     }
 }
 
-impl TryFrom<meta_service::GetNodesResponse> for GetNodesResponse {
+impl TryFrom<meta_service_pb::GetNodesResponse> for GetNodesResponse {
     type Error = Error;
 
-    fn try_from(pb_resp: meta_service::GetNodesResponse) -> Result<Self> {
+    fn try_from(pb_resp: meta_service_pb::GetNodesResponse) -> Result<Self> {
         let mut node_shards = Vec::with_capacity(pb_resp.node_shards.len());
         for node_shard in pb_resp.node_shards {
             node_shards.push(NodeShard::try_from(node_shard)?);
