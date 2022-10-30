@@ -101,8 +101,8 @@ dependencies = [
  "parquet 23.0.0",
  "parquet_ext",
  "prometheus 0.12.0",
+ "prost",
  "proto 0.4.0",
- "protobuf",
  "serde",
  "serde_derive",
  "skiplist",
@@ -1080,8 +1080,8 @@ dependencies = [
  "datafusion 12.0.0",
  "murmur3",
  "paste 1.0.8",
+ "prost",
  "proto 0.4.0",
- "protobuf",
  "serde",
  "serde_derive",
  "serde_json",
@@ -3203,7 +3203,7 @@ dependencies = [
  "common_util",
  "futures 0.3.21",
  "log",
- "protobuf",
+ "prost",
  "rand 0.7.3",
  "reqwest 0.11.11",
  "serde",
@@ -4387,8 +4387,8 @@ dependencies = [
 name = "proto"
 version = "0.4.0"
 dependencies = [
- "protobuf",
- "protobuf-builder",
+ "prost",
+ "tonic-build",
 ]
 
 [[package]]
@@ -5256,7 +5256,7 @@ dependencies = [
  "profile",
  "prometheus 0.12.0",
  "prometheus-static-metric",
- "protobuf",
+ "prost",
  "query_engine",
  "serde",
  "serde_derive",
@@ -5807,8 +5807,8 @@ dependencies = [
  "common_util",
  "futures 0.3.21",
  "log",
+ "prost",
  "proto 0.4.0",
- "protobuf",
  "snafu 0.6.10",
  "table_engine",
  "tokio 1.20.1",
@@ -5827,8 +5827,8 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "parquet 23.0.0",
+ "prost",
  "proto 0.4.0",
- "protobuf",
  "serde",
  "serde_derive",
  "smallvec 1.9.0",

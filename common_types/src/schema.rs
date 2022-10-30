@@ -16,12 +16,11 @@ use std::{
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
+use prost::Message;
 use proto::common as common_pb;
-use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    bytes::Writer,
     column_schema::{self, ColumnId, ColumnSchema},
     datum::DatumKind,
     row::{contiguous, RowView},
@@ -155,9 +154,7 @@ pub enum Error {
     ColumnSchemaDeserializeFailed { source: crate::column_schema::Error },
 
     #[snafu(display("Failed to encode schema by protobuf, err:{}", source))]
-    EncodeSchemaToPb {
-        source: protobuf::error::ProtobufError,
-    },
+    EncodeSchemaToPb { source: prost::EncodeError },
 
     #[snafu(display("Encoded schema content is empty.\nBacktrace:\n{}", backtrace))]
     EmptyEncodedSchema { backtrace: Backtrace },
@@ -176,7 +173,7 @@ pub enum Error {
     ))]
     DecodeSchemaFromPb {
         buf: Vec<u8>,
-        source: protobuf::error::ProtobufError,
+        source: prost::DecodeError,
     },
 }
 
@@ -870,20 +867,19 @@ impl TryFrom<common_pb::TableSchema> for Schema {
 
 impl From<&Schema> for common_pb::TableSchema {
     fn from(schema: &Schema) -> Self {
-        let mut table_schema = common_pb::TableSchema::new();
+        let columns: Vec<_> = schema
+            .columns()
+            .iter()
+            .map(|v| common_pb::ColumnSchema::from(v.clone()))
+            .collect();
 
-        for column in schema.columns() {
-            // Convert schema of each column
-            let column_schema = column.to_pb();
-            table_schema.columns.push(column_schema);
+        common_pb::TableSchema {
+            num_key_columns: schema.num_key_columns as u32,
+            timestamp_index: schema.timestamp_index as u32,
+            enable_tsid_primary_key: schema.enable_tsid_primary_key,
+            version: schema.version,
+            columns,
         }
-
-        table_schema.num_key_columns = schema.num_key_columns as u32;
-        table_schema.timestamp_index = schema.timestamp_index as u32;
-        table_schema.enable_tsid_primary_key = schema.enable_tsid_primary_key;
-        table_schema.version = schema.version;
-
-        table_schema
     }
 }
 
@@ -1182,13 +1178,10 @@ impl SchemaEncoder {
 
     pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
         let pb_schema = common_pb::TableSchema::from(schema);
-        let mut buf = Vec::with_capacity(1 + pb_schema.compute_size() as usize);
+        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len() as usize);
         buf.push(self.version);
 
-        let mut writer = Writer::new(&mut buf);
-        pb_schema
-            .write_to_writer(&mut writer)
-            .context(EncodeSchemaToPb)?;
+        pb_schema.encode(&mut buf).context(EncodeSchemaToPb)?;
 
         Ok(buf)
     }
@@ -1198,8 +1191,8 @@ impl SchemaEncoder {
 
         self.ensure_version(buf[0])?;
 
-        let pb_schema = common_pb::TableSchema::parse_from_bytes(&buf[1..])
-            .context(DecodeSchemaFromPb { buf })?;
+        let pb_schema =
+            common_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
         Schema::try_from(pb_schema)
     }
 

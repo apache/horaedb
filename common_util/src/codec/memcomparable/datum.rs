@@ -3,7 +3,7 @@
 //! Datum comparable codec
 
 use common_types::{
-    bytes::{BytesMut, MemBuf, MemBufMut},
+    bytes::{Buf, BufMut, BytesMut, SafeBufMut},
     datum::{Datum, DatumKind},
     string::StringBytes,
     time::Timestamp,
@@ -20,56 +20,56 @@ use crate::codec::{
 impl Encoder<Datum> for MemComparable {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
         match value {
-            Datum::Null => buf.write_u8(consts::NULL_FLAG).context(EncodeKey),
+            Datum::Null => buf.try_put_u8(consts::NULL_FLAG).context(EncodeKey),
             Datum::Timestamp(ts) => {
-                buf.write_u8(consts::INT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &ts.as_i64())
             }
             Datum::Varbinary(v) => {
-                buf.write_u8(consts::BYTES_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::BYTES_FLAG).context(EncodeKey)?;
                 self.encode(buf, v)
             }
             // For string, we just use same encoding method as bytes now.
             Datum::String(v) => {
-                buf.write_u8(consts::BYTES_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::BYTES_FLAG).context(EncodeKey)?;
                 self.encode(buf, v.as_bytes())
             }
             Datum::UInt64(v) => {
-                buf.write_u8(consts::UINT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, v)
             }
             Datum::UInt32(v) => {
-                buf.write_u8(consts::UINT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
             }
             Datum::UInt16(v) => {
-                buf.write_u8(consts::UINT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
             }
             Datum::UInt8(v) => {
-                buf.write_u8(consts::UINT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
             }
             Datum::Int64(v) => {
-                buf.write_u8(consts::INT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, v)
             }
             Datum::Int32(v) => {
-                buf.write_u8(consts::INT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
             }
             Datum::Int16(v) => {
-                buf.write_u8(consts::INT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
             }
             Datum::Int8(v) => {
-                buf.write_u8(consts::INT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
             }
             Datum::Boolean(v) => {
-                buf.write_u8(consts::UINT_FLAG).context(EncodeKey)?;
+                buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
             }
             Datum::Double(_) => UnsupportedKind {
@@ -138,7 +138,7 @@ impl DecodeTo<Datum> for MemComparable {
     /// REQUIRE: The datum type should match the type in buf
     ///
     /// For string datum, the utf8 check will be skipped.
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut Datum) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut Datum) -> Result<()> {
         match value {
             Datum::Null => {
                 Self::ensure_flag(buf, consts::NULL_FLAG)?;

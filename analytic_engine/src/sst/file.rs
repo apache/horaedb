@@ -29,8 +29,8 @@ use common_util::{
 };
 use log::{debug, error, info};
 use object_store::ObjectStoreRef;
-use proto::{common as common_pb, sst::SstMetaData as SstMetaDataPb};
-use snafu::{ResultExt, Snafu};
+use proto::{common as common_pb, sst as sst_pb};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -47,6 +47,15 @@ use crate::{
 /// Error of sst file.
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("Time range is not found.\nBacktrace\n:{}", backtrace))]
+    TimeRangeNotFound { backtrace: Backtrace },
+
+    #[snafu(display("Table schema is not found.\nBacktrace\n:{}", backtrace))]
+    TableSchemaNotFound { backtrace: Backtrace },
+
+    #[snafu(display("Storage format options are not found.\nBacktrace\n:{}", backtrace))]
+    StorageFormatOptionsNotFound { backtrace: Backtrace },
+
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
 
@@ -439,37 +448,46 @@ impl SstMetaData {
     }
 }
 
-impl From<SstMetaData> for SstMetaDataPb {
+impl From<SstMetaData> for sst_pb::SstMetaData {
     fn from(src: SstMetaData) -> Self {
-        let mut target = SstMetaDataPb::default();
-        target.set_min_key(src.min_key.to_vec());
-        target.set_max_key(src.max_key.to_vec());
-        target.set_max_sequence(src.max_sequence);
-        let time_range = common_pb::TimeRange::from(src.time_range);
-        target.set_time_range(time_range);
-        target.set_schema(common_pb::TableSchema::from(&src.schema));
-        target.set_size(src.size);
-        target.set_row_num(src.row_num);
-
-        target
+        sst_pb::SstMetaData {
+            min_key: src.min_key.to_vec(),
+            max_key: src.max_key.to_vec(),
+            max_sequence: src.max_sequence,
+            time_range: Some(src.time_range.into()),
+            schema: Some(common_pb::TableSchema::from(&src.schema)),
+            size: src.size,
+            row_num: src.row_num,
+            storage_format_opts: Some(src.storage_format_opts.into()),
+        }
     }
 }
 
-impl TryFrom<SstMetaDataPb> for SstMetaData {
+impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
     type Error = Error;
 
-    fn try_from(mut src: SstMetaDataPb) -> Result<Self> {
-        let time_range = TimeRange::try_from(src.take_time_range()).context(ConvertTimeRange)?;
-        let schema = Schema::try_from(src.take_schema()).context(ConvertTableSchema)?;
+    fn try_from(src: sst_pb::SstMetaData) -> Result<Self> {
+        let time_range = {
+            let time_range = src.time_range.context(TimeRangeNotFound)?;
+            TimeRange::try_from(time_range).context(ConvertTimeRange)?
+        };
+        let schema = {
+            let schema = src.schema.context(TableSchemaNotFound)?;
+            Schema::try_from(schema).context(ConvertTableSchema)?
+        };
+        let storage_format_opts = StorageFormatOptions::from(
+            src.storage_format_opts
+                .context(StorageFormatOptionsNotFound)?,
+        );
         Ok(Self {
-            min_key: src.take_min_key().into(),
-            max_key: src.take_max_key().into(),
+            min_key: src.min_key.into(),
+            max_key: src.max_key.into(),
             time_range,
             max_sequence: src.max_sequence,
             schema,
             size: src.size,
             row_num: src.row_num,
-            storage_format_opts: src.take_storage_format_opts().into(),
+            storage_format_opts,
         })
     }
 }

@@ -9,7 +9,7 @@ mod datum;
 mod float;
 mod number;
 
-use common_types::bytes::MemBuf;
+use common_types::bytes::SafeBuf;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::codec::consts;
@@ -49,6 +49,9 @@ pub enum Error {
     #[snafu(display("Insufficient bytes to decode value, err:{}", source))]
     DecodeValue { source: common_types::bytes::Error },
 
+    #[snafu(display("Failed to skip decoded value, err:{}", source))]
+    SkipDecodedValue { source: common_types::bytes::Error },
+
     #[snafu(display("Try into usize error:{}.\nBacktrace:\n{}", source, backtrace))]
     TryIntoUsize {
         source: std::num::TryFromIntError,
@@ -72,8 +75,8 @@ pub struct MemCompactDecoder;
 
 impl MemCompactDecoder {
     /// Returns None if we need to return null datum, otherwise return the flag.
-    fn maybe_read_null<B: MemBuf>(&self, buf: &mut B) -> Result<Option<u8>> {
-        let actual = buf.read_u8().context(DecodeKey)?;
+    fn maybe_read_null<B: SafeBuf>(&self, buf: &mut B) -> Result<Option<u8>> {
+        let actual = buf.try_get_u8().context(DecodeKey)?;
         // If actual flag is null, need to check whether this datum is nullable.
         if actual == consts::NULL_FLAG {
             // The decoder need to return null datum.

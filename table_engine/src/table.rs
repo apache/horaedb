@@ -4,7 +4,6 @@
 
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fmt,
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
@@ -20,14 +19,13 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
-    time::Timestamp,
 };
-use proto::sys_catalog::{TableEntry, TableState as TableStatePb};
+use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, Snafu};
 
 use crate::{
-    engine::{TableRequestType, TableState},
+    engine::TableState,
     predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
@@ -529,49 +527,35 @@ pub struct TableInfo {
     pub state: TableState,
 }
 
-#[derive(Debug, Snafu)]
-pub struct TryFromTableEntryError(common_types::schema::Error);
-
-impl TryFrom<TableEntry> for TableInfo {
-    type Error = TryFromTableEntryError;
-
-    fn try_from(entry: TableEntry) -> std::result::Result<Self, Self::Error> {
-        Ok(Self {
+impl From<sys_catalog_pb::TableEntry> for TableInfo {
+    fn from(entry: sys_catalog_pb::TableEntry) -> Self {
+        let state = entry.state();
+        Self {
             catalog_name: entry.catalog_name,
             schema_name: entry.schema_name,
             schema_id: SchemaId(entry.schema_id),
             table_id: entry.table_id.into(),
             table_name: entry.table_name,
             engine: entry.engine,
-            state: TableState::from(entry.state),
-        })
-    }
-}
-
-impl From<TableInfo> for TableEntry {
-    fn from(table_info: TableInfo) -> Self {
-        let mut entry = TableEntry::new();
-        entry.set_catalog_name(table_info.catalog_name);
-        entry.set_schema_name(table_info.schema_name);
-        entry.set_schema_id(table_info.schema_id.as_u32());
-        entry.set_table_id(table_info.table_id.as_u64());
-        entry.set_table_name(table_info.table_name);
-        entry.set_engine(table_info.engine);
-        entry.set_state(TableStatePb::from(table_info.state));
-
-        entry
-    }
-}
-
-impl TableInfo {
-    // TODO(chunshao.rcs): refactor
-    pub fn into_pb(self, typ: TableRequestType) -> TableEntry {
-        let mut table_entry: TableEntry = self.into();
-        match typ {
-            TableRequestType::Create => table_entry.set_created_time(Timestamp::now().as_i64()),
-            TableRequestType::Drop => table_entry.set_modified_time(Timestamp::now().as_i64()),
+            state: TableState::from(state),
         }
-        table_entry
+    }
+}
+
+impl From<TableInfo> for sys_catalog_pb::TableEntry {
+    fn from(v: TableInfo) -> Self {
+        sys_catalog_pb::TableEntry {
+            catalog_name: v.catalog_name,
+            schema_name: v.schema_name,
+            schema_id: v.schema_id.as_u32(),
+            table_id: v.table_id.as_u64(),
+            table_name: v.table_name,
+            engine: v.engine,
+            state: sys_catalog_pb::TableState::from(v.state) as i32,
+            // FIXME: Maybe [`TableInfo`] should contains such information.
+            created_time: 0,
+            modified_time: 0,
+        }
     }
 }
 

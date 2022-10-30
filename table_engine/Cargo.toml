@@ -18,7 +18,7 @@ futures = { workspace = true }
 log = { workspace = true }
 parquet = { workspace = true }
 proto = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 smallvec = { workspace = true }

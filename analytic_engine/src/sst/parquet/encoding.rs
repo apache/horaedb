@@ -14,7 +14,7 @@ use arrow::{
     util::bit_util,
 };
 use common_types::{
-    bytes::{BytesMut, MemBufMut, Writer},
+    bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
 };
@@ -25,8 +25,8 @@ use parquet::{
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
+use prost::Message;
 use proto::sst::SstMetaData as SstMetaDataPb;
-use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -48,7 +48,7 @@ pub enum Error {
         backtrace
     ))]
     EncodeIntoPb {
-        source: protobuf::ProtobufError,
+        source: prost::EncodeError,
         backtrace: Backtrace,
     },
 
@@ -60,7 +60,7 @@ pub enum Error {
     ))]
     DecodeFromPb {
         meta_value: String,
-        source: protobuf::ProtobufError,
+        source: prost::DecodeError,
         backtrace: Backtrace,
     },
 
@@ -171,17 +171,12 @@ pub const META_VALUE_HEADER: u8 = 0;
 pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
     let meta_data_pb = SstMetaDataPb::from(meta_data);
 
-    let mut buf = BytesMut::with_capacity(meta_data_pb.compute_size() as usize + 1);
-    buf.write_u8(META_VALUE_HEADER)
+    let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() as usize + 1);
+    buf.try_put_u8(META_VALUE_HEADER)
         .expect("Should write header into the buffer successfully");
 
     // encode the sst meta data into protobuf binary
-    {
-        let mut writer = Writer::new(&mut buf);
-        meta_data_pb
-            .write_to_writer(&mut writer)
-            .context(EncodeIntoPb)?;
-    }
+    meta_data_pb.encode(&mut buf).context(EncodeIntoPb)?;
     Ok(KeyValue {
         key: META_KEY.to_string(),
         value: Some(base64::encode(buf.as_ref())),
@@ -214,7 +209,7 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
     );
 
     let meta_data_pb: SstMetaDataPb =
-        Message::parse_from_bytes(&raw_bytes[1..]).context(DecodeFromPb { meta_value })?;
+        Message::decode(&raw_bytes[1..]).context(DecodeFromPb { meta_value })?;
 
     SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }

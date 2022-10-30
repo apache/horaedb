@@ -2,7 +2,7 @@
 
 use std::mem;
 
-use common_types::bytes::{MemBuf, MemBufMut};
+use common_types::bytes::{SafeBuf, SafeBufMut};
 use snafu::ResultExt;
 
 use crate::codec::{
@@ -13,8 +13,8 @@ use crate::codec::{
 impl Encoder<f64> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &f64) -> Result<()> {
-        buf.write_f64(*value).context(EncodeValue)?;
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &f64) -> Result<()> {
+        buf.try_put_f64(*value).context(EncodeValue)?;
         Ok(())
     }
 
@@ -26,8 +26,8 @@ impl Encoder<f64> for MemCompactEncoder {
 impl DecodeTo<f64> for MemCompactDecoder {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut f64) -> Result<()> {
-        *value = buf.read_f64().context(DecodeValue)?;
+    fn decode_to<B: SafeBuf>(&self, buf: &mut B, value: &mut f64) -> Result<()> {
+        *value = buf.try_get_f64().context(DecodeValue)?;
         Ok(())
     }
 }
@@ -35,8 +35,8 @@ impl DecodeTo<f64> for MemCompactDecoder {
 impl Encoder<f32> for MemCompactEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &f32) -> Result<()> {
-        buf.write_f32(*value).context(EncodeValue)?;
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &f32) -> Result<()> {
+        buf.try_put_f32(*value).context(EncodeValue)?;
         Ok(())
     }
 
@@ -48,8 +48,8 @@ impl Encoder<f32> for MemCompactEncoder {
 impl DecodeTo<f32> for MemCompactDecoder {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut f32) -> Result<()> {
-        *value = buf.read_f32().context(DecodeValue)?;
+    fn decode_to<B: SafeBuf>(&self, buf: &mut B, value: &mut f32) -> Result<()> {
+        *value = buf.try_get_f32().context(DecodeValue)?;
         Ok(())
     }
 }

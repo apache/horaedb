@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Varint for codec whose test is covered by compact/number.rs
-use common_types::bytes::{MemBuf, MemBufMut};
+use common_types::bytes::{Buf, SafeBuf, SafeBufMut};
 use snafu::{Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -35,7 +35,7 @@ define_result!(Error);
 //      return PutUvarint(buf, ux)
 // }
 // ```
-pub fn encode_varint<B: MemBufMut>(buf: &mut B, value: i64) -> Result<()> {
+pub fn encode_varint<B: SafeBufMut>(buf: &mut B, value: i64) -> Result<()> {
     let mut x = (value as u64) << 1;
     if value < 0 {
         x = !x;
@@ -58,12 +58,12 @@ pub fn encode_varint<B: MemBufMut>(buf: &mut B, value: i64) -> Result<()> {
 // 	return i + 1
 // }
 // ```
-pub fn encode_uvarint<B: MemBufMut>(buf: &mut B, mut x: u64) -> Result<()> {
+pub fn encode_uvarint<B: SafeBufMut>(buf: &mut B, mut x: u64) -> Result<()> {
     while x >= 0x80 {
-        buf.write_u8(x as u8 | 0x80).context(EncodeVarint)?;
+        buf.try_put_u8(x as u8 | 0x80).context(EncodeVarint)?;
         x >>= 7;
     }
-    buf.write_u8(x as u8).context(EncodeVarint)?;
+    buf.try_put_u8(x as u8).context(EncodeVarint)?;
     Ok(())
 }
 
@@ -86,7 +86,7 @@ pub fn encode_uvarint<B: MemBufMut>(buf: &mut B, mut x: u64) -> Result<()> {
 //      return x, n
 //      }
 //  ```
-pub fn decode_varint<B: MemBuf>(buf: &mut B) -> Result<i64> {
+pub fn decode_varint<B: Buf>(buf: &mut B) -> Result<i64> {
     let ux = decode_uvarint(buf)?;
     let mut x = (ux >> 1) as i64;
     if ux & 1 != 0 {
@@ -122,12 +122,12 @@ pub fn decode_varint<B: MemBuf>(buf: &mut B) -> Result<i64> {
 //  }
 //  ```
 //
-pub fn decode_uvarint<B: MemBuf>(buf: &mut B) -> Result<u64> {
+pub fn decode_uvarint<B: Buf>(buf: &mut B) -> Result<u64> {
     let mut x: u64 = 0;
     let mut s: usize = 0;
-    let len = buf.remaining_slice().len();
+    let len = buf.remaining();
     for i in 0..len {
-        let b = buf.read_u8().context(DecodeValue)?;
+        let b = buf.try_get_u8().context(DecodeValue)?;
         if b < 0x80 {
             if i > 9 || i == 9 && b > 1 {
                 return UvarintOverflow.fail(); // overflow

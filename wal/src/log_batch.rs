@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 
 use common_types::{
-    bytes::{MemBuf, MemBufMut},
+    bytes::{Buf, BufMut},
     table::Location,
     SequenceNumber,
 };
@@ -16,7 +16,7 @@ pub trait Payload: Send + Sync + Debug {
     /// Compute size of the encoded payload.
     fn encode_size(&self) -> usize;
     /// Append the encoded payload to the `buf`.
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error>;
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug)]
@@ -75,5 +75,5 @@ pub trait PayloadDecoder: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     type Target: Send + Sync;
     /// Decode `Target` from the `bytes`.
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error>;
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error>;
 }
