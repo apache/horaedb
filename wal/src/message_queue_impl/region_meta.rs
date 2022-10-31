@@ -2,11 +2,7 @@
 
 //! Region meta data
 
-use std::{
-    cmp,
-    collections::{BTreeMap, HashMap},
-    sync::atomic::{AtomicI64, Ordering},
-};
+use std::collections::{BTreeMap, HashMap};
 
 use common_types::{table::TableId, SequenceNumber};
 use common_util::define_result;
@@ -107,10 +103,6 @@ impl RegionMeta {
             .update_after_write(write_offset_range, updated_num)
             .await;
 
-        inner
-            .local_latest_offset
-            .fetch_add(updated_num as i64, Ordering::Relaxed);
-
         Ok(())
     }
 
@@ -132,36 +124,6 @@ impl RegionMeta {
         Ok(())
     }
 
-    /// Scan the table meta entry in it and get the safe(minimum) offset among
-    /// them to return.
-    ///
-    /// NOTICE: Need to freeze the whole region meta on high-level before
-    /// calling.
-    pub async fn get_safe_delete_offset(&self) -> Result<Offset> {
-        let inner = self.inner.read().await;
-        let mut safe_delete_offset = Offset::MAX;
-        let mut high_watermark = 0;
-        // Calc the min offset in message queue.
-        for table_meta in inner.table_metas.values() {
-            let meta_data = table_meta.get_meta_data().await?;
-            if let Some(offset) = meta_data.safe_delete_offset {
-                safe_delete_offset = cmp::min(safe_delete_offset, offset);
-            }
-            high_watermark = cmp::max(high_watermark, meta_data.current_high_watermark);
-        }
-
-        if safe_delete_offset == Offset::MAX {
-            // All tables are in such states:
-            // + has init, but not written
-            // + has written, but not flushed
-            // + has flushed, but not written again
-            // So, we can directly delete it up to the high_watermark.
-            Ok(high_watermark)
-        } else {
-            Ok(safe_delete_offset)
-        }
-    }
-
     /// Scan the table meta entry in it and get the snapshot about tables' next
     /// sequences.
     ///
@@ -176,10 +138,7 @@ impl RegionMeta {
             entries.push(meta_data);
         }
 
-        Ok(RegionMetaSnapshot {
-            next_offset: inner.local_latest_offset.load(Ordering::Relaxed),
-            entries,
-        })
+        Ok(RegionMetaSnapshot { entries })
     }
 }
 
@@ -187,9 +146,6 @@ impl RegionMeta {
 #[derive(Default, Debug)]
 struct RegionMetaInner {
     table_metas: HashMap<TableId, TableMeta>,
-    /// It will fall behind the high watermark for ensuring successive
-    /// increment.
-    local_latest_offset: AtomicI64,
 }
 
 /// Wrapper for the [TableMetaInner].
@@ -320,7 +276,6 @@ pub struct TableMetaData {
 ///
 /// Include all tables(of current shard) and their next sequence number.
 pub struct RegionMetaSnapshot {
-    pub next_offset: Offset,
     pub entries: Vec<TableMetaData>,
 }
 
