@@ -13,19 +13,7 @@ use tokio::sync::{Mutex, RwLock};
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get meta data of table:{}, msg:{}\nBacktrace:{}",
-        table_id,
-        msg,
-        backtrace
-    ))]
-    GetMetaData {
-        table_id: TableId,
-        msg: String,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to update meta data after write of table:{}, msg:{}\nBacktrace:{}",
+        "Failed to update meta data after write of table:{}, msg:{}\nBacktrace:\n{}",
         table_id,
         msg,
         backtrace
@@ -37,7 +25,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to mark deleted for table:{}, msg:{}\nBacktrace:{}",
+        "Failed to mark deleted for table:{}, msg:{}\nBacktrace:\n{}",
         table_id,
         msg,
         backtrace
@@ -48,6 +36,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 }
+
 define_result!(Error);
 
 // TODO: will be made use of later.
@@ -63,31 +52,43 @@ impl RegionMeta {
     // TODO: Need to implement the init method using the [RegionMetaSnapshot] which
     // will be persisted.
 
-    pub async fn prepare_for_table_write(&self, table_id: TableId) -> Result<SequenceNumber> {
+    pub async fn prepare_for_table_write(&self, table_id: TableId) -> SequenceNumber {
         {
             let inner = self.inner.read().await;
             if let Some(table_meta) = inner.table_metas.get(&table_id) {
-                return Ok(table_meta.get_meta_data().await?.next_sequence_num);
+                return table_meta.get_meta_data().await.next_sequence_num;
             }
         }
 
         // Double check is not needed, due to just one task will write the specific
         // table.
         let mut inner = self.inner.write().await;
-        debug_assert!(inner
+        assert!(inner
             .table_metas
             .insert(table_id, TableMeta::new(table_id))
-            .is_none());
+            .is_none(),
+            "now just support the thread model: one writer to one table, make no sense to occur race here");
         // New table, so returned next sequence num is zero.
-        Ok(SequenceNumber::MIN)
+        SequenceNumber::MIN
     }
 
+    /// Update following meta data of table after each writing:
+    /// + mapping of start sequence number to start offset
+    /// + high watermark
+    /// + next sequence number
     pub async fn update_after_table_write(
         &self,
         table_id: TableId,
-        write_offset_range: (Offset, Offset),
-        updated_num: u64,
+        write_offset_range: OffsetRange,
     ) -> Result<()> {
+        ensure!(
+            write_offset_range.start <= write_offset_range.end,
+            UpdateAfterWrite {
+                table_id, msg: format!("write offset range's start should not be larger than its end, offset range:{:?}", 
+                write_offset_range)
+            },
+        );
+
         let inner = self.inner.read().await;
         let table_meta = inner
             .table_metas
@@ -99,17 +100,17 @@ impl RegionMeta {
                     table_id
                 ),
             })?;
-        table_meta
-            .update_after_write(write_offset_range, updated_num)
-            .await;
+
+        table_meta.update_after_write(write_offset_range).await;
 
         Ok(())
     }
 
+    /// Mark the deleted sequence number to latest next sequence number.
     pub async fn mark_table_deleted(
         &self,
         table_id: TableId,
-        next_sequence_num: SequenceNumber,
+        sequence_num: SequenceNumber,
     ) -> Result<()> {
         let inner = self.inner.read().await;
         let table_meta = inner
@@ -119,26 +120,26 @@ impl RegionMeta {
                 table_id,
                 msg: format!("table:{}'s meta not found while mark its deleted", table_id),
             })?;
-        table_meta.mark_deleted(next_sequence_num).await;
+        table_meta.mark_deleted(sequence_num).await;
 
         Ok(())
     }
 
-    /// Scan the table meta entry in it and get the snapshot about tables' next
-    /// sequences.
+    /// Scan the table meta entry in it and get the snapshot about tables' meta
+    /// data.
     ///
     /// NOTICE: Need to freeze the whole region meta on high-level before
     /// calling.
-    pub async fn get_snapshot(&self) -> Result<RegionMetaSnapshot> {
+    pub async fn make_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.read().await;
         // Calc the min offset in message queue.
         let mut entries = Vec::with_capacity(inner.table_metas.len());
         for (table_id, table_meta) in &inner.table_metas {
-            let meta_data = table_meta.get_meta_data().await?;
+            let meta_data = table_meta.get_meta_data().await;
             entries.push(meta_data);
         }
 
-        Ok(RegionMetaSnapshot { entries })
+        RegionMetaSnapshot { entries }
     }
 }
 
@@ -174,7 +175,8 @@ impl TableMeta {
         inner.next_sequence_num
     }
 
-    async fn update_after_write(&self, write_offset_range: (Offset, Offset), updated_num: u64) {
+    async fn update_after_write(&self, write_offset_range: OffsetRange) {
+        let updated_num = (write_offset_range.end - write_offset_range.start + 1) as u64;
         let mut inner = self.inner.lock().await;
         let old_next_sequence_num = inner.next_sequence_num;
         inner.next_sequence_num += updated_num;
@@ -182,56 +184,89 @@ impl TableMeta {
         // Update the mapping and high water mark.
         let _ = inner
             .start_sequence_offset_mapping
-            .insert(old_next_sequence_num, write_offset_range.0);
-        inner.current_high_watermark = write_offset_range.1 + 1;
+            .insert(old_next_sequence_num, write_offset_range.start);
+        inner.current_high_watermark = write_offset_range.end + 1;
     }
 
-    async fn mark_deleted(&self, latest_marked_deleted: SequenceNumber) {
+    async fn mark_deleted(&self, latest_marked_deleted: SequenceNumber) -> Result<()> {
         let mut inner = self.inner.lock().await;
-        assert!(latest_marked_deleted <= inner.next_sequence_num);
+
+        ensure!(
+            latest_marked_deleted <= inner.next_sequence_num,
+            MarkDeleted {
+                table_id: self.table_id,
+                msg: format!(
+                    "latest marked deleted should be less than or 
+                    equal to next sequence number, now are:{} and {}",
+                    latest_marked_deleted, inner.next_sequence_num
+                ),
+            }
+        );
+
+        ensure!(
+            latest_marked_deleted >= inner.latest_marked_deleted,
+            MarkDeleted {
+                table_id: self.table_id,
+                msg: format!("latest marked deleted should be greater than or equal to origin one now are:{} and {}",
+                latest_marked_deleted,
+                inner.latest_marked_deleted),
+            }
+        );
+
         inner.latest_marked_deleted = latest_marked_deleted;
 
         // Update the mapping, keep the range in description.
         inner
             .start_sequence_offset_mapping
             .retain(|k, _| k >= &latest_marked_deleted);
+
+        Ok(())
     }
 
-    async fn get_meta_data(&self) -> Result<TableMetaData> {
+    async fn get_meta_data(&self) -> TableMetaData {
         let inner = self.inner.lock().await;
 
         // Only two situations exist:
-        // + no log of the table has ever been written
+        // + no log of the table has ever been written(after init and flush)
         //  (next sequence num == latest marked deleted).
-        // + all logs of the table can be deleted
+        // + some logs have been written(after init and flush)
         //  (next_sequence_num > latest_marked_deleted).
         if inner.next_sequence_num == inner.latest_marked_deleted {
-            Ok(TableMetaData {
+            TableMetaData {
                 table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
                 current_high_watermark: inner.current_high_watermark,
                 safe_delete_offset: None,
-            })
+            }
         } else {
             let offset = inner
                 .start_sequence_offset_mapping
                 .get(&inner.latest_marked_deleted);
-            ensure!(inner.next_sequence_num > inner.latest_marked_deleted && offset.is_some(),
-                GetMetaData {
-                    table_id: self.table_id,
-                    msg: format!("unexpected state, offset should be found, next sequence should be greater to latest marked deleted
-                        while has new writing after having flushed/init, but now are {:?}, {} and {}", offset, inner.next_sequence_num,
-                        inner.latest_marked_deleted),
-                });
 
-            Ok(TableMetaData {
+            // Its inner state has been invalid now, it's proper to panic for protecting the
+            // data.
+            assert!(
+                inner.next_sequence_num > inner.latest_marked_deleted,
+                "next sequence should be greater than latest marked deleted, but now are {} and {}",
+                inner.next_sequence_num,
+                inner.latest_marked_deleted
+            );
+            assert!(
+                offset.is_some(),
+                "offset not found, but now next sequence num:{}, latest marked deleted:{}, mapping:{:?}",
+                inner.next_sequence_num,
+                inner.latest_marked_deleted,
+                inner.start_sequence_offset_mapping
+            );
+
+            TableMetaData {
                 table_id: self.table_id,
                 next_sequence_num: inner.next_sequence_num,
                 latest_marked_deleted: inner.latest_marked_deleted,
                 current_high_watermark: inner.current_high_watermark,
                 safe_delete_offset: offset.copied(),
-            })
+            }
         }
     }
 }
@@ -279,6 +314,22 @@ pub struct RegionMetaSnapshot {
     pub entries: Vec<TableMetaData>,
 }
 
+/// Message queue's offset range
+///
+/// The range should be [start, end], and it will never be empty.
+#[derive(Debug)]
+pub struct OffsetRange {
+    pub start: Offset,
+    pub end: Offset,
+}
+
+#[allow(unused)]
+impl OffsetRange {
+    pub fn new(start: Offset, end: Offset) -> Self {
+        Self { start, end }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -293,15 +344,15 @@ mod tests {
     use message_queue::Offset;
     use tokio::time;
 
-    use super::RegionMeta;
+    use super::{OffsetRange, RegionMeta};
 
     #[tokio::test]
     async fn test_basic_work_flow() {
         let region_meta = RegionMeta::default();
 
         // New table meta.
-        let init_seq = region_meta.prepare_for_table_write(0).await.unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let init_seq = region_meta.prepare_for_table_write(0).await;
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, SequenceNumber::MIN);
         assert_eq!(
@@ -312,10 +363,10 @@ mod tests {
 
         // Update.
         region_meta
-            .update_after_table_write(0, (20, 29), 10)
+            .update_after_table_write(0, OffsetRange::new(20, 29))
             .await
             .unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 10);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
@@ -324,10 +375,10 @@ mod tests {
 
         // Update again, and delete to a fall behind point.
         region_meta
-            .update_after_table_write(0, (42, 51), 10)
+            .update_after_table_write(0, OffsetRange::new(42, 51))
             .await
             .unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
@@ -338,7 +389,7 @@ mod tests {
             .mark_table_deleted(0, init_seq + 10)
             .await
             .unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 10);
@@ -350,7 +401,7 @@ mod tests {
             .mark_table_deleted(0, init_seq + 20)
             .await
             .unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, init_seq + 20);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, init_seq + 20);
@@ -391,7 +442,7 @@ mod tests {
                 .mark_table_deleted(0, expected_next_sequence_num_copy + 10)
                 .await
                 .unwrap();
-            let snapshot = region_meta.get_snapshot().await.unwrap();
+            let snapshot = region_meta.make_snapshot().await;
             assert_eq!(snapshot.entries.len(), 1);
             assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
             assert_eq!(
@@ -403,10 +454,13 @@ mod tests {
         // Update once and make deletion task able to continue.
         expected_next_sequence_num += 10;
         region_meta
-            .update_after_table_write(0, expected_offset_range, 10)
+            .update_after_table_write(
+                0,
+                OffsetRange::new(expected_offset_range.0, expected_offset_range.1),
+            )
             .await
             .unwrap();
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(
             snapshot.entries[0].next_sequence_num,
@@ -439,7 +493,7 @@ mod tests {
         )
         .await;
 
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 1);
         assert_eq!(snapshot.entries[0].next_sequence_num, 60);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 10);
@@ -492,7 +546,7 @@ mod tests {
         handle.await.unwrap();
 
         // Check final result.
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         assert_eq!(snapshot.entries.len(), 2);
         assert_eq!(snapshot.entries[0].next_sequence_num, 50);
         assert_eq!(snapshot.entries[0].latest_marked_deleted, 0);
@@ -517,10 +571,13 @@ mod tests {
             expected_next_sequence_num += 10;
 
             region_meta
-                .update_after_table_write(table_id, expected_offset_range, 10)
+                .update_after_table_write(
+                    table_id,
+                    OffsetRange::new(expected_offset_range.0, expected_offset_range.1),
+                )
                 .await
                 .unwrap();
-            let snapshot = region_meta.get_snapshot().await.unwrap();
+            let snapshot = region_meta.make_snapshot().await;
             for entry in snapshot.entries {
                 if entry.table_id == table_id {
                     assert_eq!(entry.next_sequence_num, expected_next_sequence_num);
@@ -535,9 +592,9 @@ mod tests {
     }
 
     async fn create_and_check_table_meta(region_meta: &RegionMeta, table_id: TableId) {
-        let init_seq = region_meta.prepare_for_table_write(table_id).await.unwrap();
+        let init_seq = region_meta.prepare_for_table_write(table_id).await;
         assert_eq!(init_seq, 0);
-        let snapshot = region_meta.get_snapshot().await.unwrap();
+        let snapshot = region_meta.make_snapshot().await;
         for entry in snapshot.entries {
             if entry.table_id == table_id {
                 assert_eq!(entry.next_sequence_num, SequenceNumber::MIN);
