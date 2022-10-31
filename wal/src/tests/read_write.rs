@@ -8,7 +8,7 @@ use common_types::{
 };
 
 use crate::{
-    manager::{ReadBoundary, ReadRequest, RegionId, WalManagerRef},
+    manager::{ReadBoundary, ReadRequest, WalManagerRef},
     tests::util::{
         MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, TestPayload,
         WalBuilder,

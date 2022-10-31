@@ -13,7 +13,7 @@ common_types = { workspace = true }
 common_util = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 rand = { workspace = true }
 reqwest = "0.11"
 serde = { workspace = true }

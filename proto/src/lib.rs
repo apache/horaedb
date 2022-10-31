@@ -2,7 +2,11 @@
 
 //! Protobuf messages
 
-mod protos {
-    include!("./protos/mod.rs");
-}
-pub use protos::*;
+#![allow(clippy::all)]
+
+pub mod analytic_common;
+pub mod common;
+pub mod meta_update;
+pub mod sst;
+pub mod sys_catalog;
+pub mod table_requests;

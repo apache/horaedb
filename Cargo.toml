@@ -80,7 +80,7 @@ paste = "1.0"
 profile = { path = "components/profile" }
 prometheus = "0.12"
 proto = { path = "proto" }
-protobuf = "2.20"
+prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
 snafu = { version ="0.6.10", features = ["backtraces"] }

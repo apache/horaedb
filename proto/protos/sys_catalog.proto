@@ -8,50 +8,50 @@ import "common.proto";
 
 // Catalog entry
 message CatalogEntry {
-    // Name of catalog
-    string catalog_name = 1;
-    // Created time: ms
-    int64 created_time = 2;
+  // Name of catalog
+  string catalog_name = 1;
+  // Created time: ms
+  int64 created_time = 2;
 }
 
 // Schema entry
 message SchemaEntry {
-    // Name of catalog
-    string catalog_name = 1;
-    // Name of schema
-    string schema_name = 2;
-    // Id of the schema
-    uint32 schema_id = 3;
-    // Created time: ms
-    int64 created_time = 4;
+  // Name of catalog
+  string catalog_name = 1;
+  // Name of schema
+  string schema_name = 2;
+  // Id of the schema
+  uint32 schema_id = 3;
+  // Created time: ms
+  int64 created_time = 4;
 }
 
 // State of the table
 enum TableState {
-    STABLE = 0;
-    DROPPING = 1;
-    DROPPED = 2;
+  STABLE = 0;
+  DROPPING = 1;
+  DROPPED = 2;
 }
 
 // Table entry
 // TODO(yingwen): Add PartitionInfo
 message TableEntry {
-    // Name of catalog
-    string catalog_name = 1;
-    // Name of schema
-    string schema_name = 2;
-    // Schema id
-    uint32 schema_id = 3;
-    // Table id
-    uint64 table_id = 4;
-    // Table name
-    string table_name = 5;
-    // Table engine type
-    string engine = 6;
-    // The state of the table.
-    TableState state = 7;
-    // Created time: ms
-    int64 created_time = 8;
-    // Modified time: ms
-    int64 modified_time = 9;
+  // Name of catalog
+  string catalog_name = 1;
+  // Name of schema
+  string schema_name = 2;
+  // Schema id
+  uint32 schema_id = 3;
+  // Table id
+  uint64 table_id = 4;
+  // Table name
+  string table_name = 5;
+  // Table engine type
+  string engine = 6;
+  // The state of the table.
+  TableState state = 7;
+  // Created time: ms
+  int64 created_time = 8;
+  // Modified time: ms
+  int64 modified_time = 9;
 }

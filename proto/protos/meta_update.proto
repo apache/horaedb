@@ -9,110 +9,110 @@ import "common.proto";
 
 // Meta update for a new space
 message AddSpaceMeta {
-    uint32 space_id = 1;
-    string space_name = 2;
+  uint32 space_id = 1;
+  string space_name = 2;
 }
 
 // Meta update for a new table
 message AddTableMeta {
-    uint32 space_id = 1;
-    uint64 table_id = 2;
-    string table_name = 3;
-    // Schema of the table
-    common.TableSchema schema = 4;
-    // Options of the table
-    analytic_common.TableOptions options = 5;
+  uint32 space_id = 1;
+  uint64 table_id = 2;
+  string table_name = 3;
+  // Schema of the table
+  common.TableSchema schema = 4;
+  // Options of the table
+  analytic_common.TableOptions options = 5;
 }
 
 // Meta update for dropping a table
 message DropTableMeta {
-    uint32 space_id = 1;
-    uint64 table_id = 2;
-    string table_name = 3;
+  uint32 space_id = 1;
+  uint64 table_id = 2;
+  string table_name = 3;
 }
 
 // Meta data of a sst file
 message AddFileMeta {
-    // Level of the file
-    uint32 level = 1;
-    // Id of the file
-    uint64 file_id = 2;
-    bytes min_key = 3;
-    bytes max_key = 4;
-    uint64 max_seq = 5;
-    common.TimeRange time_range = 6;
-    common.TableSchema schema = 7;
-    uint64 size = 8;
-    uint64 row_num = 9;
-    analytic_common.StorageFormat storage_format = 10;
+  // Level of the file
+  uint32 level = 1;
+  // Id of the file
+  uint64 file_id = 2;
+  bytes min_key = 3;
+  bytes max_key = 4;
+  uint64 max_seq = 5;
+  common.TimeRange time_range = 6;
+  common.TableSchema schema = 7;
+  uint64 size = 8;
+  uint64 row_num = 9;
+  analytic_common.StorageFormat storage_format = 10;
 }
 
 // Meta data of the file to delete
 message DeleteFileMeta {
-    // Level of the file
-    uint32 level = 1;
-    // Id of the file
-    uint64 file_id = 2;
+  // Level of the file
+  uint32 level = 1;
+  // Id of the file
+  uint64 file_id = 2;
 }
 
 // Meta data of version edit to table
 message VersionEditMeta {
-    uint32 space_id = 1;
-    uint64 table_id = 2;
-    uint64 flushed_sequence = 3;
-    repeated AddFileMeta files_to_add = 4;
-    repeated DeleteFileMeta files_to_delete = 5;
+  uint32 space_id = 1;
+  uint64 table_id = 2;
+  uint64 flushed_sequence = 3;
+  repeated AddFileMeta files_to_add = 4;
+  repeated DeleteFileMeta files_to_delete = 5;
 }
 
 // Meta data of schema update.
 message AlterSchemaMeta {
-    uint32 space_id = 1;
-    uint64 table_id = 2;
-    // New schema of the table.
-    common.TableSchema schema = 3;
-    // Previous schema version.
-    uint32 pre_schema_version = 4;
+  uint32 space_id = 1;
+  uint64 table_id = 2;
+  // New schema of the table.
+  common.TableSchema schema = 3;
+  // Previous schema version.
+  uint32 pre_schema_version = 4;
 }
 
 // Meta data of schema update.
 message AlterOptionsMeta {
-    uint32 space_id = 1;
-    uint64 table_id = 2;
-    // New options of the table.
-    analytic_common.TableOptions options = 3;
+  uint32 space_id = 1;
+  uint64 table_id = 2;
+  // New options of the table.
+  analytic_common.TableOptions options = 3;
 }
 
 // Meta data of manifest snapshot.
 message SnapshotManifestMeta {
-    uint64 region_id = 1;
-    uint64 sequence = 2;
+  uint64 region_id = 1;
+  uint64 sequence = 2;
 }
 
 // Meta update data to persist
 message MetaUpdate {
-    oneof meta {
-        AddTableMeta add_table = 1;
-        VersionEditMeta version_edit = 2;
-        AlterSchemaMeta alter_schema = 3;
-        AlterOptionsMeta alter_options = 4;
-        DropTableMeta drop_table = 5;
-    }
+  oneof meta {
+    AddTableMeta add_table = 1;
+    VersionEditMeta version_edit = 2;
+    AlterSchemaMeta alter_schema = 3;
+    AlterOptionsMeta alter_options = 4;
+    DropTableMeta drop_table = 5;
+  }
 }
 
 message SnapshotFlagLogEntry {
-    uint64 sequence = 1;
+  uint64 sequence = 1;
 }
 
 message SnapshotLogEntry {
-    uint64 sequence = 1;
-    MetaUpdate meta_update = 2;
+  uint64 sequence = 1;
+  MetaUpdate meta_update = 2;
 }
 
 message MetaUpdateLogEntry {
-    oneof entry {
-        MetaUpdate normal = 1;
-        SnapshotLogEntry snapshot = 2;
-        SnapshotFlagLogEntry snapshot_start = 3;
-        SnapshotFlagLogEntry snapshot_end = 4;
-    }
+  oneof entry {
+    MetaUpdate normal = 1;
+    SnapshotLogEntry snapshot = 2;
+    SnapshotFlagLogEntry snapshot_start = 3;
+    SnapshotFlagLogEntry snapshot_end = 4;
+  }
 }

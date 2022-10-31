@@ -6,7 +6,7 @@ use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::{
-    bytes::{MemBuf, MemBufMut},
+    bytes::{BufMut, SafeBuf, SafeBufMut},
     table::Location,
     SequenceNumber,
 };
@@ -212,8 +212,8 @@ impl Payload for TestPayload {
         4
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
-        buf.write_u32(self.val).expect("must write");
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<(), Self::Error> {
+        buf.try_put_u32(self.val).expect("must write");
         Ok(())
     }
 }
@@ -230,8 +230,8 @@ impl PayloadDecoder for TestPayloadDecoder {
     type Error = Error;
     type Target = TestPayload;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
-        let val = buf.read_u32().expect("should succeed to read u32");
+    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
+        let val = buf.try_get_u32().expect("should succeed to read u32");
         Ok(TestPayload { val })
     }
 }

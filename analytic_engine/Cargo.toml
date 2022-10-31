@@ -28,7 +28,7 @@ parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prometheus = { workspace = true }
 proto = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }
