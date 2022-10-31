@@ -2,7 +2,7 @@
 
 //! Write handler
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
 use common_types::{
@@ -21,9 +21,10 @@ use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{InsertPlan, Plan};
 use table_engine::table::TableRef;
 
-use crate::{
-    error::{ErrNoCause, ErrWithCause, Result},
-    grpc::{self, HandlerContext},
+use crate::grpc::storage_service::{
+    self,
+    error::{self, ErrNoCause, ErrWithCause, Result},
+    HandlerContext,
 };
 
 pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
@@ -71,6 +72,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             instance.query_executor.clone(),
             instance.catalog_manager.clone(),
             instance.table_engine.clone(),
+            instance.table_manipulator.clone(),
         );
         let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
@@ -80,7 +82,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to execute interpreter",
+                msg: "failed to execute interpreter",
             })? {
             Output::AffectedRows(n) => n,
             _ => unreachable!(),
@@ -90,7 +92,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     }
 
     let resp = WriteResponse {
-        header: Some(grpc::build_ok_header()),
+        header: Some(error::build_ok_header()),
         success: success as u32,
         failed: 0,
     };
@@ -187,7 +189,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     write_metric: &WriteMetric,
     request_id: RequestId,
 ) -> Result<()> {
-    let create_table_plan = grpc::write_metric_to_create_table_plan(ctx, write_metric)
+    let create_table_plan = storage_service::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -221,6 +223,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         instance.query_executor.clone(),
         instance.catalog_manager.clone(),
         instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
@@ -230,7 +233,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
+            msg: "failed to execute interpreter",
         })? {
         Output::AffectedRows(n) => n,
         _ => unreachable!(),
@@ -264,7 +267,7 @@ fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Re
     Ok(InsertPlan {
         table,
         rows: row_group,
-        default_value_map: HashMap::new(),
+        default_value_map: BTreeMap::new(),
     })
 }
 

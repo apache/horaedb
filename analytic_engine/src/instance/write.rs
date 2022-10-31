@@ -8,15 +8,16 @@ use common_types::{
     bytes::ByteVec,
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
+    table::Location,
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
-use proto::table_requests;
+use proto::{common as common_pb, table_requests};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
-use wal::manager::{RegionId, SequenceNumber, WriteContext};
+use wal::manager::{SequenceNumber, WriteContext};
 
 use crate::{
     instance::{
@@ -37,26 +38,26 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, region_id:{}, err:{}",
+        "Failed to get to log batch encoder, table:{}, table_location:{:?}, err:{}",
         table,
-        region_id,
+        table_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        region_id: RegionId,
+        table_location: Location,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{}, region_id:{}, err:{}",
+        "Failed to encode payloads, table:{}, table_location:{:?}, err:{}",
         table,
-        region_id,
+        table_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        region_id: RegionId,
+        table_location: Location,
         source: wal::manager::Error,
     },
 
@@ -314,7 +315,7 @@ impl Instance {
 
         let worker_id = worker_local.worker_id();
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -382,7 +383,7 @@ impl Instance {
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -390,26 +391,29 @@ impl Instance {
             .context(Write)?;
 
         // Convert into pb
-        let mut write_req_pb = table_requests::WriteRequest::new();
-        // Use the table schema instead of the schema in request to avoid schema
-        // mismatch during replaying
-        write_req_pb.set_schema(table_data.schema().into());
-        write_req_pb.set_rows(encoded_rows.into());
+        let write_req_pb = table_requests::WriteRequest {
+            // FIXME: Shall we avoid the magic number here?
+            version: 0,
+            // Use the table schema instead of the schema in request to avoid schema
+            // mismatch during replaying
+            schema: Some(common_pb::TableSchema::from(&table_data.schema())),
+            rows: encoded_rows,
+        };
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    table_location: table_data.location(),
                 })?;
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            table_location: table_data.location(),
         })?;
 
         // Write to wal manager

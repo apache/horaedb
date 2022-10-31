@@ -22,8 +22,10 @@ use sql::{
 
 use crate::{
     avro_util,
-    error::{ErrNoCause, ErrWithCause, Result},
-    grpc::HandlerContext,
+    grpc::storage_service::{
+        error::{ErrNoCause, ErrWithCause, Result},
+        HandlerContext,
+    },
 };
 
 /// Schema name of the record
@@ -93,7 +95,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
-            msg: "Failed to parse sql",
+            msg: "failed to parse sql",
         })?;
 
     if stmts.is_empty() {
@@ -129,7 +131,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
             code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "Query limited by reject list",
+            msg: "query limited by reject list",
         }
         .fail()?;
     }
@@ -143,6 +145,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         instance.query_executor.clone(),
         instance.catalog_manager.clone(),
         instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
@@ -221,7 +224,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to convert record batch",
+                msg: "failed to convert record batch",
             })?;
     }
 

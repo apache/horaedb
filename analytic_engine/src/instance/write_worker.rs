@@ -72,11 +72,16 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to manipulate table data, this table:{} does not belong to this worker: {}",
+        "Disallowed to manipulate table data, table does not belong to the worker, table:{}, worker:{}.\nBacktrace:\n{}",
         table,
-        worker_id
+        worker_id,
+        backtrace,
     ))]
-    DataNotLegal { table: String, worker_id: usize },
+    Permission {
+        table: String,
+        worker_id: usize,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -297,15 +302,17 @@ impl WorkerLocal {
         self.data.as_ref().id
     }
 
-    pub fn validate_table_data(
+    /// Used to ensure the worker has the permission to operate on this
+    /// table.
+    pub fn ensure_permission(
         &self,
         table_name: &str,
         table_id: usize,
         worker_num: usize,
     ) -> Result<()> {
         let worker_id = self.data.as_ref().id;
-        if table_id % worker_num != worker_id {
-            return DataNotLegal {
+        if choose_worker(table_id, worker_num) != worker_id {
+            return Permission {
                 table: table_name,
                 worker_id,
             }
@@ -666,7 +673,7 @@ impl WriteGroup {
     ///
     /// Returns the WriteHandle of the worker
     pub fn choose_worker(&self, table_id: TableId) -> WriteHandle {
-        let index = table_id.as_u64() as usize % self.worker_datas.len();
+        let index = choose_worker(table_id.as_u64() as usize, self.worker_datas.len());
         let worker_data = self.worker_datas[index].clone();
 
         WriteHandle { worker_data }
@@ -989,7 +996,12 @@ impl WriteWorker {
         self.local.data.background_notify.notified().await;
     }
 }
-
+/// Centralize the logic of choosing worker for table into one place.
+/// Choose worker by modulo total worker_num
+#[inline]
+pub fn choose_worker(table_id: usize, worker_num: usize) -> usize {
+    table_id % worker_num
+}
 #[cfg(test)]
 pub mod tests {
     use common_util::runtime;

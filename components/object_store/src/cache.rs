@@ -57,7 +57,8 @@ use chrono::{DateTime, Utc};
 use futures::{future::try_join_all, lock::Mutex, stream::BoxStream, TryStreamExt};
 use lru::LruCache;
 use serde::Deserialize;
-use upstream::{path::Path, GetResult, ListResult, ObjectMeta, ObjectStore, Result};
+use tokio::io::AsyncWrite;
+use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct CachedStoreConfig {
@@ -138,6 +139,19 @@ impl ObjectStore for CachedStore {
         self.remote_store.put(location, bytes).await
     }
 
+    async fn put_multipart(
+        &self,
+        location: &Path,
+    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        self.remote_store.put_multipart(location).await
+    }
+
+    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+        self.remote_store
+            .abort_multipart(location, multipart_id)
+            .await
+    }
+
     async fn get(&self, location: &Path) -> Result<GetResult> {
         if self.state.lock().await.contains(location) {
             self.local_store.get(location).await
@@ -183,6 +197,14 @@ impl ObjectStore for CachedStore {
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
         self.remote_store.list_with_delimiter(prefix).await
+    }
+
+    async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+        self.remote_store.copy(from, to).await
+    }
+
+    async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
+        self.remote_store.copy_if_not_exists(from, to).await
     }
 }
 

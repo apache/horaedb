@@ -2,13 +2,13 @@
 
 //! Bytes format
 
-use common_types::bytes::{Bytes, BytesMut, MemBuf, MemBufMut};
+use common_types::bytes::{Buf, BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use snafu::{ensure, ResultExt};
 
 use crate::codec::{
     memcomparable::{
         DecodeValueGroup, DecodeValueMarker, DecodeValuePadding, EncodeValue, Error, MemComparable,
-        Result,
+        Result, SkipPadding,
     },
     DecodeTo, Encoder,
 };
@@ -36,21 +36,21 @@ impl Encoder<[u8]> for MemComparable {
     // ```
     //
     // Refer: https://github.com/facebook/mysql-5.6/wiki/MyRocks-record-format#memcomparable-format
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &[u8]) -> Result<()> {
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &[u8]) -> Result<()> {
         let value_len = value.len();
         for idx in (0..=value_len).step_by(ENC_GROUP_SIZE) {
             let remain = value_len - idx;
             let mut pad_count = 0;
             if remain >= ENC_GROUP_SIZE {
-                buf.write_slice(&value[idx..idx + ENC_GROUP_SIZE])
+                buf.try_put(&value[idx..idx + ENC_GROUP_SIZE])
                     .context(EncodeValue)?;
             } else {
                 pad_count = ENC_GROUP_SIZE - remain;
-                buf.write_slice(&value[idx..]).context(EncodeValue)?;
-                buf.write_slice(&PADS[..pad_count]).context(EncodeValue)?;
+                buf.try_put(&value[idx..]).context(EncodeValue)?;
+                buf.try_put(&PADS[..pad_count]).context(EncodeValue)?;
             }
             let marker = ENC_MARKER - pad_count as u8;
-            buf.write_u8(marker).context(EncodeValue)?;
+            buf.try_put_u8(marker).context(EncodeValue)?;
         }
         Ok(())
     }
@@ -67,7 +67,7 @@ impl Encoder<[u8]> for MemComparable {
 impl Encoder<Bytes> for MemComparable {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Bytes) -> Result<()> {
         self.encode(buf, &value[..])
     }
 
@@ -81,9 +81,9 @@ impl DecodeTo<BytesMut> for MemComparable {
 
     // decode Bytes which is encoded by encode Bytes before,
     // returns the leftover bytes and decoded value if no error.
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut BytesMut) -> Result<()> {
+    fn decode_to<B: Buf>(&self, buf: &mut B, value: &mut BytesMut) -> Result<()> {
         loop {
-            let b = buf.remaining_slice();
+            let b = buf.chunk();
             ensure!(b.len() > ENC_GROUP_SIZE, DecodeValueGroup);
 
             let group_bytes = &b[..ENC_GROUP_SIZE + 1];
@@ -97,7 +97,7 @@ impl DecodeTo<BytesMut> for MemComparable {
 
             let real_group_size = ENC_GROUP_SIZE - pad_count;
             value
-                .write_slice(&group[..real_group_size])
+                .try_put(&group[..real_group_size])
                 .context(EncodeValue)?;
 
             if pad_count != 0 {
@@ -105,11 +105,11 @@ impl DecodeTo<BytesMut> for MemComparable {
                 for v in &group[real_group_size..] {
                     ensure!(*v == ENC_PAD, DecodeValuePadding { group_bytes });
                 }
-                buf.must_advance(ENC_GROUP_SIZE + 1);
+                buf.try_advance(ENC_GROUP_SIZE + 1).context(SkipPadding)?;
 
                 break;
             }
-            buf.must_advance(ENC_GROUP_SIZE + 1);
+            buf.try_advance(ENC_GROUP_SIZE + 1).context(SkipPadding)?;
         }
         Ok(())
     }

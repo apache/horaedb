@@ -19,6 +19,7 @@ use crate::{
     context::Context,
     factory::Factory,
     interpreter::{Output, Result},
+    table_manipulator::catalog_based::TableManipulatorImpl,
 };
 
 async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
@@ -58,10 +59,12 @@ where
 {
     async fn build_factory(&self) -> Factory<ExecutorImpl> {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
+        let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
         Factory::new(
             ExecutorImpl::new(query_engine::Config::default()),
             catalog_manager,
             self.engine(),
+            table_manipulator,
         )
     }
 
@@ -133,12 +136,14 @@ where
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
+        let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager.clone(),
             self.engine(),
+            table_manipulator.clone(),
         );
-        let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2) VALUES('tagk', 1638428434000), ('tagk2', 1638428434000);";
+        let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2, field4) VALUES('tagk', 1638428434000, 1), ('tagk2', 1638428434000, 10);";
 
         let plan = sql_to_plan(&self.meta_provider, insert_sql);
         let interpreter = insert_factory.create(ctx, plan);
@@ -150,11 +155,12 @@ where
 
         // Check data which just insert.
         let select_sql =
-            "SELECT key1, key2, field1, field2, field3 from test_missing_columns_table";
+            "SELECT key1, key2, field1, field2, field3, field4, field5 from test_missing_columns_table";
         let select_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
             catalog_manager,
             self.engine(),
+            table_manipulator,
         );
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
@@ -164,13 +170,22 @@ where
         let output = interpreter.execute().await.unwrap();
         let records = output.try_into().unwrap();
 
+        #[rustfmt::skip]
+        // sql: CREATE TABLE `test_missing_columns_table` (`key1` varbinary NOT NULL, 
+        //                                                 `key2` timestamp NOT NULL, 
+        //                                                 `field1` bigint NOT NULL DEFAULT 10, 
+        //                                                 `field2` uint32 NOT NULL DEFAULT 20, 
+        //                                                 `field3` uint32 NOT NULL DEFAULT 1 + 2, 
+        //                                                 `field4` uint32 NOT NULL, 
+        //                                                 `field5` uint32 NOT NULL DEFAULT field4 + 2, 
+        //                                                 PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic
         let expected = vec![
-            "+------------+---------------------+--------+--------+--------+",
-            "| key1       | key2                | field1 | field2 | field3 |",
-            "+------------+---------------------+--------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      |",
-            "+------------+---------------------+--------+--------+--------+",
+            "+------------+---------------------+--------+--------+--------+--------+--------+",
+            "| key1       | key2                | field1 | field2 | field3 | field4 | field5 |",
+            "+------------+---------------------+--------+--------+--------+--------+--------+",
+            "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      | 1      | 3      |",
+            "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      | 10     | 12     |",
+            "+------------+---------------------+--------+--------+--------+--------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
     }

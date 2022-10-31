@@ -2,11 +2,25 @@ DROP TABLE IF EXISTS `02_function_time_bucket_table`;
 
 affected_rows: 0
 
-CREATE TABLE `02_function_time_bucket_table` (  `timestamp` timestamp NOT NULL,  `value` int,  timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false');
+CREATE TABLE `02_function_time_bucket_table` (
+  `timestamp` timestamp NOT NULL,
+  `value` int,
+  timestamp KEY (timestamp)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false'
+);
 
 affected_rows: 0
 
-INSERT INTO `02_function_time_bucket_table`(`timestamp`, `value`)VALUES    (1659577423000, 1),    (1659577422000, 2),    (1659577320000, 3),    (1659571200000, 4),    (1659484800000, 5),    (1656777600000, 6);
+INSERT INTO `02_function_time_bucket_table`
+(`timestamp`, `value`)
+VALUES
+    (1659577423000, 1),
+    (1659577422000, 2),
+    (1659577320000, 3),
+    (1659571200000, 4),
+    (1659484800000, 5),
+    (1656777600000, 6);
 
 affected_rows: 6
 

@@ -8,7 +8,7 @@
 use std::convert::TryFrom;
 
 use common_types::{
-    bytes::{BufMut, ByteVec, BytesMut, MemBuf, MemBufMut},
+    bytes::{Buf, BufMut, ByteVec, BytesMut},
     datum::Datum,
     row::{Row, RowGroup},
     schema::{IndexInWriterSchema, Schema},
@@ -47,7 +47,7 @@ struct WalRowEncoder<'a> {
 impl<'a> Encoder<Row> for WalRowEncoder<'a> {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemCompactEncoder;
         for index_in_table in 0..self.table_schema.num_columns() {
             match self.index_in_writer.column_index_in_writer(index_in_table) {
@@ -105,7 +105,7 @@ impl<'a> WalRowDecoder<'a> {
 impl<'a> Decoder<Row> for WalRowDecoder<'a> {
     type Error = Error;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<Row> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<Row> {
         let num_columns = self.schema.num_columns();
         let mut datums = Vec::with_capacity(num_columns);
 

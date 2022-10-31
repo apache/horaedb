@@ -12,8 +12,9 @@
 
 use std::mem;
 
+use bytes::BufMut;
 use common_types::{
-    bytes::{BytesMut, MemBuf, MemBufMut},
+    bytes::{BytesMut, SafeBuf, SafeBufMut},
     row::Row,
     schema::Schema,
     SequenceNumber,
@@ -118,7 +119,7 @@ impl<'a> ComparableInternalKey<'a> {
 impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
         for idx in 0..self.schema.num_key_columns() {
             // Encode each column in primary key
@@ -148,11 +149,11 @@ struct SequenceCodec;
 impl Encoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &KeySequence) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &KeySequence) -> Result<()> {
         // Encode sequence number and index in descend order
         encode_sequence_number(buf, value.sequence())?;
         let reversed_index = RowIndex::MAX - value.row_index();
-        buf.write_u32(reversed_index).context(EncodeIndex)?;
+        buf.try_put_u32(reversed_index).context(EncodeIndex)?;
 
         Ok(())
     }
@@ -165,11 +166,11 @@ impl Encoder<KeySequence> for SequenceCodec {
 impl Decoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
-    fn decode<B: MemBuf>(&self, buf: &mut B) -> Result<KeySequence> {
-        let sequence = buf.read_u64().context(DecodeSequence)?;
+    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<KeySequence> {
+        let sequence = buf.try_get_u64().context(DecodeSequence)?;
         // Reverse sequence
         let sequence = SequenceNumber::MAX - sequence;
-        let row_index = buf.read_u32().context(DecodeIndex)?;
+        let row_index = buf.try_get_u32().context(DecodeIndex)?;
         // Reverse row index
         let row_index = RowIndex::MAX - row_index;
 
@@ -178,11 +179,11 @@ impl Decoder<KeySequence> for SequenceCodec {
 }
 
 #[inline]
-fn encode_sequence_number<B: MemBufMut>(buf: &mut B, sequence: SequenceNumber) -> Result<()> {
+fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) -> Result<()> {
     // The sequence need to encode in descend order
     let reversed_sequence = SequenceNumber::MAX - sequence;
     // Encode sequence
-    buf.write_u64(reversed_sequence).context(EncodeSequence)?;
+    buf.try_put_u64(reversed_sequence).context(EncodeSequence)?;
     Ok(())
 }
 

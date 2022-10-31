@@ -7,7 +7,7 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
-use common_util::{config::ReadableDuration, runtime::Runtime};
+use common_util::config::ReadableDuration;
 use log::{debug, info};
 use serde_derive::Deserialize;
 use snafu::{OptionExt, ResultExt};
@@ -15,9 +15,9 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     types::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-        DropTableRequest, GetNodesRequest, GetNodesResponse, GetShardTablesRequest,
-        GetShardTablesResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
-        RouteTablesResponse, ShardInfo,
+        DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
+        GetTablesOfShardsRequest, GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader,
+        RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
     FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
@@ -55,21 +55,20 @@ pub struct MetaClientImpl {
 }
 
 impl MetaClientImpl {
-    pub fn new(
-        config: MetaClientConfig,
-        node_meta_info: NodeMetaInfo,
-        runtime: Arc<Runtime>,
-    ) -> Result<Self> {
-        // TODO: make the `new` method as async so that no need for the `runtime`.
-        let client = runtime.block_on(async {
+    pub async fn connect(config: MetaClientConfig, node_meta_info: NodeMetaInfo) -> Result<Self> {
+        let client = {
             let endpoint = tonic::transport::Endpoint::from_shared(config.meta_addr.to_string())
                 .map_err(|e| Box::new(e) as _)
-                .context(FailConnect)?;
+                .context(FailConnect {
+                    addr: &config.meta_addr,
+                })?;
             MetaServiceGrpcClient::connect(endpoint)
                 .await
                 .map_err(|e| Box::new(e) as _)
-                .context(FailConnect)
-        })?;
+                .context(FailConnect {
+                    addr: &config.meta_addr,
+                })?
+        };
 
         Ok(Self {
             config,
@@ -133,10 +132,10 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client finish creating table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(CreateTableResponse::from(pb_resp))
+        CreateTableResponse::try_from(pb_resp)
     }
 
-    async fn drop_table(&self, req: DropTableRequest) -> Result<()> {
+    async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse> {
         let mut pb_req = meta_service::DropTableRequest::from(req.clone());
         pb_req.header = Some(self.request_header().into());
 
@@ -152,18 +151,22 @@ impl MetaClient for MetaClientImpl {
 
         info!("Meta client finish dropping table, resp:{:?}", pb_resp);
 
-        check_response_header(&pb_resp.header)
+        check_response_header(&pb_resp.header)?;
+        Ok(DropTableResponse::from(pb_resp))
     }
 
-    async fn get_tables(&self, req: GetShardTablesRequest) -> Result<GetShardTablesResponse> {
-        let mut pb_req = meta_service::GetShardTablesRequest::from(req);
+    async fn get_tables_of_shards(
+        &self,
+        req: GetTablesOfShardsRequest,
+    ) -> Result<GetTablesOfShardsResponse> {
+        let mut pb_req = meta_service::GetTablesOfShardsRequest::from(req);
         pb_req.header = Some(self.request_header().into());
 
         debug!("Meta client try to get tables, req:{:?}", pb_req);
 
         let pb_resp = self
             .client()
-            .get_shard_tables(pb_req)
+            .get_tables_of_shards(pb_req)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(FailGetTables)?
@@ -173,7 +176,7 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(&pb_resp.header)?;
 
-        GetShardTablesResponse::try_from(pb_resp)
+        GetTablesOfShardsResponse::try_from(pb_resp)
     }
 
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse> {
@@ -216,10 +219,10 @@ impl MetaClient for MetaClientImpl {
         GetNodesResponse::try_from(pb_resp)
     }
 
-    async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
+    async fn send_heartbeat(&self, shard_infos: Vec<ShardInfo>) -> Result<()> {
         let node_info = NodeInfo {
             node_meta_info: self.node_meta_info.clone(),
-            shards_info,
+            shard_infos,
         };
         let pb_req = meta_service::NodeHeartbeatRequest {
             header: Some(self.request_header().into()),
@@ -258,11 +261,10 @@ fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
 }
 
 /// Create a meta client with given `config`.
-pub fn build_meta_client(
+pub async fn build_meta_client(
     config: MetaClientConfig,
     node_meta_info: NodeMetaInfo,
-    runtime: Arc<Runtime>,
 ) -> Result<MetaClientRef> {
-    let meta_client = MetaClientImpl::new(config, node_meta_info, runtime)?;
+    let meta_client = MetaClientImpl::connect(config, node_meta_info).await?;
     Ok(Arc::new(meta_client))
 }

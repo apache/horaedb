@@ -31,6 +31,8 @@ on:
 env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  LOCK_FILE: Cargo.lock
 
 jobs:
   linux-ci:
@@ -47,6 +49,10 @@ jobs:
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
         with:
@@ -58,11 +64,16 @@ jobs:
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
             debug-${{ runner.os }}
+      - name: Ensure Disk Quota
+        run: |
+          make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-          sudo rm -rf /var/lib/apt/lists/*
+      - name: Backup Lock File
+        run: |
+          cp ${LOCK_FILE} ${LOCK_FILE}.bak
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
@@ -74,13 +85,11 @@ jobs:
           make fmt
       - name: Run Unit Tests
         run: |
-          cp ${LOCK_FILE} ${LOCK_FILE}.bak
           make test-ut
           echo "Checking if ${LOCK_FILE} has changed..."
+      - name: Check Lock File
+        run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-        env:
-          RUST_BACKTRACE: "1"
-          LOCK_FILE: Cargo.lock
       - name: Run Harness
         run: |
           cd tests
@@ -90,5 +99,5 @@ jobs:
       - name: Report Disk Usage
         if: always()
         run: |
-          du -sh .
+          du -sh ./target
           df -h

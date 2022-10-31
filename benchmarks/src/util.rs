@@ -16,7 +16,7 @@ use analytic_engine::{
     table::sst_util,
 };
 use common_types::{
-    bytes::MemBufMut,
+    bytes::{BufMut, SafeBufMut},
     projected_schema::ProjectedSchema,
     schema::{IndexInWriterSchema, Schema},
 };
@@ -27,12 +27,18 @@ use common_util::{
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet_ext::{DataCacheRef, MetaCacheRef};
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
 
 #[derive(Debug, Snafu)]
-pub enum Error {}
+pub enum Error {
+    #[snafu(display("Failed to writer header, err:{}.", source))]
+    WriteHeader { source: common_types::bytes::Error },
+
+    #[snafu(display("Failed to writer body, err:{}.", source))]
+    WriteBody { source: common_types::bytes::Error },
+}
 
 define_result!(Error);
 
@@ -169,10 +175,8 @@ impl Header {
     }
 }
 
-fn write_header(header: Header, buf: &mut dyn MemBufMut) -> Result<()> {
-    buf.write_u8(header.to_u8())
-        .expect("should succeed to write u8");
-    Ok(())
+fn write_header<B: BufMut>(header: Header, buf: &mut B) -> Result<()> {
+    buf.try_put_u8(header.to_u8()).context(WriteHeader)
 }
 
 #[derive(Debug)]
@@ -186,10 +190,9 @@ impl<'a> Payload for WritePayload<'a> {
         HEADER_SIZE + body_size as usize
     }
 
-    fn encode_to<B: MemBufMut>(&self, buf: &mut B) -> Result<()> {
-        write_header(Header::Write, buf).unwrap();
-        buf.write_slice(self.0).unwrap();
-        Ok(())
+    fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
+        write_header(Header::Write, buf)?;
+        buf.try_put(self.0).context(WriteBody)
     }
 }
 

@@ -1,10 +1,8 @@
 [package]
 name = "server"
-version = "0.1.0"
-authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-
-[package.edition]
-workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -30,7 +28,7 @@ meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 paste = { workspace = true }
 profile = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 query_engine = { workspace = true }
 prometheus = { workspace = true }
 prometheus-static-metric = "0.5"

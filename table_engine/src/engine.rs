@@ -5,9 +5,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::{schema::Schema, time::Timestamp};
+use common_types::{
+    schema::Schema,
+    table::{ShardId, DEFAULT_SHARD_ID},
+};
 use common_util::runtime::Runtime;
-use proto::sys_catalog::{TableEntry, TableState as TableStatePb};
+use proto::sys_catalog as sys_catalog_pb;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
@@ -103,22 +106,22 @@ impl TableState {
     }
 }
 
-impl From<TableState> for TableStatePb {
-    fn from(state: TableState) -> TableStatePb {
+impl From<TableState> for sys_catalog_pb::TableState {
+    fn from(state: TableState) -> Self {
         match state {
-            TableState::Stable => TableStatePb::STABLE,
-            TableState::Dropping => TableStatePb::DROPPING,
-            TableState::Dropped => TableStatePb::DROPPED,
+            TableState::Stable => Self::Stable,
+            TableState::Dropping => Self::Dropping,
+            TableState::Dropped => Self::Dropped,
         }
     }
 }
 
-impl From<TableStatePb> for TableState {
-    fn from(state: TableStatePb) -> TableState {
+impl From<sys_catalog_pb::TableState> for TableState {
+    fn from(state: sys_catalog_pb::TableState) -> TableState {
         match state {
-            TableStatePb::STABLE => TableState::Stable,
-            TableStatePb::DROPPING => TableState::Dropping,
-            TableStatePb::DROPPED => TableState::Dropped,
+            sys_catalog_pb::TableState::Stable => TableState::Stable,
+            sys_catalog_pb::TableState::Dropping => TableState::Dropping,
+            sys_catalog_pb::TableState::Dropped => TableState::Dropped,
         }
     }
 }
@@ -155,31 +158,25 @@ pub struct CreateTableRequest {
     pub options: HashMap<String, String>,
     /// Tells state of the table
     pub state: TableState,
+    /// Shard id, shard is the table set about scheduling from nodes
+    /// It will be assigned the default value in standalone mode,
+    /// and just be useful in cluster mode
+    pub shard_id: ShardId,
 }
 
-impl CreateTableRequest {
-    // TODO(chunshao.rcs): refactor
-    pub fn into_pb(self, typ: TableRequestType) -> TableEntry {
-        let mut table_entry: TableEntry = self.into();
-        match typ {
-            TableRequestType::Create => table_entry.set_created_time(Timestamp::now().as_i64()),
-            TableRequestType::Drop => table_entry.set_modified_time(Timestamp::now().as_i64()),
-        }
-        table_entry
-    }
-}
-
-impl From<CreateTableRequest> for TableEntry {
+impl From<CreateTableRequest> for sys_catalog_pb::TableEntry {
     fn from(req: CreateTableRequest) -> Self {
-        let mut entry = TableEntry::new();
-        entry.set_catalog_name(req.catalog_name);
-        entry.set_schema_name(req.schema_name);
-        entry.set_table_id(req.table_id.as_u64());
-        entry.set_table_name(req.table_name);
-        entry.set_engine(req.engine);
-        entry.set_state(TableStatePb::from(req.state));
-
-        entry
+        sys_catalog_pb::TableEntry {
+            catalog_name: req.catalog_name,
+            schema_name: req.schema_name,
+            schema_id: req.schema_id.as_u32(),
+            table_id: req.table_id.as_u64(),
+            table_name: req.table_name,
+            engine: req.engine,
+            state: sys_catalog_pb::TableState::from(req.state) as i32,
+            created_time: 0,
+            modified_time: 0,
+        }
     }
 }
 
@@ -226,9 +223,14 @@ pub struct OpenTableRequest {
     pub table_id: TableId,
     /// Table engine type
     pub engine: String,
+    /// Shard id, shard is the table set about scheduling from nodes
+    pub shard_id: ShardId,
 }
 
 impl From<TableInfo> for OpenTableRequest {
+    /// The `shard_id` is not persisted and just assigned a default value
+    /// while recovered from `TableInfo`.
+    /// This conversion will just happen in standalone mode.
     fn from(table_info: TableInfo) -> Self {
         Self {
             catalog_name: table_info.catalog_name,
@@ -237,11 +239,26 @@ impl From<TableInfo> for OpenTableRequest {
             table_name: table_info.table_name,
             table_id: table_info.table_id,
             engine: table_info.engine,
+            shard_id: DEFAULT_SHARD_ID,
         }
     }
 }
 
-pub type CloseTableRequest = OpenTableRequest;
+#[derive(Debug, Clone)]
+pub struct CloseTableRequest {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+    /// Schema id
+    pub schema_id: SchemaId,
+    /// Table name
+    pub table_name: String,
+    /// Table id
+    pub table_id: TableId,
+    /// Table engine type
+    pub engine: String,
+}
 
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table

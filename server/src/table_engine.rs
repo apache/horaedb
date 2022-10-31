@@ -99,7 +99,7 @@ impl TableEngine for TableEngineProxy {
     }
 
     /// Close table, it is ok to close a closed table.
-    async fn close_table(&self, request: OpenTableRequest) -> Result<()> {
+    async fn close_table(&self, request: CloseTableRequest) -> Result<()> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.close_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.close_table(request).await,

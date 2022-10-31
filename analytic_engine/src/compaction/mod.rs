@@ -80,18 +80,6 @@ pub struct TimeWindowCompactionOptions {
     pub timestamp_resolution: TimeUnit,
 }
 
-impl protobuf::Clear for SizeTieredCompactionOptions {
-    fn clear(&mut self) {
-        *self = SizeTieredCompactionOptions::default()
-    }
-}
-
-impl protobuf::Clear for TimeWindowCompactionOptions {
-    fn clear(&mut self) {
-        *self = TimeWindowCompactionOptions::default()
-    }
-}
-
 impl Default for SizeTieredCompactionOptions {
     fn default() -> Self {
         Self {

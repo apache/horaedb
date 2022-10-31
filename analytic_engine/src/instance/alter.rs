@@ -22,7 +22,7 @@ use crate::{
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate},
+    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
     payload::WritePayload,
     space::SpaceAndTable,
     table::data::TableDataRef,
@@ -118,23 +118,23 @@ impl Instance {
         };
 
         // Write AlterSchema to Data Wal
-        let alter_schema_pb = manifest_update.clone().into_pb();
+        let alter_schema_pb = manifest_update.clone().into();
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    table_location: table_data.location(),
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            table_location: table_data.location(),
         })?;
 
         // Write log batch
@@ -159,7 +159,7 @@ impl Instance {
         let update = MetaUpdate::AlterSchema(manifest_update);
         self.space_store
             .manifest
-            .store_update(update)
+            .store_update(MetaUpdateRequest::new(table_data.location(), update))
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,
@@ -286,23 +286,23 @@ impl Instance {
         // options.
 
         // Write AlterOptions to Data Wal
-        let alter_options_pb = manifest_update.clone().into_pb();
+        let alter_options_pb = manifest_update.clone().into();
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload
-        let region_id = table_data.wal_region_id();
+        let region_id = table_data.location();
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(region_id)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    region_id: table_data.wal_region_id(),
+                    table_location: table_data.location(),
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            region_id: table_data.wal_region_id(),
+            table_location: table_data.location(),
         })?;
 
         // Write log batch
@@ -322,7 +322,7 @@ impl Instance {
         let meta_update = MetaUpdate::AlterOptions(manifest_update);
         self.space_store
             .manifest
-            .store_update(meta_update)
+            .store_update(MetaUpdateRequest::new(table_data.location(), meta_update))
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,

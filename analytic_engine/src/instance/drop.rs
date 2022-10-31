@@ -16,7 +16,7 @@ use crate::{
         write_worker::{self, DropTableCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{DropTableMeta, MetaUpdate},
+    meta::meta_update::{DropTableMeta, MetaUpdate, MetaUpdateRequest},
     space::SpaceRef,
 };
 
@@ -75,7 +75,7 @@ impl Instance {
         }
 
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -111,7 +111,7 @@ impl Instance {
         });
         self.space_store
             .manifest
-            .store_update(update)
+            .store_update(MetaUpdateRequest::new(table_data.location(), update))
             .await
             .context(WriteManifest {
                 space_id: space.id,

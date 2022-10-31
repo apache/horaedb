@@ -16,6 +16,7 @@ use std::{
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
+use prost::Message;
 use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -151,18 +152,42 @@ pub enum Error {
 
     #[snafu(display("Arrow schema meta key not found.\nerr:\n{}", source))]
     ColumnSchemaDeserializeFailed { source: crate::column_schema::Error },
+
+    #[snafu(display("Failed to encode schema by protobuf, err:{}", source))]
+    EncodeSchemaToPb { source: prost::EncodeError },
+
+    #[snafu(display("Encoded schema content is empty.\nBacktrace:\n{}", backtrace))]
+    EmptyEncodedSchema { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Invalid schema encoding version, version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    InvalidSchemaEncodingVersion { version: u8, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to decode schema from protobuf bytes, buf:{:?}, err:{}",
+        buf,
+        source,
+    ))]
+    DecodeSchemaFromPb {
+        buf: Vec<u8>,
+        source: prost::DecodeError,
+    },
 }
 
 pub type CatalogName = String;
 pub type SchemaId = u32;
 pub type SchemaName = String;
+pub type Result<T> = std::result::Result<T, Error>;
+
 // TODO: make these constants configurable
 pub const TSID_COLUMN: &str = "tsid";
 pub const TIMESTAMP_COLUMN: &str = "timestamp";
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 const DEFAULT_SCHEMA_VERSION: Version = 1;
+const DEFAULT_SCHEMA_ENCODING_VERSION: u8 = 0;
 
 #[derive(Debug, Snafu)]
 pub enum CompatError {
@@ -876,14 +901,20 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     }
 }
 
-impl From<Schema> for common_pb::TableSchema {
-    fn from(schema: Schema) -> Self {
-        let mut table_schema = common_pb::TableSchema::new();
+impl From<&Schema> for common_pb::TableSchema {
+    fn from(schema: &Schema) -> Self {
+        let columns: Vec<_> = schema
+            .columns()
+            .iter()
+            .map(|v| common_pb::ColumnSchema::from(v.clone()))
+            .collect();
 
-        for column in schema.columns() {
-            // Convert schema of each column
-            let column_schema = column.to_pb();
-            table_schema.columns.push(column_schema);
+        common_pb::TableSchema {
+            num_key_columns: schema.num_key_columns as u32,
+            timestamp_index: schema.timestamp_index as u32,
+            enable_tsid_primary_key: schema.enable_tsid_primary_key,
+            version: schema.version,
+            columns,
         }
 
         table_schema.primary_key_index =
@@ -1204,6 +1235,52 @@ impl Builder {
     }
 }
 
+/// Encoder for schema with version control.
+#[derive(Clone, Debug)]
+pub struct SchemaEncoder {
+    version: u8,
+}
+
+impl Default for SchemaEncoder {
+    fn default() -> Self {
+        Self::new(DEFAULT_SCHEMA_ENCODING_VERSION)
+    }
+}
+
+impl SchemaEncoder {
+    fn new(version: u8) -> Self {
+        Self { version }
+    }
+
+    pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
+        let pb_schema = common_pb::TableSchema::from(schema);
+        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len() as usize);
+        buf.push(self.version);
+
+        pb_schema.encode(&mut buf).context(EncodeSchemaToPb)?;
+
+        Ok(buf)
+    }
+
+    pub fn decode(&self, buf: &[u8]) -> Result<Schema> {
+        ensure!(!buf.is_empty(), EmptyEncodedSchema);
+
+        self.ensure_version(buf[0])?;
+
+        let pb_schema =
+            common_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
+        Schema::try_from(pb_schema)
+    }
+
+    fn ensure_version(&self, version: u8) -> Result<()> {
+        ensure!(
+            self.version == version,
+            InvalidSchemaEncodingVersion { version }
+        );
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1214,9 +1291,8 @@ mod tests {
         time::Timestamp,
     };
 
-    #[test]
-    fn test_schema() {
-        let schema = Builder::new()
+    fn build_test_schema() -> Schema {
+        Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
                 column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
@@ -1243,7 +1319,27 @@ mod tests {
             )
             .unwrap()
             .build()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[test]
+    fn test_schema_encoding() {
+        let schema = build_test_schema();
+        let encoder = SchemaEncoder::default();
+        let encoded_schema = encoder
+            .encode(&schema)
+            .expect("Should succeed in encoding schema");
+
+        let decoded_schema = encoder
+            .decode(&encoded_schema)
+            .expect("Should succeed in decoding schema");
+
+        assert_eq!(schema, decoded_schema);
+    }
+
+    #[test]
+    fn test_schema() {
+        let schema = build_test_schema();
 
         // Length related test
         assert_eq!(4, schema.columns().len());
@@ -1282,7 +1378,7 @@ mod tests {
         assert!(schema.index_of("not exists").is_none());
 
         // Test pb convert
-        let schema_pb = common_pb::TableSchema::from(schema.clone());
+        let schema_pb = common_pb::TableSchema::from(&schema);
         let schema_from_pb = Schema::try_from(schema_pb).unwrap();
         assert_eq!(schema, schema_from_pb);
     }
@@ -1400,7 +1496,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mulitple_timestamp() {
+    fn test_multiple_timestamp() {
         Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(

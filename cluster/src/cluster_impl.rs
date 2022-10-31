@@ -7,31 +7,35 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardsRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardsRequest,
+    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
 };
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
 use meta_client::{
-    types::{GetNodesRequest, RouteTablesRequest, RouteTablesResponse},
+    types::{
+        GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,
+        ShardInfo, TableInfo, TablesOfShard,
+    },
     MetaClientRef,
 };
-use snafu::{OptionExt, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use tokio::{
     sync::mpsc::{self, Sender},
     time,
 };
 
 use crate::{
-    config::ClusterConfig, table_manager::TableManager, topology::ClusterTopology, CloseShardsOpts,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShardsOpts, Result,
+    config::ClusterConfig, shard_tables_cache::ShardTablesCache, topology::ClusterTopology,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, MetaClientFailure, OpenShard,
+    OpenShardWithCause, Result, ShardNotFound, TableNotFound,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
 ///
 /// Its functions are to:
-/// * Receive and handle events from meta cluster by [`MetaClient`];
-/// * Send heartbeat to meta cluster;
-/// * Manipulate resources via [TableEngine];
+///  - Handle the some action from the CeresMeta;
+///  - Handle the heartbeat between ceresdb-server and CeresMeta;
+///  - Provide the cluster topology.
 pub struct ClusterImpl {
     inner: Arc<Inner>,
     runtime: Arc<Runtime>,
@@ -42,11 +46,12 @@ pub struct ClusterImpl {
 
 impl ClusterImpl {
     pub fn new(
+        shard_tables_cache: ShardTablesCache,
         meta_client: MetaClientRef,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let inner = Inner::new(meta_client)?;
+        let inner = Inner::new(shard_tables_cache, meta_client)?;
 
         Ok(Self {
             inner: Arc::new(inner),
@@ -65,10 +70,10 @@ impl ClusterImpl {
 
         let handle = self.runtime.spawn(async move {
             loop {
-                let shards_info = inner.table_manager.get_shards_infos();
-                info!("Node heartbeat to meta, shards info:{:?}", shards_info);
+                let shard_infos = inner.shard_tables_cache.all_shard_infos();
+                info!("Node heartbeat to meta, shard infos:{:?}", shard_infos);
 
-                let resp = inner.meta_client.send_heartbeat(shards_info).await;
+                let resp = inner.meta_client.send_heartbeat(shard_infos).await;
                 let wait = match resp {
                     Ok(()) => interval,
                     Err(e) => {
@@ -97,21 +102,21 @@ impl ClusterImpl {
         self.config.meta_client.lease.0 / 2
     }
 
-    pub fn table_manager(&self) -> &TableManager {
-        &self.inner.table_manager
+    pub fn shard_tables_cache(&self) -> &ShardTablesCache {
+        &self.inner.shard_tables_cache
     }
 }
 
 struct Inner {
-    table_manager: TableManager,
+    shard_tables_cache: ShardTablesCache,
     meta_client: MetaClientRef,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_tables_cache: ShardTablesCache, meta_client: MetaClientRef) -> Result<Self> {
         Ok(Self {
-            table_manager: TableManager::default(),
+            shard_tables_cache,
             meta_client,
             topology: Default::default(),
         })
@@ -174,6 +179,108 @@ impl Inner {
 
         Ok(resp)
     }
+
+    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
+        let shard_info = req.shard.as_ref().context(OpenShard {
+            shard_id: 0u32,
+            msg: "missing shard info in the request",
+        })?;
+
+        if let Some(tables_of_shard) = self.shard_tables_cache.get(shard_info.id) {
+            if tables_of_shard.shard_info.version == shard_info.version {
+                info!(
+                    "No need to open the exactly same shard again, shard_info:{:?}",
+                    shard_info
+                );
+                return Ok(tables_of_shard);
+            }
+            ensure!(
+                tables_of_shard.shard_info.version < shard_info.version,
+                OpenShard {
+                    shard_id: shard_info.id,
+                    msg: format!("open a shard with a smaller version, curr_shard_info:{:?}, new_shard_info:{:?}", tables_of_shard.shard_info, shard_info),
+                }
+            );
+        }
+
+        let req = GetTablesOfShardsRequest {
+            shard_ids: vec![shard_info.id],
+        };
+
+        let mut resp = self
+            .meta_client
+            .get_tables_of_shards(req)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenShardWithCause {
+                shard_id: shard_info.id,
+            })?;
+
+        ensure!(
+            resp.tables_by_shard.len() == 1,
+            OpenShard {
+                shard_id: shard_info.id,
+                msg: "expect only one shard tables"
+            }
+        );
+
+        let tables_of_shard = resp
+            .tables_by_shard
+            .remove(&shard_info.id)
+            .context(OpenShard {
+                shard_id: shard_info.id,
+                msg: "shard tables are missing from the response",
+            })?;
+
+        self.shard_tables_cache
+            .insert_or_update(tables_of_shard.clone());
+
+        Ok(tables_of_shard)
+    }
+
+    fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
+        self.shard_tables_cache
+            .remove(req.shard_id)
+            .with_context(|| ShardNotFound {
+                msg: format!("close non-existent shard, shard_id:{}", req.shard_id),
+            })
+    }
+
+    fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in CreateTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in CreateTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_insert_table_to_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
+    }
+
+    fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in DropTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in CreateTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_remove_table_from_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
+    }
 }
 
 #[async_trait]
@@ -209,20 +316,20 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    async fn open_shards(&self, _req: &OpenShardsRequest, _opts: OpenShardsOpts) -> Result<()> {
-        todo!();
+    async fn open_shard(&self, req: &OpenShardRequest) -> Result<TablesOfShard> {
+        self.inner.open_shard(req).await
     }
 
-    async fn close_shards(&self, _req: &CloseShardsRequest, _opts: CloseShardsOpts) -> Result<()> {
-        todo!();
+    async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard> {
+        self.inner.close_shard(req)
     }
 
-    async fn create_table_on_shard(&self, _req: &CreateTableOnShardRequest) -> Result<()> {
-        todo!();
+    async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()> {
+        self.inner.create_table_on_shard(req)
     }
 
-    async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> Result<()> {
-        todo!();
+    async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
+        self.inner.drop_table_on_shard(req)
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {

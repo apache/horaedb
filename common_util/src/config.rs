@@ -64,13 +64,13 @@ pub enum TimeUnit {
 impl From<TimeUnit> for analytic_common::TimeUnit {
     fn from(unit: TimeUnit) -> Self {
         match unit {
-            TimeUnit::Nanoseconds => analytic_common::TimeUnit::NANOSECONDS,
-            TimeUnit::Microseconds => analytic_common::TimeUnit::MICROSECONDS,
-            TimeUnit::Milliseconds => analytic_common::TimeUnit::MILLISECONDS,
-            TimeUnit::Seconds => analytic_common::TimeUnit::SECONDS,
-            TimeUnit::Minutes => analytic_common::TimeUnit::MINUTES,
-            TimeUnit::Hours => analytic_common::TimeUnit::HOURS,
-            TimeUnit::Days => analytic_common::TimeUnit::DAYS,
+            TimeUnit::Nanoseconds => analytic_common::TimeUnit::Nanoseconds,
+            TimeUnit::Microseconds => analytic_common::TimeUnit::Microseconds,
+            TimeUnit::Milliseconds => analytic_common::TimeUnit::Milliseconds,
+            TimeUnit::Seconds => analytic_common::TimeUnit::Seconds,
+            TimeUnit::Minutes => analytic_common::TimeUnit::Minutes,
+            TimeUnit::Hours => analytic_common::TimeUnit::Hours,
+            TimeUnit::Days => analytic_common::TimeUnit::Days,
         }
     }
 }
@@ -78,13 +78,13 @@ impl From<TimeUnit> for analytic_common::TimeUnit {
 impl From<analytic_common::TimeUnit> for TimeUnit {
     fn from(unit: analytic_common::TimeUnit) -> Self {
         match unit {
-            analytic_common::TimeUnit::NANOSECONDS => TimeUnit::Nanoseconds,
-            analytic_common::TimeUnit::MICROSECONDS => TimeUnit::Microseconds,
-            analytic_common::TimeUnit::MILLISECONDS => TimeUnit::Milliseconds,
-            analytic_common::TimeUnit::SECONDS => TimeUnit::Seconds,
-            analytic_common::TimeUnit::MINUTES => TimeUnit::Minutes,
-            analytic_common::TimeUnit::HOURS => TimeUnit::Hours,
-            analytic_common::TimeUnit::DAYS => TimeUnit::Days,
+            analytic_common::TimeUnit::Nanoseconds => TimeUnit::Nanoseconds,
+            analytic_common::TimeUnit::Microseconds => TimeUnit::Microseconds,
+            analytic_common::TimeUnit::Milliseconds => TimeUnit::Milliseconds,
+            analytic_common::TimeUnit::Seconds => TimeUnit::Seconds,
+            analytic_common::TimeUnit::Minutes => TimeUnit::Minutes,
+            analytic_common::TimeUnit::Hours => TimeUnit::Hours,
+            analytic_common::TimeUnit::Days => TimeUnit::Days,
         }
     }
 }

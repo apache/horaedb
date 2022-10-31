@@ -2,7 +2,7 @@
 
 //! Number format
 
-use common_types::bytes::{MemBuf, MemBufMut};
+use common_types::bytes::{SafeBuf, SafeBufMut};
 use snafu::ResultExt;
 
 use crate::codec::{
@@ -14,8 +14,8 @@ use crate::codec::{
 impl Encoder<i64> for MemComparable {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &i64) -> Result<()> {
-        buf.write_u64(encode_int_to_cmp_uint(*value))
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &i64) -> Result<()> {
+        buf.try_put_u64(encode_int_to_cmp_uint(*value))
             .context(EncodeValue)?;
         Ok(())
     }
@@ -29,8 +29,8 @@ impl Encoder<i64> for MemComparable {
 impl DecodeTo<i64> for MemComparable {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut i64) -> Result<()> {
-        *value = decode_cmp_uint_to_int(buf.read_u64().context(DecodeValue)?);
+    fn decode_to<B: SafeBuf>(&self, buf: &mut B, value: &mut i64) -> Result<()> {
+        *value = decode_cmp_uint_to_int(buf.try_get_u64().context(DecodeValue)?);
         Ok(())
     }
 }
@@ -48,8 +48,8 @@ fn decode_cmp_uint_to_int(u: u64) -> i64 {
 impl Encoder<u64> for MemComparable {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &u64) -> Result<()> {
-        buf.write_u64(*value).context(EncodeValue)?;
+    fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &u64) -> Result<()> {
+        buf.try_put_u64(*value).context(EncodeValue)?;
         Ok(())
     }
 
@@ -62,8 +62,8 @@ impl Encoder<u64> for MemComparable {
 impl DecodeTo<u64> for MemComparable {
     type Error = Error;
 
-    fn decode_to<B: MemBuf>(&self, buf: &mut B, value: &mut u64) -> Result<()> {
-        *value = buf.read_u64().context(DecodeValue)?;
+    fn decode_to<B: SafeBuf>(&self, buf: &mut B, value: &mut u64) -> Result<()> {
+        *value = buf.try_get_u64().context(DecodeValue)?;
         Ok(())
     }
 }

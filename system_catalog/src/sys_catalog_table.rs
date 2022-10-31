@@ -2,12 +2,12 @@
 
 //! Table to store system catalog
 
-use std::{collections::HashMap, convert::TryFrom, mem};
+use std::{collections::HashMap, mem};
 
 use async_trait::async_trait;
 use catalog::consts;
 use common_types::{
-    bytes::{Bytes, BytesMut, MemBuf, MemBufMut},
+    bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::ProjectedSchema,
@@ -15,6 +15,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
+    table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
 use common_util::{
@@ -23,8 +24,8 @@ use common_util::{
 };
 use futures::TryStreamExt;
 use log::{debug, info, warn};
+use prost::Message;
 use proto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
-use protobuf::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,
@@ -139,7 +140,7 @@ pub enum Error {
         backtrace
     ))]
     EncodeEntryPb {
-        source: protobuf::error::ProtobufError,
+        source: prost::EncodeError,
         backtrace: Backtrace,
     },
 
@@ -152,13 +153,8 @@ pub enum Error {
         backtrace
     ))]
     DecodeEntryPb {
-        source: protobuf::error::ProtobufError,
+        source: prost::DecodeError,
         backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to decode table entry, err:{}", source))]
-    DecodeTableEntry {
-        source: table_engine::table::TryFromTableEntryError,
     },
 
     #[snafu(display(
@@ -273,6 +269,7 @@ impl SysCatalogTable {
             table_name: SYS_CATALOG_TABLE_NAME.to_string(),
             table_id: SYS_CATALOG_TABLE_ID,
             engine: table_engine.engine_type().to_string(),
+            shard_id: DEFAULT_SHARD_ID,
         };
 
         let table_opt = table_engine
@@ -312,6 +309,7 @@ impl SysCatalogTable {
             engine: table_engine.engine_type().to_string(),
             options,
             state: TableState::Stable,
+            shard_id: DEFAULT_SHARD_ID,
         };
 
         let table = table_engine
@@ -650,7 +648,7 @@ impl KeyType {
     }
 
     fn decode_from_bytes(mut buf: &[u8]) -> Result<Self> {
-        let v = buf.read_u8().context(ReadKeyHeader)?;
+        let v = buf.try_get_u8().context(ReadKeyHeader)?;
 
         match v {
             v if v == Self::CreateCatalog as u8 => Ok(Self::CreateCatalog),
@@ -688,8 +686,8 @@ struct EntryKeyEncoder;
 impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &CatalogKey) -> Result<()> {
-        buf.write_u8(KeyType::CreateCatalog.to_u8())
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &CatalogKey) -> Result<()> {
+        buf.try_put_u8(KeyType::CreateCatalog.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder
@@ -706,8 +704,8 @@ impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
 impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &SchemaKey) -> Result<()> {
-        buf.write_u8(KeyType::CreateSchema.to_u8())
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &SchemaKey) -> Result<()> {
+        buf.try_put_u8(KeyType::CreateSchema.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder
@@ -729,8 +727,8 @@ impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
 impl<'a> Encoder<TableKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
-    fn encode<B: MemBufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
-        buf.write_u8(KeyType::TableEntry.to_u8())
+    fn encode<B: BufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
+        buf.try_put_u8(KeyType::TableEntry.to_u8())
             .context(EncodeKeyHeader)?;
         let encoder = MemComparable;
         encoder
@@ -765,7 +763,7 @@ impl CreateCatalogRequest {
     /// Convert into [common_types::row::RowGroup]
     fn into_row_group(self, schema: Schema) -> Result<RowGroup> {
         let key = self.to_key()?;
-        let value = self.into_value()?;
+        let value = self.into_bytes();
         let mut builder = RowGroupBuilder::new(schema);
         builder
             .row_builder()
@@ -792,19 +790,18 @@ impl CreateCatalogRequest {
         Ok(buf.into())
     }
 
-    fn into_value(self) -> Result<Bytes> {
-        let entry = self.into_pb();
-
-        let buf = entry.write_to_bytes().context(EncodeEntryPb)?;
-        Ok(buf.into())
+    fn into_bytes(self) -> Bytes {
+        let entry = CatalogEntry::from(self);
+        entry.encode_to_vec().into()
     }
+}
 
-    fn into_pb(self) -> CatalogEntry {
-        let mut entry = CatalogEntry::new();
-        entry.set_catalog_name(self.catalog_name);
-        entry.set_created_time(Timestamp::now().as_i64());
-
-        entry
+impl From<CreateCatalogRequest> for CatalogEntry {
+    fn from(v: CreateCatalogRequest) -> Self {
+        CatalogEntry {
+            catalog_name: v.catalog_name,
+            created_time: Timestamp::now().as_i64(),
+        }
     }
 }
 
@@ -828,7 +825,7 @@ impl CreateSchemaRequest {
     /// Convert into [common_types::row::RowGroup]
     fn into_row_group(self, schema: Schema) -> Result<RowGroup> {
         let key = self.to_key()?;
-        let value = self.into_value()?;
+        let value = self.into_bytes();
         let mut builder = RowGroupBuilder::new(schema);
         builder
             .row_builder()
@@ -855,21 +852,21 @@ impl CreateSchemaRequest {
         Ok(buf.into())
     }
 
-    fn into_value(self) -> Result<Bytes> {
-        let entry = self.into_pb();
+    fn into_bytes(self) -> Bytes {
+        let entry = SchemaEntry::from(self);
 
-        let buf = entry.write_to_bytes().context(EncodeEntryPb)?;
-        Ok(buf.into())
+        entry.encode_to_vec().into()
     }
+}
 
-    fn into_pb(self) -> SchemaEntry {
-        let mut entry = SchemaEntry::new();
-        entry.set_catalog_name(self.catalog_name);
-        entry.set_schema_name(self.schema_name);
-        entry.set_schema_id(self.schema_id.as_u32());
-        entry.set_created_time(Timestamp::now().as_i64());
-
-        entry
+impl From<CreateSchemaRequest> for SchemaEntry {
+    fn from(v: CreateSchemaRequest) -> Self {
+        SchemaEntry {
+            catalog_name: v.catalog_name,
+            schema_name: v.schema_name,
+            schema_id: v.schema_id.as_u32(),
+            created_time: Timestamp::now().as_i64(),
+        }
     }
 }
 
@@ -964,9 +961,15 @@ impl TableWriter {
     }
 
     fn build_create_table_value(table_info: TableInfo, typ: TableRequestType) -> Result<Bytes> {
-        let entry = table_info.into_pb(typ);
+        let mut table_entry = TableEntry::from(table_info);
 
-        let buf = entry.write_to_bytes().context(EncodeEntryPb)?;
+        let now = Timestamp::now().as_i64();
+        match typ {
+            TableRequestType::Create => table_entry.created_time = now,
+            TableRequestType::Drop => table_entry.modified_time = now,
+        }
+
+        let buf = table_entry.encode_to_vec();
         Ok(buf.into())
     }
 
@@ -993,16 +996,16 @@ fn decode_one_request(key: &[u8], value: &[u8]) -> Result<DecodedRequest> {
     let key_type = KeyType::decode_from_bytes(key)?;
     let req = match key_type {
         KeyType::CreateCatalog => {
-            let entry = CatalogEntry::parse_from_bytes(value).context(DecodeEntryPb)?;
+            let entry = CatalogEntry::decode(value).context(DecodeEntryPb)?;
             DecodedRequest::CreateCatalog(CreateCatalogRequest::from(entry))
         }
         KeyType::CreateSchema => {
-            let entry = SchemaEntry::parse_from_bytes(value).context(DecodeEntryPb)?;
+            let entry = SchemaEntry::decode(value).context(DecodeEntryPb)?;
             DecodedRequest::CreateSchema(CreateSchemaRequest::from(entry))
         }
         KeyType::TableEntry => {
-            let entry = TableEntry::parse_from_bytes(value).context(DecodeEntryPb)?;
-            let table_info = TableInfo::try_from(entry).context(DecodeTableEntry)?;
+            let entry = TableEntry::decode(value).context(DecodeEntryPb)?;
+            let table_info = TableInfo::from(entry);
             DecodedRequest::TableEntry(table_info)
         }
     };

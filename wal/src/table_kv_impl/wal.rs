@@ -5,7 +5,7 @@
 use std::{fmt, str, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::SequenceNumber;
+use common_types::{table::Location, SequenceNumber};
 use log::info;
 use snafu::ResultExt;
 use table_kv::TableKv;
@@ -13,7 +13,8 @@ use table_kv::TableKv;
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, WalManager,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
+        ScanRequest, WalManager,
     },
     table_kv_impl::{
         model::NamespaceConfig,
@@ -98,9 +99,9 @@ impl<T> fmt::Debug for WalNamespaceImpl<T> {
 
 #[async_trait]
 impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
-    async fn sequence_num(&self, region_id: RegionId) -> Result<SequenceNumber> {
+    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
         self.namespace
-            .last_sequence(region_id)
+            .last_sequence(location.table_id)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Read)
@@ -108,11 +109,11 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
 
     async fn mark_delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.namespace
-            .delete_entries(region_id, sequence_num)
+            .delete_entries(location.table_id, sequence_num)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Delete)
@@ -132,7 +133,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let blocking_iter = self
+        let sync_iter = self
             .namespace
             .read_log(ctx, req)
             .await
@@ -140,8 +141,8 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .context(Read)?;
         let runtime = self.namespace.read_runtime().clone();
 
-        Ok(BatchLogIteratorAdapter::new(
-            Box::new(blocking_iter),
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(sync_iter),
             runtime,
             ctx.batch_size,
         ))
@@ -157,5 +158,13 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Write)
+    }
+
+    async fn scan(
+        &self,
+        _ctx: &ScanContext,
+        _req: &ScanRequest,
+    ) -> Result<BatchLogIteratorAdapter> {
+        todo!()
     }
 }

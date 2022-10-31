@@ -9,10 +9,9 @@ pub mod meta_update;
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use meta_update::MetaUpdate;
-use table_engine::table::TableId;
+use common_types::table::Location;
 
-use crate::meta::meta_data::TableManifestData;
+use crate::meta::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
@@ -20,7 +19,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// Store update to manifest
     async fn store_update(
         &self,
-        update: MetaUpdate,
+        request: MetaUpdateRequest,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     /// Load table meta data from manifest.
@@ -29,7 +28,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// the manifest data.
     async fn load_data(
         &self,
-        table_id: TableId,
+        location: Location,
         do_snapshot: bool,
     ) -> Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>;
 }

@@ -5,7 +5,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::column_schema::ColumnSchema;
+use common_types::{column_schema::ColumnSchema, table::ShardId};
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},
@@ -44,14 +44,73 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display(
+        "Failed to create table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    CreateTable {
+        request: CreateTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Failed to create table, err:{}", source))]
-    CreateTable { source: table_engine::engine::Error },
+    CreateTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-    #[snafu(display("Failed to open table, err:{}", source))]
-    OpenTable { source: table_engine::engine::Error },
+    #[snafu(display(
+        "Failed to drop table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    DropTable {
+        request: DropTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
 
-    #[snafu(display("Failed to close table, err:{}", source))]
-    CloseTable { source: table_engine::engine::Error },
+    #[snafu(display("Failed to drop table, err:{}", source))]
+    DropTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to open table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    OpenTable {
+        request: OpenTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to open table, source:{}", source))]
+    OpenTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to close table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+        request,
+        msg,
+        backtrace
+    ))]
+    CloseTable {
+        request: CloseTableRequest,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to close table, source:{}", source))]
+    CloseTableWithCause {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display(
         "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
@@ -114,9 +173,6 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Failed to drop table, err:{}", source))]
-    DropTable { source: table_engine::engine::Error },
-
     #[snafu(display(
         "Too many table, cannot create table, schema:{}, table:{}.\nBacktrace:\n{}",
         schema,
@@ -156,6 +212,8 @@ pub struct CreateTableRequest {
     pub options: HashMap<String, String>,
     /// Tells state of the table
     pub state: TableState,
+    /// Shard id of the table
+    pub shard_id: ShardId,
 }
 
 impl CreateTableRequest {
@@ -171,6 +229,7 @@ impl CreateTableRequest {
             engine: self.engine,
             options: self.options,
             state: self.state,
+            shard_id: self.shard_id,
         }
     }
 }

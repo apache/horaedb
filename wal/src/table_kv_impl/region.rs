@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use crate::{
     kv_encoder::{LogEncoding, LogKey},
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, BlockingLogIterator, ReadContext, ReadRequest, RegionId, SequenceNumber},
+    manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber, SyncLogIterator},
     table_kv_impl::{encoding, model::RegionEntry, namespace::BucketRef, WalRuntimes},
 };
 
@@ -661,7 +661,7 @@ impl<T: TableKv> TableLogIterator<T> {
     }
 }
 
-impl<T: TableKv> BlockingLogIterator for TableLogIterator<T> {
+impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
     fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
         if self.no_more_data() {
             return Ok(None);
@@ -799,7 +799,7 @@ impl RegionWriter {
         debug!(
             "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
             ctx,
-            log_batch.region_id,
+            log_batch.location.table_id,
             log_batch.entries.len()
         );
 
@@ -812,7 +812,10 @@ impl RegionWriter {
 
             for entry in &log_batch.entries {
                 log_encoding
-                    .encode_key(&mut key_buf, &(log_batch.region_id, next_sequence_num))
+                    .encode_key(
+                        &mut key_buf,
+                        &(log_batch.location.table_id, next_sequence_num),
+                    )
                     .context(LogCodec)?;
                 wb.insert(&key_buf, &entry.payload);
 
@@ -824,7 +827,7 @@ impl RegionWriter {
 
         let table_kv = table_kv.clone();
         let bucket = bucket.clone();
-        let region_id = log_batch.region_id;
+        let region_id = log_batch.location.table_id;
         runtime
             .spawn_blocking(move || {
                 let table_name = bucket.wal_shard_table(region_id);
