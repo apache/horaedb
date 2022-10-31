@@ -48,6 +48,24 @@ pub mod error {
         #[snafu(display("Invalid schema, err:{}", source))]
         InvalidSchema { source: common_types::schema::Error },
 
+        #[snafu(display("Meet a datafusion error, err:{}\nBacktrace:\n{}", source, backtrace))]
+        DataFusionError {
+            source: datafusion::error::DataFusionError,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display("Meet a object store error, err:{}\nBacktrace:\n{}", source, backtrace))]
+        ObjectStoreError {
+            source: object_store::ObjectStoreError,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display("Meet a parquet error, err:{}\nBacktrace:\n{}", source, backtrace))]
+        ParquetError {
+            source: parquet::errors::ParquetError,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display("Other kind of error:{}", source))]
         Other {
             source: Box<dyn std::error::Error + Send + Sync>,
