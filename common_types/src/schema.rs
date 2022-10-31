@@ -909,20 +909,14 @@ impl From<&Schema> for common_pb::TableSchema {
             .map(|v| common_pb::ColumnSchema::from(v.clone()))
             .collect();
 
-        common_pb::TableSchema {
+        let table_schema = common_pb::TableSchema {
             num_key_columns: schema.num_key_columns as u32,
             timestamp_index: schema.timestamp_index as u32,
             enable_tsid_primary_key: schema.enable_tsid_primary_key,
             version: schema.version,
             columns,
-        }
-
-        table_schema.primary_key_index =
-            schema.primary_key_index.iter().map(|i| *i as u64).collect();
-        table_schema.num_key_columns = schema.num_key_columns as u32;
-        table_schema.timestamp_index = schema.timestamp_index as u32;
-        table_schema.enable_tsid_primary_key = schema.enable_tsid_primary_key;
-        table_schema.version = schema.version;
+            primary_key_index: schema.primary_key_index.iter().map(|i| *i as u64).collect(),
+        };
 
         table_schema
     }

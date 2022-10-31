@@ -345,7 +345,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .collect::<BTreeMap<_, _>>();
 
         // analyze default value options
-        analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
+        // analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
 
         // Tsid column is a reserved column.
         ensure!(
@@ -382,7 +382,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     }
                 } else if parser::is_timestamp_key_constraint(constraint) {
                     // Only one timestamp key constraint
-                    ensure!(timestamp_column_idx.is_none(), InvalidTimetampKey);
+                    ensure!(timestamp_column_idx.is_none(), InvalidTimestampKey);
                     // Only one column in constraint
                     ensure!(columns.len() == 1, InvalidTimestampKey);
 
