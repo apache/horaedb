@@ -230,12 +230,6 @@ impl<'a> ParquetSstReader<'a> {
 
         Ok(())
     }
-
-    #[cfg(test)]
-    pub(crate) async fn row_groups(&mut self) -> &[RowGroupMetaData] {
-        self.init_if_necessary().await.unwrap();
-        self.file_reader.as_ref().unwrap().metadata().row_groups()
-    }
 }
 
 /// A reader for projection and filter on the parquet file.
@@ -395,5 +389,16 @@ impl<'a> SstReader for ParquetSstReader<'a> {
         self.read_record_batches(tx)?;
 
         Ok(Box::new(RecordBatchReceiver { rx }))
+    }
+
+    #[cfg(test)]
+    async fn row_groups(&mut self) -> Vec<RowGroupMetaData> {
+        self.init_if_necessary().await.unwrap();
+        self.file_reader
+            .as_ref()
+            .unwrap()
+            .metadata()
+            .row_groups()
+            .to_vec()
     }
 }

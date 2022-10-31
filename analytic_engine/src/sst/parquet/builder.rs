@@ -173,7 +173,7 @@ mod tests {
         row_iter::tests::build_record_batch_with_key,
         sst::{
             factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
-            parquet::reader::ParquetSstReader,
+            parquet::{reader::ParquetSstReader, AsyncParquetReader},
             reader::{tests::check_stream, SstReader},
         },
         table_options::{self, StorageFormatOptions},
@@ -193,6 +193,26 @@ mod tests {
         runtime: Arc<Runtime>,
         num_rows_per_row_group: usize,
         expected_num_rows: Vec<i64>,
+    ) {
+        parquet_write_and_then_read_back_inner(
+            runtime.clone(),
+            num_rows_per_row_group,
+            expected_num_rows.clone(),
+            false,
+        );
+        parquet_write_and_then_read_back_inner(
+            runtime,
+            num_rows_per_row_group,
+            expected_num_rows,
+            true,
+        );
+    }
+
+    fn parquet_write_and_then_read_back_inner(
+        runtime: Arc<Runtime>,
+        num_rows_per_row_group: usize,
+        expected_num_rows: Vec<i64>,
+        async_reader: bool,
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
@@ -263,8 +283,23 @@ mod tests {
                 runtime: runtime.clone(),
             };
 
-            let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-            assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+            let mut reader: Box<dyn SstReader + Send> = if async_reader {
+                let mut reader =
+                    AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
+                let sst_meta_readback = {
+                    // FIXME: size of SstMetaData is not what this file's size, so overwrite it
+                    // https://github.com/CeresDB/ceresdb/issues/321
+                    let mut meta = reader.meta_data().await.unwrap().clone();
+                    meta.size = sst_meta.size;
+                    meta
+                };
+                assert_eq!(&sst_meta_readback, &sst_meta);
+                Box::new(reader)
+            } else {
+                let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
+                assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+                Box::new(reader)
+            };
             assert_eq!(
                 expected_num_rows,
                 reader

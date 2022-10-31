@@ -221,19 +221,6 @@ impl<'a> Reader<'a> {
         sst_meta.size = file_size as u64;
         Ok(sst_meta)
     }
-
-    #[allow(dead_code)]
-    #[cfg(test)]
-    pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let object_meta = self.storage.head(self.path).await.unwrap();
-        let mut reader = self
-            .reader_factory
-            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
-            .unwrap();
-
-        let metadata = reader.get_metadata().await.unwrap();
-        metadata.row_groups().to_vec()
-    }
 }
 
 impl<'a> Drop for Reader<'a> {
@@ -491,6 +478,18 @@ impl<'a> SstReader for Reader<'a> {
             storage_format_opts,
         )))
     }
+
+    #[cfg(test)]
+    async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
+        let object_meta = self.storage.head(self.path).await.unwrap();
+        let mut reader = self
+            .reader_factory
+            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
+            .unwrap();
+
+        let metadata = reader.get_metadata().await.unwrap();
+        metadata.row_groups().to_vec()
+    }
 }
 
 struct RecordBatchReceiver {
@@ -555,5 +554,10 @@ impl<'a> SstReader for ThreadedReader<'a> {
         self.read_record_batches(tx).await?;
 
         Ok(Box::new(RecordBatchReceiver { rx }))
+    }
+
+    #[cfg(test)]
+    async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
+        self.inner.row_groups().await
     }
 }
