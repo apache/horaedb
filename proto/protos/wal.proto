@@ -1,0 +1,20 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+syntax = "proto3";
+package wal;
+
+message TableMetaData {
+    uint64 table_id = 1;
+    uint64 next_sequence_num = 2;
+    uint64 latest_marked_deleted = 3;
+    int64 current_high_watermark = 4;
+    oneof safe_delete_offset {
+        int64 offset = 5;
+    }
+}
+
+// Meta message value used in wal's message queue implementation.
+// The shard's all tables' next sequence numbers are stored in it.
+message RegionMetaSnapshot {
+    repeated TableMetaData entries = 2;
+}

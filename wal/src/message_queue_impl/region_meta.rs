@@ -298,7 +298,7 @@ struct TableMetaInner {
 
 // TODO: will be made use of later.
 #[allow(unused)]
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TableMetaData {
     pub table_id: TableId,
     pub next_sequence_num: SequenceNumber,
@@ -310,6 +310,7 @@ pub struct TableMetaData {
 /// Message queue implementation's meta value.
 ///
 /// Include all tables(of current shard) and their next sequence number.
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RegionMetaSnapshot {
     pub entries: Vec<TableMetaData>,
 }
