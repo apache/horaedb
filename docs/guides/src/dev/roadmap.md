@@ -22,6 +22,7 @@
 - [ ] Implement Distributed WAL based on `Apache Kafka`.
 - [ ] Release Golang client.
 - [ ] Improve the query performance for traditional time series workloads.
+- [ ] Support dynamic migration of tables in cluster mode.
 
 ### Afterward
 - [ ] Support Prometheus protocol.
