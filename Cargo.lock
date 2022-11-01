@@ -6755,6 +6755,8 @@ dependencies = [
  "env_logger",
  "futures 0.3.21",
  "log",
+ "message_queue",
+ "rand 0.8.5",
  "rocksdb",
  "serde",
  "serde_derive",
