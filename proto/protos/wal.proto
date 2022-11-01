@@ -13,8 +13,8 @@ message TableMetaData {
     }
 }
 
-// Meta message value used in wal's message queue implementation.
-// The shard's all tables' next sequence numbers are stored in it.
+// Meta value used in wal's message queue implementation.
+// The shard's all tables' meta data are stored in it.
 message RegionMetaSnapshot {
     repeated TableMetaData entries = 2;
 }

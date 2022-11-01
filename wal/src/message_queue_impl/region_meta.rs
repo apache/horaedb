@@ -39,14 +39,12 @@ pub enum Error {
 
 define_result!(Error);
 
-// TODO: will be made use of later.
 #[allow(unused)]
 #[derive(Default, Debug)]
 pub struct RegionMeta {
     inner: RwLock<RegionMetaInner>,
 }
 
-// TODO: will be made use of later.
 #[allow(unused)]
 impl RegionMeta {
     // TODO: Need to implement the init method using the [RegionMetaSnapshot] which
@@ -150,7 +148,7 @@ struct RegionMetaInner {
 }
 
 /// Wrapper for the [TableMetaInner].
-// TODO: will be made use of later.
+
 #[allow(unused)]
 #[derive(Debug)]
 struct TableMeta {
@@ -160,7 +158,6 @@ struct TableMeta {
     inner: Mutex<TableMetaInner>,
 }
 
-// TODO: will be made use of later.
 #[allow(unused)]
 impl TableMeta {
     fn new(table_id: TableId) -> Self {
@@ -271,7 +268,6 @@ impl TableMeta {
     }
 }
 
-// TODO: will be made use of later.
 #[allow(unused)]
 /// Table meta data, will be updated atomically by mutex.
 #[derive(Debug, Default)]
@@ -296,7 +292,6 @@ struct TableMetaInner {
     start_sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 
-// TODO: will be made use of later.
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TableMetaData {

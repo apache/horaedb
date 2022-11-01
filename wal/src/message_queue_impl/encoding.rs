@@ -1,26 +1,24 @@
-use common_types::{
-    bytes::{self, BytesMut, SafeBuf, SafeBufMut, Buf, BufMut},
-    table::TableId,
-    SequenceNumber,
-};
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Meta encoding of wal's message queue implementation
+
+use common_types::bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use common_util::{
     codec::{Decoder, Encoder},
     define_result,
 };
-use message_queue::Offset;
+use prost::Message;
 use proto::wal::{
-    TableMetaData as TableMetaDataPb, RegionMetaSnapshot as RegionMetaSnapshotPb, table_meta_data::SafeDeleteOffset,
+    table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
+    TableMetaData as TableMetaDataPb,
 };
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     kv_encoder::Namespace,
     manager::{self, RegionId},
+    message_queue_impl::region_meta::{RegionMetaSnapshot, TableMetaData},
 };
-
-use prost::Message;
-
-use crate::message_queue_impl::region_meta::{TableMetaData, RegionMetaSnapshot};
 
 const NEWEST_MQ_META_KEY_ENCODING_VERSION: u8 = 0;
 const NEWEST_MQ_META_VALUE_ENCODING_VERSION: u8 = 0;
@@ -95,21 +93,25 @@ pub enum Error {
 define_result!(Error);
 
 /// Generate wal data topic name
+#[allow(unused)]
 pub fn format_wal_data_topic_name(namespace: &str, region_id: RegionId) -> String {
     format!("{}_data_{}", namespace, region_id)
 }
 
 /// Generate wal meta topic name
+#[allow(unused)]
 pub fn format_wal_meta_topic_name(namespace: &str, region_id: RegionId) -> String {
     format!("{}_meta_{}", namespace, region_id)
 }
 
+#[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct MetaEncoding {
     key_enc: MetaKeyEncoder,
     value_enc: MetaValueEncoder,
 }
 
+#[allow(unused)]
 impl MetaEncoding {
     pub fn encode_key(&self, buf: &mut BytesMut, meta_key: &MetaKey) -> manager::Result<()> {
         buf.clear();
@@ -122,13 +124,16 @@ impl MetaEncoding {
         Ok(())
     }
 
-    pub fn encode_value(&self, buf: &mut BytesMut, region_meta_snapshot: RegionMetaSnapshot) -> manager::Result<()> {
+    pub fn encode_value(
+        &self,
+        buf: &mut BytesMut,
+        region_meta_snapshot: RegionMetaSnapshot,
+    ) -> manager::Result<()> {
         let meta_value = region_meta_snapshot.into();
 
         buf.clear();
         buf.reserve(self.value_enc.estimate_encoded_size(&meta_value));
-        self
-            .value_enc
+        self.value_enc
             .encode(buf, &meta_value)
             .map_err(|e| Box::new(e) as _)
             .context(manager::Encoding)
@@ -142,11 +147,12 @@ impl MetaEncoding {
     }
 
     pub fn decode_value(&self, mut buf: &[u8]) -> manager::Result<RegionMetaSnapshot> {
-        let meta_value = self.value_enc
+        let meta_value = self
+            .value_enc
             .decode(&mut buf)
             .map_err(|e| Box::new(e) as _)
             .context(manager::Decoding)?;
-        
+
         Ok(meta_value.into())
     }
 
@@ -163,21 +169,26 @@ impl MetaEncoding {
                 namespace: Namespace::Meta,
                 version: NEWEST_MQ_META_KEY_ENCODING_VERSION,
             },
-            value_enc: MetaValueEncoder { version: NEWEST_MQ_META_VALUE_ENCODING_VERSION },
+            value_enc: MetaValueEncoder {
+                version: NEWEST_MQ_META_VALUE_ENCODING_VERSION,
+            },
         }
     }
 }
 
 /// Message queue implementation's meta key
+#[allow(unused)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetaKey(pub RegionId);
 
+#[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct MetaKeyEncoder {
     pub namespace: Namespace,
     pub version: u8,
 }
 
+#[allow(unused)]
 impl MetaKeyEncoder {
     /// Determine whether the raw bytes is a valid meta key.
     pub fn is_valid<B: SafeBuf>(&self, buf: &mut B) -> Result<bool> {
@@ -200,7 +211,8 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
     ///
     /// More information can be extended after the incremented `version header`.
     fn encode<B: SafeBufMut>(&self, buf: &mut B, meta_key: &MetaKey) -> Result<()> {
-        buf.try_put_u8(self.namespace as u8).context(EncodeMetaKey)?;
+        buf.try_put_u8(self.namespace as u8)
+            .context(EncodeMetaKey)?;
         buf.try_put_u8(self.version).context(EncodeMetaKey)?;
         buf.try_put_u64(meta_key.0).context(EncodeMetaKey)?;
 
@@ -242,7 +254,6 @@ impl Decoder<MetaKey> for MetaKeyEncoder {
     }
 }
 
-
 /// Message queue implementation's meta value.
 ///
 /// Include all tables(of current shard) and meta data.
@@ -267,8 +278,14 @@ impl Encoder<MetaValue> for MetaValueEncoder {
     ///
     /// More information can be extended after the incremented `version header`.
     fn encode<B: BufMut>(&self, buf: &mut B, meta_value: &MetaValue) -> Result<()> {
-        buf.try_put_u8(self.version).map_err(|e| Box::new(e) as _).context(EncodeMetaValue)?;
-        meta_value.0.encode(buf).map_err(|e| Box::new(e) as _).context(EncodeMetaValue)
+        buf.try_put_u8(self.version)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeMetaValue)?;
+        meta_value
+            .0
+            .encode(buf)
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeMetaValue)
     }
 
     fn estimate_encoded_size(&self, meta_value: &MetaValue) -> usize {
@@ -282,7 +299,10 @@ impl Decoder<MetaValue> for MetaValueEncoder {
 
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<MetaValue> {
         // Check version.
-        let version = buf.try_get_u8().map_err(|e| Box::new(e) as _).context(DecodeMetaValue)?;
+        let version = buf
+            .try_get_u8()
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeMetaValue)?;
         ensure!(
             version == self.version,
             InvalidVersion {
@@ -291,7 +311,9 @@ impl Decoder<MetaValue> for MetaValueEncoder {
             }
         );
 
-        let region_meta_snapshot = Message::decode(buf).map_err(|e| Box::new(e) as _).context(DecodeMetaValue)?;
+        let region_meta_snapshot = Message::decode(buf)
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeMetaValue)?;
 
         Ok(MetaValue(region_meta_snapshot))
     }
@@ -314,26 +336,22 @@ impl From<RegionMetaSnapshot> for MetaValue {
 
 impl From<TableMetaData> for TableMetaDataPb {
     fn from(table_meta_data: TableMetaData) -> Self {
-       TableMetaDataPb {
+        TableMetaDataPb {
             table_id: table_meta_data.table_id,
             next_sequence_num: table_meta_data.next_sequence_num,
             latest_marked_deleted: table_meta_data.latest_marked_deleted,
             current_high_watermark: table_meta_data.current_high_watermark,
-            safe_delete_offset: table_meta_data.safe_delete_offset.map(|offset| SafeDeleteOffset::Offset(offset)),
+            safe_delete_offset: table_meta_data
+                .safe_delete_offset
+                .map(SafeDeleteOffset::Offset),
         }
     }
 }
 
 impl From<MetaValue> for RegionMetaSnapshot {
     fn from(meta_value: MetaValue) -> Self {
-        let entries = meta_value.0
-            .entries
-            .into_iter()
-            .map(|e| e.into())
-            .collect();
-        Self {
-            entries,
-        }
+        let entries = meta_value.0.entries.into_iter().map(|e| e.into()).collect();
+        Self { entries }
     }
 }
 
@@ -354,21 +372,19 @@ impl From<TableMetaDataPb> for TableMetaData {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use common_types::bytes::BytesMut;
 
-    use crate::message_queue_impl::region_meta::{TableMetaData, RegionMetaSnapshot};
-
-    use super::{MetaKey, MetaEncoding};
+    use super::{MetaEncoding, MetaKey};
+    use crate::message_queue_impl::region_meta::{RegionMetaSnapshot, TableMetaData};
 
     #[test]
     fn test_meta_encoding() {
         // Meta key
         let region_id = 42_u64;
         let test_meta_key = MetaKey(region_id);
-        
+
         // Meta value
         let test_table_meta1 = TableMetaData {
             table_id: 0,
@@ -395,14 +411,17 @@ mod tests {
 
         let mut key_buf = BytesMut::new();
         let mut value_buf = BytesMut::new();
-        meta_encoding.encode_key(&mut key_buf, &test_meta_key).unwrap();
-        meta_encoding.encode_value(&mut value_buf, test_region_snapshot.clone()).unwrap();
+        meta_encoding
+            .encode_key(&mut key_buf, &test_meta_key)
+            .unwrap();
+        meta_encoding
+            .encode_value(&mut value_buf, test_region_snapshot.clone())
+            .unwrap();
 
         // Decode and compare.
-        let decoded_key = meta_encoding.decode_key(&key_buf.to_vec()).unwrap();
-        let decoded_value = meta_encoding.decode_value(&value_buf.to_vec()).unwrap();
+        let decoded_key = meta_encoding.decode_key(&key_buf).unwrap();
+        let decoded_value = meta_encoding.decode_value(&value_buf).unwrap();
         assert_eq!(test_meta_key, decoded_key);
         assert_eq!(test_region_snapshot, decoded_value);
     }
 }
-
