@@ -294,21 +294,32 @@ mod tests {
                     meta
                 };
                 assert_eq!(&sst_meta_readback, &sst_meta);
+                assert_eq!(
+                    expected_num_rows,
+                    reader
+                        .row_groups()
+                        .await
+                        .iter()
+                        .map(|g| g.num_rows())
+                        .collect::<Vec<_>>()
+                );
+
                 Box::new(reader)
             } else {
                 let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
                 assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+                assert_eq!(
+                    expected_num_rows,
+                    reader
+                        .row_groups()
+                        .await
+                        .iter()
+                        .map(|g| g.num_rows())
+                        .collect::<Vec<_>>()
+                );
+
                 Box::new(reader)
             };
-            assert_eq!(
-                expected_num_rows,
-                reader
-                    .row_groups()
-                    .await
-                    .iter()
-                    .map(|g| g.num_rows())
-                    .collect::<Vec<_>>()
-            );
 
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];

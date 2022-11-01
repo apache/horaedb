@@ -180,7 +180,7 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    pub async fn read_sst_meta(
+    async fn read_sst_meta(
         storage: &ObjectStoreRef,
         path: &Path,
         meta_cache: &Option<MetaCacheRef>,
@@ -230,6 +230,18 @@ impl<'a> Reader<'a> {
         // https://github.com/CeresDB/ceresdb/issues/321
         sst_meta.size = file_size as u64;
         Ok(sst_meta)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
+        let object_meta = self.storage.head(self.path).await.unwrap();
+        let mut reader = self
+            .reader_factory
+            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
+            .unwrap();
+
+        let metadata = reader.get_metadata().await.unwrap();
+        metadata.row_groups().to_vec()
     }
 }
 
@@ -488,18 +500,6 @@ impl<'a> SstReader for Reader<'a> {
             storage_format_opts,
         )))
     }
-
-    #[cfg(test)]
-    async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let object_meta = self.storage.head(self.path).await.unwrap();
-        let mut reader = self
-            .reader_factory
-            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
-            .unwrap();
-
-        let metadata = reader.get_metadata().await.unwrap();
-        metadata.row_groups().to_vec()
-    }
 }
 
 struct RecordBatchReceiver {
@@ -564,10 +564,5 @@ impl<'a> SstReader for ThreadedReader<'a> {
         self.read_record_batches(tx).await?;
 
         Ok(Box::new(RecordBatchReceiver { rx }))
-    }
-
-    #[cfg(test)]
-    async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        self.inner.row_groups().await
     }
 }

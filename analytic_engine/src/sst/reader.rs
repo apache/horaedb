@@ -84,10 +84,6 @@ pub trait SstReader {
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>;
-
-    // Expose parquet related info here just for testing
-    #[cfg(test)]
-    async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData>;
 }
 
 #[cfg(test)]

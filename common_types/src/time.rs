@@ -286,9 +286,9 @@ impl TimeRange {
     pub fn to_df_expr(&self, column_name: impl AsRef<str>) -> Expr {
         let ts_start = ScalarValue::TimestampMillisecond(Some(self.inclusive_start.as_i64()), None);
         let ts_end = ScalarValue::TimestampMillisecond(Some(self.exclusive_end.as_i64()), None);
-
-        let ts_low = col(column_name.as_ref().gt_eq(lit(ts_start));
-        let ts_high = col(column_name.as_ref()).lt(lit(ts_end));
+        let column_name = column_name.as_ref();
+        let ts_low = col(column_name).gt_eq(lit(ts_start));
+        let ts_high = col(column_name).lt(lit(ts_end));
 
         ts_low.and(ts_high)
     }
