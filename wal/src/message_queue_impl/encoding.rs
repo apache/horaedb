@@ -8,7 +8,7 @@ use common_util::{
     define_result,
 };
 use prost::Message;
-use proto::wal::{
+use proto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };
@@ -191,7 +191,7 @@ pub struct MetaKeyEncoder {
 #[allow(unused)]
 impl MetaKeyEncoder {
     /// Determine whether the raw bytes is a valid meta key.
-    pub fn is_valid<B: SafeBuf>(&self, buf: &mut B) -> Result<bool> {
+    pub fn is_valid<B: Buf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.try_get_u8().context(DecodeMetaKey)?;
         let version = buf.try_get_u8().context(DecodeMetaKey)?;
         Ok(namespace == self.namespace as u8 && version == self.version)
@@ -210,7 +210,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
-    fn encode<B: SafeBufMut>(&self, buf: &mut B, meta_key: &MetaKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, meta_key: &MetaKey) -> Result<()> {
         buf.try_put_u8(self.namespace as u8)
             .context(EncodeMetaKey)?;
         buf.try_put_u8(self.version).context(EncodeMetaKey)?;
@@ -228,7 +228,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
 impl Decoder<MetaKey> for MetaKeyEncoder {
     type Error = Error;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<MetaKey> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<MetaKey> {
         // check namespace
         let namespace = buf.try_get_u8().context(DecodeMetaKey)?;
         ensure!(

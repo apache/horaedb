@@ -10,4 +10,4 @@ pub mod meta_update;
 pub mod sst;
 pub mod sys_catalog;
 pub mod table_requests;
-pub mod wal;
+pub mod wal_on_mq;

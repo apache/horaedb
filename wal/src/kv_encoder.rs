@@ -3,7 +3,7 @@
 //! Common Encoding for Wal logs
 
 use common_types::{
-    bytes::{self, BufMut, BytesMut, SafeBuf, SafeBufMut},
+    bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut},
     table::{Location, TableId},
     SequenceNumber,
 };
@@ -136,7 +136,7 @@ impl LogKeyEncoder {
     }
 
     /// Determine whether the raw bytes is a log key.
-    pub fn is_valid<B: SafeBuf>(&self, buf: &mut B) -> Result<bool> {
+    pub fn is_valid<B: Buf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.try_get_u8().context(DecodeLogKey)?;
         Ok(namespace == self.namespace as u8)
     }
@@ -154,7 +154,7 @@ impl Encoder<LogKey> for LogKeyEncoder {
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
-    fn encode<B: SafeBufMut>(&self, buf: &mut B, log_key: &LogKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, log_key: &LogKey) -> Result<()> {
         buf.try_put_u8(self.namespace as u8).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.0).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.1).context(EncodeLogKey)?;
@@ -172,7 +172,7 @@ impl Encoder<LogKey> for LogKeyEncoder {
 impl Decoder<LogKey> for LogKeyEncoder {
     type Error = Error;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<LogKey> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<LogKey> {
         // check namespace
         let namespace = buf.try_get_u8().context(DecodeLogKey)?;
         ensure!(
@@ -276,7 +276,7 @@ pub struct MetaKey {
 
 impl MetaKeyEncoder {
     /// Determine whether the raw bytes is a valid meta key.
-    pub fn is_valid<B: SafeBuf>(&self, buf: &mut B) -> Result<bool> {
+    pub fn is_valid<B: Buf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.try_get_u8().context(DecodeMetaKey)?;
         let key_type = buf.try_get_u8().context(DecodeMetaKey)?;
         Ok(namespace == self.namespace as u8 && key_type == self.key_type as u8)
@@ -295,7 +295,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
-    fn encode<B: SafeBufMut>(&self, buf: &mut B, meta_key: &MetaKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, meta_key: &MetaKey) -> Result<()> {
         buf.try_put_u8(self.namespace as u8)
             .context(EncodeMetaKey)?;
         buf.try_put_u8(self.key_type as u8).context(EncodeMetaKey)?;
@@ -314,7 +314,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
 impl Decoder<MetaKey> for MetaKeyEncoder {
     type Error = Error;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<MetaKey> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<MetaKey> {
         // check namespace
         let namespace = buf.try_get_u8().context(DecodeMetaKey)?;
         ensure!(
@@ -372,7 +372,7 @@ impl Encoder<MaxSeqMetaValue> for MaxSeqMetaValueEncoder {
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
-    fn encode<B: SafeBufMut>(&self, buf: &mut B, meta_value: &MaxSeqMetaValue) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, meta_value: &MaxSeqMetaValue) -> Result<()> {
         buf.try_put_u8(self.version).context(EncodeMetaValue)?;
         buf.try_put_u64(meta_value.max_seq)
             .context(EncodeMetaValue)?;
@@ -389,7 +389,7 @@ impl Encoder<MaxSeqMetaValue> for MaxSeqMetaValueEncoder {
 impl Decoder<MaxSeqMetaValue> for MaxSeqMetaValueEncoder {
     type Error = Error;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<MaxSeqMetaValue> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<MaxSeqMetaValue> {
         // check version
         let version = buf.try_get_u8().context(DecodeMetaValue)?;
         ensure!(
@@ -622,7 +622,7 @@ impl CommonLogKeyEncoder {
     }
 
     /// Determine whether the raw bytes is a log key.
-    pub fn is_valid<B: SafeBuf>(&self, buf: &mut B) -> Result<bool> {
+    pub fn is_valid<B: Buf>(&self, buf: &mut B) -> Result<bool> {
         let namespace = buf.try_get_u8().context(DecodeLogKey)?;
         Ok(namespace == self.namespace as u8)
     }
@@ -640,7 +640,7 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
-    fn encode<B: SafeBufMut>(&self, buf: &mut B, log_key: &CommonLogKey) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, log_key: &CommonLogKey) -> Result<()> {
         buf.try_put_u8(self.namespace as u8).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.region_id).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.table_id).context(EncodeLogKey)?;
@@ -660,7 +660,7 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
 impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
     type Error = Error;
 
-    fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<CommonLogKey> {
+    fn decode<B: Buf>(&self, buf: &mut B) -> Result<CommonLogKey> {
         // Check namespace
         let namespace = buf.try_get_u8().context(DecodeLogKey)?;
         ensure!(
