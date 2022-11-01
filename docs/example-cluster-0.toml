@@ -24,7 +24,7 @@ port = 8831
 [cluster.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "{meta_addr}:2379"
+meta_addr = "http://{meta_addr}:2379"
 lease = "10s"
 timeout = "5s"
 
