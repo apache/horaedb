@@ -1,25 +1,25 @@
 # Block List
 
 ## Add block list
-If you want to reject query for a table, you can add table name to 'read_reject_list'.
+If you want to reject query for a table, you can add table name to 'read_block_list'.
 
 ### Example
 ```shell
-curl --location --request POST 'http://localhost:5000/reject' \
+curl --location --request POST 'http://localhost:5000/block' \
 --header 'Content-Type: application/json' \
 -d '{
     "operation":"Add",
-    "write_reject_list":[],
-    "read_reject_list":["my_table"]
+    "write_block_list":[],
+    "read_block_list":["my_table"]
 }'
 ```
 ### Response
 ```json
 {
-  "write_reject_list":[
+  "write_block_list":[
 
   ],
-  "read_reject_list":[
+  "read_block_list":[
     "my_table"
   ]
 }
@@ -27,16 +27,16 @@ curl --location --request POST 'http://localhost:5000/reject' \
 
 ## Set block list
 
-You can use set operation to clear exist tables and set new tables to 'read_reject_list' like following example.
+You can use set operation to clear exist tables and set new tables to 'read_block_list' like following example.
 
 ### Example
 ```shell
-curl --location --request POST 'http://localhost:5000/reject' \
+curl --location --request POST 'http://localhost:5000/block' \
 --header 'Content-Type: application/json' \
 -d '{
     "operation":"Set",
-    "write_reject_list":[],
-    "read_reject_list":["my_table1","my_table2"]
+    "write_block_list":[],
+    "read_block_list":["my_table1","my_table2"]
 }'
 ```
 
@@ -44,10 +44,10 @@ curl --location --request POST 'http://localhost:5000/reject' \
 
 ```json
 {
-  "write_reject_list":[
+  "write_block_list":[
 
   ],
-  "read_reject_list":[
+  "read_block_list":[
     "my_table1",
     "my_table2"
   ]
@@ -56,17 +56,17 @@ curl --location --request POST 'http://localhost:5000/reject' \
 
 ## Remove block list
 
-You can remove tables from  'read_reject_list' like following example.
+You can remove tables from  'read_block_list' like following example.
 
 ### Example
 
 ```shell
-curl --location --request POST 'http://localhost:5000/reject' \
+curl --location --request POST 'http://localhost:5000/block' \
 --header 'Content-Type: application/json' \
 -d '{
     "operation":"Remove",
-    "write_reject_list":[],
-    "read_reject_list":["my_table1"]
+    "write_block_list":[],
+    "read_block_list":["my_table1"]
 }'
 ```
 
@@ -74,10 +74,10 @@ curl --location --request POST 'http://localhost:5000/reject' \
 
 ```json
 {
-  "write_reject_list":[
+  "write_block_list":[
 
   ],
-  "read_reject_list":[
+  "read_block_list":[
     "my_table2"
   ]
 }

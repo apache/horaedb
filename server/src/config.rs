@@ -11,6 +11,7 @@ use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
+use crate::limiter::Limiter;
 
 use crate::route::rule_based::{ClusterView, RuleList};
 
@@ -201,6 +202,10 @@ pub struct Config {
     // Deployment configs:
     pub deploy_mode: DeployMode,
     pub cluster: ClusterConfig,
+
+    // Config of limiter
+    pub limiter: Limiter,
+
 }
 
 impl Default for RuntimeConfig {
@@ -235,6 +240,7 @@ impl Default for Config {
             analytic: analytic_engine::Config::default(),
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
+            limiter: Limiter::default(),
         }
     }
 }

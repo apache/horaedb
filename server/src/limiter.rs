@@ -6,15 +6,15 @@ use datafusion::catalog::TableReference;
 use sql::plan::Plan;
 
 pub struct Limiter {
-    write_reject_list: RwLock<HashSet<String>>,
-    read_reject_list: RwLock<HashSet<String>>,
+    write_block_list: RwLock<HashSet<String>>,
+    read_block_list: RwLock<HashSet<String>>,
 }
 
 impl Default for Limiter {
     fn default() -> Self {
         Self {
-            write_reject_list: RwLock::new(HashSet::new()),
-            read_reject_list: RwLock::new(HashSet::new()),
+            write_block_list: RwLock::new(HashSet::new()),
+            read_block_list: RwLock::new(HashSet::new()),
         }
     }
 }
@@ -22,14 +22,14 @@ impl Default for Limiter {
 impl Limiter {
     pub fn should_limit(&self, plan: &Plan) -> bool {
         match plan {
-            Plan::Query(query) => self.read_reject_list.read().unwrap().iter().any(|table| {
+            Plan::Query(query) => self.read_block_list.read().unwrap().iter().any(|table| {
                 query
                     .tables
                     .get(TableReference::from(table.as_str()))
                     .is_some()
             }),
             Plan::Insert(insert) => self
-                .write_reject_list
+                .write_block_list
                 .read()
                 .unwrap()
                 .contains(insert.table.name()),
@@ -37,47 +37,47 @@ impl Limiter {
         }
     }
 
-    pub fn add_write_reject_list(&self, reject_list: Vec<String>) {
-        self.write_reject_list
+    pub fn add_write_block_list(&self, block_list: Vec<String>) {
+        self.write_block_list
             .write()
             .unwrap()
-            .extend(reject_list.into_iter())
+            .extend(block_list.into_iter())
     }
 
-    pub fn add_read_reject_list(&self, reject_list: Vec<String>) {
-        self.read_reject_list
+    pub fn add_read_block_list(&self, block_list: Vec<String>) {
+        self.read_block_list
             .write()
             .unwrap()
-            .extend(reject_list.into_iter())
+            .extend(block_list.into_iter())
     }
 
-    pub fn set_write_reject_list(&self, reject_list: Vec<String>) {
-        *self.write_reject_list.write().unwrap() = reject_list.into_iter().collect();
+    pub fn set_write_block_list(&self, block_list: Vec<String>) {
+        *self.write_block_list.write().unwrap() = block_list.into_iter().collect();
     }
 
-    pub fn set_read_reject_list(&self, reject_list: Vec<String>) {
-        *self.read_reject_list.write().unwrap() = reject_list.into_iter().collect();
+    pub fn set_read_block_list(&self, block_list: Vec<String>) {
+        *self.read_block_list.write().unwrap() = block_list.into_iter().collect();
     }
 
-    pub fn get_write_reject_list(&self) -> HashSet<String> {
-        self.write_reject_list.read().unwrap().clone()
+    pub fn get_write_block_list(&self) -> HashSet<String> {
+        self.write_block_list.read().unwrap().clone()
     }
 
-    pub fn get_read_reject_list(&self) -> HashSet<String> {
-        self.read_reject_list.read().unwrap().clone()
+    pub fn get_read_block_list(&self) -> HashSet<String> {
+        self.read_block_list.read().unwrap().clone()
     }
 
-    pub fn remove_write_reject_list(&self, reject_list: Vec<String>) {
-        let mut write_reject_list = self.write_reject_list.write().unwrap();
-        for value in reject_list {
-            write_reject_list.remove(&value);
+    pub fn remove_write_block_list(&self, block_list: Vec<String>) {
+        let mut write_block_list = self.write_block_list.write().unwrap();
+        for value in block_list {
+            write_block_list.remove(&value);
         }
     }
 
-    pub fn remove_read_reject_list(&self, reject_list: Vec<String>) {
-        let mut read_reject_list = self.read_reject_list.write().unwrap();
-        for value in reject_list {
-            read_reject_list.remove(&value);
+    pub fn remove_read_block_list(&self, block_list: Vec<String>) {
+        let mut read_block_list = self.read_block_list.write().unwrap();
+        for value in block_list {
+            read_block_list.remove(&value);
         }
     }
 }
@@ -99,10 +99,10 @@ mod tests {
     fn prepare() -> (MockMetaProvider, Limiter) {
         let mock = MockMetaProvider::default();
 
-        let reject_list = vec!["test_table".to_string()];
+        let block_list = vec!["test_table".to_string()];
         let limiter = Limiter::default();
-        limiter.set_read_reject_list(reject_list.clone());
-        limiter.set_write_reject_list(reject_list);
+        limiter.set_read_block_list(block_list.clone());
+        limiter.set_write_block_list(block_list);
         (mock, limiter)
     }
 
@@ -131,8 +131,8 @@ mod tests {
         let insert_plan = sql_to_plan(&mock, insert);
         assert!(limiter.should_limit(&insert_plan));
 
-        limiter.remove_write_reject_list(test_data.clone());
-        limiter.remove_read_reject_list(test_data);
+        limiter.remove_write_block_list(test_data.clone());
+        limiter.remove_read_block_list(test_data);
         assert!(!limiter.should_limit(&query_plan));
         assert!(!limiter.should_limit(&insert_plan));
     }
@@ -150,8 +150,8 @@ mod tests {
         let insert_plan = sql_to_plan(&mock, insert);
         assert!(!limiter.should_limit(&insert_plan));
 
-        limiter.add_write_reject_list(test_data.clone());
-        limiter.add_read_reject_list(test_data);
+        limiter.add_write_block_list(test_data.clone());
+        limiter.add_read_block_list(test_data);
         assert!(limiter.should_limit(&query_plan));
         assert!(limiter.should_limit(&insert_plan));
     }
@@ -177,8 +177,8 @@ mod tests {
         let insert_plan2 = sql_to_plan(&mock, insert2);
         assert!(!limiter.should_limit(&insert_plan2));
 
-        limiter.set_read_reject_list(test_data.clone());
-        limiter.set_write_reject_list(test_data);
+        limiter.set_read_block_list(test_data.clone());
+        limiter.set_write_block_list(test_data);
         assert!(!limiter.should_limit(&query_plan));
         assert!(!limiter.should_limit(&insert_plan));
         assert!(limiter.should_limit(&query_plan2));

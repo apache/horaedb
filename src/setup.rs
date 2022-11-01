@@ -122,7 +122,8 @@ where
         .runtimes(runtimes.clone())
         .query_executor(query_executor)
         .table_engine(engine_proxy.clone())
-        .function_registry(function_registry);
+        .function_registry(function_registry)
+        .limiter(config.limiter);
 
     let builder = match config.deploy_mode {
         DeployMode::Standalone => {
