@@ -1,0 +1,60 @@
+bind_addr = "0.0.0.0"
+http_port = 5000
+grpc_port = 8831
+log_level = "info"
+
+[runtime]
+read_thread_num = 4
+write_thread_num = 4
+background_thread_num = 4
+
+[analytic]
+wal_path = "/tmp/ceresdb/"
+write_group_worker_num = 4
+replay_batch_size = 500
+max_replay_tables_per_batch = 1024
+write_group_command_channel_cap = 1024
+
+[analytic.storage]
+type = "Local"
+data_path = "/tmp/ceresdb/"
+
+
+[analytic.compaction_config]
+schedule_channel_len = 4
+schedule_interval = "30m"
+max_ongoing_tasks = 4
+
+# Route&Shard: public
+[[static_route.topology.schema_shards]]
+schema = 'public'
+[[static_route.topology.schema_shards.shard_views]]
+shard_id = 0
+[static_route.topology.schema_shards.shard_views.endpoint]
+addr = '127.0.0.1'
+port = 8831
+
+# Route&Shard: test
+[[static_route.topology.schema_shards]]
+schema = 'test'
+[[static_route.topology.schema_shards.shard_views]]
+shard_id = 0
+[static_route.topology.schema_shards.shard_views.endpoint]
+addr = '127.0.0.1'
+port = 8831
+[[static_route.topology.schema_shards.shard_views]]
+shard_id = 1
+[static_route.topology.schema_shards.shard_views.endpoint]
+addr = '127.0.0.2'
+port = 8831
+
+# Route rules: test
+[[static_route.rules.prefix_rules]]
+schema = 'test'
+prefix = 'BIZ'
+shard = 0
+
+[[static_route.rules.hash_rules]]
+schema = 'test'
+shards = [ 1 ]
+

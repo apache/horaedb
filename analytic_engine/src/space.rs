@@ -137,7 +137,7 @@ impl Space {
     /// Insert table data into space memory state if the table is
     /// absent. For internal use only
     ///
-    /// Panic if the table is already exists
+    /// Panic if the table has already existed.
     pub(crate) fn insert_table(&self, table_data: TableDataRef) {
         let success = self
             .table_datas

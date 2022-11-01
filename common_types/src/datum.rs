@@ -77,7 +77,6 @@ pub enum DatumKind {
     Int32,
     Int16,
     Int8,
-    // DatumKind::Boolean as usize = 14
     Boolean,
 }
 
@@ -269,21 +268,21 @@ impl TryFrom<u8> for DatumKind {
 impl From<DatumKind> for DataTypePb {
     fn from(kind: DatumKind) -> Self {
         match kind {
-            DatumKind::Null => Self::NULL,
-            DatumKind::Timestamp => Self::TIMESTAMP,
-            DatumKind::Double => Self::DOUBLE,
-            DatumKind::Float => Self::FLOAT,
-            DatumKind::Varbinary => Self::VARBINARY,
-            DatumKind::String => Self::STRING,
-            DatumKind::UInt64 => Self::UINT64,
-            DatumKind::UInt32 => Self::UINT32,
-            DatumKind::UInt16 => Self::UINT16,
-            DatumKind::UInt8 => Self::UINT8,
-            DatumKind::Int64 => Self::INT64,
-            DatumKind::Int32 => Self::INT32,
-            DatumKind::Int16 => Self::INT16,
-            DatumKind::Int8 => Self::INT8,
-            DatumKind::Boolean => Self::BOOL,
+            DatumKind::Null => Self::Null,
+            DatumKind::Timestamp => Self::Timestamp,
+            DatumKind::Double => Self::Double,
+            DatumKind::Float => Self::Float,
+            DatumKind::Varbinary => Self::Varbinary,
+            DatumKind::String => Self::String,
+            DatumKind::UInt64 => Self::Uint64,
+            DatumKind::UInt32 => Self::Uint32,
+            DatumKind::UInt16 => Self::Uint16,
+            DatumKind::UInt8 => Self::Uint8,
+            DatumKind::Int64 => Self::Int64,
+            DatumKind::Int32 => Self::Int32,
+            DatumKind::Int16 => Self::Int16,
+            DatumKind::Int8 => Self::Int8,
+            DatumKind::Boolean => Self::Bool,
         }
     }
 }
@@ -291,21 +290,21 @@ impl From<DatumKind> for DataTypePb {
 impl From<DataTypePb> for DatumKind {
     fn from(data_type: DataTypePb) -> Self {
         match data_type {
-            DataTypePb::NULL => DatumKind::Null,
-            DataTypePb::TIMESTAMP => DatumKind::Timestamp,
-            DataTypePb::DOUBLE => DatumKind::Double,
-            DataTypePb::FLOAT => DatumKind::Float,
-            DataTypePb::VARBINARY => DatumKind::Varbinary,
-            DataTypePb::STRING => DatumKind::String,
-            DataTypePb::UINT64 => DatumKind::UInt64,
-            DataTypePb::UINT32 => DatumKind::UInt32,
-            DataTypePb::UINT16 => DatumKind::UInt16,
-            DataTypePb::UINT8 => DatumKind::UInt8,
-            DataTypePb::INT64 => DatumKind::Int64,
-            DataTypePb::INT32 => DatumKind::Int32,
-            DataTypePb::INT16 => DatumKind::Int16,
-            DataTypePb::INT8 => DatumKind::Int8,
-            DataTypePb::BOOL => DatumKind::Boolean,
+            DataTypePb::Null => DatumKind::Null,
+            DataTypePb::Timestamp => DatumKind::Timestamp,
+            DataTypePb::Double => DatumKind::Double,
+            DataTypePb::Float => DatumKind::Float,
+            DataTypePb::Varbinary => DatumKind::Varbinary,
+            DataTypePb::String => DatumKind::String,
+            DataTypePb::Uint64 => DatumKind::UInt64,
+            DataTypePb::Uint32 => DatumKind::UInt32,
+            DataTypePb::Uint16 => DatumKind::UInt16,
+            DataTypePb::Uint8 => DatumKind::UInt8,
+            DataTypePb::Int64 => DatumKind::Int64,
+            DataTypePb::Int32 => DatumKind::Int32,
+            DataTypePb::Int16 => DatumKind::Int16,
+            DataTypePb::Int8 => DatumKind::Int8,
+            DataTypePb::Bool => DatumKind::Boolean,
         }
     }
 }

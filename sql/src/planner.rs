@@ -57,22 +57,22 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to generate datafusion plan, err:{}", source))]
-    DataFusionPlan { source: DataFusionError },
+    DatafusionPlan { source: DataFusionError },
 
     #[snafu(display("Failed to create datafusion schema, err:{}", source))]
-    CreateDataFusionSchema { source: DataFusionError },
+    CreateDatafusionSchema { source: DataFusionError },
 
     #[snafu(display("Failed to merge arrow schema, err:{}", source))]
     MergeArrowSchema { source: ArrowError },
 
     #[snafu(display("Failed to generate datafusion expr, err:{}", source))]
-    DataFusionExpr { source: DataFusionError },
+    DatafusionExpr { source: DataFusionError },
 
     #[snafu(display(
         "Failed to get data type from datafusion physical expr, err:{}",
         source
     ))]
-    DataFusionDataType { source: DataFusionError },
+    DatafusionDataType { source: DataFusionError },
 
     // Statement is too large and complicate to carry in Error, so we
     // only return error here, so the caller should attach sql to its
@@ -92,7 +92,7 @@ pub enum Error {
     #[snafu(display(
         "Table must contain only one timestamp key and it's data type must be TIMESTAMP"
     ))]
-    InvalidTimetampKey,
+    InvalidTimestampKey,
 
     #[snafu(display("Invalid unsign type: {}.\nBacktrace:\n{}", kind, backtrace))]
     InvalidUnsignType {
@@ -293,7 +293,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
-            .context(DataFusionPlan)?;
+            .context(DatafusionPlan)?;
 
         debug!("Sql statement to datafusion plan, df_plan:\n{:#?}", df_plan);
 
@@ -345,7 +345,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             }
         );
 
-        // Find timestamp key and primary key contraint
+        // Find timestamp key and primary key constraint.
         let mut primary_key_constraint_idx = None;
         let mut timestamp_name = None;
         for (idx, constraint) in stmt.constraints.iter().enumerate() {
@@ -359,9 +359,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     primary_key_constraint_idx = Some(idx);
                 } else if parser::is_timestamp_key_constraint(constraint) {
                     // Only one timestamp key constraint
-                    ensure!(timestamp_name.is_none(), InvalidTimetampKey);
+                    ensure!(timestamp_name.is_none(), InvalidTimestampKey);
                     // Only one column in constraint
-                    ensure!(columns.len() == 1, InvalidTimetampKey);
+                    ensure!(columns.len() == 1, InvalidTimestampKey);
 
                     let name = &columns[0].value;
                     let timestamp_column = name_column_map
@@ -370,7 +370,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     // Ensure type is timestamp
                     ensure!(
                         timestamp_column.data_type == DatumKind::Timestamp,
-                        InvalidTimetampKey
+                        InvalidTimestampKey
                     );
 
                     timestamp_name = Some(name.clone());
@@ -504,7 +504,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     })
                     .collect::<Vec<_>>();
                 let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
-                    .context(CreateDataFusionSchema)?;
+                    .context(CreateDatafusionSchema)?;
                 let df_planner = SqlToRel::new(&self.meta_provider);
 
                 // Index in insert values stmt of each column in table schema
@@ -532,7 +532,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                             if let Some(expr) = &column.default_value {
                                 let expr = df_planner
                                     .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
-                                    .context(DataFusionExpr)?;
+                                    .context(DatafusionExpr)?;
 
                                 default_value_map.insert(idx, expr);
                                 column_index_in_insert.push(InsertMode::Auto);
@@ -847,7 +847,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
         if let Some(expr) = &column_def.default_value {
             let df_logical_expr = df_planner
                 .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
-                .context(DataFusionExpr)?;
+                .context(DatafusionExpr)?;
 
             // Create physical expr
             let execution_props = ExecutionProps::default();
@@ -857,11 +857,11 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
                 &arrow_schema,
                 &execution_props,
             )
-            .context(DataFusionExpr)?;
+            .context(DatafusionExpr)?;
 
             let from_type = physical_expr
                 .data_type(&arrow_schema)
-                .context(DataFusionDataType)?;
+                .context(DatafusionDataType)?;
             ensure! {
                 can_cast_types(&from_type, &column_def.data_type.into()),
                 InvalidDefaultValueCoercion::<Expr, ArrowDataType, ArrowDataType>{
@@ -878,7 +878,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
             vec![DFField::from(new_arrow_field.clone())],
             HashMap::new(),
         )
-        .context(CreateDataFusionSchema)?;
+        .context(CreateDatafusionSchema)?;
         df_schema.merge(to_merged_df_schema);
         arrow_schema =
             ArrowSchema::try_merge(vec![arrow_schema, ArrowSchema::new(vec![new_arrow_field])])

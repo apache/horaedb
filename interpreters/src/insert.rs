@@ -41,13 +41,13 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to generate datafusion expr, err:{}", source))]
-    DataFusionExpr { source: DataFusionError },
+    DatafusionExpr { source: DataFusionError },
 
     #[snafu(display(
         "Failed to get data type from datafusion physical expr, err:{}",
         source
     ))]
-    DataFusionDataType { source: DataFusionError },
+    DatafusionDataType { source: DataFusionError },
 
     #[snafu(display("Failed to get arrow schema, err:{}", source))]
     ArrowSchema { source: ArrowError },
@@ -56,7 +56,7 @@ pub enum Error {
     DatafusionSchema { source: DataFusionError },
 
     #[snafu(display("Failed to evaluate datafusion physical expr, err:{}", source))]
-    DataFusionExecutor { source: DataFusionError },
+    DatafusionExecutor { source: DataFusionError },
 
     #[snafu(display("Failed to build arrow record batch, err:{}", source))]
     BuildArrowRecordBatch { source: ArrowError },
@@ -211,11 +211,11 @@ fn fill_default_values(
         // Optimize logical expr
         let execution_props = ExecutionProps::default();
         let mut const_optimizer =
-            ConstEvaluator::try_new(&execution_props).context(DataFusionExpr)?;
+            ConstEvaluator::try_new(&execution_props).context(DatafusionExpr)?;
         let evaluated_expr = default_value_expr
             .clone()
             .rewrite(&mut const_optimizer)
-            .context(DataFusionExpr)?;
+            .context(DatafusionExpr)?;
 
         // Find input columns
         let required_column_idxes = find_columns_by_expr(&evaluated_expr)
@@ -243,11 +243,11 @@ fn fill_default_values(
             &input_arrow_schema,
             &execution_props,
         )
-        .context(DataFusionExpr)?;
+        .context(DatafusionExpr)?;
 
         let from_type = physical_expr
             .data_type(&input_arrow_schema)
-            .context(DataFusionDataType)?;
+            .context(DatafusionDataType)?;
         let to_type = row_groups.schema().column(*column_idx).data_type;
 
         let casted_physical_expr = if from_type != to_type.into() {
@@ -276,7 +276,7 @@ fn fill_default_values(
 
         let output = casted_physical_expr
             .evaluate(&input)
-            .context(DataFusionExecutor)?;
+            .context(DatafusionExecutor)?;
 
         fill_column_to_row_group(*column_idx, &output, row_groups)?;
 

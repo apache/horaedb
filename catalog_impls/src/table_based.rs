@@ -882,6 +882,7 @@ mod tests {
         manager::Manager,
         schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
+    use common_types::table::DEFAULT_SHARD_ID;
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
         engine::{TableEngineRef, TableState},
@@ -931,6 +932,7 @@ mod tests {
             engine: ANALYTIC_ENGINE_TYPE.to_string(),
             options: HashMap::new(),
             state: TableState::Stable,
+            shard_id: DEFAULT_SHARD_ID,
         }
     }
 

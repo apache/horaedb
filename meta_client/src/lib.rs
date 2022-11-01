@@ -7,8 +7,9 @@ use common_util::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-    DropTableRequest, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
-    GetTablesOfShardsResponse, RouteTablesRequest, RouteTablesResponse, ShardInfo,
+    DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
+    GetTablesOfShardsRequest, GetTablesOfShardsResponse, RouteTablesRequest, RouteTablesResponse,
+    ShardInfo,
 };
 
 pub mod meta_impl;
@@ -20,8 +21,8 @@ pub enum Error {
     #[snafu(display("Missing shard info, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     MissingShardInfo { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Missing table info in NodeShard.\nBacktrace:\n{}", backtrace))]
-    MissingTableInfo { backtrace: Backtrace },
+    #[snafu(display("Missing table info, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    MissingTableInfo { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Missing header in rpc response.\nBacktrace:\n{}", backtrace))]
     MissingHeader { backtrace: Backtrace },
@@ -92,7 +93,7 @@ pub trait MetaClient: Send + Sync {
 
     async fn create_table(&self, req: CreateTableRequest) -> Result<CreateTableResponse>;
 
-    async fn drop_table(&self, req: DropTableRequest) -> Result<()>;
+    async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse>;
 
     async fn get_tables_of_shards(
         &self,

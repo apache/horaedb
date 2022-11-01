@@ -17,7 +17,8 @@ use ceresdbproto::meta_event::{
 use common_types::schema::SchemaName;
 use common_util::define_result;
 use meta_client::types::{
-    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, TablesOfShard,
+    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
+    TablesOfShard,
 };
 use snafu::{Backtrace, Snafu};
 
@@ -59,15 +60,14 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display(
-        "Shard not found in current node, shard_id:{}.\nBacktrace:\n{}",
-        shard_id,
-        backtrace
-    ))]
-    ShardNotFound {
-        shard_id: ShardId,
-        backtrace: Backtrace,
-    },
+    #[snafu(display("Shard not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    ShardNotFound { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Table not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    TableNotFound { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Table already exists, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+    TableAlreadyExists { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
         "Schema not found in current node, schema name:{}.\nBacktrace:\n{}",
@@ -76,6 +76,18 @@ pub enum Error {
     ))]
     SchemaNotFound {
         schema_name: SchemaName,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Shard version mismatch, shard_info:{:?}, expect version:{}.\nBacktrace:\n{}",
+        shard_info,
+        expect_version,
+        backtrace
+    ))]
+    ShardVersionMismatch {
+        shard_info: ShardInfo,
+        expect_version: ShardVersion,
         backtrace: Backtrace,
     },
 

@@ -12,7 +12,7 @@ use common_types::{
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
-use proto::table_requests;
+use proto::{common as common_pb, table_requests};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
@@ -315,7 +315,7 @@ impl Instance {
 
         let worker_id = worker_local.worker_id();
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -383,7 +383,7 @@ impl Instance {
         encoded_rows: Vec<ByteVec>,
     ) -> Result<SequenceNumber> {
         worker_local
-            .validate_table_data(
+            .ensure_permission(
                 &table_data.name,
                 table_data.id.as_u64() as usize,
                 self.write_group_worker_num,
@@ -391,11 +391,14 @@ impl Instance {
             .context(Write)?;
 
         // Convert into pb
-        let mut write_req_pb = table_requests::WriteRequest::new();
-        // Use the table schema instead of the schema in request to avoid schema
-        // mismatch during replaying
-        write_req_pb.set_schema(table_data.schema().into());
-        write_req_pb.set_rows(encoded_rows.into());
+        let write_req_pb = table_requests::WriteRequest {
+            // FIXME: Shall we avoid the magic number here?
+            version: 0,
+            // Use the table schema instead of the schema in request to avoid schema
+            // mismatch during replaying
+            schema: Some(common_pb::TableSchema::from(&table_data.schema())),
+            rows: encoded_rows,
+        };
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);

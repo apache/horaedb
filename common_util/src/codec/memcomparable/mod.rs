@@ -10,7 +10,7 @@ mod datum;
 mod number;
 
 use common_types::{
-    bytes::{BytesMut, MemBuf},
+    bytes::{BytesMut, SafeBuf},
     datum::DatumKind,
 };
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -74,6 +74,9 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Failed to skip padding bytes, err:{}.", source))]
+    SkipPadding { source: common_types::bytes::Error },
+
     #[snafu(display("Failed to decode string, err:{}", source))]
     DecodeString { source: common_types::string::Error },
 }
@@ -84,8 +87,8 @@ define_result!(Error);
 pub struct MemComparable;
 
 impl MemComparable {
-    fn ensure_flag<B: MemBuf>(buf: &mut B, flag: u8) -> Result<()> {
-        let actual = buf.read_u8().context(DecodeKey)?;
+    fn ensure_flag<B: SafeBuf>(buf: &mut B, flag: u8) -> Result<()> {
+        let actual = buf.try_get_u8().context(DecodeKey)?;
         ensure!(
             flag == actual,
             InvalidKeyFlag {

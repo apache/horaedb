@@ -1,19 +1,29 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::ops::Bound;
+use std::{
+    ops::{Bound, Not},
+    sync::Arc,
+};
 
+use arrow::{
+    array::BooleanArray,
+    datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
+};
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
 };
 use common_util::define_result;
+use datafusion::{
+    common::ToDFSchema,
+    error::DataFusionError,
+    logical_expr::expr_fn,
+    physical_expr::{self, execution_props::ExecutionProps},
+    physical_plan::PhysicalExpr,
+};
 use futures::stream::{self, Stream, StreamExt};
-use log::{error, trace};
 use object_store::ObjectStoreRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{
-    predicate::{filter_record_batch::RecordBatchFilter, Predicate},
-    table::TableId,
-};
+use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
@@ -46,11 +56,54 @@ pub enum Error {
 
     #[snafu(display("Fail to scan memtable, err:{}", source))]
     ScanMemtable { source: crate::memtable::Error },
+
+    #[snafu(display(
+        "Fail to execute filter expression, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    FilterExec {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Fail to downcast boolean array, actual data type:{:?}.\nBacktrace:\n{}",
+        data_type,
+        backtrace
+    ))]
+    DowncastBooleanArray {
+        data_type: ArrowDataType,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to get datafusion schema, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    DatafusionSchema {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to generate datafusion physical expr, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    DatafusionExpr {
+        source: DataFusionError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Failed to select from record batch, err:{}", source))]
+    SelectBatchData {
+        source: common_types::record_batch::Error,
+    },
 }
 
 define_result!(Error);
-
-const REBUILD_FILTERED_RECORD_BATCH_MAGNIFICATION: usize = 2;
 
 // TODO(yingwen): Can we move sequence to RecordBatchWithKey and remove this
 // struct? But what is the sequence after merge?
@@ -77,83 +130,72 @@ pub type SequencedRecordBatchStream = Box<
         + Unpin,
 >;
 
-/// Filter the `sequenced_record_batch` according to the `filter` if necessary.
-/// Returns the original batch if only a small proportion of the batch is
-/// filtered out.
-/// The `selected_rows_buf` is for reuse.
-fn maybe_filter_record_batch(
+/// Filter the `sequenced_record_batch` according to the `predicate`.
+fn filter_record_batch(
     mut sequenced_record_batch: SequencedRecordBatch,
-    filter: &RecordBatchFilter,
-    selected_rows_buf: &mut Vec<bool>,
-) -> Option<SequencedRecordBatch> {
-    if filter.is_empty() {
-        return Some(sequenced_record_batch);
-    }
+    predicate: Arc<dyn PhysicalExpr>,
+) -> Result<Option<SequencedRecordBatch>> {
+    let record_batch = sequenced_record_batch.record_batch.as_arrow_record_batch();
+    let filter_array = predicate
+        .evaluate(record_batch)
+        .map(|v| v.into_array(record_batch.num_rows()))
+        .context(FilterExec)?;
+    let selected_rows = filter_array
+        .as_any()
+        .downcast_ref::<BooleanArray>()
+        .context(DowncastBooleanArray {
+            data_type: filter_array.as_ref().data_type().clone(),
+        })?;
 
-    // The filter requires the `selected_rows_buf.len() >=
-    // sequenced_record_batch.num_rows()`.
-    selected_rows_buf.resize(sequenced_record_batch.num_rows(), true);
-    let num_selected_rows = filter.filter(
-        &sequenced_record_batch.record_batch,
-        selected_rows_buf.as_mut_slice(),
-    );
-
-    trace!(
-        "filter record batch, selected_rows:{}, origin_rows:{}",
-        num_selected_rows,
-        sequenced_record_batch.num_rows()
-    );
-
-    // No row is selected.
-    if num_selected_rows == 0 {
-        return None;
-    }
-
-    if num_selected_rows
-        > sequenced_record_batch.num_rows() / REBUILD_FILTERED_RECORD_BATCH_MAGNIFICATION
-    {
-        // just use the original record batch because only a small proportion is
-        // filtered out.
-        return Some(sequenced_record_batch);
-    }
-
-    // select the rows according to the filter result.
-    if let Err(e) = sequenced_record_batch
+    sequenced_record_batch
         .record_batch
-        .select_data(selected_rows_buf.as_slice())
-    {
-        error!(
-            "Fail to select record batch, data:{:?}, selected_rows:{:?}, err:{}",
-            sequenced_record_batch, selected_rows_buf, e,
-        );
-    }
+        .select_data(selected_rows)
+        .context(SelectBatchData)?;
 
-    Some(sequenced_record_batch)
+    sequenced_record_batch
+        .record_batch
+        .is_empty()
+        .not()
+        .then_some(Ok(sequenced_record_batch))
+        .transpose()
 }
 
 /// Filter the sequenced record batch stream by applying the `predicate`.
-/// However, the output record batches is not ensured to meet the requirements
-/// of the `predicate`.
 pub fn filter_stream(
     origin_stream: SequencedRecordBatchStream,
+    input_schema: ArrowSchemaRef,
     predicate: &Predicate,
-) -> SequencedRecordBatchStream {
-    if predicate.exprs().is_empty() {
-        return origin_stream;
-    }
+) -> Result<SequencedRecordBatchStream> {
+    let filter = match expr_fn::combine_filters(predicate.exprs()) {
+        Some(filter) => filter,
+        None => return Ok(origin_stream),
+    };
 
-    let mut select_row_buf = Vec::new();
-    let filter = RecordBatchFilter::from(predicate.exprs());
+    let input_df_schema = input_schema
+        .clone()
+        .to_dfschema()
+        .context(DatafusionSchema)?;
+    let execution_props = ExecutionProps::new();
+    let predicate = physical_expr::create_physical_expr(
+        &filter,
+        &input_df_schema,
+        input_schema.as_ref(),
+        &execution_props,
+    )
+    .context(DatafusionExpr)?;
+
     let stream = origin_stream.filter_map(move |sequence_record_batch| {
         let v = match sequence_record_batch {
-            Ok(v) => maybe_filter_record_batch(v, &filter, &mut select_row_buf).map(Ok),
+            Ok(v) => filter_record_batch(v, predicate.clone())
+                .map_err(|e| Box::new(e) as _)
+                .transpose(),
             Err(e) => Some(Err(e)),
         };
 
         futures::future::ready(v)
     });
 
-    Box::new(stream)
+    Ok(Box::new(stream))
 }
 
 /// Build filtered (by `predicate`) [SequencedRecordBatchStream] from a
@@ -165,8 +207,17 @@ pub fn filtered_stream_from_memtable(
     reverse: bool,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    stream_from_memtable(projected_schema, need_dedup, memtable, reverse)
-        .map(|origin_stream| filter_stream(origin_stream, predicate))
+    stream_from_memtable(projected_schema.clone(), need_dedup, memtable, reverse).and_then(
+        |origin_stream| {
+            filter_stream(
+                origin_stream,
+                projected_schema
+                    .as_record_schema_with_key()
+                    .to_arrow_schema_ref(),
+                predicate,
+            )
+        },
+    )
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
@@ -218,7 +269,16 @@ pub async fn filtered_stream_from_sst_file(
         store,
     )
     .await
-    .map(|origin_stream| filter_stream(origin_stream, sst_reader_options.predicate.as_ref()))
+    .and_then(|origin_stream| {
+        filter_stream(
+            origin_stream,
+            sst_reader_options
+                .projected_schema
+                .as_record_schema_with_key()
+                .to_arrow_schema_ref(),
+            sst_reader_options.predicate.as_ref(),
+        )
+    })
 }
 
 /// Build the [SequencedRecordBatchStream] from a sst.

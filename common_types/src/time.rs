@@ -9,7 +9,7 @@ use std::{
     time::{self, Duration, SystemTime},
 };
 
-use proto::common::TimeRange as TimeRangePb;
+use proto::common as common_pb;
 use snafu::{Backtrace, OptionExt, Snafu};
 
 /// Error of time module.
@@ -278,19 +278,19 @@ impl TimeRange {
     }
 }
 
-impl From<TimeRange> for TimeRangePb {
+impl From<TimeRange> for common_pb::TimeRange {
     fn from(src: TimeRange) -> Self {
-        let mut target = TimeRangePb::default();
-        target.set_start(src.inclusive_start.as_i64());
-        target.set_end(src.exclusive_end.as_i64());
-        target
+        common_pb::TimeRange {
+            start: src.inclusive_start.as_i64(),
+            end: src.exclusive_end.as_i64(),
+        }
     }
 }
 
-impl TryFrom<TimeRangePb> for TimeRange {
+impl TryFrom<common_pb::TimeRange> for TimeRange {
     type Error = Error;
 
-    fn try_from(src: TimeRangePb) -> Result<Self, Error> {
+    fn try_from(src: common_pb::TimeRange) -> Result<Self, Error> {
         Self::new(Timestamp::new(src.start), Timestamp::new(src.end)).context(InvalidTimeRange {
             start: src.start,
             end: src.end,

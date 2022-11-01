@@ -1,10 +1,8 @@
 [package]
 name = "analytic_engine"
-version = "0.1.0"
-authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
-
-[package.edition]
-workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -30,7 +28,7 @@ parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prometheus = { workspace = true }
 proto = { workspace = true }
-protobuf = { workspace = true }
+prost = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }

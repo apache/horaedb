@@ -15,9 +15,9 @@ use snafu::{OptionExt, ResultExt};
 use crate::{
     types::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-        DropTableRequest, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
-        GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
-        RouteTablesResponse, ShardInfo,
+        DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
+        GetTablesOfShardsRequest, GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader,
+        RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
     FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
@@ -132,10 +132,10 @@ impl MetaClient for MetaClientImpl {
         info!("Meta client finish creating table, resp:{:?}", pb_resp);
 
         check_response_header(&pb_resp.header)?;
-        Ok(CreateTableResponse::from(pb_resp))
+        CreateTableResponse::try_from(pb_resp)
     }
 
-    async fn drop_table(&self, req: DropTableRequest) -> Result<()> {
+    async fn drop_table(&self, req: DropTableRequest) -> Result<DropTableResponse> {
         let mut pb_req = meta_service::DropTableRequest::from(req.clone());
         pb_req.header = Some(self.request_header().into());
 
@@ -151,7 +151,8 @@ impl MetaClient for MetaClientImpl {
 
         info!("Meta client finish dropping table, resp:{:?}", pb_resp);
 
-        check_response_header(&pb_resp.header)
+        check_response_header(&pb_resp.header)?;
+        Ok(DropTableResponse::from(pb_resp))
     }
 
     async fn get_tables_of_shards(
@@ -218,10 +219,10 @@ impl MetaClient for MetaClientImpl {
         GetNodesResponse::try_from(pb_resp)
     }
 
-    async fn send_heartbeat(&self, shards_info: Vec<ShardInfo>) -> Result<()> {
+    async fn send_heartbeat(&self, shard_infos: Vec<ShardInfo>) -> Result<()> {
         let node_info = NodeInfo {
             node_meta_info: self.node_meta_info.clone(),
-            shards_info,
+            shard_infos,
         };
         let pb_req = meta_service::NodeHeartbeatRequest {
             header: Some(self.request_header().into()),

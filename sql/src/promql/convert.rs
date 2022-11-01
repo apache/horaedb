@@ -156,13 +156,13 @@ impl TryFrom<ExprPb> for Expr {
 }
 
 impl Expr {
-    pub fn get_selector(&self) -> &Selector {
+    pub fn selector(&self) -> &Selector {
         match self {
-            Expr::SimpleExpr(se) => match se {
+            Expr::SimpleExpr(op) => match op {
                 Operand::Selector(sel) => sel,
                 _ => unreachable!(),
             },
-            Expr::RecursiveExpr(re) => re.get_selector(),
+            Expr::RecursiveExpr(sub_expr) => sub_expr.selector(),
         }
     }
 
@@ -189,7 +189,7 @@ impl Expr {
             meta_provider
                 .try_into_container()
                 .context(MetaProviderError {
-                    msg: "Failed to find meta",
+                    msg: "failed to find meta",
                 })?,
         );
         Ok((
@@ -257,7 +257,7 @@ impl Expr {
                     let func = Func::try_from(op.as_str()).context(PushdownError {})?;
                     let first_arg = &operands[0];
                     if first_arg.is_selector() {
-                        let selector = first_arg.get_selector();
+                        let selector = first_arg.selector();
                         let (sub_plan, column_name, table_name) =
                             selector.clone().into_scan_plan(meta_provider)?;
                         let Selector {
@@ -368,7 +368,7 @@ impl Expr {
                     Ok((plan, column_name, table_name))
                 }
                 SubExpr::Binary(_) => InvalidExpr {
-                    msg: "Binary Expr not supported",
+                    msg: "binary Expr not supported",
                 }
                 .fail(),
             },
@@ -444,11 +444,11 @@ impl TryFrom<PbSubExpr> for Expr {
 }
 
 impl SubExpr {
-    pub fn get_selector(&self) -> &Selector {
+    pub fn selector(&self) -> &Selector {
         match self {
-            SubExpr::Aggr(AggrExpr { operands, .. }) => operands[0].get_selector(),
-            SubExpr::Func(FuncExpr { operands, .. }) => operands[0].get_selector(),
-            SubExpr::Binary(BinaryExpr { operands, .. }) => operands[0].get_selector(),
+            SubExpr::Aggr(AggrExpr { operands, .. }) => operands[0].selector(),
+            SubExpr::Func(FuncExpr { operands, .. }) => operands[0].selector(),
+            SubExpr::Binary(BinaryExpr { operands, .. }) => operands[0].selector(),
         }
     }
 

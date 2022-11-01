@@ -31,6 +31,8 @@ on:
 env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  LOCK_FILE: Cargo.lock
 
 jobs:
   linux-ci:
@@ -69,6 +71,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+      - name: Backup Lock File
+        run: |
+          cp ${LOCK_FILE} ${LOCK_FILE}.bak
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
@@ -80,13 +85,11 @@ jobs:
           make fmt
       - name: Run Unit Tests
         run: |
-          cp ${LOCK_FILE} ${LOCK_FILE}.bak
           make test-ut
           echo "Checking if ${LOCK_FILE} has changed..."
+      - name: Check Lock File
+        run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-        env:
-          RUST_BACKTRACE: "1"
-          LOCK_FILE: Cargo.lock
       - name: Run Harness
         run: |
           cd tests

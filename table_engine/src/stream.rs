@@ -93,7 +93,7 @@ impl FromDfStream {
         let schema = RecordSchema::try_from(df_schema)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithSource {
-                msg: "Convert record schema",
+                msg: "convert record schema",
             })?;
 
         Ok(Self { schema, df_stream })
@@ -110,7 +110,7 @@ impl Stream for FromDfStream {
                     .map_err(|e| Box::new(e) as _)
                     .and_then(|batch| RecordBatch::try_from(batch).map_err(|e| Box::new(e) as _))
                     .context(ErrWithSource {
-                        msg: "Convert from arrow record batch",
+                        msg: "convert from arrow record batch",
                     }),
             )),
             Poll::Ready(None) => Poll::Ready(None),

@@ -1,7 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 pub mod cache;
-#[allow(deprecated)]
 pub mod reverse_reader;
 mod serialized_reader;
 #[cfg(test)]

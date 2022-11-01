@@ -53,6 +53,8 @@ impl TestCase {
             if line.ends_with(';') {
                 queries.push(query);
                 query = Query::default();
+            } else {
+                query.append_query_line("\n");
             }
         }
 

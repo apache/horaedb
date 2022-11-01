@@ -1,9 +1,8 @@
 [package]
 name = "benchmarks"
-version = "0.1.0"
-
-[package.edition]
-workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -30,6 +29,7 @@ table_engine = { workspace = true }
 table_kv = { workspace = true }
 tokio = { workspace = true }
 wal = { workspace = true }
+pprof = { version = "0.10", features = ["flamegraph", "criterion"] }
 
 [dev-dependencies]
 criterion = { workspace = true }

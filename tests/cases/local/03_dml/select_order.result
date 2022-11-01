@@ -2,15 +2,34 @@ DROP TABLE IF EXISTS `03_dml_select_order_table1`;
 
 affected_rows: 0
 
-CREATE TABLE `03_dml_select_order_table1` (    `timestamp` timestamp NOT NULL,    `value` int,    timestamp KEY (timestamp)) ENGINE=AnalyticWITH(	 enable_ttl='false');
+CREATE TABLE `03_dml_select_order_table1` (
+    `timestamp` timestamp NOT NULL,
+    `value` int,
+    timestamp KEY (timestamp)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false'
+);
 
 affected_rows: 0
 
-INSERT INTO `03_dml_select_order_table1` (`timestamp`, `value`)VALUES    (1, 100),    (2, 1000),    (3, 200),    (4, 30000),    (5, 4400),    (6, 400);
+INSERT INTO `03_dml_select_order_table1` (`timestamp`, `value`)
+VALUES
+    (1, 100),
+    (2, 1000),
+    (3, 200),
+    (4, 30000),
+    (5, 4400),
+    (6, 400);
 
 affected_rows: 6
 
-SELECT    `timestamp`,    `value`FROM    `03_dml_select_order_table1`ORDER BY    `value` ASC;
+SELECT
+    `timestamp`,
+    `value`
+FROM
+    `03_dml_select_order_table1`
+ORDER BY
+    `value` ASC;
 
 timestamp,value,
 Timestamp(Timestamp(1)),Int32(100),
@@ -21,7 +40,13 @@ Timestamp(Timestamp(5)),Int32(4400),
 Timestamp(Timestamp(4)),Int32(30000),
 
 
-SELECT    `timestamp`,    `value`FROM    `03_dml_select_order_table1`ORDER BY    `value` DESC;
+SELECT
+    `timestamp`,
+    `value`
+FROM
+    `03_dml_select_order_table1`
+ORDER BY
+    `value` DESC;
 
 timestamp,value,
 Timestamp(Timestamp(4)),Int32(30000),
