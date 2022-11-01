@@ -30,6 +30,7 @@ use server::{
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
+use server::limiter::{Limiter};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use tracing_util::{
     self,
@@ -118,12 +119,17 @@ where
     // Create query executor
     let query_executor = ExecutorImpl::new(config.query.clone());
 
+    // Config limiter
+    let limiter = Limiter::default();
+    limiter.init(config.limiter.write_block_list.clone(),config.limiter.read_block_list.clone());
+
     let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())
         .query_executor(query_executor)
         .table_engine(engine_proxy.clone())
         .function_registry(function_registry)
-        .limiter(config.limiter);
+        .limiter(limiter);
+
 
     let builder = match config.deploy_mode {
         DeployMode::Standalone => {

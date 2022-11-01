@@ -3,6 +3,7 @@
 use std::{collections::HashSet, sync::RwLock};
 
 use datafusion::catalog::TableReference;
+use serde_derive::Deserialize;
 use sql::plan::Plan;
 
 pub struct Limiter {
@@ -20,6 +21,12 @@ impl Default for Limiter {
 }
 
 impl Limiter {
+
+    pub fn init(&self, write_block_list: Vec<String>, read_block_list: Vec<String>){
+        *self.write_block_list.write().unwrap() = write_block_list.into_iter().collect();
+        *self.read_block_list.write().unwrap() = read_block_list.into_iter().collect();
+    }
+
     pub fn should_limit(&self, plan: &Plan) -> bool {
         match plan {
             Plan::Query(query) => self.read_block_list.read().unwrap().iter().any(|table| {
@@ -80,6 +87,13 @@ impl Limiter {
             read_block_list.remove(&value);
         }
     }
+}
+
+#[derive(Default, Clone, Deserialize, Debug)]
+#[serde(default)]
+pub struct LimiterConfig {
+    pub write_block_list: Vec<String>,
+    pub read_block_list: Vec<String>,
 }
 
 #[cfg(test)]

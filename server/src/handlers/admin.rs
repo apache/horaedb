@@ -20,8 +20,8 @@ pub struct RejectRequest {
 
 #[derive(Serialize)]
 pub struct RejectResponse {
-    write_reject_list: BTreeSet<String>,
-    read_reject_list: BTreeSet<String>,
+    write_block_list: BTreeSet<String>,
+    read_block_list: BTreeSet<String>,
 }
 
 pub async fn handle_block<Q: QueryExecutor + 'static>(
@@ -52,17 +52,17 @@ pub async fn handle_block<Q: QueryExecutor + 'static>(
                 .remove_write_block_list(request.write_block_list);
             instance
                 .limiter
-                .remove_read_reject_list(request.read_block_list);
+                .remove_read_block_list(request.read_block_list);
         }
     }
 
     Ok(RejectResponse {
-        write_reject_list: instance
+        write_block_list: instance
             .limiter
             .get_write_block_list()
             .into_iter()
             .collect::<BTreeSet<_>>(),
-        read_reject_list: instance
+        read_block_list: instance
             .limiter
             .get_read_block_list()
             .into_iter()
