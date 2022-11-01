@@ -10,11 +10,13 @@ use std::{
     time::Instant,
 };
 
+use arrow::datatypes::SchemaRef as ArrowSchemaRef;
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
     projected_schema::ProjectedSchema,
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
+    schema::Schema,
 };
 use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::{
@@ -47,14 +49,17 @@ use crate::{
     sst::{
         factory::SstReaderOptions,
         file::SstMetaData,
-        parquet::encoding::{self, ParquetDecoder},
+        parquet::{
+            encoding::{self, ParquetDecoder},
+            hybrid,
+        },
         reader::{error::*, Result, SstReader},
     },
-    table_options::StorageFormatOptions,
+    table_options::{StorageFormat, StorageFormatOptions},
 };
 
 const CERESDB_SCHEME: &str = "ceresdb";
-const CERESDB_HOST: &str = "ceresdb";
+const CERESDB_HOST: &str = "ceresdb_host";
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -66,7 +71,6 @@ pub struct Reader<'a> {
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
     batch_size: usize,
-
     df_plan: Option<Arc<dyn ExecutionPlan>>,
 
     /// init this field in `init_if_necessary`
@@ -80,7 +84,6 @@ impl<'a> Reader<'a> {
             data_cache: options.data_cache.clone(),
         });
         let batch_size = options.read_batch_row_num;
-
         Self {
             path,
             storage,
@@ -91,6 +94,13 @@ impl<'a> Reader<'a> {
             batch_size,
             df_plan: None,
             meta_data: None,
+        }
+    }
+
+    fn construct_arrow_schema(schema: &Schema, opts: &StorageFormatOptions) -> ArrowSchemaRef {
+        match opts.format {
+            StorageFormat::Columnar => schema.to_arrow_schema_ref(),
+            StorageFormat::Hybrid => hybrid::build_hybrid_arrow_schema(schema),
         }
     }
 
@@ -105,8 +115,8 @@ impl<'a> Reader<'a> {
             size: meta_data.size as usize,
         };
 
-        let schema = meta_data.schema.clone();
-        let arrow_schema = schema.to_arrow_schema_ref();
+        let arrow_schema =
+            Self::construct_arrow_schema(&meta_data.schema, &meta_data.storage_format_opts);
         let row_projector = self
             .projected_schema
             .try_project_with_key(&meta_data.schema)
@@ -125,9 +135,9 @@ impl<'a> Reader<'a> {
             limit: None,
             table_partition_cols: vec![],
         };
-        let filter_expr = self.predicate.to_df_expr(schema.timestamp_name());
+        let filter_expr = self.predicate.to_df_expr(meta_data.schema.timestamp_name());
         debug!(
-            "send record_batch, object_meta:{:?}, filter:{:?}, scan_config:{:?}",
+            "fetch_record_batch_stream, object_meta:{:?}, filter:{:?}, scan_config:{:?}",
             object_meta, filter_expr, scan_config
         );
 
