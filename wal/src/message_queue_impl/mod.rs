@@ -2,4 +2,5 @@
 
 //! Wal manager based on message queue
 
+pub(crate) mod encoding;
 pub(crate) mod region_meta;

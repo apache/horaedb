@@ -6757,6 +6757,8 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "message_queue",
+ "prost",
+ "proto 0.4.0",
  "rand 0.8.5",
  "rocksdb",
  "serde",
