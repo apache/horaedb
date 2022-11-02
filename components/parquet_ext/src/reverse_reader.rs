@@ -8,22 +8,15 @@ use arrow::{
     record_batch::{RecordBatch, RecordBatchReader},
 };
 use arrow_ext::operation;
-use bytes::{buf::Reader, Bytes};
+use bytes::Bytes;
 use parquet::{
     arrow::{
         arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder},
         ProjectionMask,
     },
     errors::Result,
-    file::{
-        metadata::{FileMetaData, ParquetMetaData},
-        reader::{ChunkReader, FileReader, Length, RowGroupReader},
-    },
-    record::reader::RowIter,
-    schema::types::Type as SchemaType,
+    file::metadata::ParquetMetaData,
 };
-
-use crate::CacheableSerializedFileReader;
 
 /// The reverse reader for [FileReader].
 ///
@@ -88,88 +81,24 @@ impl RecordBatchReader for ReversedFileReader {
     }
 }
 
-/// Reader for one [RowGroup] of the [FileReader].
-struct SingleRowGroupFileReader {
-    file_reader: Arc<CacheableSerializedFileReader<Bytes>>,
-    /// The index of row group in `file_reader` to read.
-    row_group_idx: usize,
-    /// The meta data for the reader of the one row group.
-    meta_data: ParquetMetaData,
-}
-
-impl SingleRowGroupFileReader {
-    fn new(file_reader: Arc<CacheableSerializedFileReader<Bytes>>, row_group_idx: usize) -> Self {
-        let meta_data = {
-            let orig_meta_data = file_reader.metadata();
-            let orig_file_meta_data = orig_meta_data.file_metadata();
-            let row_group_meta_data = orig_meta_data.row_group(row_group_idx);
-            let file_meta_data = FileMetaData::new(
-                orig_file_meta_data.version(),
-                // provide the row group's row number because of the reader only contains one row
-                // group.
-                row_group_meta_data.num_rows(),
-                orig_file_meta_data.created_by().map(str::to_string),
-                orig_file_meta_data.key_value_metadata().cloned(),
-                orig_file_meta_data.schema_descr_ptr(),
-                orig_file_meta_data.column_orders().cloned(),
-            );
-            ParquetMetaData::new(file_meta_data, vec![row_group_meta_data.clone()])
-        };
-
-        Self {
-            file_reader,
-            row_group_idx,
-            meta_data,
-        }
-    }
-}
-
-impl Length for SingleRowGroupFileReader {
-    fn len(&self) -> u64 {
-        self.file_reader.len()
-    }
-}
-
-impl ChunkReader for SingleRowGroupFileReader {
-    type T = Reader<Bytes>;
-
-    fn get_read(&self, start: u64, length: usize) -> Result<Self::T> {
-        self.file_reader.get_read(start, length)
-    }
-}
-
-impl FileReader for SingleRowGroupFileReader {
-    fn metadata(&self) -> &ParquetMetaData {
-        &self.meta_data
-    }
-
-    fn num_row_groups(&self) -> usize {
-        1
-    }
-
-    fn get_row_group(&self, i: usize) -> Result<Box<dyn RowGroupReader + '_>> {
-        self.file_reader.get_row_group(self.row_group_idx + i)
-    }
-
-    fn get_row_iter(&self, projection: Option<SchemaType>) -> Result<RowIter> {
-        RowIter::from_file(projection, self)
-    }
-}
-
 /// Builder for [ReverseRecordBatchReader] from the `file_reader`.
 #[must_use]
-pub struct Builder {
-    file_reader: Arc<CacheableSerializedFileReader<Bytes>>,
+pub struct Builder<'a> {
+    metadata: &'a ParquetMetaData,
+    chunk_reader: Bytes,
     batch_size: usize,
     projection: Option<Vec<usize>>,
+    row_groups: Option<Vec<usize>>,
 }
 
-impl Builder {
-    pub fn new(file_reader: Arc<CacheableSerializedFileReader<Bytes>>, batch_size: usize) -> Self {
+impl<'a> Builder<'a> {
+    pub fn new(metadata: &'a ParquetMetaData, chunk_reader: Bytes, batch_size: usize) -> Self {
         Self {
-            file_reader,
+            metadata,
+            chunk_reader,
             batch_size,
             projection: None,
+            row_groups: None,
         }
     }
 
@@ -179,13 +108,23 @@ impl Builder {
         self
     }
 
+    pub fn filtered_row_groups(mut self, row_groups: Option<Vec<usize>>) -> Self {
+        self.row_groups = row_groups;
+
+        self
+    }
+
     pub fn build(self) -> Result<ReversedFileReader> {
-        let mut reversed_readers = Vec::with_capacity(self.file_reader.num_row_groups());
-        for row_group_idx in (0..self.file_reader.num_row_groups()).rev() {
-            let row_group_file_reader =
-                SingleRowGroupFileReader::new(self.file_reader.clone(), row_group_idx);
-            let builder = ParquetRecordBatchReaderBuilder::try_new(row_group_file_reader)?
-                .with_batch_size(self.batch_size);
+        let row_groups = match self.row_groups {
+            Some(v) => v,
+            None => (0..self.metadata.num_row_groups()).collect(),
+        };
+
+        let mut reversed_readers = Vec::with_capacity(row_groups.len());
+        for row_group_idx in row_groups.into_iter().rev() {
+            let builder = ParquetRecordBatchReaderBuilder::try_new(self.chunk_reader.clone())?
+                .with_batch_size(self.batch_size)
+                .with_row_groups(vec![row_group_idx]);
             let builder = if let Some(proj) = &self.projection {
                 let proj_mask = ProjectionMask::leaves(
                     builder.metadata().file_metadata().schema_descr(),
@@ -199,7 +138,7 @@ impl Builder {
         }
 
         let schema = {
-            let file_metadata = self.file_reader.metadata().file_metadata();
+            let file_metadata = self.metadata.file_metadata();
             Arc::new(parquet::arrow::parquet_to_arrow_schema(
                 file_metadata.schema_descr(),
                 file_metadata.key_value_metadata(),
@@ -218,6 +157,11 @@ impl Builder {
 #[cfg(test)]
 mod tests {
     use std::io::Read;
+
+    use parquet::{
+        file::{reader::FileReader, serialized_reader::SerializedFileReader},
+        record::reader::RowIter,
+    };
 
     use super::*;
 
@@ -245,13 +189,11 @@ mod tests {
         let mut buf = Vec::new();
         let _ = test_file.read_to_end(&mut buf).unwrap();
         let bytes = Bytes::from(buf);
-        let reader =
-            CacheableSerializedFileReader::try_new(TEST_FILE.to_string(), bytes, None, None)
-                .unwrap();
-        let reader = Arc::new(reader);
-        let reversed_reader = Builder::new(reader.clone(), TEST_BATCH_SIZE)
+        let file_reader =
+            SerializedFileReader::new(bytes.clone()).expect("Should succeed to make file reader");
+        let reversed_reader = Builder::new(file_reader.metadata(), bytes, TEST_BATCH_SIZE)
             .build()
             .expect("Should succeed to build reversed file reader");
-        check_reversed_row_iter(reader.get_row_iter(None).unwrap(), reversed_reader);
+        check_reversed_row_iter(file_reader.get_row_iter(None).unwrap(), reversed_reader);
     }
 }
