@@ -121,10 +121,13 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
-        for idx in 0..self.schema.num_key_columns() {
-            // Encode each column in primary key
-            encoder.encode(buf, &value[idx]).context(EncodeKeyDatum)?;
+        for idx in self.schema.primary_key_idx() {
+            encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
         }
+        // for idx in 0..self.schema.num_key_columns() {
+        //     // Encode each column in primary key
+        //     encoder.encode(buf, &value[idx]).context(EncodeKeyDatum)?;
+        // }
         SequenceCodec.encode(buf, &self.sequence)?;
 
         Ok(())

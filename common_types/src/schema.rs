@@ -689,6 +689,11 @@ impl Schema {
         self.num_key_columns
     }
 
+    /// Return the number of columns index in primary key
+    pub fn primary_key_idx(&self) ->  &[usize] {
+        &self.primary_key_index
+    }
+
     /// Get the name of the timestamp column
     #[inline]
     pub fn timestamp_name(&self) -> &str {
