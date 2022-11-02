@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use analytic_engine::sst::{file::SstMetaData, parquet::reader};
 use object_store::{ObjectStoreRef, Path};
 use parquet_ext::{DataCacheRef, MetaCacheRef};
