@@ -35,6 +35,16 @@ pub enum Error {
         msg: String,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Failed to get table meta data, table meta not found, table:{}\nBacktrace:\n{}",
+        table_id,
+        backtrace
+    ))]
+    GetTableMeta {
+        table_id: TableId,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -138,6 +148,17 @@ impl RegionMeta {
         }
 
         RegionMetaSnapshot { entries }
+    }
+
+    /// Get table meta data by table id.
+    pub async fn get_table_meta_data(&self, table_id: TableId) -> Result<TableMetaData> {
+        let inner = self.inner.read().await;
+
+        let table_meta = inner
+            .table_metas
+            .get(&table_id)
+            .with_context(|| GetTableMeta { table_id })?;
+        Ok(table_meta.get_meta_data().await)
     }
 }
 
