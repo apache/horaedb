@@ -48,13 +48,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Query limited by block list, query:{}",
-    query
-    ))]
-    QueryBlock {
-        query: String,
-    },
+    #[snafu(display("Query limited by block list, query:{}", query))]
+    QueryBlock { query: String },
 }
 
 define_result!(Error);

@@ -21,10 +21,11 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-
-    pub fn init(&self, write_block_list: Vec<String>, read_block_list: Vec<String>){
-        *self.write_block_list.write().unwrap() = write_block_list.into_iter().collect();
-        *self.read_block_list.write().unwrap() = read_block_list.into_iter().collect();
+    pub fn new(write_block_list: Vec<String>, read_block_list: Vec<String>) ->Self{
+        Self {
+            write_block_list: RwLock::new(write_block_list.into_iter().collect()),
+            read_block_list: RwLock::new(read_block_list.into_iter().collect()),
+        }
     }
 
     pub fn should_limit(&self, plan: &Plan) -> bool {

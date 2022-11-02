@@ -20,6 +20,7 @@ use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
+    limiter::Limiter,
     route::{
         cluster_based::ClusterBasedRouter,
         rule_based::{ClusterView, RuleBasedRouter},
@@ -30,7 +31,6 @@ use server::{
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
-use server::limiter::{Limiter};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use tracing_util::{
     self,
@@ -120,8 +120,10 @@ where
     let query_executor = ExecutorImpl::new(config.query.clone());
 
     // Config limiter
-    let limiter = Limiter::default();
-    limiter.init(config.limiter.write_block_list.clone(),config.limiter.read_block_list.clone());
+    let limiter =  Limiter::new(
+        config.limiter.write_block_list.clone(),
+        config.limiter.read_block_list.clone(),
+    );
 
     let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())
@@ -129,7 +131,6 @@ where
         .table_engine(engine_proxy.clone())
         .function_registry(function_registry)
         .limiter(limiter);
-
 
     let builder = match config.deploy_mode {
         DeployMode::Standalone => {

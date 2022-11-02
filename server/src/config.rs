@@ -11,9 +11,11 @@ use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
-use crate::limiter::{LimiterConfig};
 
-use crate::route::rule_based::{ClusterView, RuleList};
+use crate::{
+    limiter::LimiterConfig,
+    route::rule_based::{ClusterView, RuleList},
+};
 
 /// The deployment mode decides how to start the CeresDB.
 ///
@@ -205,7 +207,6 @@ pub struct Config {
 
     // Config of limiter
     pub limiter: LimiterConfig,
-
 }
 
 impl Default for RuntimeConfig {

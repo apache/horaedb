@@ -25,10 +25,9 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, TooMuchStmt},
+    error::{ArrowToString, CreatePlan, Error::QueryBlock, InterpreterExec, ParseSql, TooMuchStmt},
     prelude::*,
 };
-use crate::handlers::error::Error::QueryBlock;
 
 #[derive(Debug, Deserialize)]
 pub struct Request {
@@ -160,7 +159,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 
     if instance.limiter.should_limit(&plan) {
         return Err(QueryBlock {
-            query: request.query.to_owned()
+            query: request.query.to_owned(),
         });
     }
 
