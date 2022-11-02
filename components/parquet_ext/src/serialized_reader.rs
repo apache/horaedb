@@ -65,6 +65,7 @@ pub struct CacheableSerializedFileReader<R: ChunkReader> {
     name: String,
     chunk_reader: Arc<R>,
     metadata: Arc<ParquetMetaData>,
+    filtered_row_group_indexes: Option<Vec<usize>>,
     data_cache: Option<DataCacheRef>,
 }
 
@@ -95,23 +96,37 @@ impl<R: 'static + ChunkReader> CacheableSerializedFileReader<R> {
             name,
             chunk_reader: Arc::new(chunk_reader),
             metadata,
+            filtered_row_group_indexes: None,
             data_cache,
         })
     }
 
+    /// Returns the indexes of the filtered row groups.
+    ///
+    /// [`None`] will be returned if `filter_row_groups` has not been called
+    /// yet.
+    pub fn filtered_row_group_indexes(&self) -> Option<&[usize]> {
+        self.filtered_row_group_indexes.as_deref()
+    }
+
     /// Filters row group metadata to only those row groups,
-    /// for which the predicate function returns true
+    /// for which the predicate function returns true.
     pub fn filter_row_groups(&mut self, predicate: &dyn Fn(&RowGroupMetaData, usize) -> bool) {
-        let mut filtered_row_groups = Vec::<RowGroupMetaData>::new();
-        for (i, row_group_metadata) in self.metadata.row_groups().iter().enumerate() {
+        let row_groups = self.metadata.row_groups();
+        let mut filtered_row_group_indexes = Vec::with_capacity(row_groups.len());
+        let mut filtered_row_groups = Vec::with_capacity(row_groups.len());
+        for (i, row_group_metadata) in row_groups.iter().enumerate() {
             if predicate(row_group_metadata, i) {
                 filtered_row_groups.push(row_group_metadata.clone());
+                filtered_row_group_indexes.push(i);
             }
         }
         self.metadata = Arc::new(ParquetMetaData::new(
             self.metadata.file_metadata().clone(),
             filtered_row_groups,
         ));
+
+        self.filtered_row_group_indexes = Some(filtered_row_group_indexes);
     }
 }
 

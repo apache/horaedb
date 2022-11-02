@@ -289,10 +289,16 @@ impl ProjectAndFilterReader {
 
             Ok(Box::new(reverse_reader))
         } else {
+            let filtered_row_groups = file_reader
+                .filtered_row_group_indexes()
+                .expect("filtered row groups must exist after filtering")
+                .to_vec();
+
             let builder = ParquetRecordBatchReaderBuilder::try_new(file_reader)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeRecordBatch)?
-                .with_batch_size(self.batch_size);
+                .with_batch_size(self.batch_size)
+                .with_row_groups(filtered_row_groups);
 
             let builder = if self.projected_schema.is_all_projection() {
                 builder
