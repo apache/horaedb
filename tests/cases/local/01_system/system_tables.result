@@ -27,9 +27,9 @@ timestamp,catalog,schema,table_name,engine,
 Timestamp(Timestamp(0)),String(StringBytes(b"ceresdb")),String(StringBytes(b"public")),String(StringBytes(b"01_system_table1")),String(StringBytes(b"Analytic")),
 
 
-
 SHOW TABLES LIKE '01%';
 
 Tables,
+String(StringBytes(b"01_system_table1")),
 
 

@@ -101,7 +101,6 @@ impl ShowInterpreter {
         plan: ShowTablesPlan,
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
-
         let tables_names = match plan.pattern {
             Some(sc) => schema
                 .all_tables()
@@ -160,7 +159,10 @@ impl ShowInterpreter {
 }
 
 fn is_table_matched(str: &str, search_re: &str) -> Result<bool> {
-    let regex_str = search_re.replace('_', ".").replace('%', ".*");
+    let regex_str = search_re
+        .replace('\'', "")
+        .replace('_', ".")
+        .replace('%', ".*");
     let re = Regex::new(&regex_str).unwrap();
     Ok(re.is_match(str))
 }
