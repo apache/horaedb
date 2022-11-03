@@ -65,7 +65,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let storage = LocalFileSystem::new_with_prefix(args.store_path).expect("invalid path");
     let storage = Arc::new(storage) as _;
     let input_path = Path::from(args.input);
-    let sst_meta = sst_util::meta_from_sst(&storage, &input_path, &None, &None).await;
+    let sst_meta = sst_util::meta_from_sst(&storage, &input_path).await;
     let factory = FactoryImpl;
     let reader_opts = SstReaderOptions {
         sst_type: SstType::Parquet,

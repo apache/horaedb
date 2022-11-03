@@ -2,17 +2,13 @@
 
 use analytic_engine::sst::{file::SstMetaData, parquet::reader};
 use object_store::{ObjectStoreRef, Path};
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet::file::footer;
 
-pub async fn meta_from_sst(
-    store: &ObjectStoreRef,
-    sst_path: &Path,
-    meta_cache: &Option<MetaCacheRef>,
-    data_cache: &Option<DataCacheRef>,
-) -> SstMetaData {
-    let (_, sst_meta) = reader::read_sst_meta(store, sst_path, meta_cache, data_cache)
+/// Extract the meta data from the sst file.
+pub async fn meta_from_sst(store: &ObjectStoreRef, sst_path: &Path) -> SstMetaData {
+    let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
         .await
         .unwrap();
-
-    sst_meta
+    let meta_data = footer::parse_metadata(&chunk_reader).unwrap();
+    reader::read_sst_meta(&meta_data).unwrap()
 }
