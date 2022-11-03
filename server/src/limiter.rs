@@ -21,10 +21,10 @@ impl Default for Limiter {
 }
 
 impl Limiter {
-    pub fn new(write_block_list: Vec<String>, read_block_list: Vec<String>) ->Self{
+    pub fn new(limit_config: LimiterConfig) -> Self {
         Self {
-            write_block_list: RwLock::new(write_block_list.into_iter().collect()),
-            read_block_list: RwLock::new(read_block_list.into_iter().collect()),
+            write_block_list: RwLock::new(limit_config.write_block_list.into_iter().collect()),
+            read_block_list: RwLock::new(limit_config.read_block_list.into_iter().collect()),
         }
     }
 

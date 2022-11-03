@@ -120,10 +120,7 @@ where
     let query_executor = ExecutorImpl::new(config.query.clone());
 
     // Config limiter
-    let limiter =  Limiter::new(
-        config.limiter.write_block_list.clone(),
-        config.limiter.read_block_list.clone(),
-    );
+    let limiter = Limiter::new(config.limiter.clone());
 
     let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())
