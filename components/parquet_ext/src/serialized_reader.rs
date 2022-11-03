@@ -612,9 +612,8 @@ mod tests {
         assert_eq!(metadata.num_row_groups(), 1);
 
         // test filtering out all row groups
-        reader.filter_row_groups(&|_, _| false);
-        let metadata = reader.metadata();
-        assert_eq!(metadata.num_row_groups(), 0);
+        let filtered_row_groups = reader.filter_row_groups(&|_, _| false);
+        assert!(filtered_row_groups.is_empty());
 
         Ok(())
     }
