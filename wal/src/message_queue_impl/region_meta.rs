@@ -49,13 +49,11 @@ pub enum Error {
 
 define_result!(Error);
 
-#[allow(unused)]
 #[derive(Default, Debug)]
 pub struct RegionMeta {
     inner: RwLock<RegionMetaInner>,
 }
 
-#[allow(unused)]
 impl RegionMeta {
     // TODO: Need to implement the init method using the [RegionMetaSnapshot] which
     // will be persisted.
@@ -64,7 +62,7 @@ impl RegionMeta {
         {
             let inner = self.inner.read().await;
             if let Some(table_meta) = inner.table_metas.get(&table_id) {
-                return table_meta.get_meta_data().await.next_sequence_num;
+                return table_meta.prepare_for_write().await;
             }
         }
 
@@ -128,7 +126,7 @@ impl RegionMeta {
                 table_id,
                 msg: format!("table:{}'s meta not found while mark its deleted", table_id),
             })?;
-        table_meta.mark_deleted(sequence_num).await;
+        table_meta.mark_deleted(sequence_num).await?;
 
         Ok(())
     }
@@ -142,7 +140,7 @@ impl RegionMeta {
         let inner = self.inner.read().await;
         // Calc the min offset in message queue.
         let mut entries = Vec::with_capacity(inner.table_metas.len());
-        for (table_id, table_meta) in &inner.table_metas {
+        for (_, table_meta) in &inner.table_metas {
             let meta_data = table_meta.get_meta_data().await;
             entries.push(meta_data);
         }
@@ -170,7 +168,6 @@ struct RegionMetaInner {
 
 /// Wrapper for the [TableMetaInner].
 
-#[allow(unused)]
 #[derive(Debug)]
 struct TableMeta {
     table_id: TableId,
@@ -179,7 +176,6 @@ struct TableMeta {
     inner: Mutex<TableMetaInner>,
 }
 
-#[allow(unused)]
 impl TableMeta {
     fn new(table_id: TableId) -> Self {
         Self {
@@ -188,9 +184,9 @@ impl TableMeta {
         }
     }
 
+    #[inline]
     async fn prepare_for_write(&self) -> SequenceNumber {
-        let inner = self.inner.lock().await;
-        inner.next_sequence_num
+        self.get_meta_data().await.next_sequence_num
     }
 
     async fn update_after_write(&self, write_offset_range: OffsetRange) {
@@ -289,7 +285,6 @@ impl TableMeta {
     }
 }
 
-#[allow(unused)]
 /// Table meta data, will be updated atomically by mutex.
 #[derive(Debug, Default)]
 struct TableMetaInner {
@@ -313,7 +308,6 @@ struct TableMetaInner {
     start_sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TableMetaData {
     pub table_id: TableId,
@@ -340,7 +334,6 @@ pub struct OffsetRange {
     pub end: Offset,
 }
 
-#[allow(unused)]
 impl OffsetRange {
     pub fn new(start: Offset, end: Offset) -> Self {
         Self { start, end }
