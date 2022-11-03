@@ -7,7 +7,7 @@ First, let's assume that our target is to deploy a cluster consisting of two Cer
 ## Start CeresDBs
 You can use the following command to create a CeresDB cluster with two instances.
 1. Start CeresMeta first
-   `CeresMeta` is ,Refer to [CeresMeta](https://github.com/CeresDB/ceresmeta)
+   Refer to [CeresMeta](https://github.com/CeresDB/ceresmeta)
 
 2. Prepare config of CeresDB
 * Replace `{meta_addr}` with the actual address of CeresMeta in config file
