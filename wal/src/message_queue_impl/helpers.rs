@@ -211,10 +211,7 @@ impl<Mq: MessageQueue> LogCleaner<Mq> {
         }
 
         if safe_delete_offset == Offset::MAX {
-            // All tables are in such states:
-            // + has init, but not written
-            // + has written, but not flushed
-            // + has flushed, but not written again
+            // All tables are in such states: after init/flush, but not written.
             // So, we can directly delete it up to the high_watermark.
             high_watermark
         } else {

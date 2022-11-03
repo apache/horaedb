@@ -5,121 +5,116 @@
 use std::sync::Arc;
 
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
-pub use error::*;
+use common_util::define_result;
 use log::{debug, info};
 use message_queue::{ConsumeIterator, MessageQueue, Offset, OffsetType, StartOffset};
-use snafu::{ensure, ResultExt};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
 
-use super::{
-    encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
-    helpers::{LogCleaner, SnapshotSynchronizer},
-    region_meta::{RegionMeta, RegionMetaSnapshot, TableMetaData},
-};
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{self, RegionId},
-    message_queue_impl::{region_meta::OffsetRange, to_message},
+    message_queue_impl::{
+        encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
+        helpers,
+        helpers::{LogCleaner, SnapshotSynchronizer},
+        region_meta,
+        region_meta::{OffsetRange, RegionMeta, RegionMetaSnapshot, TableMetaData},
+        to_message,
+    },
 };
 
-pub mod error {
-    use common_types::table::TableId;
-    use common_util::define_result;
-    use snafu::{Backtrace, Snafu};
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display(
+        "Failed to write log to region, region id:{}, table id:{}, err:{}",
+        region_id,
+        table_id,
+        source
+    ))]
+    WriteLog {
+        region_id: RegionId,
+        table_id: TableId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-    use crate::{
-        manager::RegionId,
-        message_queue_impl::{helpers, region_meta},
-    };
+    #[snafu(display(
+        "Failed to read log from region, region id:{}, msg:{}\nBacktrace:{}",
+        region_id,
+        msg,
+        backtrace
+    ))]
+    ReadAllLogsNoCause {
+        region_id: RegionId,
+        msg: String,
+        backtrace: Backtrace,
+    },
 
-    #[derive(Debug, Snafu)]
-    #[snafu(visibility(pub))]
-    pub enum Error {
-        #[snafu(display(
-            "Failed to write log to region, region id:{}, table id:{}, err:{}",
-            region_id,
-            table_id,
-            source
-        ))]
-        WriteLog {
-            region_id: RegionId,
-            table_id: TableId,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+    #[snafu(display(
+        "Failed to read log from region, region id:{}, err:{}",
+        region_id,
+        source
+    ))]
+    ReadAllLogsWithCause {
+        region_id: RegionId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
-        #[snafu(display(
-            "Failed to read log from region, region id:{}, msg:{}\nBacktrace:{}",
-            region_id,
-            msg,
-            backtrace
-        ))]
-        ReadAllLogsNoCause {
-            region_id: RegionId,
-            msg: String,
-            backtrace: Backtrace,
-        },
+    #[snafu(display(
+        "Failed to get table meta data, region id:{}, table id:{}, err:{}",
+        region_id,
+        table_id,
+        source
+    ))]
+    GetTableMeta {
+        region_id: RegionId,
+        table_id: TableId,
+        source: region_meta::Error,
+    },
 
-        #[snafu(display(
-            "Failed to read log from region, region id:{}, err:{}",
-            region_id,
-            source
-        ))]
-        ReadAllLogsWithCause {
-            region_id: RegionId,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+    #[snafu(display(
+        "Failed to get snapshot from region, region id:{}, err:{}",
+        region_id,
+        source
+    ))]
+    GetMetaSnapshot {
+        region_id: RegionId,
+        source: region_meta::Error,
+    },
 
-        #[snafu(display(
-            "Failed to get table meta data, region id:{}, table id:{}, err:{}",
-            region_id,
-            table_id,
-            source
-        ))]
-        GetTableMeta {
-            region_id: RegionId,
-            table_id: TableId,
-            source: region_meta::Error,
-        },
+    #[snafu(display(
+        "Failed to get snapshot from region, region id:{}, location:{:?}, err:{}",
+        region_id,
+        table_id,
+        source
+    ))]
+    MarkDeleted {
+        region_id: RegionId,
+        table_id: TableId,
+        source: region_meta::Error,
+    },
 
-        #[snafu(display(
-            "Failed to get snapshot from region, region id:{}, err:{}",
-            region_id,
-            source
-        ))]
-        GetMetaSnapshot {
-            region_id: RegionId,
-            source: region_meta::Error,
-        },
+    #[snafu(display("Failed to sync snapshot of region, err:{}", source))]
+    SyncSnapshot { source: helpers::Error },
 
-        #[snafu(display(
-            "Failed to get snapshot from region, region id:{}, location:{:?}, err:{}",
-            region_id,
-            table_id,
-            source
-        ))]
-        MarkDeleted {
-            region_id: RegionId,
-            table_id: TableId,
-            source: region_meta::Error,
-        },
+    #[snafu(display("Failed to clean logs of region, err:{}", source))]
+    CleanLogs { source: helpers::Error },
 
-        #[snafu(display("Failed to sync snapshot of region, err:{}", source))]
-        SyncSnapshot { source: helpers::Error },
-
-        #[snafu(display("Failed to clean logs of region, err:{}", source))]
-        CleanLogs { source: helpers::Error },
-
-        #[snafu(display("Failed to open region, namespace:{}, region id:{}, err:{}", namespace, region_id, source))]
-        Open { 
-            namespace: String,
-            region_id: RegionId,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
-    }
-
-    define_result!(Error);
+    #[snafu(display(
+        "Failed to open region, namespace:{}, region id:{}, err:{}",
+        namespace,
+        region_id,
+        source
+    ))]
+    Open {
+        namespace: String,
+        region_id: RegionId,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
+
+define_result!(Error);
 
 /// Region in wal(message queue based)
 #[allow(unused)]
@@ -244,7 +239,7 @@ impl<Mq: MessageQueue> Region<Mq> {
 
     /// Clean outdated logs according to the information in region snapshot.
     pub async fn clean_logs(&self) -> Result<()> {
-        // Get current snapshot, scan to get safe delete sequence number.
+        // Get current snapshot.
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
             (
@@ -253,17 +248,17 @@ impl<Mq: MessageQueue> Region<Mq> {
             )
         };
 
-        // Get prepare delete to offset.
+        // Check and maybe clean logs.
         self.log_cleaner
             .maybe_clean_logs(&snapshot)
             .await
             .context(CleanLogs)?;
 
-        // Delete to and sync snapshot
+        // Sync snapshot.
         synchronizer.sync(snapshot).await.context(CleanLogs)
     }
 
-    #[cfg(test)]
+    /// Return snapshot, just used for test.
     async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.write().await;
         inner.make_meta_snapshot().await

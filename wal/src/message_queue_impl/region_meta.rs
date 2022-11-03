@@ -140,7 +140,7 @@ impl RegionMeta {
         let inner = self.inner.read().await;
         // Calc the min offset in message queue.
         let mut entries = Vec::with_capacity(inner.table_metas.len());
-        for (_, table_meta) in &inner.table_metas {
+        for table_meta in inner.table_metas.values() {
             let meta_data = table_meta.get_meta_data().await;
             entries.push(meta_data);
         }
@@ -167,7 +167,6 @@ struct RegionMetaInner {
 }
 
 /// Wrapper for the [TableMetaInner].
-
 #[derive(Debug)]
 struct TableMeta {
     table_id: TableId,
