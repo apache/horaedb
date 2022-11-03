@@ -23,10 +23,10 @@ use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
-    file::metadata::{ParquetMetaData, RowGroupMetaData},
+    file::metadata::ParquetMetaData,
 };
 use parquet_ext::{
-    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef, MetaCacheRef,
+    prune, reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef, MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
@@ -43,23 +43,6 @@ use crate::{
 };
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
-
-/// Filters row groups according to the predicate function, and returns the
-/// indexes of the filtered row groups.
-pub fn filter_row_groups(
-    metadata: &ParquetMetaData,
-    predicate: &dyn Fn(&RowGroupMetaData, usize) -> bool,
-) -> Vec<usize> {
-    let row_groups = metadata.row_groups();
-    let mut filtered_row_groups = Vec::with_capacity(row_groups.len());
-    for (i, row_group_metadata) in row_groups.iter().enumerate() {
-        if predicate(row_group_metadata, i) {
-            filtered_row_groups.push(i);
-        }
-    }
-
-    filtered_row_groups
-}
 
 pub async fn make_sst_chunk_reader(storage: &ObjectStoreRef, path: &Path) -> Result<Bytes> {
     let get_result = storage
@@ -246,7 +229,7 @@ impl<'a> ParquetSstReader<'a> {
     }
 
     #[cfg(test)]
-    pub(crate) async fn row_groups(&mut self) -> &[RowGroupMetaData] {
+    pub(crate) async fn row_groups(&mut self) -> &[parquet::file::metadata::RowGroupMetaData] {
         self.init_if_necessary().await.unwrap();
         self.reader_builder
             .as_ref()
@@ -271,23 +254,6 @@ struct ProjectAndFilterReader {
 }
 
 impl ProjectAndFilterReader {
-    #[allow(clippy::type_complexity)]
-    fn build_row_group_predicate(&self) -> Box<dyn Fn(&RowGroupMetaData, usize) -> bool + 'static> {
-        assert!(self.reader_builder.is_some());
-
-        let row_groups = self
-            .reader_builder
-            .as_ref()
-            .unwrap()
-            .metadata()
-            .row_groups();
-        let filter_results = self.predicate.filter_row_groups(&self.schema, row_groups);
-
-        trace!("Finish build row group predicate, predicate:{:?}, schema:{:?}, filter_results:{:?}, row_groups meta data:{:?}", self.predicate, self.schema, filter_results, row_groups);
-
-        Box::new(move |_, idx: usize| filter_results[idx])
-    }
-
     /// Generate the reader which has processed projection and filter.
     /// This `file_reader` is consumed after calling this method.
     fn project_and_filter_reader(
@@ -295,10 +261,15 @@ impl ProjectAndFilterReader {
     ) -> Result<Box<dyn Iterator<Item = ArrowResult<RecordBatch>>>> {
         assert!(self.reader_builder.is_some());
 
-        let row_group_predicate = self.build_row_group_predicate();
         let reader_builder = self.reader_builder.take().unwrap();
-        let filtered_row_groups =
-            filter_row_groups(reader_builder.metadata(), &row_group_predicate);
+        let filtered_row_groups = {
+            let metadata = reader_builder.metadata();
+            prune::filter_row_groups(
+                self.schema.to_arrow_schema_ref(),
+                self.predicate.exprs(),
+                metadata.row_groups(),
+            )
+        };
 
         if self.reverse {
             let mut builder = ReverseRecordBatchReaderBuilder::new(
