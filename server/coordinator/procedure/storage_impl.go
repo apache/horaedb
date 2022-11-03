@@ -68,7 +68,7 @@ func (e EtcdStorageImpl) MarkDeleted(ctx context.Context, id uint64) error {
 }
 
 func (e EtcdStorageImpl) List(ctx context.Context, batchSize int) ([]*Meta, error) {
-	metas := make([]*Meta, 0)
+	var metas []*Meta
 	do := func(key string, value []byte) error {
 		meta := &Meta{}
 		if err := decode(meta, string(value)); err != nil {

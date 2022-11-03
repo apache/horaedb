@@ -216,12 +216,12 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 }
 
 func (m *Member) Marshal() (string, error) {
-	memPb := &metastoragepb.Member{
+	memPB := &metastoragepb.Member{
 		Name:     m.Name,
 		Id:       m.ID,
 		Endpoint: m.Endpoint,
 	}
-	bs, err := proto.Marshal(memPb)
+	bs, err := proto.Marshal(memPB)
 	if err != nil {
 		return "", ErrMarshalMember.WithCause(err)
 	}

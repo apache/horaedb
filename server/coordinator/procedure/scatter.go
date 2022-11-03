@@ -63,16 +63,16 @@ func scatterPrepareCallback(event *fsm.Event) {
 		return
 	}
 
-	shardTopologies := make([]*clusterpb.ShardTopology, 0, len(shards))
+	shardViews := make([]*clusterpb.ShardTopology, 0, len(shards))
 	for _, shard := range shards {
-		shardTopologies = append(shardTopologies, &clusterpb.ShardTopology{
+		shardViews = append(shardViews, &clusterpb.ShardTopology{
 			ShardId:  shard.GetId(),
 			TableIds: []uint64{},
 			Version:  0,
 		})
 	}
 
-	if err := c.CreateShardTopologies(ctx, clusterpb.ClusterTopology_STABLE, shardTopologies, shards); err != nil {
+	if err := c.CreateShardViews(ctx, clusterpb.ClusterTopology_STABLE, shardViews, shards); err != nil {
 		cancelEventWithLog(event, err, "create shard topologies failed")
 		return
 	}

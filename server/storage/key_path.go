@@ -13,9 +13,9 @@ const (
 	schema        = "schema"
 	table         = "table"
 	tableNameToID = "table_name_to_id"
-	shard         = "shard"
 	node          = "node"
-	topology      = "topo"
+	clusterView   = "cluster_view"
+	shardView     = "shard_view"
 	latestVersion = "latest_version"
 	info          = "info"
 )
@@ -38,40 +38,40 @@ func makeClusterKey(rootPath string, clusterID uint32) string {
 	return path.Join(rootPath, version, cluster, info, fmtID(uint64(clusterID)))
 }
 
-// makeClusterTopologyLatestVersionKey returns the latest version info key path of cluster topology.
-func makeClusterTopologyLatestVersionKey(rootPath string, clusterID uint32) string {
+// makeClusterViewLatestVersionKey returns the latest version info key path of cluster clusterView.
+func makeClusterViewLatestVersionKey(rootPath string, clusterID uint32) string {
 	// Example:
-	//	v1/cluster/1/topo/latest_version -> pb.ClusterTopologyLatestVersion
-	//	v1/cluster/2/topo/latest_version -> pb.ClusterTopologyLatestVersion
-	//	v1/cluster/3/topo/latest_version -> pb.ClusterTopologyLatestVersion
-	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), topology, latestVersion)
+	//	v1/cluster/1/clusterView/latest_version -> pb.ClusterTopologyLatestVersion
+	//	v1/cluster/2/clusterView/latest_version -> pb.ClusterTopologyLatestVersion
+	//	v1/cluster/3/clusterView/latest_version -> pb.ClusterTopologyLatestVersion
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), clusterView, latestVersion)
 }
 
-// makeClusterTopologyKey returns the cluster topology meta info key path.
-func makeClusterTopologyKey(rootPath string, clusterID uint32, latestVersion string) string {
+// makeClusterViewKey returns the cluster view meta info key path.
+func makeClusterViewKey(rootPath string, clusterID uint32, latestVersion string) string {
 	// Example:
-	//	v1/cluster/1/topo/1 -> pb.ClusterTopology
-	//	v1/cluster/1/topo/2 -> pb.ClusterTopology
-	//	v1/cluster/1/topo/3 -> pb.ClusterTopology
-	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), topology, latestVersion)
+	//	v1/cluster/1/clusterView/1 -> pb.ClusterTopology
+	//	v1/cluster/1/clusterView/2 -> pb.ClusterTopology
+	//	v1/cluster/1/clusterView/3 -> pb.ClusterTopology
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), clusterView, latestVersion)
 }
 
-// makeShardLatestVersionKey returns the latest version info key path of shard.
-func makeShardLatestVersionKey(rootPath string, clusterID uint32, shardID uint32) string {
+// makeShardViewLatestVersionKey returns the latest version info key path of shard.
+func makeShardViewLatestVersionKey(rootPath string, clusterID uint32, shardID uint32) string {
 	// Example:
-	//	v1/cluster/1/shard/1/latest_version -> pb.ShardLatestVersion
-	//	v1/cluster/1/shard/2/latest_version -> pb.ShardLatestVersion
-	//	v1/cluster/1/shard/3/latest_version -> pb.ShardLatestVersion
-	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shard, fmtID(uint64(shardID)), latestVersion)
+	//	v1/cluster/1/shard_view/1/latest_version -> pb.ShardLatestVersion
+	//	v1/cluster/1/shard_view/2/latest_version -> pb.ShardLatestVersion
+	//	v1/cluster/1/shard_view/3/latest_version -> pb.ShardLatestVersion
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shardView, fmtID(uint64(shardID)), latestVersion)
 }
 
-// makeShardTopologyKey returns the shard meta info key path.
-func makeShardTopologyKey(rootPath string, clusterID uint32, shardID uint32, latestVersion string) string {
+// makeShardViewKey returns the shard meta info key path.
+func makeShardViewKey(rootPath string, clusterID uint32, shardID uint32, latestVersion string) string {
 	// Example:
-	//	v1/cluster/1/shard/1/1 -> pb.Shard
-	//	v1/cluster/1/shard/2/1 -> pb.Shard
-	//	v1/cluster/1/shard/3/1 -> pb.Shard
-	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shard, fmtID(uint64(shardID)), latestVersion)
+	//	v1/cluster/1/shard_view/1/1 -> pb.ShardTopology
+	//	v1/cluster/1/shard_view/2/1 -> pb.ShardTopology
+	//	v1/cluster/1/shard_view/3/1 -> pb.ShardTopology
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), shardView, fmtID(uint64(shardID)), latestVersion)
 }
 
 // makeNodeKey returns the node meta info key path.

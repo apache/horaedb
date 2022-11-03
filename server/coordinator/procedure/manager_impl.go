@@ -85,7 +85,7 @@ func (m *ManagerImpl) Cancel(ctx context.Context, procedureID uint64) error {
 func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	procedureInfos := make([]*Info, 0)
+	var procedureInfos []*Info
 	for _, procedure := range m.procedures {
 		if procedure.State() == StateRunning {
 			procedureInfos = append(procedureInfos, &Info{

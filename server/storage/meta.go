@@ -5,30 +5,51 @@ package storage
 import (
 	"context"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-// MetaStorage defines the storage operations on the ceresdb cluster meta info.
-type MetaStorage interface {
-	ListClusters(ctx context.Context) ([]*clusterpb.Cluster, error)
-	CreateCluster(ctx context.Context, cluster *clusterpb.Cluster) (*clusterpb.Cluster, error)
+// Storage defines the storage operations on the ceresdb cluster meta info.
+type Storage interface {
+	// ListClusters list all clusters.
+	ListClusters(ctx context.Context) (ListClustersResult, error)
+	// CreateCluster create new cluster, return error if cluster already exists.
+	CreateCluster(ctx context.Context, req CreateClusterRequest) error
 
-	CreateClusterTopology(ctx context.Context, clusterTopology *clusterpb.ClusterTopology) (*clusterpb.ClusterTopology, error)
-	GetClusterTopology(ctx context.Context, clusterID uint32) (*clusterpb.ClusterTopology, error)
-	PutClusterTopology(ctx context.Context, clusterID uint32, latestVersion uint64, clusterTopology *clusterpb.ClusterTopology) error
+	// CreateClusterView create cluster view.
+	CreateClusterView(ctx context.Context, req CreateClusterViewRequest) error
+	// GetClusterView get cluster view by cluster id.
+	GetClusterView(ctx context.Context, req GetClusterViewRequest) (GetClusterViewResult, error)
+	// UpdateClusterView update cluster view.
+	UpdateClusterView(ctx context.Context, req PutClusterViewRequest) error
 
-	ListSchemas(ctx context.Context, clusterID uint32) ([]*clusterpb.Schema, error)
-	CreateSchema(ctx context.Context, clusterID uint32, schema *clusterpb.Schema) (*clusterpb.Schema, error)
+	// ListSchemas list all schemas in specified cluster.
+	ListSchemas(ctx context.Context, req ListSchemasRequest) (ListSchemasResult, error)
+	// CreateSchema create schema in specified cluster.
+	CreateSchema(ctx context.Context, req CreateSchemaRequest) error
 
-	CreateTable(ctx context.Context, clusterID uint32, schemaID uint32, table *clusterpb.Table) (*clusterpb.Table, error)
-	GetTable(ctx context.Context, clusterID uint32, schemaID uint32, tableName string) (*clusterpb.Table, bool, error)
-	ListTables(ctx context.Context, clusterID uint32, schemaID uint32) ([]*clusterpb.Table, error)
-	DeleteTable(ctx context.Context, clusterID uint32, schemaID uint32, tableName string) error
+	// CreateTable create new table in specified cluster and schema, return error if table already exists.
+	CreateTable(ctx context.Context, req CreateTableRequest) error
+	// GetTable get table by table name in specified cluster and schema.
+	GetTable(ctx context.Context, req GetTableRequest) (GetTableResult, error)
+	// ListTables list all tables in specified cluster and schema.
+	ListTables(ctx context.Context, req ListTableRequest) (ListTablesResult, error)
+	// DeleteTable delete table by table name in specified cluster and schema.
+	DeleteTable(ctx context.Context, req DeleteTableRequest) error
 
-	CreateShardTopologies(ctx context.Context, clusterID uint32, shardTopologies []*clusterpb.ShardTopology) ([]*clusterpb.ShardTopology, error)
-	ListShardTopologies(ctx context.Context, clusterID uint32, shardID []uint32) ([]*clusterpb.ShardTopology, error)
-	PutShardTopology(ctx context.Context, clusterID uint32, latestVersion uint64, shardTopology *clusterpb.ShardTopology) error
+	// CreateShardViews create shard views in specified cluster.
+	CreateShardViews(ctx context.Context, req CreateShardViewsRequest) error
+	// ListShardViews list all shard views in specified cluster.
+	ListShardViews(ctx context.Context, req ListShardViewsRequest) (ListShardViewsResult, error)
+	// UpdateShardView update shard views in specified cluster.
+	UpdateShardView(ctx context.Context, req PutShardViewRequest) error
 
-	ListNodes(ctx context.Context, clusterID uint32) ([]*clusterpb.Node, error)
-	CreateOrUpdateNode(ctx context.Context, clusterID uint32, node *clusterpb.Node) (*clusterpb.Node, error)
+	// ListNodes list all nodes in specified cluster.
+	ListNodes(ctx context.Context, req ListNodesRequest) (ListNodesResult, error)
+	// CreateOrUpdateNode create or update node in specified cluster.
+	CreateOrUpdateNode(ctx context.Context, req CreateOrUpdateNodeRequest) error
+}
+
+// NewStorageWithEtcdBackend creates a new storage with etcd backend.
+func NewStorageWithEtcdBackend(client *clientv3.Client, rootPath string, opts Options) Storage {
+	return newEtcdStorage(client, rootPath, opts)
 }

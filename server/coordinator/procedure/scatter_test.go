@@ -116,7 +116,7 @@ func TestAllocNodeShard(t *testing.T) {
 	}
 	// NodeCount = 2, shardTotal = 3
 	// Three shard distributed in node0,node0,node1
-	shardIDs = make([]uint32, 0)
+	shardIDs = make([]uint32, 0, shardTotal)
 	for i := uint32(0); i < uint32(shardTotal); i++ {
 		shardIDs = append(shardIDs, i)
 	}
