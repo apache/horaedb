@@ -10,15 +10,12 @@ use std::{
     time::Instant,
 };
 
-use arrow::{
-    datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch as ArrowRecordBatch,
-};
+use arrow::record_batch::RecordBatch as ArrowRecordBatch;
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
-    projected_schema::ProjectedSchema,
+    projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::Schema,
 };
 use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::datasource::file_format;
@@ -28,7 +25,9 @@ use futures::{
 };
 use log::{error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
-use parquet::arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder};
+use parquet::arrow::{
+    async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask,
+};
 use parquet_ext::{prune, DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
@@ -38,13 +37,10 @@ use crate::{
     sst::{
         factory::SstReaderOptions,
         file::SstMetaData,
-        parquet::{
-            encoding::{self, ParquetDecoder},
-            hybrid,
-        },
+        parquet::encoding::{self, ParquetDecoder},
         reader::{error::*, Result, SstReader},
     },
-    table_options::{StorageFormat, StorageFormatOptions},
+    table_options::StorageFormatOptions,
 };
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
@@ -60,8 +56,9 @@ pub struct Reader<'a> {
     predicate: PredicateRef,
     batch_size: usize,
 
-    /// init this field in `init_if_necessary`
+    /// init those fields in `init_if_necessary`
     meta_data: Option<SstMetaData>,
+    row_projector: Option<RowProjector>,
 }
 
 impl<'a> Reader<'a> {
@@ -76,14 +73,7 @@ impl<'a> Reader<'a> {
             predicate: options.predicate.clone(),
             batch_size,
             meta_data: None,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn construct_arrow_schema(schema: &Schema, opts: &StorageFormatOptions) -> ArrowSchemaRef {
-        match opts.format {
-            StorageFormat::Columnar => schema.to_arrow_schema_ref(),
-            StorageFormat::Hybrid => hybrid::build_hybrid_arrow_schema(schema),
+            row_projector: None,
         }
     }
 
@@ -91,6 +81,7 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
+        let row_projector = self.row_projector.as_ref().unwrap();
         let file_reader = CachableParquetFileReader::new(
             self.storage.clone(),
             self.path.clone(),
@@ -99,21 +90,25 @@ impl<'a> Reader<'a> {
         );
         let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
             .await
-            .unwrap();
+            .with_context(|| ParquetError)?;
         let row_groups = prune::filter_row_groups(
             meta_data.schema.to_arrow_schema_ref(),
             self.predicate.exprs(),
             builder.metadata().row_groups(),
         );
+        let proj_mask = ProjectionMask::leaves(
+            builder.metadata().file_metadata().schema_descr(),
+            row_projector.existed_source_projection().iter().copied(),
+        );
         let stream = builder
             .with_batch_size(self.batch_size)
             .with_row_groups(row_groups)
+            .with_projection(proj_mask)
             .build()
-            .unwrap();
+            .with_context(|| ParquetError)?
+            .map(|batch| batch.with_context(|| ParquetError {}));
 
-        let stream = stream.map(|batch| batch.with_context(|| ParquetError {}));
-        let stream = Box::pin(stream) as _;
-        Ok(stream)
+        Ok(Box::pin(stream))
     }
 
     async fn init_if_necessary(&mut self) -> Result<()> {
@@ -122,8 +117,14 @@ impl<'a> Reader<'a> {
         }
 
         let sst_meta = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
-        self.meta_data = Some(sst_meta);
 
+        let row_projector = self
+            .projected_schema
+            .try_project_with_key(&sst_meta.schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(Projection)?;
+        self.meta_data = Some(sst_meta);
+        self.row_projector = Some(row_projector);
         Ok(())
     }
 
@@ -349,6 +350,7 @@ impl Stream for RecordBatchProjector {
                             .map_err(|e| Box::new(e) as _)
                             .context(DecodeRecordBatch)?;
 
+                        info!("batch is {:?}", record_batch);
                         projector.row_num += record_batch.num_rows();
 
                         let projected_batch = projector
@@ -386,11 +388,7 @@ impl<'a> SstReader for Reader<'a> {
 
         let stream = self.fetch_record_batch_stream().await?;
         let metadata = &self.meta_data.as_ref().unwrap();
-        let row_projector = self
-            .projected_schema
-            .try_project_with_key(&metadata.schema)
-            .map_err(|e| Box::new(e) as _)
-            .context(Projection)?;
+        let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
         let storage_format_opts = metadata.storage_format_opts.clone();
 
