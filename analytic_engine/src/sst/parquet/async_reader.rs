@@ -230,7 +230,7 @@ impl AsyncFileReader for CachableParquetFileReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.bytes_scanned += range.end - range.start;
 
-        let key = Self::cache_key(&self.path.to_string(), range.start, range.end);
+        let key = Self::cache_key(self.path.as_ref(), range.start, range.end);
         if let Some(cache) = &self.data_cache {
             if let Some(cached_bytes) = cache.get(&key) {
                 self.cache_hit += 1;
