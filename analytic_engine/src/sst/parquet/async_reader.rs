@@ -230,7 +230,7 @@ impl CachableParquetFileReader {
 
 impl Drop for CachableParquetFileReader {
     fn drop(&mut self) {
-        info!("CachableParquetFileReader metrics:{:?}", self.metrics,);
+        info!("CachableParquetFileReader metrics:{:?}", self.metrics);
     }
 }
 
