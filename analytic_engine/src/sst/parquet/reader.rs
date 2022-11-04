@@ -271,6 +271,12 @@ impl ProjectAndFilterReader {
             )
         };
 
+        debug!(
+            "fetch_record_batch row_groups total:{}, after filter:{}",
+            reader_builder.metadata().num_row_groups(),
+            filtered_row_groups.len()
+        );
+
         if self.reverse {
             let mut builder = ReverseRecordBatchReaderBuilder::new(
                 reader_builder.metadata(),

@@ -23,7 +23,7 @@ use futures::{
     future::{self, BoxFuture},
     FutureExt, Stream, StreamExt, TryFutureExt,
 };
-use log::{error, info};
+use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::arrow::{
     async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask,
@@ -91,22 +91,29 @@ impl<'a> Reader<'a> {
         let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
             .await
             .with_context(|| ParquetError)?;
-        let row_groups = prune::filter_row_groups(
+        let filtered_row_groups = prune::filter_row_groups(
             meta_data.schema.to_arrow_schema_ref(),
             self.predicate.exprs(),
             builder.metadata().row_groups(),
         );
+
+        debug!(
+            "fetch_record_batch row_groups total:{}, after filter:{}",
+            builder.metadata().num_row_groups(),
+            filtered_row_groups.len()
+        );
+
         let proj_mask = ProjectionMask::leaves(
             builder.metadata().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
         let stream = builder
             .with_batch_size(self.batch_size)
-            .with_row_groups(row_groups)
+            .with_row_groups(filtered_row_groups)
             .with_projection(proj_mask)
             .build()
             .with_context(|| ParquetError)?
-            .map(|batch| batch.with_context(|| ParquetError {}));
+            .map(|batch| batch.with_context(|| ParquetError));
 
         Ok(Box::pin(stream))
     }
@@ -185,14 +192,19 @@ impl<'a> Reader<'a> {
     }
 }
 
+#[derive(Debug, Default)]
+struct ReaderMetrics {
+    bytes_scanned: usize,
+    cache_hit: usize,
+    cache_miss: usize,
+}
+
 struct CachableParquetFileReader {
     storage: ObjectStoreRef,
     path: Path,
     data_cache: Option<DataCacheRef>,
     file_size: Option<usize>,
-    bytes_scanned: usize,
-    cache_hit: usize,
-    cache_miss: usize,
+    metrics: ReaderMetrics,
 }
 
 impl CachableParquetFileReader {
@@ -207,9 +219,7 @@ impl CachableParquetFileReader {
             path,
             data_cache,
             file_size,
-            bytes_scanned: 0,
-            cache_hit: 0,
-            cache_miss: 0,
+            metrics: Default::default(),
         }
     }
 
@@ -220,26 +230,23 @@ impl CachableParquetFileReader {
 
 impl Drop for CachableParquetFileReader {
     fn drop(&mut self) {
-        info!(
-            "CachableParquetFileReader cache_hit:{}, cache_miss:{}, bytes_scanned:{}",
-            self.cache_hit, self.cache_miss, self.bytes_scanned
-        );
+        info!("CachableParquetFileReader metrics:{:?}", self.metrics,);
     }
 }
 
 impl AsyncFileReader for CachableParquetFileReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.bytes_scanned += range.end - range.start;
+        self.metrics.bytes_scanned += range.end - range.start;
 
         let key = Self::cache_key(self.path.as_ref(), range.start, range.end);
         if let Some(cache) = &self.data_cache {
             if let Some(cached_bytes) = cache.get(&key) {
-                self.cache_hit += 1;
+                self.metrics.cache_hit += 1;
                 return Box::pin(future::ok(Bytes::from(cached_bytes.to_vec())));
             };
         }
 
-        self.cache_miss += 1;
+        self.metrics.cache_miss += 1;
         self.storage
             .get_range(&self.path, range)
             .map_ok(|bytes| {
@@ -295,6 +302,7 @@ impl AsyncFileReader for CachableParquetFileReader {
 }
 
 struct RecordBatchProjector {
+    path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
     storage_format_opts: StorageFormatOptions,
@@ -305,11 +313,13 @@ struct RecordBatchProjector {
 
 impl RecordBatchProjector {
     fn new(
+        path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         storage_format_opts: StorageFormatOptions,
     ) -> Self {
         Self {
+            path,
             stream,
             row_projector,
             storage_format_opts,
@@ -322,7 +332,8 @@ impl RecordBatchProjector {
 impl Drop for RecordBatchProjector {
     fn drop(&mut self) {
         info!(
-            "RecordBatchProjector read {} rows, cost:{}ms",
+            "RecordBatchProjector {}, read {} rows, cost:{}ms",
+            self.path,
             self.row_num,
             self.start_time.saturating_elapsed().as_millis(),
         );
@@ -350,7 +361,6 @@ impl Stream for RecordBatchProjector {
                             .map_err(|e| Box::new(e) as _)
                             .context(DecodeRecordBatch)?;
 
-                        info!("batch is {:?}", record_batch);
                         projector.row_num += record_batch.num_rows();
 
                         let projected_batch = projector
@@ -393,6 +403,7 @@ impl<'a> SstReader for Reader<'a> {
         let storage_format_opts = metadata.storage_format_opts.clone();
 
         Ok(Box::new(RecordBatchProjector::new(
+            self.path.to_string(),
             stream,
             row_projector,
             storage_format_opts,
