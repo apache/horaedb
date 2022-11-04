@@ -3,25 +3,18 @@
 //! Predict for query table.
 //! Reference to: https://github.com/influxdata/influxdb_iox/blob/29b10413051f8c4a2193e8633aa133e45b0e505a/query/src/predicate.rs
 
-use std::{convert::TryInto, sync::Arc};
+use std::sync::Arc;
 
-use arrow::{
-    array::ArrayRef,
-    datatypes::{Schema as ArrowSchema, SchemaRef},
-};
 use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    logical_plan::{Column, Expr, Operator},
-    parquet::file::metadata::RowGroupMetaData,
-    physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
+    logical_plan::{Expr, Operator},
     scalar::ScalarValue,
 };
-use log::{debug, error, trace};
-use parquet::file::statistics::Statistics as ParquetStatistics;
-use snafu::{ResultExt, Snafu};
+use log::debug;
+use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -33,116 +26,6 @@ pub enum Error {
 }
 
 define_result!(Error);
-
-/// port from datafusion.
-/// Extract the min/max statistics from a `ParquetStatistics` object
-macro_rules! get_statistic {
-    ($column_statistics:expr, $func:ident, $bytes_func:ident) => {{
-        if !$column_statistics.has_min_max_set() {
-            return None;
-        }
-        match $column_statistics {
-            ParquetStatistics::Boolean(s) => Some(ScalarValue::Boolean(Some(*s.$func()))),
-            ParquetStatistics::Int32(s) => Some(ScalarValue::Int32(Some(*s.$func()))),
-            ParquetStatistics::Int64(s) => Some(ScalarValue::Int64(Some(*s.$func()))),
-            // 96 bit ints not supported
-            ParquetStatistics::Int96(_) => None,
-            ParquetStatistics::Float(s) => Some(ScalarValue::Float32(Some(*s.$func()))),
-            ParquetStatistics::Double(s) => Some(ScalarValue::Float64(Some(*s.$func()))),
-            ParquetStatistics::ByteArray(s) => {
-                let s = std::str::from_utf8(s.$bytes_func())
-                    .map(|s| s.to_string())
-                    .ok();
-                Some(ScalarValue::Utf8(s))
-            }
-            // type not supported yet
-            ParquetStatistics::FixedLenByteArray(_) => None,
-        }
-    }};
-}
-
-/// port from datafusion.
-// Extract the min or max value calling `func` or `bytes_func` on the
-// ParquetStatistics as appropriate
-macro_rules! get_min_max_values {
-    ($self:expr, $column:expr, $func:ident, $bytes_func:ident) => {{
-        let (column_index, field) =
-            if let Some((v, f)) = $self.parquet_schema.column_with_name(&$column.name) {
-                (v, f)
-            } else {
-                // Named column was not present
-                return None;
-            };
-
-        let data_type = field.data_type();
-        let null_scalar: ScalarValue = if let Ok(v) = data_type.try_into() {
-            v
-        } else {
-            // DataFusion doesn't have support for ScalarValues of the column type
-            return None;
-        };
-
-        let scalar_values: Vec<ScalarValue> = $self
-            .row_group_metadata
-            .iter()
-            .flat_map(|meta| meta.column(column_index).statistics())
-            .map(|stats| get_statistic!(stats, $func, $bytes_func))
-            .map(|maybe_scalar| {
-                // column either did't have statistics at all or didn't have min/max values
-                maybe_scalar.unwrap_or_else(|| null_scalar.clone())
-            })
-            .collect();
-
-        // ignore errors converting to arrays (e.g. different types)
-        ScalarValue::iter_to_array(scalar_values).ok()
-    }};
-}
-
-/// Wraps parquet statistics in a way
-/// that implements [`PruningStatistics`]
-struct RowGroupPruningStatistics<'a> {
-    row_group_metadata: &'a [RowGroupMetaData],
-    parquet_schema: &'a ArrowSchema,
-}
-
-impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
-    fn min_values(&self, column: &Column) -> Option<ArrayRef> {
-        get_min_max_values!(self, column, min, min_bytes)
-    }
-
-    fn max_values(&self, column: &Column) -> Option<ArrayRef> {
-        get_min_max_values!(self, column, max, max_bytes)
-    }
-
-    fn num_containers(&self) -> usize {
-        self.row_group_metadata.len()
-    }
-
-    // TODO: support this.
-    fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
-        None
-    }
-}
-
-fn build_row_group_predicate(
-    predicate_builder: &PruningPredicate,
-    row_group_metadata: &[RowGroupMetaData],
-) -> Result<Vec<bool>> {
-    let parquet_schema = predicate_builder.schema().as_ref();
-
-    let pruning_stats = RowGroupPruningStatistics {
-        row_group_metadata,
-        parquet_schema,
-    };
-
-    predicate_builder
-        .prune(&pruning_stats)
-        .map_err(|e| {
-            error!("Error evaluating row group predicate values {}", e);
-            e
-        })
-        .context(Prune)
-}
 
 /// Predicate helps determine whether specific row group should be read.
 #[derive(Debug, Clone)]
@@ -163,39 +46,6 @@ impl Predicate {
             exprs: vec![],
             time_range: TimeRange::min_to_max(),
         }
-    }
-
-    /// Determine whether a row group should be read according to the meta data
-    /// in the `row_groups`.
-    ///
-    /// The boolean value in the returned vector denotes the corresponding row
-    /// group in the `row_groups` whether should be read.
-    pub fn filter_row_groups(&self, schema: &Schema, row_groups: &[RowGroupMetaData]) -> Vec<bool> {
-        let mut results = vec![true; row_groups.len()];
-        let arrow_schema: SchemaRef = schema.clone().into_arrow_schema_ref();
-        for expr in &self.exprs {
-            match PruningPredicate::try_new(expr.clone(), arrow_schema.clone()) {
-                Ok(pruning_predicate) => {
-                    trace!("pruning_predicate is:{:?}", pruning_predicate);
-
-                    if let Ok(values) = build_row_group_predicate(&pruning_predicate, row_groups) {
-                        for (curr_val, result_val) in values.into_iter().zip(results.iter_mut()) {
-                            *result_val = curr_val && *result_val
-                        }
-                    };
-                    // if fail to build, just ignore this filter so that all the
-                    // row groups should be read for this
-                    // filter.
-                }
-                Err(e) => {
-                    // for any error just ignore it and that is to say, for this filter all the row
-                    // groups should be read.
-                    error!("fail to build pruning predicate, err:{}", e);
-                }
-            }
-        }
-
-        results
     }
 
     pub fn exprs(&self) -> &[Expr] {
@@ -511,138 +361,5 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. } => TimeRange::min_to_max(),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-
-    use arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField};
-    use datafusion::logical_expr::{expr_fn::col, lit};
-    use parquet::{
-        basic::Type,
-        file::{metadata::ColumnChunkMetaData, statistics::Statistics},
-        schema::types::{SchemaDescPtr, SchemaDescriptor, Type as SchemaType},
-    };
-
-    use super::*;
-
-    fn convert_data_type(data_type: &ArrowDataType) -> Type {
-        match data_type {
-            ArrowDataType::Boolean => Type::BOOLEAN,
-            ArrowDataType::Int32 => Type::INT32,
-            ArrowDataType::Int64 => Type::INT64,
-            ArrowDataType::Utf8 => Type::BYTE_ARRAY,
-            _ => unimplemented!(),
-        }
-    }
-
-    fn prepare_arrow_schema(fields: Vec<(&str, ArrowDataType)>) -> Arc<ArrowSchema> {
-        let fields = fields
-            .into_iter()
-            .map(|(name, data_type)| ArrowField::new(name, data_type, false))
-            .collect();
-        Arc::new(ArrowSchema::new(fields))
-    }
-
-    fn prepare_parquet_schema_descr(schema: &ArrowSchema) -> SchemaDescPtr {
-        let mut fields = schema
-            .fields()
-            .iter()
-            .map(|field| {
-                Arc::new(
-                    SchemaType::primitive_type_builder(
-                        field.name(),
-                        convert_data_type(field.data_type()),
-                    )
-                    .build()
-                    .unwrap(),
-                )
-            })
-            .collect();
-        let schema = SchemaType::group_type_builder("schema")
-            .with_fields(&mut fields)
-            .build()
-            .unwrap();
-
-        Arc::new(SchemaDescriptor::new(Arc::new(schema)))
-    }
-
-    fn prepare_metadata(schema: &ArrowSchema, statistics: Statistics) -> RowGroupMetaData {
-        let schema_descr = prepare_parquet_schema_descr(schema);
-        let column_metadata = schema_descr
-            .columns()
-            .iter()
-            .cloned()
-            .map(|col_descr| {
-                ColumnChunkMetaData::builder(col_descr)
-                    .set_statistics(statistics.clone())
-                    .build()
-                    .unwrap()
-            })
-            .collect();
-        RowGroupMetaData::builder(schema_descr)
-            .set_column_metadata(column_metadata)
-            .build()
-            .unwrap()
-    }
-
-    fn check_predicate_filter(
-        expr: Expr,
-        stat: Statistics,
-        arrow_schema: Arc<ArrowSchema>,
-        expected: Vec<bool>,
-    ) {
-        let metadata = prepare_metadata(&arrow_schema, stat);
-        let schema = arrow_schema.try_into().unwrap();
-        let predicate = PredicateBuilder::default()
-            .add_pushdown_exprs(&[expr])
-            .build();
-        let result = predicate.filter_row_groups(&schema, &[metadata]);
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    fn filter_i32_by_equal_operator() {
-        let expr = col("a").eq(lit(5i32));
-        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int32)]);
-        let expected = vec![false];
-
-        check_predicate_filter(expr, stat, arrow_schema, expected);
-    }
-
-    #[test]
-    fn filter_i64_by_greater_operator() {
-        let expr = col("a").eq(lit(14i64));
-        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
-        let expected = vec![true];
-
-        check_predicate_filter(expr, stat, arrow_schema, expected);
-    }
-
-    #[test]
-    fn filter_two_i32_cols_by_lesser_operator() {
-        let expr = col("a").lt(col("b"));
-        let stat = Statistics::int32(Some(10), Some(20), None, 0, false);
-        let arrow_schema = prepare_arrow_schema(vec![
-            ("a", ArrowDataType::Int32),
-            ("b", ArrowDataType::Int32),
-        ]);
-        // nothing actually gets calculated.
-        let expected = vec![true];
-
-        check_predicate_filter(expr, stat, arrow_schema, expected);
-    }
-
-    #[test]
-    fn filter_i64_by_in_list_operator() {
-        let expr = col("a").in_list(vec![lit(17i64), lit(100i64)], false);
-        let stat = Statistics::int32(Some(101), Some(200), None, 0, false);
-        let arrow_schema = prepare_arrow_schema(vec![("a", ArrowDataType::Int64)]);
-        let expected = vec![false];
-
-        check_predicate_filter(expr, stat, arrow_schema, expected);
     }
 }

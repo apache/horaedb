@@ -10,37 +10,25 @@ use std::{
     time::Instant,
 };
 
-use arrow::datatypes::SchemaRef as ArrowSchemaRef;
+use arrow::record_batch::RecordBatch as ArrowRecordBatch;
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
-    projected_schema::ProjectedSchema,
+    projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
-    schema::Schema,
 };
 use common_util::{runtime::Runtime, time::InstantExt};
-use datafusion::{
-    datasource::{file_format, object_store::ObjectStoreUrl},
-    execution::context::TaskContext,
-    physical_plan::{
-        display::DisplayableExecutionPlan,
-        execute_stream,
-        file_format::{
-            FileMeta, FileScanConfig, ParquetExec, ParquetFileMetrics, ParquetFileReaderFactory,
-        },
-        metrics::ExecutionPlanMetricsSet,
-        ExecutionPlan, SendableRecordBatchStream, Statistics,
-    },
-    prelude::{SessionConfig, SessionContext},
-};
+use datafusion::datasource::file_format;
 use futures::{
     future::{self, BoxFuture},
     FutureExt, Stream, StreamExt, TryFutureExt,
 };
 use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
-use parquet::arrow::async_reader::AsyncFileReader;
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet::arrow::{
+    async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask,
+};
+use parquet_ext::{prune, DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -49,17 +37,13 @@ use crate::{
     sst::{
         factory::SstReaderOptions,
         file::SstMetaData,
-        parquet::{
-            encoding::{self, ParquetDecoder},
-            hybrid,
-        },
+        parquet::encoding::{self, ParquetDecoder},
         reader::{error::*, Result, SstReader},
     },
-    table_options::{StorageFormat, StorageFormatOptions},
+    table_options::StorageFormatOptions,
 };
 
-const CERESDB_SCHEME: &str = "ceresdb";
-const CERESDB_HOST: &str = "ceresdb_host";
+type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -67,40 +51,29 @@ pub struct Reader<'a> {
     /// The storage where the data is persist.
     storage: &'a ObjectStoreRef,
     projected_schema: ProjectedSchema,
-    reader_factory: Arc<dyn ParquetFileReaderFactory>,
+    data_cache: Option<DataCacheRef>,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
     batch_size: usize,
-    df_plan: Option<Arc<dyn ExecutionPlan>>,
 
-    /// init this field in `init_if_necessary`
+    /// init those fields in `init_if_necessary`
     meta_data: Option<SstMetaData>,
+    row_projector: Option<RowProjector>,
 }
 
 impl<'a> Reader<'a> {
     pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
-        let reader_factory = Arc::new(CachableParquetFileReaderFactory {
-            storage: storage.clone(),
-            data_cache: options.data_cache.clone(),
-        });
         let batch_size = options.read_batch_row_num;
         Self {
             path,
             storage,
-            reader_factory,
             projected_schema: options.projected_schema.clone(),
+            data_cache: options.data_cache.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             batch_size,
-            df_plan: None,
             meta_data: None,
-        }
-    }
-
-    fn construct_arrow_schema(schema: &Schema, opts: &StorageFormatOptions) -> ArrowSchemaRef {
-        match opts.format {
-            StorageFormat::Columnar => schema.to_arrow_schema_ref(),
-            StorageFormat::Hybrid => hybrid::build_hybrid_arrow_schema(schema),
+            row_projector: None,
         }
     }
 
@@ -108,59 +81,41 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
-        let object_meta = ObjectMeta {
-            location: self.path.clone(),
-            // we don't care modified time
-            last_modified: Default::default(),
-            size: meta_data.size as usize,
-        };
-
-        let arrow_schema =
-            Self::construct_arrow_schema(&meta_data.schema, &meta_data.storage_format_opts);
-        let row_projector = self
-            .projected_schema
-            .try_project_with_key(&meta_data.schema)
-            .map_err(|e| Box::new(e) as _)
-            .context(Projection)?;
-        let scan_config = FileScanConfig {
-            object_store_url: ObjectStoreUrl::parse(format!(
-                "{}://{}",
-                CERESDB_SCHEME, CERESDB_HOST
-            ))
-            .expect("valid object store URL"),
-            file_schema: arrow_schema,
-            file_groups: vec![vec![object_meta.clone().into()]],
-            statistics: Statistics::default(),
-            projection: Some(row_projector.existed_source_projection()),
-            limit: None,
-            table_partition_cols: vec![],
-        };
-        let filter_expr = self.predicate.to_df_expr(meta_data.schema.timestamp_name());
-        debug!(
-            "fetch_record_batch_stream, object_meta:{:?}, filter:{:?}, scan_config:{:?}",
-            object_meta, filter_expr, scan_config
-        );
-
-        let exec = ParquetExec::new(scan_config, Some(filter_expr), Some(object_meta.size))
-            .with_parquet_file_reader_factory(self.reader_factory.clone());
-        let exec = Arc::new(exec);
-
-        // There are some options can be configured for execution, such as
-        // `DATAFUSION_EXECUTION_BATCH_SIZE`. More refer:
-        // https://arrow.apache.org/datafusion/user-guide/configs.html
-        let session_ctx =
-            SessionContext::with_config(SessionConfig::from_env().with_batch_size(self.batch_size));
-        let task_ctx = Arc::new(TaskContext::from(&session_ctx));
-        task_ctx.runtime_env().register_object_store(
-            CERESDB_SCHEME,
-            CERESDB_HOST,
+        let row_projector = self.row_projector.as_ref().unwrap();
+        let file_reader = CachableParquetFileReader::new(
             self.storage.clone(),
+            self.path.clone(),
+            self.data_cache.clone(),
+            Some(meta_data.size as usize),
+        );
+        let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
+            .await
+            .with_context(|| ParquetError)?;
+        let filtered_row_groups = prune::filter_row_groups(
+            meta_data.schema.to_arrow_schema_ref(),
+            self.predicate.exprs(),
+            builder.metadata().row_groups(),
         );
 
-        self.df_plan = Some(exec.clone());
-        execute_stream(exec, task_ctx)
-            .await
-            .context(DataFusionError {})
+        debug!(
+            "fetch_record_batch row_groups total:{}, after filter:{}",
+            builder.metadata().num_row_groups(),
+            filtered_row_groups.len()
+        );
+
+        let proj_mask = ProjectionMask::leaves(
+            builder.metadata().file_metadata().schema_descr(),
+            row_projector.existed_source_projection().iter().copied(),
+        );
+        let stream = builder
+            .with_batch_size(self.batch_size)
+            .with_row_groups(filtered_row_groups)
+            .with_projection(proj_mask)
+            .build()
+            .with_context(|| ParquetError)?
+            .map(|batch| batch.with_context(|| ParquetError));
+
+        Ok(Box::pin(stream))
     }
 
     async fn init_if_necessary(&mut self) -> Result<()> {
@@ -168,15 +123,15 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let sst_meta = Self::read_sst_meta(
-            self.storage,
-            self.path,
-            &self.meta_cache,
-            &self.reader_factory,
-        )
-        .await?;
-        self.meta_data = Some(sst_meta);
+        let sst_meta = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
 
+        let row_projector = self
+            .projected_schema
+            .try_project_with_key(&sst_meta.schema)
+            .map_err(|e| Box::new(e) as _)
+            .context(Projection)?;
+        self.meta_data = Some(sst_meta);
+        self.row_projector = Some(row_projector);
         Ok(())
     }
 
@@ -184,21 +139,17 @@ impl<'a> Reader<'a> {
         storage: &ObjectStoreRef,
         path: &Path,
         meta_cache: &Option<MetaCacheRef>,
-        reader_factory: &Arc<dyn ParquetFileReaderFactory>,
     ) -> Result<SstMetaData> {
         let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
         let file_size = object_meta.size;
 
         let get_metadata_from_storage = || async {
-            let mut reader = reader_factory
-                // We don't care partition_index
-                .create_reader(
-                    Default::default(),
-                    object_meta.into(),
-                    None,
-                    &ExecutionPlanMetricsSet::new(),
-                )
-                .context(DataFusionError {})?;
+            let mut reader = CachableParquetFileReader::new(
+                storage.clone(),
+                path.clone(),
+                None,
+                Some(file_size),
+            );
             let metadata = reader.get_metadata().await.context(ParquetError {})?;
 
             if let Some(cache) = meta_cache {
@@ -234,95 +185,41 @@ impl<'a> Reader<'a> {
 
     #[cfg(test)]
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let object_meta = self.storage.head(self.path).await.unwrap();
-        let mut reader = self
-            .reader_factory
-            .create_reader(0, object_meta.into(), None, &ExecutionPlanMetricsSet::new())
-            .unwrap();
-
+        let mut reader =
+            CachableParquetFileReader::new(self.storage.clone(), self.path.clone(), None, None);
         let metadata = reader.get_metadata().await.unwrap();
         metadata.row_groups().to_vec()
     }
 }
 
-impl<'a> Drop for Reader<'a> {
-    fn drop(&mut self) {
-        if self.df_plan.is_none() {
-            return;
-        }
-
-        let df_plan = self.df_plan.take().unwrap();
-        info!(
-            "Reader plan metrics:\n{}",
-            DisplayableExecutionPlan::with_metrics(&*df_plan)
-                .indent()
-                .to_string()
-        );
-    }
-}
-
-#[derive(Debug)]
-pub struct CachableParquetFileReaderFactory {
-    storage: ObjectStoreRef,
-    data_cache: Option<DataCacheRef>,
-}
-
-impl CachableParquetFileReaderFactory {
-    pub fn new(storage: ObjectStoreRef, data_cache: Option<DataCacheRef>) -> Self {
-        Self {
-            storage,
-            data_cache,
-        }
-    }
-}
-
-impl ParquetFileReaderFactory for CachableParquetFileReaderFactory {
-    fn create_reader(
-        &self,
-        partition_index: usize,
-        file_meta: FileMeta,
-        metadata_size_hint: Option<usize>,
-        metrics: &ExecutionPlanMetricsSet,
-    ) -> datafusion::error::Result<Box<dyn AsyncFileReader + Send>> {
-        let parquet_file_metrics =
-            ParquetFileMetrics::new(partition_index, file_meta.location().as_ref(), metrics);
-
-        Ok(Box::new(CachableParquetFileReader::new(
-            self.storage.clone(),
-            self.data_cache.clone(),
-            file_meta.object_meta,
-            parquet_file_metrics,
-            metadata_size_hint,
-        )))
-    }
+#[derive(Debug, Default)]
+struct ReaderMetrics {
+    bytes_scanned: usize,
+    cache_hit: usize,
+    cache_miss: usize,
 }
 
 struct CachableParquetFileReader {
     storage: ObjectStoreRef,
+    path: Path,
     data_cache: Option<DataCacheRef>,
-    meta: ObjectMeta,
-    metrics: ParquetFileMetrics,
-    metadata_size_hint: Option<usize>,
-    cache_hit: usize,
-    cache_miss: usize,
+    file_size: Option<usize>,
+    metrics: ReaderMetrics,
 }
 
 impl CachableParquetFileReader {
     fn new(
         storage: ObjectStoreRef,
+        path: Path,
         data_cache: Option<DataCacheRef>,
-        meta: ObjectMeta,
-        metrics: ParquetFileMetrics,
-        metadata_size_hint: Option<usize>,
+        file_size: Option<usize>,
     ) -> Self {
         Self {
             storage,
+            path,
             data_cache,
-            meta,
-            metrics,
-            metadata_size_hint,
-            cache_hit: 0,
-            cache_miss: 0,
+            file_size,
+            metrics: Default::default(),
         }
     }
 
@@ -333,28 +230,25 @@ impl CachableParquetFileReader {
 
 impl Drop for CachableParquetFileReader {
     fn drop(&mut self) {
-        info!(
-            "CachableParquetFileReader meta_size_hint:{:?}, cache_hit:{}, cache_miss:{}, bytes_scanned:{}",
-            self.metadata_size_hint, self.cache_hit, self.cache_miss, self.metrics.bytes_scanned.value()
-        );
+        info!("CachableParquetFileReader metrics:{:?}", self.metrics);
     }
 }
 
 impl AsyncFileReader for CachableParquetFileReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.metrics.bytes_scanned.add(range.end - range.start);
+        self.metrics.bytes_scanned += range.end - range.start;
 
-        let key = Self::cache_key(self.meta.location.as_ref(), range.start, range.end);
+        let key = Self::cache_key(self.path.as_ref(), range.start, range.end);
         if let Some(cache) = &self.data_cache {
             if let Some(cached_bytes) = cache.get(&key) {
-                self.cache_hit += 1;
+                self.metrics.cache_hit += 1;
                 return Box::pin(future::ok(Bytes::from(cached_bytes.to_vec())));
             };
         }
 
-        self.cache_miss += 1;
+        self.metrics.cache_miss += 1;
         self.storage
-            .get_range(&self.meta.location, range)
+            .get_range(&self.path, range)
             .map_ok(|bytes| {
                 if let Some(cache) = &self.data_cache {
                     cache.put(key, Arc::new(bytes.to_vec()));
@@ -374,15 +268,31 @@ impl AsyncFileReader for CachableParquetFileReader {
         &mut self,
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
         Box::pin(async move {
+            let object_meta = if let Some(size) = self.file_size {
+                ObjectMeta {
+                    location: self.path.clone(),
+                    // we don't care modified time
+                    last_modified: Default::default(),
+                    size,
+                }
+            } else {
+                self.storage.head(&self.path).await.map_err(|e| {
+                    parquet::errors::ParquetError::General(format!(
+                        "CachableParquetFileReader::storage_head error: {}",
+                        e
+                    ))
+                })?
+            };
+
             let metadata = file_format::parquet::fetch_parquet_metadata(
                 self.storage.as_ref(),
-                &self.meta,
-                self.metadata_size_hint,
+                &object_meta,
+                None,
             )
             .await
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "CachableParquetFileReader::get_metadata error: {}",
+                    "CachableParquetFileReader::fetch_parquet_metadata error: {}",
                     e
                 ))
             })?;
@@ -392,6 +302,7 @@ impl AsyncFileReader for CachableParquetFileReader {
 }
 
 struct RecordBatchProjector {
+    path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
     storage_format_opts: StorageFormatOptions,
@@ -402,11 +313,13 @@ struct RecordBatchProjector {
 
 impl RecordBatchProjector {
     fn new(
+        path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         storage_format_opts: StorageFormatOptions,
     ) -> Self {
         Self {
+            path,
             stream,
             row_projector,
             storage_format_opts,
@@ -419,7 +332,8 @@ impl RecordBatchProjector {
 impl Drop for RecordBatchProjector {
     fn drop(&mut self) {
         info!(
-            "RecordBatchProjector read {} rows, cost:{}ms",
+            "RecordBatchProjector {}, read {} rows, cost:{}ms",
+            self.path,
             self.row_num,
             self.start_time.saturating_elapsed().as_millis(),
         );
@@ -459,8 +373,6 @@ impl Stream for RecordBatchProjector {
                     }
                 }
             }
-            // expected struct `RecordBatchWithKey`, found struct `arrow::record_batch::RecordBatch`
-            // other => other
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => Poll::Ready(None),
         }
@@ -486,15 +398,12 @@ impl<'a> SstReader for Reader<'a> {
 
         let stream = self.fetch_record_batch_stream().await?;
         let metadata = &self.meta_data.as_ref().unwrap();
-        let row_projector = self
-            .projected_schema
-            .try_project_with_key(&metadata.schema)
-            .map_err(|e| Box::new(e) as _)
-            .context(Projection)?;
+        let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
         let storage_format_opts = metadata.storage_format_opts.clone();
 
         Ok(Box::new(RecordBatchProjector::new(
+            self.path.to_string(),
             stream,
             row_projector,
             storage_format_opts,
