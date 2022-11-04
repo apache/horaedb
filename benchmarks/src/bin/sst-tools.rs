@@ -40,7 +40,7 @@ fn main() {
     let matches = App::new("SST Tools")
         .arg(
             Arg::with_name("config")
-                .short("c")
+                .short('c')
                 .long("config")
                 .required(true)
                 .takes_value(true)
