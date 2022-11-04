@@ -236,20 +236,12 @@ impl<'a> Parser<'a> {
     fn parse_show_tables(&mut self) -> Result<Statement> {
         let pattern = match self.parser.next_token() {
             Token::Word(w) => match w.keyword {
-                Keyword::LIKE => self.get_all_like_tokens(),
+                Keyword::LIKE => Some(self.parser.parse_literal_string()?),
                 _ => None,
             },
             _ => None,
         };
         Ok(Statement::ShowTables(ShowTables { pattern }))
-    }
-
-    fn get_all_like_tokens(&mut self) -> Option<String> {
-        let mut fuzzy_str = self.parser.next_token().to_string();
-        while !self.parser.consume_token(&Token::SemiColon) {
-            fuzzy_str += self.parser.next_token().to_string().as_str();
-        }
-        Some(fuzzy_str)
     }
 
     fn parse_show_create(&mut self) -> Result<Statement> {

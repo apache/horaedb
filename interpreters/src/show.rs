@@ -159,11 +159,13 @@ impl ShowInterpreter {
 }
 
 fn is_table_matched(str: &str, search_re: &str) -> Result<bool> {
-    let regex_str = search_re
-        .replace('\'', "")
-        .replace('_', ".")
-        .replace('%', ".*");
-    let re = Regex::new(&regex_str).unwrap();
+    let regex_str = search_re.replace('_', ".");
+    let regex_st = if regex_str.contains('%') {
+        regex_str.replace('%', ".*")
+    } else {
+        format!("^{}$", &regex_str)
+    };
+    let re = Regex::new(&regex_st).unwrap();
     Ok(re.is_match(str))
 }
 
@@ -214,8 +216,49 @@ fn get_default_schema(
 mod tests {
     use crate::show::is_table_matched;
     #[test]
+
     fn test_is_table_matched() {
-        assert!(is_table_matched("01_system_table1", "01%").is_ok());
-        assert!(is_table_matched("01_system_table1", "01_%").is_ok());
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01%")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_%")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "false".to_string(),
+            is_table_matched("01_system_table1", "01_system_table")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_system_table1")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_system_table.")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "false".to_string(),
+            is_table_matched("01_system_table1", "01_system_tabl.")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "%system%")
+                .unwrap()
+                .to_string()
+        );
     }
 }
