@@ -69,6 +69,7 @@ common_types = { path = "common_types" }
 common_util = { path = "common_util" }
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
+ethbloom = "0.13.0"
 futures = "0.3"
 lazy_static = "1.4.0"
 log = "0.4"

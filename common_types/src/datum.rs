@@ -484,6 +484,10 @@ impl Datum {
         }
     }
 
+    pub fn as_bytes(&self) -> &[u8] {
+        todo!("FIXME")
+    }
+
     /// Generate a negative datum if possible.
     ///
     /// It will return `None` if:

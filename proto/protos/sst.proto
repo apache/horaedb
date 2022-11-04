@@ -20,4 +20,6 @@ message SstMetaData {
   uint64 size = 6;
   uint64 row_num = 7;
   analytic_common.StorageFormatOptions storage_format_opts = 8;
+  // Bloom filter for each row group
+  bytes bloom_filter = 9;
 }

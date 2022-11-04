@@ -8,8 +8,9 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
+use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use datafusion::parquet::basic::Compression;
+use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
@@ -56,9 +57,62 @@ struct RecordBytesReader {
     total_row_num: Arc<AtomicUsize>,
 
     fetched_row_num: usize,
+    fetched_record_batch: Vec<Vec<RecordBatchWithKey>>,
+    pending_fetched_record_batch: Option<Vec<RecordBatchWithKey>>,
 }
 
 impl RecordBytesReader {
+    // Partition record batch stream into batch vector with given
+    // `num_rows_per_row_group`
+    async fn partition_record_batch(&mut self) -> Result<()> {
+        while let Some(record_batch) = self.record_stream.next().await {
+            let record_batch = record_batch.context(PollRecordBatch)?;
+            self.fetched_row_num += record_batch.num_rows();
+
+            // reach batch limit, append to self and reset counter
+            if self.fetched_row_num >= self.num_rows_per_row_group {
+                self.fetched_row_num = 0;
+                self.fetched_record_batch
+                    .push(self.pending_fetched_record_batch.take().unwrap());
+                continue;
+            }
+
+            self.pending_fetched_record_batch
+                .get_or_insert_with(|| Default::default())
+                .push(record_batch);
+        }
+
+        if let Some(remaining) = self.pending_fetched_record_batch.take() {
+            self.fetched_record_batch.push(remaining);
+        }
+
+        Ok(())
+    }
+
+    fn build_bloom_filter(&self) -> Vec<Vec<[u8; 256]>> {
+        self.fetched_record_batch
+            .iter()
+            .map(|row_group_batch| {
+                let mut row_bloom_filters =
+                    vec![Bloom::default(); row_group_batch[0].num_columns()];
+
+                for partial_batch in row_group_batch {
+                    for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                        for row in 0..column.num_rows() {
+                            let bytes = column.datum(row).as_bytes();
+                            row_bloom_filters[col_idx].accrue(Input::Raw(bytes));
+                        }
+                    }
+                }
+
+                row_bloom_filters
+                    .into_iter()
+                    .map(|bf| bf.to_fixed_bytes())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    }
+
     async fn read_all(mut self) -> Result<Vec<u8>> {
         let mut arrow_record_batch_vec = Vec::new();
 

@@ -27,6 +27,7 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
+use ethbloom::Bloom;
 use log::{debug, error, info};
 use object_store::ObjectStoreRef;
 use proto::{common as common_pb, sst as sst_pb};
@@ -440,11 +441,20 @@ pub struct SstMetaData {
     // total row number
     pub row_num: u64,
     pub storage_format_opts: StorageFormatOptions,
+    pub bloom_filters: Vec<Vec<Bloom>>,
 }
 
 impl SstMetaData {
     pub fn storage_format(&self) -> StorageFormat {
         self.storage_format_opts.format
+    }
+
+    fn bloom_filters_bytes(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn parse_bloom_filters(buf: &[u8]) -> Result<Vec<Vec<Bloom>>> {
+        todo!()
     }
 }
 
@@ -459,6 +469,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
+            bloom_filter: src.bloom_filters_bytes(),
         }
     }
 }
@@ -479,6 +490,8 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             src.storage_format_opts
                 .context(StorageFormatOptionsNotFound)?,
         );
+        let bloom_filters = Self::parse_bloom_filters(&src.bloom_filter).unwrap();
+
         Ok(Self {
             min_key: src.min_key.into(),
             max_key: src.max_key.into(),
@@ -488,6 +501,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts,
+            bloom_filters,
         })
     }
 }
