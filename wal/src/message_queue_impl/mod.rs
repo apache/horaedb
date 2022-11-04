@@ -7,13 +7,14 @@ use std::collections::BTreeMap;
 use chrono::Utc;
 use message_queue::Message;
 
-pub(crate) mod encoding;
-pub(crate) mod helpers;
-pub(crate) mod region;
-pub(crate) mod region_meta;
+mod encoding;
+mod log_cleaner;
+mod region;
+mod region_meta;
+mod snapshot_synchronizer;
 
 #[cfg(test)]
-pub(crate) mod test_util;
+mod test_util;
 
 #[inline]
 fn to_message(log_key: Vec<u8>, log_value: Vec<u8>) -> Message {

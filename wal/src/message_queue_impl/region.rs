@@ -2,67 +2,87 @@
 
 //! Region in wal on message queue
 
-use std::sync::Arc;
+use std::{cmp, sync::Arc};
 
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
 use common_util::define_result;
 use log::{debug, info};
-use message_queue::{ConsumeIterator, MessageQueue, Offset, OffsetType, StartOffset};
+use message_queue::{ConsumeIterator, MessageQueue, Offset, StartOffset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
+use util::*;
 
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{self, RegionId},
     message_queue_impl::{
+        self,
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
-        helpers,
-        helpers::{LogCleaner, SnapshotSynchronizer},
+        log_cleaner::LogCleaner,
         region_meta,
         region_meta::{OffsetRange, RegionMeta, RegionMetaSnapshot, TableMetaData},
-        to_message,
+        snapshot_synchronizer::{self, SnapshotSynchronizer},
     },
 };
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to write log to region, region id:{}, table id:{}, err:{}",
+        "Write logs to region failed, region id:{}, table id:{}, err:{}",
         region_id,
         table_id,
         source
     ))]
-    WriteLog {
+    WriteWithCause {
         region_id: RegionId,
         table_id: TableId,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[snafu(display(
-        "Failed to read log from region, region id:{}, msg:{}\nBacktrace:{}",
+        "Write logs to region failed with no cause, region id:{}, table id:{}, msg:{}, \nBacktrace:\n{}",
         region_id,
+        table_id,
         msg,
         backtrace
     ))]
-    ReadAllLogsNoCause {
+    WriteNoCause {
         region_id: RegionId,
+        table_id: TableId,
         msg: String,
         backtrace: Backtrace,
     },
 
     #[snafu(display(
-        "Failed to read log from region, region id:{}, err:{}",
+        "Scan logs from region failed, region id:{}, msg:{}\nBacktrace:{}",
         region_id,
+        msg,
+        backtrace
+    ))]
+    ScanNoCause {
+        region_id: RegionId,
+        table_id: Option<TableId>,
+        msg: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Scan logs from region failed with cause, region id:{}, table id:{:?}, msg:{:?}, err:{}",
+        region_id,
+        table_id,
+        msg,
         source
     ))]
-    ReadAllLogsWithCause {
+    ScanWithCause {
         region_id: RegionId,
+        table_id: Option<TableId>,
+        msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[snafu(display(
-        "Failed to get table meta data, region id:{}, table id:{}, err:{}",
+        "Get table meta data failed, region id:{}, table id:{}, err:{}",
         region_id,
         table_id,
         source
@@ -74,7 +94,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get snapshot from region, region id:{}, err:{}",
+        "Get snapshot from region failed, region id:{}, err:{}",
         region_id,
         source
     ))]
@@ -84,7 +104,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get snapshot from region, region id:{}, location:{:?}, err:{}",
+        "Mark deleted sequence to table failed, region id:{}, table id:{:?}, err:{}",
         region_id,
         table_id,
         source
@@ -95,14 +115,18 @@ pub enum Error {
         source: region_meta::Error,
     },
 
-    #[snafu(display("Failed to sync snapshot of region, err:{}", source))]
-    SyncSnapshot { source: helpers::Error },
+    #[snafu(display("Sync snapshot of region failed, err:{}", source))]
+    SyncSnapshot {
+        source: snapshot_synchronizer::Error,
+    },
 
-    #[snafu(display("Failed to clean logs of region, err:{}", source))]
-    CleanLogs { source: helpers::Error },
+    #[snafu(display("Clean logs of region failed, err:{}", source))]
+    CleanLogs {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, region id:{}, err:{}",
+        "Open region failed, namespace:{}, region id:{}, err:{}",
         namespace,
         region_id,
         source
@@ -118,31 +142,27 @@ define_result!(Error);
 
 /// Region in wal(message queue based)
 #[allow(unused)]
-pub struct Region<Mq: MessageQueue> {
+pub struct Region<M: MessageQueue> {
     /// Region inner, see [RegionInner]
     ///
     /// Most of time, lock by `read lock`.
     /// While needing to freeze the region(such as, make a snapshot),
     /// `write lock` will be used.
-    inner: RwLock<RegionInner<Mq>>,
+    inner: RwLock<RegionInner<M>>,
 
     /// Will synchronize the snapshot to message queue by it
     ///
     /// Lock for forcing the snapshots to be synchronized sequentially.
-    snapshot_synchronizer: Mutex<SnapshotSynchronizer<Mq>>,
+    snapshot_synchronizer: Mutex<SnapshotSynchronizer<M>>,
 
     /// Clean the outdated logs which are marked delete
-    log_cleaner: LogCleaner<Mq>,
+    log_cleaner: LogCleaner<M>,
 }
 
 #[allow(unused)]
-impl<Mq: MessageQueue> Region<Mq> {
+impl<M: MessageQueue> Region<M> {
     /// Init the region.
-    pub async fn open(
-        namespace: &str,
-        region_id: RegionId,
-        message_queue: Arc<Mq>,
-    ) -> Result<Self> {
+    pub async fn open(namespace: &str, region_id: RegionId, message_queue: Arc<M>) -> Result<Self> {
         // Format to the topic name.
         let log_topic = format_wal_data_topic_name(namespace, region_id);
         let meta_topic = format_wal_meta_topic_name(namespace, region_id);
@@ -187,37 +207,154 @@ impl<Mq: MessageQueue> Region<Mq> {
         })
     }
 
-    /// See [RegionInner]'s related method.
+    /// Write logs of table to region.
     pub async fn write(
         &self,
         ctx: &manager::WriteContext,
         log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         let inner = self.inner.read().await;
+
+        debug!(
+            "Begin to write to wal region, ctx:{:?}, region_id:{}, location:{:?}, log_entries_num:{}",
+            ctx,
+            inner.region_id,
+            log_batch.location,
+            log_batch.entries.len()
+        );
+
         inner.write(ctx, log_batch).await
     }
 
-    /// See [RegionInner]'s related method.
-    pub async fn read_all(
+    /// Scan all logs from region.
+    ///
+    /// NOTICE: we get scan range from the region's snapshot, if call
+    /// `mark_delete_to` during polling logs concurrently, it may lead to
+    /// error.
+    pub async fn scan_region(
         &self,
         ctx: &manager::ReadContext,
-    ) -> Result<MessageQueueLogIterator<Mq::ConsumeIterator>> {
-        let inner = self.inner.read().await;
-        inner.read_all(ctx).await
+    ) -> Result<Option<MessageQueueLogIterator<M::ConsumeIterator>>> {
+        // Calculate region's scan range from its snapshot.
+        let scan_range = {
+            let inner = self.inner.write().await;
+
+            info!(
+                "Prepare to scan all logs from region, region id:{}, log topic:{}, ctx:{:?}",
+                inner.region_id, inner.log_topic, ctx
+            );
+
+            let snapshot = inner.make_meta_snapshot().await;
+            let mut safe_delete_offset = Offset::MAX;
+            let mut high_watermark = 0;
+            // Calculate the min offset in message queue.
+            for table_meta in &snapshot.entries {
+                if let Some(offset) = table_meta.safe_delete_offset {
+                    safe_delete_offset = cmp::min(safe_delete_offset, offset);
+                }
+                high_watermark = cmp::max(high_watermark, table_meta.current_high_watermark);
+            }
+
+            if safe_delete_offset == Offset::MAX {
+                None
+            } else {
+                assert!(safe_delete_offset < high_watermark);
+                Some(ScanRange::new(safe_delete_offset, high_watermark))
+            }
+        };
+
+        match scan_range {
+            Some(scan_range) => {
+                let inner = self.inner.read().await;
+                Ok(Some(
+                    inner
+                        .range_scan(ctx, None, scan_range)
+                        .await
+                        .context(ScanWithCause {
+                            region_id: inner.region_id,
+                            table_id: None,
+                            msg: format!(
+                                "failed while creating iterator, scan range:{:?}",
+                                scan_range
+                            ),
+                        })?,
+                ))
+            }
+
+            None => Ok(None),
+        }
     }
 
-    /// See [RegionInner]'s related method.
-    pub async fn mark_delete_up_to(
+    /// Scan logs of specific table from region.
+    ///
+    /// NOTICE: we get scan range from the table's snapshot, if call
+    /// `mark_delete_to` for the same table during polling logs concurrently, it
+    /// may lead to error.
+    pub async fn scan_table(
+        &self,
+        table_id: TableId,
+        ctx: &manager::ReadContext,
+    ) -> Result<Option<MessageQueueLogIterator<M::ConsumeIterator>>> {
+        let (table_id, scan_range) = {
+            let inner = self.inner.read().await;
+
+            debug!(
+                "Prepare to scan logs of the table from region, region id:{}, table id:{}, log topic:{}, ctx:{:?}",
+                inner.region_id, table_id, inner.log_topic, ctx
+            );
+
+            let table_meta = inner.get_table_meta(table_id).await?;
+            if let Some(start_offset) = table_meta.safe_delete_offset {
+                (
+                    table_id,
+                    Some(ScanRange::new(
+                        start_offset,
+                        table_meta.current_high_watermark,
+                    )),
+                )
+            } else {
+                (table_id, None)
+            }
+        };
+
+        match scan_range {
+            Some(scan_range) => {
+                let inner = self.inner.read().await;
+                Ok(Some(
+                    inner
+                        .range_scan(ctx, Some(table_id), scan_range)
+                        .await
+                        .context(ScanWithCause {
+                            region_id: inner.region_id,
+                            table_id: Some(table_id),
+                            msg: format!(
+                                "failed while creating iterator, scan range:{:?}",
+                                scan_range
+                            ),
+                        })?,
+                ))
+            }
+
+            None => Ok(None),
+        }
+    }
+
+    /// Mark the entries whose sequence number is in [0, `next sequence number`)
+    /// to be deleted in the future.
+    pub async fn mark_delete_to(
         &self,
         table_id: TableId,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
-            inner
-                .mark_delete_up_to(table_id, sequence_num)
-                .await
-                .unwrap();
+
+            debug!(
+                "Mark deleted entries to sequence num:{}, region id:{}, table id:{}",
+                sequence_num, inner.region_id, table_id
+            );
+
+            inner.mark_delete_to(table_id, sequence_num).await.unwrap();
 
             (
                 inner.make_meta_snapshot().await,
@@ -225,20 +362,20 @@ impl<Mq: MessageQueue> Region<Mq> {
             )
         };
 
-        // TODO: a temporary and stupid implementation...
+        // TODO: a temporary and rough implementation...
         // just need to sync the snapshot while dropping table, but now we sync while
         // every flushing... Just sync here now, obviously it is not enough.
         synchronizer.sync(snapshot).await.context(SyncSnapshot)
     }
 
-    /// See [RegionInner]'s related method.
+    /// Get meta data by table id.
     pub async fn get_table_meta(&self, table_id: TableId) -> Result<TableMetaData> {
         let inner = self.inner.read().await;
         inner.get_table_meta(table_id).await
     }
 
     /// Clean outdated logs according to the information in region snapshot.
-    pub async fn clean_logs(&self) -> Result<()> {
+    pub async fn clean_logs(&mut self) -> Result<()> {
         // Get current snapshot.
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
@@ -252,10 +389,15 @@ impl<Mq: MessageQueue> Region<Mq> {
         self.log_cleaner
             .maybe_clean_logs(&snapshot)
             .await
+            .map_err(|e| Box::new(e) as _)
             .context(CleanLogs)?;
 
         // Sync snapshot.
-        synchronizer.sync(snapshot).await.context(CleanLogs)
+        synchronizer
+            .sync(snapshot)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(CleanLogs)
     }
 
     /// Return snapshot, just used for test.
@@ -267,25 +409,29 @@ impl<Mq: MessageQueue> Region<Mq> {
 
 /// Region's inner, all methods of [Region] are mainly implemented in it.
 #[allow(unused)]
-struct RegionInner<Mq> {
+struct RegionInner<M> {
     /// Id of region
     region_id: RegionId,
+
     /// Region meta data(such as, tables' next sequence numbers)
     region_meta: RegionMeta,
+
     /// Used to encode/decode the logs
     log_encoding: CommonLogEncoding,
+
     /// Message queue's Client
-    message_queue: Arc<Mq>,
+    message_queue: Arc<M>,
+
     /// Topic storing logs in message queue
     log_topic: String,
 }
 
 #[allow(unused)]
-impl<Mq: MessageQueue> RegionInner<Mq> {
+impl<M: MessageQueue> RegionInner<M> {
     pub fn new(
         region_id: RegionId,
         log_encoding: CommonLogEncoding,
-        message_queue: Arc<Mq>,
+        message_queue: Arc<M>,
         log_topic: String,
     ) -> Self {
         // TODO: use snapshot to recover `region_meta`.
@@ -298,44 +444,45 @@ impl<Mq: MessageQueue> RegionInner<Mq> {
         }
     }
 
-    /// Write logs of table.
     async fn write(
         &self,
         _ctx: &manager::WriteContext,
         log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
-        // TODO: make use of ctx.
-        debug!(
-            "Begin to write to wal region, ctx:{:?}, region_id:{}, location:{:?}, log_entries_num:{}",
-            _ctx,
-            self.region_id,
-            log_batch.location,
-            log_batch.entries.len()
+        ensure!(
+            !log_batch.is_empty(),
+            WriteNoCause {
+                region_id: self.region_id,
+                table_id: log_batch.location.table_id,
+                msg: "log batch passed should not be empty"
+            }
         );
+
         let location = &log_batch.location;
         let log_write_entries = &log_batch.entries;
 
         // Create messages and prepare for write.
-        let mut sequence_num = self
+        let mut next_sequence_num = self
             .region_meta
             .prepare_for_table_write(location.table_id)
             .await;
+
         let mut messages = Vec::with_capacity(log_batch.entries.len());
         let mut key_buf = BytesMut::new();
         for entry in log_write_entries {
-            let log_key = CommonLogKey::new(self.region_id, location.table_id, sequence_num);
+            let log_key = CommonLogKey::new(self.region_id, location.table_id, next_sequence_num);
             self.log_encoding
                 .encode_key(&mut key_buf, &log_key)
                 .map_err(|e| Box::new(e) as _)
-                .context(WriteLog {
+                .context(WriteWithCause {
                     region_id: self.region_id,
                     table_id: location.table_id,
                 })?;
 
-            let message = to_message(key_buf.to_vec(), entry.payload.clone());
+            let message = message_queue_impl::to_message(key_buf.to_vec(), entry.payload.clone());
             messages.push(message);
 
-            sequence_num += 1;
+            next_sequence_num += 1;
         }
 
         // Write.
@@ -344,10 +491,20 @@ impl<Mq: MessageQueue> RegionInner<Mq> {
             .produce(&self.log_topic, messages)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(WriteLog {
+            .context(WriteWithCause {
                 region_id: self.region_id,
                 table_id: location.table_id,
             })?;
+
+        ensure!(
+            !offsets.is_empty(),
+            WriteNoCause {
+                region_id: self.region_id,
+                table_id: log_batch.location.table_id,
+                msg: "returned offsets after producing to message queue shouldn't be empty"
+            }
+        );
+
         debug!(
             "Produce to topic success, ctx:{:?}, region_id:{}, location:{:?}, topic:{}",
             _ctx, self.region_id, log_batch.location, self.log_topic,
@@ -361,65 +518,43 @@ impl<Mq: MessageQueue> RegionInner<Mq> {
             )
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(WriteLog {
+            .context(WriteWithCause {
                 region_id: self.region_id,
                 table_id: location.table_id,
             })?;
 
-        Ok(sequence_num - 1)
+        Ok(next_sequence_num - 1)
     }
 
-    /// Read all logs from region, will return a iterator for high-level to
-    /// poll.
     // TODO: take each read's timeout in consideration.
-    async fn read_all(
+    async fn range_scan(
         &self,
         _ctx: &manager::ReadContext,
-    ) -> Result<MessageQueueLogIterator<Mq::ConsumeIterator>> {
-        info!(
-            "Begin to read all logs from region, region id:{}, log topic:{}, ctx:{:?}",
-            self.region_id, self.log_topic, _ctx
-        );
-
-        let current_high_watermark = self
-            .message_queue
-            .fetch_offset(&self.log_topic, OffsetType::HighWaterMark)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadAllLogsWithCause {
-                region_id: self.region_id,
-            })?;
+        table_id: Option<TableId>,
+        scan_range: ScanRange,
+    ) -> std::result::Result<
+        MessageQueueLogIterator<M::ConsumeIterator>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let consume_iter = self
             .message_queue
-            .consume(&self.log_topic, StartOffset::Earliest)
+            .consume(&self.log_topic, StartOffset::At(scan_range.inclusive_start))
             .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadAllLogsWithCause {
-                region_id: self.region_id,
-            })?;
+            .map_err(Box::new)?;
 
-        info!("Finished to read all logs from region, region id:{}, log topic:{}, terminate offset:{}", self.region_id, 
-            self.log_topic, current_high_watermark);
+        debug!("Create scanning iterator successfully, region id:{}, table id:{:?}, log topic:{}, scan range{:?}", self.region_id, 
+            table_id, self.log_topic, scan_range);
 
         Ok(MessageQueueLogIterator::new(
             self.region_id,
-            Some(current_high_watermark),
+            table_id,
+            Some(scan_range.exclusive_end),
             consume_iter,
             self.log_encoding.clone(),
         ))
     }
 
-    /// Mark the delete to sequence number of table.
-    async fn mark_delete_up_to(
-        &self,
-        table_id: TableId,
-        sequence_num: SequenceNumber,
-    ) -> Result<()> {
-        debug!(
-            "Mark deleted entries up to sequence_num:{}, region_id:{}",
-            sequence_num, self.region_id
-        );
-
+    async fn mark_delete_to(&self, table_id: TableId, sequence_num: SequenceNumber) -> Result<()> {
         self.region_meta
             .mark_table_deleted(table_id, sequence_num)
             .await
@@ -429,7 +564,6 @@ impl<Mq: MessageQueue> RegionInner<Mq> {
             })
     }
 
-    /// Get meta data by table id.
     async fn get_table_meta(&self, table_id: TableId) -> Result<TableMetaData> {
         self.region_meta
             .get_table_meta_data(table_id)
@@ -448,11 +582,20 @@ impl<Mq: MessageQueue> RegionInner<Mq> {
     }
 }
 
+// TODO: define some high-level iterator based on this,
+// such as `RegionScanIterator` placing the high watermark invariant checking
+// in it.
 #[allow(unused)]
 #[derive(Debug)]
 pub struct MessageQueueLogIterator<C: ConsumeIterator> {
     /// Id of region
     region_id: RegionId,
+
+    /// Id of table id
+    ///
+    /// It will be `None` while scanning region,
+    /// and will be `Some` while scanning table.
+    table_id: Option<TableId>,
 
     /// Polling's end point
     ///
@@ -463,10 +606,13 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 
     /// Terminated flag
     is_terminated: bool,
+
     /// Consume Iterator of message queue
     iter: C,
+
     /// Used to encode/decode the logs
     log_encoding: CommonLogEncoding,
+
     /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
     previous_value: Vec<u8>,
     // TODO: timeout
@@ -476,12 +622,14 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     fn new(
         region_id: RegionId,
+        table_id: Option<TableId>,
         terminate_offset: Option<Offset>,
         iter: C,
         log_encoding: CommonLogEncoding,
     ) -> Self {
         Self {
             region_id,
+            table_id,
             terminate_offset,
             iter,
             is_terminated: false,
@@ -495,20 +643,29 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.is_terminated && self.terminate_offset.is_some() {
-            info!(
-                "Finished to poll log from message queue, region id:{}, terminate offset:{:?}",
+            debug!(
+                "Finished to poll all logs from message queue, region id:{}, terminate offset:{:?}",
                 self.region_id, self.terminate_offset
             );
             return Ok(None);
         }
 
-        let (message_and_offset, high_watermark) = self.iter.next_message().await.unwrap();
-
-        // Check has race happened.
-        if let Some(terminate_offset) = &self.terminate_offset {
-            ensure!(*terminate_offset == high_watermark, ReadAllLogsNoCause {
+        let (message_and_offset, high_watermark) = self
+            .iter
+            .next_message()
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(ScanWithCause {
                 region_id: self.region_id,
-                msg: format!("while terminate offset is set, remote high watermark should not change, terminate offset:{}, remote high watermark:{}",
+                table_id: self.table_id,
+                msg: "failed while polling log",
+            })?;
+
+        if let Some(terminate_offset) = &self.terminate_offset {
+            ensure!(*terminate_offset <= high_watermark, ScanNoCause {
+                region_id: self.region_id,
+                table_id: self.table_id,
+                msg: format!("the setting terminate offset is invalid, it should be less than or equals to high watermark, terminate offset:{}, high watermark:{}",
                     terminate_offset, high_watermark),
             });
 
@@ -517,14 +674,16 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             }
         }
 
-        // Decode to log key and value, then create the returned log entry, key and
-        // value absolutely exist.
+        // Decode the message to log key and value, then create the returned log entry.
+        // Key and value in message should absolutely exist.
         let log_key = self
             .log_encoding
             .decode_key(&message_and_offset.message.key.unwrap())
             .map_err(|e| Box::new(e) as _)
-            .context(ReadAllLogsWithCause {
+            .context(ScanWithCause {
                 region_id: self.region_id,
+                table_id: self.table_id,
+                msg: "failed while polling log",
             })?;
 
         let log_value = message_and_offset.message.value.unwrap();
@@ -532,8 +691,10 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             .log_encoding
             .decode_value(&log_value)
             .map_err(|e| Box::new(e) as _)
-            .context(ReadAllLogsWithCause {
+            .context(ScanWithCause {
                 region_id: self.region_id,
+                table_id: self.table_id,
+                msg: "failed while polling log",
             })?;
 
         self.previous_value = payload.to_owned();
@@ -542,6 +703,25 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             sequence: log_key.sequence_num,
             payload: self.previous_value.as_slice(),
         }))
+    }
+}
+
+mod util {
+    use message_queue::Offset;
+
+    #[derive(Debug, Default, Clone, Copy)]
+    pub struct ScanRange {
+        pub inclusive_start: Offset,
+        pub exclusive_end: Offset,
+    }
+
+    impl ScanRange {
+        pub fn new(inclusive_start: Offset, exclusive_end: Offset) -> Self {
+            Self {
+                inclusive_start,
+                exclusive_end,
+            }
+        }
     }
 }
 
@@ -572,7 +752,7 @@ mod tests {
         test_region(message_queue).await;
     }
 
-    async fn test_region<Mq: MessageQueue>(message_queue: Arc<Mq>) {
+    async fn test_region<M: MessageQueue>(message_queue: Arc<M>) {
         let shard_id = 42;
         let region_id = 42;
         let test_payloads = vec![42, 43, 44, 45, 46];
@@ -599,11 +779,11 @@ mod tests {
         .await;
     }
 
-    async fn test_read_write<Mq: MessageQueue>(
+    async fn test_read_write<M: MessageQueue>(
         region_id: RegionId,
         shard_id: ShardId,
         test_datas: Vec<(TableId, Vec<u32>)>,
-        message_queue: Arc<Mq>,
+        message_queue: Arc<M>,
     ) {
         let table_num = test_datas.len();
         let test_context = TestContext::new(region_id, shard_id, test_datas, message_queue).await;
@@ -628,8 +808,9 @@ mod tests {
         let mut mixed_decoded_res = Vec::new();
         let mut msg_iter = test_context
             .region
-            .read_all(&ReadContext::default())
+            .scan_region(&ReadContext::default())
             .await
+            .unwrap()
             .unwrap();
         while let Some(log_entry) = msg_iter.next_log_entry().await.unwrap() {
             let mut payload = log_entry.payload;
@@ -643,14 +824,15 @@ mod tests {
         assert_eq!(mixed_test_payloads, mixed_decoded_res);
     }
 
-    async fn test_mark_and_delete<Mq: MessageQueue>(
+    async fn test_mark_and_delete<M: MessageQueue>(
         region_id: RegionId,
         shard_id: ShardId,
         test_datas: Vec<(TableId, Vec<u32>)>,
-        message_queue: Arc<Mq>,
+        message_queue: Arc<M>,
     ) {
         let table_num = test_datas.len();
-        let test_context = TestContext::new(region_id, shard_id, test_datas, message_queue).await;
+        let mut test_context =
+            TestContext::new(region_id, shard_id, test_datas, message_queue).await;
 
         // Mark deleted and check
         for table_idx in 0..table_num {
@@ -672,7 +854,7 @@ mod tests {
         check_sync_snapshot(&test_context).await;
     }
 
-    async fn check_sync_snapshot<Mq: MessageQueue>(test_context: &TestContext<Mq>) {
+    async fn check_sync_snapshot<M: MessageQueue>(test_context: &TestContext<M>) {
         // Only one meta record will exist in normal.
         let earliest = test_context
             .message_queue
@@ -710,8 +892,8 @@ mod tests {
         assert_eq!(local_snapshot, remote_snapshot);
     }
 
-    async fn mark_deleted_and_check<Mq: MessageQueue>(
-        test_context: &TestContext<Mq>,
+    async fn mark_deleted_and_check<M: MessageQueue>(
+        test_context: &TestContext<M>,
         table_idx: usize,
     ) {
         let test_log_batch = &test_context.test_datas[table_idx].1.test_log_batch;
@@ -735,7 +917,7 @@ mod tests {
         // Mark deleted.
         test_context
             .region
-            .mark_delete_up_to(table_id, test_log_batch.len() as u64)
+            .mark_delete_to(table_id, test_log_batch.len() as u64)
             .await
             .unwrap();
         let table_meta = test_context.region.get_table_meta(table_id).await.unwrap();
