@@ -55,6 +55,7 @@ enum NormalizedExpr {
         value: ScalarValue,
     },
     True,
+    False,
 }
 
 impl NormalizedExpr {
@@ -72,6 +73,7 @@ impl NormalizedExpr {
             NormalizedExpr::Eq { column, value } => f(column, value, true),
             NormalizedExpr::NotEq { column, value } => f(column, value, false),
             NormalizedExpr::True => true,
+            NormalizedExpr::False => false,
         }
     }
 }
@@ -106,15 +108,25 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
             expr,
             list,
             negated,
-        } if !list.is_empty() && list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
-            let eq_fun = if *negated { Expr::not_eq } else { Expr::eq };
-            let re_fun = if *negated { Expr::and } else { Expr::or };
-            let transformed_expr = list
-                .iter()
-                .map(|e| eq_fun(*expr.clone(), e.clone()))
-                .reduce(re_fun)
-                .unwrap();
-            normalize_predicate_expression(&transformed_expr)
+        } if list.len() < MAX_ELEMS_IN_LIST_FOR_FILTER => {
+            if list.is_empty() {
+                if *negated {
+                    // "not in empty list" is always true
+                    NormalizedExpr::True
+                } else {
+                    // "in empty list" is always false
+                    NormalizedExpr::False
+                }
+            } else {
+                let eq_fun = if *negated { Expr::not_eq } else { Expr::eq };
+                let re_fun = if *negated { Expr::and } else { Expr::or };
+                let transformed_expr = list
+                    .iter()
+                    .map(|e| eq_fun(*expr.clone(), e.clone()))
+                    .reduce(re_fun)
+                    .unwrap();
+                normalize_predicate_expression(&transformed_expr)
+            }
         }
         _ => unhandled,
     }
@@ -177,7 +189,7 @@ mod tests {
     }
 
     fn check_normalize(expr: &Expr, expect_expr: &NormalizedExpr) {
-        let normalized_expr = normalize_predicate_expression(&expr);
+        let normalized_expr = normalize_predicate_expression(expr);
         assert_eq!(&normalized_expr, expect_expr);
     }
 
@@ -237,6 +249,15 @@ mod tests {
     }
 
     #[test]
+    fn test_normalize_in_empty_list() {
+        let empty_list_expr = Expr::in_list(make_column_expr("c0"), vec![], false);
+        check_normalize(&empty_list_expr, &NormalizedExpr::False);
+
+        let negated_empty_list_expr = Expr::in_list(make_column_expr("c0"), vec![], true);
+        check_normalize(&negated_empty_list_expr, &NormalizedExpr::True);
+    }
+
+    #[test]
     fn test_normalize_complex() {
         // (c0 in [0, 1]) or ((c1 != 0 or c2 = 1 ) and not c3))
         let expr = Expr::or(
@@ -291,11 +312,6 @@ mod tests {
     #[test]
     fn test_prune() {
         let f = |column: &Column, val: &ScalarValue, equal: bool| -> bool {
-            println!(
-                "filter column:{:?}, value:{:?}, equal:{}",
-                column, val, equal
-            );
-
             let val = match val {
                 ScalarValue::Int32(v) => v.unwrap(),
                 _ => panic!("Unexpected value type"),
