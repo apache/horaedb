@@ -86,7 +86,7 @@ async fn test_delete<T: MessageQueue>(message_queue: &T) {
     consume_all_and_compare(message_queue, &topic_name, 0, &test_messages).await;
 
     // Test consume after deleting.
-    assert!(message_queue.delete_up_to(&topic_name, 3).await.is_ok());
+    assert!(message_queue.delete_to(&topic_name, 3).await.is_ok());
     consume_all_and_compare(message_queue, &topic_name, 3, &test_messages).await;
 }
 
@@ -183,7 +183,7 @@ async fn test_consume_fetch_offset<T: MessageQueue>(message_queue: &T) {
 
     // We delete some messages later, and the earliest offset will become the offset
     // which is deleted to.
-    assert!(message_queue.delete_up_to(&topic_name, 3).await.is_ok());
+    assert!(message_queue.delete_to(&topic_name, 3).await.is_ok());
     let earliest_offset = message_queue
         .fetch_offset(&topic_name, OffsetType::EarliestOffset)
         .await

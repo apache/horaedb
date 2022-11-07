@@ -43,7 +43,7 @@ pub trait MessageQueue: Debug + Send + Sync + 'static {
         start_offset: StartOffset,
     ) -> Result<Self::ConsumeIterator, Self::Error>;
 
-    async fn delete_up_to(&self, topic_name: &str, offset: Offset) -> Result<(), Self::Error>;
+    async fn delete_to(&self, topic_name: &str, offset: Offset) -> Result<(), Self::Error>;
     // TODO: should design a stream consume method for slave node to fetch wals.
 }
 

@@ -282,7 +282,7 @@ impl MessageQueue for KafkaImpl {
         ))
     }
 
-    async fn delete_up_to(&self, topic_name: &str, offset: Offset) -> Result<()> {
+    async fn delete_to(&self, topic_name: &str, offset: Offset) -> Result<()> {
         let topic_client =
             self.get_or_create_topic_client(topic_name)
                 .await
