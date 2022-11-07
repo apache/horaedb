@@ -58,3 +58,7 @@ shard = 0
 schema = 'test'
 shards = [ 1 ]
 
+[limiter]
+write_block_list = ['mytable1']
+read_block_list = ['mytable1']
+

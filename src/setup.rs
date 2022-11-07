@@ -20,6 +20,7 @@ use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
+    limiter::Limiter,
     route::{
         cluster_based::ClusterBasedRouter,
         rule_based::{ClusterView, RuleBasedRouter},
@@ -118,11 +119,15 @@ where
     // Create query executor
     let query_executor = ExecutorImpl::new(config.query.clone());
 
+    // Config limiter
+    let limiter = Limiter::new(config.limiter.clone());
+
     let builder = Builder::new(config.clone())
         .runtimes(runtimes.clone())
         .query_executor(query_executor)
         .table_engine(engine_proxy.clone())
-        .function_registry(function_registry);
+        .function_registry(function_registry)
+        .limiter(limiter);
 
     let builder = match config.deploy_mode {
         DeployMode::Standalone => {

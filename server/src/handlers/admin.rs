@@ -14,17 +14,17 @@ pub enum Operation {
 #[derive(Debug, Deserialize)]
 pub struct RejectRequest {
     operation: Operation,
-    write_reject_list: Vec<String>,
-    read_reject_list: Vec<String>,
+    write_block_list: Vec<String>,
+    read_block_list: Vec<String>,
 }
 
 #[derive(Serialize)]
 pub struct RejectResponse {
-    write_reject_list: BTreeSet<String>,
-    read_reject_list: BTreeSet<String>,
+    write_block_list: BTreeSet<String>,
+    read_block_list: BTreeSet<String>,
 }
 
-pub async fn handle_reject<Q: QueryExecutor + 'static>(
+pub async fn handle_block<Q: QueryExecutor + 'static>(
     _ctx: RequestContext,
     instance: InstanceRef<Q>,
     request: RejectRequest,
@@ -33,38 +33,38 @@ pub async fn handle_reject<Q: QueryExecutor + 'static>(
         Operation::Add => {
             instance
                 .limiter
-                .add_write_reject_list(request.write_reject_list);
+                .add_write_block_list(request.write_block_list);
             instance
                 .limiter
-                .add_read_reject_list(request.read_reject_list);
+                .add_read_block_list(request.read_block_list);
         }
         Operation::Set => {
             instance
                 .limiter
-                .set_write_reject_list(request.write_reject_list);
+                .set_write_block_list(request.write_block_list);
             instance
                 .limiter
-                .set_read_reject_list(request.read_reject_list);
+                .set_read_block_list(request.read_block_list);
         }
         Operation::Remove => {
             instance
                 .limiter
-                .remove_write_reject_list(request.write_reject_list);
+                .remove_write_block_list(request.write_block_list);
             instance
                 .limiter
-                .remove_read_reject_list(request.read_reject_list);
+                .remove_read_block_list(request.read_block_list);
         }
     }
 
     Ok(RejectResponse {
-        write_reject_list: instance
+        write_block_list: instance
             .limiter
-            .get_write_reject_list()
+            .get_write_block_list()
             .into_iter()
             .collect::<BTreeSet<_>>(),
-        read_reject_list: instance
+        read_block_list: instance
             .limiter
-            .get_read_reject_list()
+            .get_read_block_list()
             .into_iter()
             .collect::<BTreeSet<_>>(),
     })

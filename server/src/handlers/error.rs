@@ -3,9 +3,9 @@
 //! Error of handlers
 
 use snafu::{Backtrace, Snafu};
-
 // TODO(yingwen): Avoid printing huge sql string
 // TODO(yingwen): Maybe add an error type to sql sub mod
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
@@ -47,6 +47,9 @@ pub enum Error {
         source: arrow::error::ArrowError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Query limited by block list, query:{}", query))]
+    QueryBlock { query: String },
 }
 
 define_result!(Error);
