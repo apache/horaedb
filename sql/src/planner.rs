@@ -106,6 +106,9 @@ pub enum Error {
     #[snafu(display("Tag column not found, name:{}", name))]
     TagColumnNotFound { name: String },
 
+    #[snafu(display("Timestamp column can not be Tag, name:{}", name))]
+    TimestampColumnCanNotTag { name: String },
+
     #[snafu(display("Timestamp column not found, name:{}", name))]
     TimestampColumnNotFound { name: String },
 
@@ -380,6 +383,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         // Timestamp column must be provided.
         let timestamp_name = timestamp_name.context(RequireTimestamp)?;
+        // The timestamp key column must not be a Tag column
+        if name_column_map.get(&timestamp_name as &str).is_some() {
+            ensure!(
+                !name_column_map.get(&timestamp_name as &str).unwrap().is_tag,
+                TimestampColumnCanNotTag {
+                    name: &timestamp_name as &str,
+                }
+            )
+        }
 
         // Build primary key, the builder will check timestamp column is in primary key.
         if let Some(idx) = primary_key_constraint_idx {
