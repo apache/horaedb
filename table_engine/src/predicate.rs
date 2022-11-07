@@ -16,8 +16,6 @@ use datafusion::{
 use log::debug;
 use snafu::Snafu;
 
-pub mod bloom_filter;
-
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {

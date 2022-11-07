@@ -26,7 +26,8 @@ use parquet::{
     file::metadata::ParquetMetaData,
 };
 use parquet_ext::{
-    prune, reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef, MetaCacheRef,
+    prune::min_max, reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef,
+    MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
@@ -264,7 +265,7 @@ impl ProjectAndFilterReader {
         let reader_builder = self.reader_builder.take().unwrap();
         let filtered_row_groups = {
             let metadata = reader_builder.metadata();
-            prune::filter_row_groups(
+            min_max::filter_row_groups(
                 self.schema.to_arrow_schema_ref(),
                 self.predicate.exprs(),
                 metadata.row_groups(),

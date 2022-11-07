@@ -28,7 +28,7 @@ use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::arrow::{
     async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask,
 };
-use parquet_ext::{prune, DataCacheRef, MetaCacheRef};
+use parquet_ext::{prune::min_max, DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -91,7 +91,7 @@ impl<'a> Reader<'a> {
         let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
             .await
             .with_context(|| ParquetError)?;
-        let filtered_row_groups = prune::filter_row_groups(
+        let filtered_row_groups = min_max::filter_row_groups(
             meta_data.schema.to_arrow_schema_ref(),
             self.predicate.exprs(),
             builder.metadata().row_groups(),
