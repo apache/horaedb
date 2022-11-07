@@ -113,6 +113,16 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 
 // CreateTable implements gRPC CeresmetaServer.
 func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTableRequest) (*metaservicepb.CreateTableResponse, error) {
+	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	if err != nil {
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+	}
+
+	// Forward request to the leader.
+	if ceresmetaClient != nil {
+		return ceresmetaClient.CreateTable(ctx, req)
+	}
+
 	clusterManager := s.h.GetClusterManager()
 	factory := s.h.GetProcedureFactory()
 	manager := s.h.GetProcedureManager()
@@ -173,6 +183,16 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 
 // DropTable implements gRPC CeresmetaServer.
 func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableRequest) (*metaservicepb.DropTableResponse, error) {
+	ceresmetaClient, err := s.getForwardedCeresmetaClient(ctx)
+	if err != nil {
+		return &metaservicepb.DropTableResponse{Header: responseHeader(err, "drop table")}, nil
+	}
+
+	// Forward request to the leader.
+	if ceresmetaClient != nil {
+		return ceresmetaClient.DropTable(ctx, req)
+	}
+
 	clusterManager := s.h.GetClusterManager()
 	factory := s.h.GetProcedureFactory()
 	manager := s.h.GetProcedureManager()
