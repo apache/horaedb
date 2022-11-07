@@ -92,7 +92,7 @@ impl<M: MessageQueue> LogCleaner<M> {
         if do_clean {
             // Delete logs to above offset and sync snapshot after.
             self.message_queue
-                .delete_to(&self.log_topic, safe_delete_offset)
+                .delete_up_to(&self.log_topic, safe_delete_offset)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(CleanLogsWithCause {
