@@ -4068,6 +4068,7 @@ dependencies = [
  "arrow_ext",
  "bytes 1.2.1",
  "datafusion 12.0.0",
+ "datafusion-expr 12.0.0",
  "log",
  "lru",
  "parquet 23.0.0",
