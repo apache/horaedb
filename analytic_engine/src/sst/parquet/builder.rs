@@ -224,7 +224,7 @@ mod tests {
             parquet::{reader::ParquetSstReader, AsyncParquetReader},
             reader::{tests::check_stream, SstReader},
         },
-        table_options::{self},
+        table_options,
     };
 
     // TODO(xikai): add test for reverse reader

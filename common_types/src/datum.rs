@@ -496,8 +496,14 @@ impl Datum {
             Datum::Int32(v) => v.to_le_bytes().to_vec(),
             Datum::Int16(v) => v.to_le_bytes().to_vec(),
             Datum::Int8(v) => v.to_le_bytes().to_vec(),
-            Datum::Boolean(v) => (if *v { 1u8 } else { 0u8 }).to_le_bytes().to_vec(),
-            Datum::Null => 0u8.to_le_bytes().to_vec(),
+            Datum::Boolean(v) => {
+                if *v {
+                    vec![1]
+                } else {
+                    vec![0]
+                }
+            }
+            Datum::Null => vec![0],
             Datum::Timestamp(ts) => ts.as_i64().to_le_bytes().to_vec(),
             Datum::Varbinary(b) => b.to_vec(),
             Datum::String(string) => string.as_bytes().to_vec(),
