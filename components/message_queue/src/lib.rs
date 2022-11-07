@@ -19,7 +19,7 @@ pub type Offset = i64;
 
 /// Message queue interface supporting the methods needed in wal module.
 #[async_trait]
-pub trait MessageQueue: Send + Sync + 'static + Debug {
+pub trait MessageQueue: Debug + Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
     type ConsumeIterator: ConsumeIterator + Send;
 
@@ -64,7 +64,7 @@ pub struct MessageAndOffset {
 }
 
 #[async_trait]
-pub trait ConsumeIterator: Send + 'static + Debug {
+pub trait ConsumeIterator: Debug + Send + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
 
     async fn next_message(&mut self) -> Result<(MessageAndOffset, Offset), Self::Error>;
