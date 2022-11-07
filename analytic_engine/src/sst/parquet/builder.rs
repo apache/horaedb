@@ -55,16 +55,16 @@ struct RecordBytesReader {
     compression: Compression,
     meta_data: SstMetaData,
     total_row_num: Arc<AtomicUsize>,
-
-    fetched_row_num: usize,
     fetched_record_batch: Vec<Vec<RecordBatchWithKey>>,
-    pending_fetched_record_batch: Option<Vec<RecordBatchWithKey>>,
 }
 
 impl RecordBytesReader {
     // Partition record batch stream into batch vector with given
     // `num_rows_per_row_group`
     async fn partition_record_batch(&mut self) -> Result<()> {
+        let mut fetched_row_num = 0;
+        let mut pending_record_batch: Option<Vec<RecordBatchWithKey>> = None;
+
         while let Some(record_batch) = self.record_stream.next().await {
             let record_batch = record_batch.context(PollRecordBatch)?;
 
@@ -74,21 +74,20 @@ impl RecordBytesReader {
                 self.request_id
             );
 
-            self.fetched_row_num += record_batch.num_rows();
-            self.pending_fetched_record_batch
+            fetched_row_num += record_batch.num_rows();
+            pending_record_batch
                 .get_or_insert_with(Default::default)
                 .push(record_batch);
 
-            // reach batch limit, append to self and reset counter
-            if self.fetched_row_num >= self.num_rows_per_row_group {
-                self.fetched_row_num = 0;
+            // reach batch limit, append to self and reset counter and pending batch
+            if fetched_row_num >= self.num_rows_per_row_group {
+                fetched_row_num = 0;
                 self.fetched_record_batch
-                    .push(self.pending_fetched_record_batch.take().unwrap());
-                continue;
+                    .push(pending_record_batch.take().unwrap());
             }
         }
 
-        if let Some(remaining) = self.pending_fetched_record_batch.take() {
+        if let Some(remaining) = pending_record_batch.take() {
             self.fetched_record_batch.push(remaining);
         }
 
@@ -179,9 +178,7 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             total_row_num: total_row_num.clone(),
             // TODO(xikai): should we avoid this clone?
             meta_data: meta.to_owned(),
-            fetched_row_num: 0,
             fetched_record_batch: Default::default(),
-            pending_fetched_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
         self.storage
