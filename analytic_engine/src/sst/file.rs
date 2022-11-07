@@ -65,6 +65,13 @@ pub enum Error {
 
     #[snafu(display("Failed to join purger, err:{}", source))]
     StopPurger { source: common_util::runtime::Error },
+
+    #[snafu(display(
+        "Bloom filter should be 256 byte, current:{}.\nBacktrace\n:{}",
+        size,
+        backtrace
+    ))]
+    InvalidBloomFilter { size: usize, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -426,6 +433,62 @@ impl FileMeta {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BloomFilter {
+    // Two level vector means
+    // 1. row group
+    // 2. column
+    filters: Vec<Vec<Bloom>>,
+}
+
+impl BloomFilter {
+    pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
+        Self { filters }
+    }
+
+    pub fn to_pb(&self) -> sst_pb::SstBloomFilter {
+        let filters = self
+            .filters
+            .iter()
+            .map(|row_group_filter| {
+                let bloom_filter = row_group_filter
+                    .iter()
+                    .map(|column_filter| column_filter.as_bytes().to_vec())
+                    .collect::<Vec<_>>();
+                sst_pb::sst_bloom_filter::RowGroupFilter { bloom_filter }
+            })
+            .collect::<Vec<_>>();
+
+        sst_pb::SstBloomFilter { filters }
+    }
+}
+
+impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
+    type Error = Error;
+
+    fn try_from(src: sst_pb::SstBloomFilter) -> Result<Self> {
+        let filters = src
+            .filters
+            .into_iter()
+            .map(|row_group_filter| {
+                row_group_filter
+                    .bloom_filter
+                    .into_iter()
+                    .map(|encoded_bytes| {
+                        let bs: [u8; 256] = encoded_bytes.try_into().unwrap();
+                        // .with_context(|| InvalidBloomFilter {
+                        //     size: encoded_bytes.len(),
+                        // })?;
+                        Ok(Bloom::from(bs))
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(BloomFilter { filters })
+    }
+}
+
 /// Meta data of a sst file
 #[derive(Debug, Clone, PartialEq)]
 pub struct SstMetaData {
@@ -441,20 +504,12 @@ pub struct SstMetaData {
     // total row number
     pub row_num: u64,
     pub storage_format_opts: StorageFormatOptions,
-    pub bloom_filters: Vec<Vec<Bloom>>,
+    pub bloom_filter: BloomFilter,
 }
 
 impl SstMetaData {
     pub fn storage_format(&self) -> StorageFormat {
         self.storage_format_opts.format
-    }
-
-    fn bloom_filters_bytes(&self) -> Vec<u8> {
-        todo!()
-    }
-
-    fn parse_bloom_filters(buf: &[u8]) -> Result<Vec<Vec<Bloom>>> {
-        todo!()
     }
 }
 
@@ -469,7 +524,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
-            bloom_filter: src.bloom_filters_bytes(),
+            bloom_filter: Some(src.bloom_filter.to_pb()),
         }
     }
 }
@@ -490,7 +545,10 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             src.storage_format_opts
                 .context(StorageFormatOptionsNotFound)?,
         );
-        let bloom_filters = Self::parse_bloom_filters(&src.bloom_filter).unwrap();
+        let bloom_filter = {
+            let pb_filter = src.bloom_filter.context(TableSchemaNotFound)?;
+            BloomFilter::try_from(pb_filter)?
+        };
 
         Ok(Self {
             min_key: src.min_key.into(),
@@ -501,7 +559,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts,
-            bloom_filters,
+            bloom_filter,
         })
     }
 }
@@ -684,6 +742,8 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
         size: 0,
         row_num: 0,
         storage_format_opts: StorageFormatOptions::new(storage_format),
+        // bloom filter is rebuilt when write sst, so use default here
+        bloom_filter: Default::default(),
     }
 }
 
@@ -737,9 +797,10 @@ pub mod tests {
                 time_range: self.time_range,
                 max_sequence: self.max_sequence,
                 schema: self.schema.clone(),
-                size: 0,
                 row_num: 0,
-                storage_format_opts: StorageFormatOptions::default(),
+                size: 0,
+                storage_format_opts: Default::default(),
+                bloom_filter: Default::default(),
             }
         }
     }

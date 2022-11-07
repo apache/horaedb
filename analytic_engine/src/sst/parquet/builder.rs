@@ -19,7 +19,7 @@ use snafu::ResultExt;
 use crate::sst::{
     builder::{RecordBatchStream, SstBuilder, *},
     factory::SstBuilderOptions,
-    file::SstMetaData,
+    file::{BloomFilter, SstMetaData},
     parquet::encoding::ParquetEncoder,
 };
 
@@ -67,6 +67,13 @@ impl RecordBytesReader {
     async fn partition_record_batch(&mut self) -> Result<()> {
         while let Some(record_batch) = self.record_stream.next().await {
             let record_batch = record_batch.context(PollRecordBatch)?;
+
+            debug_assert!(
+                !record_batch.is_empty(),
+                "found empty record batch, request id:{}",
+                self.request_id
+            );
+
             self.fetched_row_num += record_batch.num_rows();
 
             // reach batch limit, append to self and reset counter
@@ -78,7 +85,7 @@ impl RecordBytesReader {
             }
 
             self.pending_fetched_record_batch
-                .get_or_insert_with(|| Default::default())
+                .get_or_insert_with(Default::default)
                 .push(record_batch);
         }
 
@@ -89,32 +96,35 @@ impl RecordBytesReader {
         Ok(())
     }
 
-    fn build_bloom_filter(&self) -> Vec<Vec<[u8; 256]>> {
-        self.fetched_record_batch
+    fn build_bloom_filter(&self) -> BloomFilter {
+        let filters = self
+            .fetched_record_batch
             .iter()
             .map(|row_group_batch| {
-                let mut row_bloom_filters =
+                let mut row_group_filters =
                     vec![Bloom::default(); row_group_batch[0].num_columns()];
 
                 for partial_batch in row_group_batch {
                     for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                         for row in 0..column.num_rows() {
-                            let bytes = column.datum(row).as_bytes();
-                            row_bloom_filters[col_idx].accrue(Input::Raw(bytes));
+                            let datum = column.datum(row);
+                            let bytes = datum.as_bytes();
+                            row_group_filters[col_idx].accrue(Input::Raw(&bytes));
                         }
                     }
                 }
 
-                row_bloom_filters
-                    .into_iter()
-                    .map(|bf| bf.to_fixed_bytes())
-                    .collect::<Vec<_>>()
+                row_group_filters
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+        BloomFilter::new(filters)
     }
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
-        let mut arrow_record_batch_vec = Vec::new();
+        self.partition_record_batch().await?;
+        let filters = self.build_bloom_filter();
+        self.meta_data.bloom_filter = filters;
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             self.num_rows_per_row_group,
@@ -125,37 +135,19 @@ impl RecordBytesReader {
         .context(EncodeRecordBatch)?;
 
         // process record batch stream
-        while let Some(record_batch) = self.record_stream.next().await {
-            let record_batch = record_batch.context(PollRecordBatch)?;
-
-            debug_assert!(
-                !record_batch.is_empty(),
-                "found empty record batch, request id:{}",
-                self.request_id
-            );
-
-            self.fetched_row_num += record_batch.num_rows();
-            arrow_record_batch_vec.push(record_batch.into_record_batch().into_arrow_record_batch());
-
-            if self.fetched_row_num >= self.num_rows_per_row_group {
-                let buf_len = arrow_record_batch_vec.len();
-                self.fetched_row_num = 0;
-                let row_num = parquet_encoder
-                    .encode_record_batch(arrow_record_batch_vec)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(EncodeRecordBatch)?;
-                arrow_record_batch_vec = Vec::with_capacity(buf_len);
-                self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+        let mut arrow_record_batch_vec = Vec::new();
+        for record_batches in self.fetched_record_batch {
+            for batch in record_batches {
+                arrow_record_batch_vec.push(batch.into_record_batch().into_arrow_record_batch());
             }
-        }
 
-        // final check if there is any record batch left
-        if self.fetched_row_num != 0 {
+            let buf_len = arrow_record_batch_vec.len();
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+            arrow_record_batch_vec = Vec::with_capacity(buf_len);
         }
 
         let bytes = parquet_encoder
@@ -189,6 +181,8 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             // TODO(xikai): should we avoid this clone?
             meta_data: meta.to_owned(),
             fetched_row_num: 0,
+            fetched_record_batch: Default::default(),
+            pending_fetched_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
         self.storage
@@ -230,7 +224,7 @@ mod tests {
             parquet::{reader::ParquetSstReader, AsyncParquetReader},
             reader::{tests::check_stream, SstReader},
         },
-        table_options::{self, StorageFormatOptions},
+        table_options::{self},
     };
 
     // TODO(xikai): add test for reverse reader
@@ -291,7 +285,8 @@ mod tests {
                 schema: schema.clone(),
                 size: 10,
                 row_num: 2,
-                storage_format_opts: StorageFormatOptions::default(),
+                storage_format_opts: Default::default(),
+                bloom_filter: Default::default(),
             };
 
             let mut counter = 10;

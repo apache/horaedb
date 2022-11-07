@@ -484,8 +484,24 @@ impl Datum {
         }
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        todo!("FIXME")
+    pub fn as_bytes(&self) -> Vec<u8> {
+        match self {
+            Datum::Double(v) => v.to_le_bytes().to_vec(),
+            Datum::Float(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt64(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt32(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt16(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt8(v) => v.to_le_bytes().to_vec(),
+            Datum::Int64(v) => v.to_le_bytes().to_vec(),
+            Datum::Int32(v) => v.to_le_bytes().to_vec(),
+            Datum::Int16(v) => v.to_le_bytes().to_vec(),
+            Datum::Int8(v) => v.to_le_bytes().to_vec(),
+            Datum::Boolean(v) => (if *v { 1u8 } else { 0u8 }).to_le_bytes().to_vec(),
+            Datum::Null => 0u8.to_le_bytes().to_vec(),
+            Datum::Timestamp(ts) => ts.as_i64().to_le_bytes().to_vec(),
+            Datum::Varbinary(b) => b.to_vec(),
+            Datum::String(string) => string.as_bytes().to_vec(),
+        }
     }
 
     /// Generate a negative datum if possible.
