@@ -19,6 +19,7 @@ use crate::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "It can just run with a Kafka cluster"]
 async fn test_kafka() {
     let mut config = Config::default();
     config.client_config.boost_broker = Some("127.0.0.1:9011".to_string());
