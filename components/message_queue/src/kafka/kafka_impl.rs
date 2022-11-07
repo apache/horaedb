@@ -2,7 +2,11 @@
 
 //! Kafka implementation's detail
 
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use common_util::define_result;
@@ -302,6 +306,7 @@ impl MessageQueue for KafkaImpl {
     }
 }
 
+#[derive(Debug)]
 pub struct KafkaConsumeIterator {
     topic_name: String,
     stream_consumer: StreamConsumer,
@@ -410,5 +415,14 @@ impl From<OffsetType> for OffsetAt {
             OffsetType::EarliestOffset => OffsetAt::Earliest,
             OffsetType::HighWaterMark => OffsetAt::Latest,
         }
+    }
+}
+
+impl Debug for KafkaImpl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KafkaImpl")
+            .field("config", &self.config)
+            .field("client", &"rskafka".to_string())
+            .finish()
     }
 }

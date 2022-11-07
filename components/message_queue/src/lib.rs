@@ -6,7 +6,11 @@ pub mod kafka;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use std::{collections::BTreeMap, fmt::Display, result::Result};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display},
+    result::Result,
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -15,7 +19,7 @@ pub type Offset = i64;
 
 /// Message queue interface supporting the methods needed in wal module.
 #[async_trait]
-pub trait MessageQueue: Send + Sync + 'static {
+pub trait MessageQueue: Send + Sync + 'static + Debug {
     type Error: std::error::Error + Send + Sync + 'static;
     type ConsumeIterator: ConsumeIterator + Send;
 
@@ -60,7 +64,7 @@ pub struct MessageAndOffset {
 }
 
 #[async_trait]
-pub trait ConsumeIterator {
+pub trait ConsumeIterator: Send + 'static + Debug {
     type Error: std::error::Error + Send + Sync + 'static;
 
     async fn next_message(&mut self) -> Result<(MessageAndOffset, Offset), Self::Error>;
