@@ -75,6 +75,9 @@ impl RecordBytesReader {
             );
 
             self.fetched_row_num += record_batch.num_rows();
+            self.pending_fetched_record_batch
+                .get_or_insert_with(Default::default)
+                .push(record_batch);
 
             // reach batch limit, append to self and reset counter
             if self.fetched_row_num >= self.num_rows_per_row_group {
@@ -83,10 +86,6 @@ impl RecordBytesReader {
                     .push(self.pending_fetched_record_batch.take().unwrap());
                 continue;
             }
-
-            self.pending_fetched_record_batch
-                .get_or_insert_with(Default::default)
-                .push(record_batch);
         }
 
         if let Some(remaining) = self.pending_fetched_record_batch.take() {
@@ -335,13 +334,16 @@ mod tests {
             let mut reader: Box<dyn SstReader + Send> = if async_reader {
                 let mut reader =
                     AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
-                let sst_meta_readback = {
+                let mut sst_meta_readback = {
                     // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                     // https://github.com/CeresDB/ceresdb/issues/321
                     let mut meta = reader.meta_data().await.unwrap().clone();
                     meta.size = sst_meta.size;
                     meta
                 };
+                // bloom filter is built insider sst writer, so overwrite to default for
+                // comparsion
+                sst_meta_readback.bloom_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,
@@ -356,7 +358,15 @@ mod tests {
                 Box::new(reader)
             } else {
                 let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-                assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+                let sst_meta_readback = {
+                    let mut meta = reader.meta_data().await.unwrap().clone();
+                    // bloom filter is built insider sst writer, so overwrite to default for
+                    // comparsion
+                    meta.bloom_filter = Default::default();
+                    meta
+                };
+
+                assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,
                     reader
