@@ -55,7 +55,9 @@ struct RecordBytesReader {
     compression: Compression,
     meta_data: SstMetaData,
     total_row_num: Arc<AtomicUsize>,
-    fetched_record_batch: Vec<Vec<RecordBatchWithKey>>,
+    // Record batch partitioned by given `num_rows_per_row_group`
+    // There may be more than one `RecordBatchWithKey` inside each partition
+    partitioned_record_batch: Vec<Vec<RecordBatchWithKey>>,
 }
 
 impl RecordBytesReader {
@@ -63,7 +65,7 @@ impl RecordBytesReader {
     // `num_rows_per_row_group`
     async fn partition_record_batch(&mut self) -> Result<()> {
         let mut fetched_row_num = 0;
-        let mut pending_record_batch: Option<Vec<RecordBatchWithKey>> = None;
+        let mut pending_record_batch: Vec<RecordBatchWithKey> = Default::default();
 
         while let Some(record_batch) = self.record_stream.next().await {
             let record_batch = record_batch.context(PollRecordBatch)?;
@@ -75,20 +77,18 @@ impl RecordBytesReader {
             );
 
             fetched_row_num += record_batch.num_rows();
-            pending_record_batch
-                .get_or_insert_with(Default::default)
-                .push(record_batch);
+            pending_record_batch.push(record_batch);
 
             // reach batch limit, append to self and reset counter and pending batch
             if fetched_row_num >= self.num_rows_per_row_group {
                 fetched_row_num = 0;
-                self.fetched_record_batch
-                    .push(pending_record_batch.take().unwrap());
+                self.partitioned_record_batch
+                    .push(std::mem::take(&mut pending_record_batch));
             }
         }
 
-        if let Some(remaining) = pending_record_batch.take() {
-            self.fetched_record_batch.push(remaining);
+        if !pending_record_batch.is_empty() {
+            self.partitioned_record_batch.push(pending_record_batch);
         }
 
         Ok(())
@@ -96,7 +96,7 @@ impl RecordBytesReader {
 
     fn build_bloom_filter(&self) -> BloomFilter {
         let filters = self
-            .fetched_record_batch
+            .partitioned_record_batch
             .iter()
             .map(|row_group_batch| {
                 let mut row_group_filters =
@@ -106,7 +106,7 @@ impl RecordBytesReader {
                     for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                         for row in 0..column.num_rows() {
                             let datum = column.datum(row);
-                            let bytes = datum.as_bytes();
+                            let bytes = datum.to_bytes();
                             row_group_filters[col_idx].accrue(Input::Raw(&bytes));
                         }
                     }
@@ -134,7 +134,7 @@ impl RecordBytesReader {
 
         // process record batch stream
         let mut arrow_record_batch_vec = Vec::new();
-        for record_batches in self.fetched_record_batch {
+        for record_batches in self.partitioned_record_batch {
             for batch in record_batches {
                 arrow_record_batch_vec.push(batch.into_record_batch().into_arrow_record_batch());
             }
@@ -178,7 +178,7 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             total_row_num: total_row_num.clone(),
             // TODO(xikai): should we avoid this clone?
             meta_data: meta.to_owned(),
-            fetched_record_batch: Default::default(),
+            partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
         self.storage

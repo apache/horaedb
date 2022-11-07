@@ -9,10 +9,10 @@ import "analytic_common.proto";
 
 message SstBloomFilter {
   message RowGroupFilter {
-    repeated bytes bloom_filter = 1;
+    repeated bytes column_filters = 1;
   };
 
-  repeated RowGroupFilter filters = 1;
+  repeated RowGroupFilter row_group_filters = 1;
 }
 
 message SstMetaData {

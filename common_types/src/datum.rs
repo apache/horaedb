@@ -484,7 +484,7 @@ impl Datum {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Datum::Double(v) => v.to_le_bytes().to_vec(),
             Datum::Float(v) => v.to_le_bytes().to_vec(),

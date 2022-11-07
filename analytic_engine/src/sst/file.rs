@@ -58,14 +58,14 @@ pub enum Error {
     StorageFormatOptionsNotFound { backtrace: Backtrace },
 
     #[snafu(display("Bloom filter options are not found.\nBacktrace\n:{}", backtrace))]
-    BloomFitlerNotFound { backtrace: Backtrace },
+    BloomFilterNotFound { backtrace: Backtrace },
 
     #[snafu(display(
         "Bloom filter should be 256 byte, current:{}.\nBacktrace\n:{}",
         size,
         backtrace
     ))]
-    InvalidBloomFilter { size: usize, backtrace: Backtrace },
+    InvalidBloomFilterSize { size: usize, backtrace: Backtrace },
 
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
@@ -448,21 +448,23 @@ impl BloomFilter {
     pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
         Self { filters }
     }
+}
 
-    pub fn to_pb(&self) -> sst_pb::SstBloomFilter {
-        let filters = self
+impl From<BloomFilter> for sst_pb::SstBloomFilter {
+    fn from(bloom_filter: BloomFilter) -> Self {
+        let row_group_filters = bloom_filter
             .filters
             .iter()
             .map(|row_group_filter| {
-                let bloom_filter = row_group_filter
+                let column_filters = row_group_filter
                     .iter()
                     .map(|column_filter| column_filter.data().to_vec())
                     .collect::<Vec<_>>();
-                sst_pb::sst_bloom_filter::RowGroupFilter { bloom_filter }
+                sst_pb::sst_bloom_filter::RowGroupFilter { column_filters }
             })
             .collect::<Vec<_>>();
 
-        sst_pb::SstBloomFilter { filters }
+        sst_pb::SstBloomFilter { row_group_filters }
     }
 }
 
@@ -471,18 +473,18 @@ impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
 
     fn try_from(src: sst_pb::SstBloomFilter) -> Result<Self> {
         let filters = src
-            .filters
+            .row_group_filters
             .into_iter()
             .map(|row_group_filter| {
                 row_group_filter
-                    .bloom_filter
+                    .column_filters
                     .into_iter()
                     .map(|encoded_bytes| {
                         let size = encoded_bytes.len();
                         let bs: [u8; 256] = encoded_bytes
                             .try_into()
                             .ok()
-                            .with_context(|| InvalidBloomFilter { size })?;
+                            .context(InvalidBloomFilterSize { size })?;
 
                         Ok(Bloom::from(bs))
                     })
@@ -529,7 +531,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
-            bloom_filter: Some(src.bloom_filter.to_pb()),
+            bloom_filter: Some(src.bloom_filter.into()),
         }
     }
 }
@@ -551,7 +553,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
                 .context(StorageFormatOptionsNotFound)?,
         );
         let bloom_filter = {
-            let pb_filter = src.bloom_filter.context(BloomFitlerNotFound)?;
+            let pb_filter = src.bloom_filter.context(BloomFilterNotFound)?;
             BloomFilter::try_from(pb_filter)?
         };
 
