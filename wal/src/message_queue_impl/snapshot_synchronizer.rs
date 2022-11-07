@@ -132,7 +132,7 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
 
         // Delete old snapshots.
         self.message_queue
-            .delete_up_to(&self.meta_topic, offsets[0])
+            .delete_to(&self.meta_topic, offsets[0])
             .await
             .map_err(|e| Box::new(e) as _)
             .context(SyncSnapshotWithCause {
