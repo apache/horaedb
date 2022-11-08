@@ -700,6 +700,7 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
         self.previous_value = payload.to_owned();
 
         Ok(Some(LogEntry {
+            table_id: log_key.table_id,
             sequence: log_key.sequence_num,
             payload: self.previous_value.as_slice(),
         }))

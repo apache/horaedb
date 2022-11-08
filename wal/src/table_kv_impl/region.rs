@@ -704,6 +704,7 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             .context(manager::Read)?;
 
         let log_entry = LogEntry {
+            table_id: self.current_log_key.0,
             sequence: self.current_log_key.1,
             payload: self.previous_value.as_slice(),
         };
