@@ -388,7 +388,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // Timestamp column must be provided.
         let timestamp_name = timestamp_name.context(RequireTimestamp)?;
         // The timestamp key column must not be a Tag column
-        if let Some(timestamp_column) = name_column_map.get(&timestamp_name as &str) {
+        if let Some(timestamp_column) = name_column_map.get(&timestamp_name.as_str()) {
             ensure!(
                 !timestamp_column.is_tag,
                 TimestampKeyTag {
