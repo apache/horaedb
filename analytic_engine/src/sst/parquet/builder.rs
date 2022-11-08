@@ -447,11 +447,14 @@ mod tests {
         // rows per group: 10
         let testcases = vec![
             // input, expected
+            (vec![], vec![]),
             (vec![10, 10], vec![10, 10]),
             (vec![10, 10, 1], vec![10, 10, 1]),
             (vec![10, 10, 21], vec![10, 10, 10, 10, 1]),
             (vec![5, 6, 10], vec![10, 10, 1]),
             (vec![5, 4, 4, 30], vec![10, 10, 10, 10, 3]),
+            (vec![20, 7, 23, 20], vec![10, 10, 10, 10, 10, 10, 10]),
+            (vec![21], vec![10, 10, 1]),
         ];
 
         for (input, expected) in testcases {
