@@ -77,6 +77,11 @@ impl RecordBytesReader {
         Ok(())
     }
 
+    /// Fetch an integrate row group from the `self.record_stream`.
+    ///
+    /// Except the last one, every row group is ensured to contains exactly
+    /// `self.num_rows_per_row_group`. As for the last one, it will cover all
+    /// the left rows.
     async fn fetch_next_row_group(
         &mut self,
         prev_record_batch: &mut Option<RecordBatchWithKey>,
