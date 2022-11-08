@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
         }
 
         build_timestamp_key_constraint(&columns, &mut constraints);
-
+        debug!("columns:{:?}, constraints:{:?}", &columns, constraints);
         Ok((columns, constraints))
     }
 
