@@ -90,30 +90,41 @@ impl RecordBytesReader {
                 match pending_record_batch.pop_front() {
                     // accumulated records is enough for one batch
                     Some(next) if next.num_rows() >= remaining => {
+                        debug!(
+                            "enough target:{}, remaining:{}, fetched:{}, current:{}",
+                            self.num_rows_per_row_group,
+                            remaining,
+                            fetched_row_num,
+                            next.num_rows(),
+                        );
                         current_batch.push(next.slice(0, remaining));
-                        pending_record_batch
-                            .push_front(next.slice(remaining, next.num_rows() - remaining));
+                        let left = next.num_rows() - remaining;
+                        if left > 0 {
+                            pending_record_batch.push_front(next.slice(remaining, left));
+                        }
 
                         self.partitioned_record_batch
                             .push(std::mem::take(&mut current_batch));
-                        fetched_row_num -= remaining;
+                        fetched_row_num -= self.num_rows_per_row_group;
                         remaining = self.num_rows_per_row_group;
                     }
                     // not enough for one batch
                     Some(next) => {
+                        debug!(
+                            "not enough target:{}, remaining:{}, fetched:{}, current:{}",
+                            self.num_rows_per_row_group,
+                            remaining,
+                            fetched_row_num,
+                            next.num_rows(),
+                        );
                         remaining -= next.num_rows();
-                        fetched_row_num -= next.num_rows();
-
                         current_batch.push(next);
                     }
                     // nothing left, put back to pending_record_batch
                     _ => {
                         for records in std::mem::take(&mut current_batch) {
-                            fetched_row_num += records.num_rows();
                             pending_record_batch.push_front(records);
                         }
-
-                        break;
                     }
                 }
             }
@@ -267,6 +278,8 @@ mod tests {
 
     #[test]
     fn test_parquet_build_and_read() {
+        init_log_for_test();
+
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3]);
         parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 3]);
