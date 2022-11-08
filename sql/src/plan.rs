@@ -156,12 +156,18 @@ pub struct ShowCreatePlan {
     pub obj_type: ShowCreateObject,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ShowTablesPlan {
+    /// Like pattern
+    pub pattern: Option<String>,
+}
+
 #[derive(Debug)]
 pub enum ShowPlan {
     /// show create table
     ShowCreatePlan(ShowCreatePlan),
     /// show tables
-    ShowTables,
+    ShowTablesPlan(ShowTablesPlan),
     /// show database
     ShowDatabase,
 }

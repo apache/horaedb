@@ -22,7 +22,7 @@ pub enum Statement {
     /// SHOW CREATE TABLE
     ShowCreate(ShowCreate),
     ShowDatabases,
-    ShowTables,
+    ShowTables(ShowTables),
     Exists(ExistsTable),
 }
 
@@ -94,6 +94,12 @@ pub struct AlterModifySetting {
 pub struct AlterAddColumn {
     pub table_name: TableName,
     pub columns: Vec<ColumnDef>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ShowTables {
+    /// Like pattern
+    pub pattern: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

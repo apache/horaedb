@@ -39,13 +39,13 @@ use table_engine::table::TableRef;
 use crate::{
     ast::{
         AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-        ShowCreate, Statement, TableName,
+        ShowCreate, ShowTables, Statement, TableName,
     },
     container::TableReference,
     parser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
-        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan,
+        ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan, ShowTablesPlan,
     },
     promql::{ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
@@ -253,7 +253,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             Statement::AlterModifySetting(s) => planner.alter_modify_setting_to_plan(s),
             Statement::AlterAddColumn(s) => planner.alter_add_column_to_plan(s),
             Statement::ShowCreate(s) => planner.show_create_to_plan(s),
-            Statement::ShowTables => planner.show_tables_to_plan(),
+            Statement::ShowTables(s) => planner.show_tables_to_plan(s),
             Statement::ShowDatabases => planner.show_databases_to_plan(),
             Statement::Exists(s) => planner.exists_table_to_plan(s),
         }
@@ -614,8 +614,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowCreatePlan(plan)))
     }
 
-    fn show_tables_to_plan(&self) -> Result<Plan> {
-        Ok(Plan::Show(ShowPlan::ShowTables))
+    fn show_tables_to_plan(&self, show_tables: ShowTables) -> Result<Plan> {
+        let plan = ShowTablesPlan {
+            pattern: show_tables.pattern,
+        };
+        Ok(Plan::Show(ShowPlan::ShowTablesPlan(plan)))
     }
 
     fn show_databases_to_plan(&self) -> Result<Plan> {
@@ -1649,14 +1652,17 @@ mod tests {
         )
         .unwrap();
     }
-
     #[test]
     fn test_show_tables_statement_to_plan() {
         let sql = "SHOW TABLES;";
         quick_test(
             sql,
             r#"Show(
-    ShowTables,
+    ShowTablesPlan(
+        ShowTablesPlan {
+            pattern: None,
+        },
+    ),
 )"#,
         )
         .unwrap();

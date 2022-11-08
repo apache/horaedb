@@ -9,10 +9,11 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use regex::Regex;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
-    plan::{ShowCreatePlan, ShowPlan},
+    plan::{ShowCreatePlan, ShowPlan, ShowTablesPlan},
 };
 
 use crate::{
@@ -94,16 +95,27 @@ impl ShowInterpreter {
         show_create.execute_show_create()
     }
 
-    fn show_tables(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
+    fn show_tables(
+        ctx: Context,
+        catalog_manager: ManagerRef,
+        plan: ShowTablesPlan,
+    ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
-
-        let tables_names = schema
-            .all_tables()
-            .context(FetchTables)?
-            .iter()
-            .map(|t| t.name().to_string())
-            .collect::<Vec<_>>();
-
+        let tables_names = match plan.pattern {
+            Some(sc) => schema
+                .all_tables()
+                .context(FetchTables)?
+                .iter()
+                .filter(|t| is_table_matched(t.name(), &sc).unwrap())
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>(),
+            None => schema
+                .all_tables()
+                .context(FetchTables)?
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>(),
+        };
         let schema = DataSchema::new(vec![Field::new(
             SHOW_TABLES_COLUMN_SCHEMA,
             DataType::Utf8,
@@ -146,13 +158,24 @@ impl ShowInterpreter {
     }
 }
 
+fn is_table_matched(str: &str, search_re: &str) -> Result<bool> {
+    let regex_str = search_re.replace('_', ".");
+    let regex_st = if regex_str.contains('%') {
+        regex_str.replace('%', ".*")
+    } else {
+        format!("^{}$", &regex_str)
+    };
+    let re = Regex::new(&regex_st).unwrap();
+    Ok(re.is_match(str))
+}
+
 #[async_trait]
 impl Interpreter for ShowInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         match self.plan {
             ShowPlan::ShowCreatePlan(t) => Self::show_create(t).context(ShowCreateTable),
-            ShowPlan::ShowTables => {
-                Self::show_tables(self.ctx, self.catalog_manager).context(ShowTables)
+            ShowPlan::ShowTablesPlan(t) => {
+                Self::show_tables(self.ctx, self.catalog_manager, t).context(ShowTables)
             }
             ShowPlan::ShowDatabase => {
                 Self::show_databases(self.ctx, self.catalog_manager).context(ShowDatabases)
@@ -187,4 +210,55 @@ fn get_default_schema(
         .context(SchemaNotExists {
             name: default_schema,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::show::is_table_matched;
+    #[test]
+
+    fn test_is_table_matched() {
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01%")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_%")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "false".to_string(),
+            is_table_matched("01_system_table1", "01_system_table")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_system_table1")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "01_system_table.")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "false".to_string(),
+            is_table_matched("01_system_table1", "01_system_tabl.")
+                .unwrap()
+                .to_string()
+        );
+        assert_eq!(
+            "true".to_string(),
+            is_table_matched("01_system_table1", "%system%")
+                .unwrap()
+                .to_string()
+        );
+    }
 }

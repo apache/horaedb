@@ -27,7 +27,9 @@ timestamp,catalog,schema,table_name,engine,
 Timestamp(Timestamp(0)),String(StringBytes(b"ceresdb")),String(StringBytes(b"public")),String(StringBytes(b"01_system_table1")),String(StringBytes(b"Analytic")),
 
 
-SHOW TABLES `name` LIKE '01_system_table1';
+SHOW TABLES LIKE '01%';
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "failed to parse sql. Caused by: Invalid sql, sql: SHOW TABLES `name` LIKE '01_system_table1';, err:sql parser error: Expected end of statement, found: `name`" })
+Tables,
+String(StringBytes(b"01_system_table1")),
+
 
