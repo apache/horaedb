@@ -392,7 +392,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             ensure!(
                 !timestamp_column.is_tag,
                 TimestampKeyTag {
-                    name: &timestamp_name as &str,
+                    name: &timestamp_name,
                 }
             )
         }
