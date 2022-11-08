@@ -173,7 +173,7 @@ impl<M: MessageQueue> Region<M> {
             .context(Open {
                 namespace,
                 region_id,
-            });
+            })?;
         message_queue
             .create_topic_if_not_exist(&meta_topic)
             .await
@@ -181,7 +181,7 @@ impl<M: MessageQueue> Region<M> {
             .context(Open {
                 namespace,
                 region_id,
-            });
+            })?;
 
         // Init region inner.
         let inner = RwLock::new(RegionInner::new(
@@ -375,6 +375,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Clean outdated logs according to the information in region snapshot.
+    #[allow(unused)]
     pub async fn clean_logs(&mut self) -> Result<()> {
         // Get current snapshot.
         let (snapshot, synchronizer) = {
@@ -401,6 +402,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Return snapshot, just used for test.
+    #[allow(unused)]
     async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.write().await;
         inner.make_meta_snapshot().await
@@ -612,9 +614,6 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 
     /// Used to encode/decode the logs
     log_encoding: CommonLogEncoding,
-
-    /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
-    previous_value: Vec<u8>,
     // TODO: timeout
 }
 
@@ -634,14 +633,13 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             iter,
             is_terminated: false,
             log_encoding,
-            previous_value: Vec::new(),
         }
     }
 }
 
 #[allow(unused)]
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
-    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
         if self.is_terminated && self.terminate_offset.is_some() {
             debug!(
                 "Finished to poll all logs from message queue, region id:{}, terminate offset:{:?}",
@@ -686,6 +684,18 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
                 msg: "failed while polling log",
             })?;
 
+        ensure!(
+            log_key.region_id == self.region_id,
+            ScanNoCause {
+                region_id: self.region_id,
+                table_id: self.table_id,
+                msg: format!(
+                    "invalid region id in message, real:{}, expected:{}",
+                    self.region_id, log_key.region_id
+                ),
+            }
+        );
+
         let log_value = message_and_offset.message.value.unwrap();
         let payload = self
             .log_encoding
@@ -697,12 +707,10 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
                 msg: "failed while polling log",
             })?;
 
-        self.previous_value = payload.to_owned();
-
         Ok(Some(LogEntry {
             table_id: log_key.table_id,
             sequence: log_key.sequence_num,
-            payload: self.previous_value.as_slice(),
+            payload: payload.to_owned(),
         }))
     }
 }
@@ -814,7 +822,7 @@ mod tests {
             .unwrap()
             .unwrap();
         while let Some(log_entry) = msg_iter.next_log_entry().await.unwrap() {
-            let mut payload = log_entry.payload;
+            let mut payload = log_entry.payload.as_slice();
             let decoded_payload = test_context
                 .test_payload_encoder
                 .decode(&mut payload)
