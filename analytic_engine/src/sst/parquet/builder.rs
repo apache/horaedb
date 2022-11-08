@@ -77,7 +77,7 @@ impl RecordBytesReader {
         Ok(())
     }
 
-    /// Fetch an integrate row group from the `self.record_stream`.
+    /// Fetch an integral row group from the `self.record_stream`.
     ///
     /// Except the last one, every row group is ensured to contains exactly
     /// `self.num_rows_per_row_group`. As for the last one, it will cover all
@@ -101,8 +101,8 @@ impl RecordBytesReader {
                     curr_row_group.push(prev_record_batch.take().unwrap());
                     remaining -= total_rows;
                 } else {
-                    // Only part of the record batch fills `curr_row_group`, and let's fill the
-                    // `curr_row_group`.
+                    // Only first `remaining` rows of the record batch belongs to `curr_row_group`,
+                    // the rest should be put to `prev_record_batch` for next row group.
                     curr_row_group.push(v.slice(0, remaining));
                     *v = v.slice(remaining, total_rows - remaining);
                     remaining = 0;
@@ -328,15 +328,12 @@ mod tests {
                 bloom_filter: Default::default(),
             };
 
-            let mut counter = 10;
-            let record_batch_stream = Box::new(stream::poll_fn(move |ctx| -> Poll<Option<_>> {
-                counter -= 1;
+            let mut counter = 5;
+            let record_batch_stream = Box::new(stream::poll_fn(move |_| -> Poll<Option<_>> {
                 if counter == 0 {
                     return Poll::Ready(None);
-                } else if counter % 2 == 0 {
-                    ctx.waker().wake_by_ref();
-                    return Poll::Pending;
                 }
+                counter -= 1;
 
                 // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
@@ -422,7 +419,7 @@ mod tests {
 
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];
-            for counter in &[9, 7, 5, 3, 1] {
+            for counter in &[4, 3, 2, 1, 0] {
                 expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4"));
                 expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4"));
                 expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4"));
