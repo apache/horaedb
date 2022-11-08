@@ -20,16 +20,18 @@ pub struct ColumnPosition {
 /// - The position of the column in the row groups;
 /// - The value of the column used to determine equality;
 /// - Whether this compare is negated;
+/// And it should return the result of this comparison, and None denotes
+/// unknown.
 pub fn filter_row_groups<E>(
     schema: SchemaRef,
     exprs: &[Expr],
-    row_group_num: usize,
+    num_row_groups: usize,
     is_equal: E,
 ) -> Vec<usize>
 where
-    E: Fn(ColumnPosition, &ScalarValue, bool) -> bool,
+    E: Fn(ColumnPosition, &ScalarValue, bool) -> Option<bool>,
 {
-    let mut should_reads = vec![true; row_group_num];
+    let mut should_reads = vec![true; num_row_groups];
     for expr in exprs {
         let pruner = EqPruner::new(expr);
         for (row_group_idx, should_read) in should_reads.iter_mut().enumerate() {
@@ -44,7 +46,9 @@ where
                             row_group_idx,
                             column_idx,
                         };
-                        is_equal(pos, val, negated)
+                        // Just set the result is true to ensure not to miss any possible row group
+                        // if the caller has no idea of the compare result.
+                        is_equal(pos, val, negated).unwrap_or(true)
                     }
                     _ => true,
                 }
@@ -436,7 +440,7 @@ mod tests {
         // | 1  | 2  | 3  |
         // | 2  | 3  | 4  |
         let row_groups = vec![vec![0, 1, 2], vec![1, 2, 3], vec![2, 3, 4]];
-        let is_equal = |pos: ColumnPosition, val: &ScalarValue, negated: bool| -> bool {
+        let is_equal = |pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
             let expect_val = row_groups[pos.row_group_idx][pos.column_idx];
             let val = if let ScalarValue::Int32(v) = val {
                 v.expect("Unexpected value")
@@ -445,9 +449,9 @@ mod tests {
             };
 
             if negated {
-                expect_val != val
+                Some(expect_val != val)
             } else {
-                expect_val == val
+                Some(expect_val == val)
             }
         };
 

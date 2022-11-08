@@ -448,6 +448,11 @@ impl BloomFilter {
     pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
         Self { filters }
     }
+
+    #[inline]
+    pub fn filters(&self) -> &[Vec<Bloom>] {
+        &self.filters
+    }
 }
 
 impl From<BloomFilter> for sst_pb::SstBloomFilter {
