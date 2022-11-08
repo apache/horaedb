@@ -620,6 +620,7 @@ impl Instance {
                 storage_format_opts: StorageFormatOptions::new(
                     table_data.table_options().storage_format,
                 ),
+                bloom_filter: Default::default(),
             };
 
             let store = self.space_store.clone();
@@ -725,6 +726,7 @@ impl Instance {
             size: 0,
             row_num: 0,
             storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
+            bloom_filter: Default::default(),
         };
 
         // Alloc file id for next sst file

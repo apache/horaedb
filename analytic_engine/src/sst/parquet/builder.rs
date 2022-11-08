@@ -2,14 +2,18 @@
 
 //! Sst builder implementation based on parquet.
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
+use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use datafusion::parquet::basic::Compression;
+use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
@@ -18,7 +22,7 @@ use snafu::ResultExt;
 use crate::sst::{
     builder::{RecordBatchStream, SstBuilder, *},
     factory::SstBuilderOptions,
-    file::SstMetaData,
+    file::{BloomFilter, SstMetaData},
     parquet::encoding::ParquetEncoder,
 };
 
@@ -54,13 +58,120 @@ struct RecordBytesReader {
     compression: Compression,
     meta_data: SstMetaData,
     total_row_num: Arc<AtomicUsize>,
-
-    fetched_row_num: usize,
+    // Record batch partitioned by exactly given `num_rows_per_row_group`
+    // There may be more than one `RecordBatchWithKey` inside each partition
+    partitioned_record_batch: Vec<Vec<RecordBatchWithKey>>,
 }
 
 impl RecordBytesReader {
+    // Partition record batch stream into batch vector with exactly given
+    // `num_rows_per_row_group`
+    async fn partition_record_batch(&mut self) -> Result<()> {
+        let mut fetched_row_num = 0;
+        let mut pending_record_batch: VecDeque<RecordBatchWithKey> = Default::default();
+        let mut current_batch = Vec::new();
+        let mut remaining = self.num_rows_per_row_group; // how many records are left for current_batch
+
+        while let Some(record_batch) = self.record_stream.next().await {
+            let record_batch = record_batch.context(PollRecordBatch)?;
+
+            debug_assert!(
+                !record_batch.is_empty(),
+                "found empty record batch, request id:{}",
+                self.request_id
+            );
+
+            fetched_row_num += record_batch.num_rows();
+            pending_record_batch.push_back(record_batch);
+
+            // reach batch limit, append to self and reset counter and pending batch
+            // Note: pending_record_batch may contains multiple batches
+            while fetched_row_num >= self.num_rows_per_row_group {
+                match pending_record_batch.pop_front() {
+                    // accumulated records is enough for one batch
+                    Some(next) if next.num_rows() >= remaining => {
+                        debug!(
+                            "enough target:{}, remaining:{}, fetched:{}, current:{}",
+                            self.num_rows_per_row_group,
+                            remaining,
+                            fetched_row_num,
+                            next.num_rows(),
+                        );
+                        current_batch.push(next.slice(0, remaining));
+                        let left = next.num_rows() - remaining;
+                        if left > 0 {
+                            pending_record_batch.push_front(next.slice(remaining, left));
+                        }
+
+                        self.partitioned_record_batch
+                            .push(std::mem::take(&mut current_batch));
+                        fetched_row_num -= self.num_rows_per_row_group;
+                        remaining = self.num_rows_per_row_group;
+                    }
+                    // not enough for one batch
+                    Some(next) => {
+                        debug!(
+                            "not enough target:{}, remaining:{}, fetched:{}, current:{}",
+                            self.num_rows_per_row_group,
+                            remaining,
+                            fetched_row_num,
+                            next.num_rows(),
+                        );
+                        remaining -= next.num_rows();
+                        current_batch.push(next);
+                    }
+                    // nothing left, put back to pending_record_batch
+                    _ => {
+                        for records in std::mem::take(&mut current_batch) {
+                            pending_record_batch.push_front(records);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // collect remaining records into one batch
+        let mut remaining = Vec::with_capacity(pending_record_batch.len());
+        while let Some(batch) = pending_record_batch.pop_front() {
+            remaining.push(batch);
+        }
+        if !remaining.is_empty() {
+            self.partitioned_record_batch.push(remaining);
+        }
+
+        Ok(())
+    }
+
+    fn build_bloom_filter(&self) -> BloomFilter {
+        let filters = self
+            .partitioned_record_batch
+            .iter()
+            .map(|row_group_batch| {
+                let mut row_group_filters =
+                    vec![Bloom::default(); row_group_batch[0].num_columns()];
+
+                for partial_batch in row_group_batch {
+                    for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                        for row in 0..column.num_rows() {
+                            let datum = column.datum(row);
+                            let bytes = datum.to_bytes();
+                            row_group_filters[col_idx].accrue(Input::Raw(&bytes));
+                        }
+                    }
+                }
+
+                row_group_filters
+            })
+            .collect::<Vec<_>>();
+
+        BloomFilter::new(filters)
+    }
+
     async fn read_all(mut self) -> Result<Vec<u8>> {
-        let mut arrow_record_batch_vec = Vec::new();
+        self.partition_record_batch().await?;
+        let filters = self.build_bloom_filter();
+        self.meta_data.bloom_filter = filters;
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             self.num_rows_per_row_group,
@@ -71,37 +182,19 @@ impl RecordBytesReader {
         .context(EncodeRecordBatch)?;
 
         // process record batch stream
-        while let Some(record_batch) = self.record_stream.next().await {
-            let record_batch = record_batch.context(PollRecordBatch)?;
-
-            debug_assert!(
-                !record_batch.is_empty(),
-                "found empty record batch, request id:{}",
-                self.request_id
-            );
-
-            self.fetched_row_num += record_batch.num_rows();
-            arrow_record_batch_vec.push(record_batch.into_record_batch().into_arrow_record_batch());
-
-            if self.fetched_row_num >= self.num_rows_per_row_group {
-                let buf_len = arrow_record_batch_vec.len();
-                self.fetched_row_num = 0;
-                let row_num = parquet_encoder
-                    .encode_record_batch(arrow_record_batch_vec)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(EncodeRecordBatch)?;
-                arrow_record_batch_vec = Vec::with_capacity(buf_len);
-                self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+        let mut arrow_record_batch_vec = Vec::new();
+        for record_batches in self.partitioned_record_batch {
+            for batch in record_batches {
+                arrow_record_batch_vec.push(batch.into_record_batch().into_arrow_record_batch());
             }
-        }
 
-        // final check if there is any record batch left
-        if self.fetched_row_num != 0 {
+            let buf_len = arrow_record_batch_vec.len();
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
+            arrow_record_batch_vec = Vec::with_capacity(buf_len);
         }
 
         let bytes = parquet_encoder
@@ -134,7 +227,7 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             total_row_num: total_row_num.clone(),
             // TODO(xikai): should we avoid this clone?
             meta_data: meta.to_owned(),
-            fetched_row_num: 0,
+            partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
         self.storage
@@ -162,7 +255,10 @@ mod tests {
         tests::{build_row, build_schema},
         time::{TimeRange, Timestamp},
     };
-    use common_util::runtime::{self, Runtime};
+    use common_util::{
+        runtime::{self, Runtime},
+        tests::init_log_for_test,
+    };
     use futures::stream;
     use object_store::LocalFileSystem;
     use table_engine::predicate::Predicate;
@@ -176,13 +272,15 @@ mod tests {
             parquet::{reader::ParquetSstReader, AsyncParquetReader},
             reader::{tests::check_stream, SstReader},
         },
-        table_options::{self, StorageFormatOptions},
+        table_options,
     };
 
     // TODO(xikai): add test for reverse reader
 
     #[test]
     fn test_parquet_build_and_read() {
+        init_log_for_test();
+
         let runtime = Arc::new(runtime::Builder::default().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3]);
         parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 3]);
@@ -237,7 +335,8 @@ mod tests {
                 schema: schema.clone(),
                 size: 10,
                 row_num: 2,
-                storage_format_opts: StorageFormatOptions::default(),
+                storage_format_opts: Default::default(),
+                bloom_filter: Default::default(),
             };
 
             let mut counter = 10;
@@ -286,13 +385,16 @@ mod tests {
             let mut reader: Box<dyn SstReader + Send> = if async_reader {
                 let mut reader =
                     AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
-                let sst_meta_readback = {
+                let mut sst_meta_readback = {
                     // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                     // https://github.com/CeresDB/ceresdb/issues/321
                     let mut meta = reader.meta_data().await.unwrap().clone();
                     meta.size = sst_meta.size;
                     meta
                 };
+                // bloom filter is built insider sst writer, so overwrite to default for
+                // comparsion
+                sst_meta_readback.bloom_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,
@@ -307,7 +409,15 @@ mod tests {
                 Box::new(reader)
             } else {
                 let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-                assert_eq!(reader.meta_data().await.unwrap(), &sst_meta);
+                let sst_meta_readback = {
+                    let mut meta = reader.meta_data().await.unwrap().clone();
+                    // bloom filter is built insider sst writer, so overwrite to default for
+                    // comparsion
+                    meta.bloom_filter = Default::default();
+                    meta
+                };
+
+                assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,
                     reader
@@ -330,5 +440,79 @@ mod tests {
             }
             check_stream(&mut stream, expect_rows).await;
         });
+    }
+
+    #[tokio::test]
+    async fn test_partition_record_batch() {
+        // rows per group: 10
+        let testcases = vec![
+            // input, expected
+            (vec![], vec![]),
+            (vec![10, 10], vec![10, 10]),
+            (vec![10, 10, 1], vec![10, 10, 1]),
+            (vec![10, 10, 21], vec![10, 10, 10, 10, 1]),
+            (vec![5, 6, 10], vec![10, 10, 1]),
+            (vec![5, 4, 4, 30], vec![10, 10, 10, 10, 3]),
+            (vec![20, 7, 23, 20], vec![10, 10, 10, 10, 10, 10, 10]),
+            (vec![21], vec![10, 10, 1]),
+        ];
+
+        for (input, expected) in testcases {
+            test_partition_record_batch_inner(input, expected).await;
+        }
+    }
+
+    async fn test_partition_record_batch_inner(
+        input_row_nums: Vec<usize>,
+        expected_row_nums: Vec<usize>,
+    ) {
+        init_log_for_test();
+        let schema = build_schema();
+        let mut poll_cnt = 0;
+        let schema_clone = schema.clone();
+        let record_batch_stream = Box::new(stream::poll_fn(move |_ctx| -> Poll<Option<_>> {
+            if poll_cnt == input_row_nums.len() {
+                return Poll::Ready(None);
+            }
+
+            let rows = (0..input_row_nums[poll_cnt])
+                .map(|_| build_row(b"a", 100, 10.0, "v4"))
+                .collect::<Vec<_>>();
+
+            let batch = build_record_batch_with_key(schema_clone.clone(), rows);
+            poll_cnt += 1;
+
+            Poll::Ready(Some(Ok(batch)))
+        }));
+
+        let mut reader = RecordBytesReader {
+            request_id: RequestId::next_id(),
+            record_stream: record_batch_stream,
+            num_rows_per_row_group: 10,
+            compression: Compression::UNCOMPRESSED,
+            meta_data: SstMetaData {
+                min_key: Default::default(),
+                max_key: Default::default(),
+                time_range: Default::default(),
+                max_sequence: 1,
+                schema,
+                size: 0,
+                row_num: 0,
+                storage_format_opts: Default::default(),
+                bloom_filter: Default::default(),
+            },
+            total_row_num: Arc::new(AtomicUsize::new(0)),
+            partitioned_record_batch: Vec::new(),
+        };
+
+        reader.partition_record_batch().await.unwrap();
+
+        for (i, expected_row_num) in expected_row_nums.into_iter().enumerate() {
+            let actual: usize = reader.partitioned_record_batch[i]
+                .iter()
+                .map(|b| b.num_rows())
+                .sum();
+            assert_eq!(expected_row_num, actual);
+        }
     }
 }

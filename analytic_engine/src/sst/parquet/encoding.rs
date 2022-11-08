@@ -903,6 +903,7 @@ mod tests {
             size: 10,
             row_num: 4,
             storage_format_opts,
+            bloom_filter: Default::default(),
         };
         let mut encoder =
             HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();

@@ -7,6 +7,14 @@ package sst;
 import "common.proto";
 import "analytic_common.proto";
 
+message SstBloomFilter {
+  message RowGroupFilter {
+    repeated bytes column_filters = 1;
+  };
+
+  repeated RowGroupFilter row_group_filters = 1;
+}
+
 message SstMetaData {
   // Min key in the sst
   bytes min_key = 1;
@@ -20,4 +28,5 @@ message SstMetaData {
   uint64 size = 6;
   uint64 row_num = 7;
   analytic_common.StorageFormatOptions storage_format_opts = 8;
+  SstBloomFilter bloom_filter = 9;
 }
