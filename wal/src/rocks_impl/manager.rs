@@ -589,6 +589,7 @@ impl SyncLogIterator for RocksLogIterator {
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
             let log_entry = LogEntry {
+                table_id: curr_log_key.0,
                 sequence: curr_log_key.1,
                 payload,
             };
