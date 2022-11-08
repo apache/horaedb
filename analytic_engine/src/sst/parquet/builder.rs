@@ -85,15 +85,19 @@ impl RecordBytesReader {
         // Used to record the number of remaining rows to fill `curr_row_group`.
         let mut remaining = self.num_rows_per_row_group;
 
-        // Keep fill `curr_row_group` until `remaining` is zero.
+        // Keep filling `curr_row_group` until `remaining` is zero.
         while remaining > 0 {
             // Use the `prev_record_batch` to fill `curr_row_group` if possible.
             if let Some(v) = prev_record_batch {
                 let total_rows = v.num_rows();
                 if total_rows <= remaining {
+                    // The whole record batch is part of the `curr_row_group`, and let's feed it
+                    // into `curr_row_group`.
                     curr_row_group.push(prev_record_batch.take().unwrap());
                     remaining -= total_rows;
                 } else {
+                    // Only part of the record batch fills `curr_row_group`, and let's fill the
+                    // `curr_row_group`.
                     curr_row_group.push(v.slice(0, remaining));
                     *v = v.slice(remaining, total_rows - remaining);
                     remaining = 0;
@@ -111,7 +115,10 @@ impl RecordBytesReader {
                         "found empty record batch, request id:{}",
                         self.request_id
                     );
-                    *prev_record_batch = Some(v);
+
+                    // Updated the exhausted `prev_record_batch`, and let next loop to continue fill
+                    // `curr_row_group`.
+                    prev_record_batch.replace(v);
                 }
                 None => break,
             };
