@@ -364,6 +364,7 @@ impl ColumnSchemas {
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
+        println!("[schema] ==> {:?}", self.name_to_index);
         self.name_to_index.get(name).copied()
     }
 }
