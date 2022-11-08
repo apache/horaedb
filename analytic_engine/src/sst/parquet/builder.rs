@@ -125,6 +125,7 @@ impl RecordBytesReader {
                         for records in std::mem::take(&mut current_batch) {
                             pending_record_batch.push_front(records);
                         }
+                        break;
                     }
                 }
             }
