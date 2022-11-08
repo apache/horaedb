@@ -69,6 +69,12 @@ pub enum Error {
 
     #[snafu(display("Failed to fetch schema, err:{}", source))]
     FetchSchema { source: catalog::Error },
+
+    #[snafu(display("Invalid regexp, err:{}.\nBacktrace\n:{}", source, backtrace))]
+    InvalidRegexp {
+        source: regex::Error,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -102,11 +108,11 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
         let tables_names = match plan.pattern {
-            Some(sc) => schema
+            Some(pattern) => schema
                 .all_tables()
                 .context(FetchTables)?
                 .iter()
-                .filter(|t| is_table_matched(t.name(), &sc).unwrap())
+                .filter(|t| is_table_matched(t.name(), &pattern).unwrap())
                 .map(|t| t.name().to_string())
                 .collect::<Vec<_>>(),
             None => schema
@@ -158,15 +164,17 @@ impl ShowInterpreter {
     }
 }
 
-fn is_table_matched(str: &str, search_re: &str) -> Result<bool> {
-    let regex_str = search_re.replace('_', ".");
-    let regex_st = if regex_str.contains('%') {
-        regex_str.replace('%', ".*")
-    } else {
-        format!("^{}$", &regex_str)
-    };
-    let re = Regex::new(&regex_st).unwrap();
-    Ok(re.is_match(str))
+fn is_table_matched(table_name: &str, pattern: &str) -> Result<bool> {
+    // In MySQL
+    // `_` match any single character
+    // `% ` match an arbitrary number of characters (including zero characters).
+    // so replace those meta character to regexp syntax
+    // TODO: support escape char to match exact those two chars
+    let pattern = pattern.replace('_', ".").replace('%', ".*");
+    let pattern = format!("^{}$", pattern);
+    Regex::new(&pattern)
+        .map(|re| re.is_match(table_name))
+        .context(InvalidRegexp)
 }
 
 #[async_trait]
@@ -218,47 +226,19 @@ mod tests {
     #[test]
 
     fn test_is_table_matched() {
-        assert_eq!(
-            "true".to_string(),
-            is_table_matched("01_system_table1", "01%")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "true".to_string(),
-            is_table_matched("01_system_table1", "01_%")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "false".to_string(),
-            is_table_matched("01_system_table1", "01_system_table")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "true".to_string(),
-            is_table_matched("01_system_table1", "01_system_table1")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "true".to_string(),
-            is_table_matched("01_system_table1", "01_system_table.")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "false".to_string(),
-            is_table_matched("01_system_table1", "01_system_tabl.")
-                .unwrap()
-                .to_string()
-        );
-        assert_eq!(
-            "true".to_string(),
-            is_table_matched("01_system_table1", "%system%")
-                .unwrap()
-                .to_string()
-        );
+        let testcases = vec![
+            // table, pattern, matched
+            ("abc", "abc", true),
+            ("abc", "abcd", false),
+            ("abc", "ab%", true),
+            ("abc", "%b%", true),
+            ("abc", "_b_", true),
+            ("aabcc", "%b%", true),
+            ("aabcc", "_b_", false),
+        ];
+
+        for (table_name, pattern, matched) in testcases {
+            assert_eq!(matched, is_table_matched(table_name, pattern).unwrap());
+        }
     }
 }
