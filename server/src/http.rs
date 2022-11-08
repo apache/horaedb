@@ -107,7 +107,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.metrics())
             .or(self.sql())
             .or(self.heap_profile())
-            .or(self.admin_reject())
+            .or(self.admin_block())
             .or(self.flush_memtable())
     }
 
@@ -277,19 +277,19 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || instance.clone())
     }
 
-    fn admin_reject(
+    fn admin_block(
         &self,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-        warp::path!("reject")
+        warp::path!("block")
             .and(warp::post())
             .and(warp::body::json())
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async {
-                let result = handlers::admin::handle_reject(ctx, instance, req)
+                let result = handlers::admin::handle_block(ctx, instance, req)
                     .await
                     .map_err(|e| {
-                        error!("Http service failed to handle admin reject, err:{}", e);
+                        error!("Http service failed to handle admin block, err:{}", e);
                         Box::new(e)
                     })
                     .context(HandleRequest);

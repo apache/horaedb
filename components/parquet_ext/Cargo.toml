@@ -11,6 +11,7 @@ arrow = { workspace = true }
 arrow_ext = { workspace = true }
 bytes = { workspace = true }
 datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 log = { workspace = true }
 lru = "0.7.0"
 parquet = { workspace = true }

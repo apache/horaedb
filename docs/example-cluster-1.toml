@@ -28,3 +28,6 @@ meta_addr = "http://{meta_addr}:2379"
 lease = "10s"
 timeout = "5s"
 
+[limiter]
+write_block_list = ['mytable1']
+read_block_list = ['mytable1']
