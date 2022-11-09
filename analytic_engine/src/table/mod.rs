@@ -139,7 +139,7 @@ impl Table for TableImpl {
 
     async fn get(&self, request: GetRequest) -> Result<Option<Row>> {
         let schema = request.projected_schema.to_record_schema_with_key();
-        let primary_key_columns = schema.key_columns();
+        let primary_key_columns = &schema.key_columns()[..];
         ensure!(
             primary_key_columns.len() == request.primary_key.len(),
             GetInvalidPrimaryKey {

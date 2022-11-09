@@ -188,8 +188,17 @@ impl ProjectedSchemaInner {
                 );
             }
 
+            println!("projected schema =>>>>>>>> {:?}", schema);
             let schema_with_key = schema.project_record_schema_with_key(p);
             let record_schema = schema.project_record_schema(p);
+            println!(
+                "projected schema: schema with key =>>>>>>> {:?}",
+                schema_with_key
+            );
+            println!(
+                "projected schema: record schema =>>>>>>> {:?}",
+                record_schema
+            );
 
             Ok(Self {
                 original_schema: schema,

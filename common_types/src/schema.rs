@@ -459,6 +459,7 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 pub struct RecordSchemaWithKey {
     record_schema: RecordSchema,
     num_key_columns: usize,
+    key_index: Vec<usize>,
 }
 
 impl RecordSchemaWithKey {
@@ -479,8 +480,19 @@ impl RecordSchemaWithKey {
     }
 
     /// Returns an immutable reference of the key column vector.
-    pub fn key_columns(&self) -> &[ColumnSchema] {
-        &self.columns()[..self.num_key_columns]
+    pub fn key_columns(&self) -> Vec<ColumnSchema> {
+        self.columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| {
+                if self.key_index.contains(&idx) {
+                    Some(col.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+        // &self.columns()[..self.num_key_columns]
     }
 
     pub(crate) fn into_record_schema(self) -> RecordSchema {
@@ -691,7 +703,7 @@ impl Schema {
     }
 
     /// Return the number of columns index in primary key
-    pub fn primary_key_idx(&self) ->  &[usize] {
+    pub fn primary_key_idx(&self) -> &[usize] {
         &self.primary_key_index
     }
 
@@ -812,6 +824,7 @@ impl Schema {
         RecordSchemaWithKey {
             record_schema: self.to_record_schema(),
             num_key_columns: self.num_key_columns,
+            key_index: self.primary_key_index.clone(),
         }
     }
 
@@ -820,20 +833,33 @@ impl Schema {
         &self,
         projection: &[usize],
     ) -> RecordSchemaWithKey {
-        let mut columns = Vec::with_capacity(self.num_key_columns);
-        // Keep all key columns in order.
-        for key_column in self.key_columns() {
-            columns.push(key_column.clone());
-        }
+        // let mut columns = Vec::with_capacity(self.num_key_columns);
+        // // Keep all key columns in order.
+        // for key_column in self.key_columns() {
+        //     columns.push(key_column.clone());
+        // }
 
-        // Collect normal columns needed by the projection.
-        for p in projection {
-            if *p >= self.num_key_columns {
-                // A normal column
-                let normal_column = &self.columns()[*p];
-                columns.push(normal_column.clone());
-            }
-        }
+        // // Collect normal columns needed by the projection.
+        // for p in projection {
+        //     if *p >= self.num_key_columns {
+        //         // A normal column
+        //         let normal_column = &self.columns()[*p];
+        //         columns.push(normal_column.clone());
+        //     }
+        // }
+
+        let columns = self
+            .columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| {
+                if projection.contains(&idx) {
+                    Some(col.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
 
         let record_schema =
             RecordSchema::from_column_schemas(ColumnSchemas::new(columns), &self.arrow_schema);
@@ -841,6 +867,7 @@ impl Schema {
         RecordSchemaWithKey {
             record_schema,
             num_key_columns: self.num_key_columns,
+            key_index: self.primary_key_index.clone(),
         }
     }
 
