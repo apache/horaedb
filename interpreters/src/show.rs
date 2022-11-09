@@ -115,7 +115,7 @@ impl ShowInterpreter {
                     .context(FetchTables)?
                     .iter()
                     .map(|t| t.name().to_string())
-                    .filter(|table_name| pattern_re.is_match(&table_name))
+                    .filter(|table_name| pattern_re.is_match(table_name))
                     .collect::<Vec<_>>()
             }
             None => schema
