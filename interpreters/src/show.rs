@@ -108,13 +108,16 @@ impl ShowInterpreter {
     ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
         let tables_names = match plan.pattern {
-            Some(pattern) => schema
-                .all_tables()
-                .context(FetchTables)?
-                .iter()
-                .filter(|t| is_table_matched(t.name(), &pattern).unwrap())
-                .map(|t| t.name().to_string())
-                .collect::<Vec<_>>(),
+            Some(pattern) => {
+                let pattern_re = to_pattern_re(&pattern)?;
+                schema
+                    .all_tables()
+                    .context(FetchTables)?
+                    .iter()
+                    .map(|t| t.name().to_string())
+                    .filter(|table_name| pattern_re.is_match(&table_name))
+                    .collect::<Vec<_>>()
+            }
             None => schema
                 .all_tables()
                 .context(FetchTables)?
@@ -164,7 +167,7 @@ impl ShowInterpreter {
     }
 }
 
-fn is_table_matched(table_name: &str, pattern: &str) -> Result<bool> {
+fn to_pattern_re(pattern: &str) -> Result<Regex> {
     // In MySQL
     // `_` match any single character
     // `% ` match an arbitrary number of characters (including zero characters).
@@ -172,9 +175,7 @@ fn is_table_matched(table_name: &str, pattern: &str) -> Result<bool> {
     // TODO: support escape char to match exact those two chars
     let pattern = pattern.replace('_', ".").replace('%', ".*");
     let pattern = format!("^{}$", pattern);
-    Regex::new(&pattern)
-        .map(|re| re.is_match(table_name))
-        .context(InvalidRegexp)
+    Regex::new(&pattern).context(InvalidRegexp)
 }
 
 #[async_trait]
@@ -222,7 +223,7 @@ fn get_default_schema(
 
 #[cfg(test)]
 mod tests {
-    use crate::show::is_table_matched;
+    use crate::show::to_pattern_re;
     #[test]
 
     fn test_is_table_matched() {
@@ -238,7 +239,8 @@ mod tests {
         ];
 
         for (table_name, pattern, matched) in testcases {
-            assert_eq!(matched, is_table_matched(table_name, pattern).unwrap());
+            let pattern = to_pattern_re(pattern).unwrap();
+            assert_eq!(matched, pattern.is_match(table_name));
         }
     }
 }
