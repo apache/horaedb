@@ -364,7 +364,6 @@ impl ColumnSchemas {
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
-        println!("[schema] ==> {:?}", self.name_to_index);
         self.name_to_index.get(name).copied()
     }
 }
@@ -374,6 +373,7 @@ impl fmt::Debug for ColumnSchemas {
         f.debug_struct("ColumnSchemas")
             // name_to_index is ignored.
             .field("columns", &self.columns)
+            .field("name to index", &self.name_to_index)
             .finish()
     }
 }

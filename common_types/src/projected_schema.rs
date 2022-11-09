@@ -99,6 +99,7 @@ impl fmt::Debug for ProjectedSchema {
         f.debug_struct("ProjectedSchema")
             .field("original_schema", &self.0.original_schema)
             .field("projection", &self.0.projection)
+            .field("schema with key", &self.0.schema_with_key)
             .finish()
     }
 }
