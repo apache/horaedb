@@ -77,9 +77,9 @@ func makeShardViewKey(rootPath string, clusterID uint32, shardID uint32, latestV
 // makeNodeKey returns the node meta info key path.
 func makeNodeKey(rootPath string, clusterID uint32, nodeName string) string {
 	// Example:
-	//	v1/cluster/1/node/127.0.0.1:8081 -> pb.Node
-	//	v1/cluster/1/node/127.0.0.2:8081 -> pb.Node
-	//	v1/cluster/1/node/127.0.0.3:8081 -> pb.Node
+	//	v1/cluster/1/node/127.0.0.1:8081 -> pb.NodeName
+	//	v1/cluster/1/node/127.0.0.2:8081 -> pb.NodeName
+	//	v1/cluster/1/node/127.0.0.3:8081 -> pb.NodeName
 	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), node, nodeName)
 }
 

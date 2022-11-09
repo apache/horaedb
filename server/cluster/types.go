@@ -5,90 +5,107 @@ package cluster
 import (
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/server/storage"
+)
+
+const (
+	MinShardID = 0
 )
 
 type TableInfo struct {
-	ID         uint64
+	ID         storage.TableID
 	Name       string
-	SchemaID   uint32
+	SchemaID   storage.SchemaID
 	SchemaName string
 }
 
 type ShardTables struct {
-	Shard  *ShardInfo
-	Tables []*TableInfo
+	Shard  ShardInfo
+	Tables []TableInfo
 }
 
 type ShardInfo struct {
-	ID      uint32
-	Role    clusterpb.ShardRole
+	ID      storage.ShardID
+	Role    storage.ShardRole
 	Version uint64
 }
 
-type ShardsOfNode struct {
-	Endpoint string
-	ShardIDs []uint32
-}
-
-type NodeShard struct {
-	Endpoint  string
-	ShardInfo *ShardInfo
+type ShardNodeWithVersion struct {
+	version   uint64
+	ShardNode storage.ShardNode
 }
 
 type CreateTableResult struct {
-	Table              *Table
-	ShardVersionUpdate *ShardVersionUpdate
+	Table              storage.Table
+	ShardVersionUpdate ShardVersionUpdate
 }
 
 type DropTableResult struct {
-	ShardVersionUpdate *ShardVersionUpdate
+	ShardVersionUpdate ShardVersionUpdate
 }
 
 type ShardVersionUpdate struct {
-	ShardID     uint32
+	ShardID     storage.ShardID
 	CurrVersion uint64
 	PrevVersion uint64
 }
 
 type RouteEntry struct {
-	Table      *TableInfo
-	NodeShards []*NodeShard
+	Table      TableInfo
+	NodeShards []ShardNodeWithVersion
 }
 
 type RouteTablesResult struct {
-	Version      uint64
-	RouteEntries map[string]*RouteEntry
+	ClusterViewVersion uint64
+	RouteEntries       map[string]RouteEntry
 }
 
 type GetNodeShardsResult struct {
 	ClusterTopologyVersion uint64
-	NodeShards             []*NodeShard
+	NodeShards             []ShardNodeWithVersion
 }
 
-func ConvertShardsInfoToPB(shard *ShardInfo) *metaservicepb.ShardInfo {
+type RegisteredNode struct {
+	Node       storage.Node
+	ShardInfos []ShardInfo
+}
+
+func NewRegisteredNode(meta storage.Node, shardInfos []ShardInfo) RegisteredNode {
+	return RegisteredNode{
+		meta,
+		shardInfos,
+	}
+}
+
+func (n *RegisteredNode) IsOnline() bool {
+	return n.Node.State == storage.NodeStateOnline
+}
+
+func (n RegisteredNode) IsExpired(now uint64, aliveThreshold uint64) bool {
+	return now >= aliveThreshold+n.Node.LastTouchTime
+}
+
+func ConvertShardsInfoToPB(shard ShardInfo) *metaservicepb.ShardInfo {
 	return &metaservicepb.ShardInfo{
-		Id:      shard.ID,
-		Role:    shard.Role,
+		Id:      uint32(shard.ID),
+		Role:    clusterpb.ShardRole(shard.Role),
 		Version: shard.Version,
 	}
 }
 
-func ConvertTableInfoToPB(table *TableInfo) *metaservicepb.TableInfo {
-	return &metaservicepb.TableInfo{
-		Id:         table.ID,
-		Name:       table.Name,
-		SchemaId:   table.SchemaID,
-		SchemaName: table.SchemaName,
+func ConvertShardsInfoPB(shard *metaservicepb.ShardInfo) ShardInfo {
+	return ShardInfo{
+		ID:      storage.ShardID(shard.Id),
+		Role:    storage.ConvertShardRolePB(shard.Role),
+		Version: shard.Version,
 	}
 }
 
-func ConvertNodeToPB(node *RegisteredNode) *clusterpb.Node {
-	return &clusterpb.Node{
-		Name:                  node.meta.Name,
-		NodeStats:             node.meta.NodeStats,
-		CreateTime:            node.meta.CreateTime,
-		LastTouchTime:         node.meta.LastTouchTime,
-		State:                 node.meta.State,
-		HeartbeatSamplingInfo: node.meta.HeartbeatSamplingInfo,
+func ConvertTableInfoToPB(table TableInfo) *metaservicepb.TableInfo {
+	return &metaservicepb.TableInfo{
+		Id:         uint64(table.ID),
+		Name:       table.Name,
+		SchemaId:   uint32(table.SchemaID),
+		SchemaName: table.SchemaName,
 	}
 }

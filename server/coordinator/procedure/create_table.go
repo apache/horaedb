@@ -4,13 +4,14 @@ package procedure
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -42,55 +43,57 @@ var (
 
 func createTablePrepareCallback(event *fsm.Event) {
 	req := event.Args[0].(*createTableCallbackRequest)
-	table, exists, err := req.cluster.GetTable(req.ctx, req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
+	_, exists, err := req.cluster.GetTable(req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get table")
 		return
 	}
 	if exists {
-		req.createTableResult = &cluster.CreateTableResult{
-			Table: table,
-			ShardVersionUpdate: &cluster.ShardVersionUpdate{
-				ShardID: table.GetShardID(),
-			},
-		}
-		log.Warn("create an existing table", zap.String("schema", req.sourceReq.GetSchemaName()), zap.String("table", req.sourceReq.GetName()))
+		cancelEventWithLog(event, ErrTableAlreadyExists, fmt.Sprintf("create an existing table, schemaName:%s, tableName:%s", req.sourceReq.GetSchemaName(), req.sourceReq.GetName()))
 		return
 	}
 
 	createTableResult, err := req.cluster.CreateTable(req.ctx, req.sourceReq.GetHeader().GetNode(), req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
 	if err != nil {
-		cancelEventWithLog(event, err, "cluster get table")
+		cancelEventWithLog(event, err, "cluster create table")
 		return
 	}
 
-	shard, err := req.cluster.GetShardByID(createTableResult.Table.GetShardID())
+	shardNodes, err := req.cluster.GetShardNodesByShardID(createTableResult.ShardVersionUpdate.ShardID)
 	if err != nil {
-		cancelEventWithLog(event, err, "cluster get shard by id")
+		cancelEventWithLog(event, err, "cluster get shardNode by id")
 		return
 	}
 	// TODO: consider followers
-	leader := shard.GetLeader()
-	if leader == nil {
-		cancelEventWithLog(event, ErrShardLeaderNotFound, "shard can't find leader")
+	leader := storage.ShardNode{}
+	found := false
+	for _, shardNode := range shardNodes {
+		if shardNode.ShardRole == storage.ShardRoleLeader {
+			found = true
+			leader = shardNode
+			break
+		}
+	}
+	if !found {
+		cancelEventWithLog(event, ErrShardLeaderNotFound, fmt.Sprintf("shard node can't find leader, shardID:%d", createTableResult.ShardVersionUpdate.ShardID))
 		return
 	}
 
-	err = req.dispatch.CreateTableOnShard(req.ctx, leader.Node, &eventdispatch.CreateTableOnShardRequest{
-		UpdateShardInfo: &eventdispatch.UpdateShardInfo{
-			CurrShardInfo: &cluster.ShardInfo{
+	err = req.dispatch.CreateTableOnShard(req.ctx, leader.NodeName, eventdispatch.CreateTableOnShardRequest{
+		UpdateShardInfo: eventdispatch.UpdateShardInfo{
+			CurrShardInfo: cluster.ShardInfo{
 				ID: createTableResult.ShardVersionUpdate.ShardID,
 				// TODO: dispatch CreateTableOnShard to followers?
-				Role:    clusterpb.ShardRole_LEADER,
+				Role:    storage.ShardRoleLeader,
 				Version: createTableResult.ShardVersionUpdate.CurrVersion,
 			},
 			PrevVersion: createTableResult.ShardVersionUpdate.PrevVersion,
 		},
-		TableInfo: &cluster.TableInfo{
-			ID:         createTableResult.Table.GetID(),
-			Name:       createTableResult.Table.GetName(),
-			SchemaID:   createTableResult.Table.GetSchemaID(),
-			SchemaName: createTableResult.Table.GetSchemaName(),
+		TableInfo: cluster.TableInfo{
+			ID:         createTableResult.Table.ID,
+			Name:       createTableResult.Table.Name,
+			SchemaID:   createTableResult.Table.SchemaID,
+			SchemaName: req.sourceReq.GetSchemaName(),
 		},
 		EncodedSchema:    req.sourceReq.EncodedSchema,
 		Engine:           req.sourceReq.Engine,
@@ -120,7 +123,7 @@ func createTableFailedCallback(event *fsm.Event) {
 		log.Error("exec failed callback failed")
 	}
 
-	table, exists, err := req.cluster.GetTable(req.ctx, req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
+	table, exists, err := req.cluster.GetTable(req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
 	if err != nil {
 		log.Error("create table failed, get table failed", zap.String("schemaName", req.sourceReq.GetSchemaName()), zap.String("tableName", req.sourceReq.GetName()))
 		return
@@ -130,9 +133,9 @@ func createTableFailedCallback(event *fsm.Event) {
 	}
 
 	// Rollback, drop table in ceresmeta.
-	_, err = req.cluster.DropTable(req.ctx, table.GetSchemaName(), table.GetName())
+	_, err = req.cluster.DropTable(req.ctx, req.sourceReq.GetSchemaName(), table.Name)
 	if err != nil {
-		log.Error("drop table failed, get table failed", zap.String("schemaName", table.GetSchemaName()), zap.String("tableName", table.GetName()), zap.Uint64("tableID", table.GetID()))
+		log.Error("drop table failed, get table failed", zap.String("schemaName", req.sourceReq.GetSchemaName()), zap.String("tableName", table.Name), zap.Uint64("tableID", uint64(table.ID)))
 		return
 	}
 }
@@ -145,13 +148,13 @@ type createTableCallbackRequest struct {
 
 	sourceReq *metaservicepb.CreateTableRequest
 
-	onSucceeded func(*cluster.CreateTableResult) error
+	onSucceeded func(cluster.CreateTableResult) error
 	onFailed    func(error) error
 
-	createTableResult *cluster.CreateTableResult
+	createTableResult cluster.CreateTableResult
 }
 
-func NewCreateTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.CreateTableRequest, onSucceeded func(*cluster.CreateTableResult) error, onFailed func(error) error) Procedure {
+func NewCreateTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.CreateTableRequest, onSucceeded func(cluster.CreateTableResult) error, onFailed func(error) error) Procedure {
 	fsm := fsm.NewFSM(
 		stateCreateTableBegin,
 		createTableEvents,
@@ -168,7 +171,7 @@ type CreateTableProcedure struct {
 
 	req *metaservicepb.CreateTableRequest
 
-	onSucceeded func(*cluster.CreateTableResult) error
+	onSucceeded func(cluster.CreateTableResult) error
 	onFailed    func(error) error
 
 	lock  sync.RWMutex

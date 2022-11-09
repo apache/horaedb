@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
-	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
@@ -85,27 +84,27 @@ func TestManagerSingleThread(t *testing.T) {
 
 	testCreateCluster(ctx, re, manager, cluster1)
 
-	testRegisterNode(ctx, re, manager, cluster1, node1, defaultLease)
-	testRegisterNode(ctx, re, manager, cluster1, node2, defaultLease)
+	testRegisterNode(ctx, re, manager, cluster1, node1)
+	testRegisterNode(ctx, re, manager, cluster1, node2)
 
-	testGetTables(ctx, re, manager, node1, cluster1, 0)
+	testGetTables(re, manager, node1, cluster1, 0)
 
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
 
-	testAllocTableID(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
-	testAllocTableID(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
-	testAllocTableID(ctx, re, manager, node1, cluster1, defaultSchema, table2, tableID2)
-	testAllocTableID(ctx, re, manager, node2, cluster1, defaultSchema, table3, tableID3)
-	testAllocTableID(ctx, re, manager, node2, cluster1, defaultSchema, table4, tableID4)
+	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
+	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
+	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table2, tableID2)
+	testCreateTable(ctx, re, manager, node2, cluster1, defaultSchema, table3, tableID3)
+	testCreateTable(ctx, re, manager, node2, cluster1, defaultSchema, table4, tableID4)
 
 	testRouteTables(ctx, re, manager, cluster1, defaultSchema, []string{table1, table2, table3, table4})
 
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table1)
 	testDropTable(ctx, re, manager, cluster1, defaultSchema, table3)
 
-	testGetTables(ctx, re, manager, node1, cluster1, 1)
-	testGetTables(ctx, re, manager, node2, cluster1, 1)
+	testGetTables(re, manager, node1, cluster1, 1)
+	testGetTables(re, manager, node2, cluster1, 1)
 	testGetNodes(ctx, re, manager, cluster1)
 
 	re.NoError(manager.Stop(ctx))
@@ -115,8 +114,8 @@ func TestManagerSingleThread(t *testing.T) {
 
 	re.NoError(manager.Start(ctx))
 
-	testGetTables(ctx, re, manager, node1, cluster1, 1)
-	testGetTables(ctx, re, manager, node2, cluster1, 1)
+	testGetTables(re, manager, node1, cluster1, 1)
+	testGetTables(re, manager, node2, cluster1, 1)
 
 	re.NoError(manager.Stop(ctx))
 }
@@ -146,8 +145,8 @@ func TestManagerMultiThread(t *testing.T) {
 func testCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
 	testCreateCluster(ctx, re, manager, clusterName)
 
-	testRegisterNode(ctx, re, manager, clusterName, node1, defaultLease)
-	testRegisterNode(ctx, re, manager, clusterName, node2, defaultLease)
+	testRegisterNode(ctx, re, manager, clusterName, node1)
+	testRegisterNode(ctx, re, manager, clusterName, node2)
 
 	testAllocSchemaIDMultiThread(ctx, re, manager, clusterName, defaultSchema, defaultSchemaID)
 
@@ -164,11 +163,14 @@ func testCreateCluster(ctx context.Context, re *require.Assertions, manager Mana
 }
 
 func testRegisterNode(ctx context.Context, re *require.Assertions, manager Manager,
-	cluster, node string, lease uint32,
+	clusterName, nodeName string,
 ) {
-	err := manager.RegisterNode(ctx, cluster, &metaservicepb.NodeInfo{
-		Endpoint: node,
-		Lease:    lease,
+	err := manager.RegisterNode(ctx, clusterName, RegisteredNode{
+		storage.Node{
+			Name:          nodeName,
+			LastTouchTime: uint64(time.Now().UnixMilli()),
+			State:         storage.NodeStateOnline,
+		}, []ShardInfo{},
 	})
 	re.NoError(err)
 }
@@ -181,19 +183,22 @@ func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Mana
 	re.Equal(schemaID, id)
 }
 
-func testAllocTableID(ctx context.Context, re *require.Assertions, manager Manager,
-	node, cluster, schema, tableName string, tableID uint64,
+func testCreateTable(ctx context.Context, re *require.Assertions, manager Manager,
+	node, clusterName, schema, tableName string, tableID uint64,
 ) {
-	table, _, err := manager.AllocTableID(ctx, cluster, schema, tableName, node)
+	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
-	re.Equal(tableID, table.GetID())
+	table, err := c.CreateTable(ctx, node, schema, tableName)
+	re.NoError(err)
+	re.Equal(tableID, table.Table.ID)
 }
 
-func testGetTables(ctx context.Context, re *require.Assertions, manager Manager, node, cluster string, num int) {
-	shardIDs, err := manager.GetShardIDs(ctx, cluster, node)
-	re.NoError(err)
-
-	shardTables, err := manager.GetTables(ctx, cluster, node, shardIDs)
+func testGetTables(re *require.Assertions, manager Manager, node, cluster string, num int) {
+	shardIDs := make([]storage.ShardID, 0, defaultShardTotal)
+	for i := 0; i < defaultShardTotal; i++ {
+		shardIDs = append(shardIDs, storage.ShardID(i))
+	}
+	shardTables, err := manager.GetTables(cluster, node, shardIDs)
 	re.NoError(err)
 	re.Equal(4, len(shardTables))
 
@@ -208,11 +213,11 @@ func testGetTables(ctx context.Context, re *require.Assertions, manager Manager,
 func testRouteTables(ctx context.Context, re *require.Assertions, manager Manager, cluster, schema string, tableNames []string) {
 	ret, err := manager.RouteTables(ctx, cluster, schema, tableNames)
 	re.NoError(err)
-	re.Equal(uint64(0), ret.Version)
+	re.Equal(uint64(0), ret.ClusterViewVersion)
 	re.Equal(len(tableNames), len(ret.RouteEntries))
 	for _, entry := range ret.RouteEntries {
 		re.Equal(1, len(entry.NodeShards))
-		re.Equal(clusterpb.ShardRole_LEADER, entry.NodeShards[0].ShardInfo.Role)
+		re.Equal(storage.ShardRoleLeader, entry.NodeShards[0].ShardNode.ShardRole)
 	}
 }
 
@@ -240,11 +245,11 @@ func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, ma
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testAllocTableID(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
+			testCreateTable(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
 		}()
 	}
 
-	testAllocTableID(ctx, re, manager, node2, clusterName, defaultSchema, table1, tableID)
+	testCreateTable(ctx, re, manager, node2, clusterName, defaultSchema, table1, tableID)
 	wg.Wait()
 }
 

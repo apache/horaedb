@@ -24,7 +24,7 @@ func NewDispatchImpl() *DispatchImpl {
 	return &DispatchImpl{}
 }
 
-func (d *DispatchImpl) OpenShard(ctx context.Context, addr string, request *OpenShardRequest) error {
+func (d *DispatchImpl) OpenShard(ctx context.Context, addr string, request OpenShardRequest) error {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func (d *DispatchImpl) OpenShard(ctx context.Context, addr string, request *Open
 	return nil
 }
 
-func (d *DispatchImpl) CloseShard(ctx context.Context, addr string, request *CloseShardRequest) error {
+func (d *DispatchImpl) CloseShard(ctx context.Context, addr string, request CloseShardRequest) error {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (d *DispatchImpl) CloseShard(ctx context.Context, addr string, request *Clo
 	return nil
 }
 
-func (d *DispatchImpl) CreateTableOnShard(ctx context.Context, addr string, request *CreateTableOnShardRequest) error {
+func (d *DispatchImpl) CreateTableOnShard(ctx context.Context, addr string, request CreateTableOnShardRequest) error {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (d *DispatchImpl) CreateTableOnShard(ctx context.Context, addr string, requ
 	return nil
 }
 
-func (d *DispatchImpl) DropTableOnShard(ctx context.Context, addr string, request *DropTableOnShardRequest) error {
+func (d *DispatchImpl) DropTableOnShard(ctx context.Context, addr string, request DropTableOnShardRequest) error {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
 		return err
@@ -109,7 +109,7 @@ func (d *DispatchImpl) getMetaEventClient(ctx context.Context, addr string) (met
 	return metaeventpb.NewMetaEventServiceClient(client), nil
 }
 
-func convertCreateTableOnShardRequestToPB(request *CreateTableOnShardRequest) *metaeventpb.CreateTableOnShardRequest {
+func convertCreateTableOnShardRequestToPB(request CreateTableOnShardRequest) *metaeventpb.CreateTableOnShardRequest {
 	return &metaeventpb.CreateTableOnShardRequest{
 		UpdateShardInfo:  convertUpdateShardInfoToPB(request.UpdateShardInfo),
 		TableInfo:        cluster.ConvertTableInfoToPB(request.TableInfo),
@@ -120,14 +120,14 @@ func convertCreateTableOnShardRequestToPB(request *CreateTableOnShardRequest) *m
 	}
 }
 
-func convertDropTableOnShardRequestToPB(request *DropTableOnShardRequest) *metaeventpb.DropTableOnShardRequest {
+func convertDropTableOnShardRequestToPB(request DropTableOnShardRequest) *metaeventpb.DropTableOnShardRequest {
 	return &metaeventpb.DropTableOnShardRequest{
 		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
 		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
 	}
 }
 
-func convertUpdateShardInfoToPB(updateShardInfo *UpdateShardInfo) *metaeventpb.UpdateShardInfo {
+func convertUpdateShardInfoToPB(updateShardInfo UpdateShardInfo) *metaeventpb.UpdateShardInfo {
 	return &metaeventpb.UpdateShardInfo{
 		CurrShardInfo: cluster.ConvertShardsInfoToPB(updateShardInfo.CurrShardInfo),
 		PrevVersion:   updateShardInfo.PrevVersion,

@@ -76,7 +76,7 @@ func TestStorage_CreateAndGetClusterView(t *testing.T) {
 	expectClusterView := ClusterView{
 		ClusterID:  defaultClusterID,
 		Version:    defaultVersion,
-		State:      Empty,
+		State:      ClusterStateEmpty,
 		ShardNodes: nil,
 		CreatedAt:  uint64(time.Now().UnixMilli()),
 	}
@@ -98,7 +98,7 @@ func TestStorage_CreateAndGetClusterView(t *testing.T) {
 
 	// Test to put cluster view.
 	expectClusterView.Version = uint64(1)
-	putReq := PutClusterViewRequest{
+	putReq := UpdateClusterViewRequest{
 		ClusterID:     defaultClusterID,
 		ClusterView:   expectClusterView,
 		LatestVersion: 0,
@@ -263,7 +263,7 @@ func TestStorage_CreateAndListShardView(t *testing.T) {
 	// Test to put shard topologies.
 	for i := 0; i < defaultCount; i++ {
 		expectShardViews[i].Version = newVersion
-		err = s.UpdateShardView(ctx, PutShardViewRequest{
+		err = s.UpdateShardView(ctx, UpdateShardViewRequest{
 			ClusterID:     defaultClusterID,
 			ShardView:     expectShardViews[i],
 			LatestVersion: defaultVersion,

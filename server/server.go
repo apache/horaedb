@@ -237,13 +237,13 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 			log.Info("create default cluster succeed", zap.String("cluster", defaultCluster.Name()))
 		}
 		// Create and submit scatter procedure for default cluster.
-		shardIDs := make([]uint32, 0, defaultCluster.GetTotalShardNum())
+		shardIDs := make([]storage.ShardID, 0, defaultCluster.GetTotalShardNum())
 		for i := uint32(0); i < defaultCluster.GetTotalShardNum(); i++ {
 			shardID, err := defaultCluster.AllocShardID(ctx)
 			if err != nil {
 				return errors.WithMessage(err, "alloc shard id failed")
 			}
-			shardIDs = append(shardIDs, shardID)
+			shardIDs = append(shardIDs, storage.ShardID(shardID))
 		}
 		scatterRequest := &procedure.ScatterRequest{Cluster: defaultCluster, ShardIDs: shardIDs}
 		scatterProcedure, err := srv.procedureFactory.CreateScatterProcedure(ctx, scatterRequest)
@@ -283,10 +283,6 @@ func (srv *Server) GetProcedureFactory() *procedure.Factory {
 
 func (srv *Server) GetProcedureManager() procedure.Manager {
 	return srv.procedureManager
-}
-
-func (srv *Server) ProcessHeartbeat(ctx context.Context, req *metaservicepb.NodeHeartbeatRequest) error {
-	return srv.clusterManager.RegisterNode(ctx, req.GetHeader().GetClusterName(), req.GetInfo())
 }
 
 type leadershipEventCallbacks struct {

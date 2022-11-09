@@ -9,14 +9,14 @@ import (
 )
 
 type Dispatch interface {
-	OpenShard(context context.Context, address string, request *OpenShardRequest) error
-	CloseShard(context context.Context, address string, request *CloseShardRequest) error
-	CreateTableOnShard(context context.Context, address string, request *CreateTableOnShardRequest) error
-	DropTableOnShard(context context.Context, address string, request *DropTableOnShardRequest) error
+	OpenShard(context context.Context, address string, request OpenShardRequest) error
+	CloseShard(context context.Context, address string, request CloseShardRequest) error
+	CreateTableOnShard(context context.Context, address string, request CreateTableOnShardRequest) error
+	DropTableOnShard(context context.Context, address string, request DropTableOnShardRequest) error
 }
 
 type OpenShardRequest struct {
-	Shard *cluster.ShardInfo
+	Shard cluster.ShardInfo
 }
 
 type CloseShardRequest struct {
@@ -24,13 +24,13 @@ type CloseShardRequest struct {
 }
 
 type UpdateShardInfo struct {
-	CurrShardInfo *cluster.ShardInfo
+	CurrShardInfo cluster.ShardInfo
 	PrevVersion   uint64
 }
 
 type CreateTableOnShardRequest struct {
-	UpdateShardInfo  *UpdateShardInfo
-	TableInfo        *cluster.TableInfo
+	UpdateShardInfo  UpdateShardInfo
+	TableInfo        cluster.TableInfo
 	EncodedSchema    []byte
 	Engine           string
 	CreateIfNotExist bool
@@ -38,6 +38,6 @@ type CreateTableOnShardRequest struct {
 }
 
 type DropTableOnShardRequest struct {
-	UpdateShardInfo *UpdateShardInfo
-	TableInfo       *cluster.TableInfo
+	UpdateShardInfo UpdateShardInfo
+	TableInfo       cluster.TableInfo
 }

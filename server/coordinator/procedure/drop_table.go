@@ -4,13 +4,14 @@ package procedure
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -42,7 +43,7 @@ var (
 
 func dropTablePrepareCallback(event *fsm.Event) {
 	request := event.Args[0].(*dropTableCallbackRequest)
-	table, exists, err := request.cluster.GetTable(request.ctx, request.rawReq.GetSchemaName(), request.rawReq.GetName())
+	table, exists, err := request.cluster.GetTable(request.rawReq.GetSchemaName(), request.rawReq.GetName())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get table")
 		return
@@ -57,46 +58,63 @@ func dropTablePrepareCallback(event *fsm.Event) {
 		return
 	}
 
-	shard, err := request.cluster.GetShardByID(table.GetShardID())
+	shardNodesResult, err := request.cluster.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
-		cancelEventWithLog(event, err, "cluster get shard by id")
+		cancelEventWithLog(event, err, "cluster get shard by table id")
 		return
 	}
+
+	shardNodes, ok := shardNodesResult.ShardNodes[table.ID]
+	if !ok {
+		cancelEventWithLog(event, ErrShardLeaderNotFound, fmt.Sprintf("cluster get shard by table id, table:%v", table))
+		return
+	}
+
 	// TODO: consider followers
-	leader := shard.GetLeader()
-	if leader == nil {
+	leader := storage.ShardNode{}
+	found := false
+	for _, shardNode := range shardNodes {
+		if shardNode.ShardRole == storage.ShardRoleLeader {
+			found = true
+			leader = shardNode
+			break
+		}
+	}
+
+	if !found {
 		cancelEventWithLog(event, ErrShardLeaderNotFound, "can't find leader")
 		return
 	}
 
-	err = request.dispatch.DropTableOnShard(request.ctx, leader.Node, &eventdispatch.DropTableOnShardRequest{
-		UpdateShardInfo: &eventdispatch.UpdateShardInfo{
-			CurrShardInfo: &cluster.ShardInfo{
+	tableInfo := cluster.TableInfo{
+		ID:         table.ID,
+		Name:       table.Name,
+		SchemaID:   table.SchemaID,
+		SchemaName: request.rawReq.GetSchemaName(),
+	}
+	err = request.dispatch.DropTableOnShard(request.ctx, leader.NodeName, eventdispatch.DropTableOnShardRequest{
+		UpdateShardInfo: eventdispatch.UpdateShardInfo{
+			CurrShardInfo: cluster.ShardInfo{
 				ID:      result.ShardVersionUpdate.ShardID,
-				Role:    clusterpb.ShardRole_LEADER,
+				Role:    storage.ShardRoleLeader,
 				Version: result.ShardVersionUpdate.CurrVersion,
 			},
 			PrevVersion: result.ShardVersionUpdate.PrevVersion,
 		},
-		TableInfo: &cluster.TableInfo{
-			ID:         table.GetID(),
-			Name:       table.GetName(),
-			SchemaID:   table.GetSchemaID(),
-			SchemaName: table.GetSchemaName(),
-		},
+		TableInfo: tableInfo,
 	})
 	if err != nil {
 		cancelEventWithLog(event, err, "dispatch drop table on shard")
 		return
 	}
 
-	request.ret = table.GetInfo()
+	request.ret = tableInfo
 }
 
 func dropTableSuccessCallback(event *fsm.Event) {
 	req := event.Args[0].(*dropTableCallbackRequest)
 
-	if err := req.onSucceeded(&req.ret); err != nil {
+	if err := req.onSucceeded(req.ret); err != nil {
 		log.Error("exec success callback failed")
 	}
 }
@@ -117,13 +135,13 @@ type dropTableCallbackRequest struct {
 
 	rawReq *metaservicepb.DropTableRequest
 
-	onSucceeded func(*cluster.TableInfo) error
+	onSucceeded func(cluster.TableInfo) error
 	onFailed    func(error) error
 
 	ret cluster.TableInfo
 }
 
-func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.DropTableRequest, onSucceeded func(*cluster.TableInfo) error, onFailed func(error) error) Procedure {
+func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, req *metaservicepb.DropTableRequest, onSucceeded func(cluster.TableInfo) error, onFailed func(error) error) Procedure {
 	fsm := fsm.NewFSM(
 		stateDropTableBegin,
 		dropTableEvents,
@@ -139,7 +157,7 @@ type DropTableProcedure struct {
 	dispatch eventdispatch.Dispatch
 	req      *metaservicepb.DropTableRequest
 
-	onSucceeded func(*cluster.TableInfo) error
+	onSucceeded func(cluster.TableInfo) error
 	onFailed    func(error) error
 
 	lock  sync.RWMutex

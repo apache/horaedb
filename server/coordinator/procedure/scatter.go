@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -49,7 +49,7 @@ func scatterPrepareCallback(event *fsm.Event) {
 
 	waitForNodesReady(c)
 
-	if c.GetClusterState() == clusterpb.ClusterTopology_STABLE {
+	if c.GetClusterState() == storage.ClusterStateStable {
 		return
 	}
 
@@ -57,35 +57,39 @@ func scatterPrepareCallback(event *fsm.Event) {
 	shardTotal := c.GetTotalShardNum()
 	minNodeCount := c.GetClusterMinNodeCount()
 
-	shards, err := allocNodeShards(shardTotal, minNodeCount, registeredNodes, request.shardIDs)
+	shardNodes, err := allocNodeShards(shardTotal, minNodeCount, registeredNodes, request.shardIDs)
 	if err != nil {
-		cancelEventWithLog(event, err, "alloc node shards failed")
+		cancelEventWithLog(event, err, "alloc node shardNodes failed")
 		return
 	}
 
-	shardViews := make([]*clusterpb.ShardTopology, 0, len(shards))
-	for _, shard := range shards {
-		shardViews = append(shardViews, &clusterpb.ShardTopology{
-			ShardId:  shard.GetId(),
-			TableIds: []uint64{},
-			Version:  0,
+	shardViews := make([]cluster.CreateShardView, 0, shardTotal)
+	for _, shard := range shardNodes {
+		shardViews = append(shardViews, cluster.CreateShardView{
+			ShardID: shard.ID,
+			Tables:  []storage.TableID{},
 		})
 	}
 
-	if err := c.CreateShardViews(ctx, clusterpb.ClusterTopology_STABLE, shardViews, shards); err != nil {
-		cancelEventWithLog(event, err, "create shard topologies failed")
+	if err := c.UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes); err != nil {
+		cancelEventWithLog(event, err, "update cluster view")
 		return
 	}
 
-	for _, shard := range shards {
-		openShardRequest := &eventdispatch.OpenShardRequest{
-			Shard: &cluster.ShardInfo{
-				ID:      shard.GetId(),
-				Role:    clusterpb.ShardRole_LEADER,
+	if err := c.CreateShardViews(ctx, shardViews); err != nil {
+		cancelEventWithLog(event, err, "create shard views")
+		return
+	}
+
+	for _, shard := range shardNodes {
+		openShardRequest := eventdispatch.OpenShardRequest{
+			Shard: cluster.ShardInfo{
+				ID:      shard.ID,
+				Role:    storage.ShardRoleLeader,
 				Version: 0,
 			},
 		}
-		if err := request.dispatch.OpenShard(ctx, shard.Node, openShardRequest); err != nil {
+		if err := request.dispatch.OpenShard(ctx, shard.NodeName, openShardRequest); err != nil {
 			cancelEventWithLog(event, err, "open shard failed")
 			return
 		}
@@ -110,7 +114,7 @@ func waitForNodesReady(c *cluster.Cluster) {
 }
 
 // Compute the total number of the available nodes.
-func computeOnlineNodeNum(nodes []*cluster.RegisteredNode) uint32 {
+func computeOnlineNodeNum(nodes []cluster.RegisteredNode) uint32 {
 	onlineNodeNum := uint32(0)
 	for _, node := range nodes {
 		if node.IsOnline() {
@@ -121,8 +125,8 @@ func computeOnlineNodeNum(nodes []*cluster.RegisteredNode) uint32 {
 }
 
 // Allocates shard ids across the registered nodes, and caller should ensure `minNodeCount <= len(allNodes)`.
-func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []*cluster.RegisteredNode, shardIDs []uint32) ([]*clusterpb.Shard, error) {
-	shards := make([]*clusterpb.Shard, 0, shardTotal)
+func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []cluster.RegisteredNode, shardIDs []storage.ShardID) ([]storage.ShardNode, error) {
+	shards := make([]storage.ShardNode, 0, shardTotal)
 
 	perNodeShardCount := shardTotal / minNodeCount
 	if shardTotal%minNodeCount != 0 {
@@ -134,10 +138,10 @@ func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []*cluster
 			if uint32(len(shards)) < shardTotal {
 				shardID := shardIDs[len(shards)]
 				// TODO: consider nodesCache state
-				shards = append(shards, &clusterpb.Shard{
-					Id:        shardID,
-					ShardRole: clusterpb.ShardRole_LEADER,
-					Node:      allNodes[i].GetMeta().GetName(),
+				shards = append(shards, storage.ShardNode{
+					ID:        shardID,
+					ShardRole: storage.ShardRoleLeader,
+					NodeName:  allNodes[i].Node.Name,
 				})
 			}
 		}
@@ -159,10 +163,10 @@ type ScatterCallbackRequest struct {
 	cluster  *cluster.Cluster
 	ctx      context.Context
 	dispatch eventdispatch.Dispatch
-	shardIDs []uint32
+	shardIDs []storage.ShardID
 }
 
-func NewScatterProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, shardIDs []uint32) Procedure {
+func NewScatterProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Cluster, id uint64, shardIDs []storage.ShardID) Procedure {
 	scatterProcedureFsm := fsm.NewFSM(
 		stateScatterBegin,
 		scatterEvents,
@@ -177,7 +181,7 @@ type ScatterProcedure struct {
 	fsm      *fsm.FSM
 	dispatch eventdispatch.Dispatch
 	cluster  *cluster.Cluster
-	shardIDs []uint32
+	shardIDs []storage.ShardID
 
 	lock  sync.RWMutex
 	state State

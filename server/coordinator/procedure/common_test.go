@@ -30,19 +30,19 @@ const (
 
 type MockDispatch struct{}
 
-func (m MockDispatch) OpenShard(_ context.Context, _ string, _ *eventdispatch.OpenShardRequest) error {
+func (m MockDispatch) OpenShard(_ context.Context, _ string, _ eventdispatch.OpenShardRequest) error {
 	return nil
 }
 
-func (m MockDispatch) CloseShard(_ context.Context, _ string, _ *eventdispatch.CloseShardRequest) error {
+func (m MockDispatch) CloseShard(_ context.Context, _ string, _ eventdispatch.CloseShardRequest) error {
 	return nil
 }
 
-func (m MockDispatch) CreateTableOnShard(_ context.Context, _ string, _ *eventdispatch.CreateTableOnShardRequest) error {
+func (m MockDispatch) CreateTableOnShard(_ context.Context, _ string, _ eventdispatch.CreateTableOnShardRequest) error {
 	return nil
 }
 
-func (m MockDispatch) DropTableOnShard(_ context.Context, _ string, _ *eventdispatch.DropTableOnShardRequest) error {
+func (m MockDispatch) DropTableOnShard(_ context.Context, _ string, _ eventdispatch.DropTableOnShardRequest) error {
 	return nil
 }
 
