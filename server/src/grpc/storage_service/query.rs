@@ -131,7 +131,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     if ctx.instance.limiter.should_limit(&plan) {
         ErrNoCause {
             code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "query limited by reject list",
+            msg: "query limited by block list",
         }
         .fail()?;
     }

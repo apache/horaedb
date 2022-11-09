@@ -22,7 +22,7 @@ sql = { workspace = true }
 table_engine = { workspace = true }
 query_engine = { workspace = true }
 arrow = { workspace = true }
-
+regex = "1"
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }
 catalog_impls = { workspace = true }

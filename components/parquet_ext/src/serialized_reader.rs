@@ -99,19 +99,21 @@ impl<R: 'static + ChunkReader> CacheableSerializedFileReader<R> {
         })
     }
 
-    /// Filters row group metadata to only those row groups,
-    /// for which the predicate function returns true
-    pub fn filter_row_groups(&mut self, predicate: &dyn Fn(&RowGroupMetaData, usize) -> bool) {
-        let mut filtered_row_groups = Vec::<RowGroupMetaData>::new();
-        for (i, row_group_metadata) in self.metadata.row_groups().iter().enumerate() {
+    /// Filters row groups according to the predicate function, and returns the
+    /// indexes of the filtered row groups.
+    pub fn filter_row_groups(
+        &mut self,
+        predicate: &dyn Fn(&RowGroupMetaData, usize) -> bool,
+    ) -> Vec<usize> {
+        let row_groups = self.metadata.row_groups();
+        let mut filtered_row_groups = Vec::with_capacity(row_groups.len());
+        for (i, row_group_metadata) in row_groups.iter().enumerate() {
             if predicate(row_group_metadata, i) {
-                filtered_row_groups.push(row_group_metadata.clone());
+                filtered_row_groups.push(i);
             }
         }
-        self.metadata = Arc::new(ParquetMetaData::new(
-            self.metadata.file_metadata().clone(),
-            filtered_row_groups,
-        ));
+
+        filtered_row_groups
     }
 }
 
@@ -610,9 +612,8 @@ mod tests {
         assert_eq!(metadata.num_row_groups(), 1);
 
         // test filtering out all row groups
-        reader.filter_row_groups(&|_, _| false);
-        let metadata = reader.metadata();
-        assert_eq!(metadata.num_row_groups(), 0);
+        let filtered_row_groups = reader.filter_row_groups(&|_, _| false);
+        assert!(filtered_row_groups.is_empty());
 
         Ok(())
     }

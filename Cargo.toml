@@ -42,6 +42,7 @@ members = [
     "system_catalog",
     "table_engine",
     "tests/harness",
+    "tools",
     "wal",
 ]
 
@@ -61,12 +62,14 @@ bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 chrono = "0.4"
+clap = "3.0"
 cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
+ethbloom = "0.13.0"
 futures = "0.3"
 lazy_static = "1.4.0"
 log = "0.4"
@@ -117,7 +120,7 @@ rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
 analytic_engine = { workspace = true }
 catalog = { workspace = true }
 catalog_impls = { workspace = true }
-clap = "2.0"
+clap = { workspace = true }
 cluster = { workspace = true }
 common_util = { workspace = true }
 df_operator = { workspace = true }

@@ -16,7 +16,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
     AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, Statement,
+    ShowCreate, ShowCreateObject, ShowTables, Statement,
 };
 
 define_result!(ParserError);
@@ -223,7 +223,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_show(&mut self) -> Result<Statement> {
         if self.consume_token("TABLES") {
-            Ok(Statement::ShowTables)
+            Ok(self.parse_show_tables()?)
         } else if self.consume_token("DATABASES") {
             Ok(Statement::ShowDatabases)
         } else if self.consume_token("CREATE") {
@@ -231,6 +231,18 @@ impl<'a> Parser<'a> {
         } else {
             self.expected("create/tables/databases", self.parser.peek_token())
         }
+    }
+
+    fn parse_show_tables(&mut self) -> Result<Statement> {
+        let pattern = match self.parser.next_token() {
+            Token::Word(w) => match w.keyword {
+                Keyword::LIKE => Some(self.parser.parse_literal_string()?),
+                _ => return self.expected("like", self.parser.peek_token()),
+            },
+            Token::SemiColon | Token::EOF => None,
+            _ => return self.expected(";", self.parser.peek_token()),
+        };
+        Ok(Statement::ShowTables(ShowTables { pattern }))
     }
 
     fn parse_show_create(&mut self) -> Result<Statement> {
@@ -884,6 +896,45 @@ mod tests {
                 table_name: make_table_name("xxx_table"),
             });
             expect_parse_ok(sql, expected).unwrap()
+        }
+    }
+
+    #[test]
+    fn test_show_tables() {
+        {
+            let sql = "show tables;";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            assert!(matches!(
+                statements[0],
+                Statement::ShowTables(ShowTables { pattern: None })
+            ));
+        }
+
+        {
+            let sql = "show tables";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            assert!(matches!(
+                statements[0],
+                Statement::ShowTables(ShowTables { pattern: None })
+            ));
+        }
+
+        {
+            let sql = "show tables like '%abc%'";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+
+            assert!(matches!(
+                &statements[0],
+                Statement::ShowTables(ShowTables { pattern }) if pattern == &Some("%abc%".to_string())
+            ));
+        }
+
+        {
+            let sql = "show tables '%abc%'";
+            assert!(Parser::parse_sql(sql).is_err());
         }
     }
 }

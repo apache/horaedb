@@ -27,6 +27,7 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
+use ethbloom::Bloom;
 use log::{debug, error, info};
 use object_store::ObjectStoreRef;
 use proto::{common as common_pb, sst as sst_pb};
@@ -55,6 +56,16 @@ pub enum Error {
 
     #[snafu(display("Storage format options are not found.\nBacktrace\n:{}", backtrace))]
     StorageFormatOptionsNotFound { backtrace: Backtrace },
+
+    #[snafu(display("Bloom filter options are not found.\nBacktrace\n:{}", backtrace))]
+    BloomFilterNotFound { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Bloom filter should be 256 byte, current:{}.\nBacktrace\n:{}",
+        size,
+        backtrace
+    ))]
+    InvalidBloomFilterSize { size: usize, backtrace: Backtrace },
 
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
@@ -425,6 +436,66 @@ impl FileMeta {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BloomFilter {
+    // Two level vector means
+    // 1. row group
+    // 2. column
+    filters: Vec<Vec<Bloom>>,
+}
+
+impl BloomFilter {
+    pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
+        Self { filters }
+    }
+}
+
+impl From<BloomFilter> for sst_pb::SstBloomFilter {
+    fn from(bloom_filter: BloomFilter) -> Self {
+        let row_group_filters = bloom_filter
+            .filters
+            .iter()
+            .map(|row_group_filter| {
+                let column_filters = row_group_filter
+                    .iter()
+                    .map(|column_filter| column_filter.data().to_vec())
+                    .collect::<Vec<_>>();
+                sst_pb::sst_bloom_filter::RowGroupFilter { column_filters }
+            })
+            .collect::<Vec<_>>();
+
+        sst_pb::SstBloomFilter { row_group_filters }
+    }
+}
+
+impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
+    type Error = Error;
+
+    fn try_from(src: sst_pb::SstBloomFilter) -> Result<Self> {
+        let filters = src
+            .row_group_filters
+            .into_iter()
+            .map(|row_group_filter| {
+                row_group_filter
+                    .column_filters
+                    .into_iter()
+                    .map(|encoded_bytes| {
+                        let size = encoded_bytes.len();
+                        let bs: [u8; 256] = encoded_bytes
+                            .try_into()
+                            .ok()
+                            .context(InvalidBloomFilterSize { size })?;
+
+                        Ok(Bloom::from(bs))
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(BloomFilter { filters })
+    }
+}
+
 /// Meta data of a sst file
 #[derive(Debug, Clone, PartialEq)]
 pub struct SstMetaData {
@@ -440,6 +511,7 @@ pub struct SstMetaData {
     // total row number
     pub row_num: u64,
     pub storage_format_opts: StorageFormatOptions,
+    pub bloom_filter: BloomFilter,
 }
 
 impl SstMetaData {
@@ -459,6 +531,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
+            bloom_filter: Some(src.bloom_filter.into()),
         }
     }
 }
@@ -479,6 +552,11 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             src.storage_format_opts
                 .context(StorageFormatOptionsNotFound)?,
         );
+        let bloom_filter = {
+            let pb_filter = src.bloom_filter.context(BloomFilterNotFound)?;
+            BloomFilter::try_from(pb_filter)?
+        };
+
         Ok(Self {
             min_key: src.min_key.into(),
             max_key: src.max_key.into(),
@@ -488,6 +566,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts,
+            bloom_filter,
         })
     }
 }
@@ -670,6 +749,8 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
         size: 0,
         row_num: 0,
         storage_format_opts: StorageFormatOptions::new(storage_format),
+        // bloom filter is rebuilt when write sst, so use default here
+        bloom_filter: Default::default(),
     }
 }
 
@@ -723,9 +804,10 @@ pub mod tests {
                 time_range: self.time_range,
                 max_sequence: self.max_sequence,
                 schema: self.schema.clone(),
-                size: 0,
                 row_num: 0,
-                storage_format_opts: StorageFormatOptions::default(),
+                size: 0,
+                storage_format_opts: Default::default(),
+                bloom_filter: Default::default(),
             }
         }
     }

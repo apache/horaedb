@@ -24,6 +24,7 @@
 - [Deployment](deploy/README.md)
     - [Supported Platform](deploy/platform.md)
     - [Static Routing](deploy/static_routing.md)
+    - [Dynamic Routing](deploy/dynamic_routing.md)
 - [Develop Kits](sdk.md)
 - [Protocol](protocol.md)
 - [Operation](operation/README.md)

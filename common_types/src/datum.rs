@@ -484,6 +484,32 @@ impl Datum {
         }
     }
 
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            Datum::Double(v) => v.to_le_bytes().to_vec(),
+            Datum::Float(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt64(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt32(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt16(v) => v.to_le_bytes().to_vec(),
+            Datum::UInt8(v) => v.to_le_bytes().to_vec(),
+            Datum::Int64(v) => v.to_le_bytes().to_vec(),
+            Datum::Int32(v) => v.to_le_bytes().to_vec(),
+            Datum::Int16(v) => v.to_le_bytes().to_vec(),
+            Datum::Int8(v) => v.to_le_bytes().to_vec(),
+            Datum::Boolean(v) => {
+                if *v {
+                    vec![1]
+                } else {
+                    vec![0]
+                }
+            }
+            Datum::Null => vec![0],
+            Datum::Timestamp(ts) => ts.as_i64().to_le_bytes().to_vec(),
+            Datum::Varbinary(b) => b.to_vec(),
+            Datum::String(string) => string.as_bytes().to_vec(),
+        }
+    }
+
     /// Generate a negative datum if possible.
     ///
     /// It will return `None` if:

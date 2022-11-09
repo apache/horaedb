@@ -11,7 +11,7 @@ You can use the following command to create a CeresDB cluster with two instances
 
 2. Prepare config of CeresDB
 * Replace `{meta_addr}` with the actual address of CeresMeta in config file
- 
+
 ```toml
 # {project_path}/docs/example-cluster-0.toml
 bind_addr = "0.0.0.0"
@@ -40,7 +40,7 @@ port = 8831
 [cluster.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "{meta_addr}:2379"
+meta_addr = "http://{meta_addr}:2379"
 lease = "10s"
 timeout = "5s"
 ```
@@ -73,7 +73,7 @@ port = 8832
 [cluster.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "{meta_addr}:2379"
+meta_addr = "http://{meta_addr}:2379"
 lease = "10s"
 timeout = "5s"
 ```
