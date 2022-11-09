@@ -121,8 +121,8 @@ impl RecordBytesReader {
                         self.request_id
                     );
 
-                    // Updated the exhausted `prev_record_batch`, and let next loop to continue fill
-                    // `curr_row_group`.
+                    // Updated the exhausted `prev_record_batch`, and let next loop to continue to
+                    // fill `curr_row_group`.
                     prev_record_batch.replace(v);
                 }
                 None => break,
@@ -433,22 +433,26 @@ mod tests {
         // rows per group: 10
         let testcases = vec![
             // input, expected
-            (vec![], vec![]),
-            (vec![10, 10], vec![10, 10]),
-            (vec![10, 10, 1], vec![10, 10, 1]),
-            (vec![10, 10, 21], vec![10, 10, 10, 10, 1]),
-            (vec![5, 6, 10], vec![10, 10, 1]),
-            (vec![5, 4, 4, 30], vec![10, 10, 10, 10, 3]),
-            (vec![20, 7, 23, 20], vec![10, 10, 10, 10, 10, 10, 10]),
-            (vec![21], vec![10, 10, 1]),
+            (10, vec![], vec![]),
+            (10, vec![10, 10], vec![10, 10]),
+            (10, vec![10, 10, 1], vec![10, 10, 1]),
+            (10, vec![10, 10, 21], vec![10, 10, 10, 10, 1]),
+            (10, vec![5, 6, 10], vec![10, 10, 1]),
+            (10, vec![5, 4, 4, 30], vec![10, 10, 10, 10, 3]),
+            (10, vec![20, 7, 23, 20], vec![10, 10, 10, 10, 10, 10, 10]),
+            (10, vec![21], vec![10, 10, 1]),
+            (10, vec![2, 2, 2, 2, 2], vec![10]),
+            (4, vec![3, 3, 3, 3, 3], vec![4, 4, 4, 3]),
+            (5, vec![3, 3, 3, 3, 3], vec![5, 5, 5]),
         ];
 
-        for (input, expected) in testcases {
-            test_partition_record_batch_inner(input, expected).await;
+        for (num_rows_per_group, input, expected) in testcases {
+            test_partition_record_batch_inner(num_rows_per_group, input, expected).await;
         }
     }
 
     async fn test_partition_record_batch_inner(
+        num_rows_per_row_group: usize,
         input_row_nums: Vec<usize>,
         expected_row_nums: Vec<usize>,
     ) {
@@ -474,7 +478,7 @@ mod tests {
         let mut reader = RecordBytesReader {
             request_id: RequestId::next_id(),
             record_stream: record_batch_stream,
-            num_rows_per_row_group: 10,
+            num_rows_per_row_group,
             compression: Compression::UNCOMPRESSED,
             meta_data: SstMetaData {
                 min_key: Default::default(),
