@@ -237,9 +237,10 @@ impl<'a> Parser<'a> {
         let pattern = match self.parser.next_token() {
             Token::Word(w) => match w.keyword {
                 Keyword::LIKE => Some(self.parser.parse_literal_string()?),
-                _ => None,
+                _ => return self.expected("like", self.parser.peek_token()),
             },
-            _ => None,
+            Token::SemiColon | Token::EOF => None,
+            _ => return self.expected(";", self.parser.peek_token()),
         };
         Ok(Statement::ShowTables(ShowTables { pattern }))
     }
@@ -895,6 +896,45 @@ mod tests {
                 table_name: make_table_name("xxx_table"),
             });
             expect_parse_ok(sql, expected).unwrap()
+        }
+    }
+
+    #[test]
+    fn test_show_tables() {
+        {
+            let sql = "show tables;";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            assert!(matches!(
+                statements[0],
+                Statement::ShowTables(ShowTables { pattern: None })
+            ));
+        }
+
+        {
+            let sql = "show tables";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            assert!(matches!(
+                statements[0],
+                Statement::ShowTables(ShowTables { pattern: None })
+            ));
+        }
+
+        {
+            let sql = "show tables like '%abc%'";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+
+            assert!(matches!(
+                &statements[0],
+                Statement::ShowTables(ShowTables { pattern }) if pattern == &Some("%abc%".to_string())
+            ));
+        }
+
+        {
+            let sql = "show tables '%abc%'";
+            assert!(Parser::parse_sql(sql).is_err());
         }
     }
 }
