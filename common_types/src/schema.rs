@@ -373,7 +373,6 @@ impl fmt::Debug for ColumnSchemas {
         f.debug_struct("ColumnSchemas")
             // name_to_index is ignored.
             .field("columns", &self.columns)
-            .field("name to index", &self.name_to_index)
             .finish()
     }
 }
@@ -458,7 +457,6 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordSchemaWithKey {
     record_schema: RecordSchema,
-    num_key_columns: usize,
     key_index: Vec<usize>,
 }
 
@@ -468,7 +466,11 @@ impl RecordSchemaWithKey {
     }
 
     pub fn compare_row<LR: RowView, RR: RowView>(&self, lhs: &LR, rhs: &RR) -> Ordering {
-        compare_row(self.num_key_columns, lhs, rhs)
+        compare_row(&self.key_index, lhs, rhs)
+    }
+
+    pub fn primary_key_idx(&self) -> &[usize] {
+        &self.key_index
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
@@ -492,7 +494,6 @@ impl RecordSchemaWithKey {
                 }
             })
             .collect::<Vec<_>>()
-        // &self.columns()[..self.num_key_columns]
     }
 
     pub(crate) fn into_record_schema(self) -> RecordSchema {
@@ -502,11 +503,6 @@ impl RecordSchemaWithKey {
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
         self.record_schema.to_arrow_schema_ref()
     }
-
-    #[inline]
-    pub fn num_key_columns(&self) -> usize {
-        self.num_key_columns
-    }
 }
 
 /// Compare the two rows.
@@ -514,15 +510,15 @@ impl RecordSchemaWithKey {
 /// REQUIRES: the two rows must have the same number of key columns as
 /// `num_key_columns`.
 pub fn compare_row<LR: RowView, RR: RowView>(
-    num_key_columns: usize,
+    primary_key_idx: &[usize],
     lhs: &LR,
     rhs: &RR,
 ) -> Ordering {
-    for column_idx in 0..num_key_columns {
+    for column_idx in primary_key_idx {
         // caller should ensure the row view is valid.
         // TODO(xikai): unwrap may not a good way to handle the error.
-        let left_datum = lhs.column_by_idx(column_idx);
-        let right_datum = rhs.column_by_idx(column_idx);
+        let left_datum = lhs.column_by_idx(*column_idx);
+        let right_datum = rhs.column_by_idx(*column_idx);
         // the two datums must be of the same kind type.
         match left_datum.partial_cmp(&right_datum).unwrap() {
             Ordering::Equal => continue,
@@ -547,8 +543,6 @@ pub struct Schema {
     /// The underlying arrow schema, data type of fields must be supported by
     /// datum
     arrow_schema: ArrowSchemaRef,
-    /// The number of primary key columns
-    num_key_columns: usize,
     /// The primary key index list in columns
     primary_key_index: Vec<usize>,
     /// Index of timestamp key column
@@ -571,7 +565,6 @@ impl fmt::Debug for Schema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Schema")
             // arrow_schema is ignored.
-            .field("num_key_columns", &self.num_key_columns)
             .field("timestamp_index", &self.timestamp_index)
             .field("tsid_index", &self.tsid_index)
             .field("enable_tsid_primary_key", &self.enable_tsid_primary_key)
@@ -696,12 +689,6 @@ impl Schema {
         self.column_schemas.index_of(name)
     }
 
-    /// Returns the number of columns in primary key
-    #[inline]
-    pub fn num_key_columns(&self) -> usize {
-        self.num_key_columns
-    }
-
     /// Return the number of columns index in primary key
     pub fn primary_key_idx(&self) -> &[usize] {
         &self.primary_key_index
@@ -749,7 +736,7 @@ impl Schema {
     ///
     /// REQUIRES: the two rows must have the key columns defined by the schema.
     pub fn compare_row<R: RowView>(&self, lhs: &R, rhs: &R) -> Ordering {
-        compare_row(self.num_key_columns, lhs, rhs)
+        compare_row(&self.primary_key_index, lhs, rhs)
     }
 
     /// Returns `Ok` if rows with `writer_schema` can write to table with the
@@ -823,7 +810,6 @@ impl Schema {
     pub fn to_record_schema_with_key(&self) -> RecordSchemaWithKey {
         RecordSchemaWithKey {
             record_schema: self.to_record_schema(),
-            num_key_columns: self.num_key_columns,
             key_index: self.primary_key_index.clone(),
         }
     }
@@ -866,7 +852,6 @@ impl Schema {
 
         RecordSchemaWithKey {
             record_schema,
-            num_key_columns: self.num_key_columns,
             key_index: self.primary_key_index.clone(),
         }
     }
@@ -943,7 +928,7 @@ impl From<&Schema> for common_pb::TableSchema {
             .collect();
 
         let table_schema = common_pb::TableSchema {
-            num_key_columns: schema.num_key_columns as u32,
+            num_key_columns: schema.primary_key_index.len() as u32,
             timestamp_index: schema.timestamp_index as u32,
             enable_tsid_primary_key: schema.enable_tsid_primary_key,
             version: schema.version,
@@ -1145,7 +1130,6 @@ impl Builder {
         }
         Ok(Schema {
             arrow_schema,
-            num_key_columns,
             primary_key_index,
             timestamp_index,
             tsid_index,
@@ -1251,7 +1235,6 @@ impl Builder {
 
         Ok(Schema {
             arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
-            num_key_columns: self.num_key_columns,
             primary_key_index: self.primary_key_index,
             timestamp_index,
             tsid_index,
@@ -1371,7 +1354,7 @@ mod tests {
         // Length related test
         assert_eq!(4, schema.columns().len());
         assert_eq!(4, schema.num_columns());
-        assert_eq!(2, schema.num_key_columns());
+        assert_eq!(2, schema.primary_key_index.len());
         assert_eq!(1, schema.timestamp_index());
 
         // Test key columns

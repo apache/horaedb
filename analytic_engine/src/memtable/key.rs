@@ -136,10 +136,13 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     fn estimate_encoded_size(&self, value: &Row) -> usize {
         let encoder = MemComparable;
         let mut total_len = 0;
-        for idx in 0..self.schema.num_key_columns() {
-            // Size of each column in primary key
-            total_len += encoder.estimate_encoded_size(&value[idx]);
+        for idx in self.schema.primary_key_idx() {
+            total_len += encoder.estimate_encoded_size(&value[*idx]);
         }
+        // for idx in 0..self.schema.num_key_columns() {
+        //     // Size of each column in primary key
+        //     total_len += encoder.estimate_encoded_size(&value[idx]);
+        // }
         // The size of sequence
         total_len += KEY_SEQUENCE_BYTES_LEN;
 

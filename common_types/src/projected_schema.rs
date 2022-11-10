@@ -99,7 +99,6 @@ impl fmt::Debug for ProjectedSchema {
         f.debug_struct("ProjectedSchema")
             .field("original_schema", &self.0.original_schema)
             .field("projection", &self.0.projection)
-            .field("schema with key", &self.0.schema_with_key)
             .finish()
     }
 }
@@ -188,17 +187,8 @@ impl ProjectedSchemaInner {
                 );
             }
 
-            println!("projected schema =>>>>>>>> {:?}", schema);
             let schema_with_key = schema.project_record_schema_with_key(p);
             let record_schema = schema.project_record_schema(p);
-            println!(
-                "projected schema: schema with key =>>>>>>> {:?}",
-                schema_with_key
-            );
-            println!(
-                "projected schema: record schema =>>>>>>> {:?}",
-                record_schema
-            );
 
             Ok(Self {
                 original_schema: schema,

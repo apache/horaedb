@@ -199,9 +199,16 @@ impl Table for TableImpl {
                     result_columns.push(col.datum(row_idx));
                 }
 
-                if request.primary_key == result_columns[..schema.num_key_columns()] {
+                let mut result_columns_k = vec![];
+                for col_idx in schema.primary_key_idx() {
+                    result_columns_k.push((&result_columns[*col_idx]).clone());
+                }
+                if request.primary_key == result_columns_k {
                     return Ok(Some(Row::from_datums(result_columns)));
                 }
+                // if request.primary_key == result_columns[..schema.num_key_columns()] {
+                //     return Ok(Some(Row::from_datums(result_columns)));
+                // }
                 result_columns.clear();
             }
         }
