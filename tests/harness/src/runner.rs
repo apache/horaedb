@@ -2,11 +2,12 @@
 
 use std::{
     path::{Path, PathBuf},
+    sync::Arc,
     time::Instant,
 };
 
 use anyhow::{bail, Context, Result};
-use ceresdb_client_rs::client::Client;
+use ceresdb_client_rs::db_client::DbClient;
 use prettydiff::{basic::DiffOp, diff_lines};
 use tokio::{
     fs::{remove_file, File, OpenOptions},
@@ -26,11 +27,11 @@ const RESULT_FILE_EXTENSION: &str = "result";
 
 pub struct Runner {
     case_root: String,
-    client: Client,
+    client: Arc<dyn DbClient>,
 }
 
 impl Runner {
-    pub fn new<P: AsRef<Path>>(root_dir: P, client: Client) -> Self {
+    pub fn new<P: AsRef<Path>>(root_dir: P, client: Arc<dyn DbClient>) -> Self {
         Self {
             case_root: root_dir.as_ref().as_os_str().to_str().unwrap().to_owned(),
             client,
@@ -48,7 +49,7 @@ impl Runner {
             let mut output_file = Self::open_output_file(&output_path).await?;
 
             let timer = Instant::now();
-            case.execute(&self.client, &mut output_file).await?;
+            case.execute(self.client.clone(), &mut output_file).await?;
             let elapsed = timer.elapsed();
 
             output_file.flush().await?;

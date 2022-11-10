@@ -9,7 +9,7 @@ workspace = true
 
 [dependencies]
 anyhow = "1.0.58"
-ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a935a0ebacd1304d69d25e3e8611afa7d64611d6" }
+ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "c207791ef4325d489845299430b27dde51784681" }
 
 prettydiff = { version = "0.6.1", features = [ "prettytable-rs"]}
 tokio = { workspace = true }
