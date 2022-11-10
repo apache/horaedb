@@ -45,6 +45,7 @@ impl TestDataOfTable {
 
 impl<Mq: MessageQueue> TestContext<Mq> {
     pub async fn new(
+        namespace: String,
         region_id: RegionId,
         shard_id: ShardId,
         test_datas: Vec<(TableId, Vec<u32>)>,
@@ -64,7 +65,6 @@ impl<Mq: MessageQueue> TestContext<Mq> {
             })
             .collect();
 
-        let namespace = format!("test_{}", uuid::Uuid::new_v4());
         let region = Region::open(&namespace, region_id, message_queue.clone())
             .await
             .unwrap();

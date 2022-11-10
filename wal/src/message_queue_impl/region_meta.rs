@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use common_types::{table::TableId, SequenceNumber};
 use common_util::define_result;
+use log::debug;
 use message_queue::Offset;
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
@@ -354,6 +355,8 @@ pub struct RegionMetaBuilder {
 #[allow(unused)]
 impl RegionMetaBuilder {
     pub fn apply_region_meta_snapshot(&mut self, snapshot: RegionMetaSnapshot) -> Result<()> {
+        debug!("Apply region meta snapshot, snapshot:{:?}", snapshot);
+
         for entry in snapshot.entries.into_iter() {
             ensure!(self.table_metas.insert(entry.table_id, entry.clone().into()).is_none(),
                 Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{:?}", entry) }
@@ -364,33 +367,40 @@ impl RegionMetaBuilder {
     }
 
     pub fn apply_region_meta_delta(&mut self, delta: RegionMetaDelta) -> Result<()> {
+        debug!("Apply region meta delta, delta:{:?}", delta);
+
         let mut table_meta_inner = self
             .table_metas
             .entry(delta.table_id)
             .or_insert_with(TableMetaInner::default);
 
-        ensure!(table_meta_inner.next_sequence_num < delta.next_sequence_num, Build { msg: format!("apply delta failed, 
+        ensure!(table_meta_inner.next_sequence_num < delta.sequence_num + 1, Build { msg: format!("apply delta failed, 
                 next sequence number in delta should't be less than or equal to the one in builder, but now are:{} and {}",
-                delta.next_sequence_num,
+                delta.sequence_num + 1,
                 table_meta_inner.next_sequence_num,
             ) });
-        table_meta_inner.next_sequence_num = delta.next_sequence_num;
+        table_meta_inner.next_sequence_num = delta.sequence_num + 1;
 
-        ensure!(table_meta_inner.current_high_watermark < delta.current_high_watermark, Build { msg: format!("apply delta failed, 
+        ensure!(table_meta_inner.current_high_watermark < delta.offset + 1, Build { msg: format!("apply delta failed, 
                 high watermark in delta should't be less than or equal to the one in builder, but now are:{} and {}",
-                delta.current_high_watermark,
+                delta.offset + 1,
                 table_meta_inner.current_high_watermark,
             ) });
-        table_meta_inner.current_high_watermark = delta.current_high_watermark;
+        table_meta_inner.current_high_watermark = delta.offset + 1;
 
         table_meta_inner
             .start_sequence_offset_mapping
-            .insert(delta.next_sequence_num, delta.current_high_watermark);
+            .insert(delta.sequence_num, delta.offset);
 
         Ok(())
     }
 
     pub fn build(self) -> RegionMeta {
+        debug!(
+            "Region meta data before building, region meta data:{:?}",
+            self.table_metas
+        );
+
         let table_metas = self
             .table_metas
             .into_iter()
@@ -415,21 +425,17 @@ impl RegionMetaBuilder {
 #[derive(Debug, Clone)]
 pub struct RegionMetaDelta {
     table_id: TableId,
-    next_sequence_num: SequenceNumber,
-    current_high_watermark: Offset,
+    sequence_num: SequenceNumber,
+    offset: Offset,
 }
 
 #[allow(unused)]
 impl RegionMetaDelta {
-    pub fn new(
-        table_id: TableId,
-        next_sequence_num: SequenceNumber,
-        current_high_watermark: Offset,
-    ) -> Self {
+    pub fn new(table_id: TableId, sequence_num: SequenceNumber, offset: Offset) -> Self {
         Self {
             table_id,
-            next_sequence_num,
-            current_high_watermark,
+            sequence_num,
+            offset,
         }
     }
 }
@@ -777,7 +783,7 @@ mod tests {
             )
             .await;
 
-            for i in 1..update_batch_size + 1 {
+            for i in 0..update_batch_size {
                 region_meta_deltas.push(RegionMetaDelta::new(
                     table_id,
                     expected_next_sequence_num + i,
