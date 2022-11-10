@@ -29,13 +29,13 @@ use crate::{
 pub enum Error {}
 
 #[async_trait]
-pub trait WalBuilder: Send + Sync + 'static {
+pub trait WalBuilder: Clone + Send + Sync + 'static {
     type Wal: WalManager + Send + Sync;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal>;
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct RocksWalBuilder;
 
 #[async_trait]
@@ -87,6 +87,15 @@ impl WalBuilder for MemoryTableWalBuilder {
                 .unwrap();
 
         Arc::new(namespace_wal)
+    }
+}
+
+impl Clone for MemoryTableWalBuilder {
+    fn clone(&self) -> Self {
+        Self {
+            table_kv: MemoryImpl::default(),
+            ttl: self.ttl,
+        }
     }
 }
 

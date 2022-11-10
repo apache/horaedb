@@ -3,7 +3,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use common_types::{
-    table::{Location, DEFAULT_SHARD_ID},
+    table::{Location, TableId, DEFAULT_SHARD_ID},
     SequenceNumber,
 };
 
@@ -14,6 +14,130 @@ use crate::{
         WalBuilder,
     },
 };
+
+#[test]
+fn test_rocksdb_wal() {
+    let builder = RocksWalBuilder::default();
+
+    test_all(builder);
+}
+
+#[test]
+fn test_memory_table_wal_default() {
+    let builder = MemoryTableWalBuilder::default();
+
+    test_all(builder);
+}
+
+#[test]
+fn test_memory_table_wal_with_ttl() {
+    let builder = MemoryTableWalBuilder::with_ttl("1d");
+
+    test_all(builder);
+}
+
+fn test_all<B: WalBuilder>(builder: B) {
+    test_simple_read_write_default_batch(builder.clone());
+
+    test_simple_read_write_different_batch_size(builder.clone());
+
+    test_read_with_boundary(builder.clone());
+
+    test_write_multiple_regions(builder.clone());
+
+    test_reopen(builder.clone());
+
+    test_complex_read_write(builder.clone());
+
+    test_simple_write_delete(builder.clone());
+
+    test_write_delete_half(builder.clone());
+
+    test_write_delete_multiple_regions(builder.clone());
+
+    test_sequence_increase_monotonically_multiple_writes(builder.clone());
+
+    test_sequence_increase_monotonically_delete_write(builder.clone());
+
+    test_sequence_increase_monotonically_delete_reopen_write(builder);
+}
+
+fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
+    let table_id = 0;
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(simple_read_write(
+        &env,
+        Location::new(DEFAULT_SHARD_ID, table_id),
+    ));
+}
+
+fn test_simple_read_write_different_batch_size<B: WalBuilder>(builder: B) {
+    let table_id = 0;
+    let batch_sizes = [1, 2, 4, 10, 100];
+
+    for batch_size in batch_sizes {
+        let mut env = TestEnv::new(2, builder.clone());
+        env.read_ctx.batch_size = batch_size;
+        env.runtime.block_on(simple_read_write(
+            &env,
+            Location::new(DEFAULT_SHARD_ID, table_id),
+        ));
+    }
+}
+
+fn test_read_with_boundary<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(read_with_boundary(&env));
+}
+
+fn test_write_multiple_regions<B: WalBuilder>(builder: B) {
+    let env = Arc::new(TestEnv::new(4, builder));
+    env.runtime
+        .block_on(write_multiple_regions_parallelly(env.clone()));
+}
+
+fn test_reopen<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(reopen(&env));
+}
+
+fn test_complex_read_write<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(complex_read_write(&env));
+}
+
+fn test_simple_write_delete<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(simple_write_delete(&env));
+}
+
+fn test_write_delete_half<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(write_delete_half(&env));
+}
+
+fn test_write_delete_multiple_regions<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(write_delete_multiple_regions(&env));
+}
+
+fn test_sequence_increase_monotonically_multiple_writes<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime
+        .block_on(sequence_increase_monotonically_multiple_writes(&env));
+}
+
+fn test_sequence_increase_monotonically_delete_write<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime
+        .block_on(sequence_increase_monotonically_delete_write(&env));
+}
+
+fn test_sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime
+        .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
+}
 
 async fn check_write_batch_with_read_request<B: WalBuilder>(
     env: &TestEnv<B>,
@@ -630,190 +754,4 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
     assert!(seq_2 > seq_1);
 
     wal.close_gracefully().await.unwrap();
-}
-
-#[test]
-fn test_simple_read_write_default_batch() {
-    let table_id = 0;
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(simple_read_write(
-        &env,
-        Location::new(DEFAULT_SHARD_ID, table_id),
-    ));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(simple_read_write(
-        &env,
-        Location::new(DEFAULT_SHARD_ID, table_id),
-    ));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(simple_read_write(
-        &env,
-        Location::new(DEFAULT_SHARD_ID, table_id),
-    ));
-}
-
-#[test]
-fn test_simple_read_write_different_batch_size() {
-    let table_id = 0;
-    let batch_sizes = [1, 2, 4, 10, 100];
-
-    for batch_size in batch_sizes {
-        let mut env = RocksTestEnv::new(2, RocksWalBuilder::default());
-        env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(
-            &env,
-            Location::new(DEFAULT_SHARD_ID, table_id),
-        ));
-
-        let mut env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-        env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(
-            &env,
-            Location::new(DEFAULT_SHARD_ID, table_id),
-        ));
-
-        let mut env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-        env.read_ctx.batch_size = batch_size;
-        env.runtime.block_on(simple_read_write(
-            &env,
-            Location::new(DEFAULT_SHARD_ID, table_id),
-        ));
-    }
-}
-
-#[test]
-fn test_read_with_boundary() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(read_with_boundary(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(read_with_boundary(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(read_with_boundary(&env));
-}
-
-#[test]
-fn test_write_multiple_regions() {
-    let env = Arc::new(RocksTestEnv::new(4, RocksWalBuilder::default()));
-    env.runtime
-        .block_on(write_multiple_regions_parallelly(env.clone()));
-
-    let env = Arc::new(TableKvTestEnv::new(4, MemoryTableWalBuilder::default()));
-    env.runtime
-        .block_on(write_multiple_regions_parallelly(env.clone()));
-
-    let env = Arc::new(TableKvTestEnv::new(
-        4,
-        MemoryTableWalBuilder::with_ttl("1d"),
-    ));
-    env.runtime
-        .block_on(write_multiple_regions_parallelly(env.clone()));
-}
-
-#[test]
-fn test_reopen() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(reopen(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(reopen(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(reopen(&env));
-}
-
-#[test]
-fn test_complex_read_write() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(complex_read_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(complex_read_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(complex_read_write(&env));
-}
-
-#[test]
-fn test_simple_write_delete() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(simple_write_delete(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(simple_write_delete(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(simple_write_delete(&env));
-}
-
-#[test]
-fn test_write_delete_half() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(write_delete_half(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(write_delete_half(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(write_delete_half(&env));
-}
-
-#[test]
-fn test_write_delete_multiple_regions() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime.block_on(write_delete_multiple_regions(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime.block_on(write_delete_multiple_regions(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime.block_on(write_delete_multiple_regions(&env));
-}
-
-#[test]
-fn test_sequence_increase_monotonically_multiple_writes() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_multiple_writes(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_multiple_writes(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime
-        .block_on(sequence_increase_monotonically_multiple_writes(&env));
-}
-
-#[test]
-fn test_sequence_increase_monotonically_delete_write() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_write(&env));
-}
-
-#[test]
-fn test_sequence_increase_monotonically_delete_reopen_write() {
-    let env = RocksTestEnv::new(2, RocksWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::default());
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
-
-    let env = TableKvTestEnv::new(2, MemoryTableWalBuilder::with_ttl("1d"));
-    env.runtime
-        .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
 }
