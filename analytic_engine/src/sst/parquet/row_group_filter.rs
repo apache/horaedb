@@ -49,6 +49,8 @@ impl<'a> RowGroupFilter<'a> {
 
     pub fn filter(&self) -> Vec<usize> {
         let filtered0 = self.filter_by_min_max();
+        // TODO: We can do continuous filtering based on the `filtered0` to reduce the
+        // filtering cost.
         let filtered1 = self.filter_by_bloom();
         Self::intersect_filtered_row_groups(&filtered0, &filtered1)
     }
