@@ -23,24 +23,21 @@ use log::{debug, error, trace};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
-    file::metadata::ParquetMetaData,
+    file::metadata::{ParquetMetaData, RowGroupMetaData},
 };
 use parquet_ext::{
-    prune::min_max, reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef,
-    MetaCacheRef,
+    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef, MetaCacheRef,
 };
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::{
-    sst::{
-        factory::SstReaderOptions,
-        file::SstMetaData,
-        parquet::encoding::{self, ParquetDecoder},
-        reader::{error::*, SstReader},
-    },
-    table_options::StorageFormatOptions,
+use super::row_group_filter::RowGroupFilter;
+use crate::sst::{
+    factory::SstReaderOptions,
+    file::SstMetaData,
+    parquet::encoding::{self, ParquetDecoder},
+    reader::{error::*, SstReader},
 };
 
 const DEFAULT_CHANNEL_CAP: usize = 1000;
@@ -199,7 +196,7 @@ impl<'a> ParquetSstReader<'a> {
                 predicate,
                 batch_size,
                 reverse,
-                storage_format_opts: meta_data.storage_format_opts,
+                meta_data,
             };
 
             let start_fetch = Instant::now();
@@ -251,10 +248,21 @@ struct ProjectAndFilterReader {
     predicate: PredicateRef,
     batch_size: usize,
     reverse: bool,
-    storage_format_opts: StorageFormatOptions,
+    meta_data: SstMetaData,
 }
 
 impl ProjectAndFilterReader {
+    fn filter_row_groups(&self, row_groups: &[RowGroupMetaData]) -> Result<Vec<usize>> {
+        let filter = RowGroupFilter::try_new(
+            self.schema.as_arrow_schema_ref(),
+            row_groups,
+            self.meta_data.bloom_filter.filters(),
+            self.predicate.exprs(),
+        )?;
+
+        Ok(filter.filter())
+    }
+
     /// Generate the reader which has processed projection and filter.
     /// This `file_reader` is consumed after calling this method.
     fn project_and_filter_reader(
@@ -263,14 +271,7 @@ impl ProjectAndFilterReader {
         assert!(self.reader_builder.is_some());
 
         let reader_builder = self.reader_builder.take().unwrap();
-        let filtered_row_groups = {
-            let metadata = reader_builder.metadata();
-            min_max::filter_row_groups(
-                self.schema.to_arrow_schema_ref(),
-                self.predicate.exprs(),
-                metadata.row_groups(),
-            )
-        };
+        let filtered_row_groups = self.filter_row_groups(reader_builder.metadata().row_groups())?;
 
         debug!(
             "fetch_record_batch row_groups total:{}, after filter:{}",
@@ -330,7 +331,7 @@ impl ProjectAndFilterReader {
         let reader = self.project_and_filter_reader()?;
 
         let arrow_record_batch_projector = ArrowRecordBatchProjector::from(self.row_projector);
-        let parquet_decoder = ParquetDecoder::new(self.storage_format_opts);
+        let parquet_decoder = ParquetDecoder::new(self.meta_data.storage_format_opts);
         let mut row_num = 0;
         for record_batch in reader {
             trace!(

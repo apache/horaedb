@@ -10,7 +10,7 @@ use std::{
     time::Instant,
 };
 
-use arrow::record_batch::RecordBatch as ArrowRecordBatch;
+use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::{
@@ -25,10 +25,11 @@ use futures::{
 };
 use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
-use parquet::arrow::{
-    async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask,
+use parquet::{
+    arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
+    file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{prune::min_max, DataCacheRef, MetaCacheRef};
+use parquet_ext::{DataCacheRef, MetaCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -36,8 +37,11 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use crate::{
     sst::{
         factory::SstReaderOptions,
-        file::SstMetaData,
-        parquet::encoding::{self, ParquetDecoder},
+        file::{BloomFilter, SstMetaData},
+        parquet::{
+            encoding::{self, ParquetDecoder},
+            row_group_filter::RowGroupFilter,
+        },
         reader::{error::*, Result, SstReader},
     },
     table_options::StorageFormatOptions,
@@ -77,6 +81,22 @@ impl<'a> Reader<'a> {
         }
     }
 
+    fn filter_row_groups(
+        &self,
+        schema: SchemaRef,
+        row_groups: &[RowGroupMetaData],
+        bloom_filter: &BloomFilter,
+    ) -> Result<Vec<usize>> {
+        let filter = RowGroupFilter::try_new(
+            &schema,
+            row_groups,
+            bloom_filter.filters(),
+            self.predicate.exprs(),
+        )?;
+
+        Ok(filter.filter())
+    }
+
     async fn fetch_record_batch_stream(&mut self) -> Result<SendableRecordBatchStream> {
         assert!(self.meta_data.is_some());
 
@@ -91,11 +111,11 @@ impl<'a> Reader<'a> {
         let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
             .await
             .with_context(|| ParquetError)?;
-        let filtered_row_groups = min_max::filter_row_groups(
+        let filtered_row_groups = self.filter_row_groups(
             meta_data.schema.to_arrow_schema_ref(),
-            self.predicate.exprs(),
             builder.metadata().row_groups(),
-        );
+            &meta_data.bloom_filter,
+        )?;
 
         debug!(
             "fetch_record_batch row_groups total:{}, after filter:{}",

@@ -7,5 +7,6 @@ pub mod builder;
 pub mod encoding;
 mod hybrid;
 pub mod reader;
+pub(crate) mod row_group_filter;
 
 pub use async_reader::{Reader as AsyncParquetReader, ThreadedReader};

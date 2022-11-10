@@ -70,6 +70,9 @@ pub mod error {
         Other {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
+
+        #[snafu(display("Other kind of error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+        OtherNoCause { msg: String, backtrace: Backtrace },
     }
 
     define_result!(Error);
