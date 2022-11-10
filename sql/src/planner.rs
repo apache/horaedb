@@ -351,12 +351,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .map(|(idx, col)| (col.name.value.as_str(), idx))
             .collect::<BTreeMap<_, _>>();
 
-        // analyze default value options
-        // analyze_column_default_value_options(&name_column_map, &self.meta_provider)?;
-
         // Tsid column is a reserved column.
         ensure!(
-            !name_column_index_map.contains_key(TSID_COLUMN),
+            !name_column_map.contains_key(TSID_COLUMN),
             ColumnNameReserved {
                 name: TSID_COLUMN.to_string(),
             }
@@ -365,6 +362,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // Find timestamp key and primary key contraint
 
         let mut timestamp_column_idx = None;
+        let mut timestamp_name = None;
 
         let mut primary_key_column_idxs = vec![];
         let mut primary_key_contains_timestamp = false;
@@ -407,12 +405,31 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                         .context(TimestampColumnNotFound { name })?;
 
                     timestamp_column_idx = Some(*column_idx);
+                    timestamp_name = Some(name.clone());
                 }
             }
         }
 
-        let timestamp_col_idx = timestamp_column_idx.context(RequireTimestamp)?;
+        // Timestamp column must be provided.
+        let timestamp_name = timestamp_name.context(RequireTimestamp)?;
+        // The timestamp key column must not be a Tag column
+        if let Some(timestamp_column) = name_column_map.get(&timestamp_name.as_str()) {
+            ensure!(
+                !timestamp_column.is_tag,
+                TimestampKeyTag {
+                    name: &timestamp_name,
+                }
+            )
+        }
 
+        if primary_key_contains_timestamp {
+            schema_builder = schema_builder
+                .enable_tsid_primary_key(true)
+                .add_key_column(Self::tsid_column_schema()?)
+                .context(BuildTableSchema)?;
+        }
+
+        let timestamp_col_idx = timestamp_column_idx.context(RequireTimestamp)?;
         // The key columns have been consumed.
         for (idx, col) in stmt
             .columns

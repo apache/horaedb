@@ -1425,12 +1425,12 @@ mod tests {
             .unwrap();
 
         let columns = schema.columns();
-        assert_eq!(2, columns[0].id);
-        assert_eq!("key1", columns[0].name);
-        assert_eq!(3, columns[1].id);
-        assert_eq!("key2", columns[1].name);
-        assert_eq!(1, columns[2].id);
-        assert_eq!("field1", columns[2].name);
+        assert_eq!(1, columns[0].id);
+        assert_eq!("field1", columns[0].name);
+        assert_eq!(2, columns[1].id);
+        assert_eq!("key1", columns[1].name);
+        assert_eq!(3, columns[2].id);
+        assert_eq!("key2", columns[2].name);
         assert_eq!(4, columns[3].id);
         assert_eq!("field2", columns[3].name);
     }
@@ -1596,12 +1596,12 @@ mod tests {
         // Check key1
         assert_eq!("key1", &columns[0].name);
         assert_eq!(2, columns[0].id);
-        // Check key2
-        assert_eq!("key2", &columns[1].name);
-        assert_eq!(6, columns[1].id);
         // Check field1
-        assert_eq!("field1", &columns[2].name);
-        assert_eq!(5, columns[2].id);
+        assert_eq!("field1", &columns[1].name);
+        assert_eq!(5, columns[1].id);
+        // Check key2
+        assert_eq!("key2", &columns[2].name);
+        assert_eq!(6, columns[2].id);
         // Check field2
         assert_eq!("field2", &columns[3].name);
         assert_eq!(7, columns[3].id);
