@@ -17,6 +17,10 @@ use snafu::ensure;
 
 use crate::sst::reader::error::{OtherNoCause, Result};
 
+/// A filter to prune row groups according to the provided predicates.
+///
+/// Currently, two kinds of filters will be applied to such filtering:
+/// min max & bloom filter.
 pub struct RowGroupFilter<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
@@ -79,7 +83,8 @@ impl<'a> RowGroupFilter<'a> {
         )
     }
 
-    /// Compute the intersection of the two row groups.
+    /// Compute the intersection of the two row groups which are in increasing
+    /// order.
     fn intersect_filtered_row_groups(row_groups0: &[usize], row_groups1: &[usize]) -> Vec<usize> {
         let mut intersect = Vec::with_capacity(row_groups0.len().min(row_groups1.len()));
 
@@ -100,5 +105,27 @@ impl<'a> RowGroupFilter<'a> {
         }
 
         intersect
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_intersect_row_groups() {
+        let test_cases = vec![
+            (vec![0, 1, 2, 3, 4], vec![0, 3, 4, 5], vec![0, 3, 4]),
+            (vec![], vec![0, 3, 4, 5], vec![]),
+            (vec![1, 2, 3], vec![4, 5, 6], vec![]),
+            (vec![3], vec![1, 2, 3], vec![3]),
+            (vec![4, 5, 6], vec![4, 6, 7], vec![4, 6]),
+        ];
+
+        for (row_groups0, row_groups1, expect_row_groups) in test_cases {
+            let real_row_groups =
+                RowGroupFilter::intersect_filtered_row_groups(&row_groups0, &row_groups1);
+            assert_eq!(real_row_groups, expect_row_groups)
+        }
     }
 }
