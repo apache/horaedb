@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
@@ -20,6 +21,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/member"
 	metagrpc "github.com/CeresDB/ceresmeta/server/service/grpc"
+	"github.com/CeresDB/ceresmeta/server/service/http"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -53,6 +55,9 @@ type Server struct {
 	member  *member.Member
 	etcdCli *clientv3.Client
 	etcdSrv *embed.Etcd
+
+	// httpService contains http server and api set.
+	httpService *http.Service
 
 	// bgJobWg can be used to join with the background jobs.
 	bgJobWg sync.WaitGroup
@@ -175,6 +180,14 @@ func (srv *Server) startServer(_ context.Context) error {
 	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch)
 	srv.procedureFactory = procedureFactory
 	srv.scheduler = coordinator.NewScheduler(manager, procedureManager, procedureFactory, dispatch)
+
+	api := http.NewAPI(procedureManager, procedureFactory, manager)
+	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
+	err = httpService.Start()
+	if err != nil {
+		return errors.WithMessage(err, "start http service failed")
+	}
+	srv.httpService = httpService
 
 	log.Info("server started")
 	return nil

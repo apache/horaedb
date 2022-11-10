@@ -6,6 +6,7 @@ require (
 	github.com/AlekSi/gocov-xml v1.0.0
 	github.com/CeresDB/ceresdbproto v0.0.0-20221019023918-29cb0c6fba76
 	github.com/axw/gocov v1.1.0
+	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0
 	github.com/mgechev/revive v1.2.1
 	github.com/pkg/errors v0.9.1

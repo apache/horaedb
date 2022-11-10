@@ -43,6 +43,8 @@ const (
 	defaultClusterNodeCount         = 2
 	defaultClusterReplicationFactor = 1
 	defaultClusterShardTotal        = 8
+
+	defaultHTTPPort = 8080
 )
 
 type Config struct {
@@ -92,6 +94,8 @@ type Config struct {
 	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`
 	AdvertiseClientUrls string `toml:"advertise-client-urls" json:"advertise-client-urls"`
 	AdvertisePeerUrls   string `toml:"advertise-peer-urls" json:"advertise-peer-urls"`
+
+	HTTPPort int `toml:"default-http-port" json:"default-http-port"`
 }
 
 func (c *Config) GrpcHandleTimeout() time.Duration {
@@ -243,5 +247,6 @@ func MakeConfigParser() (*Parser, error) {
 	fs.IntVar(&cfg.DefaultClusterReplicationFactor, "default-cluster-replication-factor", defaultClusterReplicationFactor, "replication factor of the default cluster")
 	fs.IntVar(&cfg.DefaultClusterShardTotal, "default-cluster-shard-total", defaultClusterShardTotal, "shard total of the default cluster")
 
+	fs.IntVar(&cfg.HTTPPort, "http-port", defaultHTTPPort, "port of http server")
 	return builder, nil
 }
