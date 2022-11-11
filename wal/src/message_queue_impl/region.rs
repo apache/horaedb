@@ -911,6 +911,9 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 
     /// Used to encode/decode the logs
     log_encoding: CommonLogEncoding,
+
+    /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
+    previous_value: Vec<u8>,
     // TODO: timeout
 }
 
@@ -930,13 +933,14 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             iter,
             is_terminated: false,
             log_encoding,
+            previous_value: Vec::new(),
         }
     }
 }
 
 #[allow(unused)]
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
-    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
+    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.is_terminated && self.terminate_offset.is_some() {
             debug!(
                 "Finished to poll all logs from message queue, region id:{}, terminate offset:{:?}",
@@ -1004,10 +1008,12 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
                 msg: "failed while polling log",
             })?;
 
+        self.previous_value = payload.to_owned();
+
         Ok(Some(LogEntry {
             table_id: log_key.table_id,
             sequence: log_key.sequence_num,
-            payload: payload.to_owned(),
+            payload: self.previous_value.as_slice(),
         }))
     }
 }
@@ -1109,7 +1115,7 @@ mod tests {
             .unwrap()
             .unwrap();
         while let Some(log_entry) = msg_iter.next_log_entry().await.unwrap() {
-            let mut payload = log_entry.payload.as_slice();
+            let mut payload = log_entry.payload;
             let decoded_payload = test_context
                 .test_payload_encoder
                 .decode(&mut payload)
