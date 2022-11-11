@@ -440,13 +440,16 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         {
             // If primary key is not set, Use (timestamp, tsid) as primary key.
             if timestamp_col_idx == idx {
-                let column_schema = Self::tsid_column_schema()?;
                 schema_builder = schema_builder
                     .enable_tsid_primary_key(true)
                     .add_key_column(col)
-                    .context(BuildTableSchema)?
-                    .add_key_column(column_schema)
                     .context(BuildTableSchema)?;
+                if !primary_key_contains_timestamp {
+                    let column_schema = Self::tsid_column_schema()?;
+                    schema_builder = schema_builder
+                        .add_key_column(column_schema)
+                        .context(BuildTableSchema)?;
+                }
                 continue;
             }
 
@@ -460,6 +463,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     .context(BuildTableSchema)?;
             }
         }
+
+        println!("create table stmt: {:?}", stmt);
 
         let table_schema = schema_builder.build().context(BuildTableSchema)?;
 
