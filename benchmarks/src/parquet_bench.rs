@@ -2,7 +2,7 @@
 
 //! Parquet bench.
 
-use std::{sync::Arc, time::Instant};
+use std::{io::Cursor, sync::Arc, time::Instant};
 
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
@@ -14,12 +14,12 @@ use parquet::arrow::{
 };
 use parquet_ext::{DataCacheRef, MetaCacheRef};
 use table_engine::predicate::PredicateRef;
-use tokio::fs::File;
 
 use crate::{config::SstBenchConfig, util};
 
 pub struct ParquetBench {
     store: ObjectStoreRef,
+    #[allow(dead_code)]
     store_path: String,
     pub sst_file_name: String,
     max_projections: usize,
@@ -91,15 +91,14 @@ impl ParquetBench {
         self.runtime.block_on(async {
             let open_instant = Instant::now();
             let get_result = self.store.get(&sst_path).await.unwrap();
-
+            let bytes = get_result.bytes().await.unwrap();
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
-            let arrow_reader =
-                ParquetRecordBatchReaderBuilder::try_new(get_result.bytes().await.unwrap())
-                    .unwrap()
-                    .build()
-                    .unwrap();
+            let arrow_reader = ParquetRecordBatchReaderBuilder::try_new(bytes)
+                .unwrap()
+                .build()
+                .unwrap();
             let filter_cost = filter_begin_instant.elapsed();
 
             let iter_begin_instant = Instant::now();
@@ -124,16 +123,16 @@ impl ParquetBench {
     }
 
     pub fn run_async_bench(&self) {
+        let sst_path = Path::from(self.sst_file_name.clone());
         self.runtime.block_on(async {
             let open_instant = Instant::now();
-            let file = File::open(format!("{}/{}", self.store_path, self.sst_file_name))
-                .await
-                .expect("failed to open file");
-
+            let get_result = self.store.get(&sst_path).await.unwrap();
+            let bytes = get_result.bytes().await.unwrap();
+            let cursor = Cursor::new(bytes);
             let open_cost = open_instant.elapsed();
 
             let filter_begin_instant = Instant::now();
-            let stream = ParquetRecordBatchStreamBuilder::new(file)
+            let stream = ParquetRecordBatchStreamBuilder::new(cursor)
                 .await
                 .unwrap()
                 .with_batch_size(self.batch_size)
