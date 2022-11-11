@@ -1016,7 +1016,6 @@ mod tests {
         if_not_exists: true,
         table: "t",
         table_schema: Schema {
-            num_key_columns: 2,
             timestamp_index: 1,
             tsid_index: None,
             enable_tsid_primary_key: false,
@@ -1115,6 +1114,10 @@ mod tests {
                 ],
             },
             version: 1,
+            primary_key_index: [
+                0,
+                1,
+            ],
         },
         options: {
             "arena_block_size": "1KB",
@@ -1181,7 +1184,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1230,11 +1232,14 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_index: [
+                    0,
+                    1,
+                ],
             },
         },
         rows: RowGroup {
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1283,6 +1288,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_index: [
+                    0,
+                    1,
+                ],
             },
             rows: [
                 Row {
@@ -1368,7 +1377,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1417,6 +1425,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_index: [
+                    0,
+                    1,
+                ],
             },
         },
     },
@@ -1441,7 +1453,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1490,6 +1501,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_index: [
+                    0,
+                    1,
+                ],
             },
         },
         operations: AddColumn(
@@ -1528,7 +1543,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1577,6 +1591,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_index: [
+                    0,
+                    1,
+                ],
             },
         },
         operations: ModifySetting(
@@ -1607,7 +1625,6 @@ mod tests {
                     100,
                 ),
                 schema: Schema {
-                    num_key_columns: 2,
                     timestamp_index: 1,
                     tsid_index: None,
                     enable_tsid_primary_key: false,
@@ -1656,6 +1673,10 @@ mod tests {
                         ],
                     },
                     version: 1,
+                    primary_key_index: [
+                        0,
+                        1,
+                    ],
                 },
             },
             obj_type: Table,
