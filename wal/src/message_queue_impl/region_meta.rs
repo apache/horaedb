@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use common_types::{table::TableId, SequenceNumber};
 use common_util::define_result;
+use log::debug;
 use message_queue::Offset;
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
@@ -45,19 +46,24 @@ pub enum Error {
         table_id: TableId,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Failed to build region meta, msg:{}, \nBacktrace:\n{}",
+        msg,
+        backtrace
+    ))]
+    Build { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
 
+/// Meta data for `Region`, it just can be built by its [RegionMetaBuilder]
 #[derive(Default, Debug)]
 pub struct RegionMeta {
     inner: RwLock<RegionMetaInner>,
 }
 
 impl RegionMeta {
-    // TODO: Need to implement the init method using the [RegionMetaSnapshot] which
-    // will be persisted.
-
     pub async fn prepare_for_table_write(&self, table_id: TableId) -> SequenceNumber {
         {
             let inner = self.inner.read().await;
@@ -339,6 +345,121 @@ impl OffsetRange {
     }
 }
 
+/// Builder for `RegionMeta`
+#[allow(unused)]
+#[derive(Debug, Default)]
+pub struct RegionMetaBuilder {
+    table_metas: HashMap<TableId, TableMetaInner>,
+}
+
+#[allow(unused)]
+impl RegionMetaBuilder {
+    pub fn apply_region_meta_snapshot(&mut self, snapshot: RegionMetaSnapshot) -> Result<()> {
+        debug!("Apply region meta snapshot, snapshot:{:?}", snapshot);
+
+        for entry in snapshot.entries {
+            let old_meta = self
+                .table_metas
+                .insert(entry.table_id, entry.clone().into());
+            ensure!(old_meta.is_none(),
+                Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{:?}", entry) }
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn apply_region_meta_delta(&mut self, delta: RegionMetaDelta) -> Result<()> {
+        debug!("Apply region meta delta, delta:{:?}", delta);
+
+        let mut table_meta = self
+            .table_metas
+            .entry(delta.table_id)
+            .or_insert_with(TableMetaInner::default);
+
+        ensure!(table_meta.next_sequence_num < delta.sequence_num + 1, Build { msg: format!("apply delta failed, 
+                next sequence number in delta should't be less than or equal to the one in builder, but now are:{} and {}",
+                delta.sequence_num + 1,
+                table_meta.next_sequence_num,
+            ) });
+        table_meta.next_sequence_num = delta.sequence_num + 1;
+
+        ensure!(table_meta.current_high_watermark < delta.offset + 1, Build { msg: format!("apply delta failed, 
+                high watermark in delta should't be less than or equal to the one in builder, but now are:{} and {}",
+                delta.offset + 1,
+                table_meta.current_high_watermark,
+            ) });
+        table_meta.current_high_watermark = delta.offset + 1;
+
+        table_meta
+            .start_sequence_offset_mapping
+            .insert(delta.sequence_num, delta.offset);
+
+        Ok(())
+    }
+
+    pub fn build(self) -> RegionMeta {
+        debug!(
+            "Region meta data before building, region meta data:{:?}",
+            self.table_metas
+        );
+
+        let table_metas = self
+            .table_metas
+            .into_iter()
+            .map(|(table_id, table_meta_inner)| {
+                (
+                    table_id,
+                    TableMeta {
+                        table_id,
+                        inner: Mutex::new(table_meta_inner),
+                    },
+                )
+            })
+            .collect();
+
+        RegionMeta {
+            inner: RwLock::new(RegionMetaInner { table_metas }),
+        }
+    }
+}
+
+#[allow(unused)]
+#[derive(Debug, Clone)]
+pub struct RegionMetaDelta {
+    table_id: TableId,
+    sequence_num: SequenceNumber,
+    offset: Offset,
+}
+
+#[allow(unused)]
+impl RegionMetaDelta {
+    pub fn new(table_id: TableId, sequence_num: SequenceNumber, offset: Offset) -> Self {
+        Self {
+            table_id,
+            sequence_num,
+            offset,
+        }
+    }
+}
+
+impl From<TableMetaData> for TableMetaInner {
+    fn from(table_meta_data: TableMetaData) -> Self {
+        let mut start_sequence_offset_mapping = BTreeMap::new();
+        if let Some(safe_delete_offset) = &table_meta_data.safe_delete_offset {
+            start_sequence_offset_mapping
+                .insert(table_meta_data.latest_marked_deleted, *safe_delete_offset);
+        }
+
+        TableMetaInner {
+            next_sequence_num: table_meta_data.next_sequence_num,
+            latest_marked_deleted: table_meta_data.latest_marked_deleted,
+            current_high_watermark: table_meta_data.current_high_watermark,
+            start_sequence_offset_mapping,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -353,7 +474,8 @@ mod tests {
     use message_queue::Offset;
     use tokio::time;
 
-    use super::{OffsetRange, RegionMeta};
+    use super::{OffsetRange, RegionMeta, RegionMetaDelta};
+    use crate::message_queue_impl::region_meta::RegionMetaBuilder;
 
     #[tokio::test]
     async fn test_basic_work_flow() {
@@ -612,5 +734,91 @@ mod tests {
                 assert_eq!(entry.safe_delete_offset, None);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_recover_from_snapshot_and_delta() {
+        let region_meta = Arc::new(RegionMeta::default());
+        let mut expected_offset_range = (42, 51);
+        let expected_offset_range_len = expected_offset_range.1 - expected_offset_range.0 + 1;
+        let mut expected_next_sequence_num = 0;
+
+        // Insert some table metas, update them, mark random sequence deleted in them.
+        for table_id in 0..5_u64 {
+            create_and_check_table_meta(&region_meta, table_id).await;
+            // Continue to update.
+            update_and_check_table_meta(
+                &region_meta,
+                table_id,
+                expected_offset_range,
+                expected_next_sequence_num,
+                5,
+            )
+            .await;
+
+            expected_offset_range.0 += 5 * expected_offset_range_len;
+            expected_offset_range.1 += 5 * expected_offset_range_len;
+
+            let rnd = rand::random::<u64>() % 5;
+            region_meta
+                .mark_table_deleted(table_id, rnd * expected_offset_range_len as u64)
+                .await
+                .unwrap();
+        }
+        expected_next_sequence_num += 5 * expected_offset_range_len as u64;
+
+        // Make a snapshot.
+        let snapshot_from_origin = region_meta.make_snapshot().await;
+
+        // Update above table metas after making snapshot,
+        // collect such updates as delta.
+        let mut region_meta_deltas = Vec::new();
+        let update_batch_size = expected_offset_range_len as u64;
+        for table_id_delta in 0..5_u64 {
+            let table_id = 4 - table_id_delta;
+            // Continue to update.
+            update_and_check_table_meta(
+                &region_meta,
+                table_id,
+                expected_offset_range,
+                expected_next_sequence_num,
+                1,
+            )
+            .await;
+
+            for i in 0..update_batch_size {
+                region_meta_deltas.push(RegionMetaDelta::new(
+                    table_id,
+                    expected_next_sequence_num + i,
+                    expected_offset_range.0 + i as i64,
+                ));
+            }
+
+            expected_offset_range.0 += expected_offset_range_len;
+            expected_offset_range.1 += expected_offset_range_len;
+        }
+
+        // Make a new snapshot.
+        let mut new_snapshot_from_origin = region_meta.make_snapshot().await;
+
+        // Build a new `RegionMeta`.
+        let mut builder = RegionMetaBuilder::default();
+        builder
+            .apply_region_meta_snapshot(snapshot_from_origin.clone())
+            .unwrap();
+        for delta in region_meta_deltas.into_iter() {
+            builder.apply_region_meta_delta(delta).unwrap();
+        }
+        let new_region_meta = builder.build();
+        let mut snapshot_from_recovered = new_region_meta.make_snapshot().await;
+
+        // Sort and compare.
+        snapshot_from_recovered
+            .entries
+            .sort_by(|a, b| a.table_id.cmp(&b.table_id));
+        new_snapshot_from_origin
+            .entries
+            .sort_by(|a, b| a.table_id.cmp(&b.table_id));
+        assert_eq!(snapshot_from_recovered, new_snapshot_from_origin);
     }
 }

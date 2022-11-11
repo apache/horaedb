@@ -7,11 +7,12 @@ use std::{cmp, sync::Arc};
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
 use common_util::define_result;
 use log::{debug, info};
-use message_queue::{ConsumeIterator, MessageQueue, Offset, StartOffset};
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use message_queue::{ConsumeIterator, MessageQueue, Offset, OffsetType, StartOffset};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
 use util::*;
 
+use super::region_meta::RegionMetaBuilder;
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
@@ -20,8 +21,9 @@ use crate::{
         self,
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
         log_cleaner::LogCleaner,
-        region_meta,
-        region_meta::{OffsetRange, RegionMeta, RegionMetaSnapshot, TableMetaData},
+        region_meta::{
+            self, OffsetRange, RegionMeta, RegionMetaDelta, RegionMetaSnapshot, TableMetaData,
+        },
         snapshot_synchronizer::{self, SnapshotSynchronizer},
     },
 };
@@ -126,15 +128,31 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, region id:{}, err:{}",
+        "Open region failed with cause, namespace:{}, region id:{}, msg:{}, err:{}",
         namespace,
         region_id,
+        msg,
         source
     ))]
-    Open {
+    OpenWithCause {
         namespace: String,
         region_id: RegionId,
+        msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Open region failed with no cause, namespace:{}, region id:{}, msg:{}, \nBacktrace:\n{}",
+        namespace,
+        region_id,
+        msg,
+        backtrace
+    ))]
+    OpenNoCause {
+        namespace: String,
+        region_id: RegionId,
+        msg: String,
+        backtrace: Backtrace,
     },
 }
 
@@ -163,30 +181,64 @@ pub struct Region<M: MessageQueue> {
 impl<M: MessageQueue> Region<M> {
     /// Init the region.
     pub async fn open(namespace: &str, region_id: RegionId, message_queue: Arc<M>) -> Result<Self> {
+        info!(
+            "Begin to open region in namespace, namespace:{}, region id:{}",
+            namespace, region_id
+        );
+
         // Format to the topic name.
         let log_topic = format_wal_data_topic_name(namespace, region_id);
         let meta_topic = format_wal_meta_topic_name(namespace, region_id);
+        let log_encoding = CommonLogEncoding::newest();
+        let meta_encoding = MetaEncoding::newest();
+
         message_queue
             .create_topic_if_not_exist(&log_topic)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(Open {
+            .context(OpenWithCause {
                 namespace,
                 region_id,
-            });
+                msg: "failed while trying to create topic",
+            })?;
         message_queue
             .create_topic_if_not_exist(&meta_topic)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(Open {
+            .context(OpenWithCause {
                 namespace,
                 region_id,
-            });
+                msg: "failed while trying to create topic",
+            })?;
+
+        // Build region meta.
+        let mut region_meta_builder = RegionMetaBuilder::default();
+        let high_watermark_in_snapshot = Self::recover_region_meta_from_meta(
+            namespace,
+            region_id,
+            message_queue.as_ref(),
+            &meta_topic,
+            &meta_encoding,
+            &mut region_meta_builder,
+        )
+        .await?;
+
+        Self::recover_region_meta_from_log(
+            namespace,
+            region_id,
+            message_queue.as_ref(),
+            high_watermark_in_snapshot,
+            &log_topic,
+            &log_encoding,
+            &mut region_meta_builder,
+        )
+        .await?;
 
         // Init region inner.
         let inner = RwLock::new(RegionInner::new(
             region_id,
-            CommonLogEncoding::newest(),
+            region_meta_builder.build(),
+            log_encoding,
             message_queue.clone(),
             log_topic.clone(),
         ));
@@ -196,15 +248,259 @@ impl<M: MessageQueue> Region<M> {
             region_id,
             message_queue.clone(),
             meta_topic,
-            MetaEncoding::newest(),
+            meta_encoding,
         ));
         let log_cleaner = LogCleaner::new(region_id, message_queue.clone(), log_topic);
+
+        info!(
+            "Finish opening region in namespace, namespace:{}, region id:{}",
+            namespace, region_id
+        );
 
         Ok(Region {
             inner,
             snapshot_synchronizer,
             log_cleaner,
         })
+    }
+
+    async fn recover_region_meta_from_meta(
+        namespace: &str,
+        region_id: RegionId,
+        message_queue: &M,
+        meta_topic: &str,
+        meta_encoding: &MetaEncoding,
+        builder: &mut RegionMetaBuilder,
+    ) -> Result<Offset> {
+        info!(
+            "Recover region meta from meta, namespace:{}, region id:{}",
+            namespace, region_id
+        );
+
+        // Fetch high watermark and check.
+        let high_watermark = message_queue
+            .fetch_offset(meta_topic, OffsetType::HighWaterMark)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            })?;
+
+        if high_watermark == 0 {
+            debug!("Meta topic is empty, it just needs to recover from log topic, namespace:{}, region id:{}", namespace, region_id);
+            return Ok(0);
+        }
+
+        // Fetch snapshot from meta topic(just fetch the last snapshot).
+        let mut iter = message_queue
+            .consume(meta_topic, StartOffset::At(high_watermark - 1))
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            })?;
+
+        let (latest_message_and_offset, returned_high_watermark) = iter
+            .next_message()
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            })?;
+
+        ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
+            "failed while recover from meta, high watermark shouldn't changed while opening region, 
+            origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
+        });
+
+        // Decode and apply it to builder.
+        let raw_key = latest_message_and_offset
+            .message
+            .key
+            .with_context(|| OpenNoCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta, key in message shouldn't be None",
+            })?;
+
+        let raw_value = latest_message_and_offset
+            .message
+            .value
+            .with_context(|| OpenNoCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta, value in message shouldn't be None",
+            })?;
+
+        let key = meta_encoding
+            .decode_key(raw_key.as_slice())
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            })?;
+
+        ensure!(key.0 == region_id, OpenNoCause { namespace , region_id, msg: format!(
+            "failed while recover from meta, region id in key should be equal to the one of current region,
+            but now are {} and {}", key.0, region_id)
+        });
+
+        let value = meta_encoding
+            .decode_value(raw_value.as_slice())
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            })?;
+
+        let high_watermark_in_snapshot = value
+            .entries
+            .iter()
+            .fold(0, |hw, entry| cmp::max(hw, entry.current_high_watermark));
+
+        builder
+            .apply_region_meta_snapshot(value)
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from meta",
+            });
+
+        Ok(high_watermark_in_snapshot)
+    }
+
+    async fn recover_region_meta_from_log(
+        namespace: &str,
+        region_id: RegionId,
+        message_queue: &M,
+        start_offset: Offset,
+        log_topic: &str,
+        log_encoding: &CommonLogEncoding,
+        builder: &mut RegionMetaBuilder,
+    ) -> Result<()> {
+        info!(
+            "Recover region meta from log, namespace:{}, region id:{}, start offset:{}",
+            namespace, region_id, start_offset
+        );
+
+        // Fetch high watermark and check.
+        let high_watermark = message_queue
+            .fetch_offset(log_topic, OffsetType::HighWaterMark)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from log",
+            })?;
+
+        ensure!(start_offset <= high_watermark, OpenNoCause { namespace , region_id, msg: format!(
+            "failed while recover from log, start offset should be less than or equal to high watermark, now are:{} and {}",
+            start_offset, high_watermark)
+        });
+
+        if start_offset == high_watermark {
+            debug!("No region meta delta from log topic is needed, just return, namespace:{}, region id:{}", namespace, region_id);
+            return Ok(());
+        }
+
+        // Fetch snapshot from meta topic(just fetch the last snapshot).
+        let mut iter = message_queue
+            .consume(log_topic, StartOffset::At(start_offset))
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(OpenWithCause {
+                namespace,
+                region_id,
+                msg: "failed while recover from log",
+            })?;
+
+        loop {
+            let (latest_message_and_offset, returned_high_watermark) = iter
+                .next_message()
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(OpenWithCause {
+                    namespace,
+                    region_id,
+                    msg: "failed while recover from log",
+                })?;
+
+            ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
+                "failed while recover from log, high watermark shouldn't changed while opening region, 
+                origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
+            });
+
+            // Decode and apply it to builder.
+            let raw_key = latest_message_and_offset
+                .message
+                .key
+                .with_context(|| OpenNoCause {
+                    namespace,
+                    region_id,
+                    msg: "failed while recover from log, key in message shouldn't be None",
+                })?;
+
+            let raw_value =
+                latest_message_and_offset
+                    .message
+                    .value
+                    .with_context(|| OpenNoCause {
+                        namespace,
+                        region_id,
+                        msg: "failed while recover from log, value in message shouldn't be None",
+                    })?;
+
+            let key = log_encoding
+                .decode_key(raw_key.as_slice())
+                .map_err(|e| Box::new(e) as _)
+                .context(OpenWithCause {
+                    namespace,
+                    region_id,
+                    msg: "failed while recover from log",
+                })?;
+
+            ensure!(key.region_id == region_id, OpenNoCause { namespace , region_id, msg: format!(
+                "failed while recover from log, region id in key should be equal to the one of current region,
+                but now are {} and {}", key.region_id, region_id)
+            });
+
+            // TODO: maybe this clone should be avoided?
+            let region_meta_delta = RegionMetaDelta::new(
+                key.table_id,
+                key.sequence_num,
+                latest_message_and_offset.offset,
+            );
+
+            builder
+                .apply_region_meta_delta(region_meta_delta.clone())
+                .map_err(|e| Box::new(e) as _)
+                .context(OpenWithCause {
+                    namespace,
+                    region_id,
+                    msg: format!(
+                        "failed while recover from log, region meta delta:{:?}",
+                        region_meta_delta
+                    ),
+                });
+
+            // Has polled last log in topic, break.
+            if latest_message_and_offset.offset + 1 == high_watermark {
+                debug!("Has polled last log from topic, break the loop");
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Write logs of table to region.
@@ -216,7 +512,7 @@ impl<M: MessageQueue> Region<M> {
         let inner = self.inner.read().await;
 
         debug!(
-            "Begin to write to wal region, ctx:{:?}, region_id:{}, location:{:?}, log_entries_num:{}",
+            "Begin to write to wal region, ctx:{:?}, region id:{}, location:{:?}, log_entries_num:{}",
             ctx,
             inner.region_id,
             log_batch.location,
@@ -375,6 +671,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Clean outdated logs according to the information in region snapshot.
+    #[allow(unused)]
     pub async fn clean_logs(&mut self) -> Result<()> {
         // Get current snapshot.
         let (snapshot, synchronizer) = {
@@ -401,6 +698,7 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Return snapshot, just used for test.
+    #[allow(unused)]
     async fn make_meta_snapshot(&self) -> RegionMetaSnapshot {
         let inner = self.inner.write().await;
         inner.make_meta_snapshot().await
@@ -430,6 +728,7 @@ struct RegionInner<M> {
 impl<M: MessageQueue> RegionInner<M> {
     pub fn new(
         region_id: RegionId,
+        region_meta: RegionMeta,
         log_encoding: CommonLogEncoding,
         message_queue: Arc<M>,
         log_topic: String,
@@ -437,7 +736,7 @@ impl<M: MessageQueue> RegionInner<M> {
         // TODO: use snapshot to recover `region_meta`.
         Self {
             region_id,
-            region_meta: RegionMeta::default(),
+            region_meta,
             log_encoding,
             message_queue,
             log_topic,
@@ -506,7 +805,7 @@ impl<M: MessageQueue> RegionInner<M> {
         );
 
         debug!(
-            "Produce to topic success, ctx:{:?}, region_id:{}, location:{:?}, topic:{}",
+            "Produce to topic success, ctx:{:?}, region id:{}, location:{:?}, topic:{}",
             _ctx, self.region_id, log_batch.location, self.log_topic,
         );
 
@@ -686,6 +985,18 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
                 msg: "failed while polling log",
             })?;
 
+        ensure!(
+            log_key.region_id == self.region_id,
+            ScanNoCause {
+                region_id: self.region_id,
+                table_id: self.table_id,
+                msg: format!(
+                    "invalid region id in message, real:{}, expected:{}",
+                    self.region_id, log_key.region_id
+                ),
+            }
+        );
+
         let log_value = message_and_offset.message.value.unwrap();
         let payload = self
             .log_encoding
@@ -730,7 +1041,7 @@ mod util {
 mod tests {
     use std::sync::Arc;
 
-    use common_types::table::{ShardId, TableId};
+    use common_types::table::TableId;
     use message_queue::{
         kafka::{config::Config, kafka_impl::KafkaImpl},
         ConsumeIterator, MessageQueue, OffsetType, StartOffset,
@@ -738,7 +1049,7 @@ mod tests {
 
     use crate::{
         log_batch::PayloadDecoder,
-        manager::{ReadContext, RegionId, WriteContext},
+        manager::{ReadContext, WriteContext},
         message_queue_impl::{encoding::MetaEncoding, test_util::TestContext},
     };
 
@@ -754,40 +1065,30 @@ mod tests {
     }
 
     async fn test_region<M: MessageQueue>(message_queue: Arc<M>) {
-        let shard_id = 42;
-        let region_id = 42;
         let test_payloads = vec![42, 43, 44, 45, 46];
-
         let mut test_datas = Vec::new();
         for table_id in 0..5_u64 {
             test_datas.push((table_id, test_payloads.clone()));
         }
 
-        test_read_write(
-            region_id,
-            shard_id,
-            test_datas.clone(),
-            message_queue.clone(),
-        )
-        .await;
+        test_read_write(test_datas.clone(), message_queue.clone()).await;
 
-        test_mark_and_delete(
-            region_id,
-            shard_id,
-            test_datas.clone(),
-            message_queue.clone(),
-        )
-        .await;
+        test_mark_and_delete(test_datas.clone(), message_queue.clone()).await;
+
+        test_recover_region(test_datas.clone(), message_queue.clone()).await;
     }
 
     async fn test_read_write<M: MessageQueue>(
-        region_id: RegionId,
-        shard_id: ShardId,
         test_datas: Vec<(TableId, Vec<u32>)>,
         message_queue: Arc<M>,
     ) {
+        let namespace = format!("test_{}", uuid::Uuid::new_v4());
+        let shard_id = 42;
+        let region_id = 42;
+
         let table_num = test_datas.len();
-        let test_context = TestContext::new(region_id, shard_id, test_datas, message_queue).await;
+        let test_context =
+            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
 
         // Write.
         let mut mixed_test_payloads = Vec::new();
@@ -826,14 +1127,16 @@ mod tests {
     }
 
     async fn test_mark_and_delete<M: MessageQueue>(
-        region_id: RegionId,
-        shard_id: ShardId,
         test_datas: Vec<(TableId, Vec<u32>)>,
         message_queue: Arc<M>,
     ) {
+        let namespace = format!("test_{}", uuid::Uuid::new_v4());
+        let shard_id = 42;
+        let region_id = 42;
+
         let table_num = test_datas.len();
         let mut test_context =
-            TestContext::new(region_id, shard_id, test_datas, message_queue).await;
+            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
 
         // Mark deleted and check
         for table_idx in 0..table_num {
@@ -940,5 +1243,58 @@ mod tests {
         );
 
         check_sync_snapshot(test_context).await;
+    }
+
+    async fn test_recover_region<M: MessageQueue>(
+        test_datas: Vec<(TableId, Vec<u32>)>,
+        message_queue: Arc<M>,
+    ) {
+        let namespace = format!("test_{}", uuid::Uuid::new_v4());
+        let shard_id = 42;
+        let region_id = 42;
+
+        let mut snapshot_from_origin = {
+            let table_num = test_datas.len();
+            let test_context = TestContext::new(
+                namespace.clone(),
+                region_id,
+                shard_id,
+                test_datas.clone(),
+                message_queue.clone(),
+            )
+            .await;
+
+            // Write.
+            let mut mixed_test_payloads = Vec::new();
+            for i in 0..table_num {
+                let test_log_batch = &test_context.test_datas[i].1.test_log_batch;
+                let test_payloads = &test_context.test_datas[i].1.test_payloads;
+                // Write.
+                let sequence_num = test_context
+                    .region
+                    .write(&WriteContext::default(), test_log_batch)
+                    .await
+                    .unwrap();
+                assert_eq!(sequence_num, test_log_batch.len() as u64 - 1);
+
+                mixed_test_payloads.extend_from_slice(test_payloads);
+            }
+
+            test_context.region.make_meta_snapshot().await
+        };
+
+        let test_context =
+            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
+        let mut snapshot_from_recovered = test_context.region.make_meta_snapshot().await;
+
+        snapshot_from_origin
+            .entries
+            .sort_by(|a, b| a.table_id.cmp(&b.table_id));
+
+        snapshot_from_recovered
+            .entries
+            .sort_by(|a, b| a.table_id.cmp(&b.table_id));
+
+        assert_eq!(snapshot_from_recovered, snapshot_from_origin);
     }
 }
