@@ -357,8 +357,11 @@ impl RegionMetaBuilder {
     pub fn apply_region_meta_snapshot(&mut self, snapshot: RegionMetaSnapshot) -> Result<()> {
         debug!("Apply region meta snapshot, snapshot:{:?}", snapshot);
 
-        for entry in snapshot.entries.into_iter() {
-            ensure!(self.table_metas.insert(entry.table_id, entry.clone().into()).is_none(),
+        for entry in snapshot.entries {
+            let old_meta = self
+                .table_metas
+                .insert(entry.table_id, entry.clone().into());
+            ensure!(old_meta.is_none(),
                 Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{:?}", entry) }
             );
         }
@@ -369,26 +372,26 @@ impl RegionMetaBuilder {
     pub fn apply_region_meta_delta(&mut self, delta: RegionMetaDelta) -> Result<()> {
         debug!("Apply region meta delta, delta:{:?}", delta);
 
-        let mut table_meta_inner = self
+        let mut table_meta = self
             .table_metas
             .entry(delta.table_id)
             .or_insert_with(TableMetaInner::default);
 
-        ensure!(table_meta_inner.next_sequence_num < delta.sequence_num + 1, Build { msg: format!("apply delta failed, 
+        ensure!(table_meta.next_sequence_num < delta.sequence_num + 1, Build { msg: format!("apply delta failed, 
                 next sequence number in delta should't be less than or equal to the one in builder, but now are:{} and {}",
                 delta.sequence_num + 1,
-                table_meta_inner.next_sequence_num,
+                table_meta.next_sequence_num,
             ) });
-        table_meta_inner.next_sequence_num = delta.sequence_num + 1;
+        table_meta.next_sequence_num = delta.sequence_num + 1;
 
-        ensure!(table_meta_inner.current_high_watermark < delta.offset + 1, Build { msg: format!("apply delta failed, 
+        ensure!(table_meta.current_high_watermark < delta.offset + 1, Build { msg: format!("apply delta failed, 
                 high watermark in delta should't be less than or equal to the one in builder, but now are:{} and {}",
                 delta.offset + 1,
-                table_meta_inner.current_high_watermark,
+                table_meta.current_high_watermark,
             ) });
-        table_meta_inner.current_high_watermark = delta.offset + 1;
+        table_meta.current_high_watermark = delta.offset + 1;
 
-        table_meta_inner
+        table_meta
             .start_sequence_offset_mapping
             .insert(delta.sequence_num, delta.offset);
 

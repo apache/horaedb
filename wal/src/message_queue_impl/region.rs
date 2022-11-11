@@ -186,12 +186,12 @@ impl<M: MessageQueue> Region<M> {
             namespace, region_id
         );
 
-        let log_encoding = CommonLogEncoding::newest();
-        let meta_encoding = MetaEncoding::newest();
-
         // Format to the topic name.
         let log_topic = format_wal_data_topic_name(namespace, region_id);
         let meta_topic = format_wal_meta_topic_name(namespace, region_id);
+        let log_encoding = CommonLogEncoding::newest();
+        let meta_encoding = MetaEncoding::newest();
+
         message_queue
             .create_topic_if_not_exist(&log_topic)
             .await
@@ -216,21 +216,21 @@ impl<M: MessageQueue> Region<M> {
         let high_watermark_in_snapshot = Self::recover_region_meta_from_meta(
             namespace,
             region_id,
-            &mut region_meta_builder,
             message_queue.as_ref(),
             &meta_topic,
             &meta_encoding,
+            &mut region_meta_builder,
         )
         .await?;
 
         Self::recover_region_meta_from_log(
             namespace,
             region_id,
-            &mut region_meta_builder,
             message_queue.as_ref(),
             high_watermark_in_snapshot,
             &log_topic,
             &log_encoding,
+            &mut region_meta_builder,
         )
         .await?;
 
@@ -238,7 +238,7 @@ impl<M: MessageQueue> Region<M> {
         let inner = RwLock::new(RegionInner::new(
             region_id,
             region_meta_builder.build(),
-            CommonLogEncoding::newest(),
+            log_encoding,
             message_queue.clone(),
             log_topic.clone(),
         ));
@@ -248,12 +248,12 @@ impl<M: MessageQueue> Region<M> {
             region_id,
             message_queue.clone(),
             meta_topic,
-            MetaEncoding::newest(),
+            meta_encoding,
         ));
         let log_cleaner = LogCleaner::new(region_id, message_queue.clone(), log_topic);
 
         info!(
-            "Finish to open region in namespace, namespace:{}, region id:{}",
+            "Finish opening region in namespace, namespace:{}, region id:{}",
             namespace, region_id
         );
 
@@ -267,10 +267,10 @@ impl<M: MessageQueue> Region<M> {
     async fn recover_region_meta_from_meta(
         namespace: &str,
         region_id: RegionId,
-        builder: &mut RegionMetaBuilder,
         message_queue: &M,
         meta_topic: &str,
         meta_encoding: &MetaEncoding,
+        builder: &mut RegionMetaBuilder,
     ) -> Result<Offset> {
         info!(
             "Recover region meta from meta, namespace:{}, region id:{}",
@@ -288,9 +288,8 @@ impl<M: MessageQueue> Region<M> {
                 msg: "failed while recover from meta",
             })?;
 
-        // Meta topic is empty, it just need to recover from log topic.
         if high_watermark == 0 {
-            debug!("Meta topic is empty, it just need to recover from log topic, namespace:{}, region id:{}", namespace, region_id);
+            debug!("Meta topic is empty, it just needs to recover from log topic, namespace:{}, region id:{}", namespace, region_id);
             return Ok(0);
         }
 
@@ -315,7 +314,6 @@ impl<M: MessageQueue> Region<M> {
                 msg: "failed while recover from meta",
             })?;
 
-        // TODO: maybe should assert it?
         ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
             "failed while recover from meta, high watermark shouldn't changed while opening region, 
             origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
@@ -383,11 +381,11 @@ impl<M: MessageQueue> Region<M> {
     async fn recover_region_meta_from_log(
         namespace: &str,
         region_id: RegionId,
-        builder: &mut RegionMetaBuilder,
         message_queue: &M,
         start_offset: Offset,
         log_topic: &str,
         log_encoding: &CommonLogEncoding,
+        builder: &mut RegionMetaBuilder,
     ) -> Result<()> {
         info!(
             "Recover region meta from log, namespace:{}, region id:{}, start offset:{}",
@@ -437,7 +435,6 @@ impl<M: MessageQueue> Region<M> {
                     msg: "failed while recover from log",
                 })?;
 
-            // TODO: maybe should assert it?
             ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
                 "failed while recover from log, high watermark shouldn't changed while opening region, 
                 origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
