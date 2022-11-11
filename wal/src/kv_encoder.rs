@@ -584,7 +584,7 @@ impl LogBatchEncoder {
 
 /// Common log key used in multiple wal implementation
 #[allow(unused)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,
     /// region may be mapped to table itself, shard, or others...

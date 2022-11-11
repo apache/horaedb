@@ -15,7 +15,9 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    bytes::BytesMut, table::Location, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
+    bytes::BytesMut,
+    table::{Location, TableId},
+    SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::runtime::Runtime;
 use log::{debug, info, warn};
@@ -24,24 +26,24 @@ use snafu::ResultExt;
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::{LogEncoding, LogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
+    kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SyncLogIterator, WalManager, WriteContext, MAX_REGION_ID,
+        ScanRequest, SyncLogIterator, WalManager, WriteContext,
     },
 };
 
-/// Region in the Wal.
-struct Region {
+/// Table unit in the Wal.
+struct TableUnit {
     /// id of the Region
-    id: RegionId,
+    id: TableId,
     /// RocksDB instance
     db: Arc<DB>,
     /// `next_sequence_num` is ensured to be positive
     next_sequence_num: AtomicU64,
     /// Encoding for log entries
-    log_encoding: LogEncoding,
+    log_encoding: CommonLogEncoding,
     /// Encoding for meta data of max sequence
     max_seq_meta_encoding: MaxSeqMetaEncoding,
     /// Runtime for write requests
@@ -50,7 +52,7 @@ struct Region {
     delete_lock: Mutex<()>,
 }
 
-impl Region {
+impl TableUnit {
     /// Allocate a continuous range of [SequenceNumber] and returns
     /// the start [SequenceNumber] of the range [start, start+`number`).
     #[inline]
@@ -59,9 +61,9 @@ impl Region {
     }
 
     #[inline]
-    /// Generate [LogKey] from `region_id` and `sequence_num`
-    fn log_key(&self, sequence_num: SequenceNumber) -> LogKey {
-        (self.id, sequence_num)
+    /// Generate [LogKey] from `region_id', `table_id` and `sequence_num`
+    fn log_key(&self, region_id: RegionId, sequence_num: SequenceNumber) -> CommonLogKey {
+        CommonLogKey::new(region_id, self.id, sequence_num)
     }
 
     /// Returns the current sequence number which must be positive.
@@ -75,9 +77,13 @@ impl Region {
     /// Delete entries in the range `[0, sequence_num]`.
     ///
     /// The delete procedure is ensured to be sequential.
-    async fn delete_entries_up_to(&self, mut sequence_num: SequenceNumber) -> Result<()> {
+    async fn delete_entries_up_to(
+        &self,
+        region_id: RegionId,
+        mut sequence_num: SequenceNumber,
+    ) -> Result<()> {
         debug!(
-            "Wal Region delete entries begin deleting, sequence_num:{:?}",
+            "Wal table unit delete entries begin deleting, sequence_num:{:?}",
             sequence_num
         );
 
@@ -97,12 +103,12 @@ impl Region {
             let wb = WriteBatch::default();
 
             // Delete the range [0, sequence_num]
-            let start_log_key = (self.id, 0);
+            let start_log_key = CommonLogKey::new(region_id, self.id, 0);
             let end_log_key = if sequence_num < MAX_SEQUENCE_NUMBER {
-                (self.id, sequence_num + 1)
+                CommonLogKey::new(region_id, self.id, sequence_num + 1)
             } else {
                 // Region id is unlikely to overflow.
-                (self.id + 1, 0)
+                CommonLogKey::new(region_id, self.id + 1, 0)
             };
             let (mut start_key_buf, mut end_key_buf) = (BytesMut::new(), BytesMut::new());
             self.log_encoding
@@ -141,7 +147,7 @@ impl Region {
     }
 
     fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<RocksLogIterator> {
-        debug!("Wal region begin reading, ctx:{:?}, req:{:?}", ctx, req);
+        debug!("Wal table unit begin reading, ctx:{:?}, req:{:?}", ctx, req);
 
         let read_opts = ReadOptions::default();
         let iter = DBIterator::new(self.db.clone(), read_opts);
@@ -158,7 +164,11 @@ impl Region {
             return Ok(RocksLogIterator::new_empty(self.log_encoding.clone(), iter));
         };
 
-        let (min_log_key, max_log_key) = (self.log_key(start_sequence), self.log_key(end_sequence));
+        let region_id = req.location.shard_id as RegionId;
+        let (min_log_key, max_log_key) = (
+            self.log_key(region_id, start_sequence),
+            self.log_key(region_id, end_sequence),
+        );
 
         let log_iter =
             RocksLogIterator::with_data(self.log_encoding.clone(), iter, min_log_key, max_log_key);
@@ -167,7 +177,7 @@ impl Region {
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<u64> {
         debug!(
-            "Wal region begin writing, ctx:{:?}, log_entries_num:{}",
+            "Wal table unit begin writing, ctx:{:?}, log_entries_num:{}",
             ctx,
             batch.entries.len()
         );
@@ -179,8 +189,12 @@ impl Region {
             let mut key_buf = BytesMut::new();
 
             for entry in &batch.entries {
+                let region_id = batch.location.shard_id as RegionId;
                 self.log_encoding
-                    .encode_key(&mut key_buf, &(batch.location.table_id, next_sequence_num))
+                    .encode_key(
+                        &mut key_buf,
+                        &CommonLogKey::new(region_id, batch.location.table_id, next_sequence_num),
+                    )
                     .map_err(|e| Box::new(e) as _)
                     .context(Encoding)?;
                 wb.put(&key_buf, &entry.payload)
@@ -208,8 +222,8 @@ impl Region {
 }
 
 /// [WalManager] implementation based on RocksDB.
-/// A [RocksImpl] consists of multiple [Region]s and any read/write/delete
-/// request is delegated to specific [Region].
+/// A [RocksImpl] consists of multiple [TableUnit]s and any read/write/delete
+/// request is delegated to specific [TableUnit].
 pub struct RocksImpl {
     /// Wal data path
     wal_path: String,
@@ -218,19 +232,19 @@ pub struct RocksImpl {
     /// Runtime for read/write log entries
     runtime: Arc<Runtime>,
     /// Encoding for log entry
-    log_encoding: LogEncoding,
+    log_encoding: CommonLogEncoding,
     /// Encoding for meta data of max sequence
     max_seq_meta_encoding: MaxSeqMetaEncoding,
-    /// Regions
-    regions: RwLock<HashMap<RegionId, Arc<Region>>>,
+    /// Table units
+    table_units: RwLock<HashMap<TableId, Arc<TableUnit>>>,
 }
 
 impl Drop for RocksImpl {
     fn drop(&mut self) {
-        // Clear all regions.
+        // Clear all table_units.
         {
-            let mut regions = self.regions.write().unwrap();
-            regions.clear();
+            let mut table_units = self.table_units.write().unwrap();
+            table_units.clear();
         }
 
         info!("RocksImpl dropped, wal_path:{}", self.wal_path);
@@ -238,18 +252,18 @@ impl Drop for RocksImpl {
 }
 
 impl RocksImpl {
-    fn build_regions(&self) -> Result<()> {
-        let region_seqs = self.find_region_seqs_from_db()?;
+    fn build_table_units(&self, region_id: RegionId) -> Result<()> {
+        let table_seqs = self.find_table_seqs_from_db(region_id)?;
 
         info!(
-            "RocksImpl build regions, wal_path:{}, region_seqs:{:?}",
-            self.wal_path, region_seqs
+            "RocksImpl build table units, wal_path:{}, table_seqs:{:?}",
+            self.wal_path, table_seqs
         );
 
-        let mut regions = self.regions.write().unwrap();
-        for (region_id, sequence_number) in region_seqs {
-            let region = Region {
-                id: region_id,
+        let mut table_units = self.table_units.write().unwrap();
+        for (table_id, sequence_number) in table_seqs {
+            let table_unit = TableUnit {
+                id: table_id,
                 db: self.db.clone(),
                 next_sequence_num: AtomicU64::new(sequence_number + 1),
                 log_encoding: self.log_encoding.clone(),
@@ -258,20 +272,21 @@ impl RocksImpl {
                 delete_lock: Mutex::new(()),
             };
 
-            regions.insert(region_id, Arc::new(region));
+            table_units.insert(table_id, Arc::new(table_unit));
         }
 
         Ok(())
     }
 
-    fn find_region_seqs_from_region_data(
+    fn find_table_seqs_from_table_log(
         &self,
-        region_max_seqs: &mut HashMap<RegionId, SequenceNumber>,
+        region_id: RegionId,
+        table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
-        let mut current_region_id = MAX_REGION_ID;
+        let mut current_table_id = TableId::MAX;
         let mut end_boundary_key_buf = BytesMut::new();
         loop {
-            let log_key = (current_region_id, MAX_SEQUENCE_NUMBER);
+            let log_key = CommonLogKey::new(region_id, current_table_id, MAX_SEQUENCE_NUMBER);
             self.log_encoding
                 .encode_key(&mut end_boundary_key_buf, &log_key)
                 .map_err(|e| Box::new(e) as _)
@@ -285,7 +300,9 @@ impl RocksImpl {
                 .context(Initialization)?;
 
             if !found {
-                debug!("RocksImpl find region pairs stop scanning, because of no entries to scan");
+                debug!(
+                    "RocksImpl find table unit pairs stop scanning, because of no entries to scan"
+                );
                 break;
             }
 
@@ -295,7 +312,9 @@ impl RocksImpl {
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?
             {
-                debug!("RocksImpl find region pairs stop scanning, because log keys are exhausted");
+                debug!(
+                    "RocksImpl find table unit pairs stop scanning, because log keys are exhausted"
+                );
                 break;
             }
 
@@ -304,21 +323,21 @@ impl RocksImpl {
                 .decode_key(iter.key())
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
-            region_max_seqs.insert(log_key.0, log_key.1);
+            table_max_seqs.insert(log_key.table_id, log_key.sequence_num);
 
-            if log_key.0 == 0 {
-                debug!("RocksImpl find region pairs stop scanning, because region 0 is reached");
+            if log_key.table_id == 0 {
+                debug!("RocksImpl find table unit pairs stop scanning, because table unit 0 is reached");
                 break;
             }
-            current_region_id = log_key.0 - 1;
+            current_table_id = log_key.table_id - 1;
         }
 
         Ok(())
     }
 
-    fn find_region_seqs_from_region_meta(
+    fn find_table_seqs_from_table_meta(
         &self,
-        region_max_seqs: &mut HashMap<RegionId, SequenceNumber>,
+        table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
         let meta_key = MetaKey { region_id: 0 };
         let mut start_boundary_key_buf = BytesMut::new();
@@ -342,7 +361,7 @@ impl RocksImpl {
 
             let meta_key = self.max_seq_meta_encoding.decode_key(iter.key())?;
             let meta_value = self.max_seq_meta_encoding.decode_value(iter.value())?;
-            region_max_seqs
+            table_max_seqs
                 .entry(meta_key.region_id)
                 .and_modify(|v| {
                     *v = meta_value.max_seq.max(*v);
@@ -355,44 +374,47 @@ impl RocksImpl {
         Ok(())
     }
 
-    /// Collect all the regions with its max sequence number from the db.
+    /// Collect all the table units with its max sequence number from the db.
     ///
-    /// Returns the mapping: region_id -> max_sequence_number
-    fn find_region_seqs_from_db(&self) -> Result<HashMap<RegionId, SequenceNumber>> {
-        // build the mapping: region_id -> max_sequence_number
-        let mut region_max_seqs = HashMap::new();
+    /// Returns the mapping: table_id -> max_sequence_number
+    fn find_table_seqs_from_db(
+        &self,
+        region_id: RegionId,
+    ) -> Result<HashMap<TableId, SequenceNumber>> {
+        // build the mapping: table_id -> max_sequence_number
+        let mut table_max_seqs = HashMap::new();
 
-        // scan the region information from the data part.
-        self.find_region_seqs_from_region_data(&mut region_max_seqs)?;
+        // scan the table unit information from the data part.
+        self.find_table_seqs_from_table_log(region_id, &mut table_max_seqs)?;
 
-        // scan the region information from the meta part.
-        self.find_region_seqs_from_region_meta(&mut region_max_seqs)?;
+        // scan the table unit information from the meta part.
+        self.find_table_seqs_from_table_meta(&mut table_max_seqs)?;
 
-        Ok(region_max_seqs)
+        Ok(table_max_seqs)
     }
 
-    /// Get the region and create it if not found.
-    fn get_or_create_region(&self, region_id: RegionId) -> Arc<Region> {
+    /// Get the table unit and create it if not found.
+    fn get_or_create_table_unit(&self, table_id: TableId) -> Arc<TableUnit> {
         {
-            let regions = self.regions.read().unwrap();
-            if let Some(region) = regions.get(&region_id) {
-                return region.clone();
+            let table_units = self.table_units.read().unwrap();
+            if let Some(table_unit) = table_units.get(&table_id) {
+                return table_unit.clone();
             }
         }
 
-        let mut regions = self.regions.write().unwrap();
-        if let Some(region) = regions.get(&region_id) {
-            return region.clone();
+        let mut table_units = self.table_units.write().unwrap();
+        if let Some(table_unit) = table_units.get(&table_id) {
+            return table_unit.clone();
         }
 
         info!(
-            "RocksImpl create new region, wal_path:{}, region_id:{}",
-            self.wal_path, region_id
+            "RocksImpl create new table unit, wal_path:{}, table_id:{}",
+            self.wal_path, table_id
         );
 
-        // create a new region
-        let region = Arc::new(Region {
-            id: region_id,
+        // Create a new region.
+        let table_unit = Arc::new(TableUnit {
+            id: table_id,
             db: self.db.clone(),
             // ensure `next_sequence_number` to start from 1 (larger than MIN_SEQUENCE_NUMBER)
             next_sequence_num: AtomicU64::new(MIN_SEQUENCE_NUMBER + 1),
@@ -402,14 +424,14 @@ impl RocksImpl {
             delete_lock: Mutex::new(()),
         });
 
-        regions.insert(region_id, region.clone());
-        region
+        table_units.insert(table_id, table_unit.clone());
+        table_unit
     }
 
-    /// Get the region
-    fn region(&self, region_id: RegionId) -> Option<Arc<Region>> {
-        let regions = self.regions.read().unwrap();
-        regions.get(&region_id).cloned()
+    /// Get the table unit.
+    fn table_unit(&self, table_id: TableId) -> Option<Arc<TableUnit>> {
+        let table_units = self.table_units.read().unwrap();
+        table_units.get(&table_id).cloned()
     }
 }
 
@@ -418,29 +440,33 @@ pub struct Builder {
     wal_path: String,
     rocksdb_config: DBOptions,
     runtime: Arc<Runtime>,
+    region_id: RegionId,
 }
 
 impl Builder {
     pub fn with_default_rocksdb_config(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
+        region_id: RegionId,
     ) -> Self {
         let mut rocksdb_config = DBOptions::default();
         // TODO(yingwen): Move to another function?
         rocksdb_config.create_if_missing(true);
-        Self::new(wal_path, runtime, rocksdb_config)
+        Self::new(wal_path, runtime, rocksdb_config, region_id)
     }
 
     pub fn new(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
         rocksdb_config: DBOptions,
+        region_id: RegionId,
     ) -> Self {
         let wal_path: PathBuf = wal_path.into();
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             rocksdb_config,
             runtime,
+            region_id,
         }
     }
 
@@ -454,11 +480,11 @@ impl Builder {
             wal_path: self.wal_path,
             db: Arc::new(db),
             runtime: self.runtime,
-            log_encoding: LogEncoding::newest(),
+            log_encoding: CommonLogEncoding::newest(),
             max_seq_meta_encoding: MaxSeqMetaEncoding::newest(),
-            regions: RwLock::new(HashMap::new()),
+            table_units: RwLock::new(HashMap::new()),
         };
-        rocks_impl.build_regions()?;
+        rocks_impl.build_table_units(self.region_id)?;
 
         Ok(rocks_impl)
     }
@@ -466,13 +492,13 @@ impl Builder {
 
 /// Iterator over log entries based on RocksDB iterator.
 pub struct RocksLogIterator {
-    log_encoding: LogEncoding,
+    log_encoding: CommonLogEncoding,
     /// denotes no more data to iterate and it is set to true when:
     ///  - initialized as no data iterator, or
     ///  - iterate to the end.
     no_more_data: bool,
-    min_log_key: LogKey,
-    max_log_key: LogKey,
+    min_log_key: CommonLogKey,
+    max_log_key: CommonLogKey,
     /// denote whether `iter` is seeked
     seeked: bool,
     /// RocksDB iterator
@@ -494,10 +520,10 @@ impl fmt::Debug for RocksLogIterator {
 impl RocksLogIterator {
     /// Create iterator maybe containing data.
     fn with_data(
-        log_encoding: LogEncoding,
+        log_encoding: CommonLogEncoding,
         iter: DBIterator<Arc<DB>>,
-        min_log_key: LogKey,
-        max_log_key: LogKey,
+        min_log_key: CommonLogKey,
+        max_log_key: CommonLogKey,
     ) -> Self {
         Self {
             log_encoding,
@@ -510,12 +536,12 @@ impl RocksLogIterator {
     }
 
     /// Create empty iterator.
-    fn new_empty(log_encoding: LogEncoding, iter: DBIterator<Arc<DB>>) -> Self {
+    fn new_empty(log_encoding: CommonLogEncoding, iter: DBIterator<Arc<DB>>) -> Self {
         Self {
             log_encoding,
             no_more_data: true,
-            min_log_key: (0, 0),
-            max_log_key: (0, 0),
+            min_log_key: CommonLogKey::new(0, 0, 0),
+            max_log_key: CommonLogKey::new(0, 0, 0),
             seeked: false,
             iter,
         }
@@ -523,13 +549,13 @@ impl RocksLogIterator {
 
     /// it's a valid log key if it is in the range `[self.min_log_key,
     /// self.max_log_key]`.
-    fn is_valid_log_key(&self, curr_log_key: &LogKey) -> bool {
+    fn is_valid_log_key(&self, curr_log_key: &CommonLogKey) -> bool {
         curr_log_key <= &self.max_log_key && curr_log_key >= &self.min_log_key
     }
 
     /// End is reached iteration if `curr_log_key` is greater than
     /// `max_log_key`.
-    fn is_end_reached(&self, curr_log_key: &LogKey) -> bool {
+    fn is_end_reached(&self, curr_log_key: &CommonLogKey) -> bool {
         curr_log_key >= &self.max_log_key
     }
 
@@ -589,8 +615,8 @@ impl SyncLogIterator for RocksLogIterator {
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
             let log_entry = LogEntry {
-                table_id: curr_log_key.0,
-                sequence: curr_log_key.1,
+                table_id: curr_log_key.table_id,
+                sequence: curr_log_key.sequence_num,
                 payload,
             };
             Ok(Some(log_entry))
@@ -603,8 +629,8 @@ impl SyncLogIterator for RocksLogIterator {
 #[async_trait]
 impl WalManager for RocksImpl {
     async fn sequence_num(&self, location: Location) -> Result<u64> {
-        if let Some(region) = self.region(location.table_id) {
-            return region.sequence_num();
+        if let Some(table_unit) = self.table_unit(location.table_id) {
+            return table_unit.sequence_num();
         }
 
         Ok(MIN_SEQUENCE_NUMBER)
@@ -615,8 +641,11 @@ impl WalManager for RocksImpl {
         location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        if let Some(region) = self.region(location.table_id) {
-            return region.delete_entries_up_to(sequence_num).await;
+        if let Some(table_unit) = self.table_unit(location.table_id) {
+            let region_id = location.shard_id as RegionId;
+            return table_unit
+                .delete_entries_up_to(region_id, sequence_num)
+                .await;
         }
 
         Ok(())
@@ -633,8 +662,8 @@ impl WalManager for RocksImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let sync_iter = if let Some(region) = self.region(req.location.table_id) {
-            region.read(ctx, req)?
+        let sync_iter = if let Some(table_unit) = self.table_unit(req.location.table_id) {
+            table_unit.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
             RocksLogIterator::new_empty(self.log_encoding.clone(), iter)
@@ -649,8 +678,8 @@ impl WalManager for RocksImpl {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let region = self.get_or_create_region(batch.location.table_id);
-        region.write(ctx, batch).await
+        let table_unit = self.get_or_create_table_unit(batch.location.table_id);
+        table_unit.write(ctx, batch).await
     }
 
     async fn scan(

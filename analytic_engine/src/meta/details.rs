@@ -760,10 +760,13 @@ mod tests {
         }
 
         async fn open_manifest(&self) -> ManifestImpl {
-            let manifest_wal =
-                WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
-                    .build()
-                    .unwrap();
+            let manifest_wal = WalBuilder::with_default_rocksdb_config(
+                self.dir.clone(),
+                self.runtime.clone(),
+                DEFAULT_SHARD_ID as RegionId,
+            )
+            .build()
+            .unwrap();
 
             ManifestImpl::open(Arc::new(manifest_wal), self.options.clone())
                 .await
