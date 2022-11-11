@@ -89,11 +89,6 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
 
             column.dedup(&mut self.selected_rows);
         }
-        // for col_idx in 0..self.schema.num_key_columns() {
-        //     let column = record_batch.column(col_idx);
-
-        //     column.dedup(&mut self.selected_rows);
-        // }
 
         // Dedup first row in record batch with previous row.
         if let Some(prev_row) = &self.prev_row {

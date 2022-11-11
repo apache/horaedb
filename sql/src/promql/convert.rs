@@ -34,6 +34,7 @@ use crate::{
 const INIT_LEVEL: usize = 1;
 const DEFAULT_LOOKBACK: i64 = 300_000;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Invalid expr, expected: {}, actual:{:?}", expected, actual))]

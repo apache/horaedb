@@ -819,21 +819,6 @@ impl Schema {
         &self,
         projection: &[usize],
     ) -> RecordSchemaWithKey {
-        // let mut columns = Vec::with_capacity(self.num_key_columns);
-        // // Keep all key columns in order.
-        // for key_column in self.key_columns() {
-        //     columns.push(key_column.clone());
-        // }
-
-        // // Collect normal columns needed by the projection.
-        // for p in projection {
-        //     if *p >= self.num_key_columns {
-        //         // A normal column
-        //         let normal_column = &self.columns()[*p];
-        //         columns.push(normal_column.clone());
-        //     }
-        // }
-
         let columns = self
             .columns()
             .iter()
@@ -1088,7 +1073,6 @@ impl Builder {
         self.column_names.insert(column.name.clone());
         self.column_ids.insert(column.id);
 
-        // self.columns.insert(self.num_key_columns, column);
         self.num_key_columns += 1;
 
         self.columns.push(column);
@@ -1219,7 +1203,6 @@ impl Builder {
             self.timestamp_index
         };
 
-        // let timestamp_index = self.timestamp_index.context(MissingTimestampKey)?;
         let timestamp_index = retry_timestamp_key.context(MissingTimestampKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero

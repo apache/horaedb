@@ -124,10 +124,6 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
         for idx in self.schema.primary_key_idx() {
             encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
         }
-        // for idx in 0..self.schema.num_key_columns() {
-        //     // Encode each column in primary key
-        //     encoder.encode(buf, &value[idx]).context(EncodeKeyDatum)?;
-        // }
         SequenceCodec.encode(buf, &self.sequence)?;
 
         Ok(())
@@ -139,11 +135,6 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
         for idx in self.schema.primary_key_idx() {
             total_len += encoder.estimate_encoded_size(&value[*idx]);
         }
-        // for idx in 0..self.schema.num_key_columns() {
-        //     // Size of each column in primary key
-        //     total_len += encoder.estimate_encoded_size(&value[idx]);
-        // }
-        // The size of sequence
         total_len += KEY_SEQUENCE_BYTES_LEN;
 
         total_len
