@@ -819,25 +819,23 @@ impl Schema {
         &self,
         projection: &[usize],
     ) -> RecordSchemaWithKey {
-        let columns = self
-            .columns()
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, col)| {
-                if projection.contains(&idx) {
-                    Some(col.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut primary_key_idx = Vec::with_capacity(self.primary_key_idx().len());
+        let mut columns = Vec::with_capacity(self.primary_key_idx().len());
+        for (idx, col) in self.columns().iter().enumerate() {
+            if self.primary_key_idx().contains(&idx) {
+                primary_key_idx.push(columns.len());
+                columns.push(col.clone());
+            } else if projection.contains(&idx) {
+                columns.push(col.clone());
+            }
+        }
 
         let record_schema =
             RecordSchema::from_column_schemas(ColumnSchemas::new(columns), &self.arrow_schema);
 
         RecordSchemaWithKey {
             record_schema,
-            key_index: self.primary_key_index.clone(),
+            key_index: primary_key_idx,
         }
     }
 

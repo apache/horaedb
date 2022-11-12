@@ -8,8 +8,8 @@ affected_rows: 1
 
 SELECT * FROM demo;
 
-t,tsid,name,value,
-Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
+name,value,t,tsid,
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
 
 
 INSERT INTO demo(t, name, value) VALUES(1651737067001, "ceresdb", 100);
@@ -18,9 +18,9 @@ affected_rows: 1
 
 SELECT * FROM demo;
 
-t,tsid,name,value,
-Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
-Timestamp(Timestamp(1651737067001)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
+name,value,t,tsid,
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067001)),Int64(102432447525557625),
 
 
 CREATE TABLE "DeMo"("nAmE" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
