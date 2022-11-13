@@ -9,7 +9,10 @@ use std::{
     time::Duration,
 };
 
-use common_types::time::Timestamp;
+use common_types::{
+    table::{Location, TableId},
+    time::Timestamp,
+};
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
 use log::{debug, error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -21,7 +24,7 @@ use crate::{
     table_kv_impl::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
-        region::{Region, RegionRef, TableLogIterator},
+        table_unit::{TableLogIterator, TableUnit, TableUnitRef},
         timed_task::{TaskHandle, TimedTask},
         WalRuntimes,
     },
@@ -34,8 +37,12 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Failed to init region meta, namespace:{}, err:{}", namespace, source,))]
-    InitRegionMeta {
+    #[snafu(display(
+        "Failed to init table unit meta, namespace:{}, err:{}",
+        namespace,
+        source,
+    ))]
+    InitTableUnitMeta {
         namespace: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -110,63 +117,73 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to open region, namespace:{}, region_id:{}, err:{}",
+        "Failed to open region, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
-    OpenRegion {
+    OpenTableUnit {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to create region, namespace:{}, region_id:{}, err:{}",
+        "Failed to create table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
-    CreateRegion {
+    CreateTableUnit {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to write region, namespace:{}, region_id:{}, err:{}",
+        "Failed to write table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
-    WriteRegion {
+    WriteTableUnit {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to read region, namespace:{}, region_id:{}, err:{}",
+        "Failed to read table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
-    ReadRegion {
+    ReadTableUnit {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to delete entries, namespace:{}, region_id:{}, err:{}",
+        "Failed to delete entries, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
     DeleteEntries {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display("Failed to stop task, namespace:{}, err:{}", namespace, source))]
@@ -176,15 +193,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to clean deleted logs, namespace:{}, region_id:{}, err:{}",
+        "Failed to clean deleted logs, namespace:{}, region_id:{}, table_id:{}, err:{}",
         namespace,
         region_id,
+        table_id,
         source
     ))]
     CleanLog {
         namespace: String,
         region_id: RegionId,
-        source: crate::table_kv_impl::region::Error,
+        table_id: TableId,
+        source: crate::table_kv_impl::table_unit::Error,
     },
 }
 
@@ -202,9 +221,9 @@ struct NamespaceInner<T> {
     table_kv: T,
     entry: NamespaceEntry,
     bucket_set: RwLock<BucketSet>,
-    regions: RwLock<HashMap<RegionId, RegionRef>>,
+    table_units: RwLock<HashMap<TableId, TableUnitRef>>,
     meta_table_name: String,
-    region_meta_tables: Vec<String>,
+    table_unit_meta_tables: Vec<String>,
     operator: Mutex<TableOperator>,
     // Only one thread can persist and create a new bucket.
     bucket_creator: Mutex<BucketCreator>,
@@ -218,51 +237,51 @@ impl<T> NamespaceInner<T> {
     }
 
     /// Names of region meta tables.
-    fn region_meta_tables(&self) -> &[String] {
-        &self.region_meta_tables
+    fn table_unit_meta_tables(&self) -> &[String] {
+        &self.table_unit_meta_tables
     }
 
-    fn region_meta_table(&self, region_id: RegionId) -> &str {
-        let index = region_id as usize % self.region_meta_tables.len();
+    fn table_unit_meta_table(&self, region_id: RegionId) -> &str {
+        let index = region_id as usize % self.table_unit_meta_tables.len();
 
-        &self.region_meta_tables[index]
+        &self.table_unit_meta_tables[index]
     }
 
     fn list_buckets(&self) -> Vec<BucketRef> {
         self.bucket_set.read().unwrap().buckets()
     }
 
-    fn list_regions(&self) -> Vec<RegionRef> {
-        self.regions.read().unwrap().values().cloned().collect()
+    fn list_table_units(&self) -> Vec<TableUnitRef> {
+        self.table_units.read().unwrap().values().cloned().collect()
     }
 
-    fn clear_regions(&self) {
-        let mut regions = self.regions.write().unwrap();
-        regions.clear();
+    fn clear_table_units(&self) {
+        let mut table_units = self.table_units.write().unwrap();
+        table_units.clear();
     }
 }
 
 // Blocking operations.
 impl<T: TableKv> NamespaceInner<T> {
-    /// Pre-build all region meta tables.
-    fn init_region_meta(&self) -> Result<()> {
-        for table_name in self.region_meta_tables() {
+    /// Pre-build all table unit meta tables.
+    fn init_table_unit_meta(&self) -> Result<()> {
+        for table_name in self.table_unit_meta_tables() {
             let exists = self
                 .table_kv
                 .table_exists(table_name)
                 .map_err(|e| Box::new(e) as _)
-                .context(InitRegionMeta {
+                .context(InitTableUnitMeta {
                     namespace: self.name(),
                 })?;
             if !exists {
                 self.table_kv
                     .create_table(table_name)
                     .map_err(|e| Box::new(e) as _)
-                    .context(InitRegionMeta {
+                    .context(InitTableUnitMeta {
                         namespace: self.name(),
                     })?;
 
-                info!("Create region meta table, table_name:{}", table_name);
+                info!("Create table unit meta table, table_name:{}", table_name);
             }
         }
 
@@ -428,34 +447,37 @@ impl<T: TableKv> NamespaceInner<T> {
         Ok(())
     }
 
-    fn get_region_from_memory(&self, region_id: RegionId) -> Option<RegionRef> {
-        let regions = self.regions.read().unwrap();
-        regions.get(&region_id).cloned()
+    fn get_table_unit_from_memory(&self, region_id: RegionId) -> Option<TableUnitRef> {
+        let table_units = self.table_units.read().unwrap();
+        table_units.get(&region_id).cloned()
     }
 
-    fn insert_or_get_region(&self, region: RegionRef) -> RegionRef {
-        let mut regions = self.regions.write().unwrap();
-        // Region already exists.
-        if let Some(v) = regions.get(&region.region_id()) {
+    fn insert_or_get_table_unit(&self, table_unit: TableUnitRef) -> TableUnitRef {
+        let mut table_units = self.table_units.write().unwrap();
+        // Table unit already exists.
+        if let Some(v) = table_units.get(&table_unit.table_id()) &&
+            v.region_id() == table_unit.region_id()
+        {
             return v.clone();
         }
 
-        regions.insert(region.region_id(), region.clone());
+        table_units.insert(table_unit.table_id(), table_unit.clone());
 
-        region
+        table_unit
     }
 
     fn clean_deleted_logs(&self) -> Result<()> {
-        let regions = self.list_regions();
+        let table_units = self.list_table_units();
         let buckets = self.list_buckets();
         let clean_ctx = self.config.new_clean_ctx();
 
-        for region in regions {
-            region
+        for table_unit in table_units {
+            table_unit
                 .clean_deleted_logs(&self.table_kv, &clean_ctx, &buckets)
                 .context(CleanLog {
                     namespace: self.name(),
-                    region_id: region.region_id(),
+                    region_id: table_unit.region_id(),
+                    table_id: table_unit.table_id(),
                 })?;
         }
 
@@ -465,83 +487,114 @@ impl<T: TableKv> NamespaceInner<T> {
 
 // Async operations.
 impl<T: TableKv> NamespaceInner<T> {
-    async fn get_or_open_region(&self, region_id: RegionId) -> Result<Option<RegionRef>> {
-        if let Some(region) = self.get_region_from_memory(region_id) {
-            return Ok(Some(region));
+    // FIXME: a dangerous bug, when table are scheduled to another node and
+    // scheduled back after, we should deprecate the `TableUnit` entry in memory
+    // but now we will continue to use the outdated entry.
+    async fn get_or_open_table_unit(
+        &self,
+        region_id: RegionId,
+        table_id: TableId,
+    ) -> Result<Option<TableUnitRef>> {
+        if let Some(table_unit) = self.get_table_unit_from_memory(table_id) &&
+            table_unit.region_id() == region_id
+        {
+            return Ok(Some(table_unit));
         }
 
-        self.open_region(region_id).await
+        self.open_table_unit(region_id, table_id).await
     }
 
-    // TODO(yingwen): Provide a close_region() method.
-    async fn open_region(&self, region_id: RegionId) -> Result<Option<RegionRef>> {
-        let region_meta_table = self.region_meta_table(region_id);
+    // TODO(yingwen): Provide a close_talbe_unit() method.
+    async fn open_table_unit(
+        &self,
+        region_id: RegionId,
+        table_id: TableId,
+    ) -> Result<Option<TableUnitRef>> {
+        let table_unit_meta_table = self.table_unit_meta_table(region_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
-        let region_opt = Region::open(
+        let table_unit_opt = TableUnit::open(
             self.runtimes.clone(),
             &self.table_kv,
             self.config.new_init_scan_ctx(),
-            region_meta_table,
+            table_unit_meta_table,
             region_id,
+            table_id,
             buckets,
         )
         .await
-        .context(OpenRegion {
+        .context(OpenTableUnit {
             namespace: self.name(),
             region_id,
+            table_id,
         })?;
-        let region = match region_opt {
+        let table_unit = match table_unit_opt {
             Some(v) => Arc::new(v),
             None => return Ok(None),
         };
 
         debug!(
-            "Open wal region, namespace:{}, region_id:{}",
+            "Open wal table unit, namespace:{}, region_id:{}",
             self.name(),
             region_id
         );
 
-        let region = self.insert_or_get_region(region);
+        let table_unit = self.insert_or_get_table_unit(table_unit);
 
-        Ok(Some(region))
+        Ok(Some(table_unit))
     }
 
-    async fn get_or_create_region(&self, region_id: RegionId) -> Result<RegionRef> {
-        if let Some(region) = self.get_region_from_memory(region_id) {
-            return Ok(region);
+    // FIXME: a dangerous bug, when table are scheduled to another node and
+    // scheduled back after, we should deprecate the `TableUnit` entry in memory
+    // but now we will continue to use the outdated entry.
+    async fn get_or_create_table_unit(
+        &self,
+        region_id: RegionId,
+        table_id: TableId,
+    ) -> Result<TableUnitRef> {
+        if let Some(table_unit) = self.get_table_unit_from_memory(table_id) &&
+            table_unit.region_id() == region_id
+        {
+            return Ok(table_unit);
         }
 
-        self.create_region(region_id).await
+        self.create_table_unit(region_id, table_id).await
     }
 
-    async fn create_region(&self, region_id: RegionId) -> Result<RegionRef> {
-        let region_meta_table = self.region_meta_table(region_id);
+    async fn create_table_unit(
+        &self,
+        region_id: RegionId,
+        table_id: TableId,
+    ) -> Result<TableUnitRef> {
+        let table_unit_meta_table = self.table_unit_meta_table(region_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
-        let region = Region::open_or_create(
+        let table_unit = TableUnit::open_or_create(
             self.runtimes.clone(),
             &self.table_kv,
             self.config.new_init_scan_ctx(),
-            region_meta_table,
+            table_unit_meta_table,
             region_id,
+            table_id,
             buckets,
         )
         .await
-        .context(CreateRegion {
+        .context(CreateTableUnit {
             namespace: self.name(),
             region_id,
+            table_id,
         })?;
 
         debug!(
-            "Create wal region, namespace:{}, region_id:{}",
+            "Create wal table unit, namespace:{}, region_id:{}, table_id:{}",
             self.name(),
-            region_id
+            region_id,
+            table_id,
         );
 
-        let region = self.insert_or_get_region(Arc::new(region));
+        let table_unit = self.insert_or_get_table_unit(Arc::new(table_unit));
 
-        Ok(region)
+        Ok(table_unit)
     }
 
     /// Write log to this namespace.
@@ -550,28 +603,33 @@ impl<T: TableKv> NamespaceInner<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
-        let region_id = batch.location.table_id;
+        let region_id = batch.location.shard_id as RegionId;
+        let table_id = batch.location.table_id;
         let now = Timestamp::now();
         // Get current bucket to write.
         let bucket = self.get_or_create_bucket(now)?;
 
-        let region = self.get_or_create_region(region_id).await?;
+        let table_unit = self.get_or_create_table_unit(region_id, table_id).await?;
 
-        let sequence = region
+        let sequence = table_unit
             .write_log(&self.table_kv, &bucket, ctx, batch)
             .await
-            .context(WriteRegion {
+            .context(WriteTableUnit {
                 namespace: self.name(),
                 region_id,
+                table_id,
             })?;
 
         Ok(sequence)
     }
 
     /// Get last sequence number of this region.
-    async fn last_sequence(&self, region_id: RegionId) -> Result<SequenceNumber> {
-        if let Some(region) = self.get_or_open_region(region_id).await? {
-            return Ok(region.last_sequence());
+    async fn last_sequence(&self, location: Location) -> Result<SequenceNumber> {
+        let region_id = location.shard_id as RegionId;
+        let table_id = location.table_id;
+
+        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
+            return Ok(table_unit.last_sequence());
         }
 
         Ok(common_types::MIN_SEQUENCE_NUMBER)
@@ -584,35 +642,37 @@ impl<T: TableKv> NamespaceInner<T> {
         // buckets.
         let buckets = self.list_buckets();
 
-        let region_id = req.location.table_id;
-        if let Some(region) = self.get_or_open_region(region_id).await? {
-            region
+        let region_id = req.location.shard_id as RegionId;
+        let table_id = req.location.table_id;
+        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
+            table_unit
                 .read_log(&self.table_kv, buckets, ctx, req)
                 .await
-                .context(ReadRegion {
+                .context(ReadTableUnit {
                     namespace: self.name(),
                     region_id,
+                    table_id,
                 })
         } else {
             Ok(TableLogIterator::new_empty(self.table_kv.clone()))
         }
     }
 
-    /// Delete entries up to `sequence_num` of region identified by `region_id`.
-    async fn delete_entries(
-        &self,
-        region_id: RegionId,
-        sequence_num: SequenceNumber,
-    ) -> Result<()> {
-        if let Some(region) = self.get_or_open_region(region_id).await? {
-            let region_meta_table = self.region_meta_table(region_id);
+    /// Delete entries up to `sequence_num` of table unit identified by
+    /// `location`.
+    async fn delete_entries(&self, location: Location, sequence_num: SequenceNumber) -> Result<()> {
+        let region_id = location.shard_id as RegionId;
+        let table_id = location.table_id;
+        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
+            let table_unit_meta_table = self.table_unit_meta_table(table_id);
 
-            region
-                .delete_entries_up_to(&self.table_kv, region_meta_table, sequence_num)
+            table_unit
+                .delete_entries_up_to(&self.table_kv, table_unit_meta_table, sequence_num)
                 .await
                 .context(DeleteEntries {
                     namespace: self.name(),
                     region_id,
+                    table_id,
                 })?;
         }
 
@@ -777,14 +837,14 @@ pub struct Namespace<T> {
 
 impl<T> fmt::Debug for Namespace<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let region_num = self.inner.regions.read().unwrap().len();
+        let table_unit_num = self.inner.table_units.read().unwrap().len();
 
         f.debug_struct("Namespace")
             .field("entry", &self.inner.entry)
             .field("bucket_set", &self.inner.bucket_set)
-            .field("regions", &region_num)
+            .field("table_units", &table_unit_num)
             .field("meta_table_name", &self.inner.meta_table_name)
-            .field("region_meta_tables", &self.inner.region_meta_tables)
+            .field("table_unit_meta_tables", &self.inner.table_unit_meta_tables)
             .field("config", &self.inner.config)
             .finish()
     }
@@ -893,10 +953,10 @@ impl<T: TableKv> Namespace<T> {
         entry: NamespaceEntry,
         config: NamespaceConfig,
     ) -> Result<Self> {
-        let mut region_meta_tables = Vec::with_capacity(entry.region_meta.shard_num);
-        for shard_id in 0..entry.region_meta.shard_num {
-            let table_name = encoding::format_region_meta_name(&entry.name, shard_id);
-            region_meta_tables.push(table_name);
+        let mut table_unit_meta_tables = Vec::with_capacity(entry.table_unit_meta.shard_num);
+        for shard_id in 0..entry.table_unit_meta.shard_num {
+            let table_name = encoding::format_table_unit_meta_name(&entry.name, shard_id);
+            table_unit_meta_tables.push(table_name);
         }
 
         let bucket_set = BucketSet::new(config.ttl.is_some());
@@ -906,15 +966,15 @@ impl<T: TableKv> Namespace<T> {
             table_kv,
             entry,
             bucket_set: RwLock::new(bucket_set),
-            regions: RwLock::new(HashMap::new()),
+            table_units: RwLock::new(HashMap::new()),
             meta_table_name: meta_table_name.to_string(),
-            region_meta_tables,
+            table_unit_meta_tables,
             operator: Mutex::new(TableOperator),
             bucket_creator: Mutex::new(BucketCreator),
             config,
         });
 
-        inner.init_region_meta()?;
+        inner.init_table_unit_meta()?;
 
         inner.load_buckets()?;
 
@@ -1013,9 +1073,9 @@ impl<T: TableKv> Namespace<T> {
         self.inner.write_log(ctx, batch).await
     }
 
-    /// Get last sequence number of this region.
-    pub async fn last_sequence(&self, region_id: RegionId) -> Result<SequenceNumber> {
-        self.inner.last_sequence(region_id).await
+    /// Get last sequence number of this table unit.
+    pub async fn last_sequence(&self, location: Location) -> Result<SequenceNumber> {
+        self.inner.last_sequence(location).await
     }
 
     /// Read log from this namespace. Note that the iterating the iterator may
@@ -1028,20 +1088,21 @@ impl<T: TableKv> Namespace<T> {
         self.inner.read_log(ctx, req).await
     }
 
-    /// Delete entries up to `sequence_num` of region identified by `region_id`.
+    /// Delete entries up to `sequence_num` of table unit identified by
+    /// `region_id` and `table_id`.
     pub async fn delete_entries(
         &self,
-        region_id: RegionId,
+        location: Location,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        self.inner.delete_entries(region_id, sequence_num).await
+        self.inner.delete_entries(location, sequence_num).await
     }
 
     /// Stop background tasks and close this namespace.
     pub async fn close(&self) -> Result<()> {
         info!("Try to close namespace, namespace:{}", self.name());
 
-        self.inner.clear_regions();
+        self.inner.clear_table_units();
 
         if let Some(monitor_handle) = &self.monitor_handle {
             monitor_handle.stop_task().await.context(StopTask {
@@ -1367,7 +1428,7 @@ mod tests {
         fn build(self) -> Namespace<T> {
             let config = NamespaceConfig {
                 wal_shard_num: 4,
-                region_meta_shard_num: 4,
+                table_unit_meta_shard_num: 4,
                 ttl: self.ttl.map(Into::into),
                 ..Default::default()
             };
@@ -1620,10 +1681,7 @@ mod tests {
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;
 
-            namespace
-                .delete_entries(location.table_id, seq1)
-                .await
-                .unwrap();
+            namespace.delete_entries(location, seq1).await.unwrap();
 
             let inner = &namespace.inner;
             log_cleaner_routine(inner.clone()).await;

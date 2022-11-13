@@ -76,7 +76,7 @@ impl WalBuilder for MemoryTableWalBuilder {
     async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let config = NamespaceConfig {
             wal_shard_num: 2,
-            region_meta_shard_num: 2,
+            table_unit_meta_shard_num: 2,
             ttl: self.ttl,
             ..Default::default()
         };

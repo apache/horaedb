@@ -4,15 +4,15 @@
 
 use std::{str, time::Duration};
 
-use common_types::time::Timestamp;
+use common_types::{table::TableId, time::Timestamp};
 use common_util::{config::ReadableDuration, define_result};
 use serde_derive::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::ScanContext;
 
 use crate::{
-    manager::{RegionId, SequenceNumber},
-    table_kv_impl::{consts, region::CleanContext},
+    manager::SequenceNumber,
+    table_kv_impl::{consts, table_unit::CleanContext},
 };
 
 #[derive(Debug, Snafu)]
@@ -54,12 +54,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Too much region meta shards, namespace:{}, shard_num:{}.\nBacktrace:\n{}",
+        "Too much table unit meta shards, namespace:{}, shard_num:{}.\nBacktrace:\n{}",
         namespace,
         shard_num,
         backtrace
     ))]
-    TooMuchRegionMetaShards {
+    TooMuchTableUnitMetaShards {
         namespace: String,
         shard_num: usize,
         backtrace: Backtrace,
@@ -94,7 +94,7 @@ define_result!(Error);
 
 const DEFAULT_WAL_SHARD_NUM: usize = 512;
 const DEFAULT_TTL_DAYS: u64 = 1;
-const DEFAULT_REGION_META_SHARD_NUM: usize = 128;
+const DEFAULT_TABLE_UNIT_META_SHARD_NUM: usize = 128;
 const MAX_NAME_LEN: usize = 16;
 
 fn validate_name(name: &str) -> Result<()> {
@@ -171,18 +171,18 @@ impl Default for WalShardEntry {
     }
 }
 
-/// Data of region meta tables.
+/// Data of table unit meta tables.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
-pub struct RegionMetaEntry {
-    /// Hash shard num of region meta tables.
+pub struct TableUnitMetaEntry {
+    /// Hash shard num of table unit meta tables.
     pub shard_num: usize,
 }
 
-impl Default for RegionMetaEntry {
+impl Default for TableUnitMetaEntry {
     fn default() -> Self {
         Self {
-            shard_num: DEFAULT_REGION_META_SHARD_NUM,
+            shard_num: DEFAULT_TABLE_UNIT_META_SHARD_NUM,
         }
     }
 }
@@ -195,8 +195,8 @@ pub struct NamespaceEntry {
     pub name: String,
     /// Wal shard datas.
     pub wal: WalShardEntry,
-    /// Region meta shard datas.
-    pub region_meta: RegionMetaEntry,
+    /// Table unit meta shard datas.
+    pub table_unit_meta: TableUnitMetaEntry,
 }
 
 impl NamespaceEntry {
@@ -242,7 +242,7 @@ impl Default for NamespaceEntry {
         Self {
             name: "wal".to_string(),
             wal: WalShardEntry::default(),
-            region_meta: RegionMetaEntry::default(),
+            table_unit_meta: TableUnitMetaEntry::default(),
         }
     }
 }
@@ -252,7 +252,7 @@ impl Default for NamespaceEntry {
 #[serde(default)]
 pub struct NamespaceConfig {
     pub wal_shard_num: usize,
-    pub region_meta_shard_num: usize,
+    pub table_unit_meta_shard_num: usize,
     pub ttl: Option<ReadableDuration>,
 
     pub init_scan_timeout: ReadableDuration,
@@ -276,8 +276,8 @@ impl NamespaceConfig {
                 ttl: self.ttl,
                 shard_num: self.wal_shard_num,
             },
-            region_meta: RegionMetaEntry {
-                shard_num: self.region_meta_shard_num,
+            table_unit_meta: TableUnitMetaEntry {
+                shard_num: self.table_unit_meta_shard_num,
             },
         };
 
@@ -312,7 +312,7 @@ impl Default for NamespaceConfig {
 
         Self {
             wal_shard_num: DEFAULT_WAL_SHARD_NUM,
-            region_meta_shard_num: DEFAULT_REGION_META_SHARD_NUM,
+            table_unit_meta_shard_num: DEFAULT_TABLE_UNIT_META_SHARD_NUM,
             ttl: Some(ReadableDuration::days(DEFAULT_TTL_DAYS)),
 
             init_scan_timeout: ReadableDuration::secs(10),
@@ -323,8 +323,8 @@ impl Default for NamespaceConfig {
     }
 }
 
-/// Contains all wal shards of given time range, region is routed to a specific
-/// shard by its region id.
+/// Contains all wal shards of given time range, table unit is routed to a
+/// specific shard by its region id.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct BucketEntry {
@@ -430,31 +430,31 @@ impl BucketEntry {
     }
 }
 
-/// Meta data of a region.
+/// Meta data of a table unit.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
-pub struct RegionEntry {
+pub struct TableUnitEntry {
     #[serde(with = "format_string")]
-    pub region_id: RegionId,
+    pub table_id: TableId,
     #[serde(with = "format_string")]
     pub start_sequence: SequenceNumber,
     // TODO(yingwen): We can store last wal shard name when writing to this
     // entry, so we can skip earlier shards during searching last sequence.
 }
 
-impl Default for RegionEntry {
+impl Default for TableUnitEntry {
     fn default() -> Self {
         Self {
-            region_id: 0,
+            table_id: 0,
             start_sequence: common_types::MIN_SEQUENCE_NUMBER,
         }
     }
 }
 
-impl RegionEntry {
-    pub fn new(region_id: RegionId) -> RegionEntry {
-        RegionEntry {
-            region_id,
+impl TableUnitEntry {
+    pub fn new(table_id: TableId) -> TableUnitEntry {
+        TableUnitEntry {
+            table_id,
             ..Default::default()
         }
     }
@@ -570,22 +570,22 @@ mod tests {
             ttl: None,
             shard_num: 8,
         };
-        let region_meta = RegionMetaEntry { shard_num: 4 };
+        let table_unit_meta = TableUnitMetaEntry { shard_num: 4 };
         let mut namespace_entry = NamespaceEntry {
             name: "hello".to_string(),
             wal,
-            region_meta,
+            table_unit_meta,
         };
 
         check_namespace_entry(
             &namespace_entry,
-            r#"{"name":"hello","wal":{"enable_ttl":true,"ttl":null,"shard_num":8},"region_meta":{"shard_num":4}}"#,
+            r#"{"name":"hello","wal":{"enable_ttl":true,"ttl":null,"shard_num":8},"table_unit_meta":{"shard_num":4}}"#,
         );
 
         namespace_entry.wal.ttl = Some(ReadableDuration::from_str("2d").unwrap());
         check_namespace_entry(
             &namespace_entry,
-            r#"{"name":"hello","wal":{"enable_ttl":true,"ttl":"2d","shard_num":8},"region_meta":{"shard_num":4}}"#,
+            r#"{"name":"hello","wal":{"enable_ttl":true,"ttl":"2d","shard_num":8},"table_unit_meta":{"shard_num":4}}"#,
         );
     }
 
@@ -622,40 +622,43 @@ mod tests {
         );
     }
 
-    fn check_region_entry_codec(region_entry: &RegionEntry, expect_json: &str) {
-        let json = region_entry.encode().unwrap();
+    fn check_table_unit_entry_codec(table_unit_entry: &TableUnitEntry, expect_json: &str) {
+        let json = table_unit_entry.encode().unwrap();
         check_json(expect_json, &json);
 
-        let decoded = RegionEntry::decode(&json).unwrap();
-        assert_eq!(*region_entry, decoded);
+        let decoded = TableUnitEntry::decode(&json).unwrap();
+        assert_eq!(*table_unit_entry, decoded);
     }
 
     #[test]
-    fn test_region_entry_codec() {
-        let region_entry = RegionEntry {
-            region_id: RegionId::MIN,
+    fn test_table_unit_entry_codec() {
+        let table_unit_entry = TableUnitEntry {
+            table_id: TableId::MIN,
             start_sequence: common_types::MIN_SEQUENCE_NUMBER,
         };
 
-        check_region_entry_codec(&region_entry, r#"{"region_id":"0","start_sequence":"0"}"#);
+        check_table_unit_entry_codec(
+            &table_unit_entry,
+            r#"{"region_id":"0","start_sequence":"0"}"#,
+        );
 
-        let region_entry = RegionEntry {
-            region_id: crate::manager::MAX_REGION_ID,
+        let table_unit_entry = TableUnitEntry {
+            table_id: crate::manager::MAX_REGION_ID,
             start_sequence: common_types::MAX_SEQUENCE_NUMBER,
         };
 
-        check_region_entry_codec(
-            &region_entry,
+        check_table_unit_entry_codec(
+            &table_unit_entry,
             r#"{"region_id":"18446744073709551615","start_sequence":"18446744073709551615"}"#,
         );
 
-        let region_entry = RegionEntry {
-            region_id: 12345,
+        let table_unit_entry = TableUnitEntry {
+            table_id: 12345,
             start_sequence: 5432,
         };
 
-        check_region_entry_codec(
-            &region_entry,
+        check_table_unit_entry_codec(
+            &table_unit_entry,
             r#"{"region_id":"12345","start_sequence":"5432"}"#,
         );
     }

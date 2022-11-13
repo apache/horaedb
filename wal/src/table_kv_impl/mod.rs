@@ -9,7 +9,7 @@ use common_util::runtime::Runtime;
 pub mod encoding;
 pub mod model;
 mod namespace;
-mod region;
+mod table_unit;
 mod timed_task;
 pub mod wal;
 
