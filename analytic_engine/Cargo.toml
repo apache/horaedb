@@ -24,6 +24,7 @@ ethbloom = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
+lru = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }

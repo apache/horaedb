@@ -4,16 +4,16 @@
 
 use std::{cmp, sync::Arc, time::Instant};
 
-use analytic_engine::sst::factory::{Factory, FactoryImpl, SstReaderOptions, SstType};
+use analytic_engine::sst::{
+    factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
+    meta_cache::{MetaCache, MetaCacheRef},
+};
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use parquet_ext::{
-    cache::{LruDataCache, LruMetaCache},
-    DataCacheRef, MetaCacheRef,
-};
+use parquet_ext::{cache::LruDataCache, DataCacheRef};
 
 use crate::{config::SstBenchConfig, util};
 
@@ -32,12 +32,9 @@ impl SstBench {
 
         let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
         let sst_path = Path::from(config.sst_file_name.clone());
-        let meta_cache: Option<MetaCacheRef> =
-            if let Some(sst_meta_cache_cap) = config.sst_meta_cache_cap {
-                Some(Arc::new(LruMetaCache::new(sst_meta_cache_cap)))
-            } else {
-                None
-            };
+        let meta_cache: Option<MetaCacheRef> = config
+            .sst_meta_cache_cap
+            .map(|cap| Arc::new(MetaCache::new(cap)));
 
         let data_cache: Option<DataCacheRef> =
             if let Some(sst_data_cache_cap) = config.sst_data_cache_cap {

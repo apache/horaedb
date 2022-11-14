@@ -9,9 +9,12 @@ pub mod tests;
 
 use std::sync::Arc;
 
+use parquet::file::metadata::ParquetMetaData;
 pub use serialized_reader::CacheableSerializedFileReader;
 
 use crate::cache::{DataCache, MetaCache};
 
 pub type MetaCacheRef = Arc<dyn MetaCache + Send + Sync>;
 pub type DataCacheRef = Arc<dyn DataCache + Send + Sync>;
+
+pub type ParquetMetaDataRef = Arc<ParquetMetaData>;

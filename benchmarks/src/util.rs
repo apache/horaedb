@@ -11,6 +11,7 @@ use analytic_engine::{
         factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
+        meta_cache::MetaCacheRef,
         parquet::reader,
     },
     table::sst_util,
@@ -27,7 +28,7 @@ use common_util::{
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
