@@ -544,7 +544,7 @@ pub struct Schema {
     /// datum
     arrow_schema: ArrowSchemaRef,
     /// The primary key index list in columns
-    primary_key_index: Vec<usize>,
+    primary_key_indexes: Vec<usize>,
     /// Index of timestamp key column
     // TODO(yingwen): Maybe we can remove the restriction that timestamp column must exists in
     //  schema (mainly for projected schema)
@@ -570,7 +570,7 @@ impl fmt::Debug for Schema {
             .field("enable_tsid_primary_key", &self.enable_tsid_primary_key)
             .field("column_schemas", &self.column_schemas)
             .field("version", &self.version)
-            .field("primary_key_index", &self.primary_key_index)
+            .field("primary_key_indexes", &self.primary_key_indexes)
             .finish()
     }
 }
@@ -607,7 +607,7 @@ impl Schema {
                 continue;
             }
 
-            if self.primary_key_index.contains(&idx) {
+            if self.primary_key_indexes.contains(&idx) {
                 result.push(col.clone());
             }
         }
@@ -623,7 +623,7 @@ impl Schema {
                 continue;
             }
 
-            if !self.primary_key_index.contains(&idx) {
+            if !self.primary_key_indexes.contains(&idx) {
                 result.push(col.clone());
             }
         }
@@ -650,8 +650,8 @@ impl Schema {
     }
 
     /// Returns true if idx is primary key idnex
-    pub fn contains_primary_key_index(&self, idx: &usize) -> bool {
-        self.primary_key_index.contains(idx)
+    pub fn is_primary_key_index(&self, idx: &usize) -> bool {
+        self.primary_key_indexes.contains(idx)
     }
 
     /// Returns an immutable reference of a specific [ColumnSchema] selected by
@@ -689,9 +689,13 @@ impl Schema {
         self.column_schemas.index_of(name)
     }
 
+    pub fn primary_key_indexes(&self) -> &[usize] {
+        &self.primary_key_indexes
+    }
+
     /// Return the number of columns index in primary key
-    pub fn primary_key_idx(&self) -> &[usize] {
-        &self.primary_key_index
+    pub fn num_primary_key_columns(&self) -> usize {
+        self.primary_key_indexes.len()
     }
 
     /// Get the name of the timestamp column
@@ -736,7 +740,7 @@ impl Schema {
     ///
     /// REQUIRES: the two rows must have the key columns defined by the schema.
     pub fn compare_row<R: RowView>(&self, lhs: &R, rhs: &R) -> Ordering {
-        compare_row(&self.primary_key_index, lhs, rhs)
+        compare_row(&self.primary_key_indexes, lhs, rhs)
     }
 
     /// Returns `Ok` if rows with `writer_schema` can write to table with the
@@ -810,7 +814,7 @@ impl Schema {
     pub fn to_record_schema_with_key(&self) -> RecordSchemaWithKey {
         RecordSchemaWithKey {
             record_schema: self.to_record_schema(),
-            key_index: self.primary_key_index.clone(),
+            key_index: self.primary_key_indexes.clone(),
         }
     }
 
@@ -819,10 +823,10 @@ impl Schema {
         &self,
         projection: &[usize],
     ) -> RecordSchemaWithKey {
-        let mut primary_key_idx = Vec::with_capacity(self.primary_key_idx().len());
-        let mut columns = Vec::with_capacity(self.primary_key_idx().len());
+        let mut primary_key_idx = Vec::with_capacity(self.num_primary_key_columns());
+        let mut columns = Vec::with_capacity(self.num_primary_key_columns());
         for (idx, col) in self.columns().iter().enumerate() {
-            if self.primary_key_idx().contains(&idx) {
+            if self.is_primary_key_index(&idx) {
                 primary_key_idx.push(columns.len());
                 columns.push(col.clone());
             } else if projection.contains(&idx) {
@@ -881,17 +885,12 @@ impl TryFrom<common_pb::TableSchema> for Schema {
         let mut builder = Builder::with_capacity(schema.columns.len())
             .version(schema.version)
             .enable_tsid_primary_key(schema.enable_tsid_primary_key);
-        let mut primary_key_index = schema.primary_key_index;
-        if primary_key_index.is_empty() && schema.num_key_columns > 0 {
-            for i in 0..schema.num_key_columns {
-                primary_key_index.push(i as u64);
-            }
-        }
+        let primary_key_indexes = schema.primary_key_indexes;
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
             let column =
                 ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
-            if primary_key_index.contains(&(i as u64)) {
+            if primary_key_indexes.contains(&(i as u64)) {
                 builder = builder.add_key_column(column)?;
             } else {
                 builder = builder.add_normal_column(column)?;
@@ -911,12 +910,15 @@ impl From<&Schema> for common_pb::TableSchema {
             .collect();
 
         let table_schema = common_pb::TableSchema {
-            num_key_columns: schema.primary_key_index.len() as u32,
             timestamp_index: schema.timestamp_index as u32,
             enable_tsid_primary_key: schema.enable_tsid_primary_key,
             version: schema.version,
             columns,
-            primary_key_index: schema.primary_key_index.iter().map(|i| *i as u64).collect(),
+            primary_key_indexes: schema
+                .primary_key_indexes
+                .iter()
+                .map(|i| *i as u64)
+                .collect(),
         };
 
         table_schema
@@ -927,9 +929,8 @@ impl From<&Schema> for common_pb::TableSchema {
 #[must_use]
 pub struct Builder {
     columns: Vec<ColumnSchema>,
-    /// The number of primary key columns
-    num_key_columns: usize,
-    primary_key_index: Vec<usize>,
+    /// The indexes with primary key columns
+    primary_key_indexes: Vec<usize>,
     /// Timestamp column index
     timestamp_index: Option<usize>,
     column_names: HashSet<String>,
@@ -959,8 +960,7 @@ impl Builder {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             columns: Vec::with_capacity(capacity),
-            num_key_columns: 0,
-            primary_key_index: Vec::new(),
+            primary_key_indexes: Vec::new(),
             timestamp_index: None,
             column_names: HashSet::with_capacity(capacity),
             column_ids: HashSet::with_capacity(capacity),
@@ -992,8 +992,8 @@ impl Builder {
             self.timestamp_index = Some(self.columns.len());
         }
 
-        self.primary_key_index.push(self.columns.len());
-        self.insert_new_key_column(column);
+        self.primary_key_indexes.push(self.columns.len());
+        self.insert_new_column(column);
 
         Ok(self)
     }
@@ -1003,7 +1003,7 @@ impl Builder {
         self.may_alloc_column_id(&mut column);
         self.validate_column(&column, false)?;
 
-        self.insert_new_normal_column(column);
+        self.insert_new_column(column);
 
         Ok(self)
     }
@@ -1067,16 +1067,7 @@ impl Builder {
         Ok(())
     }
 
-    fn insert_new_key_column(&mut self, column: ColumnSchema) {
-        self.column_names.insert(column.name.clone());
-        self.column_ids.insert(column.id);
-
-        self.num_key_columns += 1;
-
-        self.columns.push(column);
-    }
-
-    fn insert_new_normal_column(&mut self, column: ColumnSchema) {
+    fn insert_new_column(&mut self, column: ColumnSchema) {
         self.column_names.insert(column.name.clone());
         self.column_ids.insert(column.id);
 
@@ -1106,13 +1097,13 @@ impl Builder {
 
         let column_schemas = Arc::new(ColumnSchemas::new(columns));
 
-        let mut primary_key_index = Vec::new();
+        let mut primary_key_indexes = Vec::new();
         for i in 0..num_key_columns {
-            primary_key_index.push(i);
+            primary_key_indexes.push(i);
         }
         Ok(Schema {
             arrow_schema,
-            primary_key_index,
+            primary_key_indexes,
             timestamp_index,
             tsid_index,
             enable_tsid_primary_key,
@@ -1139,7 +1130,7 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::NumKeyColumns.to_string(),
-                self.num_key_columns.to_string(),
+                self.primary_key_indexes.len().to_string(),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
@@ -1183,30 +1174,12 @@ impl Builder {
 
     /// Build the schema
     pub fn build(self) -> Result<Schema> {
-        let retry_timestamp_key = if self.timestamp_index.is_none() {
-            let timestamps = self
-                .columns
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, col)| {
-                    if col.data_type == DatumKind::Timestamp {
-                        Some(idx)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            timestamps.first().copied()
-        } else {
-            self.timestamp_index
-        };
-
-        let timestamp_index = retry_timestamp_key.context(MissingTimestampKey)?;
+        let timestamp_index = self.timestamp_index.context(MissingTimestampKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero
-        assert!(self.num_key_columns > 0);
+        assert!(!self.primary_key_indexes.is_empty());
         if self.enable_tsid_primary_key {
-            ensure!(self.num_key_columns == 2, InvalidTsidSchema);
+            ensure!(self.primary_key_indexes.len() == 2, InvalidTsidSchema);
         }
 
         let tsid_index = Self::find_tsid_index(self.enable_tsid_primary_key, &self.columns)?;
@@ -1216,7 +1189,7 @@ impl Builder {
 
         Ok(Schema {
             arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
-            primary_key_index: self.primary_key_index,
+            primary_key_indexes: self.primary_key_indexes,
             timestamp_index,
             tsid_index,
             enable_tsid_primary_key: self.enable_tsid_primary_key,
@@ -1335,7 +1308,7 @@ mod tests {
         // Length related test
         assert_eq!(4, schema.columns().len());
         assert_eq!(4, schema.num_columns());
-        assert_eq!(2, schema.primary_key_index.len());
+        assert_eq!(2, schema.primary_key_indexes.len());
         assert_eq!(1, schema.timestamp_index());
 
         // Test key columns

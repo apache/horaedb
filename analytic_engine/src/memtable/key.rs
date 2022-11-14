@@ -121,7 +121,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
-        for idx in self.schema.primary_key_idx() {
+        for idx in self.schema.primary_key_indexes() {
             encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
         }
         SequenceCodec.encode(buf, &self.sequence)?;
@@ -132,7 +132,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     fn estimate_encoded_size(&self, value: &Row) -> usize {
         let encoder = MemComparable;
         let mut total_len = 0;
-        for idx in self.schema.primary_key_idx() {
+        for idx in self.schema.primary_key_indexes() {
             total_len += encoder.estimate_encoded_size(&value[*idx]);
         }
         total_len += KEY_SEQUENCE_BYTES_LEN;

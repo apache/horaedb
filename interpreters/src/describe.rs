@@ -49,7 +49,7 @@ impl DescribeInterpreter {
         for (idx, col) in table_schema.columns().iter().enumerate() {
             names.push(col.name.to_string());
             types.push(col.data_type.to_string());
-            is_primary_keys.push(table_schema.contains_primary_key_index(&idx));
+            is_primary_keys.push(table_schema.is_primary_key_index(&idx));
             is_nullables.push(col.is_nullable);
             is_tags.push(col.is_tag);
         }

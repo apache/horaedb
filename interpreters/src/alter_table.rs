@@ -85,7 +85,7 @@ fn build_new_schema(current_schema: &Schema, column_schemas: Vec<ColumnSchema>) 
             // Increment the schema version.
             .version(current_version + 1);
     for (idx, column) in current_schema.columns().iter().enumerate() {
-        if current_schema.primary_key_idx().contains(&idx) {
+        if current_schema.is_primary_key_index(&idx) {
             builder = builder
                 .add_key_column(column.clone())
                 .context(AddColumnSchema)?;

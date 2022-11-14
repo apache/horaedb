@@ -804,7 +804,7 @@ mod tests {
         let schema = schema.unwrap();
 
         assert_eq!(8, schema.num_columns());
-        assert_eq!(2, schema.primary_key_idx().len());
+        assert_eq!(2, schema.num_primary_key_columns());
         assert_eq!(TIMESTAMP_COLUMN, schema.timestamp_name());
         let tsid = schema.tsid_column();
         assert!(tsid.is_some());
