@@ -6,41 +6,11 @@ use std::{
 };
 
 use lru::LruCache;
-use parquet::file::metadata::ParquetMetaData;
-
-pub trait MetaCache: Debug {
-    fn get(&self, key: &str) -> Option<Arc<ParquetMetaData>>;
-
-    fn put(&self, key: String, value: Arc<ParquetMetaData>);
-}
 
 pub trait DataCache: Debug {
     fn get(&self, key: &str) -> Option<Arc<Vec<u8>>>;
 
     fn put(&self, key: String, value: Arc<Vec<u8>>);
-}
-
-#[derive(Debug)]
-pub struct LruMetaCache {
-    cache: RwLock<LruCache<String, Arc<ParquetMetaData>>>,
-}
-
-impl LruMetaCache {
-    pub fn new(cap: usize) -> Self {
-        Self {
-            cache: RwLock::new(LruCache::new(cap)),
-        }
-    }
-}
-
-impl MetaCache for LruMetaCache {
-    fn get(&self, key: &str) -> Option<Arc<ParquetMetaData>> {
-        self.cache.write().unwrap().get(key).cloned()
-    }
-
-    fn put(&self, key: String, value: Arc<ParquetMetaData>) {
-        self.cache.write().unwrap().put(key, value);
-    }
 }
 
 #[derive(Debug)]

@@ -62,7 +62,7 @@ pub struct Reader<'a> {
     batch_size: usize,
 
     /// init those fields in `init_if_necessary`
-    metadata: Option<MetaData>,
+    meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
 }
 
@@ -77,7 +77,7 @@ impl<'a> Reader<'a> {
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             batch_size,
-            metadata: None,
+            meta_data: None,
             row_projector: None,
         }
     }
@@ -99,30 +99,30 @@ impl<'a> Reader<'a> {
     }
 
     async fn fetch_record_batch_stream(&mut self) -> Result<SendableRecordBatchStream> {
-        assert!(self.metadata.is_some());
+        assert!(self.meta_data.is_some());
 
-        let metadata = self.metadata.as_ref().unwrap();
+        let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
         let file_reader = CachableParquetFileReader::new(
             self.storage.clone(),
             self.path.clone(),
-            metadata.clone(),
+            meta_data.clone(),
             self.data_cache.clone(),
         );
         let filtered_row_groups = self.filter_row_groups(
-            metadata.custom.schema.to_arrow_schema_ref(),
-            metadata.parquet.row_groups(),
-            &metadata.custom.bloom_filter,
+            meta_data.custom.schema.to_arrow_schema_ref(),
+            meta_data.parquet.row_groups(),
+            &meta_data.custom.bloom_filter,
         )?;
 
         debug!(
             "fetch_record_batch row_groups total:{}, after filter:{}",
-            metadata.parquet.num_row_groups(),
+            meta_data.parquet.num_row_groups(),
             filtered_row_groups.len()
         );
 
         let proj_mask = ProjectionMask::leaves(
-            metadata.parquet.file_metadata().schema_descr(),
+            meta_data.parquet.file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
 
@@ -141,18 +141,18 @@ impl<'a> Reader<'a> {
     }
 
     async fn init_if_necessary(&mut self) -> Result<()> {
-        if self.metadata.is_some() {
+        if self.meta_data.is_some() {
             return Ok(());
         }
 
-        let metadata = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
+        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
 
         let row_projector = self
             .projected_schema
-            .try_project_with_key(&metadata.custom.schema)
+            .try_project_with_key(&meta_data.custom.schema)
             .map_err(|e| Box::new(e) as _)
             .context(Projection)?;
-        self.metadata = Some(metadata);
+        self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
         Ok(())
     }
@@ -165,7 +165,7 @@ impl<'a> Reader<'a> {
             "start decode parquet meta data, sst:{}",
             object_meta.location
         );
-        let metadata =
+        let meta_data =
             file_format::parquet::fetch_parquet_metadata(storage.as_ref(), object_meta, None)
                 .await
                 .map_err(|e| Box::new(e) as _)
@@ -174,7 +174,7 @@ impl<'a> Reader<'a> {
             "finish decoding parquet meta data, sst:{}",
             object_meta.location
         );
-        Ok(Arc::new(metadata))
+        Ok(Arc::new(meta_data))
     }
 
     async fn read_sst_meta(
@@ -189,8 +189,8 @@ impl<'a> Reader<'a> {
         }
 
         let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
-        let parquet_metadata = Self::load_meta_data_from_storage(storage, &object_meta).await?;
-        let kv_metas = parquet_metadata
+        let parquet_meta_data = Self::load_meta_data_from_storage(storage, &object_meta).await?;
+        let kv_metas = parquet_meta_data
             .file_metadata()
             .key_value_metadata()
             .context(SstMetaNotFound)?;
@@ -203,24 +203,24 @@ impl<'a> Reader<'a> {
         // https://github.com/CeresDB/ceresdb/issues/321
         sst_meta.size = object_meta.size as u64;
         let sst_meta = Arc::new(sst_meta);
-        let metadata = MetaData {
-            parquet: parquet_metadata,
+        let meta_data = MetaData {
+            parquet: parquet_meta_data,
             custom: sst_meta,
         };
 
         if let Some(cache) = meta_cache {
-            cache.put(path.to_string(), metadata.clone());
+            cache.put(path.to_string(), meta_data.clone());
         }
 
-        Ok(metadata)
+        Ok(meta_data)
     }
 
     #[cfg(test)]
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let metadata = Self::read_sst_meta(self.storage, self.path, &self.meta_cache)
+        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache)
             .await
             .unwrap();
-        metadata.parquet.row_groups().to_vec()
+        meta_data.parquet.row_groups().to_vec()
     }
 }
 
@@ -234,7 +234,7 @@ struct ReaderMetrics {
 struct CachableParquetFileReader {
     storage: ObjectStoreRef,
     path: Path,
-    metadata: MetaData,
+    meta_data: MetaData,
     data_cache: Option<DataCacheRef>,
     metrics: ReaderMetrics,
 }
@@ -243,13 +243,13 @@ impl CachableParquetFileReader {
     fn new(
         storage: ObjectStoreRef,
         path: Path,
-        metadata: MetaData,
+        meta_data: MetaData,
         data_cache: Option<DataCacheRef>,
     ) -> Self {
         Self {
             storage,
             path,
-            metadata,
+            meta_data,
             data_cache,
             metrics: Default::default(),
         }
@@ -299,7 +299,7 @@ impl AsyncFileReader for CachableParquetFileReader {
     fn get_metadata(
         &mut self,
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
-        Box::pin(async move { Ok(self.metadata.parquet.clone()) })
+        Box::pin(async move { Ok(self.meta_data.parquet.clone()) })
     }
 }
 
@@ -390,7 +390,7 @@ impl<'a> SstReader for Reader<'a> {
     async fn meta_data(&mut self) -> Result<&SstMetaData> {
         self.init_if_necessary().await?;
 
-        Ok(self.metadata.as_ref().unwrap().custom.as_ref())
+        Ok(self.meta_data.as_ref().unwrap().custom.as_ref())
     }
 
     async fn read(
@@ -403,7 +403,7 @@ impl<'a> SstReader for Reader<'a> {
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
 
         let storage_format_opts = self
-            .metadata
+            .meta_data
             .as_ref()
             // metadata must be inited after `init_if_necessary`.
             .unwrap()
