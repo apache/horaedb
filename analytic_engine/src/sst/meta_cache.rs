@@ -10,12 +10,17 @@ use parquet_ext::ParquetMetaDataRef;
 
 use crate::sst::file::SstMetaDataRef;
 
+pub type MetaCacheRef = Arc<MetaCache>;
+
+/// The metadata of one sst file, including the original metadata of parquet and
+/// the custom metadata of ceresdb.
 #[derive(Debug, Clone)]
 pub struct MetaData {
     pub parquet: ParquetMetaDataRef,
     pub custom: SstMetaDataRef,
 }
 
+/// A cache for storing [`MetaData`].
 #[derive(Debug)]
 pub struct MetaCache {
     cache: RwLock<LruCache<String, MetaData>>,
@@ -36,5 +41,3 @@ impl MetaCache {
         self.cache.write().unwrap().put(key, value);
     }
 }
-
-pub type MetaCacheRef = Arc<MetaCache>;

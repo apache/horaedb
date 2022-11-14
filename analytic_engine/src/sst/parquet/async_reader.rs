@@ -161,19 +161,11 @@ impl<'a> Reader<'a> {
         storage: &ObjectStoreRef,
         object_meta: &ObjectMeta,
     ) -> Result<ParquetMetaDataRef> {
-        debug!(
-            "start decode parquet meta data, sst:{}",
-            object_meta.location
-        );
         let meta_data =
             file_format::parquet::fetch_parquet_metadata(storage.as_ref(), object_meta, None)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?;
-        debug!(
-            "finish decoding parquet meta data, sst:{}",
-            object_meta.location
-        );
         Ok(Arc::new(meta_data))
     }
 
@@ -187,27 +179,33 @@ impl<'a> Reader<'a> {
                 return Ok(meta_data);
             }
         }
+        // The metadata can't be found in the cache, and let's fetch it from the
+        // storage.
 
-        let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
-        let parquet_meta_data = Self::load_meta_data_from_storage(storage, &object_meta).await?;
-        let kv_metas = parquet_meta_data
-            .file_metadata()
-            .key_value_metadata()
-            .context(SstMetaNotFound)?;
-        ensure!(!kv_metas.is_empty(), EmptySstMeta);
+        let meta_data = {
+            let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
+            let parquet_meta_data =
+                Self::load_meta_data_from_storage(storage, &object_meta).await?;
+            let kv_metas = parquet_meta_data
+                .file_metadata()
+                .key_value_metadata()
+                .context(SstMetaNotFound)?;
+            ensure!(!kv_metas.is_empty(), EmptySstMeta);
 
-        let mut sst_meta = encoding::decode_sst_meta_data(&kv_metas[0])
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeSstMeta)?;
-        // size in sst_meta is always 0, so overwrite it here
-        // https://github.com/CeresDB/ceresdb/issues/321
-        sst_meta.size = object_meta.size as u64;
-        let sst_meta = Arc::new(sst_meta);
-        let meta_data = MetaData {
-            parquet: parquet_meta_data,
-            custom: sst_meta,
+            let mut sst_meta = encoding::decode_sst_meta_data(&kv_metas[0])
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeSstMeta)?;
+            // size in sst_meta is always 0, so overwrite it here
+            // https://github.com/CeresDB/ceresdb/issues/321
+            sst_meta.size = object_meta.size as u64;
+
+            MetaData {
+                parquet: parquet_meta_data,
+                custom: Arc::new(sst_meta),
+            }
         };
 
+        // Update the cache if necessary.
         if let Some(cache) = meta_cache {
             cache.put(path.to_string(), meta_data.clone());
         }
