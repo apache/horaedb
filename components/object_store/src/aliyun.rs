@@ -18,16 +18,23 @@ use upstream::{
 
 #[derive(Debug, Snafu)]
 enum Error {
-    #[snafu(display("Failed to put object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to put object at path:{}, err:{}", path, source))]
     PutObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to get object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to get object at path:{}, err:{}", path, source))]
     GetObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to head object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to get range of object at path:{}, err:{}", path, source))]
+    GetRangeObject {
+        path: String,
+        range: Range<usize>,
+        source: AliyunError,
+    },
+
+    #[snafu(display("Failed to head object at path:{}, err:{}", path, source))]
     HeadObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to delete object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to delete object at path:{}, err:{}", path, source))]
     DeleteObject { path: String, source: AliyunError },
 
     #[snafu(display("Operation {} is not implemented", op))]
@@ -66,7 +73,7 @@ impl AliyunOSS {
         Self { oss }
     }
 
-    fn make_range_header(range: Range<usize>, headers: &mut HashMap<String, String>) {
+    fn make_range_header(range: &Range<usize>, headers: &mut HashMap<String, String>) {
         assert!(!range.is_empty());
         let range_value = format!("bytes={}-{}", range.start, range.end - 1);
 
@@ -85,8 +92,8 @@ impl ObjectStore for AliyunOSS {
                 None,
             )
             .await
-            .context(PutObject {
-                path: &location.to_string(),
+            .with_context(|| PutObject {
+                path: location.to_string(),
             })?;
 
         Ok(())
@@ -114,8 +121,8 @@ impl ObjectStore for AliyunOSS {
             .oss
             .get_object(&location.to_string(), None::<HashMap<String, String>>, None)
             .await
-            .context(GetObject {
-                path: &location.to_string(),
+            .with_context(|| GetObject {
+                path: location.to_string(),
             })?;
 
         Ok(GetResult::Stream(stream::once(async { Ok(bytes) }).boxed()))
@@ -127,14 +134,15 @@ impl ObjectStore for AliyunOSS {
         }
 
         let mut headers = HashMap::new();
-        Self::make_range_header(range, &mut headers);
+        Self::make_range_header(&range, &mut headers);
 
         let bytes = self
             .oss
             .get_object(&location.to_string(), Some(headers), None)
             .await
-            .context(GetObject {
-                path: &location.to_string(),
+            .with_context(|| GetRangeObject {
+                path: location.to_string(),
+                range,
             })?;
 
         Ok(bytes)
@@ -145,8 +153,8 @@ impl ObjectStore for AliyunOSS {
             .oss
             .head_object(&location.to_string())
             .await
-            .context(HeadObject {
-                path: &location.to_string(),
+            .with_context(|| HeadObject {
+                path: location.to_string(),
             })?;
 
         Ok(ObjectMeta {
@@ -160,8 +168,8 @@ impl ObjectStore for AliyunOSS {
         self.oss
             .delete_object(&location.to_string())
             .await
-            .context(DeleteObject {
-                path: &location.to_string(),
+            .with_context(|| DeleteObject {
+                path: location.to_string(),
             })?;
 
         Ok(())
@@ -216,7 +224,7 @@ mod tests {
 
         for (input_range, expect_value) in testcases {
             let mut headers = HashMap::new();
-            AliyunOSS::make_range_header(input_range, &mut headers);
+            AliyunOSS::make_range_header(&input_range, &mut headers);
 
             assert_eq!(headers.len(), 1);
             let range_value = headers
@@ -231,13 +239,13 @@ mod tests {
     fn test_panic_invalid_range_header() {
         let mut headers = HashMap::new();
         #[allow(clippy::reversed_empty_ranges)]
-        AliyunOSS::make_range_header(500..499, &mut headers);
+        AliyunOSS::make_range_header(&(500..499), &mut headers);
     }
 
     #[test]
     #[should_panic]
     fn test_panic_empty_range_header() {
         let mut headers = HashMap::new();
-        AliyunOSS::make_range_header(500..500, &mut headers);
+        AliyunOSS::make_range_header(&(500..500), &mut headers);
     }
 }
