@@ -17,7 +17,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use crate::{
     kv_encoder::Namespace,
     manager::{self, RegionId},
-    message_queue_impl::region_meta::{RegionMetaSnapshot, TableMetaData},
+    message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData},
 };
 
 const NEWEST_MQ_META_KEY_ENCODING_VERSION: u8 = 0;
@@ -377,7 +377,7 @@ mod tests {
     use common_types::bytes::BytesMut;
 
     use super::{MetaEncoding, MetaKey};
-    use crate::message_queue_impl::region_meta::{RegionMetaSnapshot, TableMetaData};
+    use crate::message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData};
 
     #[test]
     fn test_meta_encoding() {

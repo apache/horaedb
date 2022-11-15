@@ -15,7 +15,7 @@ use crate::{
     message_queue_impl::{
         self,
         encoding::{MetaEncoding, MetaKey},
-        region_meta::RegionMetaSnapshot,
+        region_context::RegionMetaSnapshot,
     },
 };
 

@@ -10,7 +10,7 @@ use message_queue::Message;
 mod encoding;
 mod log_cleaner;
 mod region;
-mod region_meta;
+mod region_context;
 mod snapshot_synchronizer;
 
 #[cfg(test)]
