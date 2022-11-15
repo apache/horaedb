@@ -519,6 +519,8 @@ pub struct SstMetaData {
     pub bloom_filter: BloomFilter,
 }
 
+pub type SstMetaDataRef = Arc<SstMetaData>;
+
 impl SstMetaData {
     pub fn storage_format(&self) -> StorageFormat {
         self.storage_format_opts.format

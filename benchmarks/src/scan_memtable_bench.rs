@@ -4,16 +4,19 @@
 
 use std::{collections::Bound, sync::Arc};
 
-use analytic_engine::memtable::{
-    factory::{Factory as MemTableFactory, Options},
-    skiplist::factory::SkiplistMemTableFactory,
-    MemTableRef, ScanContext, ScanRequest,
+use analytic_engine::{
+    memtable::{
+        factory::{Factory as MemTableFactory, Options},
+        skiplist::factory::SkiplistMemTableFactory,
+        MemTableRef, ScanContext, ScanRequest,
+    },
+    sst::meta_cache::MetaCacheRef,
 };
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
 use log::info;
 use object_store::{LocalFileSystem, Path};
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 
 use crate::{config::ScanMemTableBenchConfig, util};
 

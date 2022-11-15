@@ -29,8 +29,8 @@ use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{DataCacheRef, MetaCacheRef};
-use snafu::{ensure, OptionExt, ResultExt};
+use parquet_ext::{DataCacheRef, ParquetMetaDataRef};
+use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -38,10 +38,8 @@ use crate::{
     sst::{
         factory::SstReaderOptions,
         file::{BloomFilter, SstMetaData},
-        parquet::{
-            encoding::{self, ParquetDecoder},
-            row_group_filter::RowGroupFilter,
-        },
+        meta_cache::{MetaCacheRef, MetaData},
+        parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
         reader::{error::*, Result, SstReader},
     },
     table_options::StorageFormatOptions,
@@ -61,7 +59,7 @@ pub struct Reader<'a> {
     batch_size: usize,
 
     /// init those fields in `init_if_necessary`
-    meta_data: Option<SstMetaData>,
+    meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
 }
 
@@ -105,28 +103,29 @@ impl<'a> Reader<'a> {
         let file_reader = CachableParquetFileReader::new(
             self.storage.clone(),
             self.path.clone(),
+            meta_data.clone(),
             self.data_cache.clone(),
-            Some(meta_data.size as usize),
         );
-        let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
-            .await
-            .with_context(|| ParquetError)?;
         let filtered_row_groups = self.filter_row_groups(
-            meta_data.schema.to_arrow_schema_ref(),
-            builder.metadata().row_groups(),
-            &meta_data.bloom_filter,
+            meta_data.custom().schema.to_arrow_schema_ref(),
+            meta_data.parquet().row_groups(),
+            &meta_data.custom().bloom_filter,
         )?;
 
         debug!(
             "fetch_record_batch row_groups total:{}, after filter:{}",
-            builder.metadata().num_row_groups(),
+            meta_data.parquet().num_row_groups(),
             filtered_row_groups.len()
         );
 
         let proj_mask = ProjectionMask::leaves(
-            builder.metadata().file_metadata().schema_descr(),
+            meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
+
+        let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
+            .await
+            .with_context(|| ParquetError)?;
         let stream = builder
             .with_batch_size(self.batch_size)
             .with_row_groups(filtered_row_groups)
@@ -143,72 +142,66 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let sst_meta = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
+        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
 
         let row_projector = self
             .projected_schema
-            .try_project_with_key(&sst_meta.schema)
+            .try_project_with_key(&meta_data.custom().schema)
             .map_err(|e| Box::new(e) as _)
             .context(Projection)?;
-        self.meta_data = Some(sst_meta);
+        self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
         Ok(())
+    }
+
+    async fn load_meta_data_from_storage(
+        storage: &ObjectStoreRef,
+        object_meta: &ObjectMeta,
+    ) -> Result<ParquetMetaDataRef> {
+        let meta_data =
+            file_format::parquet::fetch_parquet_metadata(storage.as_ref(), object_meta, None)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeSstMeta)?;
+        Ok(Arc::new(meta_data))
     }
 
     async fn read_sst_meta(
         storage: &ObjectStoreRef,
         path: &Path,
         meta_cache: &Option<MetaCacheRef>,
-    ) -> Result<SstMetaData> {
-        let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
-        let file_size = object_meta.size;
-
-        let get_metadata_from_storage = || async {
-            let mut reader = CachableParquetFileReader::new(
-                storage.clone(),
-                path.clone(),
-                None,
-                Some(file_size),
-            );
-            let metadata = reader.get_metadata().await.context(ParquetError {})?;
-
-            if let Some(cache) = meta_cache {
-                cache.put(path.to_string(), metadata.clone());
+    ) -> Result<MetaData> {
+        if let Some(cache) = meta_cache {
+            if let Some(meta_data) = cache.get(path.as_ref()) {
+                return Ok(meta_data);
             }
-            Ok(metadata)
+        }
+        // The metadata can't be found in the cache, and let's fetch it from the
+        // storage.
+
+        let meta_data = {
+            let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
+            let parquet_meta_data =
+                Self::load_meta_data_from_storage(storage, &object_meta).await?;
+            MetaData::try_new(&parquet_meta_data, object_meta.size)
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeSstMeta)?
         };
 
-        let metadata = if let Some(cache) = meta_cache {
-            if let Some(cached_data) = cache.get(path.as_ref()) {
-                cached_data
-            } else {
-                get_metadata_from_storage().await?
-            }
-        } else {
-            get_metadata_from_storage().await?
-        };
+        // Update the cache if necessary.
+        if let Some(cache) = meta_cache {
+            cache.put(path.to_string(), meta_data.clone());
+        }
 
-        let kv_metas = metadata
-            .file_metadata()
-            .key_value_metadata()
-            .context(SstMetaNotFound)?;
-        ensure!(!kv_metas.is_empty(), EmptySstMeta);
-
-        let mut sst_meta = encoding::decode_sst_meta_data(&kv_metas[0])
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeSstMeta)?;
-        // size in sst_meta is always 0, so overwrite it here
-        // https://github.com/CeresDB/ceresdb/issues/321
-        sst_meta.size = file_size as u64;
-        Ok(sst_meta)
+        Ok(meta_data)
     }
 
     #[cfg(test)]
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let mut reader =
-            CachableParquetFileReader::new(self.storage.clone(), self.path.clone(), None, None);
-        let metadata = reader.get_metadata().await.unwrap();
-        metadata.row_groups().to_vec()
+        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache)
+            .await
+            .unwrap();
+        meta_data.parquet().row_groups().to_vec()
     }
 }
 
@@ -222,8 +215,8 @@ struct ReaderMetrics {
 struct CachableParquetFileReader {
     storage: ObjectStoreRef,
     path: Path,
+    meta_data: MetaData,
     data_cache: Option<DataCacheRef>,
-    file_size: Option<usize>,
     metrics: ReaderMetrics,
 }
 
@@ -231,14 +224,14 @@ impl CachableParquetFileReader {
     fn new(
         storage: ObjectStoreRef,
         path: Path,
+        meta_data: MetaData,
         data_cache: Option<DataCacheRef>,
-        file_size: Option<usize>,
     ) -> Self {
         Self {
             storage,
             path,
+            meta_data,
             data_cache,
-            file_size,
             metrics: Default::default(),
         }
     }
@@ -287,37 +280,7 @@ impl AsyncFileReader for CachableParquetFileReader {
     fn get_metadata(
         &mut self,
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
-        Box::pin(async move {
-            let object_meta = if let Some(size) = self.file_size {
-                ObjectMeta {
-                    location: self.path.clone(),
-                    // we don't care modified time
-                    last_modified: Default::default(),
-                    size,
-                }
-            } else {
-                self.storage.head(&self.path).await.map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "CachableParquetFileReader::storage_head error: {}",
-                        e
-                    ))
-                })?
-            };
-
-            let metadata = file_format::parquet::fetch_parquet_metadata(
-                self.storage.as_ref(),
-                &object_meta,
-                None,
-            )
-            .await
-            .map_err(|e| {
-                parquet::errors::ParquetError::General(format!(
-                    "CachableParquetFileReader::fetch_parquet_metadata error: {}",
-                    e
-                ))
-            })?;
-            Ok(Arc::new(metadata))
-        })
+        Box::pin(async move { Ok(self.meta_data.parquet().clone()) })
     }
 }
 
@@ -408,7 +371,7 @@ impl<'a> SstReader for Reader<'a> {
     async fn meta_data(&mut self) -> Result<&SstMetaData> {
         self.init_if_necessary().await?;
 
-        Ok(self.meta_data.as_ref().unwrap())
+        Ok(self.meta_data.as_ref().unwrap().custom().as_ref())
     }
 
     async fn read(
@@ -417,10 +380,17 @@ impl<'a> SstReader for Reader<'a> {
         self.init_if_necessary().await?;
 
         let stream = self.fetch_record_batch_stream().await?;
-        let metadata = &self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
-        let storage_format_opts = metadata.storage_format_opts.clone();
+
+        let storage_format_opts = self
+            .meta_data
+            .as_ref()
+            // metadata must be inited after `init_if_necessary`.
+            .unwrap()
+            .custom()
+            .storage_format_opts
+            .clone();
 
         Ok(Box::new(RecordBatchProjector::new(
             self.path.to_string(),

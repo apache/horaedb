@@ -13,7 +13,7 @@ bytes = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 log = { workspace = true }
-lru = "0.7.0"
+lru = { workspace = true }
 parquet = { workspace = true }
 parquet-format = "4.0.0"
 thrift = "0.13"

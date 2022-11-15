@@ -4,10 +4,10 @@
 
 use std::{fmt, sync::Arc};
 
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 use table_engine::engine::EngineRuntimes;
 
-use crate::Config;
+use crate::{sst::meta_cache::MetaCacheRef, Config};
 
 /// Context for instance open
 pub struct OpenContext {

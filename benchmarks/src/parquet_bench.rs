@@ -4,6 +4,7 @@
 
 use std::{io::Cursor, sync::Arc, time::Instant};
 
+use analytic_engine::sst::meta_cache::MetaCacheRef;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use futures::StreamExt;
@@ -12,7 +13,7 @@ use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
 };
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};

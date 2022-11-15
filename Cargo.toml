@@ -74,6 +74,7 @@ futures = "0.3"
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
+lru = "0.7.6"
 interpreters = { path = "interpreters" }
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }

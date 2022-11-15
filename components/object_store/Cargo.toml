@@ -13,7 +13,7 @@ oss-rust-sdk = "0.4.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 snafu = { workspace = true }
-lru = "0.7.6"
+lru = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
 

@@ -25,9 +25,7 @@ use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
     file::metadata::{ParquetMetaData, RowGroupMetaData},
 };
-use parquet_ext::{
-    reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef, MetaCacheRef,
-};
+use parquet_ext::{reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -36,6 +34,7 @@ use super::row_group_filter::RowGroupFilter;
 use crate::sst::{
     factory::SstReaderOptions,
     file::SstMetaData,
+    meta_cache::MetaCacheRef,
     parquet::encoding::{self, ParquetDecoder},
     reader::{error::*, SstReader},
 };

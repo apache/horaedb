@@ -26,7 +26,7 @@ use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
 use object_store::ObjectStoreRef;
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use wal::manager::WalManagerRef;
@@ -35,7 +35,7 @@ use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     meta::ManifestRef,
     space::{SpaceId, SpaceRef},
-    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
+    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger, meta_cache::MetaCacheRef},
     table::data::TableDataRef,
     wal_synchronizer::WalSynchronizer,
     TableOptions,
