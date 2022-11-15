@@ -68,7 +68,7 @@ impl AliyunOSS {
 
     fn make_range_header(range: Range<usize>, headers: &mut HashMap<String, String>) {
         assert!(!range.is_empty());
-        let range_value = format!("bytes={}:{}", range.start, range.end - 1);
+        let range_value = format!("bytes={}-{}", range.start, range.end - 1);
 
         headers.insert(Self::RANGE_KEY.to_string(), range_value);
     }
