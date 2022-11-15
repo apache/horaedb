@@ -1116,7 +1116,7 @@ mod tests {
                 ],
             },
             version: 1,
-            primary_key_index: [
+            primary_key_indexes: [
                 0,
                 1,
             ],
@@ -1234,7 +1234,7 @@ mod tests {
                     ],
                 },
                 version: 1,
-                primary_key_index: [
+                primary_key_indexes: [
                     0,
                     1,
                 ],
@@ -1290,7 +1290,7 @@ mod tests {
                     ],
                 },
                 version: 1,
-                primary_key_index: [
+                primary_key_indexes: [
                     0,
                     1,
                 ],
@@ -1427,7 +1427,7 @@ mod tests {
                     ],
                 },
                 version: 1,
-                primary_key_index: [
+                primary_key_indexes: [
                     0,
                     1,
                 ],
@@ -1503,7 +1503,7 @@ mod tests {
                     ],
                 },
                 version: 1,
-                primary_key_index: [
+                primary_key_indexes: [
                     0,
                     1,
                 ],
@@ -1593,7 +1593,7 @@ mod tests {
                     ],
                 },
                 version: 1,
-                primary_key_index: [
+                primary_key_indexes: [
                     0,
                     1,
                 ],
@@ -1675,7 +1675,7 @@ mod tests {
                         ],
                     },
                     version: 1,
-                    primary_key_index: [
+                    primary_key_indexes: [
                         0,
                         1,
                     ],
