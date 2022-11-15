@@ -6,16 +6,20 @@ import (
 	"context"
 
 	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type Factory struct {
-	idAllocator id.Allocator
-	dispatch    eventdispatch.Dispatch
+	idAllocator    id.Allocator
+	dispatch       eventdispatch.Dispatch
+	storage        Storage
+	clusterManager cluster.Manager
 }
 
 type ScatterRequest struct {
@@ -39,14 +43,22 @@ type DropTableRequest struct {
 	OnFailed    func(error) error
 }
 
-func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch) *Factory {
+type TransferLeaderRequest struct {
+	ClusterName       string
+	ShardID           storage.ShardID
+	OldLeaderNodeName string
+	NewLeaderNodeName string
+}
+
+func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage Storage) *Factory {
 	return &Factory{
 		idAllocator: allocator,
 		dispatch:    dispatch,
+		storage:     storage,
 	}
 }
 
-func (f *Factory) CreateScatterProcedure(ctx context.Context, request *ScatterRequest) (Procedure, error) {
+func (f *Factory) CreateScatterProcedure(ctx context.Context, request ScatterRequest) (Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -55,7 +67,7 @@ func (f *Factory) CreateScatterProcedure(ctx context.Context, request *ScatterRe
 	return procedure, nil
 }
 
-func (f *Factory) CreateCreateTableProcedure(ctx context.Context, request *CreateTableRequest) (Procedure, error) {
+func (f *Factory) CreateCreateTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -65,7 +77,7 @@ func (f *Factory) CreateCreateTableProcedure(ctx context.Context, request *Creat
 	return procedure, nil
 }
 
-func (f *Factory) CreateDropTableProcedure(ctx context.Context, request *DropTableRequest) (Procedure, error) {
+func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTableRequest) (Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -73,6 +85,22 @@ func (f *Factory) CreateDropTableProcedure(ctx context.Context, request *DropTab
 	procedure := NewDropTableProcedure(f.dispatch, request.Cluster, id,
 		request.SourceReq, request.OnSucceeded, request.OnFailed)
 	return procedure, nil
+}
+
+func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request TransferLeaderRequest) (Procedure, error) {
+	id, err := f.allocProcedureID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := f.clusterManager.GetCluster(ctx, request.ClusterName)
+	if err != nil {
+		log.Error("cluster not found", zap.String("clusterName", request.ClusterName))
+		return nil, cluster.ErrClusterNotFound
+	}
+
+	return NewTransferLeaderProcedure(f.dispatch, c, f.storage,
+		request.ShardID, request.OldLeaderNodeName, request.NewLeaderNodeName, id)
 }
 
 func (f *Factory) allocProcedureID(ctx context.Context) (uint64, error) {

@@ -8,6 +8,7 @@ var (
 	ErrCreateCluster        = coderr.NewCodeError(coderr.BadRequest, "create cluster")
 	ErrClusterAlreadyExists = coderr.NewCodeError(coderr.ClusterAlreadyExists, "cluster already exists")
 	ErrClusterNotFound      = coderr.NewCodeError(coderr.NotFound, "cluster not found")
+	ErrClusterStateInvalid  = coderr.NewCodeError(coderr.Internal, "cluster state invalid")
 	ErrSchemaNotFound       = coderr.NewCodeError(coderr.NotFound, "schema not found")
 	ErrTableNotFound        = coderr.NewCodeError(coderr.NotFound, "table not found")
 	ErrShardNotFound        = coderr.NewCodeError(coderr.NotFound, "shard not found")

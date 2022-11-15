@@ -171,13 +171,14 @@ func (srv *Server) startServer(_ context.Context) error {
 	}
 	srv.clusterManager = manager
 
-	procedureManager, err := procedure.NewManagerImpl(srv.etcdCli, srv.cfg.StorageRootPath)
+	procedureStorage := procedure.NewEtcdStorageImpl(srv.etcdCli, srv.cfg.StorageRootPath)
+	procedureManager, err := procedure.NewManagerImpl(procedureStorage)
 	if err != nil {
 		return errors.WithMessage(err, "start server")
 	}
 	srv.procedureManager = procedureManager
 	dispatch := eventdispatch.NewDispatchImpl()
-	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch)
+	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage)
 	srv.procedureFactory = procedureFactory
 	srv.scheduler = coordinator.NewScheduler(manager, procedureManager, procedureFactory, dispatch)
 
@@ -258,7 +259,7 @@ func (srv *Server) createDefaultCluster(ctx context.Context) error {
 			}
 			shardIDs = append(shardIDs, storage.ShardID(shardID))
 		}
-		scatterRequest := &procedure.ScatterRequest{Cluster: defaultCluster, ShardIDs: shardIDs}
+		scatterRequest := procedure.ScatterRequest{Cluster: defaultCluster, ShardIDs: shardIDs}
 		scatterProcedure, err := srv.procedureFactory.CreateScatterProcedure(ctx, scatterRequest)
 		if err != nil {
 			return errors.WithMessage(err, "create scatter procedure failed")

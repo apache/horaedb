@@ -9,7 +9,6 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
 	"github.com/pkg/errors"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
 
@@ -98,9 +97,9 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 	return procedureInfos, nil
 }
 
-func NewManagerImpl(client *clientv3.Client, rootPath string) (Manager, error) {
+func NewManagerImpl(storage Storage) (Manager, error) {
 	manager := &ManagerImpl{
-		storage:  NewEtcdStorageImpl(client, rootPath),
+		storage:  storage,
 		dispatch: eventdispatch.NewDispatchImpl(),
 	}
 	return manager, nil

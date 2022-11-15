@@ -18,3 +18,17 @@ func cancelEventWithLog(event *fsm.Event, err error, msg string, fields ...zap.F
 	log.Error(msg, fields...)
 	event.Cancel(errors.WithMessage(err, msg))
 }
+
+// nolint
+func getRequestFromEvent[T any](event *fsm.Event) (T, error) {
+	if len(event.Args) != 1 {
+		return *new(T), ErrGetRequest.WithCausef("event args length must be 1, actual length:%v", len(event.Args))
+	}
+
+	switch request := event.Args[0].(type) {
+	case T:
+		return request, nil
+	default:
+		return *new(T), ErrGetRequest.WithCausef("event arg type must be same as return type")
+	}
+}

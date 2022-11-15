@@ -5,8 +5,14 @@ package procedure
 import "github.com/CeresDB/ceresmeta/pkg/coderr"
 
 var (
-	ErrShardLeaderNotFound  = coderr.NewCodeError(coderr.Internal, "shard leader not found")
-	ErrProcedureNotFound    = coderr.NewCodeError(coderr.Internal, "procedure not found")
-	ErrClusterConfigChanged = coderr.NewCodeError(coderr.Internal, "cluster config changed")
-	ErrTableAlreadyExists   = coderr.NewCodeError(coderr.Internal, "table already exists")
+	ErrShardLeaderNotFound   = coderr.NewCodeError(coderr.Internal, "shard leader not found")
+	ErrProcedureNotFound     = coderr.NewCodeError(coderr.Internal, "procedure not found")
+	ErrClusterConfigChanged  = coderr.NewCodeError(coderr.Internal, "cluster config changed")
+	ErrTableAlreadyExists    = coderr.NewCodeError(coderr.Internal, "table already exists")
+	ErrCreateProcedure       = coderr.NewCodeError(coderr.Internal, "create procedure")
+	ErrSubmitProcedure       = coderr.NewCodeError(coderr.Internal, "submit procedure")
+	ErrProcedureTypeNotMatch = coderr.NewCodeError(coderr.Internal, "procedure type not match")
+	ErrDecodeRawData         = coderr.NewCodeError(coderr.Internal, "decode raw data")
+	ErrEncodeRawData         = coderr.NewCodeError(coderr.Internal, "encode raw data")
+	ErrGetRequest            = coderr.NewCodeError(coderr.Internal, "get request from event")
 )

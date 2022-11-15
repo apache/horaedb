@@ -7,7 +7,7 @@ import (
 )
 
 type Write interface {
-	CreateOrUpdate(ctx context.Context, meta *Meta) error
+	CreateOrUpdate(ctx context.Context, meta Meta) error
 }
 
 type Meta struct {

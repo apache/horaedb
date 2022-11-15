@@ -52,13 +52,13 @@ func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
 func checkScatterWithCluster(t *testing.T, cluster *cluster.Cluster) {
 	re := require.New(t)
 	re.Equal(storage.ClusterStateStable, cluster.GetClusterState())
-	shardNodes, err := cluster.GetShardNodes()
+	shardNodes, err := cluster.GetNodeShards(context.Background())
 	re.NoError(err)
-	re.Equal(len(shardNodes), defaultShardTotal)
+	re.Equal(len(shardNodes.NodeShards), defaultShardTotal)
 	shardNodeMapping := make(map[string][]storage.ShardID, 0)
-	for _, shardNode := range shardNodes {
-		nodeName := shardNode.NodeName
-		shardID := shardNode.ID
+	for _, shardNodeWithVersion := range shardNodes.NodeShards {
+		nodeName := shardNodeWithVersion.ShardNode.NodeName
+		shardID := shardNodeWithVersion.ShardNode.ID
 		_, exists := shardNodeMapping[nodeName]
 		if !exists {
 			shardNodeMapping[nodeName] = make([]storage.ShardID, 0)

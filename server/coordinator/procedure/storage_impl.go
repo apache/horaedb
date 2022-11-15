@@ -35,8 +35,8 @@ func NewEtcdStorageImpl(client *clientv3.Client, rootPath string) Storage {
 
 // CreateOrUpdate example:
 // /{rootPath}/v1/procedure/{procedureID} -> {procedureType} + {procedureState} + {data}
-func (e EtcdStorageImpl) CreateOrUpdate(ctx context.Context, meta *Meta) error {
-	s, err := encode(meta)
+func (e EtcdStorageImpl) CreateOrUpdate(ctx context.Context, meta Meta) error {
+	s, err := encode(&meta)
 	if err != nil {
 		return errors.WithMessage(err, "encode meta failed")
 	}

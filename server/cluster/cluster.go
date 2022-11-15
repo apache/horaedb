@@ -165,10 +165,6 @@ func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName s
 	}, nil
 }
 
-func (c *Cluster) GetShardNodes() ([]storage.ShardNode, error) {
-	return c.topologyManager.GetShardNodes().shardNodes, nil
-}
-
 func (c *Cluster) GetShardNodesByShardID(id storage.ShardID) ([]storage.ShardNode, error) {
 	return c.topologyManager.GetShardNodesByID(id)
 }
@@ -245,7 +241,11 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 		nodeShards := make([]ShardNodeWithVersion, 0, len(value))
 		for _, shardNode := range value {
 			nodeShards = append(nodeShards, ShardNodeWithVersion{
-				version:   tableShardNodesWithShardViewVersion.Version[shardNode.ID],
+				ShardInfo: ShardInfo{
+					ID:      shardNode.ID,
+					Role:    shardNode.ShardRole,
+					Version: tableShardNodesWithShardViewVersion.Version[shardNode.ID],
+				},
 				ShardNode: shardNode,
 			})
 		}
@@ -273,7 +273,11 @@ func (c *Cluster) GetNodeShards(_ context.Context) (GetNodeShardsResult, error) 
 
 	for _, shardNode := range getNodeShardsResult.shardNodes {
 		shardNodesWithVersion = append(shardNodesWithVersion, ShardNodeWithVersion{
-			version:   getNodeShardsResult.versions[shardNode.ID],
+			ShardInfo: ShardInfo{
+				ID:      shardNode.ID,
+				Role:    shardNode.ShardRole,
+				Version: getNodeShardsResult.versions[shardNode.ID],
+			},
 			ShardNode: shardNode,
 		})
 	}

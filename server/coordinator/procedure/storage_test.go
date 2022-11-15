@@ -18,7 +18,7 @@ const (
 	DefaultScanBatchSie = 100
 )
 
-func newTestStorage(t *testing.T) Storage {
+func NewTestStorage(t *testing.T) Storage {
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := NewEtcdStorageImpl(client, TestRootPath)
 	return storage
@@ -29,7 +29,7 @@ func testWrite(t *testing.T, storage Storage) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
 
-	testMeta1 := &Meta{
+	testMeta1 := Meta{
 		ID:      uint64(1),
 		Typ:     TransferLeader,
 		State:   StateInit,
@@ -40,7 +40,7 @@ func testWrite(t *testing.T, storage Storage) {
 	err := storage.CreateOrUpdate(ctx, testMeta1)
 	re.NoError(err)
 
-	testMeta2 := &Meta{
+	testMeta2 := Meta{
 		ID:      uint64(2),
 		Typ:     TransferLeader,
 		State:   StateInit,
@@ -87,7 +87,7 @@ func testDelete(t *testing.T, storage Storage) {
 }
 
 func TestStorage(t *testing.T) {
-	storage := newTestStorage(t)
+	storage := NewTestStorage(t)
 	testWrite(t, storage)
 	testScan(t, storage)
 	testDelete(t, storage)
