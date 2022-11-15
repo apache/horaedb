@@ -19,7 +19,7 @@ use common_util::{
     config::ReadableDuration,
     runtime::{self, Runtime},
 };
-use message_queue::kafka::{config::Config, kafka_impl::KafkaImpl};
+use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
 use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
@@ -27,7 +27,7 @@ use tempfile::TempDir;
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{BatchLogIteratorAdapter, ReadContext, WalManager, WalManagerRef, WriteContext},
-    message_queue_impl::wal::MessageQueueImpl,
+    message_queue_impl::{config::Config, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -132,15 +132,26 @@ impl KafkaWalBuilder {
     }
 }
 
+impl Default for KafkaWalBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl WalBuilder for KafkaWalBuilder {
     type Wal = MessageQueueImpl<KafkaImpl>;
 
-    async fn build(&self, _data_path: &Path, _runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let mut config = Config::default();
+    async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
+        let mut config = KafkaConfig::default();
         config.client_config.boost_broker = Some("127.0.0.1:9011".to_string());
         let kafka_impl = KafkaImpl::new(config).await.unwrap();
-        let message_queue_impl = MessageQueueImpl::new(self.namespace.clone(), kafka_impl);
+        let message_queue_impl = MessageQueueImpl::new(
+            self.namespace.clone(),
+            kafka_impl,
+            runtime.clone(),
+            Config::default(),
+        );
 
         Arc::new(message_queue_impl)
     }

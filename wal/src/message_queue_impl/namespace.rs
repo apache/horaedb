@@ -1,20 +1,26 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Namespace of wal on message queue
+
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
 use common_types::{table::Location, SequenceNumber};
-use common_util::define_result;
-use log::{debug, info};
+use common_util::{define_result, runtime::Runtime};
+use log::{debug, error, info};
 use message_queue::{ConsumeIterator, MessageQueue};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::RwLock;
 
-use super::{
-    encoding::MetaEncoding,
-    region::{self, MessageQueueLogIterator, Region},
-};
 use crate::{
     kv_encoder::LogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
     manager::{ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WriteContext},
+    message_queue_impl::{
+        config::Config,
+        encoding::MetaEncoding,
+        region::{self, MessageQueueLogIterator, Region},
+    },
+    table_kv_impl::timed_task::{TaskHandle, TimedTask},
 };
 
 #[derive(Debug, Snafu)]
@@ -110,17 +116,116 @@ pub enum Error {
         sequence_num: SequenceNumber,
         source: region::Error,
     },
+
+    #[snafu(display("Clean logs failed, namespace:{}, err:{}", namespace, source))]
+    CleanLogs {
+        namespace: String,
+        source: region::Error,
+    },
+
+    #[snafu(display("Close namespace failed, namespace:{}, err:{}", namespace, source))]
+    Close {
+        namespace: String,
+        source: common_util::runtime::Error,
+    },
 }
 
 define_result!(Error);
 
-#[allow(unused)]
 pub struct Namespace<M: MessageQueue> {
-    namespace: String,
-    regions: RwLock<HashMap<RegionId, RegionRef<M>>>,
-    message_queue: Arc<M>,
-    meta_encoding: MetaEncoding,
-    log_encoding: LogEncoding,
+    /// Namespace inner
+    inner: Arc<NamespaceInner<M>>,
+
+    /// Handle for cleaner routine
+    cleaner_handle: TaskHandle,
+
+    /// Background runtime for cleaner routine
+    ///
+    /// Keep it here to ensure it won't be drop during the lifetime of
+    /// [Namespace].
+    _bg_runtime: Arc<Runtime>,
+}
+
+impl<M: MessageQueue> Namespace<M> {
+    /// Open namespace
+    ///
+    /// Mainly start logs cleaning routine.
+    pub fn open(
+        namespace: String,
+        message_queue: Arc<M>,
+        bg_runtime: Arc<Runtime>,
+        config: Config,
+    ) -> Self {
+        let inner = Arc::new(NamespaceInner::new(namespace, message_queue));
+        let cleaner_handle =
+            start_log_cleaner(bg_runtime.as_ref(), config.clean_period.0, inner.clone());
+
+        Self {
+            inner,
+            cleaner_handle,
+            _bg_runtime: bg_runtime,
+        }
+    }
+
+    /// Close namespace
+    ///
+    /// Mainly clear the regions and wait logs cleaning routine to stop.
+    pub async fn close(&self) -> Result<()> {
+        let mut regions = self.inner.regions.write().await;
+        regions.clear();
+
+        self.cleaner_handle.stop_task().await.context(Close {
+            namespace: self.inner.namespace.clone(),
+        })
+    }
+
+    /// Get table's sequence number.
+    ///
+    /// You can define the read range in `ReadRequest`.
+    pub async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
+        self.inner.sequence_num(location).await
+    }
+
+    /// Scan logs of specific table from region.
+    ///
+    /// You can define the read range in `ReadRequest`.
+    pub async fn read(
+        &self,
+        ctx: &ReadContext,
+        request: &ReadRequest,
+    ) -> Result<ReadTableIterator<M::ConsumeIterator>> {
+        self.inner.read(ctx, request).await
+    }
+
+    /// Scan all logs from a `Region`.
+    pub async fn scan(
+        &self,
+        ctx: &ScanContext,
+        request: &ScanRequest,
+    ) -> Result<ScanRegionIterator<M::ConsumeIterator>> {
+        self.inner.scan(ctx, request).await
+    }
+
+    /// Write a batch of log entries to region.
+    ///
+    /// Returns the max sequence number for the batch of log entries.
+    pub async fn write(
+        &self,
+        ctx: &WriteContext,
+        log_batch: &LogWriteBatch,
+    ) -> Result<SequenceNumber> {
+        self.inner.write(ctx, log_batch).await
+    }
+
+    /// Mark the logs of table in the region whose sequence number is in [0,
+    /// `sequence_number`] to be deleted in the future.
+    pub async fn mark_delete_to(
+        &self,
+        location: Location,
+        sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        self.inner.mark_delete_to(location, sequence_num).await
+    }
 }
 
 // TODO: more information should be included.
@@ -129,20 +234,27 @@ pub struct Namespace<M: MessageQueue> {
 impl<M: MessageQueue> fmt::Debug for Namespace<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Namespace")
-            .field("namespace", &self.namespace)
-            .field("message_queue", &self.message_queue)
-            .field("meta_encoding", &self.meta_encoding)
-            .field("log_encoding", &self.log_encoding)
+            .field("namespace", &self.inner.namespace)
+            .field("message_queue", &self.inner.message_queue)
+            .field("meta_encoding", &self.inner.meta_encoding)
+            .field("log_encoding", &self.inner.log_encoding)
             .finish()
     }
 }
 
-#[allow(unused)]
-impl<M: MessageQueue> Namespace<M> {
-    pub fn open(namespace: String, message_queue: Arc<M>) -> Self {
+struct NamespaceInner<M: MessageQueue> {
+    namespace: String,
+    regions: Arc<RwLock<HashMap<RegionId, RegionRef<M>>>>,
+    message_queue: Arc<M>,
+    meta_encoding: MetaEncoding,
+    log_encoding: LogEncoding,
+}
+
+impl<M: MessageQueue> NamespaceInner<M> {
+    pub fn new(namespace: String, message_queue: Arc<M>) -> Self {
         Self {
             namespace,
-            regions: RwLock::new(HashMap::new()),
+            regions: Arc::new(RwLock::new(HashMap::new())),
             message_queue,
             meta_encoding: MetaEncoding::newest(),
             log_encoding: LogEncoding::newest(),
@@ -192,9 +304,6 @@ impl<M: MessageQueue> Namespace<M> {
         Ok(region)
     }
 
-    /// Get table's sequence number.
-    ///
-    /// You can define the read range in `ReadRequest`.
     pub async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
         let region = self
             .get_or_open_region(location.shard_id as u64)
@@ -216,9 +325,6 @@ impl<M: MessageQueue> Namespace<M> {
             }))
     }
 
-    /// Scan logs of specific table from region.
-    ///
-    /// You can define the read range in `ReadRequest`.
     pub async fn read(
         &self,
         ctx: &ReadContext,
@@ -254,7 +360,6 @@ impl<M: MessageQueue> Namespace<M> {
         }
     }
 
-    /// Scan all logs from a `Region`.
     pub async fn scan(
         &self,
         ctx: &ScanContext,
@@ -291,9 +396,6 @@ impl<M: MessageQueue> Namespace<M> {
         }
     }
 
-    /// Write a batch of log entries to region.
-    ///
-    /// Returns the max sequence number for the batch of log entries.
     pub async fn write(
         &self,
         ctx: &WriteContext,
@@ -323,8 +425,6 @@ impl<M: MessageQueue> Namespace<M> {
         })
     }
 
-    /// Mark the logs of table in the region whose sequence number is in [0,
-    /// `sequence_number`] to be deleted in the future.
     pub async fn mark_delete_to(
         &self,
         location: Location,
@@ -350,12 +450,23 @@ impl<M: MessageQueue> Namespace<M> {
                 sequence_num,
             })
     }
+
+    async fn clean_logs(&self) -> Result<()> {
+        let regions = { self.regions.read().await.clone() };
+
+        for region in regions.values() {
+            region.clean_logs().await.context(CleanLogs {
+                namespace: self.namespace.clone(),
+            })?;
+        }
+
+        Ok(())
+    }
 }
 
 type RegionRef<M> = Arc<Region<M>>;
 
 /// Iterator of scanning the whole region
-#[allow(unused)]
 #[derive(Debug)]
 pub struct ScanRegionIterator<C: ConsumeIterator> {
     /// Namespace name
@@ -377,7 +488,6 @@ pub struct ScanRegionIterator<C: ConsumeIterator> {
     previous_value: Vec<u8>,
 }
 
-#[allow(unused)]
 impl<C: ConsumeIterator> ScanRegionIterator<C> {
     fn new_empty() -> Self {
         Self {
@@ -399,7 +509,7 @@ impl<C: ConsumeIterator> ScanRegionIterator<C> {
         }
     }
 
-    pub async fn next_log_entry_internal(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         // If inner iter is `Some`, poll it to get required log entry.
         if let Some(iter) = self.iter.as_mut() {
             if self.is_terminated {
@@ -434,7 +544,6 @@ impl<C: ConsumeIterator> ScanRegionIterator<C> {
 }
 
 /// Iterator of reading table among a setting range
-#[allow(unused)]
 #[derive(Debug)]
 pub struct ReadTableIterator<C: ConsumeIterator> {
     /// Namespace name
@@ -465,7 +574,6 @@ pub struct ReadTableIterator<C: ConsumeIterator> {
     previous_value: Vec<u8>,
 }
 
-#[allow(unused)]
 impl<C: ConsumeIterator> ReadTableIterator<C> {
     fn new_empty() -> Self {
         Self {
@@ -521,7 +629,7 @@ impl<C: ConsumeIterator> ReadTableIterator<C> {
         })
     }
 
-    pub async fn next_log_entry_internal(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+    pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         // If inner iter is `Some`, poll it to get required log entry.
         if let Some(iter) = self.iter.as_mut() {
             if self.is_terminated {
@@ -568,4 +676,39 @@ impl<C: ConsumeIterator> ReadTableIterator<C> {
 
         Ok(None)
     }
+}
+
+/// Loop all [Region] in [Namespace] and clean deleted logs.
+async fn log_cleaner_routine<M: MessageQueue>(inner: Arc<NamespaceInner<M>>) {
+    debug!(
+        "Periodical log cleaning process start, namespace:{}",
+        inner.namespace,
+    );
+
+    if let Err(e) = inner.clean_logs().await {
+        error!(
+            "Failed to clean deleted logs, namespace:{}, err:{}",
+            inner.namespace, e,
+        );
+    }
+
+    debug!(
+        "Periodical log cleaning process end, namespace:{}",
+        inner.namespace,
+    );
+}
+
+fn start_log_cleaner<M: MessageQueue>(
+    runtime: &Runtime,
+    period: Duration,
+    inner: Arc<NamespaceInner<M>>,
+) -> TaskHandle {
+    let name = format!("Log-cleaner-wal-on-mq-{}", inner.namespace);
+    let builder = move || {
+        let inner = inner.clone();
+
+        log_cleaner_routine(inner)
+    };
+
+    TimedTask::start_timed_task(name, runtime, period, builder)
 }

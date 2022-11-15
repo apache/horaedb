@@ -38,6 +38,7 @@ fn test_memory_table_wal_with_ttl() {
 }
 
 #[test]
+#[ignore = "this test needs a kafka cluster"]
 fn test_kafka_wal() {
     let builder = KafkaWalBuilder::new();
 

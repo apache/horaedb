@@ -12,7 +12,6 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
 use util::*;
 
-use super::region_context::{RegionContextBuilder, TableWriteContext};
 use crate::{
     kv_encoder::CommonLogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
@@ -20,7 +19,10 @@ use crate::{
     message_queue_impl::{
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
         log_cleaner::LogCleaner,
-        region_context::{self, RegionContext, RegionMetaDelta, RegionMetaSnapshot, TableMetaData},
+        region_context::{
+            self, RegionContext, RegionContextBuilder, RegionMetaDelta, RegionMetaSnapshot,
+            TableMetaData, TableWriteContext,
+        },
         snapshot_synchronizer::{self, SnapshotSynchronizer},
     },
 };
@@ -105,7 +107,6 @@ pub enum Error {
 define_result!(Error);
 
 /// Region in wal(message queue based)
-#[allow(unused)]
 pub struct Region<M: MessageQueue> {
     /// Region inner, see [RegionInner]
     ///
@@ -120,10 +121,9 @@ pub struct Region<M: MessageQueue> {
     snapshot_synchronizer: Mutex<SnapshotSynchronizer<M>>,
 
     /// Clean the outdated logs which are marked delete
-    log_cleaner: LogCleaner<M>,
+    log_cleaner: Mutex<LogCleaner<M>>,
 }
 
-#[allow(unused)]
 impl<M: MessageQueue> Region<M> {
     /// Init the region.
     pub async fn open(namespace: &str, region_id: RegionId, message_queue: Arc<M>) -> Result<Self> {
@@ -195,7 +195,7 @@ impl<M: MessageQueue> Region<M> {
             meta_topic,
             meta_encoding,
         ));
-        let log_cleaner = LogCleaner::new(region_id, message_queue.clone(), log_topic);
+        let log_cleaner = Mutex::new(LogCleaner::new(region_id, message_queue.clone(), log_topic));
 
         info!(
             "Finish opening region in namespace, namespace:{}, region id:{}",
@@ -318,7 +318,7 @@ impl<M: MessageQueue> Region<M> {
                 namespace,
                 region_id,
                 msg: "failed while recover from meta",
-            });
+            })?;
 
         Ok(high_watermark_in_snapshot)
     }
@@ -395,16 +395,6 @@ impl<M: MessageQueue> Region<M> {
                     msg: "failed while recover from log, key in message shouldn't be None",
                 })?;
 
-            let raw_value =
-                latest_message_and_offset
-                    .message
-                    .value
-                    .with_context(|| OpenNoCause {
-                        namespace,
-                        region_id,
-                        msg: "failed while recover from log, value in message shouldn't be None",
-                    })?;
-
             let key = log_encoding
                 .decode_key(raw_key.as_slice())
                 .map_err(|e| Box::new(e) as _)
@@ -436,7 +426,7 @@ impl<M: MessageQueue> Region<M> {
                         "failed while recover from log, region meta delta:{:?}",
                         region_meta_delta
                     ),
-                });
+                })?;
 
             // Has polled last log in topic, break.
             if latest_message_and_offset.offset + 1 == high_watermark {
@@ -546,7 +536,13 @@ impl<M: MessageQueue> Region<M> {
                 inner.region_context.region_id(), table_id, inner.log_topic, ctx
             );
 
-            let table_meta = inner.get_table_meta(table_id).await?;
+            let table_meta = match inner.get_table_meta(table_id).await? {
+                Some(table_meta) => table_meta,
+                None => {
+                    return Ok(None);
+                }
+            };
+
             if let Some(start_offset) = table_meta.safe_delete_offset {
                 (
                     table_id,
@@ -614,14 +610,13 @@ impl<M: MessageQueue> Region<M> {
     }
 
     /// Get meta data by table id.
-    pub async fn get_table_meta(&self, table_id: TableId) -> Result<TableMetaData> {
+    pub async fn get_table_meta(&self, table_id: TableId) -> Result<Option<TableMetaData>> {
         let inner = self.inner.read().await;
         inner.get_table_meta(table_id).await
     }
 
     /// Clean outdated logs according to the information in region snapshot.
-    #[allow(unused)]
-    pub async fn clean_logs(&mut self) -> Result<()> {
+    pub async fn clean_logs(&self) -> Result<()> {
         // Get current snapshot.
         let (snapshot, synchronizer) = {
             let inner = self.inner.write().await;
@@ -632,7 +627,8 @@ impl<M: MessageQueue> Region<M> {
         };
 
         // Check and maybe clean logs.
-        self.log_cleaner
+        let mut log_cleaner = self.log_cleaner.lock().await;
+        log_cleaner
             .maybe_clean_logs(&snapshot)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -655,7 +651,6 @@ impl<M: MessageQueue> Region<M> {
 }
 
 /// Region's inner, all methods of [Region] are mainly implemented in it.
-#[allow(unused)]
 struct RegionInner<M> {
     /// Region meta data(such as, tables' next sequence numbers)
     region_context: RegionContext,
@@ -670,7 +665,6 @@ struct RegionInner<M> {
     log_topic: String,
 }
 
-#[allow(unused)]
 impl<M: MessageQueue> RegionInner<M> {
     pub fn new(
         region_context: RegionContext,
@@ -738,7 +732,7 @@ impl<M: MessageQueue> RegionInner<M> {
             .context(MarkDeleteTo)
     }
 
-    async fn get_table_meta(&self, table_id: TableId) -> Result<TableMetaData> {
+    async fn get_table_meta(&self, table_id: TableId) -> Result<Option<TableMetaData>> {
         self.region_context
             .get_table_meta_data(table_id)
             .await
@@ -756,7 +750,6 @@ impl<M: MessageQueue> RegionInner<M> {
 // TODO: define some high-level iterator based on this,
 // such as `RegionScanIterator` placing the high watermark invariant checking
 // in it.
-#[allow(unused)]
 #[derive(Debug)]
 pub struct MessageQueueLogIterator<C: ConsumeIterator> {
     /// Id of region
@@ -789,7 +782,6 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
     // TODO: timeout
 }
 
-#[allow(unused)]
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     fn new(
         region_id: RegionId,
@@ -810,7 +802,6 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     }
 }
 
-#[allow(unused)]
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         if self.is_terminated && self.terminate_offset.is_some() {
@@ -1007,7 +998,7 @@ mod tests {
         let region_id = 42;
 
         let table_num = test_datas.len();
-        let mut test_context =
+        let test_context =
             TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
 
         // Mark deleted and check
@@ -1096,7 +1087,12 @@ mod tests {
             .mark_delete_to(table_id, test_log_batch.len() as u64)
             .await
             .unwrap();
-        let table_meta = test_context.region.get_table_meta(table_id).await.unwrap();
+        let table_meta = test_context
+            .region
+            .get_table_meta(table_id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             table_meta.next_sequence_num,
             test_log_batch.len() as u64 * 2
