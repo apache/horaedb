@@ -118,14 +118,17 @@ pub enum Namespace {
 }
 
 /// Log key in old wal design, map the `TableId` to `RegionId`
+#[allow(unused)]
 pub type LogKey = (RegionId, SequenceNumber);
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogKeyEncoder {
     pub version: u8,
     pub namespace: Namespace,
 }
 
+#[allow(unused)]
 impl LogKeyEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -202,11 +205,13 @@ impl Decoder<LogKey> for LogKeyEncoder {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogValueEncoder {
     pub version: u8,
 }
 
+#[allow(unused)]
 impl LogValueEncoder {
     /// Create newest version encoder.
     pub fn newest() -> Self {
@@ -238,10 +243,12 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
     }
 }
 
+#[allow(unused)]
 pub struct LogValueDecoder {
     pub version: u8,
 }
 
+#[allow(unused)]
 impl LogValueDecoder {
     pub fn decode<'a>(&self, mut buf: &'a [u8]) -> Result<&'a [u8]> {
         let version = buf.try_get_u8().context(DecodeLogValueHeader)?;
@@ -471,6 +478,7 @@ impl MaxSeqMetaEncoding {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct LogEncoding {
     key_enc: LogKeyEncoder,
@@ -479,6 +487,7 @@ pub struct LogEncoding {
     value_enc_version: u8,
 }
 
+#[allow(unused)]
 impl LogEncoding {
     pub fn newest() -> Self {
         Self {
