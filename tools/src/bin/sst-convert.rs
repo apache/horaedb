@@ -6,7 +6,7 @@ use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
     sst::factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
-    table_options::Compression,
+    table_options::{Compression, StorageFormat, StorageFormatOptions},
 };
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -33,12 +33,16 @@ struct Args {
     output: String,
 
     /// Compression of new sst file(values: uncompressed/lz4/snappy/zstd)
-    #[clap(short, long, default_value = "uncompressed")]
+    #[clap(short, long, default_value = "zstd")]
     compression: String,
 
     /// Row group size of new sst file
     #[clap(short, long, default_value_t = 8192)]
     batch_size: usize,
+
+    /// Storage format(values: columnar/hybrid)
+    #[clap(short, long, default_value = "columnar")]
+    format: String,
 }
 
 fn new_runtime(thread_num: usize) -> Runtime {
@@ -65,7 +69,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let storage = LocalFileSystem::new_with_prefix(args.store_path).expect("invalid path");
     let storage = Arc::new(storage) as _;
     let input_path = Path::from(args.input);
-    let sst_meta = sst_util::meta_from_sst(&storage, &input_path).await;
+    let mut sst_meta = sst_util::meta_from_sst(&storage, &input_path).await;
     let factory = FactoryImpl;
     let reader_opts = SstReaderOptions {
         sst_type: SstType::Parquet,
@@ -91,6 +95,10 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let mut builder = factory
         .new_sst_builder(&builder_opts, &output, &storage)
         .expect("no sst builder found");
+    sst_meta.storage_format_opts = StorageFormatOptions::new(
+        StorageFormat::try_from(args.format.as_str())
+            .with_context(|| format!("invalid storage format:{}", args.format))?,
+    );
     let sst_stream = reader
         .read()
         .await
