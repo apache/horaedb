@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"

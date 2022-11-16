@@ -4,8 +4,9 @@ go 1.19
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto v0.0.0-20221019023918-29cb0c6fba76
+	github.com/CeresDB/ceresdbproto/golang v0.0.0-20221115062517-8cd021e19e44
 	github.com/axw/gocov v1.1.0
+	github.com/json-iterator/go v1.1.11
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0
 	github.com/mgechev/revive v1.2.1
@@ -46,7 +47,6 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/jonboulle/clockwork v0.2.2 // indirect
-	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect

@@ -6,7 +6,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metaeventpb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/service"

@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metaservicepb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/stretchr/testify/require"
 )

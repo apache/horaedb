@@ -34,3 +34,6 @@ check-license:
 
 build: check
 	@ go build -o ceresmeta ./cmd/meta/...
+
+clean:
+	@ rm -f ceresmeta

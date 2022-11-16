@@ -7,7 +7,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"

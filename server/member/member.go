@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CeresDB/ceresdbproto/pkg/metastoragepb"
+	"github.com/CeresDB/ceresdbproto/golang/pkg/metastoragepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/etcdutil"
 	"go.etcd.io/etcd/api/v3/mvccpb"

@@ -2,7 +2,7 @@
 
 package storage
 
-import "github.com/CeresDB/ceresdbproto/pkg/clusterpb"
+import "github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 
 type (
 	ClusterID    uint32
