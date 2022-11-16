@@ -419,13 +419,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         let timestamp_col_idx = timestamp_column_idx.context(RequireTimestamp)?;
         // The key columns have been consumed.
-        for (idx, col_name) in stmt
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(idx, column)| Ok((idx, column.name.value.as_str())))
-            .collect::<Result<Vec<_>>>()?
-        {
+        for (idx, col) in stmt.columns.iter().enumerate() {
+            let col_name = col.name.value.as_str();
             if let Some(col) = name_column_map.remove(col_name) {
                 if !primary_key_column_idxs.is_empty() {
                     if primary_key_column_idxs.contains(&idx) {
