@@ -252,7 +252,7 @@ impl TableContext {
 struct TableMeta {
     table_id: TableId,
     /// The race condition may occur between writer thread
-    /// and background flush tread.
+    /// and background flush thread.
     inner: Mutex<TableMetaInner>,
 }
 
@@ -368,7 +368,7 @@ struct TableMetaInner {
     /// It will be updated while having pushed logs successfully.
     next_sequence_num: SequenceNumber,
 
-    /// The lasted marked deleted sequence number. The log with
+    /// The latest marked deleted sequence number. The log with
     /// a sequence number smaller than it can be deleted safely.
     ///
     /// It will be updated while having flushed successfully.
