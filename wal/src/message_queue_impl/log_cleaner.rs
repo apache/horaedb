@@ -9,7 +9,7 @@ use log::info;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
-use crate::{manager::RegionId, message_queue_impl::region_meta::RegionMetaSnapshot};
+use crate::{manager::RegionId, message_queue_impl::region_context::RegionMetaSnapshot};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
