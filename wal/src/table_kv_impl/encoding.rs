@@ -120,16 +120,16 @@ mod tests {
     fn test_format_table_unit_meta() {
         let ns = "abcdef";
         let name = format_table_unit_meta_name(ns, 0);
-        assert_eq!("region_meta_abcdef_000000", name);
+        assert_eq!("table_unit_meta_abcdef_000000", name);
 
         let name = format_table_unit_meta_name(ns, 124);
-        assert_eq!("region_meta_abcdef_000124", name);
+        assert_eq!("table_unit_meta_abcdef_000124", name);
 
         let name = format_table_unit_meta_name(ns, 999999);
-        assert_eq!("region_meta_abcdef_999999", name);
+        assert_eq!("table_unit_meta_abcdef_999999", name);
 
         let name = format_table_unit_meta_name(ns, 1234567);
-        assert_eq!("region_meta_abcdef_1234567", name);
+        assert_eq!("table_unit_meta_abcdef_1234567", name);
     }
 
     #[test]

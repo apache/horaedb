@@ -639,7 +639,7 @@ mod tests {
 
         check_table_unit_entry_codec(
             &table_unit_entry,
-            r#"{"region_id":"0","start_sequence":"0"}"#,
+            r#"{"table_id":"0","start_sequence":"0"}"#,
         );
 
         let table_unit_entry = TableUnitEntry {
@@ -649,7 +649,7 @@ mod tests {
 
         check_table_unit_entry_codec(
             &table_unit_entry,
-            r#"{"region_id":"18446744073709551615","start_sequence":"18446744073709551615"}"#,
+            r#"{"table_id":"18446744073709551615","start_sequence":"18446744073709551615"}"#,
         );
 
         let table_unit_entry = TableUnitEntry {
@@ -659,7 +659,7 @@ mod tests {
 
         check_table_unit_entry_codec(
             &table_unit_entry,
-            r#"{"region_id":"12345","start_sequence":"5432"}"#,
+            r#"{"table_id":"12345","start_sequence":"5432"}"#,
         );
     }
 }
