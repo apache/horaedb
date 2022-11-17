@@ -61,7 +61,8 @@ impl MetaClientImpl {
                 .map_err(|e| Box::new(e) as _)
                 .context(FailConnect {
                     addr: &config.meta_addr,
-                })?;
+                })?
+                .timeout(config.timeout.0);
             MetaServiceGrpcClient::connect(endpoint)
                 .await
                 .map_err(|e| Box::new(e) as _)
