@@ -3795,7 +3795,7 @@ dependencies = [
 [[package]]
 name = "obkv-table-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/oceanbase/obkv-table-client-rs.git?rev=318907f35de51404c05180c65440c9516fd1e10f#318907f35de51404c05180c65440c9516fd1e10f"
+source = "git+https://github.com/oceanbase/obkv-table-client-rs.git?rev=211e5718630577a7f8c1a2d74055bad4d31dea57#211e5718630577a7f8c1a2d74055bad4d31dea57"
 dependencies = [
  "byteorder",
  "bytes 0.4.12",

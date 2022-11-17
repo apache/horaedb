@@ -20,6 +20,7 @@ pub mod row;
 pub mod schema;
 pub mod string;
 pub mod table;
+#[cfg(feature = "datafusion")]
 pub mod time;
 
 /// Sequence number
