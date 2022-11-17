@@ -3,13 +3,13 @@
 //! Engine open test.
 
 use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     tests::util::TestEnv,
 };
 
 #[test]
 fn test_open_engine_rocks() {
-    test_open_engine::<RocksEngineBuilder>();
+    test_open_engine::<RocksDBWalEngineBuilder>();
 }
 
 #[test]

@@ -7,13 +7,13 @@ use table_engine::table::FlushRequest;
 
 use crate::{
     compaction::SizeTieredCompactionOptions,
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     tests::util::{self, TestEnv},
 };
 
 #[test]
 fn test_table_compact_current_segment_rocks() {
-    test_table_compact_current_segment::<RocksEngineBuilder>();
+    test_table_compact_current_segment::<RocksDBWalEngineBuilder>();
 }
 
 #[test]

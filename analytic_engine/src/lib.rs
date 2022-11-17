@@ -23,11 +23,15 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
 use storage_options::{LocalOptions, StorageOptions};
 use table_kv::config::ObkvConfig;
-use wal::table_kv_impl::model::NamespaceConfig;
+use wal::{
+    message_queue_impl::config::Config as MessageQueueWalConfig,
+    table_kv_impl::model::NamespaceConfig,
+};
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
@@ -72,8 +76,13 @@ pub struct Config {
     // Batch size for scan sst
     pub scan_batch_size: usize,
 
-    // Obkv wal config.
-    pub obkv_wal: ObkvWalConfig,
+    /// Wal storage config
+    ///
+    /// Now, following three storages are supported:
+    /// + RocksDB
+    /// + OBKV
+    /// + Kafka
+    pub wal_storage: WalStorageConfig,
 }
 
 impl Default for Config {
@@ -99,7 +108,7 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             scan_batch_size: 500,
-            obkv_wal: ObkvWalConfig::default(),
+            wal_storage: WalStorageConfig::RocksDB,
         }
     }
 }
@@ -108,8 +117,6 @@ impl Default for Config {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
-    /// Enable wal on obkv (disabled by default).
-    pub enable: bool,
     /// Obkv client config.
     pub obkv: ObkvConfig,
     /// Wal (stores data) namespace config.
@@ -117,10 +124,10 @@ pub struct ObkvWalConfig {
     /// Manifest (stores meta data) namespace config.
     pub manifest: NamespaceConfig,
 }
+
 impl Default for ObkvWalConfig {
     fn default() -> Self {
         Self {
-            enable: false,
             obkv: ObkvConfig::default(),
             wal: NamespaceConfig::default(),
             manifest: NamespaceConfig {
@@ -130,4 +137,24 @@ impl Default for ObkvWalConfig {
             },
         }
     }
+}
+
+/// Config of wal based on obkv.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct KafkaWalConfig {
+    /// Kafka client config
+    pub kafka_config: KafkaConfig,
+
+    /// Wal config
+    pub wal_config: MessageQueueWalConfig,
+}
+
+/// Options for storage backend
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+pub enum WalStorageConfig {
+    RocksDB,
+    Obkv(Box<ObkvWalConfig>),
+    Kafka(Box<KafkaWalConfig>),
 }

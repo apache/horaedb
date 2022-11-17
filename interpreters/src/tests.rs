@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use analytic_engine::{
-    setup::{EngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, RocksDBWalEngineBuilder},
     tests::util::TestEnv,
 };
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
@@ -259,7 +259,7 @@ where
 
 #[tokio::test]
 async fn test_interpreters_rocks() {
-    test_interpreters::<RocksEngineBuilder>().await;
+    test_interpreters::<RocksDBWalEngineBuilder>().await;
 }
 
 async fn test_interpreters<T>()

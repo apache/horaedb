@@ -874,7 +874,7 @@ mod tests {
     use std::{collections::HashMap, sync::Arc};
 
     use analytic_engine::{
-        setup::{EngineBuilder, RocksEngineBuilder},
+        setup::{EngineBuilder, RocksDBWalEngineBuilder},
         tests::util::TestEnv,
     };
     use catalog::{
@@ -938,7 +938,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_catalog_by_name_schema_by_name_rocks() {
-        test_catalog_by_name_schema_by_name::<RocksEngineBuilder>().await;
+        test_catalog_by_name_schema_by_name::<RocksDBWalEngineBuilder>().await;
     }
 
     async fn test_catalog_by_name_schema_by_name<T>()
@@ -982,7 +982,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_create_schema_by_name_rocks() {
-        test_maybe_create_schema_by_name::<RocksEngineBuilder>().await;
+        test_maybe_create_schema_by_name::<RocksDBWalEngineBuilder>().await;
     }
 
     async fn test_maybe_create_schema_by_name<T>()
@@ -1013,7 +1013,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_rocks() {
-        test_create_table::<RocksEngineBuilder>().await;
+        test_create_table::<RocksDBWalEngineBuilder>().await;
     }
 
     async fn test_create_table<T: EngineBuilder>()
@@ -1054,7 +1054,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_drop_table_rocks() {
-        test_drop_table::<RocksEngineBuilder>().await;
+        test_drop_table::<RocksDBWalEngineBuilder>().await;
     }
 
     async fn test_drop_table<T>()

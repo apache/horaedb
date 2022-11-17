@@ -8,7 +8,7 @@ use common_types::{column_schema, datum::DatumKind, time::Timestamp};
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     tests::{
         table::FixedSchemaTable,
         util::{self, TestEnv},
@@ -17,7 +17,7 @@ use crate::{
 
 #[test]
 fn test_drop_table_once_rocks() {
-    test_drop_table_once::<RocksEngineBuilder>();
+    test_drop_table_once::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn test_drop_table_once<T: EngineBuilder>() {
 
 #[test]
 fn test_drop_table_again_rocks() {
-    test_drop_table_again::<RocksEngineBuilder>();
+    test_drop_table_again::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn test_drop_table_again<T: EngineBuilder>() {
 
 #[test]
 fn test_drop_create_table_mixed_rocks() {
-    test_drop_create_table_mixed::<RocksEngineBuilder>();
+    test_drop_create_table_mixed::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
 
 #[test]
 fn test_drop_create_same_table_rocks() {
-    test_drop_create_same_table::<RocksEngineBuilder>();
+    test_drop_create_same_table::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -220,7 +220,7 @@ fn test_drop_create_same_table<T: EngineBuilder>() {
 
 #[test]
 fn test_alter_schema_drop_create_rocks() {
-    test_alter_schema_drop_create::<RocksEngineBuilder>();
+    test_alter_schema_drop_create::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -275,7 +275,7 @@ fn test_alter_schema_drop_create<T: EngineBuilder>() {
 
 #[test]
 fn test_alter_options_drop_create_rocks() {
-    test_alter_options_drop_create::<RocksEngineBuilder>();
+    test_alter_options_drop_create::<RocksDBWalEngineBuilder>();
 }
 
 #[test]

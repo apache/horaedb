@@ -9,14 +9,14 @@ use log::info;
 use table_engine::table::ReadOrder;
 
 use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     table_options,
     tests::util::{self, TestEnv},
 };
 
 #[test]
 fn test_multi_table_read_write_rocks() {
-    test_multi_table_read_write::<RocksEngineBuilder>();
+    test_multi_table_read_write::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn test_multi_table_read_write<T: EngineBuilder>() {
 
 #[test]
 fn test_table_write_read_rocks() {
-    test_table_write_read::<RocksEngineBuilder>();
+    test_table_write_read::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -243,7 +243,7 @@ fn test_table_write_read<T: EngineBuilder>() {
 
 #[test]
 fn test_table_write_get_rocks() {
-    test_table_write_get::<RocksEngineBuilder>();
+    test_table_write_get::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -318,7 +318,7 @@ fn test_table_write_get<T: EngineBuilder>() {
 
 #[test]
 fn test_table_write_get_override_rocks() {
-    test_table_write_get_override::<RocksEngineBuilder>();
+    test_table_write_get_override::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -495,7 +495,7 @@ fn test_table_write_get_override_case<T: EngineBuilder>(flush_point: FlushPoint)
 #[test]
 fn test_db_write_buffer_size_rocks() {
     // Use different table name to avoid metrics collision.
-    test_db_write_buffer_size::<RocksEngineBuilder>("test_db_write_buffer_size_rocks");
+    test_db_write_buffer_size::<RocksDBWalEngineBuilder>("test_db_write_buffer_size_rocks");
 }
 
 #[test]
@@ -513,7 +513,7 @@ fn test_db_write_buffer_size<T: EngineBuilder>(table_name: &str) {
 #[test]
 fn test_space_write_buffer_size_rocks() {
     // Use different table name to avoid metrics collision.
-    test_space_write_buffer_size::<RocksEngineBuilder>("test_space_write_buffer_size_rocks");
+    test_space_write_buffer_size::<RocksDBWalEngineBuilder>("test_space_write_buffer_size_rocks");
 }
 
 #[test]
@@ -640,7 +640,7 @@ fn test_write_buffer_size_overflow<T: EngineBuilder>(test_table_name: &str, env:
 
 #[test]
 fn test_table_write_read_reverse_rocks() {
-    test_table_write_read_reverse::<RocksEngineBuilder>();
+    test_table_write_read_reverse::<RocksDBWalEngineBuilder>();
 }
 
 #[test]
@@ -723,7 +723,7 @@ fn test_table_write_read_reverse<T: EngineBuilder>() {
 
 #[test]
 fn test_table_write_read_reverse_after_flush_rocks() {
-    test_table_write_read_reverse_after_flush::<RocksEngineBuilder>();
+    test_table_write_read_reverse_after_flush::<RocksDBWalEngineBuilder>();
 }
 
 #[test]

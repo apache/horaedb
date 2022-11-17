@@ -99,6 +99,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
+ "message_queue",
  "object_store 0.4.0",
  "parquet",
  "parquet_ext",

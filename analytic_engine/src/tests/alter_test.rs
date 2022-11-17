@@ -15,7 +15,7 @@ use log::info;
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     table_options::TableOptions,
     tests::{
         row_util,
@@ -26,7 +26,7 @@ use crate::{
 
 #[test]
 fn test_alter_table_add_column_rocks() {
-    test_alter_table_add_column::<RocksEngineBuilder>();
+    test_alter_table_add_column::<RocksDBWalEngineBuilder>();
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]
@@ -365,7 +365,7 @@ async fn check_read_row_group<T: EngineBuilder>(
 
 #[test]
 fn test_alter_table_options_rocks() {
-    test_alter_table_options::<RocksEngineBuilder>();
+    test_alter_table_options::<RocksDBWalEngineBuilder>();
 }
 
 #[ignore = "Enable this test when manifest use another snapshot implementation"]

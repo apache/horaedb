@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{EngineBuilder, ReplicatedEngineBuilder, RocksEngineBuilder},
+    setup::{EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder},
+    WalStorageConfig,
 };
 use catalog::manager::ManagerRef;
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
@@ -80,10 +81,18 @@ pub fn run_server(config: Config) {
     info!("Server starts up, config:{:#?}", config);
 
     runtimes.bg_runtime.block_on(async {
-        if config.analytic.obkv_wal.enable {
-            run_server_with_runtimes::<ReplicatedEngineBuilder>(config, engine_runtimes).await;
-        } else {
-            run_server_with_runtimes::<RocksEngineBuilder>(config, engine_runtimes).await;
+        match config.analytic.wal_storage {
+            WalStorageConfig::RocksDB => {
+                run_server_with_runtimes::<RocksDBWalEngineBuilder>(config, engine_runtimes).await
+            }
+
+            WalStorageConfig::Obkv(_) => {
+                run_server_with_runtimes::<ObkvWalEngineBuilder>(config, engine_runtimes).await;
+            }
+
+            WalStorageConfig::Kafka(_) => {
+                run_server_with_runtimes::<KafkaWalEngineBuilder>(config, engine_runtimes).await;
+            }
         }
     });
 }
