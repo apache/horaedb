@@ -457,7 +457,7 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordSchemaWithKey {
     record_schema: RecordSchema,
-    key_index: Vec<usize>,
+    primary_key_indexes: Vec<usize>,
 }
 
 impl RecordSchemaWithKey {
@@ -466,11 +466,11 @@ impl RecordSchemaWithKey {
     }
 
     pub fn compare_row<LR: RowView, RR: RowView>(&self, lhs: &LR, rhs: &RR) -> Ordering {
-        compare_row(&self.key_index, lhs, rhs)
+        compare_row(&self.primary_key_indexes, lhs, rhs)
     }
 
     pub fn primary_key_idx(&self) -> &[usize] {
-        &self.key_index
+        &self.primary_key_indexes
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
@@ -487,7 +487,7 @@ impl RecordSchemaWithKey {
             .iter()
             .enumerate()
             .filter_map(|(idx, col)| {
-                if self.key_index.contains(&idx) {
+                if self.primary_key_indexes.contains(&idx) {
                     Some(col.clone())
                 } else {
                     None
@@ -814,7 +814,7 @@ impl Schema {
     pub fn to_record_schema_with_key(&self) -> RecordSchemaWithKey {
         RecordSchemaWithKey {
             record_schema: self.to_record_schema(),
-            key_index: self.primary_key_indexes.clone(),
+            primary_key_indexes: self.primary_key_indexes.clone(),
         }
     }
 
@@ -823,11 +823,11 @@ impl Schema {
         &self,
         projection: &[usize],
     ) -> RecordSchemaWithKey {
-        let mut primary_key_idx = Vec::with_capacity(self.num_primary_key_columns());
+        let mut primary_key_indexes = Vec::with_capacity(self.num_primary_key_columns());
         let mut columns = Vec::with_capacity(self.num_primary_key_columns());
         for (idx, col) in self.columns().iter().enumerate() {
             if self.is_primary_key_index(&idx) {
-                primary_key_idx.push(columns.len());
+                primary_key_indexes.push(columns.len());
                 columns.push(col.clone());
             } else if projection.contains(&idx) {
                 columns.push(col.clone());
@@ -839,7 +839,7 @@ impl Schema {
 
         RecordSchemaWithKey {
             record_schema,
-            key_index: primary_key_idx,
+            primary_key_indexes,
         }
     }
 
@@ -929,7 +929,7 @@ impl From<&Schema> for common_pb::TableSchema {
 #[must_use]
 pub struct Builder {
     columns: Vec<ColumnSchema>,
-    /// The indexes with primary key columns
+    /// The indexes of primary key columns
     primary_key_indexes: Vec<usize>,
     /// Timestamp column index
     timestamp_index: Option<usize>,
