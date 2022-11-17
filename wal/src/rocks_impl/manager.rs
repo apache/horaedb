@@ -682,12 +682,26 @@ impl WalManager for RocksImpl {
         table_unit.write(ctx, batch).await
     }
 
-    async fn scan(
-        &self,
-        _ctx: &ScanContext,
-        _req: &ScanRequest,
-    ) -> Result<BatchLogIteratorAdapter> {
-        todo!()
+    async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+        debug!("Wal region begin scanning, ctx:{:?}, req:{:?}", ctx, req);
+
+        let read_opts = ReadOptions::default();
+        let iter = DBIterator::new(self.db.clone(), read_opts);
+
+        let region_id = req.region_id;
+        let (min_log_key, max_log_key) = (
+            CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN),
+            CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX),
+        );
+
+        let log_iter =
+            RocksLogIterator::with_data(self.log_encoding.clone(), iter, min_log_key, max_log_key);
+
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(log_iter),
+            self.runtime.clone(),
+            ctx.batch_size,
+        ))
     }
 }
 

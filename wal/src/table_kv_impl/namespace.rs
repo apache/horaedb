@@ -16,11 +16,14 @@ use common_types::{
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
 use log::{debug, error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_kv::{ScanIter, TableError, TableKv, WriteBatch, WriteContext};
+use table_kv::{
+    ScanContext as KvScanContext, ScanIter, TableError, TableKv, WriteBatch, WriteContext,
+};
 
 use crate::{
+    kv_encoder::CommonLogKey,
     log_batch::LogWriteBatch,
-    manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber},
+    manager::{self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber},
     table_kv_impl::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
@@ -678,6 +681,34 @@ impl<T: TableKv> NamespaceInner<T> {
 
         Ok(())
     }
+
+    pub async fn scan_log(
+        &self,
+        ctx: &ScanContext,
+        request: &ScanRequest,
+    ) -> Result<TableLogIterator<T>> {
+        // Prepare start/end sequence to read, now this doesn't provide snapshot
+        // isolation semantics since delete and write operations may happen
+        // during reading start/end sequence.
+        let buckets = self.list_buckets();
+
+        let region_id = request.region_id;
+        let min_log_key = CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN);
+        let max_log_key = CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX);
+
+        let scan_ctx = KvScanContext {
+            timeout: ctx.timeout,
+            ..Default::default()
+        };
+
+        Ok(TableLogIterator::new(
+            buckets,
+            min_log_key,
+            max_log_key,
+            scan_ctx,
+            self.table_kv.clone(),
+        ))
+    }
 }
 
 /// BucketCreator handles bucket creation and persistence.
@@ -1096,6 +1127,18 @@ impl<T: TableKv> Namespace<T> {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.inner.delete_entries(location, sequence_num).await
+    }
+
+    /// Scan logs of a whole region from this namespace.
+    // TODO: maybe we should filter the log marked deleted,
+    // but there isn't any actual benefit such as reducing network IO,
+    // so it seems not so important.
+    pub async fn scan_log(
+        &self,
+        ctx: &ScanContext,
+        req: &ScanRequest,
+    ) -> Result<TableLogIterator<T>> {
+        self.inner.scan_log(ctx, req).await
     }
 
     /// Stop background tasks and close this namespace.

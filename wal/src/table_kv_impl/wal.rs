@@ -160,11 +160,19 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .context(Write)
     }
 
-    async fn scan(
-        &self,
-        _ctx: &ScanContext,
-        _req: &ScanRequest,
-    ) -> Result<BatchLogIteratorAdapter> {
-        todo!()
+    async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+        let sync_iter = self
+            .namespace
+            .scan_log(ctx, req)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(Read)?;
+        let runtime = self.namespace.read_runtime().clone();
+
+        Ok(BatchLogIteratorAdapter::new_with_sync(
+            Box::new(sync_iter),
+            runtime,
+            ctx.batch_size,
+        ))
     }
 }

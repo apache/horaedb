@@ -612,7 +612,7 @@ impl<T: TableKv> TableLogIterator<T> {
         }
     }
 
-    fn new(
+    pub fn new(
         buckets: Vec<BucketRef>,
         min_log_key: CommonLogKey,
         max_log_key: CommonLogKey,
