@@ -10,8 +10,9 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0
 	github.com/mgechev/revive v1.2.1
+	github.com/pelletier/go-toml/v2 v2.0.6
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	github.com/tikv/pd v2.1.19+incompatible
 	go.etcd.io/etcd/api/v3 v3.5.4
 	go.etcd.io/etcd/client/v3 v3.5.4

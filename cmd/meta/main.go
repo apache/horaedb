@@ -44,6 +44,11 @@ func main() {
 	if err != nil {
 		panicf("fail to init global logger, err:%v", err)
 	}
+
+	if err := config.ParseConfigFromToml(cfg); err != nil {
+		panicf("fail to parse config from toml file, err%v", err)
+	}
+
 	defer logger.Sync() //nolint:errcheck
 
 	// TODO: Do adjustment to config for preparing joining existing cluster.
