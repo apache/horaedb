@@ -4,9 +4,10 @@ use std::{
     env,
     fs::File,
     process::{Child, Command},
+    sync::Arc,
 };
 
-use ceresdb_client_rs::{client::Client, Builder};
+use ceresdb_client_rs::db_client::{Builder, DbClient, Mode};
 
 const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
 const CONFIG_PATH_ENV: &str = "CERESDB_CONFIG_PATH";
@@ -42,7 +43,7 @@ impl Environment {
         Self { server_process }
     }
 
-    pub fn build_client(&self) -> Client {
+    pub fn build_client(&self) -> Arc<dyn DbClient> {
         let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
             panic!(
                 "Cannot read server endpoint from env {:?}",
@@ -50,7 +51,7 @@ impl Environment {
             )
         });
 
-        Builder::new(endpoint).build()
+        Builder::new(endpoint, Mode::Standalone).build()
     }
 
     pub fn get_case_path(&self) -> String {
