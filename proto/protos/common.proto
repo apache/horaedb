@@ -44,16 +44,16 @@ message ColumnSchema {
 
 // Table Schema
 message TableSchema {
-  // Schema of each column
-  repeated ColumnSchema columns = 1;
-  // Version of the schema
-  uint32 version = 2;
-  // Key column num
-  uint32 num_key_columns = 3;
-  // Timestamp index in columns
-  uint32 timestamp_index = 4;
-  // Enable auto generated tsid as primary key
-  bool enable_tsid_primary_key = 5;
+    // Schema of each column
+    repeated ColumnSchema columns = 1;
+    // Version of the schema
+    uint32 version = 2;
+    // Timestamp index in columns
+    uint32 timestamp_index = 3;
+    // Enable auto generated tsid as primary key
+    bool enable_tsid_primary_key = 4;
+    // Primary key index
+    repeated uint64 primary_key_indexes = 5;
 }
 
 // Time range of [start, end)

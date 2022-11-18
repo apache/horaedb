@@ -344,6 +344,13 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
             .collect::<Result<BTreeMap<_, _>>>()?;
 
+        let name_column_index_map = stmt
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(idx, col)| (col.name.value.as_str(), idx))
+            .collect::<BTreeMap<_, _>>();
+
         // Tsid column is a reserved column.
         ensure!(
             !name_column_map.contains_key(TSID_COLUMN),
@@ -352,10 +359,14 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             }
         );
 
-        // Find timestamp key and primary key constraint.
-        let mut primary_key_constraint_idx = None;
+        // Find timestamp key and primary key contraint
+
+        let mut timestamp_column_idx = None;
         let mut timestamp_name = None;
-        for (idx, constraint) in stmt.constraints.iter().enumerate() {
+
+        let mut primary_key_column_idxs = vec![];
+
+        for constraint in stmt.constraints.iter() {
             if let TableConstraint::Unique {
                 columns,
                 is_primary,
@@ -363,10 +374,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             } = constraint
             {
                 if *is_primary {
-                    primary_key_constraint_idx = Some(idx);
+                    // Build primary key, the builder will check timestamp column is in primary key.
+                    for column in columns {
+                        if let Some(idx) = name_column_index_map.get(&*column.value) {
+                            primary_key_column_idxs.push(*idx);
+                        }
+                    }
                 } else if parser::is_timestamp_key_constraint(constraint) {
                     // Only one timestamp key constraint
-                    ensure!(timestamp_name.is_none(), InvalidTimestampKey);
+                    ensure!(timestamp_column_idx.is_none(), InvalidTimestampKey);
                     // Only one column in constraint
                     ensure!(columns.len() == 1, InvalidTimestampKey);
 
@@ -379,7 +395,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                         timestamp_column.data_type == DatumKind::Timestamp,
                         InvalidTimestampKey
                     );
+                    let column_idx = name_column_index_map
+                        .get(name as &str)
+                        .context(TimestampColumnNotFound { name })?;
 
+                    timestamp_column_idx = Some(*column_idx);
                     timestamp_name = Some(name.clone());
                 }
             }
@@ -397,49 +417,39 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             )
         }
 
-        // Build primary key, the builder will check timestamp column is in primary key.
-        if let Some(idx) = primary_key_constraint_idx {
-            // If primary key is already provided, use that primary key.
-            if let TableConstraint::Unique { columns, .. } = &stmt.constraints[idx] {
-                for col in columns {
-                    let key_column = if TSID_COLUMN == col.value {
-                        schema_builder = schema_builder.enable_tsid_primary_key(true);
-                        Self::tsid_column_schema()?
-                    } else {
-                        name_column_map
-                            .remove(&*col.value)
-                            .with_context(|| PrimaryKeyNotFound {
-                                name: col.value.clone(),
-                            })?
-                    };
-                    // The schema builder will checks there is only one timestamp column in primary
-                    // key.
-                    schema_builder = schema_builder
-                        .add_key_column(key_column)
-                        .context(BuildTableSchema)?;
-                }
-            }
-        } else {
-            // If primary key is not set, Use (timestamp, tsid) as primary key.
-            let timestamp_column = name_column_map.remove(timestamp_name.as_str()).context(
-                TimestampColumnNotFound {
-                    name: &timestamp_name,
-                },
-            )?;
-            let column_schema = Self::tsid_column_schema()?;
-            schema_builder = schema_builder
-                .enable_tsid_primary_key(true)
-                .add_key_column(timestamp_column)
-                .context(BuildTableSchema)?
-                .add_key_column(column_schema)
-                .context(BuildTableSchema)?;
-        }
-
+        let timestamp_col_idx = timestamp_column_idx.context(RequireTimestamp)?;
         // The key columns have been consumed.
-        for col in name_column_map.into_values() {
-            schema_builder = schema_builder
-                .add_normal_column(col)
-                .context(BuildTableSchema)?;
+        for (idx, col) in stmt.columns.iter().enumerate() {
+            let col_name = col.name.value.as_str();
+            if let Some(col) = name_column_map.remove(col_name) {
+                if !primary_key_column_idxs.is_empty() {
+                    if primary_key_column_idxs.contains(&idx) {
+                        let key_column = if TSID_COLUMN == col.name {
+                            schema_builder = schema_builder.enable_tsid_primary_key(true);
+                            Self::tsid_column_schema()?
+                        } else {
+                            col
+                        };
+                        schema_builder = schema_builder
+                            .add_key_column(key_column)
+                            .context(BuildTableSchema)?;
+                        continue;
+                    }
+                } else if timestamp_col_idx == idx {
+                    // If primary key is not set, Use (timestamp, tsid) as primary key.
+                    schema_builder = schema_builder
+                        .enable_tsid_primary_key(true)
+                        .add_key_column(col)
+                        .context(BuildTableSchema)?
+                        .add_key_column(Self::tsid_column_schema()?)
+                        .context(BuildTableSchema)?;
+                    continue;
+                }
+
+                schema_builder = schema_builder
+                    .add_normal_column(col)
+                    .context(BuildTableSchema)?;
+            }
         }
 
         let table_schema = schema_builder.build().context(BuildTableSchema)?;
@@ -1003,7 +1013,6 @@ mod tests {
         if_not_exists: true,
         table: "t",
         table_schema: Schema {
-            num_key_columns: 2,
             timestamp_index: 1,
             tsid_index: None,
             enable_tsid_primary_key: false,
@@ -1102,6 +1111,10 @@ mod tests {
                 ],
             },
             version: 1,
+            primary_key_indexes: [
+                0,
+                1,
+            ],
         },
         options: {
             "arena_block_size": "1KB",
@@ -1168,7 +1181,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1217,11 +1229,14 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
             },
         },
         rows: RowGroup {
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1270,6 +1285,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
             },
             rows: [
                 Row {
@@ -1355,7 +1374,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1404,6 +1422,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
             },
         },
     },
@@ -1428,7 +1450,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1477,6 +1498,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
             },
         },
         operations: AddColumn(
@@ -1515,7 +1540,6 @@ mod tests {
                 100,
             ),
             schema: Schema {
-                num_key_columns: 2,
                 timestamp_index: 1,
                 tsid_index: None,
                 enable_tsid_primary_key: false,
@@ -1564,6 +1588,10 @@ mod tests {
                     ],
                 },
                 version: 1,
+                primary_key_indexes: [
+                    0,
+                    1,
+                ],
             },
         },
         operations: ModifySetting(
@@ -1594,7 +1622,6 @@ mod tests {
                     100,
                 ),
                 schema: Schema {
-                    num_key_columns: 2,
                     timestamp_index: 1,
                     tsid_index: None,
                     enable_tsid_primary_key: false,
@@ -1643,6 +1670,10 @@ mod tests {
                         ],
                     },
                     version: 1,
+                    primary_key_indexes: [
+                        0,
+                        1,
+                    ],
                 },
             },
             obj_type: Table,
