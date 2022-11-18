@@ -2,12 +2,17 @@
 
 //! utilities for testing wal module.
 
-use std::{collections::VecDeque, path::Path, str::FromStr, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    path::Path,
+    str::FromStr,
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use common_types::{
     bytes::{BufMut, SafeBuf, SafeBufMut},
-    table::Location,
+    table::{Location, TableId, DEFAULT_SHARD_ID},
     SequenceNumber,
 };
 use common_util::{
@@ -20,7 +25,9 @@ use tempfile::TempDir;
 
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
-    manager::{BatchLogIteratorAdapter, ReadContext, WalManager, WalManagerRef, WriteContext},
+    manager::{
+        BatchLogIteratorAdapter, ReadContext, RegionId, WalManager, WalManagerRef, WriteContext,
+    },
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -43,8 +50,11 @@ impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let wal_builder =
-            rocks_impl::manager::Builder::with_default_rocksdb_config(data_path, runtime);
+        let wal_builder = rocks_impl::manager::Builder::with_default_rocksdb_config(
+            data_path,
+            runtime,
+            DEFAULT_SHARD_ID as RegionId,
+        );
 
         Arc::new(
             wal_builder
@@ -71,7 +81,7 @@ impl WalBuilder for MemoryTableWalBuilder {
     async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let config = NamespaceConfig {
             wal_shard_num: 2,
-            region_meta_shard_num: 2,
+            table_unit_meta_shard_num: 2,
             ttl: self.ttl,
             ..Default::default()
         };
@@ -169,41 +179,56 @@ impl<B: WalBuilder> TestEnv<B> {
         (payload_batch, log_batch)
     }
 
+    // pub async fn check_multiple_log_entries
+
     /// Check whether the log entries from the iterator equals the
     /// `write_batch`.
     pub async fn check_log_entries(
         &self,
-        max_seq: SequenceNumber,
-        payload_batch: &[TestPayload],
+        test_table_datas: Vec<TestTableData>,
         mut iter: BatchLogIteratorAdapter,
     ) {
-        let mut log_entries = VecDeque::with_capacity(payload_batch.len());
-        let mut buffer = VecDeque::new();
+        let mut table_log_entries: HashMap<TableId, VecDeque<_>> =
+            HashMap::with_capacity(test_table_datas.len());
+
         loop {
             let dec = TestPayloadDecoder;
-            buffer = iter
-                .next_log_entries(dec, buffer)
+            let log_entries = iter
+                .next_log_entries(dec, VecDeque::new())
                 .await
                 .expect("should succeed to fetch next log entry");
-            if buffer.is_empty() {
+            if log_entries.is_empty() {
                 break;
             }
 
-            log_entries.append(&mut buffer);
+            for log_entry in log_entries {
+                let log_entries = table_log_entries
+                    .entry(log_entry.table_id)
+                    .or_insert_with(VecDeque::default);
+                log_entries.push_back(log_entry);
+            }
         }
 
-        assert_eq!(payload_batch.len(), log_entries.len());
-        for (idx, (expect_log_write_entry, log_entry)) in payload_batch
-            .iter()
-            .zip(log_entries.iter())
-            .rev()
-            .enumerate()
-        {
-            // sequence
-            assert_eq!(max_seq - idx as u64, log_entry.sequence);
+        for test_table_data in test_table_datas {
+            let empty_log_entries = VecDeque::new();
+            let log_entries = table_log_entries
+                .get(&test_table_data.table_id)
+                .unwrap_or(&empty_log_entries);
 
-            // payload
-            assert_eq!(expect_log_write_entry, &log_entry.payload);
+            assert_eq!(test_table_data.payload_batch.len(), log_entries.len());
+            for (idx, (expect_log_write_entry, log_entry)) in test_table_data
+                .payload_batch
+                .iter()
+                .zip(log_entries.iter())
+                .rev()
+                .enumerate()
+            {
+                // sequence
+                assert_eq!(test_table_data.max_seq - idx as u64, log_entry.sequence);
+
+                // payload
+                assert_eq!(expect_log_write_entry, &log_entry.payload);
+            }
         }
     }
 }
@@ -242,5 +267,25 @@ impl PayloadDecoder for TestPayloadDecoder {
     fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<Self::Target, Self::Error> {
         let val = buf.try_get_u32().expect("should succeed to read u32");
         Ok(TestPayload { val })
+    }
+}
+
+pub struct TestTableData {
+    table_id: TableId,
+    payload_batch: Vec<TestPayload>,
+    max_seq: SequenceNumber,
+}
+
+impl TestTableData {
+    pub fn new(
+        table_id: TableId,
+        payload_batch: Vec<TestPayload>,
+        max_seq: SequenceNumber,
+    ) -> Self {
+        Self {
+            table_id,
+            payload_batch,
+            max_seq,
+        }
     }
 }

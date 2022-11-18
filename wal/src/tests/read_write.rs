@@ -7,8 +7,9 @@ use common_types::{
     SequenceNumber,
 };
 
+use super::util::TestTableData;
 use crate::{
-    manager::{ReadBoundary, ReadRequest, WalManagerRef},
+    manager::{ReadBoundary, ReadRequest, RegionId, ScanRequest, WalManagerRef},
     tests::util::{
         MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, TestPayload,
         WalBuilder,
@@ -59,7 +60,9 @@ fn test_all<B: WalBuilder>(builder: B) {
 
     test_sequence_increase_monotonically_delete_write(builder.clone());
 
-    test_sequence_increase_monotonically_delete_reopen_write(builder);
+    test_sequence_increase_monotonically_delete_reopen_write(builder.clone());
+
+    test_write_scan(builder);
 }
 
 fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
@@ -139,6 +142,11 @@ fn test_sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(build
         .block_on(sequence_increase_monotonically_delete_reopen_write(&env));
 }
 
+fn test_write_scan<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    env.runtime.block_on(write_scan(&env));
+}
+
 async fn check_write_batch_with_read_request<B: WalBuilder>(
     env: &TestEnv<B>,
     wal: WalManagerRef,
@@ -150,7 +158,10 @@ async fn check_write_batch_with_read_request<B: WalBuilder>(
         .read_batch(&env.read_ctx, &read_req)
         .await
         .expect("should succeed to read");
-    env.check_log_entries(max_seq, payload_batch, iter).await;
+
+    let test_table_data =
+        TestTableData::new(read_req.location.table_id, payload_batch.to_vec(), max_seq);
+    env.check_log_entries(vec![test_table_data], iter).await;
 }
 
 async fn check_write_batch<B: WalBuilder>(
@@ -353,7 +364,9 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
         .read_batch(&env.read_ctx, &read_req)
         .await
         .expect("should succeed to read");
-    env.check_log_entries(seq, &payload_batch, iter).await;
+
+    let test_table_data = TestTableData::new(table_id, payload_batch, seq);
+    env.check_log_entries(vec![test_table_data], iter).await;
 
     wal.close_gracefully().await.unwrap();
 }
@@ -487,7 +500,9 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
         .read_batch(&env.read_ctx, &read_req)
         .await
         .expect("should succeed to read");
-    env.check_log_entries(seq, &[], iter).await;
+
+    let test_table_data = TestTableData::new(table_id, Vec::new(), seq);
+    env.check_log_entries(vec![test_table_data], iter).await;
 
     // Sequence num remains unchanged.
     let last_seq = wal
@@ -539,7 +554,8 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
         .expect("should succeed to read");
     // write_batch.entries.drain(..write_batch.entries.len() / 2);
     payload_batch.drain(..write_batch.entries.len() / 2);
-    env.check_log_entries(seq, &payload_batch, iter).await;
+    let test_table_data = TestTableData::new(table_id, payload_batch.to_vec(), seq);
+    env.check_log_entries(vec![test_table_data], iter).await;
 
     // Sequence num remains unchanged.
     let last_seq = wal
@@ -594,7 +610,8 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
         .read_batch(&env.read_ctx, &read_req)
         .await
         .expect("should succeed to read");
-    env.check_log_entries(seq_1, &[], iter).await;
+    let test_table_data_1 = TestTableData::new(table_id_1, Vec::new(), seq_1);
+    env.check_log_entries(vec![test_table_data_1], iter).await;
 
     check_write_batch(
         env,
@@ -754,4 +771,54 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
     assert!(seq_2 > seq_1);
 
     wal.close_gracefully().await.unwrap();
+}
+
+async fn write_scan<B: WalBuilder>(env: &TestEnv<B>) {
+    let table_id_1 = 0;
+    let table_id_2 = 1;
+
+    let wal = env.build_wal().await;
+    // Write table 0.
+    let (payload_batch1, write_batch1) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id_1),
+            0,
+            10,
+        )
+        .await;
+
+    let seq_1 = wal
+        .write(&env.write_ctx, &write_batch1)
+        .await
+        .expect("should succeed to write");
+
+    // Write table 1.
+    let (payload_batch2, write_batch2) = env
+        .build_log_batch(
+            wal.clone(),
+            Location::new(DEFAULT_SHARD_ID, table_id_2),
+            0,
+            10,
+        )
+        .await;
+
+    let seq_2 = wal
+        .write(&env.write_ctx, &write_batch2)
+        .await
+        .expect("should succeed to write");
+
+    // Scan and compare.
+    let scan_request = ScanRequest {
+        region_id: DEFAULT_SHARD_ID as RegionId,
+    };
+    let iter = wal
+        .scan(&env.read_ctx, &scan_request)
+        .await
+        .expect("should succeed to read");
+
+    let test_table_data_1 = TestTableData::new(table_id_1, payload_batch1, seq_1);
+    let test_table_data_2 = TestTableData::new(table_id_2, payload_batch2, seq_2);
+    env.check_log_entries(vec![test_table_data_1, test_table_data_2], iter)
+        .await;
 }
