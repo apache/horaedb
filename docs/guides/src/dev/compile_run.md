@@ -3,7 +3,7 @@ In order to compile CeresDB, some relevant dependencies(including the `Rust` too
 # Dependencies(Ubuntu20.04)
 Assuming the development environment is Ubuntu20.04, execute the following command to install the required dependencies:
 ```shell
-apt install git curl gcc g++ libssl-dev pkg-config cmake protobuf-compiler
+apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
 It should be noted that the compilation of the project has version requirements for dependencies such as cmake, gcc, g++, etc. If your development environment is an old Linux distribution, it is necessary to manually install these dependencies of a higher version.

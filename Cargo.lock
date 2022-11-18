@@ -4486,6 +4486,7 @@ name = "proto"
 version = "0.4.0"
 dependencies = [
  "prost",
+ "protoc-bin-vendored 3.0.0",
  "tonic-build",
 ]
 
