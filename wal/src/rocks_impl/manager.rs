@@ -61,7 +61,7 @@ impl TableUnit {
     }
 
     #[inline]
-    /// Generate [LogKey] from `region_id', `table_id` and `sequence_num`
+    /// Generate [LogKey] from `region_id`, `table_id` and `sequence_num`.
     fn log_key(&self, region_id: RegionId, sequence_num: SequenceNumber) -> CommonLogKey {
         CommonLogKey::new(region_id, self.id, sequence_num)
     }

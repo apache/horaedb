@@ -507,7 +507,7 @@ impl<T: TableKv> NamespaceInner<T> {
         self.open_table_unit(region_id, table_id).await
     }
 
-    // TODO(yingwen): Provide a close_talbe_unit() method.
+    // TODO(yingwen): Provide a close_table_unit() method.
     async fn open_table_unit(
         &self,
         region_id: RegionId,
