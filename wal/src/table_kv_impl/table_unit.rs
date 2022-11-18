@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Region in wal.
+//! Table unit in wal.
 
 use std::{
     cmp,
@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use common_types::bytes::BytesMut;
+use common_types::{bytes::BytesMut, table::TableId};
 use common_util::{define_result, runtime::Runtime};
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -23,10 +23,10 @@ use table_kv::{
 use tokio::sync::Mutex;
 
 use crate::{
-    kv_encoder::{LogEncoding, LogKey},
+    kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber, SyncLogIterator},
-    table_kv_impl::{encoding, model::RegionEntry, namespace::BucketRef, WalRuntimes},
+    table_kv_impl::{encoding, model::TableUnitEntry, namespace::BucketRef, WalRuntimes},
 };
 
 #[derive(Debug, Snafu)]
@@ -64,12 +64,14 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sequence of region overflow, region_id:{}.\nBacktrace:\n{}",
+        "Sequence of region overflow, region_id:{}, table_id:{}.\nBacktrace:\n{}",
         region_id,
+        table_id,
         backtrace
     ))]
     SequenceOverflow {
         region_id: RegionId,
+        table_id: TableId,
         backtrace: Backtrace,
     },
 
@@ -88,7 +90,7 @@ pub enum Error {
         region_id,
         backtrace
     ))]
-    RegionNotExists {
+    TableUnitNotExists {
         region_id: RegionId,
         backtrace: Backtrace,
     },
@@ -108,17 +110,20 @@ define_result!(Error);
 /// Default batch size (100) to clean records.
 const DEFAULT_CLEAN_BATCH_SIZE: i32 = 100;
 
-struct RegionState {
+struct TableUnitState {
+    /// Region id of this table unit
     region_id: RegionId,
-    /// Start sequence (inclusive) of this region, update is protected by the
-    /// `writer` lock.
+    /// Table id of this table unit
+    table_id: TableId,
+    /// Start sequence (inclusive) of this table unit, update is protected by
+    /// the `writer` lock.
     start_sequence: AtomicU64,
-    /// Last sequence (inclusive) of this region, update is protected by the
+    /// Last sequence (inclusive) of this table unit, update is protected by the
     /// `writer` lock.
     last_sequence: AtomicU64,
 }
 
-impl RegionState {
+impl TableUnitState {
     #[inline]
     fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(Ordering::Relaxed)
@@ -135,9 +140,9 @@ impl RegionState {
     }
 
     #[inline]
-    fn region_entry(&self) -> RegionEntry {
-        RegionEntry {
-            region_id: self.region_id,
+    fn table_unit_entry(&self) -> TableUnitEntry {
+        TableUnitEntry {
+            table_id: self.table_id,
             start_sequence: self.start_sequence.load(Ordering::Relaxed),
         }
     }
@@ -158,92 +163,104 @@ impl Default for CleanContext {
     }
 }
 
-/// Region can be viewed as an append only log file.
-pub struct Region {
+/// Table unit can be viewed as an append only log file.
+pub struct TableUnit {
     runtimes: WalRuntimes,
-    state: RegionState,
-    writer: Mutex<RegionWriter>,
+    state: TableUnitState,
+    writer: Mutex<TableUnitWriter>,
 }
 
 // Async or non-blocking operations.
-impl Region {
-    /// Open region of given `region_id`, the caller should ensure the meta data
-    /// of this region is stored in `region_meta_table`, and the wal log
-    /// records are stored in `buckets`.
+impl TableUnit {
+    /// Open table unit of given `region_id` and `table_id`, the caller should
+    /// ensure the meta data of this table unit is stored in
+    /// `table_unit_meta_table`, and the wal log records are stored in
+    /// `buckets`.
     pub async fn open<T: TableKv>(
         runtimes: WalRuntimes,
         table_kv: &T,
         scan_ctx: ScanContext,
-        region_meta_table: &str,
+        table_unit_meta_table: &str,
         region_id: RegionId,
+        table_id: TableId,
         // Buckets ordered by time.
         buckets: Vec<BucketRef>,
-    ) -> Result<Option<Region>> {
+    ) -> Result<Option<TableUnit>> {
         let table_kv = table_kv.clone();
-        let region_meta_table = region_meta_table.to_string();
+        let table_unit_meta_table = table_unit_meta_table.to_string();
         let rt = runtimes.bg_runtime.clone();
 
         rt.spawn_blocking(move || {
-            // Load of create region entry.
-            let region_entry =
-                match Self::load_region_entry(&table_kv, &region_meta_table, region_id)? {
+            // Load of create table unit entry.
+            let table_unit_entry =
+                match Self::load_table_unit_entry(&table_kv, &table_unit_meta_table, table_id)? {
                     Some(v) => v,
                     None => return Ok(None),
                 };
 
-            // Load last sequence of this region.
-            let last_sequence = Self::load_last_sequence(&table_kv, scan_ctx, region_id, &buckets)?;
+            // Load last sequence of this table unit.
+            let last_sequence =
+                Self::load_last_sequence(&table_kv, scan_ctx, region_id, table_id, &buckets)?;
 
             Ok(Some(Self {
                 runtimes,
-                state: RegionState {
+                state: TableUnitState {
                     region_id,
-                    start_sequence: AtomicU64::new(region_entry.start_sequence),
+                    table_id,
+                    start_sequence: AtomicU64::new(table_unit_entry.start_sequence),
                     last_sequence: AtomicU64::new(last_sequence),
                 },
-                writer: Mutex::new(RegionWriter),
+                writer: Mutex::new(TableUnitWriter),
             }))
         })
         .await
         .context(RuntimeExec)?
     }
 
-    /// Similar to `open()`, open region of given `region_id`. If the region is
-    /// not exists, insert a new region entry into `region_meta_table`. Only
-    /// one writer is allowed to insert the new region entry.
+    /// Similar to `open()`, open table unit of given `region_id` and
+    /// `table_id`. If the table unit doesn't exists, insert a new table
+    /// unit entry into `table_unit_meta_table`. Only one writer is allowed to
+    /// insert the new table unit entry.
     pub async fn open_or_create<T: TableKv>(
         runtimes: WalRuntimes,
         table_kv: &T,
         scan_ctx: ScanContext,
-        region_meta_table: &str,
+        table_unit_meta_table: &str,
         region_id: RegionId,
+        table_id: TableId,
         // Buckets ordered by time.
         buckets: Vec<BucketRef>,
-    ) -> Result<Region> {
+    ) -> Result<TableUnit> {
         let table_kv = table_kv.clone();
-        let region_meta_table = region_meta_table.to_string();
+        let table_unit_meta_table = table_unit_meta_table.to_string();
         let rt = runtimes.bg_runtime.clone();
 
         rt.spawn_blocking(move || {
-            // Load of create region entry.
-            let mut writer = RegionWriter;
-            let region_entry =
-                match Self::load_region_entry(&table_kv, &region_meta_table, region_id)? {
+            // Load of create table unit entry.
+            let mut writer = TableUnitWriter;
+            let table_unit_entry =
+                match Self::load_table_unit_entry(&table_kv, &table_unit_meta_table, table_id)? {
                     Some(v) => v,
                     None => {
-                        let entry = RegionEntry::new(region_id);
-                        writer.insert_or_load_region_entry(&table_kv, &region_meta_table, entry)?
+                        let entry = TableUnitEntry::new(table_id);
+                        writer.insert_or_load_table_unit_entry(
+                            &table_kv,
+                            &table_unit_meta_table,
+                            entry,
+                        )?
                     }
                 };
 
-            // Load last sequence of this region.
-            let last_sequence = Self::load_last_sequence(&table_kv, scan_ctx, region_id, &buckets)?;
+            // Load last sequence of this table unit.
+            let last_sequence =
+                Self::load_last_sequence(&table_kv, scan_ctx, region_id, table_id, &buckets)?;
 
             Ok(Self {
                 runtimes,
-                state: RegionState {
+                state: TableUnitState {
                     region_id,
-                    start_sequence: AtomicU64::new(region_entry.start_sequence),
+                    table_id,
+                    start_sequence: AtomicU64::new(table_unit_entry.start_sequence),
                     last_sequence: AtomicU64::new(last_sequence),
                 },
                 writer: Mutex::new(writer),
@@ -285,23 +302,25 @@ impl Region {
         // during reading start/end sequence.
         let start_sequence = match request.start.as_start_sequence_number() {
             Some(request_start_sequence) => {
-                let region_start_sequence = self.state.start_sequence();
+                let table_unit_start_sequence = self.state.start_sequence();
                 // Avoid reading deleted log entries.
-                cmp::max(region_start_sequence, request_start_sequence)
+                cmp::max(table_unit_start_sequence, request_start_sequence)
             }
             None => return Ok(TableLogIterator::new_empty(table_kv.clone())),
         };
         let end_sequence = match request.end.as_end_sequence_number() {
             Some(request_end_sequence) => {
-                let region_last_sequence = self.state.last_sequence();
+                let table_unit_last_sequence = self.state.last_sequence();
                 // Avoid reading entries newer than current last sequence.
-                cmp::min(region_last_sequence, request_end_sequence)
+                cmp::min(table_unit_last_sequence, request_end_sequence)
             }
             None => return Ok(TableLogIterator::new_empty(table_kv.clone())),
         };
 
-        let min_log_key = (self.state.region_id, start_sequence);
-        let max_log_key = (self.state.region_id, end_sequence);
+        let region_id = self.state.region_id;
+        let table_id = self.state.table_id;
+        let min_log_key = CommonLogKey::new(region_id, table_id, start_sequence);
+        let max_log_key = CommonLogKey::new(region_id, table_id, end_sequence);
 
         let scan_ctx = ScanContext {
             timeout: ctx.timeout,
@@ -320,7 +339,7 @@ impl Region {
     pub async fn delete_entries_up_to<T: TableKv>(
         &self,
         table_kv: &T,
-        region_meta_table: &str,
+        table_unit_meta_table: &str,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         let mut writer = self.writer.lock().await;
@@ -329,10 +348,15 @@ impl Region {
                 &self.runtimes.write_runtime,
                 table_kv,
                 &self.state,
-                region_meta_table,
+                table_unit_meta_table,
                 sequence_num,
             )
             .await
+    }
+
+    #[inline]
+    pub fn table_id(&self) -> TableId {
+        self.state.table_id
     }
 
     #[inline]
@@ -347,18 +371,18 @@ impl Region {
 }
 
 // Blocking operations:
-impl Region {
-    fn load_region_entry<T: TableKv>(
+impl TableUnit {
+    fn load_table_unit_entry<T: TableKv>(
         table_kv: &T,
-        region_meta_table: &str,
-        region_id: RegionId,
-    ) -> Result<Option<RegionEntry>> {
-        let key = encoding::format_region_key(region_id);
+        table_unit_meta_table: &str,
+        table_id: TableId,
+    ) -> Result<Option<TableUnitEntry>> {
+        let key = encoding::format_table_unit_key(table_id);
         table_kv
-            .get(region_meta_table, key.as_bytes())
+            .get(table_unit_meta_table, key.as_bytes())
             .map_err(|e| Box::new(e) as _)
             .context(GetValue { key: &key })?
-            .map(|value| RegionEntry::decode(&value).context(Decode { key }))
+            .map(|value| TableUnitEntry::decode(&value).context(Decode { key }))
             .transpose()
     }
 
@@ -368,6 +392,7 @@ impl Region {
         table_kv: &T,
         scan_ctx: ScanContext,
         region_id: RegionId,
+        table_id: TableId,
         buckets: &[BucketRef],
     ) -> Result<SequenceNumber> {
         // Starts from the latest bucket, find last sequence of given region id.
@@ -380,6 +405,7 @@ impl Region {
                 scan_ctx.clone(),
                 table_name,
                 region_id,
+                table_id,
             )? {
                 last_sequence = seq;
             }
@@ -393,18 +419,20 @@ impl Region {
         scan_ctx: ScanContext,
         table_name: &str,
         region_id: RegionId,
+        table_id: TableId,
     ) -> Result<Option<SequenceNumber>> {
-        let log_encoding = LogEncoding::newest();
+        let log_encoding = CommonLogEncoding::newest();
         let mut encode_buf = BytesMut::new();
 
-        let start_log_key = (region_id, common_types::MIN_SEQUENCE_NUMBER);
+        let start_log_key =
+            CommonLogKey::new(region_id, table_id, common_types::MIN_SEQUENCE_NUMBER);
         log_encoding
             .encode_key(&mut encode_buf, &start_log_key)
             .context(LogCodec)?;
         let scan_start = KeyBoundary::included(&encode_buf);
 
         encode_buf.clear();
-        let end_log_key = (region_id, common_types::MAX_SEQUENCE_NUMBER);
+        let end_log_key = CommonLogKey::new(region_id, table_id, common_types::MAX_SEQUENCE_NUMBER);
         log_encoding
             .encode_key(&mut encode_buf, &end_log_key)
             .context(LogCodec)?;
@@ -432,9 +460,10 @@ impl Region {
 
         let log_key = log_encoding.decode_key(iter.key()).context(LogCodec)?;
 
-        Ok(Some(log_key.1))
+        Ok(Some(log_key.sequence_num))
     }
 
+    // TODO: unfortunately, we can just check and delete the
     pub fn clean_deleted_logs<T: TableKv>(
         &self,
         table_kv: &T,
@@ -442,12 +471,20 @@ impl Region {
         buckets: &[BucketRef],
     ) -> Result<()> {
         // Inclusive min log key.
-        let min_log_key = (self.state.region_id, common_types::MIN_SEQUENCE_NUMBER);
+        let min_log_key = CommonLogKey::new(
+            self.state.region_id,
+            self.state.table_id,
+            common_types::MIN_SEQUENCE_NUMBER,
+        );
         // Exlusive max log key.
-        let max_log_key = (self.state.region_id, self.state.start_sequence());
+        let max_log_key = CommonLogKey::new(
+            self.state.region_id,
+            self.state.table_id,
+            self.state.start_sequence(),
+        );
 
         let mut seek_key_buf = BytesMut::new();
-        let log_encoding = LogEncoding::newest();
+        let log_encoding = CommonLogEncoding::newest();
         log_encoding
             .encode_key(&mut seek_key_buf, &min_log_key)
             .context(LogCodec)?;
@@ -508,7 +545,7 @@ impl Region {
                     .write(WriteContext::default(), table_name, wb)
                     .map_err(|e| Box::new(e) as _)
                     .context(Delete {
-                        region_id: self.state.region_id,
+                        region_id: self.state.table_id,
                     })?;
             }
 
@@ -522,7 +559,7 @@ impl Region {
                     .write(WriteContext::default(), table_name, wb)
                     .map_err(|e| Box::new(e) as _)
                     .context(Delete {
-                        region_id: self.state.region_id,
+                        region_id: self.state.table_id,
                     })?;
 
                 break;
@@ -531,8 +568,8 @@ impl Region {
 
         if total_deleted > 0 {
             debug!(
-                "Clean logs of region, region_id:{}, table_name:{}, total_deleted:{}",
-                self.state.region_id, table_name, total_deleted
+                "Clean logs of table unit, region_id:{}, table_name:{}, total_deleted:{}",
+                self.state.table_id, table_name, total_deleted
             );
         }
 
@@ -540,22 +577,22 @@ impl Region {
     }
 }
 
-pub type RegionRef = Arc<Region>;
+pub type TableUnitRef = Arc<TableUnit>;
 
 #[derive(Debug)]
 pub struct TableLogIterator<T: TableKv> {
     buckets: Vec<BucketRef>,
     /// Inclusive max log key.
-    max_log_key: LogKey,
+    max_log_key: CommonLogKey,
     scan_ctx: ScanContext,
     table_kv: T,
 
-    current_log_key: LogKey,
+    current_log_key: CommonLogKey,
     // The iterator is exhausted if `current_bucket_index >= bucets.size()`.
     current_bucket_index: usize,
     // The `current_iter` should be either a valid iterator or None.
     current_iter: Option<T::ScanIter>,
-    log_encoding: LogEncoding,
+    log_encoding: CommonLogEncoding,
     // TODO(ygf11): Remove this after issue#120 is resolved.
     previous_value: Vec<u8>,
 }
@@ -564,21 +601,21 @@ impl<T: TableKv> TableLogIterator<T> {
     pub fn new_empty(table_kv: T) -> Self {
         Self {
             buckets: Vec::new(),
-            max_log_key: (0, 0),
+            max_log_key: CommonLogKey::new(0, 0, 0),
             scan_ctx: ScanContext::default(),
             table_kv,
-            current_log_key: (0, 0),
+            current_log_key: CommonLogKey::new(0, 0, 0),
             current_bucket_index: 0,
             current_iter: None,
-            log_encoding: LogEncoding::newest(),
+            log_encoding: CommonLogEncoding::newest(),
             previous_value: Vec::default(),
         }
     }
 
-    fn new(
+    pub fn new(
         buckets: Vec<BucketRef>,
-        min_log_key: LogKey,
-        max_log_key: LogKey,
+        min_log_key: CommonLogKey,
+        max_log_key: CommonLogKey,
         scan_ctx: ScanContext,
         table_kv: T,
     ) -> Self {
@@ -590,7 +627,7 @@ impl<T: TableKv> TableLogIterator<T> {
             current_log_key: min_log_key,
             current_bucket_index: 0,
             current_iter: None,
-            log_encoding: LogEncoding::newest(),
+            log_encoding: CommonLogEncoding::newest(),
             previous_value: Vec::default(),
         }
     }
@@ -621,7 +658,7 @@ impl<T: TableKv> TableLogIterator<T> {
     /// Scan buckets to find next valid iterator, returns true if such iterator
     /// has been found.
     fn scan_buckets(&mut self) -> Result<bool> {
-        let region_id = self.max_log_key.0;
+        let region_id = self.max_log_key.region_id;
         let scan_req = self.new_scan_request()?;
 
         while self.current_bucket_index < self.buckets.len() {
@@ -704,8 +741,8 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             .context(manager::Read)?;
 
         let log_entry = LogEntry {
-            table_id: self.current_log_key.0,
-            sequence: self.current_log_key.1,
+            table_id: self.current_log_key.table_id,
+            sequence: self.current_log_key.sequence_num,
             payload: self.previous_value.as_slice(),
         };
 
@@ -713,55 +750,59 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
     }
 }
 
-struct RegionWriter;
+struct TableUnitWriter;
 
 // Blocking operations.
-impl RegionWriter {
-    fn insert_or_load_region_entry<T: TableKv>(
+impl TableUnitWriter {
+    fn insert_or_load_table_unit_entry<T: TableKv>(
         &mut self,
         table_kv: &T,
-        region_meta_table: &str,
-        region_entry: RegionEntry,
-    ) -> Result<RegionEntry> {
-        let key = encoding::format_region_key(region_entry.region_id);
-        let value = region_entry.encode().context(Encode { key: &key })?;
+        table_unit_meta_table: &str,
+        table_unit_entry: TableUnitEntry,
+    ) -> Result<TableUnitEntry> {
+        let key = encoding::format_table_unit_key(table_unit_entry.table_id);
+        let value = table_unit_entry.encode().context(Encode { key: &key })?;
 
         let mut batch = T::WriteBatch::default();
         batch.insert(key.as_bytes(), &value);
 
-        let res = table_kv.write(WriteContext::default(), region_meta_table, batch);
+        let res = table_kv.write(WriteContext::default(), table_unit_meta_table, batch);
 
         match &res {
-            Ok(()) => Ok(region_entry),
+            Ok(()) => Ok(table_unit_entry),
             Err(e) => {
                 if e.is_primary_key_duplicate() {
-                    Region::load_region_entry(table_kv, region_meta_table, region_entry.region_id)?
-                        .context(RegionNotExists {
-                            region_id: region_entry.region_id,
-                        })
+                    TableUnit::load_table_unit_entry(
+                        table_kv,
+                        table_unit_meta_table,
+                        table_unit_entry.table_id,
+                    )?
+                    .context(TableUnitNotExists {
+                        region_id: table_unit_entry.table_id,
+                    })
                 } else {
                     res.map_err(|e| Box::new(e) as _)
                         .context(WriteValue { key: &key })?;
 
-                    Ok(region_entry)
+                    Ok(table_unit_entry)
                 }
             }
         }
     }
 
-    fn update_region_entry<T: TableKv>(
+    fn update_table_unit_entry<T: TableKv>(
         table_kv: &T,
-        region_meta_table: &str,
-        region_entry: &RegionEntry,
+        table_unit_meta_table: &str,
+        table_unit_entry: &TableUnitEntry,
     ) -> Result<()> {
-        let key = encoding::format_region_key(region_entry.region_id);
-        let value = region_entry.encode().context(Encode { key: &key })?;
+        let key = encoding::format_table_unit_key(table_unit_entry.table_id);
+        let value = table_unit_entry.encode().context(Encode { key: &key })?;
 
         let mut batch = T::WriteBatch::default();
         batch.insert_or_update(key.as_bytes(), &value);
 
         table_kv
-            .write(WriteContext::default(), region_meta_table, batch)
+            .write(WriteContext::default(), table_unit_meta_table, batch)
             .map_err(|e| Box::new(e) as _)
             .context(WriteValue { key: &key })
     }
@@ -770,52 +811,56 @@ impl RegionWriter {
     /// [SequenceNumber] of the range [start, start + `number`].
     fn alloc_sequence_num(
         &mut self,
-        region_state: &RegionState,
+        table_unit_state: &TableUnitState,
         number: u64,
     ) -> Result<SequenceNumber> {
         ensure!(
-            region_state.last_sequence() < common_types::MAX_SEQUENCE_NUMBER,
+            table_unit_state.last_sequence() < common_types::MAX_SEQUENCE_NUMBER,
             SequenceOverflow {
-                region_id: region_state.region_id,
+                region_id: table_unit_state.region_id,
+                table_id: table_unit_state.table_id,
             }
         );
 
-        let last_sequence = region_state
+        let last_sequence = table_unit_state
             .last_sequence
             .fetch_add(number, Ordering::Relaxed);
         Ok(last_sequence + 1)
     }
 }
 
-impl RegionWriter {
+impl TableUnitWriter {
     async fn write_log<T: TableKv>(
         &mut self,
         runtime: &Runtime,
         table_kv: &T,
-        region_state: &RegionState,
+        table_unit_state: &TableUnitState,
         bucket: &BucketRef,
         ctx: &manager::WriteContext,
         log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         debug!(
-            "Wal region begin writing, ctx:{:?}, region_id:{}, log_entries_num:{}",
+            "Wal table unit begin writing, ctx:{:?}, region_id:{}, table_id:{}, log_entries_num:{}",
             ctx,
-            log_batch.location.table_id,
+            table_unit_state.region_id,
+            table_unit_state.table_id,
             log_batch.entries.len()
         );
 
-        let log_encoding = LogEncoding::newest();
+        let log_encoding = CommonLogEncoding::newest();
         let entries_num = log_batch.len() as u64;
+        let region_id = table_unit_state.region_id;
+        let table_id = table_unit_state.table_id;
         let (wb, max_sequence_num) = {
             let mut wb = T::WriteBatch::with_capacity(log_batch.len());
-            let mut next_sequence_num = self.alloc_sequence_num(region_state, entries_num)?;
+            let mut next_sequence_num = self.alloc_sequence_num(table_unit_state, entries_num)?;
             let mut key_buf = BytesMut::new();
 
             for entry in &log_batch.entries {
                 log_encoding
                     .encode_key(
                         &mut key_buf,
-                        &(log_batch.location.table_id, next_sequence_num),
+                        &CommonLogKey::new(region_id, table_id, next_sequence_num),
                     )
                     .context(LogCodec)?;
                 wb.insert(&key_buf, &entry.payload);
@@ -828,7 +873,6 @@ impl RegionWriter {
 
         let table_kv = table_kv.clone();
         let bucket = bucket.clone();
-        let region_id = log_batch.location.table_id;
         runtime
             .spawn_blocking(move || {
                 let table_name = bucket.wal_shard_table(region_id);
@@ -850,50 +894,51 @@ impl RegionWriter {
         &mut self,
         runtime: &Runtime,
         table_kv: &T,
-        region_state: &RegionState,
-        region_meta_table: &str,
+        table_unit_state: &TableUnitState,
+        table_unit_meta_table: &str,
         mut sequence_num: SequenceNumber,
     ) -> Result<()> {
         debug!(
-            "Try to delete entries, region_id:{}, sequence_num:{}",
-            region_state.region_id, sequence_num
+            "Try to delete entries, region_id:{}, table_id:{}, sequence_num:{}",
+            table_unit_state.region_id, table_unit_state.table_id, sequence_num
         );
 
         ensure!(
             sequence_num < common_types::MAX_SEQUENCE_NUMBER,
             SequenceOverflow {
-                region_id: region_state.region_id,
+                region_id: table_unit_state.region_id,
+                table_id: table_unit_state.table_id,
             }
         );
 
-        let last_sequence = region_state.last_sequence();
+        let last_sequence = table_unit_state.last_sequence();
         if sequence_num > last_sequence {
             sequence_num = last_sequence;
         }
 
         // Update min_sequence.
-        let mut region_entry = region_state.region_entry();
-        if region_entry.start_sequence <= sequence_num {
-            region_entry.start_sequence = sequence_num + 1;
+        let mut table_unit_entry = table_unit_state.table_unit_entry();
+        if table_unit_entry.start_sequence <= sequence_num {
+            table_unit_entry.start_sequence = sequence_num + 1;
         }
 
         debug!(
-            "Update region entry due to deletion, table:{}, region_entry:{:?}",
-            region_meta_table, region_entry
+            "Update table unit entry due to deletion, table:{}, table_unit_entry:{:?}",
+            table_unit_meta_table, table_unit_entry
         );
 
         let table_kv = table_kv.clone();
-        let region_meta_table = region_meta_table.to_string();
+        let table_unit_meta_table = table_unit_meta_table.to_string();
         runtime
             .spawn_blocking(move || {
-                // Persist modification to region meta table.
-                Self::update_region_entry(&table_kv, &region_meta_table, &region_entry)
+                // Persist modification to table unit meta table.
+                Self::update_table_unit_entry(&table_kv, &table_unit_meta_table, &table_unit_entry)
             })
             .await
             .context(RuntimeExec)??;
 
-        // Update region state in memory.
-        region_state.set_start_sequence(region_entry.start_sequence);
+        // Update table unit state in memory.
+        table_unit_state.set_start_sequence(table_unit_entry.start_sequence);
 
         Ok(())
     }

@@ -67,10 +67,6 @@ jobs:
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
       - name: Backup Lock File
         run: |
           cp ${LOCK_FILE} ${LOCK_FILE}.bak
