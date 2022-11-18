@@ -35,11 +35,6 @@ jobs:
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
-          sudo rm -rf /var/lib/apt/lists/*
       - name: Build server
         run: |
           make build
