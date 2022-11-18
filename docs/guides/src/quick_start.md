@@ -27,31 +27,52 @@ The easiest to use is HTTP, so sections below will use it for demo. For producti
 ### Create table
 ```shell
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
---data-raw 'CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl="false")'
+--data-raw '
+CREATE TABLE `demo` (
+    `name` string TAG,
+    `value` double NOT NULL,
+    `t` timestamp NOT NULL,
+    timestamp KEY (t))
+ENGINE=Analytic
+  with
+(enable_ttl="false")
+'
 ```
 
 ### Write data
 ```shell
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
---data-raw 'INSERT INTO demo(t, name, value) VALUES(1651737067000, "ceresdb", 100)'
+--data-raw '
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067000, "ceresdb", 100)
+'
 ```
 
 ### Read data
 ```shell
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
---data-raw 'select * from `demo`'
+--data-raw '
+SELECT
+    *
+FROM
+    `demo`
+'
 ```
 
 ### Show create table
 ```shell
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
---data-raw 'show create table `demo`'
+--data-raw '
+SHOW CREATE TABLE `demo`
+'
 ```
 
 ### Drop table
 ```shell
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
---data-raw 'DROP TABLE `demo`'
+--data-raw '
+DROP TABLE `demo`
+'
 ```
 
 ## Using the SDKs
