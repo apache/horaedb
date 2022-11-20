@@ -24,7 +24,7 @@ use log::{debug, error, info};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{
     self, CreateCatalogRequest, CreateSchemaRequest, SysCatalogTable, Visitor,
-    VisitorCatalogNotFound, VisitorOpenTable, VisitorSchemaNotFound,
+    VisitorCatalogNotFound, VisitorSchemaNotFound,
 };
 use table_engine::{
     engine::{TableEngineRef, TableState},
@@ -92,10 +92,10 @@ pub struct TableBasedManager {
     /// Sys catalog table
     catalog_table: Arc<SysCatalogTable>,
     catalogs: CatalogMap,
-    /// Table engine proxy
-    engine_proxy: TableEngineRef,
     /// Global schema id generator, Each schema has a unique schema id.
     schema_id_generator: Arc<SchemaIdGenerator>,
+    /// Collect table
+    table_infos: Vec<TableInfo>,
 }
 
 impl Manager for TableBasedManager {
@@ -120,7 +120,7 @@ impl Manager for TableBasedManager {
 impl TableBasedManager {
     /// Create and init the TableBasedManager.
     // TODO(yingwen): Define all constants in catalog crate.
-    pub async fn new(backend: TableEngineRef, engine_proxy: TableEngineRef) -> Result<Self> {
+    pub async fn new(backend: TableEngineRef) -> Result<Self> {
         // Create or open sys_catalog table, will also create a space (catalog + schema)
         // for system catalog.
         let catalog_table = SysCatalogTable::new(backend)
@@ -130,8 +130,8 @@ impl TableBasedManager {
         let mut manager = Self {
             catalog_table: Arc::new(catalog_table),
             catalogs: HashMap::new(),
-            engine_proxy,
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
+            table_infos: Vec::new(),
         };
 
         manager.init().await?;
@@ -139,9 +139,8 @@ impl TableBasedManager {
         Ok(manager)
     }
 
-    #[cfg(test)]
-    pub fn get_engine_proxy(&self) -> TableEngineRef {
-        self.engine_proxy.clone()
+    pub fn get_table_infos(&self) -> Vec<TableInfo> {
+        self.table_infos.clone()
     }
 
     /// Load all data from sys catalog table.
@@ -152,8 +151,8 @@ impl TableBasedManager {
         let mut visitor = VisitorImpl {
             catalog_table: self.catalog_table.clone(),
             catalogs: &mut self.catalogs,
-            engine_proxy: self.engine_proxy.clone(),
             schema_id_generator: self.schema_id_generator.clone(),
+            table_infos: &mut self.table_infos,
         };
 
         // Load all existent catalog/schema/tables from catalog_table.
@@ -309,8 +308,8 @@ type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
 struct VisitorImpl<'a> {
     catalog_table: Arc<SysCatalogTable>,
     catalogs: &'a mut CatalogMap,
-    engine_proxy: TableEngineRef,
     schema_id_generator: Arc<SchemaIdGenerator>,
+    table_infos: &'a mut Vec<TableInfo>,
 }
 
 #[async_trait]
@@ -397,26 +396,8 @@ impl<'a> Visitor for VisitorImpl<'a> {
             return Ok(());
         }
 
-        let open_request = OpenTableRequest::from(table_info);
-        let table_name = open_request.table_name.clone();
-        let table_opt = self
-            .engine_proxy
-            .open_table(open_request)
-            .await
-            .context(VisitorOpenTable)?;
-
-        match table_opt {
-            Some(table) => {
-                schema.insert_table_into_memory(table_id, table);
-            }
-            None => {
-                // Now we ignore the error that table not in engine but in catalog.
-                error!(
-                    "Visitor found table not in engine, table_name:{:?}",
-                    table_name
-                );
-            }
-        }
+        // Collect table infos for later opening.
+        self.table_infos.push(table_info);
 
         Ok(())
     }
@@ -825,7 +806,7 @@ impl Schema for SchemaImpl {
     async fn open_table(
         &self,
         request: OpenTableRequest,
-        _opts: OpenOptions,
+        opts: OpenOptions,
     ) -> schema::Result<Option<TableRef>> {
         debug!(
             "Table based catalog manager open table, request:{:?}",
@@ -834,9 +815,33 @@ impl Schema for SchemaImpl {
 
         self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
 
-        // All tables have been opened duration initialization, so just check
-        // whether the table exists.
-        self.check_create_table_read(&request.table_name, false)
+        // Do opening work.
+        let table_name = request.table_name.clone();
+        let table_id = request.table_id;
+        let table_opt = opts
+            .table_engine
+            .open_table(request.clone())
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(schema::OpenTableWithCause)?;
+
+        match table_opt {
+            Some(table) => {
+                self.insert_table_into_memory(table_id, table.clone());
+
+                Ok(Some(table))
+            }
+
+            None => {
+                // Now we ignore the error that table not in engine but in catalog.
+                error!(
+                    "Visitor found table not in engine, table_name:{:?}, table_id:{}",
+                    table_name, table_id,
+                );
+
+                Ok(None)
+            }
+        }
     }
 
     async fn close_table(
@@ -889,16 +894,8 @@ mod tests {
     use crate::table_based::TableBasedManager;
 
     async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
-        // Create table engine proxy
-        let memory = MemoryTableEngine;
-
-        let engine_proxy = Arc::new(TableEngineProxy {
-            memory,
-            analytic: analytic.clone(),
-        });
-
         // Create catalog manager, use analytic table as backend
-        TableBasedManager::new(analytic.clone(), engine_proxy.clone())
+        TableBasedManager::new(analytic.clone())
             .await
             .expect("Failed to create catalog manager")
     }
@@ -949,12 +946,13 @@ mod tests {
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.engine().clone()).await;
+        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
         let catalog_name = catalog_manager.default_catalog_name();
         let schema_name = catalog_manager.default_schema_name();
         let catalog = catalog_manager.catalog_by_name(catalog_name);
         assert!(catalog.is_ok());
         assert!(catalog.as_ref().unwrap().is_some());
+
         let schema = catalog
             .as_ref()
             .unwrap()
@@ -1023,14 +1021,21 @@ mod tests {
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
+        let engine = test_ctx.engine().clone();
+        let memory = MemoryTableEngine;
+        let engine_proxy = Arc::new(TableEngineProxy {
+            memory,
+            analytic: engine.clone(),
+        });
+
+        let catalog_manager = build_catalog_manager(engine.clone()).await;
         let schema = build_default_schema_with_catalog(&catalog_manager).await;
 
         let table_name = "test";
         let request = build_create_table_req(table_name, schema.clone()).await;
 
         let opts = CreateOptions {
-            table_engine: catalog_manager.get_engine_proxy(),
+            table_engine: engine_proxy.clone(),
             create_if_not_exists: true,
         };
 
@@ -1045,7 +1050,7 @@ mod tests {
         assert!(schema.table_by_name(table_name).unwrap().is_some());
 
         let opts2 = CreateOptions {
-            table_engine: catalog_manager.get_engine_proxy(),
+            table_engine: engine_proxy,
             create_if_not_exists: false,
         };
         assert!(schema.create_table(request.clone(), opts2).await.is_err());
@@ -1062,7 +1067,14 @@ mod tests {
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
 
-        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
+        let engine = test_ctx.engine().clone();
+        let memory = MemoryTableEngine;
+        let engine_proxy = Arc::new(TableEngineProxy {
+            memory,
+            analytic: engine.clone(),
+        });
+
+        let catalog_manager = build_catalog_manager(engine.clone()).await;
         let schema = build_default_schema_with_catalog(&catalog_manager).await;
 
         let table_name = "test";
@@ -1075,7 +1087,7 @@ mod tests {
             engine: engine_name.to_string(),
         };
         let drop_table_opts = DropOptions {
-            table_engine: catalog_manager.get_engine_proxy(),
+            table_engine: engine_proxy.clone(),
         };
 
         assert!(!schema
@@ -1085,7 +1097,7 @@ mod tests {
 
         let create_table_request = build_create_table_req(table_name, schema.clone()).await;
         let create_table_opts = CreateOptions {
-            table_engine: catalog_manager.get_engine_proxy(),
+            table_engine: engine_proxy,
             create_if_not_exists: true,
         };
 

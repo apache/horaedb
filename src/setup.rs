@@ -9,7 +9,11 @@ use analytic_engine::{
     setup::{EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder},
     WalStorageConfig,
 };
-use catalog::manager::ManagerRef;
+use catalog::{
+    manager::ManagerRef,
+    schema::{OpenOptions, OpenTableRequest},
+    CatalogRef,
+};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, shard_tables_cache::ShardTablesCache};
 use common_util::runtime;
@@ -221,15 +225,38 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     table_engine: TableEngineRef,
     engine_proxy: TableEngineRef,
 ) -> Builder<Q> {
-    let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
+    let table_based_manager = TableBasedManager::new(table_engine)
         .await
         .expect("Failed to create catalog manager");
+
+    // Get collected table infos.
+    let table_infos = table_based_manager.get_table_infos();
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
     let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
         catalog_manager.clone(),
     ));
+
+    // Iterate the table infos to recover.
+    let default_catalog = default_catalog(catalog_manager.clone());
+    let opts = OpenOptions {
+        table_engine: engine_proxy,
+    };
+
+    for table_info in table_infos {
+        let schema = default_catalog
+            .schema_by_name(&table_info.schema_name)
+            .unwrap_or_else(|_| panic!("fail to get schema of table, table_info:{:?}", table_info))
+            .unwrap_or_else(|| panic!("schema of table is not found, table_info:{:?}", table_info));
+
+        let open_request = OpenTableRequest::from(table_info);
+        schema
+            .open_table(open_request.clone(), opts.clone())
+            .await
+            .unwrap_or_else(|_| panic!("fail to open table, open_request:{:?}", open_request))
+            .unwrap_or_else(|| panic!("no table is opened, open_request:{:?}", open_request));
+    }
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -273,4 +300,12 @@ async fn create_static_topology_schema(
             &schema_shard_view.schema
         );
     }
+}
+
+fn default_catalog(catalog_manager: ManagerRef) -> CatalogRef {
+    let default_catalog_name = catalog_manager.default_catalog_name();
+    catalog_manager
+        .catalog_by_name(default_catalog_name)
+        .expect("fail to get default catalog")
+        .expect("default catalog is not found")
 }
