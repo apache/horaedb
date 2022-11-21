@@ -17,6 +17,7 @@ datafusion-expr = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 parquet = { workspace = true }
+parquet_ext = { workspace = true }
 proto = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }

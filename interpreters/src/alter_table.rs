@@ -84,16 +84,16 @@ fn build_new_schema(current_schema: &Schema, column_schemas: Vec<ColumnSchema>) 
         schema::Builder::with_capacity(current_schema.num_columns() + column_schemas.len())
             // Increment the schema version.
             .version(current_version + 1);
-    // Add existing columns to builder.
-    for key_column in current_schema.key_columns() {
-        builder = builder
-            .add_key_column(key_column.clone())
-            .context(AddColumnSchema)?;
-    }
-    for normal_column in current_schema.normal_columns() {
-        builder = builder
-            .add_normal_column(normal_column.clone())
-            .context(AddColumnSchema)?;
+    for (idx, column) in current_schema.columns().iter().enumerate() {
+        if current_schema.is_primary_key_index(&idx) {
+            builder = builder
+                .add_key_column(column.clone())
+                .context(AddColumnSchema)?;
+        } else {
+            builder = builder
+                .add_normal_column(column.clone())
+                .context(AddColumnSchema)?;
+        }
     }
 
     builder = builder

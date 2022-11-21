@@ -38,7 +38,7 @@ fn main() {
         .version(version.as_str())
         .arg(
             Arg::with_name("config")
-                .short("c")
+                .short('c')
                 .long("config")
                 .required(false)
                 .takes_value(true)

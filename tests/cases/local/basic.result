@@ -1,40 +1,59 @@
-CREATE TABLE demo (name string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
+DROP TABLE IF EXISTS `demo`;
 
 affected_rows: 0
 
-INSERT INTO demo(t, name, value) VALUES(1651737067000, 'ceresdb', 100);
+CREATE TABLE demo (
+    name string TAG,
+    value double NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067000, 'ceresdb', 100);
 
 affected_rows: 1
 
 SELECT * FROM demo;
 
-t,tsid,name,value,
-Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
+name,value,t,tsid,
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
 
 
-INSERT INTO demo(t, name, value) VALUES(1651737067001, "ceresdb", 100);
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067001, "ceresdb", 100);
 
 affected_rows: 1
 
 SELECT * FROM demo;
 
-t,tsid,name,value,
-Timestamp(Timestamp(1651737067000)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
-Timestamp(Timestamp(1651737067001)),Int64(-6317898613073581291),String(StringBytes(b"ceresdb")),Double(100.0),
+name,value,t,tsid,
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
+String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067001)),Int64(102432447525557625),
 
 
-CREATE TABLE "DeMo"("nAmE" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');
+DROP TABLE IF EXISTS `demo`;
 
-Failed to execute query, err: Server(ServerError { code: 400, msg: "failed to parse sql. Caused by: Invalid sql, sql: CREATE TABLE \"DeMo\"(\"nAmE\" string TAG, value double NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE=Analytic with (enable_ttl='false');, err:sql parser error: Expected identifier, found: \"DeMo\"" })
+affected_rows: 0
 
-SELECT "name" FROM demo;
+CREATE TABLE `DeMo` (
+    `nAmE` string TAG,
+    value double NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
 
-Utf8("name"),
-String(StringBytes(b"name")),
-String(StringBytes(b"name")),
+affected_rows: 0
 
+SELECT `nAmE` FROM `DeMo`;
 
-DROP TABLE demo;
+affected_rows: 0
+
+DROP TABLE `DeMo`;
 
 affected_rows: 0
 

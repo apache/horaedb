@@ -11,6 +11,7 @@ use analytic_engine::{
         factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
+        meta_cache::MetaCacheRef,
         parquet::reader,
     },
     table::sst_util,
@@ -26,7 +27,8 @@ use common_util::{
 };
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet::file::footer;
+use parquet_ext::DataCacheRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
@@ -54,14 +56,14 @@ pub fn new_runtime(thread_num: usize) -> Runtime {
 pub async fn meta_from_sst(
     store: &ObjectStoreRef,
     sst_path: &Path,
-    meta_cache: &Option<MetaCacheRef>,
-    data_cache: &Option<DataCacheRef>,
+    _meta_cache: &Option<MetaCacheRef>,
+    _data_cache: &Option<DataCacheRef>,
 ) -> SstMetaData {
-    let (_, sst_meta) = reader::read_sst_meta(store, sst_path, meta_cache, data_cache)
+    let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
         .await
         .unwrap();
-
-    sst_meta
+    let metadata = footer::parse_metadata(&chunk_reader).unwrap();
+    reader::read_sst_meta(&metadata).unwrap()
 }
 
 pub async fn schema_from_sst(

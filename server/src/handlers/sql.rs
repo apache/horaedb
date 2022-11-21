@@ -25,7 +25,7 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, TooMuchStmt},
+    error::{ArrowToString, CreatePlan, Error::QueryBlock, InterpreterExec, ParseSql, TooMuchStmt},
     prelude::*,
 };
 
@@ -156,6 +156,12 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         .context(CreatePlan {
             query: &request.query,
         })?;
+
+    if instance.limiter.should_limit(&plan) {
+        return Err(QueryBlock {
+            query: request.query.to_owned(),
+        });
+    }
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id)

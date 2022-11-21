@@ -337,6 +337,7 @@ impl BatchLogIteratorAdapter {
                             .map_err(|e| Box::new(e) as _)
                             .context(manager::Decoding)?;
                         let log_entry = LogEntry {
+                            table_id: raw_log_entry.table_id,
                             sequence: raw_log_entry.sequence,
                             payload,
                         };
@@ -374,6 +375,7 @@ impl BatchLogIteratorAdapter {
                     .map_err(|e| Box::new(e) as _)
                     .context(manager::Decoding)?;
                 let log_entry = LogEntry {
+                    table_id: raw_log_entry.table_id,
                     sequence: raw_log_entry.sequence,
                     payload,
                 };
@@ -437,6 +439,7 @@ mod tests {
             }
 
             let log_entry = LogEntry {
+                table_id: 0,
                 sequence: 0,
                 payload: self.test_logs[self.cursor].as_slice(),
             };
@@ -456,6 +459,7 @@ mod tests {
             }
 
             let log_entry = LogEntry {
+                table_id: 0,
                 sequence: 0,
                 payload: self.test_logs[self.cursor].as_slice(),
             };

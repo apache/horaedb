@@ -298,6 +298,31 @@ impl TryFrom<common_pb::TimeRange> for TimeRange {
     }
 }
 
+#[cfg(feature = "datafusion")]
+mod datafusion_ext {
+    use datafusion::{
+        prelude::{col, lit, Expr},
+        scalar::ScalarValue,
+    };
+
+    use crate::time::TimeRange;
+
+    impl TimeRange {
+        /// Creates expression like:
+        /// start <= time && time < end
+        pub fn to_df_expr(&self, column_name: impl AsRef<str>) -> Expr {
+            let ts_start =
+                ScalarValue::TimestampMillisecond(Some(self.inclusive_start.as_i64()), None);
+            let ts_end = ScalarValue::TimestampMillisecond(Some(self.exclusive_end.as_i64()), None);
+            let column_name = column_name.as_ref();
+            let ts_low = col(column_name).gt_eq(lit(ts_start));
+            let ts_high = col(column_name).lt(lit(ts_end));
+
+            ts_low.and(ts_high)
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::time::Duration;

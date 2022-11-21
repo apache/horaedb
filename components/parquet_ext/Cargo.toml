@@ -10,7 +10,10 @@ edition.workspace = true
 arrow = { workspace = true }
 arrow_ext = { workspace = true }
 bytes = { workspace = true }
-lru = "0.7.0"
+datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
+log = { workspace = true }
+lru = { workspace = true }
 parquet = { workspace = true }
 parquet-format = "4.0.0"
 thrift = "0.13"

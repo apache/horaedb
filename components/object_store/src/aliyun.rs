@@ -18,16 +18,23 @@ use upstream::{
 
 #[derive(Debug, Snafu)]
 enum Error {
-    #[snafu(display("Failed to put object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to put object at path:{}, err:{}", path, source))]
     PutObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to get object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to get object at path:{}, err:{}", path, source))]
     GetObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to head object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to get range of object at path:{}, err:{}", path, source))]
+    GetRangeObject {
+        path: String,
+        range: Range<usize>,
+        source: AliyunError,
+    },
+
+    #[snafu(display("Failed to head object at path:{}, err:{}", path, source))]
     HeadObject { path: String, source: AliyunError },
 
-    #[snafu(display("Failed to delete object at path: {}, err: {}", path, source))]
+    #[snafu(display("Failed to delete object at path:{}, err:{}", path, source))]
     DeleteObject { path: String, source: AliyunError },
 
     #[snafu(display("Operation {} is not implemented", op))]
@@ -49,6 +56,8 @@ pub struct AliyunOSS {
 }
 
 impl AliyunOSS {
+    const RANGE_KEY: &str = "Range";
+
     pub fn new(
         key_id: impl Into<String>,
         key_secret: impl Into<String>,
@@ -63,6 +72,13 @@ impl AliyunOSS {
         );
         Self { oss }
     }
+
+    fn make_range_header(range: &Range<usize>, headers: &mut HashMap<String, String>) {
+        assert!(!range.is_empty());
+        let range_value = format!("bytes={}-{}", range.start, range.end - 1);
+
+        headers.insert(Self::RANGE_KEY.to_string(), range_value);
+    }
 }
 
 #[async_trait]
@@ -76,8 +92,8 @@ impl ObjectStore for AliyunOSS {
                 None,
             )
             .await
-            .context(PutObject {
-                path: &location.to_string(),
+            .with_context(|| PutObject {
+                path: location.to_string(),
             })?;
 
         Ok(())
@@ -105,18 +121,31 @@ impl ObjectStore for AliyunOSS {
             .oss
             .get_object(&location.to_string(), None::<HashMap<String, String>>, None)
             .await
-            .context(GetObject {
-                path: &location.to_string(),
+            .with_context(|| GetObject {
+                path: location.to_string(),
             })?;
 
         Ok(GetResult::Stream(stream::once(async { Ok(bytes) }).boxed()))
     }
 
-    async fn get_range(&self, _location: &Path, _range: Range<usize>) -> Result<Bytes> {
-        Err(Error::Unimplemented {
-            op: "get_range".to_string(),
+    async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        if range.is_empty() {
+            return Ok(Bytes::new());
         }
-        .into())
+
+        let mut headers = HashMap::new();
+        Self::make_range_header(&range, &mut headers);
+
+        let bytes = self
+            .oss
+            .get_object(&location.to_string(), Some(headers), None)
+            .await
+            .with_context(|| GetRangeObject {
+                path: location.to_string(),
+                range,
+            })?;
+
+        Ok(bytes)
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
@@ -124,8 +153,8 @@ impl ObjectStore for AliyunOSS {
             .oss
             .head_object(&location.to_string())
             .await
-            .context(HeadObject {
-                path: &location.to_string(),
+            .with_context(|| HeadObject {
+                path: location.to_string(),
             })?;
 
         Ok(ObjectMeta {
@@ -139,8 +168,8 @@ impl ObjectStore for AliyunOSS {
         self.oss
             .delete_object(&location.to_string())
             .await
-            .context(DeleteObject {
-                path: &location.to_string(),
+            .with_context(|| DeleteObject {
+                path: location.to_string(),
             })?;
 
         Ok(())
@@ -178,5 +207,45 @@ impl ObjectStore for AliyunOSS {
 impl Display for AliyunOSS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "AliyunOSS({})", self.oss.bucket())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_range_header() {
+        let testcases = vec![
+            ((0..500), "bytes=0-499"),
+            ((1000..1001), "bytes=1000-1000"),
+            ((200..1000), "bytes=200-999"),
+        ];
+
+        for (input_range, expect_value) in testcases {
+            let mut headers = HashMap::new();
+            AliyunOSS::make_range_header(&input_range, &mut headers);
+
+            assert_eq!(headers.len(), 1);
+            let range_value = headers
+                .get(AliyunOSS::RANGE_KEY)
+                .expect("should have range key");
+            assert_eq!(range_value, expect_value);
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic_invalid_range_header() {
+        let mut headers = HashMap::new();
+        #[allow(clippy::reversed_empty_ranges)]
+        AliyunOSS::make_range_header(&(500..499), &mut headers);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic_empty_range_header() {
+        let mut headers = HashMap::new();
+        AliyunOSS::make_range_header(&(500..500), &mut headers);
     }
 }

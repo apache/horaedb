@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 use common_types::{
     bytes::{Buf, BufMut},
-    table::Location,
+    table::{Location, TableId},
     SequenceNumber,
 };
 
@@ -21,6 +21,7 @@ pub trait Payload: Send + Sync + Debug {
 
 #[derive(Debug)]
 pub struct LogEntry<P> {
+    pub table_id: TableId,
     pub sequence: SequenceNumber,
     pub payload: P,
 }

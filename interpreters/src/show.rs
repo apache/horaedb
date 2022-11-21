@@ -9,10 +9,11 @@ use arrow::{
 };
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::Schema, Catalog};
+use regex::Regex;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sql::{
     ast::ShowCreateObject,
-    plan::{ShowCreatePlan, ShowPlan},
+    plan::{ShowCreatePlan, ShowPlan, ShowTablesPlan},
 };
 
 use crate::{
@@ -68,6 +69,12 @@ pub enum Error {
 
     #[snafu(display("Failed to fetch schema, err:{}", source))]
     FetchSchema { source: catalog::Error },
+
+    #[snafu(display("Invalid regexp, err:{}.\nBacktrace\n:{}", source, backtrace))]
+    InvalidRegexp {
+        source: regex::Error,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -94,16 +101,30 @@ impl ShowInterpreter {
         show_create.execute_show_create()
     }
 
-    fn show_tables(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
+    fn show_tables(
+        ctx: Context,
+        catalog_manager: ManagerRef,
+        plan: ShowTablesPlan,
+    ) -> Result<Output> {
         let schema = get_default_schema(&ctx, &catalog_manager)?;
-
-        let tables_names = schema
-            .all_tables()
-            .context(FetchTables)?
-            .iter()
-            .map(|t| t.name().to_string())
-            .collect::<Vec<_>>();
-
+        let tables_names = match plan.pattern {
+            Some(pattern) => {
+                let pattern_re = to_pattern_re(&pattern)?;
+                schema
+                    .all_tables()
+                    .context(FetchTables)?
+                    .iter()
+                    .map(|t| t.name().to_string())
+                    .filter(|table_name| pattern_re.is_match(table_name))
+                    .collect::<Vec<_>>()
+            }
+            None => schema
+                .all_tables()
+                .context(FetchTables)?
+                .iter()
+                .map(|t| t.name().to_string())
+                .collect::<Vec<_>>(),
+        };
         let schema = DataSchema::new(vec![Field::new(
             SHOW_TABLES_COLUMN_SCHEMA,
             DataType::Utf8,
@@ -146,13 +167,24 @@ impl ShowInterpreter {
     }
 }
 
+fn to_pattern_re(pattern: &str) -> Result<Regex> {
+    // In MySQL
+    // `_` match any single character
+    // `% ` match an arbitrary number of characters (including zero characters).
+    // so replace those meta character to regexp syntax
+    // TODO: support escape char to match exact those two chars
+    let pattern = pattern.replace('_', ".").replace('%', ".*");
+    let pattern = format!("^{}$", pattern);
+    Regex::new(&pattern).context(InvalidRegexp)
+}
+
 #[async_trait]
 impl Interpreter for ShowInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         match self.plan {
             ShowPlan::ShowCreatePlan(t) => Self::show_create(t).context(ShowCreateTable),
-            ShowPlan::ShowTables => {
-                Self::show_tables(self.ctx, self.catalog_manager).context(ShowTables)
+            ShowPlan::ShowTablesPlan(t) => {
+                Self::show_tables(self.ctx, self.catalog_manager, t).context(ShowTables)
             }
             ShowPlan::ShowDatabase => {
                 Self::show_databases(self.ctx, self.catalog_manager).context(ShowDatabases)
@@ -187,4 +219,28 @@ fn get_default_schema(
         .context(SchemaNotExists {
             name: default_schema,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::show::to_pattern_re;
+    #[test]
+
+    fn test_is_table_matched() {
+        let testcases = vec![
+            // table, pattern, matched
+            ("abc", "abc", true),
+            ("abc", "abcd", false),
+            ("abc", "ab%", true),
+            ("abc", "%b%", true),
+            ("abc", "_b_", true),
+            ("aabcc", "%b%", true),
+            ("aabcc", "_b_", false),
+        ];
+
+        for (table_name, pattern, matched) in testcases {
+            let pattern = to_pattern_re(pattern).unwrap();
+            assert_eq!(matched, pattern.is_match(table_name));
+        }
+    }
 }

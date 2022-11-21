@@ -40,7 +40,6 @@ impl DescribeInterpreter {
     fn table_ref_to_record_batch(table_ref: TableRef) -> Result<RecordBatchVec> {
         let table_schema = table_ref.schema();
         let num_columns = table_schema.num_columns();
-        let num_key_columns = table_schema.num_key_columns();
 
         let mut names = Vec::with_capacity(num_columns);
         let mut types = Vec::with_capacity(num_columns);
@@ -50,7 +49,7 @@ impl DescribeInterpreter {
         for (idx, col) in table_schema.columns().iter().enumerate() {
             names.push(col.name.to_string());
             types.push(col.data_type.to_string());
-            is_primary_keys.push(idx < num_key_columns);
+            is_primary_keys.push(table_schema.is_primary_key_index(&idx));
             is_nullables.push(col.is_nullable);
             is_tags.push(col.is_tag);
         }

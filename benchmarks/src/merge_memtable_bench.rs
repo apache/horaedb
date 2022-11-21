@@ -15,7 +15,10 @@ use analytic_engine::{
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceId,
-    sst::factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
+    sst::{
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
+        meta_cache::MetaCacheRef,
+    },
     table::{
         sst_util,
         version::{MemTableState, MemTableVec},
@@ -28,7 +31,7 @@ use common_types::{
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
-use parquet_ext::{DataCacheRef, MetaCacheRef};
+use parquet_ext::DataCacheRef;
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};

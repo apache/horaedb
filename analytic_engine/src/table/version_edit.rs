@@ -100,6 +100,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                     size: src.size,
                     row_num: src.row_num,
                     storage_format_opts: StorageFormatOptions::new(storage_format.into()),
+                    bloom_filter: Default::default(),
                 },
             },
         };

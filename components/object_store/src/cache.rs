@@ -56,7 +56,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures::{future::try_join_all, lock::Mutex, stream::BoxStream, TryStreamExt};
 use lru::LruCache;
-use serde::Deserialize;
+use serde_derive::Deserialize;
 use tokio::io::AsyncWrite;
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 

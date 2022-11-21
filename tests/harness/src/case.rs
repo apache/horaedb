@@ -1,12 +1,12 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{fmt::Display, path::Path};
+use std::{fmt::Display, path::Path, sync::Arc};
 
 use anyhow::{Context, Result};
 use ceresdb_client_rs::{
-    client::{Client, RpcContext},
+    db_client::DbClient,
     model::{display::CsvFormatter, request::QueryRequest, QueryResponse},
-    DbClient,
+    RpcContext,
 };
 use tokio::{
     fs::File,
@@ -64,13 +64,13 @@ impl TestCase {
         })
     }
 
-    pub async fn execute<W>(&self, client: &Client, writer: &mut W) -> Result<()>
+    pub async fn execute<W>(&self, client: Arc<dyn DbClient + '_>, writer: &'_ mut W) -> Result<()>
     where
         W: AsyncWrite + Unpin,
     {
         for query in &self.queries {
             query
-                .execute(client, writer)
+                .execute(client.clone(), writer)
                 .await
                 .with_context(|| format!("Error while executing {:?}", query.query_lines))?;
         }
@@ -100,7 +100,7 @@ impl Query {
         self.query_lines.push(line.to_string());
     }
 
-    async fn execute<W>(&self, client: &Client, writer: &mut W) -> Result<()>
+    async fn execute<W>(&self, client: Arc<dyn DbClient + '_>, writer: &'_ mut W) -> Result<()>
     where
         W: AsyncWrite + Unpin,
     {

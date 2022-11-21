@@ -3,11 +3,9 @@
 //! Constants and utils for encoding.
 
 use chrono::{TimeZone, Utc};
-use common_types::time::Timestamp;
+use common_types::{table::TableId, time::Timestamp};
 use common_util::config::ReadableDuration;
 use table_kv::{KeyBoundary, ScanRequest};
-
-use crate::manager::RegionId;
 
 /// Key prefix for namespace in meta table.
 const META_NAMESPACE_PREFIX: &str = "v1/namespace";
@@ -15,8 +13,8 @@ const META_NAMESPACE_PREFIX: &str = "v1/namespace";
 const META_BUCKET_PREFIX: &str = "v1/bucket";
 /// Format of bucket timestamp.
 const BUCKET_TIMESTAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%S";
-/// Key prefix of region meta.
-const REGION_META_PREFIX: &str = "v1/region";
+/// Key prefix of table unit meta.
+const TABLE_UNIT_META_PREFIX: &str = "v1/table";
 /// Format of timestamp in wal table name.
 const WAL_SHARD_TIMESTAMP_FORMAT: &str = "%Y%m%d%H%M%S";
 
@@ -61,8 +59,8 @@ pub fn format_permanent_bucket_key(namespace: &str) -> String {
 }
 
 #[inline]
-pub fn format_region_meta_name(namespace: &str, shard_id: usize) -> String {
-    format!("region_meta_{}_{:0>6}", namespace, shard_id)
+pub fn format_table_unit_meta_name(namespace: &str, shard_id: usize) -> String {
+    format!("table_unit_meta_{}_{:0>6}", namespace, shard_id)
 }
 
 #[inline]
@@ -83,8 +81,8 @@ pub fn format_permanent_wal_name(namespace: &str, shard_id: usize) -> String {
 }
 
 #[inline]
-pub fn format_region_key(region_id: RegionId) -> String {
-    format!("{}/{}", REGION_META_PREFIX, region_id)
+pub fn format_table_unit_key(table_id: TableId) -> String {
+    format!("{}/{}", TABLE_UNIT_META_PREFIX, table_id)
 }
 
 #[cfg(test)]
@@ -119,19 +117,19 @@ mod tests {
     }
 
     #[test]
-    fn test_format_region_meta() {
+    fn test_format_table_unit_meta() {
         let ns = "abcdef";
-        let name = format_region_meta_name(ns, 0);
-        assert_eq!("region_meta_abcdef_000000", name);
+        let name = format_table_unit_meta_name(ns, 0);
+        assert_eq!("table_unit_meta_abcdef_000000", name);
 
-        let name = format_region_meta_name(ns, 124);
-        assert_eq!("region_meta_abcdef_000124", name);
+        let name = format_table_unit_meta_name(ns, 124);
+        assert_eq!("table_unit_meta_abcdef_000124", name);
 
-        let name = format_region_meta_name(ns, 999999);
-        assert_eq!("region_meta_abcdef_999999", name);
+        let name = format_table_unit_meta_name(ns, 999999);
+        assert_eq!("table_unit_meta_abcdef_999999", name);
 
-        let name = format_region_meta_name(ns, 1234567);
-        assert_eq!("region_meta_abcdef_1234567", name);
+        let name = format_table_unit_meta_name(ns, 1234567);
+        assert_eq!("table_unit_meta_abcdef_1234567", name);
     }
 
     #[test]
@@ -171,19 +169,19 @@ mod tests {
     }
 
     #[test]
-    fn test_format_region_key() {
-        let key = format_region_key(0);
-        assert_eq!("v1/region/0", key);
-        let key = format_region_key(1);
-        assert_eq!("v1/region/1", key);
+    fn test_format_table_unit_key() {
+        let key = format_table_unit_key(0);
+        assert_eq!("v1/table/0", key);
+        let key = format_table_unit_key(1);
+        assert_eq!("v1/table/1", key);
 
-        let key = format_region_key(12345);
-        assert_eq!("v1/region/12345", key);
+        let key = format_table_unit_key(12345);
+        assert_eq!("v1/table/12345", key);
 
-        let key = format_region_key(RegionId::MIN);
-        assert_eq!("v1/region/0", key);
+        let key = format_table_unit_key(RegionId::MIN);
+        assert_eq!("v1/table/0", key);
 
-        let key = format_region_key(RegionId::MAX);
-        assert_eq!("v1/region/18446744073709551615", key);
+        let key = format_table_unit_key(RegionId::MAX);
+        assert_eq!("v1/table/18446744073709551615", key);
     }
 }
