@@ -93,7 +93,7 @@ func (s *Scheduler) checkNode(ctx context.Context, ticker *time.Ticker) {
 				nodeShardsMapping[nodeShard.ShardNode.NodeName] = append(nodeShardsMapping[nodeShard.ShardNode.NodeName], cluster.ShardInfo{
 					ID:      nodeShard.ShardNode.ID,
 					Role:    nodeShard.ShardNode.ShardRole,
-					Version: nodeShards.ClusterTopologyVersion,
+					Version: nodeShard.ShardInfo.Version,
 				})
 			}
 			s.processNodes(ctx, nodes, t, nodeShardsMapping)

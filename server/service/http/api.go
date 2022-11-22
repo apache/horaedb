@@ -4,6 +4,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -43,6 +44,7 @@ func (a *API) NewAPIRouter() *Router {
 	router := New().WithPrefix(apiPrefix).WithInstrumentation(printRequestInsmt)
 
 	router.Post("/transferLeader", a.transferLeader)
+	router.Post("/route", a.route)
 
 	return router
 }
@@ -120,7 +122,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	err := json.NewDecoder(req.Body).Decode(&transferLeaderRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, nil)
+		a.respondError(writer, ErrParseRequest, "decode request body failed")
 		return
 	}
 
@@ -132,15 +134,47 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		log.Error("create transfer leader procedure", zap.Error(err))
-		a.respondError(writer, procedure.ErrCreateProcedure, nil)
+		a.respondError(writer, procedure.ErrCreateProcedure, "create transfer leader procedure")
 		return
 	}
 	err = a.procedureManager.Submit(req.Context(), transferLeaderProcedure)
 	if err != nil {
 		log.Error("submit transfer leader procedure", zap.Error(err))
-		a.respondError(writer, procedure.ErrSubmitProcedure, nil)
+		a.respondError(writer, procedure.ErrSubmitProcedure, "submit transfer leader procedure")
 		return
 	}
 
 	a.respond(writer, "ok")
+}
+
+type RouteRequest struct {
+	ClusterName string   `json:"clusterName"`
+	SchemaName  string   `json:"schemaName"`
+	Tables      []string `json:"table"`
+}
+
+func (a *API) route(writer http.ResponseWriter, req *http.Request) {
+	var routeRequest RouteRequest
+	err := json.NewDecoder(req.Body).Decode(&routeRequest)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		a.respondError(writer, ErrParseRequest, "decode request body failed")
+		return
+	}
+
+	result, err := a.clusterManager.RouteTables(context.Background(), routeRequest.ClusterName, routeRequest.SchemaName, routeRequest.Tables)
+	if err != nil {
+		log.Error("route tables failed", zap.Error(err))
+		a.respondError(writer, cluster.ErrRouteTable, "route tables failed")
+		return
+	}
+
+	resultByte, err := json.Marshal(result)
+	if err != nil {
+		log.Error("route tables result marshal failed", zap.Error(err))
+		a.respondError(writer, ErrParseResponse, "route tables result marshal failed")
+		return
+	}
+
+	a.respond(writer, string(resultByte))
 }

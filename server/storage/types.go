@@ -254,7 +254,7 @@ func convertClusterStatePB(state clusterpb.ClusterTopology_ClusterState) Cluster
 	return ClusterStateEmpty
 }
 
-func convertShardRoleToPB(role ShardRole) clusterpb.ShardRole {
+func ConvertShardRoleToPB(role ShardRole) clusterpb.ShardRole {
 	switch role {
 	case ShardRoleLeader:
 		return clusterpb.ShardRole_LEADER
@@ -267,7 +267,7 @@ func convertShardRoleToPB(role ShardRole) clusterpb.ShardRole {
 func convertShardNodeToPB(shardNode ShardNode) clusterpb.Shard {
 	return clusterpb.Shard{
 		Id:        uint32(shardNode.ID),
-		ShardRole: convertShardRoleToPB(shardNode.ShardRole),
+		ShardRole: ConvertShardRoleToPB(shardNode.ShardRole),
 		Node:      shardNode.NodeName,
 	}
 }

@@ -75,6 +75,8 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 		}, ShardInfos: shardInfos,
 	}
 
+	log.Info("registerNode", zap.String("name", req.Info.Endpoint), zap.String("info", req.Info.String()))
+
 	err = s.h.GetClusterManager().RegisterNode(ctx, req.GetHeader().GetClusterName(), registeredNode)
 	if err != nil {
 		return &metaservicepb.NodeHeartbeatResponse{Header: responseHeader(err, "grpc heartbeat")}, nil
@@ -332,7 +334,7 @@ func convertRouteTableResult(routeTablesResult cluster.RouteTablesResult) *metas
 				Endpoint: nodeShard.ShardNode.NodeName,
 				ShardInfo: &metaservicepb.ShardInfo{
 					Id:   uint32(nodeShard.ShardNode.ID),
-					Role: clusterpb.ShardRole(nodeShard.ShardNode.ShardRole),
+					Role: storage.ConvertShardRoleToPB(nodeShard.ShardNode.ShardRole),
 				},
 			})
 		}
@@ -357,7 +359,7 @@ func convertToGetNodesResponse(nodesResult cluster.GetNodeShardsResult) *metaser
 			Endpoint: shardNodeWithVersion.ShardNode.NodeName,
 			ShardInfo: &metaservicepb.ShardInfo{
 				Id:   uint32(shardNodeWithVersion.ShardNode.ID),
-				Role: clusterpb.ShardRole(shardNodeWithVersion.ShardNode.ShardRole),
+				Role: storage.ConvertShardRoleToPB(shardNodeWithVersion.ShardNode.ShardRole),
 			},
 		})
 	}

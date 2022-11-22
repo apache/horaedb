@@ -3,7 +3,6 @@
 package cluster
 
 import (
-	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/storage"
 )
@@ -25,8 +24,9 @@ type ShardTables struct {
 }
 
 type ShardInfo struct {
-	ID      storage.ShardID
-	Role    storage.ShardRole
+	ID   storage.ShardID
+	Role storage.ShardRole
+	// ShardViewVersion
 	Version uint64
 }
 
@@ -88,7 +88,7 @@ func (n RegisteredNode) IsExpired(now uint64, aliveThreshold uint64) bool {
 func ConvertShardsInfoToPB(shard ShardInfo) *metaservicepb.ShardInfo {
 	return &metaservicepb.ShardInfo{
 		Id:      uint32(shard.ID),
-		Role:    clusterpb.ShardRole(shard.Role),
+		Role:    storage.ConvertShardRoleToPB(shard.Role),
 		Version: shard.Version,
 	}
 }

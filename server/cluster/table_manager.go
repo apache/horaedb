@@ -265,8 +265,10 @@ func (m *TableManagerImpl) loadTable(ctx context.Context) error {
 		for _, table := range tablesResult.Tables {
 			tables, ok := m.schemaTables[table.SchemaID]
 			if !ok {
-				tables.tables = make(map[string]storage.Table, 0)
-				tables.tablesByID = make(map[storage.TableID]storage.Table, 0)
+				tables = &Tables{
+					tables:     make(map[string]storage.Table, 0),
+					tablesByID: make(map[storage.TableID]storage.Table, 0),
+				}
 			}
 
 			tables.tables[table.Name] = table
