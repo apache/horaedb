@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server"
 	"github.com/CeresDB/ceresmeta/server/config"
+	"github.com/pelletier/go-toml/v2"
 	"go.uber.org/zap"
 )
 
@@ -44,12 +45,21 @@ func main() {
 	if err != nil {
 		panicf("fail to init global logger, err:%v", err)
 	}
+	defer logger.Sync() //nolint:errcheck
 
-	if err := config.ParseConfigFromToml(cfg); err != nil {
-		panicf("fail to parse config from toml file, err%v", err)
+	if err := cfgParser.ParseConfigFromToml(); err != nil {
+		panicf("fail to parse config from toml file, err:%v", err)
 	}
 
-	defer logger.Sync() //nolint:errcheck
+	if err := cfgParser.ParseConfigFromEnvVariables(); err != nil {
+		panicf("fail to parse config from environment variable, err:%v", err)
+	}
+
+	cfgByte, err := toml.Marshal(cfg)
+	if err != nil {
+		panicf("fail to marshal server config, err:%v", err)
+	}
+	log.Info("server start with config", zap.String("config", string(cfgByte)))
 
 	// TODO: Do adjustment to config for preparing joining existing cluster.
 

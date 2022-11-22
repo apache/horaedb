@@ -50,57 +50,60 @@ const (
 	defaultHTTPPort = 8080
 )
 
+// Config is server start config, it has three input modes:
+// 1. toml config file
+// 2. env variables
+// Their loading has priority, and low priority configurations will be overwritten by high priority configurations.
+// The priority from high to low is: env variables > toml config file.
 type Config struct {
-	Path string `toml:"path" json:"path"`
+	Log     log.Config `toml:"log"`
+	EtcdLog log.Config `toml:"etcd-log"`
 
-	Log     log.Config `toml:"log" json:"log"`
-	EtcdLog log.Config `toml:"etcd-log" json:"etcd-log"`
+	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms"`
+	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms"`
+	EtcdCallTimeoutMs   int64 `toml:"etcd-call-timeout-ms"`
 
-	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms" json:"grpc-handle-timeout-ms"`
-	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms" json:"etcd-start-timeout-ms"`
-	EtcdCallTimeoutMs   int64 `toml:"etcd-call-timeout-ms" json:"etcd-call-timeout-ms"`
+	LeaseTTLSec int64 `toml:"lease-sec"`
 
-	LeaseTTLSec int64 `toml:"lease-sec" json:"lease-sec"`
-
-	NodeName            string `toml:"node-name" json:"node-name"`
-	DataDir             string `toml:"data-dir" json:"data-dir"`
-	WalDir              string `toml:"wal-dir" json:"wal-dir"`
-	StorageRootPath     string `toml:"storage-root-path" json:"storage-root-path"`
-	InitialCluster      string `toml:"initial-cluster" json:"initial-cluster"`
-	InitialClusterState string `toml:"initial-cluster-state" json:"initial-cluster-state"`
-	InitialClusterToken string `toml:"initial-cluster-token" json:"initial-cluster-token"`
+	NodeName            string `toml:"node-name"`
+	DataDir             string `toml:"data-dir"`
+	WalDir              string `toml:"wal-dir"`
+	StorageRootPath     string `toml:"storage-root-path"`
+	InitialCluster      string `toml:"initial-cluster"`
+	InitialClusterState string `toml:"initial-cluster-state"`
+	InitialClusterToken string `toml:"initial-cluster-token"`
 	// TickInterval is the interval for etcd Raft tick.
-	TickIntervalMs    int64 `toml:"tick-interval-ms" json:"tick-interval-ms"`
-	ElectionTimeoutMs int64 `toml:"election-timeout-ms" json:"election-timeout-ms"`
+	TickIntervalMs    int64 `toml:"tick-interval-ms"`
+	ElectionTimeoutMs int64 `toml:"election-timeout-ms"`
 	// QuotaBackendBytes Raise alarms when backend size exceeds the given quota. 0 means use the default quota.
 	// the default size is 2GB, the maximum is 8GB.
-	QuotaBackendBytes int64 `toml:"quota-backend-bytes" json:"quota-backend-bytes"`
+	QuotaBackendBytes int64 `toml:"quota-backend-bytes"`
 	// AutoCompactionMode is either 'periodic' or 'revision'. The default value is 'periodic'.
-	AutoCompactionMode string `toml:"auto-compaction-mode" json:"auto-compaction-mode"`
+	AutoCompactionMode string `toml:"auto-compaction-mode"`
 	// AutoCompactionRetention is either duration string with time unit
 	// (e.g. '5m' for 5-minute), or revision unit (e.g. '5000').
 	// If no time unit is provided and compaction mode is 'periodic',
 	// the unit defaults to hour. For example, '5' translates into 5-hour.
 	// The default retention is 1 hour.
 	// Before etcd v3.3.x, the type of retention is int. We add 'v2' suffix to make it backward compatible.
-	AutoCompactionRetention string `toml:"auto-compaction-retention" json:"auto-compaction-retention-v2"`
-	MaxRequestBytes         uint   `toml:"max-request-bytes" json:"max-request-bytes"`
-	MaxScanLimit            int    `toml:"max-scan-limit" json:"max-scan-limit"`
-	MinScanLimit            int    `toml:"min-scan-limit" json:"min-scan-limit"`
-	IDAllocatorStep         uint   `toml:"id-allocator-step" json:"id-allocator-step"`
+	AutoCompactionRetention string `toml:"auto-compaction-retention"`
+	MaxRequestBytes         uint   `toml:"max-request-bytes"`
+	MaxScanLimit            int    `toml:"max-scan-limit"`
+	MinScanLimit            int    `toml:"min-scan-limit"`
+	IDAllocatorStep         uint   `toml:"id-allocator-step"`
 
 	// Following fields are the settings for the default cluster.
-	DefaultClusterName              string `toml:"default-cluster-name" json:"default-cluster-name"`
-	DefaultClusterNodeCount         int    `toml:"default-cluster-node-count" json:"default-cluster-node-count"`
-	DefaultClusterReplicationFactor int    `toml:"default-cluster-replication-factor" json:"default-cluster-replication-factor"`
-	DefaultClusterShardTotal        int    `toml:"default-cluster-shard-total" json:"default-cluster-shard-total"`
+	DefaultClusterName              string `toml:"default-cluster-name"`
+	DefaultClusterNodeCount         int    `toml:"default-cluster-node-count"`
+	DefaultClusterReplicationFactor int    `toml:"default-cluster-replication-factor"`
+	DefaultClusterShardTotal        int    `toml:"default-cluster-shard-total"`
 
-	ClientUrls          string `toml:"client-urls" json:"client-urls"`
-	PeerUrls            string `toml:"peer-urls" json:"peer-urls"`
-	AdvertiseClientUrls string `toml:"advertise-client-urls" json:"advertise-client-urls"`
-	AdvertisePeerUrls   string `toml:"advertise-peer-urls" json:"advertise-peer-urls"`
+	ClientUrls          string `toml:"client-urls"`
+	PeerUrls            string `toml:"peer-urls"`
+	AdvertiseClientUrls string `toml:"advertise-client-urls"`
+	AdvertisePeerUrls   string `toml:"advertise-peer-urls"`
 
-	HTTPPort int `toml:"default-http-port" json:"default-http-port"`
+	HTTPPort int `toml:"default-http-port"`
 }
 
 func (c *Config) GrpcHandleTimeout() time.Duration {
@@ -168,8 +171,9 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 
 // Parser builds the config from the flags.
 type Parser struct {
-	flagSet *flag.FlagSet
-	cfg     *Config
+	flagSet        *flag.FlagSet
+	cfg            *Config
+	configFilePath string
 }
 
 func (p *Parser) Parse(arguments []string) (*Config, error) {
@@ -177,12 +181,8 @@ func (p *Parser) Parse(arguments []string) (*Config, error) {
 		if err == flag.ErrHelp {
 			return nil, ErrHelpRequested.WithCause(err)
 		}
-
 		return nil, ErrInvalidCommandArgs.WithCausef("fail to parse flag arguments:%v, err:%v", arguments, err)
 	}
-
-	// TODO: support loading config from file.
-
 	return p.cfg, nil
 }
 
@@ -200,85 +200,107 @@ func makeDefaultInitialCluster(nodeName string) string {
 }
 
 func MakeConfigParser() (*Parser, error) {
-	fs, cfg := flag.NewFlagSet("meta", flag.ContinueOnError), &Config{}
+	defaultNodeName, err := makeDefaultNodeName()
+	if err != nil {
+		return nil, err
+	}
+	defaultInitialCluster := makeDefaultInitialCluster(defaultNodeName)
+
+	fs, cfg := flag.NewFlagSet("meta", flag.ContinueOnError), &Config{
+		Log: log.Config{
+			Level: log.DefaultLogLevel,
+			File:  log.DefaultLogFile,
+		},
+		EtcdLog: log.Config{
+			Level: log.DefaultLogLevel,
+			File:  log.DefaultLogFile,
+		},
+
+		GrpcHandleTimeoutMs: defaultGrpcHandleTimeoutMs,
+		EtcdStartTimeoutMs:  defaultEtcdStartTimeoutMs,
+		EtcdCallTimeoutMs:   defaultCallTimeoutMs,
+
+		LeaseTTLSec: defaultEtcdLeaseTTLSec,
+
+		NodeName:        defaultNodeName,
+		DataDir:         defaultDataDir,
+		WalDir:          defaultWalDir,
+		StorageRootPath: defaultRootPath,
+
+		InitialCluster:      defaultInitialCluster,
+		InitialClusterState: defaultInitialClusterState,
+		InitialClusterToken: defaultInitialClusterToken,
+
+		ClientUrls:          defaultClientUrls,
+		AdvertiseClientUrls: defaultClientUrls,
+		PeerUrls:            defaultPeerUrls,
+		AdvertisePeerUrls:   defaultPeerUrls,
+
+		TickIntervalMs:    defaultTickIntervalMs,
+		ElectionTimeoutMs: defaultElectionTimeoutMs,
+
+		QuotaBackendBytes:       defaultQuotaBackendBytes,
+		AutoCompactionMode:      defaultCompactionMode,
+		AutoCompactionRetention: defaultAutoCompactionRetention,
+		MaxRequestBytes:         defaultMaxRequestBytes,
+		MaxScanLimit:            defaultMaxScanLimit,
+		MinScanLimit:            defaultMinScanLimit,
+		IDAllocatorStep:         defaultIDAllocatorStep,
+
+		DefaultClusterName:              defaultClusterName,
+		DefaultClusterNodeCount:         defaultClusterNodeCount,
+		DefaultClusterReplicationFactor: defaultClusterReplicationFactor,
+		DefaultClusterShardTotal:        defaultClusterShardTotal,
+
+		HTTPPort: defaultHTTPPort,
+	}
 	builder := &Parser{
 		flagSet: fs,
 		cfg:     cfg,
 	}
 
-	fs.StringVar(&cfg.Path, "path", "", "config file path")
+	fs.StringVar(&builder.configFilePath, "config", "", "config file path")
 
-	fs.StringVar(&cfg.Log.Level, "log-level", log.DefaultLogLevel, "log level")
-	fs.StringVar(&cfg.Log.File, "log-file", log.DefaultLogFile, "file for log output")
-	fs.StringVar(&cfg.EtcdLog.Level, "etcd-log-level", log.DefaultLogLevel, "log level of etcd")
-	fs.StringVar(&cfg.EtcdLog.File, "etcd-log-file", log.DefaultLogFile, "file for log output of etcd")
-
-	fs.Int64Var(&cfg.GrpcHandleTimeoutMs, "grpc-handle-timeout-ms", defaultGrpcHandleTimeoutMs, "timeout for handling grpc requests")
-	fs.Int64Var(&cfg.EtcdStartTimeoutMs, "etcd-start-timeout-ms", defaultEtcdStartTimeoutMs, "timeout for starting etcd server")
-	fs.Int64Var(&cfg.EtcdCallTimeoutMs, "etcd-dial-timeout-ms", defaultCallTimeoutMs, "timeout for dialing etcd server")
-	fs.Int64Var(&cfg.LeaseTTLSec, "lease-ttl-sec", defaultEtcdLeaseTTLSec, "ttl of etcd key lease (suggest 10s)")
-
-	defaultNodeName, err := makeDefaultNodeName()
-	if err != nil {
-		return nil, err
-	}
-	fs.StringVar(&cfg.NodeName, "node-name", defaultNodeName, "member name of this node in the cluster")
-
-	fs.StringVar(&cfg.DataDir, "data-dir", defaultDataDir, "data directory for the etcd server")
-	fs.StringVar(&cfg.WalDir, "wal-dir", defaultWalDir, "wal directory for the etcd server")
-	fs.StringVar(&cfg.StorageRootPath, "storage-root-path", defaultRootPath, "root path for the etcd server")
-
-	defaultInitialCluster := makeDefaultInitialCluster(defaultNodeName)
-	fs.StringVar(&cfg.InitialCluster, "initial-cluster", defaultInitialCluster, "members in the initial etcd cluster")
-	fs.StringVar(&cfg.InitialClusterState, "initial-cluster-state", defaultInitialClusterState, "state of the initial etcd cluster")
-	fs.StringVar(&cfg.InitialClusterToken, "initial-cluster-token", defaultInitialClusterToken, "token of the initial etcd cluster")
-
-	fs.StringVar(&cfg.ClientUrls, "client-urls", defaultClientUrls, "url for client traffic")
-	fs.StringVar(&cfg.AdvertiseClientUrls, "advertise-client-urls", defaultClientUrls, "advertise url for client traffic (default '${client-urls}')")
-	fs.StringVar(&cfg.PeerUrls, "peer-urls", defaultPeerUrls, "url for peer traffic")
-	fs.StringVar(&cfg.AdvertisePeerUrls, "advertise-peer-urls", defaultPeerUrls, "advertise url for peer traffic (default '${peer-urls}')")
-
-	fs.Int64Var(&cfg.TickIntervalMs, "tick-interval-ms", defaultTickIntervalMs, "tick interval of the etcd server")
-	fs.Int64Var(&cfg.ElectionTimeoutMs, "election-timeout-ms", defaultElectionTimeoutMs, "election timeout of the etcd server")
-
-	fs.Int64Var(&cfg.QuotaBackendBytes, "quota-backend-bytes", defaultQuotaBackendBytes, "alarming threshold for too much memory consumption")
-	fs.StringVar(&cfg.AutoCompactionMode, "auto-compaction-mode", defaultCompactionMode, "mode of auto compaction of etcd server")
-	fs.StringVar(&cfg.AutoCompactionRetention, "auto-compaction-retention", defaultAutoCompactionRetention, "retention for auto compaction(works only if auto-compaction-mode is periodic)")
-	fs.UintVar(&cfg.MaxRequestBytes, "max-request-bytes", defaultMaxRequestBytes, "max bytes of requests received by etcd server")
-	fs.IntVar(&cfg.MaxScanLimit, "max-scan-limit", defaultMaxScanLimit, "max kv storage scan limit")
-	fs.IntVar(&cfg.MinScanLimit, "min-scan-limit", defaultMinScanLimit, "min kv storage scan limit")
-	fs.UintVar(&cfg.IDAllocatorStep, "id-allocator-step", defaultIDAllocatorStep, "id allocator step")
-
-	fs.StringVar(&cfg.DefaultClusterName, "default-cluster", defaultClusterName, "name of the default cluster")
-	fs.IntVar(&cfg.DefaultClusterNodeCount, "default-cluster-node-count", defaultClusterNodeCount, "node count of the default cluster")
-	fs.IntVar(&cfg.DefaultClusterReplicationFactor, "default-cluster-replication-factor", defaultClusterReplicationFactor, "replication factor of the default cluster")
-	fs.IntVar(&cfg.DefaultClusterShardTotal, "default-cluster-shard-total", defaultClusterShardTotal, "shard total of the default cluster")
-
-	fs.IntVar(&cfg.HTTPPort, "http-port", defaultHTTPPort, "port of http server")
 	return builder, nil
 }
 
 // ParseConfigFromToml read configuration from the toml file, if the config item already exists, it will be overwritten.
-func ParseConfigFromToml(conf *Config) error {
-	configFilePath := conf.Path
-	if len(configFilePath) == 0 {
+func (p *Parser) ParseConfigFromToml() error {
+	if len(p.configFilePath) == 0 {
 		log.Info("no config file specified, skip parse config")
 		return nil
 	}
-	log.Info("get config from toml", zap.String("configFile", configFilePath))
+	log.Info("get config from toml", zap.String("configFile", p.configFilePath))
 
-	file, err := os.ReadFile(configFilePath)
+	file, err := os.ReadFile(p.configFilePath)
 	if err != nil {
 		log.Error("err", zap.Error(err))
-		return errors.WithMessage(err, fmt.Sprintf("read config file failed, configFile:%v", configFilePath))
+		return errors.WithMessage(err, fmt.Sprintf("read config file, configFile:%s", p.configFilePath))
 	}
 	log.Info("toml config value", zap.String("config", string(file)))
 
-	err = toml.Unmarshal(file, conf)
+	err = toml.Unmarshal(file, p.cfg)
 	if err != nil {
 		log.Error("err", zap.Error(err))
-		return errors.WithMessagef(err, "unmarshal toml config failed, configFile:%v", configFilePath)
+		return errors.WithMessagef(err, "unmarshal toml config, configFile:%s", p.configFilePath)
 	}
 
 	return nil
+}
+
+func (p *Parser) ParseConfigFromEnvVariables() error {
+	var resultErr error
+	p.flagSet.VisitAll(func(f *flag.Flag) {
+		envVar, exists := os.LookupEnv(f.Name)
+		if exists {
+			err := f.Value.Set(envVar)
+			if err != nil {
+				log.Error("set env variable failed", zap.Error(err), zap.String("name", f.Name), zap.String("value", envVar))
+				resultErr = err
+				return
+			}
+			log.Info("set env variable", zap.String("name", f.Name), zap.String("value", envVar))
+		}
+	})
+	return resultErr
 }
