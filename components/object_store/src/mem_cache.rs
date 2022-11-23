@@ -105,7 +105,7 @@ impl Display for MemCache {
 #[derive(Debug)]
 pub struct CachedStore {
     cache: MemCache,
-    inner: Arc<dyn ObjectStore>,
+    underlying_store: Arc<dyn ObjectStore>,
 }
 
 impl CachedStore {
@@ -116,7 +116,7 @@ impl CachedStore {
     ) -> Self {
         Self {
             cache: MemCache::new(partition_bits, mem_cap),
-            inner: underlying_store,
+            underlying_store,
         }
     }
 
@@ -134,22 +134,24 @@ impl Display for CachedStore {
 #[async_trait]
 impl ObjectStore for CachedStore {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        self.inner.put(location, bytes).await
+        self.underlying_store.put(location, bytes).await
     }
 
     async fn put_multipart(
         &self,
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
-        self.inner.put_multipart(location).await
+        self.underlying_store.put_multipart(location).await
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
-        self.inner.abort_multipart(location, multipart_id).await
+        self.underlying_store
+            .abort_multipart(location, multipart_id)
+            .await
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
-        self.inner.get(location).await
+        self.underlying_store.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -158,7 +160,9 @@ impl ObjectStore for CachedStore {
             return Ok(bytes);
         }
 
-        let bytes = self.inner.get_range(location, range).await;
+        // TODO(chenxiang): What if two threads reach here? It's better to
+        // pend one thread, and only let one to fetch data from underlying store.
+        let bytes = self.underlying_store.get_range(location, range).await;
         if let Ok(bytes) = &bytes {
             self.cache.insert(cache_key, bytes.clone()).await;
         }
@@ -167,27 +171,27 @@ impl ObjectStore for CachedStore {
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
-        self.inner.head(location).await
+        self.underlying_store.head(location).await
     }
 
     async fn delete(&self, location: &Path) -> Result<()> {
-        self.inner.delete(location).await
+        self.underlying_store.delete(location).await
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
-        self.inner.list(prefix).await
+        self.underlying_store.list(prefix).await
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
-        self.inner.list_with_delimiter(prefix).await
+        self.underlying_store.list_with_delimiter(prefix).await
     }
 
     async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
-        self.inner.copy(from, to).await
+        self.underlying_store.copy(from, to).await
     }
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
-        self.inner.copy_if_not_exists(from, to).await
+        self.underlying_store.copy_if_not_exists(from, to).await
     }
 }
 
