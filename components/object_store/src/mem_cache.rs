@@ -97,6 +97,7 @@ impl Display for MemCache {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
             .field("mask", &self.partition_mask)
+            .field("partitons", &self.partitions)
             .finish()
     }
 }
@@ -187,5 +188,95 @@ impl ObjectStore for CachedStore {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.inner.copy_if_not_exists(from, to).await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tempfile::tempdir;
+    use upstream::local::LocalFileSystem;
+
+    use super::*;
+
+    async fn prepare_store(mem_cap: usize) -> CachedStore {
+        let local_path = tempdir().unwrap();
+        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+
+        CachedStore::new(0, mem_cap, local_store)
+    }
+
+    #[tokio::test]
+    async fn test_mem_cache_evict() {
+        let store = prepare_store(13).await;
+
+        // write date
+        let location = Path::from("1.sst");
+        store
+            .put(&location, Bytes::from_static(&[1; 1024]))
+            .await
+            .unwrap();
+
+        // get bytes from [0, 5), insert to cache
+        let range0_5 = 0..5;
+        _ = store.get_range(&location, range0_5.clone()).await.unwrap();
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range0_5))
+            .await
+            .is_some());
+        assert_eq!(
+            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 5 } } }] }"#,
+            format!("{}", store)
+        );
+
+        // get bytes from [5, 10), insert to cache
+        let range5_10 = 5..10;
+        _ = store.get_range(&location, range5_10.clone()).await.unwrap();
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range0_5))
+            .await
+            .is_some());
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range5_10))
+            .await
+            .is_some());
+        assert_eq!(
+            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 10 } } }] }"#,
+            format!("{}", store)
+        );
+
+        // get bytes from [5, 10), insert to cache
+        // cache is full, evict [0, 5)
+        let range10_15 = 5..10;
+        _ = store
+            .get_range(&location, range10_15.clone())
+            .await
+            .unwrap();
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range5_10))
+            .await
+            .is_some());
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range10_15))
+            .await
+            .is_some());
+        assert_eq!(
+            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 10 } } }] }"#,
+            format!("{}", store)
+        );
+
+        let range10_13 = 10..13;
+        _ = store
+            .get_range(&location, range10_13.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 13 } } }] }"#,
+            format!("{}", store)
+        );
     }
 }
