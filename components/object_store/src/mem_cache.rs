@@ -1,3 +1,9 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! An implementation of ObjectStore, which support
+//! 1. Cache based on memory, and support evict based on memory usage
+//! 2. Builtin Partition to reduce lock contention
+
 use std::{
     collections::hash_map::DefaultHasher,
     fmt::Display,
