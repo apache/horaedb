@@ -98,9 +98,15 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Failed to purge bucket, namespace:{}, err:{}", namespace, source,))]
+    #[snafu(display(
+        "Failed to purge bucket, namespace:{}, msg:{}, err:{}",
+        namespace,
+        msg,
+        source,
+    ))]
     PurgeBucket {
         namespace: String,
+        msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
@@ -306,7 +312,7 @@ impl<T: TableKv> NamespaceInner<T> {
             })?;
 
         let now = Timestamp::now();
-        let mut batch = T::WriteBatch::default();
+        let mut outdated_buckets = Vec::new();
         while iter.valid() {
             if !iter.key().starts_with(key_prefix.as_bytes()) {
                 break;
@@ -317,14 +323,14 @@ impl<T: TableKv> NamespaceInner<T> {
                 .context(LoadBuckets {
                     namespace: self.name(),
                 })?;
-            let bucket = Bucket::new(self.name(), bucket_entry.clone());
+            let bucket = Bucket::new(self.name(), bucket_entry);
 
             // Collect the outdated bucket entries for deletion.
             if let Some(ttl) = self.entry.wal.ttl {
                 if let Some(earliest) = now.checked_sub_duration(ttl.0) {
                     if bucket_entry.is_expired(earliest) {
-                        warn!("Encounter expired bucket entry, delete it here, ttl:{}, expired bucket{:?}", ttl, bucket_entry);
-                        batch.delete(bucket.format_bucket_key(self.name()).as_bytes());
+                        warn!("Encounter expired bucket entry, skip and collect for later purging here, ttl:{}, expired bucket{:?}", ttl, bucket_entry);
+                        outdated_buckets.push(bucket);
 
                         continue;
                     }
@@ -346,13 +352,20 @@ impl<T: TableKv> NamespaceInner<T> {
                 })?;
         }
 
-        // Delete the outdated bucket entries.
-        self.table_kv
-            .write(WriteContext::default(), &self.meta_table_name, batch)
-            .map_err(|e| Box::new(e) as _)
-            .context(PurgeBucket {
-                namespace: self.name(),
-            })?;
+        // Try to purge the outdated buckets, unnecessary to wait it.
+        let namespace = self.name().to_string();
+        let meta_table_name = self.meta_table_name.clone();
+        let table_kv = self.table_kv.clone();
+        self.runtimes.bg_runtime.spawn_blocking(move || {
+            let outdated_buckets = outdated_buckets.into_iter().map(Arc::new).collect();
+            if let Err(e) = purge_buckets(outdated_buckets, &namespace, &meta_table_name, &table_kv)
+            {
+                error!(
+                    "Try to purge outdated buckets while initializing failed, err:{}",
+                    e
+                );
+            };
+        });
 
         Ok(())
     }
@@ -423,10 +436,9 @@ impl<T: TableKv> NamespaceInner<T> {
 
     /// Purge expired buckets, remove all related wal shard tables and delete
     /// bucket record from meta table.
-    // TODO: the delete order can be better.
     fn purge_expired_buckets(&self, now: Timestamp) -> Result<()> {
         if let Some(ttl) = self.entry.wal.ttl {
-            // Firstly We should evict expired buckets in memory, because table may have
+            // Firstly We should remove expired buckets in memory, because table may have
             // been dropped actually but `drop_table` method returns error.
             let expired_buckets = {
                 let mut bucket_set = self.bucket_set.write().unwrap();
@@ -443,41 +455,18 @@ impl<T: TableKv> NamespaceInner<T> {
                 expired_buckets
             };
 
-            // Secondly, We try our best to remove the bucket tables, and we can add some
-            // routines to clean failed ones in later development.
-            let mut batch = T::WriteBatch::with_capacity(expired_buckets.len());
-            let mut keys = Vec::with_capacity(expired_buckets.len());
-            for bucket in &expired_buckets {
-                // Delete all tables of this bucket.
-                for table_name in &bucket.wal_shard_names {
-                    if let Err(e) = self.table_kv.drop_table(table_name) {
-                        error!(
-                            "Drop shard in bucket failed, shard table:{}, bucket:{:?}, err:{}",
-                            table_name.as_str(),
-                            bucket,
-                            e
-                        );
-                    }
-                }
-
-                // All tables of this bucket have been dropped, we can remove the bucket record
-                // later.
-                let key = bucket.format_bucket_key(self.name());
-
-                batch.delete(key.as_bytes());
-
-                keys.push(key);
-            }
-
-            // Finally, we delete the bucket entry in meta table.
-            self.table_kv
-                .write(WriteContext::default(), &self.meta_table_name, batch)
-                .map_err(|e| Box::new(e) as _)
-                .context(PurgeBucket {
-                    namespace: self.name(),
-                })?;
-
-            info!("Purge expired buckets, keys:{:?}", keys);
+            // Then we try our best to remove expired buckets, and the failed ones will be
+            // tired to drop again while initializing.
+            purge_buckets(
+                expired_buckets,
+                self.name(),
+                &self.meta_table_name,
+                &self.table_kv,
+            )
+            .context(PurgeBucket {
+                namespace: self.name(),
+                msg: "purge bucket while periodically cleaning",
+            })?;
         }
 
         Ok(())
@@ -1440,6 +1429,39 @@ fn start_bucket_monitor<T: TableKv>(
     };
 
     TimedTask::start_timed_task(name, runtime, period, builder)
+}
+
+fn purge_buckets<T: TableKv>(
+    buckets: Vec<BucketRef>,
+    namespace: &str,
+    meta_table_name: &str,
+    table_kv: &T,
+) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut batch = T::WriteBatch::with_capacity(buckets.len());
+    let mut keys = Vec::with_capacity(buckets.len());
+    for bucket in &buckets {
+        // Delete all tables of this bucket.
+        for table_name in &bucket.wal_shard_names {
+            table_kv.drop_table(table_name).map_err(Box::new)?;
+        }
+
+        // All tables of this bucket have been dropped, we can remove the bucket record
+        // later.
+        let key = bucket.format_bucket_key(namespace);
+
+        batch.delete(key.as_bytes());
+
+        keys.push(key);
+    }
+
+    // Delete the bucket entry in meta table.
+    table_kv
+        .write(WriteContext::default(), meta_table_name, batch)
+        .map_err(Box::new)?;
+
+    info!("Purge expired buckets, keys:{:?}", keys);
+
+    Ok(())
 }
 
 #[cfg(test)]
