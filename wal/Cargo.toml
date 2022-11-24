@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 
 [features]
-test = ["tempfile", "futures"]
+test = ["tempfile", "futures", "uuid"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -27,12 +27,12 @@ tempfile = { workspace = true, optional = true }
 message_queue = { workspace = true }
 proto = { workspace = true }
 prost = { workspace = true }
+uuid = { version = "1.0", features = ["v4"], optional = true }
 
 [dev-dependencies]
 futures = { workspace = true, features = ["async-await"] }
 env_logger = { workspace = true }
 rand = "0.8.5"
-uuid = { version = "1.0", features = ["v4"] }
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
