@@ -40,6 +40,8 @@ impl Partition {
     }
 }
 impl Partition {
+    // TODO(chenxiang): also support `&str`, this need to changes to
+    // lru_weighted_cache
     async fn get(&self, key: &String) -> Option<Bytes> {
         let mut guard = self.inner.lock().await;
         guard.get(key).map(|v| v.0.clone())
