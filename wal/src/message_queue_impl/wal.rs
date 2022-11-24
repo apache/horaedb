@@ -10,15 +10,15 @@ use common_util::runtime::Runtime;
 use message_queue::{ConsumeIterator, MessageQueue};
 use snafu::ResultExt;
 
-use super::{
-    config::Config,
-    namespace::{Namespace, ReadTableIterator, ScanRegionIterator},
-};
 use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
         ScanRequest, WalManager, WriteContext,
+    },
+    message_queue_impl::{
+        config::Config,
+        namespace::{Namespace, ReadTableIterator, ScanRegionIterator},
     },
 };
 

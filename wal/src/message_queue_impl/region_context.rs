@@ -57,7 +57,7 @@ pub enum Error {
     Build { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Write logs of table failed, region_id:{}, table id:{}, msg:{}, err:{}",
+        "Failed to write logs of table, region_id:{}, table id:{}, msg:{}, err:{}",
         region_id,
         table_id,
         msg,
@@ -71,7 +71,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Write logs of table failed with no cause, region_id:{}, table id:{}, msg:{}, \nBacktrace:\n{}",
+        "Failed to write logs of table with no cause, region_id:{}, table id:{}, msg:{}, \nBacktrace:\n{}",
         region_id,
         table_id,
         msg,
@@ -388,6 +388,10 @@ struct TableMetaInner {
     start_sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 
+/// Self defined default implementation
+///
+/// Because `SequenceNumber::MIN` is used as a special value, the normal value
+/// should start from `SequenceNumber::MIN` + 1.
 impl Default for TableMetaInner {
     fn default() -> Self {
         Self {

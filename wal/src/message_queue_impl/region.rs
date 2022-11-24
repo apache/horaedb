@@ -33,7 +33,7 @@ pub enum Error {
     Write { source: region_context::Error },
 
     #[snafu(display(
-        "Scan logs from region failed, region id:{}, msg:{}\nBacktrace:{}",
+        "Failed to scan logs from region, region id:{}, msg:{}\nBacktrace:{}",
         region_id,
         msg,
         backtrace
@@ -46,7 +46,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Scan logs from region failed with cause, region id:{}, table id:{:?}, msg:{:?}, err:{}",
+        "Failed to scan logs from region with cause, region id:{}, table id:{:?}, msg:{:?}, err:{}",
         region_id,
         table_id,
         msg,
@@ -59,24 +59,24 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Get table meta data failed, err:{}", source))]
+    #[snafu(display("Failed to get table meta data, err:{}", source))]
     GetTableMeta { source: region_context::Error },
 
-    #[snafu(display("Mark deleted sequence to table failed, err:{}", source))]
+    #[snafu(display("Failed to mark deleted sequence to table, err:{}", source))]
     MarkDeleteTo { source: region_context::Error },
 
-    #[snafu(display("Sync snapshot of region failed, err:{}", source))]
+    #[snafu(display("Failed to sync snapshot of region, err:{}", source))]
     SyncSnapshot {
         source: snapshot_synchronizer::Error,
     },
 
-    #[snafu(display("Clean logs of region failed, err:{}", source))]
+    #[snafu(display("Failed to clean logs of region, err:{}", source))]
     CleanLogs {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[snafu(display(
-        "Open region failed with cause, namespace:{}, region id:{}, msg:{}, err:{}",
+        "Failed to open region with cause, namespace:{}, region id:{}, msg:{}, err:{}",
         namespace,
         region_id,
         msg,
@@ -90,7 +90,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed with no cause, namespace:{}, region id:{}, msg:{}, \nBacktrace:\n{}",
+        "Failed to open region with no cause, namespace:{}, region id:{}, msg:{}, \nBacktrace:\n{}",
         namespace,
         region_id,
         msg,

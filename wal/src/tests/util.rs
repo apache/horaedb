@@ -26,7 +26,9 @@ use tempfile::TempDir;
 
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
-    manager::{BatchLogIteratorAdapter, ReadContext, WalManager, WalManagerRef, WriteContext},
+    manager::{
+        BatchLogIteratorAdapter, ReadContext, RegionId, WalManager, WalManagerRef, WriteContext,
+    },
     message_queue_impl::{config::Config, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},

@@ -22,7 +22,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Sync snapshot of region failed, region id:{}, topic:{}, err:{}",
+        "Failed to sync snapshot of region, region id:{}, topic:{}, err:{}",
         region_id,
         topic,
         source
@@ -34,7 +34,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sync snapshot of region failed with cause, region id:{}, topic:{}, msg:{}, \nBacktrace:\n{}",
+        "Failed to sync snapshot of region with cause, region id:{}, topic:{}, msg:{}, \nBacktrace:\n{}",
         region_id,
         topic,
         msg,

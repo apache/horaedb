@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Open region failed, namespace:{}, location:{:?}, err:{}",
+        "Failed to open region, namespace:{}, location:{:?}, err:{}",
         namespace,
         location,
         source
@@ -38,7 +38,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, request:{:?}, err:{}",
+        "Failed to open region, namespace:{}, request:{:?}, err:{}",
         namespace,
         request,
         source
@@ -51,7 +51,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, request:{:?}, \nBacktrace:\n{}",
+        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
         namespace,
         request,
         backtrace,
@@ -64,7 +64,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, request:{:?}, err:{}",
+        "Failed to open region, namespace:{}, request:{:?}, err:{}",
         namespace,
         request,
         source
@@ -77,7 +77,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, request:{:?}, \nBacktrace:\n{}",
+        "Failed to open region, namespace:{}, request:{:?}, \nBacktrace:\n{}",
         namespace,
         request,
         backtrace,
@@ -90,7 +90,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, location:{:?}, batch_size:{}, err:{}",
+        "Failed to open region, namespace:{}, location:{:?}, batch_size:{}, err:{}",
         namespace,
         location,
         batch_size,
@@ -104,7 +104,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Open region failed, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
+        "Failed to open region, namespace:{}, location:{:?}, sequence_num:{}, err:{}",
         namespace,
         location,
         sequence_num,
@@ -117,13 +117,13 @@ pub enum Error {
         source: region::Error,
     },
 
-    #[snafu(display("Clean logs failed, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to clean logs, namespace:{}, err:{}", namespace, source))]
     CleanLogs {
         namespace: String,
         source: region::Error,
     },
 
-    #[snafu(display("Close namespace failed, namespace:{}, err:{}", namespace, source))]
+    #[snafu(display("Failed to close namespace, namespace:{}, err:{}", namespace, source))]
     Close {
         namespace: String,
         source: common_util::runtime::Error,
@@ -143,7 +143,7 @@ pub struct Namespace<M: MessageQueue> {
     ///
     /// Keep it here to ensure it won't be drop during the lifetime of
     /// [Namespace].
-    _bg_runtime: Arc<Runtime>,
+    bg_runtime: Arc<Runtime>,
 }
 
 impl<M: MessageQueue> Namespace<M> {
@@ -163,7 +163,7 @@ impl<M: MessageQueue> Namespace<M> {
         Self {
             inner,
             cleaner_handle,
-            _bg_runtime: bg_runtime,
+            bg_runtime,
         }
     }
 
@@ -180,8 +180,6 @@ impl<M: MessageQueue> Namespace<M> {
     }
 
     /// Get table's sequence number.
-    ///
-    /// You can define the read range in `ReadRequest`.
     pub async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
         self.inner.sequence_num(location).await
     }
@@ -242,6 +240,19 @@ impl<M: MessageQueue> fmt::Debug for Namespace<M> {
     }
 }
 
+impl<M: MessageQueue> Drop for Namespace<M> {
+    fn drop(&mut self) {
+        self.bg_runtime.block_on(async {
+            if let Err(e) = self.close().await {
+                error!(
+                    "Close namespace failed, namespace:{}, err:{}",
+                    self.inner.namespace, e
+                );
+            }
+        })
+    }
+}
+
 struct NamespaceInner<M: MessageQueue> {
     namespace: String,
     regions: Arc<RwLock<HashMap<RegionId, RegionRef<M>>>>,
@@ -254,18 +265,19 @@ impl<M: MessageQueue> NamespaceInner<M> {
     pub fn new(namespace: String, message_queue: Arc<M>) -> Self {
         Self {
             namespace,
-            regions: Arc::new(RwLock::new(HashMap::new())),
+            regions: Default::default(),
             message_queue,
             meta_encoding: MetaEncoding::newest(),
             log_encoding: LogEncoding::newest(),
         }
     }
 
+    // TODO: If it is a region just initialized or not exists, return None.
     /// Get or open the region of `region_id`.
     ///
     /// NOTICE: If the region doesn't exist yet, it will be created no matter
     /// the high-level caller is `write`, `scan`, `read_batch` or
-    /// `mark_delete_entries_up_to` . So, we should consider situations
+    /// `mark_delete_entries_up_to`. So we should consider situations
     /// about above operations on an empty region.
     async fn get_or_open_region(
         &self,
@@ -313,7 +325,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
                 location,
             })?;
 
-        Ok(region
+        let sequence_num = region
             .get_table_meta(location.table_id)
             .await
             .context(GetSequence {
@@ -322,7 +334,9 @@ impl<M: MessageQueue> NamespaceInner<M> {
             })?
             .map_or(SequenceNumber::MIN, |table_meta| {
                 table_meta.next_sequence_num - 1
-            }))
+            });
+
+        Ok(sequence_num)
     }
 
     pub async fn read(
@@ -474,7 +488,7 @@ pub struct ScanRegionIterator<C: ConsumeIterator> {
 
     /// Log iterator
     ///
-    /// It can be `None`, while there isn't any log of the table in the region
+    /// It can be `None`, when there isn't any log of the table in the region
     /// actually.
     iter: Option<MessageQueueLogIterator<C>>,
 
@@ -485,7 +499,7 @@ pub struct ScanRegionIterator<C: ConsumeIterator> {
     is_terminated: bool,
 
     /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
-    previous_value: Vec<u8>,
+    current_log_payload: Vec<u8>,
 }
 
 impl<C: ConsumeIterator> ScanRegionIterator<C> {
@@ -495,7 +509,7 @@ impl<C: ConsumeIterator> ScanRegionIterator<C> {
             iter: None,
             request: ScanRequest::default(),
             is_terminated: true,
-            previous_value: Vec::new(),
+            current_log_payload: Vec::new(),
         }
     }
 
@@ -504,18 +518,19 @@ impl<C: ConsumeIterator> ScanRegionIterator<C> {
             namespace,
             iter: Some(iter),
             request,
-            previous_value: Vec::new(),
+            current_log_payload: Vec::new(),
             is_terminated: false,
         }
     }
 
     pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+        // If terminated, just return.
+        if self.is_terminated {
+            return Ok(None);
+        }
+
         // If inner iter is `Some`, poll it to get required log entry.
         if let Some(iter) = self.iter.as_mut() {
-            if self.is_terminated {
-                return Ok(None);
-            }
-
             iter.next_log_entry()
                 .await
                 .context(ScanWithCause {
@@ -529,11 +544,11 @@ impl<C: ConsumeIterator> ScanRegionIterator<C> {
                     }
 
                     log_entry.map(|log_entry| {
-                        self.previous_value = log_entry.payload.to_owned();
+                        self.current_log_payload = log_entry.payload.to_owned();
                         LogEntry {
                             table_id: log_entry.table_id,
                             sequence: log_entry.sequence,
-                            payload: self.previous_value.as_slice(),
+                            payload: self.current_log_payload.as_slice(),
                         }
                     })
                 })
@@ -630,12 +645,13 @@ impl<C: ConsumeIterator> ReadTableIterator<C> {
     }
 
     pub async fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+        // If terminated, just return.
+        if self.is_terminated {
+            return Ok(None);
+        }
+
         // If inner iter is `Some`, poll it to get required log entry.
         if let Some(iter) = self.iter.as_mut() {
-            if self.is_terminated {
-                return Ok(None);
-            }
-
             let start_sequence = self.start;
             let end_sequence = self.end;
             loop {
