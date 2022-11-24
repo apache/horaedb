@@ -202,16 +202,17 @@ mod test {
 
     use super::*;
 
-    async fn prepare_store(mem_cap: usize) -> CachedStore {
+    async fn prepare_store(bits: usize, mem_cap: usize) -> CachedStore {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        CachedStore::new(0, mem_cap, local_store)
+        CachedStore::new(bits, mem_cap, local_store)
     }
 
     #[tokio::test]
     async fn test_mem_cache_evict() {
-        let store = prepare_store(13).await;
+        // single partition
+        let store = prepare_store(0, 13).await;
 
         // write date
         let location = Path::from("1.sst");
@@ -282,5 +283,40 @@ mod test {
             r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 13 } } }] }"#,
             format!("{}", store)
         );
+    }
+
+    #[tokio::test]
+    async fn test_mem_cache_partition() {
+        // 4 partitions
+        let store = prepare_store(2, 100).await;
+        let location = Path::from("partition.sst");
+        store
+            .put(&location, Bytes::from_static(&[1; 1024]))
+            .await
+            .unwrap();
+
+        let range0_5 = 0..5;
+        let range100_105 = 100..105;
+        _ = store.get_range(&location, range0_5.clone()).await.unwrap();
+        _ = store
+            .get_range(&location, range100_105.clone())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            r#"MemCache { mem_cap: 100, mask: 3, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 0 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 5 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 0 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 5 } } }] }"#,
+            format!("{}", store)
+        );
+
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range0_5))
+            .await
+            .is_some());
+        assert!(store
+            .cache
+            .get(&CachedStore::cache_key(&location, &range100_105))
+            .await
+            .is_some());
     }
 }
