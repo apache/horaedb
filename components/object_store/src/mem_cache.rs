@@ -150,11 +150,16 @@ impl ObjectStore for CachedStore {
             .await
     }
 
+    // TODO(chenxiang): don't cache whole path for reasons below
+    // 1. cache key don't support overlapping
+    // 2. In sst module, we only use get_range, get is not used
     async fn get(&self, location: &Path) -> Result<GetResult> {
         self.underlying_store.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        // TODO(chenxiang): What if there are some overlapping range in cache?
+        // A request with range [5, 10) can also use [0, 20) cache
         let cache_key = Self::cache_key(location, &range);
         if let Some(bytes) = self.cache.get(&cache_key).await {
             return Ok(bytes);
