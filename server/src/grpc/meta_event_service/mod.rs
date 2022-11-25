@@ -179,6 +179,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             table_id: TableId::new(table.id),
             engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             shard_id: shard_info.id,
+            shard_version: shard_info.version,
         };
         schema
             .open_table(open_request.clone(), opts.clone())
@@ -314,6 +315,7 @@ async fn handle_create_table_on_shard(
         options: request.options,
         state: TableState::Stable,
         shard_id: shard_info.id,
+        shard_version: shard_info.version,
     };
     let create_opts = CreateOptions {
         table_engine: ctx.table_engine,

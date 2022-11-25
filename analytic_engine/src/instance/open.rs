@@ -7,7 +7,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common_types::{schema::IndexInWriterSchema, table::Location};
+use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
 use object_store::ObjectStoreRef;
 use snafu::ResultExt;
@@ -15,7 +15,7 @@ use table_engine::engine::OpenTableRequest;
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, RegionId, WalLocation, WalManagerRef},
 };
 
 use crate::{
@@ -203,7 +203,11 @@ impl Instance {
             .space_store
             .manifest
             .load_data(
-                Location::new(request.shard_id, request.table_id.as_u64()),
+                WalLocation::new(
+                    request.shard_id as RegionId,
+                    request.shard_version,
+                    request.table_id.as_u64(),
+                ),
                 true,
             )
             .await
@@ -248,6 +252,7 @@ impl Instance {
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
                 request.shard_id,
+                request.shard_version,
             )
             .context(RecoverTableData {
                 space_id: table_meta.space_id,
@@ -283,7 +288,7 @@ impl Instance {
         );
 
         let read_req = ReadRequest {
-            location: table_data.location(),
+            location: table_data.wal_location(),
             start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
             end: ReadBoundary::Max,
         };

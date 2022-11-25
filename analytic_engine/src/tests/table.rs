@@ -12,7 +12,7 @@ use common_types::{
     request_id::RequestId,
     row::{Row, RowGroup, RowGroupBuilder},
     schema::{self, Schema},
-    table::DEFAULT_SHARD_ID,
+    table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
     time::Timestamp,
 };
 use common_util::config::ReadableDuration;
@@ -308,6 +308,7 @@ impl Default for Builder {
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: DEFAULT_SHARD_ID,
+                shard_version: DEFAULT_SHARD_VERSION,
             },
         }
     }
