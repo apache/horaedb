@@ -90,8 +90,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             storage: StorageOptions {
-                mem_cache_capacity: ReadableSize::mb(0),
-                mem_cache_partition_bits: 0,
+                mem_cache_capacity: ReadableSize::mb(512),
+                mem_cache_partition_bits: 1,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_path: String::from("/tmp/ceresdb"),
                 }),
