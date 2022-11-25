@@ -164,9 +164,10 @@ func (m *TopologyManagerImpl) AddTable(ctx context.Context, nodeName string, tab
 	shardView := m.shardTablesMapping[shardID]
 	prevVersion := shardView.Version
 
-	tableIDs := make([]storage.TableID, 0, len(shardView.TableIDs))
-	copy(tableIDs, shardView.TableIDs)
+	tableIDs := make([]storage.TableID, 0, len(shardView.TableIDs)+1)
+	tableIDs = append(tableIDs, shardView.TableIDs...)
 	tableIDs = append(tableIDs, table.ID)
+
 	newShardView := storage.ShardView{
 		ShardID:   shardID,
 		Version:   prevVersion + 1,
