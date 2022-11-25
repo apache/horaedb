@@ -24,7 +24,6 @@ use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, sch
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
-use parquet_ext::DataCacheRef;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
@@ -54,14 +53,8 @@ impl MergeSstBench {
 
         let sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
         let meta_cache: Option<MetaCacheRef> = None;
-        let data_cache: Option<DataCacheRef> = None;
 
-        let schema = runtime.block_on(util::schema_from_sst(
-            &store,
-            &sst_path,
-            &meta_cache,
-            &data_cache,
-        ));
+        let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
 
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
@@ -72,7 +65,6 @@ impl MergeSstBench {
             projected_schema,
             predicate,
             meta_cache: meta_cache.clone(),
-            data_cache: data_cache.clone(),
             runtime: runtime.clone(),
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
@@ -87,7 +79,6 @@ impl MergeSstBench {
             &config.sst_file_ids,
             purge_queue,
             &meta_cache,
-            &data_cache,
         ));
 
         MergeSstBench {

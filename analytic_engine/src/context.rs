@@ -4,7 +4,6 @@
 
 use std::{fmt, sync::Arc};
 
-use parquet_ext::DataCacheRef;
 use table_engine::engine::EngineRuntimes;
 
 use crate::{sst::meta_cache::MetaCacheRef, Config};
@@ -19,8 +18,6 @@ pub struct OpenContext {
 
     /// Sst meta data cache.
     pub meta_cache: Option<MetaCacheRef>,
-    /// Sst page cache.
-    pub data_cache: Option<DataCacheRef>,
 }
 
 impl fmt::Debug for OpenContext {

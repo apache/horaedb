@@ -744,12 +744,14 @@ fn test_table_write_read_reverse<T: EngineContext>(engine_context: T) {
 }
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_rocks() {
     let rocksdb_ctx = RocksDBEngineContext::default();
     test_table_write_read_reverse_after_flush(rocksdb_ctx);
 }
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_mem_wal() {
     let memory_ctx = MemoryEngineContext::default();
     test_table_write_read_reverse_after_flush(memory_ctx);

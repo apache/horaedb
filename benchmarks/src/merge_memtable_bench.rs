@@ -31,7 +31,6 @@ use common_types::{
 use common_util::runtime::Runtime;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
-use parquet_ext::DataCacheRef;
 use table_engine::{predicate::Predicate, table::TableId};
 
 use crate::{config::MergeMemTableBenchConfig, util};
@@ -59,16 +58,9 @@ impl MergeMemTableBench {
         let table_id = config.table_id;
 
         let meta_cache: Option<MetaCacheRef> = None;
-        let data_cache: Option<DataCacheRef> = None;
-
         // Use first sst's schema.
         let sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
-        let schema = runtime.block_on(util::schema_from_sst(
-            &store,
-            &sst_path,
-            &meta_cache,
-            &data_cache,
-        ));
+        let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
 
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
@@ -204,7 +196,6 @@ fn mock_sst_reader_options(
         projected_schema,
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
-        data_cache: None,
         runtime,
     }
 }

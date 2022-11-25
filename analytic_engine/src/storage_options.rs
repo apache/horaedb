@@ -1,12 +1,20 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use common_util::config::ReadableSize;
 use object_store::cache::CachedStoreConfig;
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Deserialize)]
 /// Options for storage backend
+pub struct StorageOptions {
+    pub mem_cache_capacity: ReadableSize,
+    pub mem_cache_partition_bits: usize,
+    pub object_store: ObjectStoreOptions,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
-pub enum StorageOptions {
+pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
     Cache(CacheOptions),

@@ -9,9 +9,11 @@ use common_types::table::DEFAULT_SHARD_ID;
 use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
-use object_store::{aliyun::AliyunOSS, cache::CachedStore, LocalFileSystem, ObjectStoreRef};
-use parquet_ext::{cache::LruDataCache, DataCacheRef};
-use snafu::{Backtrace, ResultExt, Snafu};
+use object_store::{
+    aliyun::AliyunOSS, cache::CachedStore, mem_cache::MemCacheStore, LocalFileSystem,
+    ObjectStoreRef,
+};
+use snafu::{ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
@@ -348,18 +350,10 @@ async fn open_instance(
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
 
-    let data_cache: Option<DataCacheRef> =
-        if let Some(sst_data_cache_cap) = &config.sst_data_cache_cap {
-            Some(Arc::new(LruDataCache::new(*sst_data_cache_cap)))
-        } else {
-            None
-        };
-
     let open_ctx = OpenContext {
         config,
         runtimes: engine_runtimes,
         meta_cache,
-        data_cache,
     };
 
     let instance = Instance::open(
@@ -378,8 +372,8 @@ fn open_storage(
     opts: StorageOptions,
 ) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
     Box::pin(async move {
-        match opts {
-            StorageOptions::Local(local_opts) => {
+        let underlying_store = match opts.object_store {
+            ObjectStoreOptions::Local(local_opts) => {
                 let data_path = Path::new(&local_opts.data_path);
                 let sst_path = data_path.join(STORE_DIR_NAME);
                 tokio::fs::create_dir_all(&sst_path)
@@ -388,22 +382,34 @@ fn open_storage(
                         path: sst_path.to_string_lossy().into_owned(),
                     })?;
                 let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
-                Ok(Arc::new(store) as _)
+                Arc::new(store) as _
             }
-            StorageOptions::Aliyun(aliyun_opts) => Ok(Arc::new(AliyunOSS::new(
+            ObjectStoreOptions::Aliyun(aliyun_opts) => Arc::new(AliyunOSS::new(
                 aliyun_opts.key_id,
                 aliyun_opts.key_secret,
                 aliyun_opts.endpoint,
                 aliyun_opts.bucket,
-            )) as _),
-            StorageOptions::Cache(cache_opts) => {
+            )) as _,
+            ObjectStoreOptions::Cache(cache_opts) => {
                 let local_store = open_storage(*cache_opts.local_store).await?;
                 let remote_store = open_storage(*cache_opts.remote_store).await?;
                 let store = CachedStore::init(local_store, remote_store, cache_opts.cache_opts)
                     .await
                     .context(OpenObjectStore)?;
-                Ok(Arc::new(store) as _)
+                Arc::new(store) as _
             }
+        };
+
+        if opts.mem_cache_capacity.as_bytes() == 0 {
+            return Ok(underlying_store);
         }
+
+        let store = Arc::new(MemCacheStore::new(
+            opts.mem_cache_partition_bits,
+            opts.mem_cache_capacity.as_bytes() as usize,
+            underlying_store,
+        )) as _;
+
+        Ok(store)
     })
 }

@@ -78,7 +78,6 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
-        data_cache: None,
         runtime,
     };
     let mut reader = factory
