@@ -7,27 +7,27 @@ use std::collections::HashMap;
 use common_types::{column_schema, datum::DatumKind, time::Timestamp};
 use table_engine::table::AlterSchemaRequest;
 
-use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
-    tests::{
-        table::FixedSchemaTable,
-        util::{self, TestEnv},
-    },
+use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
+use crate::tests::{
+    table::FixedSchemaTable,
+    util::{self, TestEnv},
 };
 
 #[test]
 fn test_drop_table_once_rocks() {
-    test_drop_table_once::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_drop_table_once(rocksdb_ctx);
 }
 
 #[test]
 fn test_drop_table_once_mem_wal() {
-    test_drop_table_once::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_drop_table_once(memory_ctx);
 }
 
-fn test_drop_table_once<T: EngineBuilder>() {
+fn test_drop_table_once<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
@@ -58,17 +58,19 @@ fn test_drop_table_once<T: EngineBuilder>() {
 
 #[test]
 fn test_drop_table_again_rocks() {
-    test_drop_table_again::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_drop_table_again(rocksdb_ctx);
 }
 
 #[test]
 fn test_drop_table_again_mem_wal() {
-    test_drop_table_again::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_drop_table_again(memory_ctx);
 }
 
-fn test_drop_table_again<T: EngineBuilder>() {
+fn test_drop_table_again<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
@@ -93,17 +95,19 @@ fn test_drop_table_again<T: EngineBuilder>() {
 
 #[test]
 fn test_drop_create_table_mixed_rocks() {
-    test_drop_create_table_mixed::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_drop_create_table_mixed(rocksdb_ctx);
 }
 
 #[test]
 fn test_drop_create_table_mixed_mem_wal() {
-    test_drop_create_table_mixed::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_drop_create_table_mixed(memory_ctx);
 }
 
-fn test_drop_create_table_mixed<T: EngineBuilder>() {
+fn test_drop_create_table_mixed<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
@@ -145,9 +149,9 @@ fn test_drop_create_table_mixed<T: EngineBuilder>() {
     });
 }
 
-fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
+fn test_drop_create_same_table_case<T: EngineContext>(flush: bool, engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
@@ -204,33 +208,37 @@ fn test_drop_create_same_table_case<T: EngineBuilder>(flush: bool) {
 
 #[test]
 fn test_drop_create_same_table_rocks() {
-    test_drop_create_same_table::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_drop_create_same_table(rocksdb_ctx);
 }
 
 #[test]
 fn test_drop_create_same_table_mem_wal() {
-    test_drop_create_same_table::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_drop_create_same_table(memory_ctx);
 }
 
-fn test_drop_create_same_table<T: EngineBuilder>() {
-    test_drop_create_same_table_case::<T>(false);
+fn test_drop_create_same_table<T: EngineContext>(engine_context: T) {
+    test_drop_create_same_table_case::<T>(false, engine_context.clone());
 
-    test_drop_create_same_table_case::<T>(true);
+    test_drop_create_same_table_case::<T>(true, engine_context);
 }
 
 #[test]
 fn test_alter_schema_drop_create_rocks() {
-    test_alter_schema_drop_create::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_alter_schema_drop_create(rocksdb_ctx);
 }
 
 #[test]
 fn test_alter_schema_drop_create_mem_wal() {
-    test_alter_schema_drop_create::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_alter_schema_drop_create(memory_ctx);
 }
 
-fn test_alter_schema_drop_create<T: EngineBuilder>() {
+fn test_alter_schema_drop_create<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
@@ -275,17 +283,19 @@ fn test_alter_schema_drop_create<T: EngineBuilder>() {
 
 #[test]
 fn test_alter_options_drop_create_rocks() {
-    test_alter_options_drop_create::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_alter_options_drop_create(rocksdb_ctx);
 }
 
 #[test]
 fn test_alter_options_drop_create_mem_wal() {
-    test_alter_options_drop_create::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_alter_options_drop_create(memory_ctx);
 }
 
-fn test_alter_options_drop_create<T: EngineBuilder>() {
+fn test_alter_options_drop_create<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;

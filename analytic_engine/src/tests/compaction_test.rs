@@ -5,25 +5,27 @@
 use common_types::time::Timestamp;
 use table_engine::table::FlushRequest;
 
+use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
 use crate::{
     compaction::SizeTieredCompactionOptions,
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
     tests::util::{self, TestEnv},
 };
 
 #[test]
 fn test_table_compact_current_segment_rocks() {
-    test_table_compact_current_segment::<RocksDBWalEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_table_compact_current_segment(rocksdb_ctx);
 }
 
 #[test]
 fn test_table_compact_current_segment_mem_wal() {
-    test_table_compact_current_segment::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_table_compact_current_segment(memory_ctx);
 }
 
-fn test_table_compact_current_segment<T: EngineBuilder>() {
+fn test_table_compact_current_segment<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
