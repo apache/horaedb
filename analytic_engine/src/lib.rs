@@ -35,35 +35,35 @@ use wal::{
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
-/// Config of analytic engine.
+/// Config of analytic engine
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// Storage options of the engine.
+    /// Storage options of the engine
     pub storage: StorageOptions,
 
-    /// WAL path of the engine.
+    /// WAL path of the engine
     pub wal_path: String,
 
-    /// Batch size to read records from wal to replay.
+    /// Batch size to read records from wal to replay
     pub replay_batch_size: usize,
-    /// Batch size to replay tables.
+    /// Batch size to replay tables
     pub max_replay_tables_per_batch: usize,
     // Write group options:
     pub write_group_worker_num: usize,
     pub write_group_command_channel_cap: usize,
     // End of write group options.
-    /// Default options for table.
+    /// Default options for table
     pub table_opts: TableOptions,
 
     pub compaction_config: SchedulerConfig,
 
-    /// sst meta cache capacity.
+    /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
-    /// sst data cache capacity.
+    /// sst data cache capacity
     pub sst_data_cache_cap: Option<usize>,
 
-    /// Manifest options.
+    /// Manifest options
     pub manifest: ManifestOptions,
 
     // Global write buffer options:
@@ -113,15 +113,15 @@ impl Default for Config {
     }
 }
 
-/// Config of wal based on obkv.
+/// Config of wal based on obkv
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
-    /// Obkv client config.
+    /// Obkv client config
     pub obkv: ObkvConfig,
-    /// Wal (stores data) namespace config.
+    /// Wal (stores data) namespace config
     pub wal: NamespaceConfig,
-    /// Manifest (stores meta data) namespace config.
+    /// Manifest (stores meta data) namespace config
     pub manifest: NamespaceConfig,
 }
 
@@ -139,7 +139,7 @@ impl Default for ObkvWalConfig {
     }
 }
 
-/// Config of wal based on obkv.
+/// Config of wal based on obkv
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct KafkaWalConfig {
@@ -150,7 +150,7 @@ pub struct KafkaWalConfig {
     pub wal_config: MessageQueueWalConfig,
 }
 
-/// Options for storage backend
+/// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
