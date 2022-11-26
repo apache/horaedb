@@ -2955,6 +2955,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "lru-weighted-cache"
+version = "0.1.2"
+source = "git+https://github.com/jiacai2050/lru-weighted-cache.git?rev=1cf61aaf88469387e610dc7154fa318843491428#1cf61aaf88469387e610dc7154fa318843491428"
+
+[[package]]
 name = "lz4"
 version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3542,6 +3547,7 @@ dependencies = [
  "chrono",
  "futures 0.3.21",
  "lru",
+ "lru-weighted-cache",
  "object_store 0.5.1",
  "oss-rust-sdk",
  "serde",
