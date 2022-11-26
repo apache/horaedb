@@ -7,7 +7,7 @@ use common_types::{
     SequenceNumber,
 };
 
-use super::util::TestTableData;
+use super::util::{KafkaWalBuilder, TestTableData};
 use crate::{
     manager::{ReadBoundary, ReadRequest, RegionId, ScanRequest, WalManagerRef},
     tests::util::{
@@ -33,6 +33,14 @@ fn test_memory_table_wal_default() {
 #[test]
 fn test_memory_table_wal_with_ttl() {
     let builder = MemoryTableWalBuilder::with_ttl("1d");
+
+    test_all(builder);
+}
+
+#[test]
+#[ignore = "this test needs a kafka cluster"]
+fn test_kafka_wal() {
+    let builder = KafkaWalBuilder::new();
 
     test_all(builder);
 }

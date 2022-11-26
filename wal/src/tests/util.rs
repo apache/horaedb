@@ -19,6 +19,7 @@ use common_util::{
     config::ReadableDuration,
     runtime::{self, Runtime},
 };
+use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
 use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
@@ -28,6 +29,7 @@ use crate::{
     manager::{
         BatchLogIteratorAdapter, ReadContext, RegionId, WalManager, WalManagerRef, WriteContext,
     },
+    message_queue_impl::{config::Config, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -119,6 +121,51 @@ impl MemoryTableWalBuilder {
 }
 
 pub type TableKvTestEnv = TestEnv<MemoryTableWalBuilder>;
+
+pub struct KafkaWalBuilder {
+    namespace: String,
+}
+
+impl KafkaWalBuilder {
+    pub fn new() -> Self {
+        Self {
+            namespace: format!("test-namespace-{}", uuid::Uuid::new_v4()),
+        }
+    }
+}
+
+impl Default for KafkaWalBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl WalBuilder for KafkaWalBuilder {
+    type Wal = MessageQueueImpl<KafkaImpl>;
+
+    async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
+        let mut config = KafkaConfig::default();
+        config.client_config.boost_broker = Some("127.0.0.1:9011".to_string());
+        let kafka_impl = KafkaImpl::new(config).await.unwrap();
+        let message_queue_impl = MessageQueueImpl::new(
+            self.namespace.clone(),
+            kafka_impl,
+            runtime.clone(),
+            Config::default(),
+        );
+
+        Arc::new(message_queue_impl)
+    }
+}
+
+impl Clone for KafkaWalBuilder {
+    fn clone(&self) -> Self {
+        Self {
+            namespace: format!("test-namespace-{}", uuid::Uuid::new_v4()),
+        }
+    }
+}
 
 /// The environment for testing wal.
 pub struct TestEnv<B> {

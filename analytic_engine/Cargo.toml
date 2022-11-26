@@ -41,6 +41,7 @@ table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 wal = { workspace = true }
+message_queue = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }

@@ -8,13 +8,15 @@ use async_trait::async_trait;
 use common_types::table::DEFAULT_SHARD_ID;
 use common_util::define_result;
 use futures::Future;
+use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{aliyun::AliyunOSS, cache::CachedStore, LocalFileSystem, ObjectStoreRef};
 use parquet_ext::{cache::LruDataCache, DataCacheRef};
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
     manager::{self, RegionId, WalManagerRef},
+    message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as WalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
 };
@@ -23,13 +25,16 @@ use crate::{
     context::OpenContext,
     engine::TableEngineImpl,
     instance::{Instance, InstanceRef},
-    meta::{details::ManifestImpl, ManifestRef},
+    meta::{
+        details::{ManifestImpl, Options as ManifestOptions},
+        ManifestRef,
+    },
     sst::{
         factory::FactoryImpl,
         meta_cache::{MetaCache, MetaCacheRef},
     },
     storage_options::StorageOptions,
-    Config,
+    Config, ObkvWalConfig, WalStorageConfig,
 };
 
 #[derive(Debug, Snafu)]
@@ -41,6 +46,13 @@ pub enum Error {
 
     #[snafu(display("Failed to open wal, err:{}", source))]
     OpenWal { source: manager::error::Error },
+
+    #[snafu(display(
+        "Failed to open with the invalid config, msg:{}.\nBacktrace:\n{}",
+        msg,
+        backtrace
+    ))]
+    InvalidWalConfig { msg: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to open wal for manifest, err:{}", source))]
     OpenManifestWal { source: manager::error::Error },
@@ -63,6 +75,11 @@ pub enum Error {
     CreateDir {
         path: String,
         source: std::io::Error,
+    },
+
+    #[snafu(display("Failed to open kafka, err:{}", source))]
+    OpenKafka {
+        source: message_queue::kafka::kafka_impl::Error,
     },
 }
 
@@ -98,16 +115,27 @@ pub trait EngineBuilder: Send + Sync + Default {
 
 /// [RocksEngine] builder.
 #[derive(Default)]
-pub struct RocksEngineBuilder;
+pub struct RocksDBWalEngineBuilder;
 
 #[async_trait]
-impl EngineBuilder for RocksEngineBuilder {
+impl EngineBuilder for RocksDBWalEngineBuilder {
     async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        assert!(!config.obkv_wal.enable);
+        match &config.wal_storage {
+            WalStorageConfig::RocksDB => {}
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening rocksDB wal, config:{:?}",
+                        config.wal_storage
+                    ),
+                }
+                .fail();
+            }
+        }
 
         let default_region_id = DEFAULT_SHARD_ID as RegionId;
 
@@ -141,26 +169,43 @@ impl EngineBuilder for RocksEngineBuilder {
 
 /// [ReplicatedEngine] builder.
 #[derive(Default)]
-pub struct ReplicatedEngineBuilder;
+pub struct ObkvWalEngineBuilder;
 
 #[async_trait]
-impl EngineBuilder for ReplicatedEngineBuilder {
+impl EngineBuilder for ObkvWalEngineBuilder {
     async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        assert!(config.obkv_wal.enable);
+        let obkv_wal_config = match &config.wal_storage {
+            WalStorageConfig::Obkv(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening obkv wal, config:{:?}",
+                        config.wal_storage
+                    ),
+                }
+                .fail();
+            }
+        };
 
         // Notice the creation of obkv client may block current thread.
-        let obkv_config = config.obkv_wal.obkv.clone();
+        let obkv_config = obkv_wal_config.obkv.clone();
         let obkv = engine_runtimes
             .write_runtime
             .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
             .await
             .context(RuntimeExec)??;
 
-        open_wal_and_manifest_with_table_kv(config, engine_runtimes, obkv).await
+        open_wal_and_manifest_with_table_kv(
+            *obkv_wal_config,
+            config.manifest.clone(),
+            engine_runtimes,
+            obkv,
+        )
+        .await
     }
 }
 
@@ -180,12 +225,85 @@ impl EngineBuilder for MemWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        open_wal_and_manifest_with_table_kv(config, engine_runtimes, self.table_kv.clone()).await
+        let obkv_wal_config = match &config.wal_storage {
+            WalStorageConfig::Obkv(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening memory wal, config:{:?}",
+                        config.wal_storage
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        open_wal_and_manifest_with_table_kv(
+            *obkv_wal_config,
+            config.manifest.clone(),
+            engine_runtimes,
+            self.table_kv.clone(),
+        )
+        .await
+    }
+}
+
+#[derive(Default)]
+pub struct KafkaWalEngineBuilder;
+
+#[async_trait]
+impl EngineBuilder for KafkaWalEngineBuilder {
+    async fn open_wal_and_manifest(
+        &self,
+        config: Config,
+        engine_runtimes: Arc<EngineRuntimes>,
+    ) -> Result<(WalManagerRef, ManifestRef)> {
+        let kafka_wal_config = match &config.wal_storage {
+            WalStorageConfig::Kafka(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening kafka wal, config:{:?}",
+                        config
+                    ),
+                }
+                .fail();
+            }
+        };
+
+        let bg_runtime = &engine_runtimes.bg_runtime;
+
+        let kafka = KafkaImpl::new(kafka_wal_config.kafka_config.clone())
+            .await
+            .context(OpenKafka)?;
+        let wal_manager = MessageQueueImpl::new(
+            WAL_DIR_NAME.to_string(),
+            kafka,
+            bg_runtime.clone(),
+            kafka_wal_config.wal_config.clone(),
+        );
+
+        let kafka_for_manifest = KafkaImpl::new(kafka_wal_config.kafka_config.clone())
+            .await
+            .context(OpenKafka)?;
+        let manifest_wal = MessageQueueImpl::new(
+            MANIFEST_DIR_NAME.to_string(),
+            kafka_for_manifest,
+            bg_runtime.clone(),
+            kafka_wal_config.wal_config,
+        );
+
+        let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest)
+            .await
+            .context(OpenManifest)?;
+
+        Ok((Arc::new(wal_manager), Arc::new(manifest)))
     }
 }
 
 async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
-    config: Config,
+    config: ObkvWalConfig,
+    manifest_opts: ManifestOptions,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
 ) -> Result<(WalManagerRef, ManifestRef)> {
@@ -199,7 +317,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv.clone(),
         runtimes.clone(),
         WAL_DIR_NAME,
-        config.obkv_wal.wal.clone(),
+        config.wal.clone(),
     )
     .await
     .context(OpenWal)?;
@@ -208,11 +326,11 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv,
         runtimes,
         MANIFEST_DIR_NAME,
-        config.obkv_wal.manifest.clone(),
+        config.manifest.clone(),
     )
     .await
     .context(OpenManifestWal)?;
-    let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
+    let manifest = ManifestImpl::open(Arc::new(manifest_wal), manifest_opts)
         .await
         .context(OpenManifest)?;
 
