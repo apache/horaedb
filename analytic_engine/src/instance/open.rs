@@ -281,7 +281,7 @@ impl Instance {
     ) -> Result<()> {
         let read_req = ReadRequest {
             location: table_data.location(),
-            start: ReadBoundary::Min,
+            start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
             end: ReadBoundary::Max,
         };
 
