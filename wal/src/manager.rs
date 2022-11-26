@@ -7,7 +7,7 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
 use common_types::{
-    table::{Location, TableId},
+    table::{TableId, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::runtime::Runtime;
@@ -124,13 +124,27 @@ pub mod error {
     define_result!(Error);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
     pub versioned_region_id: VersionedRegionId,
     pub table_id: TableId,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+impl WalLocation {
+    pub fn new(region_id: RegionId, region_version: RegionVersion, table_id: TableId) -> Self {
+        let versioned_region_id = VersionedRegionId {
+            version: region_version,
+            id: region_id,
+        };
+
+        WalLocation {
+            versioned_region_id,
+            table_id,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VersionedRegionId {
     pub version: RegionVersion,
     pub id: RegionId,
@@ -234,7 +248,11 @@ pub struct ReadRequest {
 impl Default for ReadRequest {
     fn default() -> Self {
         Self {
-            location: Location::new(DEFAULT_SHARD_ID, TableId::MIN),
+            location: WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_SHARD_VERSION,
+                TableId::MIN,
+            ),
             start: ReadBoundary::Min,
             end: ReadBoundary::Min,
         }

@@ -6,9 +6,11 @@ use std::fmt::Debug;
 
 use common_types::{
     bytes::{Buf, BufMut},
-    table::{Location, TableId},
+    table::TableId,
     SequenceNumber,
 };
+
+use crate::manager::WalLocation;
 
 pub trait Payload: Send + Sync + Debug {
     type Error: std::error::Error + Send + Sync + 'static;
@@ -35,16 +37,16 @@ pub struct LogWriteEntry {
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
-    pub(crate) location: Location,
+    pub(crate) location: WalLocation,
     pub(crate) entries: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {
-    pub fn new(location: Location) -> Self {
+    pub fn new(location: WalLocation) -> Self {
         Self::with_capacity(location, 0)
     }
 
-    pub fn with_capacity(location: Location, cap: usize) -> Self {
+    pub fn with_capacity(location: WalLocation, cap: usize) -> Self {
         Self {
             location,
             entries: Vec::with_capacity(cap),

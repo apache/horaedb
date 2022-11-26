@@ -15,9 +15,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    bytes::BytesMut,
-    table::{Location, TableId},
-    SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
+    bytes::BytesMut, table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::runtime::Runtime;
 use log::{debug, info, warn};
@@ -30,7 +28,7 @@ use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SyncLogIterator, WalManager, WriteContext,
+        ScanRequest, SyncLogIterator, VersionedRegionId, WalLocation, WalManager, WriteContext,
     },
 };
 
@@ -164,7 +162,7 @@ impl TableUnit {
             return Ok(RocksLogIterator::new_empty(self.log_encoding.clone(), iter));
         };
 
-        let region_id = req.location.shard_id as RegionId;
+        let region_id = req.location.versioned_region_id.id;
         let (min_log_key, max_log_key) = (
             self.log_key(region_id, start_sequence),
             self.log_key(region_id, end_sequence),
@@ -189,7 +187,7 @@ impl TableUnit {
             let mut key_buf = BytesMut::new();
 
             for entry in &batch.entries {
-                let region_id = batch.location.shard_id as RegionId;
+                let region_id = batch.location.versioned_region_id.id;
                 self.log_encoding
                     .encode_key(
                         &mut key_buf,
@@ -236,7 +234,7 @@ pub struct RocksImpl {
     /// Encoding for meta data of max sequence
     max_seq_meta_encoding: MaxSeqMetaEncoding,
     /// Table units
-    table_units: RwLock<HashMap<TableId, Arc<TableUnit>>>,
+    table_units: RwLock<HashMap<WalLocation, Arc<TableUnit>>>,
 }
 
 impl Drop for RocksImpl {
@@ -252,8 +250,8 @@ impl Drop for RocksImpl {
 }
 
 impl RocksImpl {
-    fn build_table_units(&self, region_id: RegionId) -> Result<()> {
-        let table_seqs = self.find_table_seqs_from_db(region_id)?;
+    fn build_table_units(&self, versioned_region_id: VersionedRegionId) -> Result<()> {
+        let table_seqs = self.find_table_seqs_from_db(versioned_region_id.id)?;
 
         info!(
             "RocksImpl build table units, wal_path:{}, table_seqs:{:?}",
@@ -272,7 +270,11 @@ impl RocksImpl {
                 delete_lock: Mutex::new(()),
             };
 
-            table_units.insert(table_id, Arc::new(table_unit));
+            let location = WalLocation {
+                versioned_region_id,
+                table_id,
+            };
+            table_units.insert(location, Arc::new(table_unit));
         }
 
         Ok(())
@@ -394,27 +396,27 @@ impl RocksImpl {
     }
 
     /// Get the table unit and create it if not found.
-    fn get_or_create_table_unit(&self, table_id: TableId) -> Arc<TableUnit> {
+    fn get_or_create_table_unit(&self, location: WalLocation) -> Arc<TableUnit> {
         {
             let table_units = self.table_units.read().unwrap();
-            if let Some(table_unit) = table_units.get(&table_id) {
+            if let Some(table_unit) = table_units.get(&location) {
                 return table_unit.clone();
             }
         }
 
         let mut table_units = self.table_units.write().unwrap();
-        if let Some(table_unit) = table_units.get(&table_id) {
+        if let Some(table_unit) = table_units.get(&location) {
             return table_unit.clone();
         }
 
         info!(
-            "RocksImpl create new table unit, wal_path:{}, table_id:{}",
-            self.wal_path, table_id
+            "RocksImpl create new table unit, wal_path:{}, wal_location:{:?}",
+            self.wal_path, location
         );
 
         // Create a new region.
         let table_unit = Arc::new(TableUnit {
-            id: table_id,
+            id: location.table_id,
             db: self.db.clone(),
             // ensure `next_sequence_number` to start from 1 (larger than MIN_SEQUENCE_NUMBER)
             next_sequence_num: AtomicU64::new(MIN_SEQUENCE_NUMBER + 1),
@@ -424,14 +426,14 @@ impl RocksImpl {
             delete_lock: Mutex::new(()),
         });
 
-        table_units.insert(table_id, table_unit.clone());
+        table_units.insert(location, table_unit.clone());
         table_unit
     }
 
     /// Get the table unit.
-    fn table_unit(&self, table_id: TableId) -> Option<Arc<TableUnit>> {
+    fn table_unit(&self, location: &WalLocation) -> Option<Arc<TableUnit>> {
         let table_units = self.table_units.read().unwrap();
-        table_units.get(&table_id).cloned()
+        table_units.get(location).cloned()
     }
 }
 
@@ -440,33 +442,33 @@ pub struct Builder {
     wal_path: String,
     rocksdb_config: DBOptions,
     runtime: Arc<Runtime>,
-    region_id: RegionId,
+    versioned_region_id: VersionedRegionId,
 }
 
 impl Builder {
     pub fn with_default_rocksdb_config(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
-        region_id: RegionId,
+        versioned_region_id: VersionedRegionId,
     ) -> Self {
         let mut rocksdb_config = DBOptions::default();
         // TODO(yingwen): Move to another function?
         rocksdb_config.create_if_missing(true);
-        Self::new(wal_path, runtime, rocksdb_config, region_id)
+        Self::new(wal_path, runtime, rocksdb_config, versioned_region_id)
     }
 
     pub fn new(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
         rocksdb_config: DBOptions,
-        region_id: RegionId,
+        versioned_region_id: VersionedRegionId,
     ) -> Self {
         let wal_path: PathBuf = wal_path.into();
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             rocksdb_config,
             runtime,
-            region_id,
+            versioned_region_id,
         }
     }
 
@@ -484,7 +486,7 @@ impl Builder {
             max_seq_meta_encoding: MaxSeqMetaEncoding::newest(),
             table_units: RwLock::new(HashMap::new()),
         };
-        rocks_impl.build_table_units(self.region_id)?;
+        rocks_impl.build_table_units(self.versioned_region_id)?;
 
         Ok(rocks_impl)
     }
@@ -628,8 +630,8 @@ impl SyncLogIterator for RocksLogIterator {
 
 #[async_trait]
 impl WalManager for RocksImpl {
-    async fn sequence_num(&self, location: Location) -> Result<u64> {
-        if let Some(table_unit) = self.table_unit(location.table_id) {
+    async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
+        if let Some(table_unit) = self.table_unit(&location) {
             return table_unit.sequence_num();
         }
 
@@ -638,11 +640,11 @@ impl WalManager for RocksImpl {
 
     async fn mark_delete_entries_up_to(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        if let Some(table_unit) = self.table_unit(location.table_id) {
-            let region_id = location.shard_id as RegionId;
+        if let Some(table_unit) = self.table_unit(&location) {
+            let region_id = location.versioned_region_id.id;
             return table_unit
                 .delete_entries_up_to(region_id, sequence_num)
                 .await;
@@ -662,7 +664,7 @@ impl WalManager for RocksImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        let sync_iter = if let Some(table_unit) = self.table_unit(req.location.table_id) {
+        let sync_iter = if let Some(table_unit) = self.table_unit(&req.location) {
             table_unit.read(ctx, req)?
         } else {
             let iter = DBIterator::new(self.db.clone(), ReadOptions::default());
@@ -678,7 +680,7 @@ impl WalManager for RocksImpl {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let table_unit = self.get_or_create_table_unit(batch.location.table_id);
+        let table_unit = self.get_or_create_table_unit(batch.location);
         table_unit.write(ctx, batch).await
     }
 
@@ -688,7 +690,7 @@ impl WalManager for RocksImpl {
         let read_opts = ReadOptions::default();
         let iter = DBIterator::new(self.db.clone(), read_opts);
 
-        let region_id = req.region_id;
+        let region_id = req.versioned_region_id.id;
         let (min_log_key, max_log_key) = (
             CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN),
             CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX),
