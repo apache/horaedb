@@ -2,24 +2,24 @@
 
 //! Engine open test.
 
-use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksEngineBuilder},
-    tests::util::TestEnv,
-};
+use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
+use crate::tests::util::TestEnv;
 
 #[test]
 fn test_open_engine_rocks() {
-    test_open_engine::<RocksEngineBuilder>();
+    let rocksdb_ctx = RocksDBEngineContext::default();
+    test_open_engine(rocksdb_ctx);
 }
 
 #[test]
 fn test_open_engine_mem_wal() {
-    test_open_engine::<MemWalEngineBuilder>();
+    let memory_ctx = MemoryEngineContext::default();
+    test_open_engine(memory_ctx);
 }
 
-fn test_open_engine<T: EngineBuilder>() {
+fn test_open_engine<T: EngineContext>(engine_context: T) {
     let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context::<T>();
+    let mut test_ctx = env.new_context(engine_context);
 
     env.block_on(async {
         test_ctx.open().await;
