@@ -41,12 +41,6 @@ func main() {
 		panicf("invalid config, err:%v", err)
 	}
 
-	logger, err := log.InitGlobalLogger(&cfg.Log)
-	if err != nil {
-		panicf("fail to init global logger, err:%v", err)
-	}
-	defer logger.Sync() //nolint:errcheck
-
 	if err := cfgParser.ParseConfigFromToml(); err != nil {
 		panicf("fail to parse config from toml file, err:%v", err)
 	}
@@ -59,9 +53,14 @@ func main() {
 	if err != nil {
 		panicf("fail to marshal server config, err:%v", err)
 	}
-	log.Info("server start with config", zap.String("config", string(cfgByte)))
 
+	logger, err := log.InitGlobalLogger(&cfg.Log)
+	if err != nil {
+		panicf("fail to init global logger, err:%v", err)
+	}
+	defer logger.Sync() //nolint:errcheck
 	// TODO: Do adjustment to config for preparing joining existing cluster.
+	log.Info("server start with config", zap.String("config", string(cfgByte)))
 
 	srv, err := server.CreateServer(cfg)
 	if err != nil {

@@ -269,6 +269,7 @@ func (m *TableManagerImpl) loadTable(ctx context.Context) error {
 					tables:     make(map[string]storage.Table, 0),
 					tablesByID: make(map[storage.TableID]storage.Table, 0),
 				}
+				m.schemaTables[table.SchemaID] = tables
 			}
 
 			tables.tables[table.Name] = table
