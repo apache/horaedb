@@ -90,7 +90,7 @@ pub struct TableData {
 
     /// Mutable memtable memory size limitation
     mutable_limit: AtomicU32,
-    /// Options of this table.
+    /// Options of this table
     ///
     /// Most modification to `opts` can be done by replacing the old options
     /// with a new one. However, altering the segment duration should be done
@@ -132,7 +132,7 @@ pub struct TableData {
     /// No write/alter is allowed if the table is dropped.
     dropped: AtomicBool,
 
-    /// Metrics of this table.
+    /// Metrics of this table
     pub metrics: Metrics,
 
     /// Shard id
