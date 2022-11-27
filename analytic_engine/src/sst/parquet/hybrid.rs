@@ -4,8 +4,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use arrow::{
     array::{
-        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
-        UInt64Array,
+        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, Int64Array, ListArray,
+        StringArray, UInt64Array,
     },
     bitmap::Bitmap,
     buffer::{Buffer, MutableBuffer},
@@ -88,6 +88,7 @@ impl ArrayHandle {
 struct TsidBatch {
     non_collapsible_col_values: Vec<String>,
     // record_batch_idx -> ArrayHandle
+    // Store collapsible data in multi record batch.
     collapsible_col_arrays: BTreeMap<usize, Vec<ArrayHandle>>,
 }
 
@@ -199,6 +200,7 @@ impl ListArrayBuilder {
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
+        // Num
         let values_num = self
             .list_of_arrays
             .iter()
@@ -475,8 +477,9 @@ fn build_hybrid_record(
     let non_collapsible_col_arrays = non_collapsible_col_arrays
         .into_iter()
         .zip(non_collapsible_col_types.iter().map(|n| n.idx))
-        .map(|(c, idx)| {
-            IndexedArray { idx, array: Arc::new(StringArray::from(c)) as ArrayRef }
+        .map(|(c, idx)| IndexedArray {
+            idx,
+            array: Arc::new(StringArray::from(c)) as ArrayRef,
         })
         .collect::<Vec<_>>();
     let collapsible_col_arrays = collapsible_col_arrays
@@ -535,7 +538,7 @@ pub fn convert_to_hybrid_record(
                 record_batch
                     .column(col.idx)
                     .as_any()
-                    .downcast_ref::<StringArray>()
+                    .downcast_ref::<Int64Array>()
                     .expect("checked in HybridRecordEncoder::try_new")
             })
             .collect::<Vec<_>>();
