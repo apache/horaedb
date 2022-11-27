@@ -13,7 +13,7 @@ use object_store::{
     aliyun::AliyunOSS, cache::CachedStore, mem_cache::MemCacheStore, LocalFileSystem,
     ObjectStoreRef,
 };
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
@@ -35,7 +35,7 @@ use crate::{
         factory::FactoryImpl,
         meta_cache::{MetaCache, MetaCacheRef},
     },
-    storage_options::StorageOptions,
+    storage_options::{ObjectStoreOptions, StorageOptions},
     Config, ObkvWalConfig, WalStorageConfig,
 };
 
