@@ -950,10 +950,7 @@ mod tests {
         let input_record_batch2 =
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
         let row_nums = encoder
-            .encode(vec![
-                input_record_batch.clone(),
-                input_record_batch2.clone(),
-            ])
+            .encode(vec![input_record_batch, input_record_batch2])
             .unwrap();
         assert_eq!(2, row_nums);
 

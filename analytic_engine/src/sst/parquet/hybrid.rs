@@ -4,8 +4,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use arrow::{
     array::{
-        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, Int64Array, ListArray,
-        StringArray, UInt64Array,
+        Array, ArrayData, ArrayDataBuilder, ArrayRef, BinaryArray, ListArray, StringArray,
+        UInt64Array,
     },
     bitmap::Bitmap,
     buffer::{Buffer, MutableBuffer},
@@ -200,7 +200,7 @@ impl ListArrayBuilder {
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
-        // Num
+        // Num of raw data in child data.
         let values_num = self
             .list_of_arrays
             .iter()
@@ -215,8 +215,8 @@ impl ListArrayBuilder {
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
-        for list_of_arrays in &self.list_of_arrays {
-            for array_handle in list_of_arrays {
+        for arrays in &self.list_of_arrays {
+            for array_handle in arrays {
                 let null_bitmap = array_handle.null_bitmap();
 
                 for slice_arg in &array_handle.slice_args {
@@ -286,8 +286,8 @@ impl ListArrayBuilder {
             .map(|handles| handles.iter().map(|handle| handle.len()).sum::<usize>())
             .sum();
         let mut values = MutableBuffer::new(values_num * data_type_size);
-        for list_of_arrays in &self.list_of_arrays {
-            for array_handle in list_of_arrays {
+        for arrays in &self.list_of_arrays {
+            for array_handle in arrays {
                 let shared_buffer = array_handle.data_slice();
                 for slice_arg in &array_handle.slice_args {
                     let offset = slice_arg.offset;
@@ -299,6 +299,8 @@ impl ListArrayBuilder {
                     );
                 }
             }
+            // The data in the arrays belong to the same tsid, so the offsets is the total
+            // len.
             offsets.push(length_so_far);
         }
 
@@ -391,8 +393,8 @@ impl ListArrayBuilder {
         let mut inner_length_so_far: i32 = 0;
         inner_offsets.push(inner_length_so_far);
 
-        for list_of_arrays in &self.list_of_arrays {
-            for array_handle in list_of_arrays {
+        for arrays in &self.list_of_arrays {
+            for array_handle in arrays {
                 let array = self.convert_to_variable_size_array(array_handle)?;
 
                 for slice_arg in &array_handle.slice_args {
@@ -413,6 +415,8 @@ impl ListArrayBuilder {
                     );
                 }
             }
+            // The data in the arrays belong to the same tsid, so the offsets is the total
+            // len.
             offsets.push(*length_so_far);
         }
 
@@ -421,6 +425,8 @@ impl ListArrayBuilder {
 
     /// This function is a translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
     fn build(self) -> Result<ListArray> {
+        // The data in list_of_arrays belong to different tsids.
+        // So the values num is the len of list_of_arrays.
         let array_len = self.list_of_arrays.len();
         let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
@@ -453,6 +459,7 @@ fn build_hybrid_record(
     tsid_type: &IndexedType,
     non_collapsible_col_types: &[IndexedType],
     collapsible_col_types: &[IndexedType],
+    // tsid -> TsidBatch
     batch_by_tsid: BTreeMap<u64, TsidBatch>,
 ) -> Result<ArrowRecordBatch> {
     let tsid_array = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
@@ -538,7 +545,7 @@ pub fn convert_to_hybrid_record(
                 record_batch
                     .column(col.idx)
                     .as_any()
-                    .downcast_ref::<Int64Array>()
+                    .downcast_ref::<StringArray>()
                     .expect("checked in HybridRecordEncoder::try_new")
             })
             .collect::<Vec<_>>();
@@ -583,6 +590,7 @@ pub fn convert_to_hybrid_record(
                         .map(|col| ArrayHandle::new(record_batch.column(col.idx).clone()))
                         .collect()
                 });
+            // Append the slice arg to all columns in the same record batch.
             for handle in collapsible_col_arrays {
                 handle.append_slice_arg(SliceArg { offset, length });
             }
