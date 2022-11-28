@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"sync"
 
@@ -101,6 +102,8 @@ func (c *Cluster) GetShardTables(shardIDs []storage.ShardID, nodeName string) ma
 }
 
 func (c *Cluster) DropTable(ctx context.Context, schemaName, tableName string) (DropTableResult, error) {
+	log.Info("drop table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+
 	table, ok, err := c.tableManager.GetTable(schemaName, tableName)
 	if err != nil {
 		return DropTableResult{}, errors.WithMessage(err, "get table")
@@ -122,9 +125,11 @@ func (c *Cluster) DropTable(ctx context.Context, schemaName, tableName string) (
 		return DropTableResult{}, errors.WithMessagef(err, "topology manager remove table")
 	}
 
-	return DropTableResult{
+	ret := DropTableResult{
 		ShardVersionUpdate: updateVersion,
-	}, nil
+	}
+	log.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", ret)))
+	return ret, nil
 }
 
 // GetOrCreateSchema the second output parameter bool: returns true if the schema was newly created.
@@ -138,6 +143,8 @@ func (c *Cluster) GetTable(schemaName, tableName string) (storage.Table, bool, e
 }
 
 func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName string, tableName string) (CreateTableResult, error) {
+	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("nodeName", nodeName), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+
 	_, exists, err := c.tableManager.GetTable(schemaName, tableName)
 	if err != nil {
 		return CreateTableResult{}, err
@@ -159,10 +166,12 @@ func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName s
 		return CreateTableResult{}, errors.WithMessage(err, "topology manager add table")
 	}
 
-	return CreateTableResult{
+	ret := CreateTableResult{
 		Table:              table,
 		ShardVersionUpdate: result,
-	}, nil
+	}
+	log.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
+	return ret, nil
 }
 
 func (c *Cluster) GetShardNodesByShardID(id storage.ShardID) ([]storage.ShardNode, error) {

@@ -242,7 +242,7 @@ func (m *TableManagerImpl) loadSchemas(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "list schemas")
 	}
-	log.Debug(fmt.Sprintf("load schema, data:%v", schemasResult))
+	log.Debug("load schema", zap.String("data", fmt.Sprintf("%+v", schemasResult)))
 
 	// Reset data in memory.
 	m.schemas = make(map[string]storage.Schema, len(schemasResult.Schemas))
@@ -264,7 +264,7 @@ func (m *TableManagerImpl) loadTables(ctx context.Context) error {
 		if err != nil {
 			return errors.WithMessage(err, "list tables")
 		}
-		log.Debug(fmt.Sprintf("load table, schema:%v, tables:%v", schema, tablesResult))
+		log.Debug("load table", zap.String("schema", fmt.Sprintf("%+v", schema)), zap.String("tables", fmt.Sprintf("%+v", tablesResult)))
 
 		for _, table := range tablesResult.Tables {
 			tables, ok := m.schemaTables[table.SchemaID]

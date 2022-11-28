@@ -14,7 +14,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 const (
@@ -121,22 +120,6 @@ func createTableFailedCallback(event *fsm.Event) {
 
 	if err := req.onFailed(event.Err); err != nil {
 		log.Error("exec failed callback failed")
-	}
-
-	table, exists, err := req.cluster.GetTable(req.sourceReq.GetSchemaName(), req.sourceReq.GetName())
-	if err != nil {
-		log.Error("create table failed, get table failed", zap.String("schemaName", req.sourceReq.GetSchemaName()), zap.String("tableName", req.sourceReq.GetName()))
-		return
-	}
-	if !exists {
-		return
-	}
-
-	// Rollback, drop table in ceresmeta.
-	_, err = req.cluster.DropTable(req.ctx, req.sourceReq.GetSchemaName(), table.Name)
-	if err != nil {
-		log.Error("drop table failed, get table failed", zap.String("schemaName", req.sourceReq.GetSchemaName()), zap.String("tableName", table.Name), zap.Uint64("tableID", uint64(table.ID)))
-		return
 	}
 }
 

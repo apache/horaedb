@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // TopologyManager manages the cluster topology, including the mapping relationship between shards, nodes, and tables.
@@ -384,7 +385,7 @@ func (m *TopologyManagerImpl) loadClusterView(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage get cluster view")
 	}
-	log.Debug(fmt.Sprintf("load cluster view, cluster views:%v", clusterViewResult))
+	log.Debug("load cluster view", zap.String("clusterViews", fmt.Sprintf("%+v", clusterViewResult)))
 
 	m.shardNodesMapping = make(map[storage.ShardID][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
 	m.nodeShardsMapping = make(map[string][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
@@ -410,7 +411,7 @@ func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage list shard views")
 	}
-	log.Debug(fmt.Sprintf("load shard views, cluster:%d, shard views:%v", m.clusterID, shardViewsResult))
+	log.Debug("load shard views", zap.Int32("clusterID", int32(m.clusterID)), zap.String("shardViews", fmt.Sprintf("%+v", shardViewsResult)))
 
 	// Reset data in memory.
 	m.shardTablesMapping = make(map[storage.ShardID]*storage.ShardView, len(shardViewsResult.ShardViews))
