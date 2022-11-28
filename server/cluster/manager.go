@@ -170,7 +170,7 @@ func (m *managerImpl) GetTables(clusterName, nodeName string, shardIDs []storage
 		return nil, errors.WithMessage(err, "get cluster")
 	}
 
-	shardTables := cluster.GetTables(shardIDs, nodeName)
+	shardTables := cluster.GetShardTables(shardIDs, nodeName)
 	return shardTables, nil
 }
 

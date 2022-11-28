@@ -62,7 +62,7 @@ func (c *Cluster) Name() string {
 	return c.metaData.Name
 }
 
-func (c *Cluster) GetTables(shardIDs []storage.ShardID, nodeName string) map[storage.ShardID]ShardTables {
+func (c *Cluster) GetShardTables(shardIDs []storage.ShardID, nodeName string) map[storage.ShardID]ShardTables {
 	shardTableIDs := c.topologyManager.GetTableIDs(shardIDs, nodeName)
 
 	result := make(map[storage.ShardID]ShardTables, len(shardIDs))
