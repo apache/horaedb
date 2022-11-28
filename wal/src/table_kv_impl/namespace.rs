@@ -11,7 +11,7 @@ use std::{
 
 use common_types::{table::TableId, time::Timestamp};
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     ScanContext as KvScanContext, ScanIter, TableError, TableKv, WriteBatch, WriteContext,
@@ -609,6 +609,13 @@ impl<T: TableKv> NamespaceInner<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
+        trace!(
+            "Write batch to namespace:{}, location:{:?}, entries num:{}",
+            self.name(),
+            batch.location,
+            batch.entries.len()
+        );
+
         let now = Timestamp::now();
         // Get current bucket to write.
         let bucket = self.get_or_create_bucket(now)?;

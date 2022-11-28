@@ -207,6 +207,10 @@ impl TableUnit {
                     Some(v) => v,
                     None => return Ok(None),
                 };
+            debug!(
+                "Open table unit, table unit entry:{:?}, region id:{}, table id:{}",
+                table_unit_entry, region_id, table_id
+            );
 
             // Load last sequence of this table unit.
             let last_sequence =
@@ -405,7 +409,13 @@ impl TableUnit {
         table_id: TableId,
         buckets: &[BucketRef],
     ) -> Result<SequenceNumber> {
-        // Starts from the latest bucket, find last sequence of given table.
+        debug!(
+            "Load last sequence, buckets{:?}, region id:{}, table id:{}",
+            buckets, region_id, table_id
+        );
+
+        // Starts from the latest bucket, find last sequence of given region id.
+        let mut last_sequence = common_types::MIN_SEQUENCE_NUMBER;
         for bucket in buckets.iter().rev() {
             let table_name = bucket.wal_shard_table(region_id);
 

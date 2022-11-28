@@ -36,6 +36,8 @@ impl<T: TableKv> WalNamespaceImpl<T> {
         namespace_name: &str,
         config: NamespaceConfig,
     ) -> Result<WalNamespaceImpl<T>> {
+        info!("Open table kv wal, namespace:{}", namespace_name);
+
         let namespace = Self::open_namespace(table_kv, runtimes, namespace_name, config).await?;
 
         let wal = WalNamespaceImpl { namespace };

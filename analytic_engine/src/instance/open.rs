@@ -284,7 +284,7 @@ impl Instance {
     ) -> Result<()> {
         debug!(
             "Instance recover table from wal, replay batch size:{}, table id:{}, shard id:{}",
-            replay_batch_size, table_data.id, table_data.shard_id
+            replay_batch_size, table_data.id, table_data.shard_info
         );
 
         let read_req = ReadRequest {

@@ -78,13 +78,13 @@ pub type MemTableId = u64;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct TableShardInfo {
-    pub id: ShardId,
+    pub shard_id: ShardId,
     pub version: ShardVersion,
 }
 
 impl TableShardInfo {
-    pub fn new(id: ShardId, version: ShardVersion) -> Self {
-        Self { id, version }
+    pub fn new(shard_id: ShardId, version: ShardVersion) -> Self {
+        Self { shard_id: id, version }
     }
 }
 
@@ -509,7 +509,7 @@ impl TableData {
     /// Now we just use table id as region id
     #[inline]
     pub fn wal_location(&self) -> WalLocation {
-        let region_id = self.shard_info.id as RegionId;
+        let region_id = self.shard_info.shard_id as RegionId;
         let region_version = self.shard_info.version;
         let table_id = self.id;
 
