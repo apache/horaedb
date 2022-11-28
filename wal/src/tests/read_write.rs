@@ -1,6 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{ops::Deref, sync::Arc};
+use std::{
+    ops::Deref,
+    sync::{Arc, Once},
+};
 
 use common_types::{
     table::{TableId, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
@@ -19,25 +22,27 @@ use crate::{
     },
 };
 
+static INIT_LOG: Once = Once::new();
+
 #[test]
 fn test_rocksdb_wal() {
     let builder = RocksWalBuilder::default();
 
-    test_all(builder);
+    test_all(builder, false);
 }
 
 #[test]
 fn test_memory_table_wal_default() {
     let builder = MemoryTableWalBuilder::default();
 
-    test_all(builder);
+    test_all(builder, true);
 }
 
 #[test]
 fn test_memory_table_wal_with_ttl() {
     let builder = MemoryTableWalBuilder::with_ttl("1d");
 
-    test_all(builder);
+    test_all(builder, true);
 }
 
 #[test]
@@ -45,10 +50,10 @@ fn test_memory_table_wal_with_ttl() {
 fn test_kafka_wal() {
     let builder = KafkaWalBuilder::new();
 
-    test_all(builder);
+    test_all(builder, true);
 }
 
-fn test_all<B: WalBuilder>(builder: B) {
+fn test_all<B: WalBuilder>(builder: B, is_distributed: bool) {
     test_simple_read_write_default_batch(builder.clone());
 
     test_simple_read_write_different_batch_size(builder.clone());
@@ -73,7 +78,11 @@ fn test_all<B: WalBuilder>(builder: B) {
 
     test_sequence_increase_monotonically_delete_reopen_write(builder.clone());
 
-    test_write_scan(builder);
+    test_write_scan(builder.clone());
+
+    if is_distributed {
+        test_move_from_nodes(builder);
+    }
 }
 
 fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
@@ -166,6 +175,57 @@ fn test_write_scan<B: WalBuilder>(builder: B) {
     env.runtime.block_on(write_scan(&env));
 }
 
+fn test_move_from_nodes<B: WalBuilder>(builder: B) {
+    let env = TestEnv::new(2, builder);
+    let region_id = 1;
+    let table_id = 0;
+
+    // Use two wal managers to represent datanode 1 and datanode 2.
+    // At first, write some things in node 1.
+    let wal_1 = env.runtime.block_on(async { env.build_wal().await });
+    let region_version_1 = 0;
+    env.runtime.block_on(async {
+        simple_read_write_with_range_and_wal(
+            &env,
+            wal_1.clone(),
+            WalLocation::new(region_id, region_version_1, table_id),
+            0,
+            10,
+        )
+        .await;
+    });
+
+    // The table are move to node 2 but in the same shard, so its region id is still
+    // 0, but region version changed to 1 for distinguishing this moving.
+    let wal_2 = env.runtime.block_on(async { env.build_wal().await });
+    let region_version_2 = 1;
+    env.runtime.block_on(async {
+        simple_read_write_with_range_and_wal(
+            &env,
+            wal_2,
+            WalLocation::new(region_id, region_version_2, table_id),
+            10,
+            20,
+        )
+        .await;
+    });
+
+    // Finally, the table with the same shard is moved to node 1 again.
+    // If version changed, wal manager can distinguish that
+    // the region info in it is outdated, it should reopen the region.
+    let region_version_3 = 2;
+    env.runtime.block_on(async {
+        simple_read_write_with_range_and_wal(
+            &env,
+            wal_1,
+            WalLocation::new(region_id, region_version_3, table_id),
+            20,
+            30,
+        )
+        .await;
+    });
+}
+
 async fn check_write_batch_with_read_request<B: WalBuilder>(
     env: &TestEnv<B>,
     wal: WalManagerRef,
@@ -203,27 +263,55 @@ async fn simple_read_write_with_wal<B: WalBuilder>(
     wal: WalManagerRef,
     location: WalLocation,
 ) {
-    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, 0, 10).await;
+    simple_read_write_with_range_and_wal_internal(env, wal, location, 0, 10).await;
+}
+
+async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, location: WalLocation) {
+    let wal = env.build_wal().await;
+
+    simple_read_write_with_range_and_wal(env, wal.clone(), location, 0, 10).await;
+
+    wal.close_gracefully().await.unwrap();
+}
+
+async fn simple_read_write_with_range_and_wal<B: WalBuilder>(
+    env: &TestEnv<B>,
+    wal: WalManagerRef,
+    location: WalLocation,
+    last_end_seq: SequenceNumber,
+    current_end_seq: SequenceNumber,
+) {
+    // Empty region has 0 sequence num.
+    let last_seq = wal.sequence_num(location).await.unwrap();
+    assert_eq!(last_end_seq, last_seq);
+
+    simple_read_write_with_range_and_wal_internal(
+        env,
+        wal.clone(),
+        location,
+        last_end_seq as u32,
+        current_end_seq as u32,
+    )
+    .await;
+
+    let last_seq = wal.sequence_num(location).await.unwrap();
+    assert_eq!(current_end_seq, last_seq);
+}
+
+async fn simple_read_write_with_range_and_wal_internal<B: WalBuilder>(
+    env: impl Deref<Target = TestEnv<B>>,
+    wal: WalManagerRef,
+    location: WalLocation,
+    start: u32,
+    end: u32,
+) {
+    let (payload_batch, write_batch) = env.build_log_batch(wal.clone(), location, start, end).await;
     let seq = wal
         .write(&env.write_ctx, &write_batch)
         .await
         .expect("should succeed to write");
 
     check_write_batch(&env, wal, location, seq, &payload_batch).await
-}
-
-async fn simple_read_write<B: WalBuilder>(env: &TestEnv<B>, location: WalLocation) {
-    let wal = env.build_wal().await;
-    // Empty region has 0 sequence num.
-    let last_seq = wal.sequence_num(location).await.unwrap();
-    assert_eq!(0, last_seq);
-
-    simple_read_write_with_wal(env, wal.clone(), location).await;
-
-    let last_seq = wal.sequence_num(location).await.unwrap();
-    assert_eq!(10, last_seq);
-
-    wal.close_gracefully().await.unwrap();
 }
 
 /// Test the read with different kinds of boundaries.
