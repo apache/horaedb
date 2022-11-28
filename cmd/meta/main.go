@@ -45,7 +45,7 @@ func main() {
 		panicf("fail to parse config from toml file, err:%v", err)
 	}
 
-	if err := cfgParser.ParseConfigFromEnvVariables(); err != nil {
+	if err := cfgParser.ParseConfigFromEnv(); err != nil {
 		panicf("fail to parse config from environment variable, err:%v", err)
 	}
 
