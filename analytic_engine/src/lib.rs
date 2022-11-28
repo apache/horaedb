@@ -23,10 +23,11 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use common_util::config::ReadableSize;
 use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
-use storage_options::{LocalOptions, StorageOptions};
+use storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
@@ -88,9 +89,13 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: String::from("/tmp/ceresdb"),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(512),
+                mem_cache_partition_bits: 1,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: String::from("/tmp/ceresdb"),
+                }),
+            },
             wal_path: String::from("/tmp/ceresdb"),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,

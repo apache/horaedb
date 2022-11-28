@@ -16,7 +16,6 @@ use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;
 use log::info;
 use object_store::{LocalFileSystem, Path};
-use parquet_ext::DataCacheRef;
 
 use crate::{config::ScanMemTableBenchConfig, util};
 
@@ -32,14 +31,8 @@ impl ScanMemTableBench {
 
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let meta_cache: Option<MetaCacheRef> = None;
-        let data_cache: Option<DataCacheRef> = None;
         let sst_path = Path::from(config.sst_file_name);
-        let schema = runtime.block_on(util::schema_from_sst(
-            &store,
-            &sst_path,
-            &meta_cache,
-            &data_cache,
-        ));
+        let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
 
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
 

@@ -12,12 +12,14 @@ use crate::{
 };
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/427"]
 fn test_table_compact_current_segment_rocks() {
     let rocksdb_ctx = RocksDBEngineContext::default();
     test_table_compact_current_segment(rocksdb_ctx);
 }
 
 #[test]
+#[ignore = "https://github.com/CeresDB/ceresdb/issues/427"]
 fn test_table_compact_current_segment_mem_wal() {
     let memory_ctx = MemoryEngineContext::default();
     test_table_compact_current_segment(memory_ctx);

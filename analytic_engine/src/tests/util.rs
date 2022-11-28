@@ -11,7 +11,10 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::{config::ReadableDuration, runtime};
+use common_util::{
+    config::{ReadableDuration, ReadableSize},
+    runtime,
+};
 use futures::stream::StreamExt;
 use log::info;
 use table_engine::{
@@ -28,7 +31,7 @@ use tempfile::TempDir;
 
 use crate::{
     setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
-    storage_options::{LocalOptions, StorageOptions},
+    storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, ObkvWalConfig, WalStorageConfig,
 };
@@ -397,9 +400,13 @@ impl Builder {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
             wal_path: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         };
@@ -447,9 +454,14 @@ impl Default for RocksDBEngineContext {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
+
             wal_path: dir.path().to_str().unwrap().to_string(),
             wal_storage: WalStorageConfig::RocksDB,
             ..Default::default()
@@ -464,9 +476,13 @@ impl Clone for RocksDBEngineContext {
         let mut config = self.config.clone();
 
         let dir = tempfile::tempdir().unwrap();
-        let storage = StorageOptions::Local(LocalOptions {
-            data_path: dir.path().to_str().unwrap().to_string(),
-        });
+        let storage = StorageOptions {
+            mem_cache_capacity: ReadableSize::mb(0),
+            mem_cache_partition_bits: 0,
+            object_store: ObjectStoreOptions::Local(LocalOptions {
+                data_path: dir.path().to_str().unwrap().to_string(),
+            }),
+        };
 
         config.storage = storage;
         config.wal_path = dir.path().to_str().unwrap().to_string();
@@ -497,9 +513,13 @@ impl Default for MemoryEngineContext {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
             wal_path: dir.path().to_str().unwrap().to_string(),
             wal_storage: WalStorageConfig::Obkv(Box::new(ObkvWalConfig::default())),
             ..Default::default()

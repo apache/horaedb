@@ -105,17 +105,20 @@ impl Display for MemCache {
 }
 
 #[derive(Debug)]
-pub struct CachedStore {
+pub struct MemCacheStore {
     cache: MemCache,
     underlying_store: Arc<dyn ObjectStore>,
 }
 
-impl CachedStore {
+impl MemCacheStore {
+    // Note: mem_cap must be larger than 0
     pub fn new(
         partition_bits: usize,
         mem_cap: usize,
         underlying_store: Arc<dyn ObjectStore>,
     ) -> Self {
+        assert!(mem_cap > 0);
+
         Self {
             cache: MemCache::new(partition_bits, mem_cap),
             underlying_store,
@@ -127,14 +130,14 @@ impl CachedStore {
     }
 }
 
-impl Display for CachedStore {
+impl Display for MemCacheStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.cache.fmt(f)
     }
 }
 
 #[async_trait]
-impl ObjectStore for CachedStore {
+impl ObjectStore for MemCacheStore {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
         self.underlying_store.put(location, bytes).await
     }
@@ -209,11 +212,11 @@ mod test {
 
     use super::*;
 
-    async fn prepare_store(bits: usize, mem_cap: usize) -> CachedStore {
+    async fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        CachedStore::new(bits, mem_cap, local_store)
+        MemCacheStore::new(bits, mem_cap, local_store)
     }
 
     #[tokio::test]
@@ -233,7 +236,7 @@ mod test {
         _ = store.get_range(&location, range0_5.clone()).await.unwrap();
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range0_5))
+            .get(&MemCacheStore::cache_key(&location, &range0_5))
             .await
             .is_some());
         assert_eq!(
@@ -246,12 +249,12 @@ mod test {
         _ = store.get_range(&location, range5_10.clone()).await.unwrap();
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range0_5))
+            .get(&MemCacheStore::cache_key(&location, &range0_5))
             .await
             .is_some());
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range5_10))
+            .get(&MemCacheStore::cache_key(&location, &range5_10))
             .await
             .is_some());
         assert_eq!(
@@ -268,12 +271,12 @@ mod test {
             .unwrap();
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range5_10))
+            .get(&MemCacheStore::cache_key(&location, &range5_10))
             .await
             .is_some());
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range10_15))
+            .get(&MemCacheStore::cache_key(&location, &range10_15))
             .await
             .is_some());
         assert_eq!(
@@ -317,12 +320,12 @@ mod test {
 
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range0_5))
+            .get(&MemCacheStore::cache_key(&location, &range0_5))
             .await
             .is_some());
         assert!(store
             .cache
-            .get(&CachedStore::cache_key(&location, &range100_105))
+            .get(&MemCacheStore::cache_key(&location, &range100_105))
             .await
             .is_some());
     }

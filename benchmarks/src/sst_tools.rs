@@ -88,7 +88,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
     let input_path = Path::from(config.input_file_name);
 
-    let sst_meta = util::meta_from_sst(&store, &input_path, &None, &None).await;
+    let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let sst_reader_options = SstReaderOptions {
@@ -98,7 +98,6 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
-        data_cache: None,
         runtime,
     };
 
@@ -171,7 +170,6 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         &config.sst_file_ids,
         purge_queue,
         &None,
-        &None,
     )
     .await;
     let max_sequence = file_handles
@@ -181,7 +179,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         .unwrap();
 
     let first_sst_path = sst_util::new_sst_file_path(space_id, table_id, config.sst_file_ids[0]);
-    let schema = util::schema_from_sst(&store, &first_sst_path, &None, &None).await;
+    let schema = util::schema_from_sst(&store, &first_sst_path, &None).await;
     let iter_options = IterOptions {
         batch_size: config.read_batch_row_num,
     };
@@ -199,7 +197,6 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             projected_schema: projected_schema.clone(),
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
-            data_cache: None,
             runtime: runtime.clone(),
         };
 
