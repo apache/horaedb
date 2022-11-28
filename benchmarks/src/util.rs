@@ -28,7 +28,6 @@ use common_util::{
 use futures::stream::StreamExt;
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
-use parquet_ext::DataCacheRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 use wal::log_batch::Payload;
@@ -57,7 +56,6 @@ pub async fn meta_from_sst(
     store: &ObjectStoreRef,
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
-    _data_cache: &Option<DataCacheRef>,
 ) -> SstMetaData {
     let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
         .await
@@ -70,9 +68,8 @@ pub async fn schema_from_sst(
     store: &ObjectStoreRef,
     sst_path: &Path,
     meta_cache: &Option<MetaCacheRef>,
-    data_cache: &Option<DataCacheRef>,
 ) -> Schema {
-    let sst_meta = meta_from_sst(store, sst_path, meta_cache, data_cache).await;
+    let sst_meta = meta_from_sst(store, sst_path, meta_cache).await;
 
     sst_meta.schema
 }
@@ -105,7 +102,6 @@ pub async fn load_sst_to_memtable(
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
-        data_cache: None,
         runtime,
     };
     let sst_factory = FactoryImpl;
@@ -141,14 +137,13 @@ pub async fn file_handles_from_ssts(
     sst_file_ids: &[FileId],
     purge_queue: FilePurgeQueue,
     meta_cache: &Option<MetaCacheRef>,
-    data_cache: &Option<DataCacheRef>,
 ) -> Vec<FileHandle> {
     let mut file_handles = Vec::with_capacity(sst_file_ids.len());
 
     for file_id in sst_file_ids.iter() {
         let path = sst_util::new_sst_file_path(space_id, table_id, *file_id);
 
-        let sst_meta = meta_from_sst(store, &path, meta_cache, data_cache).await;
+        let sst_meta = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
             meta: sst_meta,

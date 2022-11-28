@@ -57,7 +57,7 @@ pub enum Error {
     Build { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Write logs of table failed, region_id:{}, table id:{}, msg:{}, err:{}",
+        "Failed to write logs of table, region_id:{}, table id:{}, msg:{}, err:{}",
         region_id,
         table_id,
         msg,
@@ -71,7 +71,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Write logs of table failed with no cause, region_id:{}, table id:{}, msg:{}, \nBacktrace:\n{}",
+        "Failed to write logs of table with no cause, region_id:{}, table id:{}, msg:{}, \nBacktrace:\n{}",
         region_id,
         table_id,
         msg,
@@ -171,17 +171,14 @@ impl RegionContext {
     }
 
     /// Get table meta data by table id.
-    pub async fn get_table_meta_data(&self, table_id: TableId) -> Result<TableMetaData> {
+    pub async fn get_table_meta_data(&self, table_id: TableId) -> Result<Option<TableMetaData>> {
         let inner = self.inner.read().await;
 
-        let table_meta = inner
-            .table_contexts
-            .get(&table_id)
-            .with_context(|| GetTableMeta {
-                region_id: self.region_id,
-                table_id,
-            })?;
-        Ok(table_meta.get_meta_data().await)
+        if let Some(table_meta) = inner.table_contexts.get(&table_id) {
+            Ok(Some(table_meta.get_meta_data().await))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn region_id(&self) -> RegionId {
@@ -273,12 +270,20 @@ impl TableMeta {
         let updated_num = (write_offset_range.end - write_offset_range.start + 1) as u64;
         let mut inner = self.inner.lock().await;
         let old_next_sequence_num = inner.next_sequence_num;
-        inner.next_sequence_num += updated_num;
+        let next_sequence_num = old_next_sequence_num + updated_num;
 
-        // Update the mapping and high water mark.
-        let _ = inner
+        // Update:
+        // + update `next_sequence_num`
+        // + update `start_sequence_offset_mapping`
+        // + update `current_high_watermark`
+        inner.next_sequence_num = next_sequence_num;
+
+        let sequences = old_next_sequence_num..next_sequence_num;
+        let offsets = write_offset_range.start..write_offset_range.end + 1;
+        inner
             .start_sequence_offset_mapping
-            .insert(old_next_sequence_num, write_offset_range.start);
+            .extend(sequences.into_iter().zip(offsets.into_iter()));
+
         inner.current_high_watermark = write_offset_range.end + 1;
     }
 
@@ -288,7 +293,7 @@ impl TableMeta {
     ) -> std::result::Result<(), String> {
         let mut inner = self.inner.lock().await;
 
-        if sequence_num <= inner.next_sequence_num {
+        if sequence_num > inner.next_sequence_num {
             return Err(format!(
                 "latest marked deleted should be less than or 
                 equal to next sequence number, now are:{} and {}",
@@ -296,7 +301,7 @@ impl TableMeta {
             ));
         }
 
-        if sequence_num >= inner.latest_marked_deleted {
+        if sequence_num < inner.latest_marked_deleted {
             return Err(format!("latest marked deleted should be greater than or equal to origin one now are:{} and {}",
                     sequence_num,
                     inner.latest_marked_deleted));
@@ -361,7 +366,7 @@ impl TableMeta {
 }
 
 /// Table meta data, will be updated atomically by mutex.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct TableMetaInner {
     /// Next sequence number for the new log.
     ///
@@ -381,6 +386,21 @@ struct TableMetaInner {
     ///
     /// It will be removed to the mark deleted sequence number after flushing.
     start_sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
+}
+
+/// Self defined default implementation
+///
+/// Because `SequenceNumber::MIN` is used as a special value, the normal value
+/// should start from `SequenceNumber::MIN` + 1.
+impl Default for TableMetaInner {
+    fn default() -> Self {
+        Self {
+            next_sequence_num: SequenceNumber::MIN + 1,
+            latest_marked_deleted: SequenceNumber::MIN + 1,
+            current_high_watermark: Default::default(),
+            start_sequence_offset_mapping: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

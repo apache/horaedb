@@ -9,11 +9,12 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use async_trait::async_trait;
 use common_types::table::Location;
-use common_util::define_result;
+use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info};
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -141,17 +142,55 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
     }
 }
 
+/// Options for manifest
 #[derive(Debug, Clone, Deserialize)]
 pub struct Options {
+    /// Steps to do snapshot
     pub snapshot_every_n_updates: usize,
+
+    /// Timeout to read manifest entries
+    pub scan_timeout: ReadableDuration,
+
+    /// Batch size to read manifest entries
+    pub scan_batch_size: usize,
+
+    /// Timeout to store manifest entries
+    pub store_timeout: ReadableDuration,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
             snapshot_every_n_updates: 10_000,
+            scan_timeout: ReadableDuration::secs(5),
+            scan_batch_size: 100,
+            store_timeout: ReadableDuration::secs(5),
         }
     }
+}
+
+impl Options {
+    fn scan_context(&self) -> ScanContext {
+        ScanContext {
+            timeout: self.scan_timeout.0,
+            batch_size: self.scan_batch_size,
+        }
+    }
+
+    fn store_context(&self) -> StoreContext {
+        StoreContext {
+            timeout: self.store_timeout.0,
+        }
+    }
+}
+
+struct ScanContext {
+    timeout: Duration,
+    batch_size: usize,
+}
+
+struct StoreContext {
+    timeout: Duration,
 }
 
 /// The implementation based on wal of Manifest which features:
@@ -200,7 +239,10 @@ impl ManifestImpl {
             table_location: request.location,
         })?;
 
-        let write_ctx = WriteContext::default();
+        let store_ctx = self.opts.store_context();
+        let write_ctx = WriteContext {
+            timeout: store_ctx.timeout,
+        };
 
         self.wal_manager
             .write(&write_ctx, &log_batch)
@@ -216,6 +258,7 @@ impl ManifestImpl {
             let snapshotter = Snapshotter {
                 location,
                 log_store: RegionWal::new(location, self.wal_manager.clone()),
+                options: self.opts.clone(),
             };
             let snapshot = snapshotter.snapshot().await?;
 
@@ -275,6 +318,7 @@ impl Manifest for ManifestImpl {
         let snapshotter = Snapshotter {
             location,
             log_store: RegionWal::new(location, self.wal_manager.clone()),
+            options: self.opts.clone(),
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
         Ok(snapshot.data)
@@ -284,9 +328,14 @@ impl Manifest for ManifestImpl {
 #[async_trait]
 trait MetaUpdateLogStore: std::fmt::Debug {
     type Iter: MetaUpdateLogEntryIterator;
-    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter>;
+    async fn scan(
+        &self,
+        ctx: &ScanContext,
+        start: ReadBoundary,
+        end: ReadBoundary,
+    ) -> Result<Self::Iter>;
 
-    async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()>;
+    async fn store(&self, ctx: &StoreContext, log_entries: &[MetaUpdateLogEntry]) -> Result<()>;
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
 }
@@ -310,18 +359,29 @@ impl RegionWal {
 impl MetaUpdateLogStore for RegionWal {
     type Iter = MetaUpdateReaderImpl;
 
-    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
-        let ctx = ReadContext::default();
+    async fn scan(
+        &self,
+        ctx: &ScanContext,
+        start: ReadBoundary,
+        end: ReadBoundary,
+    ) -> Result<Self::Iter> {
+        let ctx = ReadContext {
+            timeout: ctx.timeout,
+            batch_size: ctx.batch_size,
+        };
+
         let read_req = ReadRequest {
             location: self.location,
             start,
             end,
         };
+
         let iter = self
             .wal_manager
             .read_batch(&ctx, &read_req)
             .await
             .context(ReadWal)?;
+
         Ok(MetaUpdateReaderImpl {
             iter,
             has_next: true,
@@ -329,7 +389,7 @@ impl MetaUpdateLogStore for RegionWal {
         })
     }
 
-    async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
+    async fn store(&self, ctx: &StoreContext, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
         let table_location = self.location;
         let log_batch_encoder = self
             .wal_manager
@@ -339,7 +399,9 @@ impl MetaUpdateLogStore for RegionWal {
             .encode_batch::<MetaUpdatePayload, MetaUpdateLogEntry>(log_entries)
             .context(EncodePayloads { table_location })?;
 
-        let write_ctx = WriteContext::default();
+        let write_ctx = WriteContext {
+            timeout: ctx.timeout,
+        };
 
         self.wal_manager
             .write(&write_ctx, &log_batch)
@@ -412,6 +474,7 @@ impl MetaUpdateLogStore for RegionWal {
 struct Snapshotter<S> {
     location: Location,
     log_store: S,
+    options: Options,
 }
 
 /// Context for read/create snapshot including the sequence number for the next
@@ -452,7 +515,8 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
 
         // Delete the expired logs after saving the snapshot.
         let meta_updates = Self::snapshot_to_meta_updates(&snapshot);
-        self.log_store.store(&meta_updates).await?;
+        let store_ctx = self.options.store_context();
+        self.log_store.store(&store_ctx, &meta_updates).await?;
         self.log_store.delete_up_to(snapshot.end_seq).await?;
 
         Ok(snapshot)
@@ -462,9 +526,11 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
     async fn create_latest_snapshot(&self) -> Result<Snapshot> {
         let ctx = self.prepare_snapshot_context().await?;
 
+        let scan_ctx = self.options.scan_context();
         let reader = self
             .log_store
             .scan(
+                &scan_ctx,
                 ReadBoundary::Included(ctx.curr_snapshot_end_seq.unwrap_or(SequenceNumber::MIN)),
                 ReadBoundary::Included(ctx.new_snapshot_end_seq),
             )
@@ -487,9 +553,10 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
     ///  - decide the new snapshot end sequence which is basically the latest
     ///    sequence of all logs.
     async fn prepare_snapshot_context(&self) -> Result<SnapshotContext> {
+        let scan_ctx = self.options.scan_context();
         let mut log_entry_reader = self
             .log_store
-            .scan(ReadBoundary::Min, ReadBoundary::Max)
+            .scan(&scan_ctx, ReadBoundary::Min, ReadBoundary::Max)
             .await?;
 
         // mapping: snapshot seq => successful
@@ -737,6 +804,7 @@ mod tests {
 
             let options = Options {
                 snapshot_every_n_updates: 100,
+                ..Default::default()
             };
             Self {
                 dir: dir.into_path(),
@@ -1137,7 +1205,12 @@ mod tests {
     impl MetaUpdateLogStore for MemLogStore {
         type Iter = vec::IntoIter<(SequenceNumber, MetaUpdateLogEntry)>;
 
-        async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
+        async fn scan(
+            &self,
+            _ctx: &ScanContext,
+            start: ReadBoundary,
+            end: ReadBoundary,
+        ) -> Result<Self::Iter> {
             let logs = self.logs.lock().await;
             let start = start.as_start_sequence_number().unwrap() as usize;
             let end = {
@@ -1164,7 +1237,11 @@ mod tests {
             Ok(exist_logs.into_iter())
         }
 
-        async fn store(&self, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
+        async fn store(
+            &self,
+            _ctx: &StoreContext,
+            log_entries: &[MetaUpdateLogEntry],
+        ) -> Result<()> {
             let mut logs = self.logs.lock().await;
             logs.extend(log_entries.iter().map(|v| Some(v.clone())));
 
@@ -1226,10 +1303,12 @@ mod tests {
             MemLogStore::from_logs(&log_entries)
         };
 
+        let options = ctx.options.clone();
         ctx.runtime.block_on(async move {
             let snapshotter = Snapshotter {
                 location,
                 log_store,
+                options,
             };
 
             let latest_snapshot = snapshotter.create_latest_snapshot().await.unwrap();

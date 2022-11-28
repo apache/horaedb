@@ -7,11 +7,14 @@ use std::collections::BTreeMap;
 use chrono::Utc;
 use message_queue::Message;
 
+pub mod config;
 mod encoding;
 mod log_cleaner;
+mod namespace;
 mod region;
 mod region_context;
 mod snapshot_synchronizer;
+pub mod wal;
 
 #[cfg(test)]
 mod test_util;

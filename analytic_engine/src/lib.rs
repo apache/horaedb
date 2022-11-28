@@ -23,43 +23,48 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use common_util::config::ReadableSize;
+use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
 use serde_derive::Deserialize;
-use storage_options::{LocalOptions, StorageOptions};
+use storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_kv::config::ObkvConfig;
-use wal::table_kv_impl::model::NamespaceConfig;
+use wal::{
+    message_queue_impl::config::Config as MessageQueueWalConfig,
+    table_kv_impl::model::NamespaceConfig,
+};
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
-/// Config of analytic engine.
+/// Config of analytic engine
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// Storage options of the engine.
+    /// Storage options of the engine
     pub storage: StorageOptions,
 
-    /// WAL path of the engine.
+    /// WAL path of the engine
     pub wal_path: String,
 
-    /// Batch size to read records from wal to replay.
+    /// Batch size to read records from wal to replay
     pub replay_batch_size: usize,
-    /// Batch size to replay tables.
+    /// Batch size to replay tables
     pub max_replay_tables_per_batch: usize,
     // Write group options:
     pub write_group_worker_num: usize,
     pub write_group_command_channel_cap: usize,
     // End of write group options.
-    /// Default options for table.
+    /// Default options for table
     pub table_opts: TableOptions,
 
     pub compaction_config: SchedulerConfig,
 
-    /// sst meta cache capacity.
+    /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
-    /// sst data cache capacity.
+    /// sst data cache capacity
     pub sst_data_cache_cap: Option<usize>,
 
-    /// Manifest options.
+    /// Manifest options
     pub manifest: ManifestOptions,
 
     // Global write buffer options:
@@ -72,16 +77,25 @@ pub struct Config {
     // Batch size for scan sst
     pub scan_batch_size: usize,
 
-    // Obkv wal config.
-    pub obkv_wal: ObkvWalConfig,
+    /// Wal storage config
+    ///
+    /// Now, following three storages are supported:
+    /// + RocksDB
+    /// + OBKV
+    /// + Kafka
+    pub wal_storage: WalStorageConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: String::from("/tmp/ceresdb"),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(512),
+                mem_cache_partition_bits: 1,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: String::from("/tmp/ceresdb"),
+                }),
+            },
             wal_path: String::from("/tmp/ceresdb"),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
@@ -99,28 +113,26 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             scan_batch_size: 500,
-            obkv_wal: ObkvWalConfig::default(),
+            wal_storage: WalStorageConfig::RocksDB,
         }
     }
 }
 
-/// Config of wal based on obkv.
+/// Config of wal based on obkv
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
-    /// Enable wal on obkv (disabled by default).
-    pub enable: bool,
-    /// Obkv client config.
+    /// Obkv client config
     pub obkv: ObkvConfig,
-    /// Wal (stores data) namespace config.
+    /// Wal (stores data) namespace config
     pub wal: NamespaceConfig,
-    /// Manifest (stores meta data) namespace config.
+    /// Manifest (stores meta data) namespace config
     pub manifest: NamespaceConfig,
 }
+
 impl Default for ObkvWalConfig {
     fn default() -> Self {
         Self {
-            enable: false,
             obkv: ObkvConfig::default(),
             wal: NamespaceConfig::default(),
             manifest: NamespaceConfig {
@@ -130,4 +142,24 @@ impl Default for ObkvWalConfig {
             },
         }
     }
+}
+
+/// Config of wal based on obkv
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(default)]
+pub struct KafkaWalConfig {
+    /// Kafka client config
+    pub kafka_config: KafkaConfig,
+
+    /// Wal config
+    pub wal_config: MessageQueueWalConfig,
+}
+
+/// Options for wal storage backend
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+pub enum WalStorageConfig {
+    RocksDB,
+    Obkv(Box<ObkvWalConfig>),
+    Kafka(Box<KafkaWalConfig>),
 }

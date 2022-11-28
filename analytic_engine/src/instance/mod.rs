@@ -26,7 +26,6 @@ use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
 use object_store::ObjectStoreRef;
-use parquet_ext::DataCacheRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use wal::manager::WalManagerRef;
@@ -105,7 +104,6 @@ pub struct SpaceStore {
     sst_factory: SstFactoryRef,
 
     meta_cache: Option<MetaCacheRef>,
-    data_cache: Option<DataCacheRef>,
 }
 
 impl Drop for SpaceStore {
@@ -166,7 +164,6 @@ pub struct Instance {
     wal_synchronizer: WalSynchronizer,
 
     meta_cache: Option<MetaCacheRef>,
-    data_cache: Option<DataCacheRef>,
     /// Engine memtable memory usage collector
     mem_usage_collector: Arc<MemUsageCollector>,
     /// Engine write buffer size

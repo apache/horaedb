@@ -139,7 +139,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 ## 如何贡献
 [如何参与 CeresDB 代码贡献](CONTRIBUTING.md)
 
-[约定式提交](docs/dev/conventional-commit.md)
+[约定式提交](docs/guides/src/dev/conventional_commit.md)
 
 ## 架构及技术文档
 相关技术文档在[docs](docs)目录中，补充完善中~

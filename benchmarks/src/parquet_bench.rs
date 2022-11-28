@@ -13,7 +13,6 @@ use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
 };
-use parquet_ext::DataCacheRef;
 use table_engine::predicate::PredicateRef;
 
 use crate::{config::SstBenchConfig, util};
@@ -38,14 +37,7 @@ impl ParquetBench {
 
         let sst_path = Path::from(config.sst_file_name.clone());
         let meta_cache: Option<MetaCacheRef> = None;
-        let data_cache: Option<DataCacheRef> = None;
-
-        let schema = runtime.block_on(util::schema_from_sst(
-            &store,
-            &sst_path,
-            &meta_cache,
-            &data_cache,
-        ));
+        let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
 
         ParquetBench {
             store,

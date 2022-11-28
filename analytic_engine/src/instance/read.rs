@@ -159,7 +159,6 @@ impl Instance {
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
-            data_cache: self.data_cache.clone(),
             runtime: self.read_runtime().clone(),
         };
 
@@ -220,7 +219,6 @@ impl Instance {
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
-            data_cache: self.data_cache.clone(),
             runtime: self.read_runtime().clone(),
         };
 

@@ -223,10 +223,6 @@ macro_rules! handle_request {
                         })
                 });
 
-                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                    .$handle_fn
-                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
-
                 let res = join_handle
                     .await
                     .map_err(|e| Box::new(e) as _)
@@ -234,6 +230,10 @@ macro_rules! handle_request {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "fail to join the spawn task",
                     });
+
+                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .$handle_fn
+                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
                 let resp = match res {
                     Ok(Ok(v)) => v,
@@ -244,7 +244,6 @@ macro_rules! handle_request {
                         resp
                     },
                 };
-
                 Ok(tonic::Response::new(resp))
             }
         }
