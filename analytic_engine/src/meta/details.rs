@@ -163,7 +163,7 @@ impl Default for Options {
         Self {
             snapshot_every_n_updates: 10_000,
             scan_timeout: ReadableDuration::secs(5),
-            scan_batch_size: 500,
+            scan_batch_size: 100,
             store_timeout: ReadableDuration::secs(5),
         }
     }
