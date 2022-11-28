@@ -13,7 +13,6 @@ use common_util::runtime::Runtime;
 use futures::stream::StreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use parquet_ext::{cache::LruDataCache, DataCacheRef};
 
 use crate::{config::SstBenchConfig, util};
 
@@ -35,21 +34,7 @@ impl SstBench {
         let meta_cache: Option<MetaCacheRef> = config
             .sst_meta_cache_cap
             .map(|cap| Arc::new(MetaCache::new(cap)));
-
-        let data_cache: Option<DataCacheRef> =
-            if let Some(sst_data_cache_cap) = config.sst_data_cache_cap {
-                Some(Arc::new(LruDataCache::new(sst_data_cache_cap)))
-            } else {
-                None
-            };
-
-        let schema = runtime.block_on(util::schema_from_sst(
-            &store,
-            &sst_path,
-            &meta_cache,
-            &data_cache,
-        ));
-
+        let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_reader_options = SstReaderOptions {
@@ -59,7 +44,6 @@ impl SstBench {
             projected_schema,
             predicate,
             meta_cache,
-            data_cache,
             runtime: runtime.clone(),
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());

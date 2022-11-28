@@ -11,7 +11,10 @@ use common_types::{
     table::DEFAULT_SHARD_ID,
     time::Timestamp,
 };
-use common_util::{config::ReadableDuration, runtime};
+use common_util::{
+    config::{ReadableDuration, ReadableSize},
+    runtime,
+};
 use futures::stream::StreamExt;
 use log::info;
 use table_engine::{
@@ -27,10 +30,10 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::EngineBuilder,
-    storage_options::{LocalOptions, StorageOptions},
+    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
+    storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
-    Config,
+    Config, ObkvWalConfig, WalStorageConfig,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -44,7 +47,7 @@ impl From<Null> for Datum {
     }
 }
 
-pub async fn check_read_with_order<T: EngineBuilder>(
+pub async fn check_read_with_order<T: EngineContext>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -66,7 +69,7 @@ pub async fn check_read_with_order<T: EngineBuilder>(
     }
 }
 
-pub async fn check_read<T: EngineBuilder>(
+pub async fn check_read<T: EngineContext>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -84,7 +87,7 @@ pub async fn check_read<T: EngineBuilder>(
     .await
 }
 
-pub async fn check_get<T: EngineBuilder>(
+pub async fn check_get<T: EngineContext>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -102,10 +105,10 @@ pub async fn check_get<T: EngineBuilder>(
     }
 }
 
-pub struct TestContext<T: EngineBuilder> {
+pub struct TestContext<T: EngineContext> {
     pub config: Config,
     runtimes: Arc<EngineRuntimes>,
-    builder: T,
+    builder: T::EngineBuilder,
     pub engine: Option<TableEngineRef>,
     pub schema_id: SchemaId,
     last_table_seq: u32,
@@ -113,7 +116,7 @@ pub struct TestContext<T: EngineBuilder> {
     name_to_tables: HashMap<String, TableRef>,
 }
 
-impl<T: EngineBuilder> TestContext<T> {
+impl<T: EngineContext> TestContext<T> {
     pub async fn open(&mut self) {
         let engine = self
             .builder
@@ -354,7 +357,7 @@ impl<T: EngineBuilder> TestContext<T> {
     }
 }
 
-impl<T: EngineBuilder> TestContext<T> {
+impl<T: EngineContext> TestContext<T> {
     pub fn clone_engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
     }
@@ -371,11 +374,11 @@ impl TestEnv {
         Builder::default()
     }
 
-    pub fn new_context<T: EngineBuilder>(&self) -> TestContext<T> {
+    pub fn new_context<T: EngineContext>(&self, engine_context: T) -> TestContext<T> {
         TestContext {
-            config: self.config.clone(),
+            config: engine_context.config(),
             runtimes: self.runtimes.clone(),
-            builder: T::default(),
+            builder: engine_context.engine_builder(),
             engine: None,
             schema_id: SchemaId::from_u32(100),
             last_table_seq: 1,
@@ -397,9 +400,13 @@ impl Builder {
         let dir = tempfile::tempdir().unwrap();
 
         let config = Config {
-            storage: StorageOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
-            }),
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
             wal_path: dir.path().to_str().unwrap().to_string(),
             ..Default::default()
         };
@@ -428,5 +435,108 @@ impl Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self { num_workers: 2 }
+    }
+}
+
+pub trait EngineContext: Clone {
+    type EngineBuilder: EngineBuilder;
+
+    fn engine_builder(&self) -> Self::EngineBuilder;
+    fn config(&self) -> Config;
+}
+
+pub struct RocksDBEngineContext {
+    config: Config,
+}
+
+impl Default for RocksDBEngineContext {
+    fn default() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = Config {
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
+
+            wal_path: dir.path().to_str().unwrap().to_string(),
+            wal_storage: WalStorageConfig::RocksDB,
+            ..Default::default()
+        };
+
+        Self { config }
+    }
+}
+
+impl Clone for RocksDBEngineContext {
+    fn clone(&self) -> Self {
+        let mut config = self.config.clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let storage = StorageOptions {
+            mem_cache_capacity: ReadableSize::mb(0),
+            mem_cache_partition_bits: 0,
+            object_store: ObjectStoreOptions::Local(LocalOptions {
+                data_path: dir.path().to_str().unwrap().to_string(),
+            }),
+        };
+
+        config.storage = storage;
+        config.wal_path = dir.path().to_str().unwrap().to_string();
+
+        Self { config }
+    }
+}
+
+impl EngineContext for RocksDBEngineContext {
+    type EngineBuilder = RocksDBWalEngineBuilder;
+
+    fn engine_builder(&self) -> Self::EngineBuilder {
+        RocksDBWalEngineBuilder::default()
+    }
+
+    fn config(&self) -> Config {
+        self.config.clone()
+    }
+}
+
+#[derive(Clone)]
+pub struct MemoryEngineContext {
+    config: Config,
+}
+
+impl Default for MemoryEngineContext {
+    fn default() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = Config {
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_path: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
+            wal_path: dir.path().to_str().unwrap().to_string(),
+            wal_storage: WalStorageConfig::Obkv(Box::new(ObkvWalConfig::default())),
+            ..Default::default()
+        };
+
+        Self { config }
+    }
+}
+
+impl EngineContext for MemoryEngineContext {
+    type EngineBuilder = MemWalEngineBuilder;
+
+    fn engine_builder(&self) -> Self::EngineBuilder {
+        MemWalEngineBuilder::default()
+    }
+
+    fn config(&self) -> Config {
+        self.config.clone()
     }
 }

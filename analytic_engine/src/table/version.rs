@@ -750,6 +750,12 @@ impl TableVersion {
 
         inner.levels.expired_ssts(expire_time)
     }
+
+    pub fn flushed_sequence(&self) -> SequenceNumber {
+        let inner = self.inner.read().unwrap();
+
+        inner.flushed_sequence
+    }
 }
 
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then

@@ -7,7 +7,6 @@ use std::{fmt::Debug, sync::Arc};
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
 use object_store::{ObjectStoreRef, Path};
-use parquet_ext::DataCacheRef;
 use table_engine::predicate::PredicateRef;
 
 use crate::{
@@ -52,7 +51,6 @@ pub struct SstReaderOptions {
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
-    pub data_cache: Option<DataCacheRef>,
     pub runtime: Arc<Runtime>,
 }
 
@@ -75,13 +73,13 @@ impl Factory for FactoryImpl {
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         match options.sst_type {
             SstType::Parquet => {
-                // FIXME: pass from reader options
-                if std::env::var("ASYNC_PARQUET_READER").unwrap_or_default() == "true" {
+                // FIXME: remove sync reader before 1.0
+                if std::env::var("ENABLE_SYNC_PARQUET_READER").unwrap_or_default() == "true" {
+                    Some(Box::new(ParquetSstReader::new(path, storage, options)))
+                } else {
                     let reader = AsyncParquetReader::new(path, storage, options);
                     let reader = ThreadedReader::new(reader, options.runtime.clone());
                     Some(Box::new(reader))
-                } else {
-                    Some(Box::new(ParquetSstReader::new(path, storage, options)))
                 }
             }
         }

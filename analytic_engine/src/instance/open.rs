@@ -56,7 +56,6 @@ impl Instance {
             store: store.clone(),
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
-            data_cache: ctx.data_cache.clone(),
         });
 
         let scheduler_config = ctx.config.compaction_config.clone();
@@ -83,7 +82,6 @@ impl Instance {
             file_purger,
             wal_synchronizer,
             meta_cache: ctx.meta_cache.clone(),
-            data_cache: ctx.data_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
@@ -281,7 +279,7 @@ impl Instance {
     ) -> Result<()> {
         let read_req = ReadRequest {
             location: table_data.location(),
-            start: ReadBoundary::Min,
+            start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
             end: ReadBoundary::Max,
         };
 

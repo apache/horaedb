@@ -6,7 +6,10 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
-use common_types::{table::Location, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use common_types::{
+    table::{Location, TableId, DEFAULT_SHARD_ID},
+    MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
+};
 use common_util::runtime::Runtime;
 pub use error::*;
 use snafu::ResultExt;
@@ -214,7 +217,17 @@ pub struct ReadRequest {
     pub end: ReadBoundary,
 }
 
-#[derive(Debug, Clone)]
+impl Default for ReadRequest {
+    fn default() -> Self {
+        Self {
+            location: Location::new(DEFAULT_SHARD_ID, TableId::MIN),
+            start: ReadBoundary::Min,
+            end: ReadBoundary::Min,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ScanRequest {
     /// Region id of the wals to be scanned
     pub region_id: RegionId,

@@ -324,7 +324,7 @@ impl TableUnit {
 
         let scan_ctx = ScanContext {
             timeout: ctx.timeout,
-            ..Default::default()
+            batch_size: ctx.batch_size as i32,
         };
 
         Ok(TableLogIterator::new(

@@ -888,7 +888,6 @@ impl SpaceStore {
                 projected_schema: projected_schema.clone(),
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),
-                data_cache: self.data_cache.clone(),
                 runtime: runtime.clone(),
             };
             let mut builder = MergeBuilder::new(MergeConfig {

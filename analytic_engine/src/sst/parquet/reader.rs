@@ -25,7 +25,7 @@ use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ProjectionMask},
     file::metadata::{ParquetMetaData, RowGroupMetaData},
 };
-use parquet_ext::{reverse_reader::Builder as ReverseRecordBatchReaderBuilder, DataCacheRef};
+use parquet_ext::reverse_reader::Builder as ReverseRecordBatchReaderBuilder;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -103,8 +103,6 @@ pub struct ParquetSstReader<'a> {
 
     #[allow(unused)]
     meta_cache: Option<MetaCacheRef>,
-    #[allow(unused)]
-    data_cache: Option<DataCacheRef>,
 
     runtime: Arc<Runtime>,
 }
@@ -123,7 +121,6 @@ impl<'a> ParquetSstReader<'a> {
             reverse: options.reverse,
             channel_cap: DEFAULT_CHANNEL_CAP,
             meta_cache: options.meta_cache.clone(),
-            data_cache: options.data_cache.clone(),
             runtime: options.runtime.clone(),
         }
     }

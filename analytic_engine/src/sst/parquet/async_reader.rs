@@ -19,17 +19,14 @@ use common_types::{
 };
 use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::datasource::file_format;
-use futures::{
-    future::{self, BoxFuture},
-    FutureExt, Stream, StreamExt, TryFutureExt,
-};
+use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{DataCacheRef, ParquetMetaDataRef};
+use parquet_ext::ParquetMetaDataRef;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -53,7 +50,6 @@ pub struct Reader<'a> {
     /// The storage where the data is persist.
     storage: &'a ObjectStoreRef,
     projected_schema: ProjectedSchema,
-    data_cache: Option<DataCacheRef>,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
     batch_size: usize,
@@ -70,7 +66,6 @@ impl<'a> Reader<'a> {
             path,
             storage,
             projected_schema: options.projected_schema.clone(),
-            data_cache: options.data_cache.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
             batch_size,
@@ -100,12 +95,8 @@ impl<'a> Reader<'a> {
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
-        let file_reader = CachableParquetFileReader::new(
-            self.storage.clone(),
-            self.path.clone(),
-            meta_data.clone(),
-            self.data_cache.clone(),
-        );
+        let object_store_reader =
+            ObjectStoreReader::new(self.storage.clone(), self.path.clone(), meta_data.clone());
         let filtered_row_groups = self.filter_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
@@ -123,7 +114,7 @@ impl<'a> Reader<'a> {
             row_projector.existed_source_projection().iter().copied(),
         );
 
-        let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
+        let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
             .await
             .with_context(|| ParquetError)?;
         let stream = builder
@@ -208,69 +199,40 @@ impl<'a> Reader<'a> {
 #[derive(Debug, Default)]
 struct ReaderMetrics {
     bytes_scanned: usize,
-    cache_hit: usize,
-    cache_miss: usize,
 }
 
-struct CachableParquetFileReader {
+struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
-    data_cache: Option<DataCacheRef>,
     metrics: ReaderMetrics,
 }
 
-impl CachableParquetFileReader {
-    fn new(
-        storage: ObjectStoreRef,
-        path: Path,
-        meta_data: MetaData,
-        data_cache: Option<DataCacheRef>,
-    ) -> Self {
+impl ObjectStoreReader {
+    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
         Self {
             storage,
             path,
             meta_data,
-            data_cache,
             metrics: Default::default(),
         }
     }
-
-    fn cache_key(name: &str, start: usize, end: usize) -> String {
-        format!("{}_{}_{}", name, start, end)
-    }
 }
 
-impl Drop for CachableParquetFileReader {
+impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        info!("CachableParquetFileReader metrics:{:?}", self.metrics);
+        info!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
     }
 }
 
-impl AsyncFileReader for CachableParquetFileReader {
+impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
-
-        let key = Self::cache_key(self.path.as_ref(), range.start, range.end);
-        if let Some(cache) = &self.data_cache {
-            if let Some(cached_bytes) = cache.get(&key) {
-                self.metrics.cache_hit += 1;
-                return Box::pin(future::ok(Bytes::from(cached_bytes.to_vec())));
-            };
-        }
-
-        self.metrics.cache_miss += 1;
         self.storage
             .get_range(&self.path, range)
-            .map_ok(|bytes| {
-                if let Some(cache) = &self.data_cache {
-                    cache.put(key, Arc::new(bytes.to_vec()));
-                }
-                bytes
-            })
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "CachableParquetFileReader::get_bytes error: {}",
+                    "ObjectStoreReader::get_bytes error: {}",
                     e
                 ))
             })
