@@ -4,10 +4,12 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
+	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -382,6 +384,7 @@ func (m *TopologyManagerImpl) loadClusterView(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage get cluster view")
 	}
+	log.Debug(fmt.Sprintf("load cluster view, cluster views:%v", clusterViewResult))
 
 	m.shardNodesMapping = make(map[storage.ShardID][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
 	m.nodeShardsMapping = make(map[string][]storage.ShardNode, len(clusterViewResult.ClusterView.ShardNodes))
@@ -407,6 +410,7 @@ func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 	if err != nil {
 		return errors.WithMessage(err, "storage list shard views")
 	}
+	log.Debug(fmt.Sprintf("load shard views, cluster:%d, shard views:%v", m.clusterID, shardViewsResult))
 
 	// Reset data in memory.
 	m.shardTablesMapping = make(map[storage.ShardID]*storage.ShardView, len(shardViewsResult.ShardViews))

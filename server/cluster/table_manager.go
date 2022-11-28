@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -64,11 +65,11 @@ func (m *TableManagerImpl) Load(ctx context.Context) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	if err := m.loadSchema(ctx); err != nil {
+	if err := m.loadSchemas(ctx); err != nil {
 		return errors.WithMessage(err, "load schemas")
 	}
 
-	if err := m.loadTable(ctx); err != nil {
+	if err := m.loadTables(ctx); err != nil {
 		return errors.WithMessage(err, "load tables")
 	}
 
@@ -236,11 +237,12 @@ func (m *TableManagerImpl) GetOrCreateSchema(ctx context.Context, schemaName str
 	return schema, false, nil
 }
 
-func (m *TableManagerImpl) loadSchema(ctx context.Context) error {
+func (m *TableManagerImpl) loadSchemas(ctx context.Context) error {
 	schemasResult, err := m.storage.ListSchemas(ctx, storage.ListSchemasRequest{ClusterID: m.clusterID})
 	if err != nil {
 		return errors.WithMessage(err, "list schemas")
 	}
+	log.Debug(fmt.Sprintf("load schema, data:%v", schemasResult))
 
 	// Reset data in memory.
 	m.schemas = make(map[string]storage.Schema, len(schemasResult.Schemas))
@@ -251,7 +253,7 @@ func (m *TableManagerImpl) loadSchema(ctx context.Context) error {
 	return nil
 }
 
-func (m *TableManagerImpl) loadTable(ctx context.Context) error {
+func (m *TableManagerImpl) loadTables(ctx context.Context) error {
 	// Reset data in memory.
 	m.schemaTables = make(map[storage.SchemaID]*Tables, len(m.schemas))
 	for _, schema := range m.schemas {
@@ -262,6 +264,8 @@ func (m *TableManagerImpl) loadTable(ctx context.Context) error {
 		if err != nil {
 			return errors.WithMessage(err, "list tables")
 		}
+		log.Debug(fmt.Sprintf("load table, schema:%v, tables:%v", schema, tablesResult))
+
 		for _, table := range tablesResult.Tables {
 			tables, ok := m.schemaTables[table.SchemaID]
 			if !ok {
