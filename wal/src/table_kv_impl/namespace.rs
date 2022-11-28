@@ -332,6 +332,12 @@ impl<T: TableKv> NamespaceInner<T> {
                         warn!("Encounter expired bucket entry, skip and collect for later purging here, ttl:{}, expired bucket{:?}", ttl, bucket_entry);
                         outdated_buckets.push(bucket);
 
+                        iter.next()
+                            .map_err(|e| Box::new(e) as _)
+                            .context(LoadBuckets {
+                                namespace: self.name(),
+                            })?;
+
                         continue;
                     }
                 }
