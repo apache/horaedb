@@ -395,8 +395,7 @@ impl TableUnit {
         table_id: TableId,
         buckets: &[BucketRef],
     ) -> Result<SequenceNumber> {
-        // Starts from the latest bucket, find last sequence of given region id.
-        let mut last_sequence = common_types::MIN_SEQUENCE_NUMBER;
+        // Starts from the latest bucket, find last sequence of given table.
         for bucket in buckets.iter().rev() {
             let table_name = bucket.wal_shard_table(region_id);
 
@@ -407,11 +406,11 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                last_sequence = seq;
+                return Ok(seq);
             }
         }
 
-        Ok(last_sequence)
+        Ok(common_types::MIN_SEQUENCE_NUMBER)
     }
 
     fn load_last_sequence_from_table<T: TableKv>(
