@@ -23,9 +23,10 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::ReadableSize;
+use common_util::config::{ReadableDuration, ReadableSize};
 use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
+use serde::Serialize;
 use serde_derive::Deserialize;
 use storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
 use table_kv::config::ObkvConfig;
@@ -119,27 +120,54 @@ impl Default for Config {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
     /// Wal (stores data) namespace config
-    pub wal: NamespaceConfig,
+    pub wal: WalNamespaceConfig,
     /// Manifest (stores meta data) namespace config
-    pub manifest: NamespaceConfig,
+    pub manifest: ManifestNamespaceConfig,
 }
 
-impl Default for ObkvWalConfig {
+pub type WalNamespaceConfig = NamespaceConfig;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ManifestNamespaceConfig {
+    pub shard_num: usize,
+    pub meta_shard_num: usize,
+
+    pub init_scan_timeout: ReadableDuration,
+    pub init_scan_batch_size: i32,
+    pub clean_scan_timeout: ReadableDuration,
+    pub clean_scan_batch_size: usize,
+}
+
+impl Default for ManifestNamespaceConfig {
     fn default() -> Self {
         Self {
-            obkv: ObkvConfig::default(),
-            wal: NamespaceConfig::default(),
-            manifest: NamespaceConfig {
-                // Manifest has no ttl.
-                ttl: None,
-                ..Default::default()
-            },
+            shard_num: 512,
+            meta_shard_num: 128,
+            init_scan_timeout: ReadableDuration::secs(10),
+            init_scan_batch_size: 100,
+            clean_scan_timeout: ReadableDuration::secs(10),
+            clean_scan_batch_size: 100,
+        }
+    }
+}
+
+impl From<ManifestNamespaceConfig> for NamespaceConfig {
+    fn from(manifest_config: ManifestNamespaceConfig) -> Self {
+        NamespaceConfig {
+            wal_shard_num: manifest_config.shard_num,
+            table_unit_meta_shard_num: manifest_config.meta_shard_num,
+            ttl: None,
+            init_scan_timeout: manifest_config.init_scan_timeout,
+            init_scan_batch_size: manifest_config.init_scan_batch_size,
+            clean_scan_timeout: manifest_config.clean_scan_timeout,
+            clean_scan_batch_size: manifest_config.clean_scan_batch_size,
         }
     }
 }

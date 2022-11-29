@@ -253,6 +253,11 @@ impl Default for NamespaceEntry {
 pub struct NamespaceConfig {
     pub wal_shard_num: usize,
     pub table_unit_meta_shard_num: usize,
+
+    /// Outdated log cleaning strategy
+    ///  
+    /// Notice: you can just set once, if change after setting, it will lead to
+    /// error. Recommend to use default setting.
     pub ttl: Option<ReadableDuration>,
 
     pub init_scan_timeout: ReadableDuration,
