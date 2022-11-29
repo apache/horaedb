@@ -89,22 +89,15 @@ struct TsidBatch {
     non_collapsible_col_values: Vec<String>,
     // record_batch_idx -> ArrayHandle
     // Store collapsible data in multi record batch.
+    // Vec<ArrayHandle> contains multi columns data.
     collapsible_col_arrays: BTreeMap<usize, Vec<ArrayHandle>>,
 }
 
 impl TsidBatch {
-    fn new(non_collapsible_col_values: Vec<String>, col_arrays: Vec<ArrayRef>) -> Self {
-        let mut collapsible_col_arrays = BTreeMap::new();
-        collapsible_col_arrays.insert(
-            0,
-            col_arrays
-                .into_iter()
-                .map(|f| ArrayHandle::new(f))
-                .collect(),
-        );
+    fn new(non_collapsible_col_values: Vec<String>) -> Self {
         Self {
             non_collapsible_col_values,
-            collapsible_col_arrays,
+            collapsible_col_arrays: BTreeMap::new(),
         }
     }
 }
@@ -188,21 +181,22 @@ impl_offsets!(BinaryArrayWrapper<'a>);
 /// ArrayHandle into one ListArray
 struct ListArrayBuilder {
     datum_kind: DatumKind,
-    list_of_arrays: Vec<Vec<ArrayHandle>>,
+    // tsid -> Vec<ArrayHandle>
+    multi_tsid_list_of_arrays: Vec<Vec<ArrayHandle>>,
 }
 
 impl ListArrayBuilder {
     fn new(datum_kind: DatumKind, list_of_arrays: Vec<Vec<ArrayHandle>>) -> Self {
         Self {
             datum_kind,
-            list_of_arrays,
+            multi_tsid_list_of_arrays: list_of_arrays,
         }
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
         // Num of raw data in child data.
         let values_num = self
-            .list_of_arrays
+            .multi_tsid_list_of_arrays
             .iter()
             .map(|handles| handles.iter().map(|h| h.len()).sum::<usize>())
             .sum();
@@ -215,7 +209,7 @@ impl ListArrayBuilder {
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
-        for arrays in &self.list_of_arrays {
+        for arrays in &self.multi_tsid_list_of_arrays {
             for array_handle in arrays {
                 let null_bitmap = array_handle.null_bitmap();
 
@@ -281,12 +275,12 @@ impl ListArrayBuilder {
         offsets.push(length_so_far);
 
         let values_num: usize = self
-            .list_of_arrays
+            .multi_tsid_list_of_arrays
             .iter()
             .map(|handles| handles.iter().map(|handle| handle.len()).sum::<usize>())
             .sum();
         let mut values = MutableBuffer::new(values_num * data_type_size);
-        for arrays in &self.list_of_arrays {
+        for arrays in &self.multi_tsid_list_of_arrays {
             for array_handle in arrays {
                 let shared_buffer = array_handle.data_slice();
                 for slice_arg in &array_handle.slice_args {
@@ -363,7 +357,7 @@ impl ListArrayBuilder {
         let mut offsets_length_total = 0;
         let mut values_length_total = 0;
 
-        for list_of_arrays in &self.list_of_arrays {
+        for list_of_arrays in &self.multi_tsid_list_of_arrays {
             for array_handle in list_of_arrays {
                 let array = self.convert_to_variable_size_array(array_handle)?;
                 for slice_arg in &array_handle.slice_args {
@@ -393,7 +387,7 @@ impl ListArrayBuilder {
         let mut inner_length_so_far: i32 = 0;
         inner_offsets.push(inner_length_so_far);
 
-        for arrays in &self.list_of_arrays {
+        for arrays in &self.multi_tsid_list_of_arrays {
             for array_handle in arrays {
                 let array = self.convert_to_variable_size_array(array_handle)?;
 
@@ -427,7 +421,7 @@ impl ListArrayBuilder {
     fn build(self) -> Result<ListArray> {
         // The data in list_of_arrays belong to different tsids.
         // So the values num is the len of list_of_arrays.
-        let array_len = self.list_of_arrays.len();
+        let array_len = self.multi_tsid_list_of_arrays.len();
         let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
         let field = Box::new(Field::new(
@@ -463,18 +457,28 @@ fn build_hybrid_record(
     batch_by_tsid: BTreeMap<u64, TsidBatch>,
 ) -> Result<ArrowRecordBatch> {
     let tsid_array = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
+
+    // col_idx -> tsid -> data array
     let mut collapsible_col_arrays =
         vec![vec![Vec::new(); tsid_array.len()]; collapsible_col_types.len()];
     let mut non_collapsible_col_arrays = vec![Vec::new(); non_collapsible_col_types.len()];
 
+    // Reorganize data in batch_by_tsid.
+    // tsid-> col_idx-> data array ==> col_idx -> tsid -> data array
+    // example:
+    // tsid0 -> vec![ col0-> data_arrays0, col1 -> data_array1]
+    // tsid1 -> vec![ col0-> data_arrays2, col1 -> data_array3]
+    // ==>
+    // col0 -> vec![ tsid0-> data_arrays0, tsid1 -> data_array2]
+    // col1 -> vec![ tsid0-> data_arrays1, tsid1 -> data_array3]
     for (tsid_idx, batch) in batch_by_tsid.into_values().enumerate() {
-        for array in batch.collapsible_col_arrays.into_values() {
-            for (idx, arr) in array.into_iter().enumerate() {
-                collapsible_col_arrays[idx][tsid_idx].push(arr);
+        for col_array in batch.collapsible_col_arrays.into_values() {
+            for (col_idx, arr) in col_array.into_iter().enumerate() {
+                collapsible_col_arrays[col_idx][tsid_idx].push(arr);
             }
         }
-        for (idx, arr) in batch.non_collapsible_col_values.into_iter().enumerate() {
-            non_collapsible_col_arrays[idx].push(arr);
+        for (col_idx, arr) in batch.non_collapsible_col_values.into_iter().enumerate() {
+            non_collapsible_col_arrays[col_idx].push(arr);
         }
     }
     let tsid_array = IndexedArray {
@@ -574,10 +578,6 @@ pub fn convert_to_hybrid_record(
                     non_collapsible_col_values
                         .iter()
                         .map(|col| col.value(offset).to_string())
-                        .collect(),
-                    collapsible_col_types
-                        .iter()
-                        .map(|col| record_batch.column(col.idx).clone())
                         .collect(),
                 )
             });

@@ -16,11 +16,14 @@ use log::debug;
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 
-use crate::sst::{
-    builder::{RecordBatchStream, SstBuilder, *},
-    factory::SstBuilderOptions,
-    file::{BloomFilter, SstMetaData},
-    parquet::encoding::ParquetEncoder,
+use crate::{
+    sst::{
+        builder::{RecordBatchStream, SstBuilder, *},
+        factory::SstBuilderOptions,
+        file::{BloomFilter, SstMetaData},
+        parquet::encoding::ParquetEncoder,
+    },
+    table_options::StorageFormat,
 };
 
 /// The implementation of sst based on parquet and object storage.
@@ -133,6 +136,10 @@ impl RecordBytesReader {
     }
 
     fn build_bloom_filter(&self) -> BloomFilter {
+        // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+        if self.meta_data.storage_format_opts.format == StorageFormat::Hybrid {
+            return BloomFilter::default();
+        }
         let filters = self
             .partitioned_record_batch
             .iter()
