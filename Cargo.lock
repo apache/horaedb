@@ -3540,6 +3540,28 @@ dependencies = [
 
 [[package]]
 name = "object_store"
+version = "0.4.0"
+dependencies = [
+ "async-trait",
+ "bytes 1.2.1",
+ "chrono",
+ "futures 0.3.21",
+ "log",
+ "lru",
+ "lru-weighted-cache",
+ "object_store 0.5.1",
+ "oss-rust-sdk",
+ "prost",
+ "proto 0.4.0",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "tempfile",
+ "tokio 1.20.1",
+]
+
+[[package]]
+name = "object_store"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56ce10a205d9f610ae3532943039c34c145930065ce0c4284134c897fe6073b1"

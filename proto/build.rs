@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "protos/sys_catalog.proto",
             "protos/table_requests.proto",
             "protos/wal_on_mq.proto",
+            "protos/cache.proto",
         ],
         &["protos"],
     )?;

@@ -17,6 +17,9 @@ lru = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
 lru-weighted-cache = { git = "https://github.com/jiacai2050/lru-weighted-cache.git" , rev="1cf61aaf88469387e610dc7154fa318843491428"}
+log = { workspace = true }
+proto = { workspace = true }
+prost = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

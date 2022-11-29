@@ -7,53 +7,156 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{fmt::Display, ops::Range, sync::Arc};
+use std::{fmt::Display, fs, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::BoxStream;
+use log::error;
 use lru::LruCache;
-use tokio::{io::AsyncWrite, sync::Mutex};
-use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+use prost::Message;
+use snafu::{Backtrace, ResultExt, Snafu};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWrite},
+    sync::Mutex,
+};
+use upstream::{
+    path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
+    ObjectStore, Result,
+};
+
+#[derive(Debug, Snafu)]
+enum Error {
+    #[snafu(display(
+        "IO failed, file:{}, source:{}.\nbacktrace:\n{}",
+        file,
+        source,
+        backtrace
+    ))]
+    IoError {
+        file: String,
+        source: std::io::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to decode prost, file:{}, source:{}.\nbacktrace:\n{}",
+        file,
+        source,
+        backtrace
+    ))]
+    DecodeError {
+        file: String,
+        source: prost::DecodeError,
+        backtrace: Backtrace,
+    },
+}
+
+impl From<Error> for ObjectStoreError {
+    fn from(source: Error) -> Self {
+        Self::Generic {
+            store: "DiskCacheStore",
+            source: Box::new(source),
+        }
+    }
+}
 
 struct CachedBytes {
-    bytes: Bytes,
+    file_path: String,
+}
+
+impl Drop for CachedBytes {
+    fn drop(&mut self) {
+        if let Err(e) = fs::remove_file(&self.file_path) {
+            error!(
+                "Remove disk cache failed, key:{}, err:{}",
+                self.file_path, e
+            );
+        }
+    }
+}
+
+impl CachedBytes {
+    fn new(file_path: String) -> Self {
+        Self { file_path }
+    }
+
+    async fn persist(&self, _key: &str, _value: Bytes) -> Result<()> {
+        todo!()
+    }
+
+    async fn to_bytes(&self) -> Result<Bytes> {
+        let mut f = File::open(&self.file_path).await.with_context(|| IoError {
+            file: self.file_path.clone(),
+        })?;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).await.with_context(|| IoError {
+            file: self.file_path.clone(),
+        })?;
+
+        let bytes = proto::cache::Bytes::decode(&*buf).with_context(|| DecodeError {
+            file: self.file_path.clone(),
+        })?;
+
+        Ok(bytes.value.into())
+    }
 }
 
 #[derive(Debug)]
 struct DiskCache {
-    path: String,
-    cache: Mutex<LruCache<String, Bytes>>,
+    root_dir: String,
+    cache: Mutex<LruCache<String, CachedBytes>>,
 }
 
 impl DiskCache {
-    fn new(path: String, cap: usize) -> Self {
+    fn new(root_dir: String, cap: usize) -> Self {
         Self {
-            path,
+            root_dir,
             cache: Mutex::new(LruCache::new(cap)),
         }
     }
 
+    fn normalize_filename(key: &str) -> String {
+        key.replace('/', "_")
+    }
+
     async fn insert(&self, key: String, value: Bytes) -> Result<()> {
-        todo!()
+        let mut cache = self.cache.lock().await;
+        let file_path = std::path::Path::new(&self.root_dir)
+            .join(Self::normalize_filename(&key))
+            .into_os_string()
+            .into_string()
+            .unwrap();
+        let bytes = CachedBytes::new(file_path);
+        bytes.persist(&key, value).await?;
+        cache.push(key, bytes);
+
+        Ok(())
     }
 
     async fn get(&self, key: &str) -> Result<Option<Bytes>> {
-        todo!()
+        let mut cache = self.cache.lock().await;
+        if let Some(cached_bytes) = cache.get(key) {
+            // TODO: release lock when doing IO
+            return cached_bytes.to_bytes().await.map(Some);
+        }
+
+        Ok(None)
     }
 }
 
 impl Display for DiskCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DiskCache")
-            .field("path", &self.path)
+            .field("path", &self.root_dir)
             .field("cache", &self.cache)
             .finish()
     }
 }
 
 #[derive(Debug)]
-pub struct DiskStore {
+pub struct DiskCacheStore {
     cache: DiskCache,
     // Max disk capacity cache use can
     cap: usize,
@@ -61,9 +164,28 @@ pub struct DiskStore {
     underlying_store: Arc<dyn ObjectStore>,
 }
 
-impl DiskStore {
+impl DiskCacheStore {
+    pub fn new(
+        root_dir: String,
+        cap: usize,
+        page_size: usize,
+        underlying_store: Arc<dyn ObjectStore>,
+    ) -> Self {
+        let cache = DiskCache::new(root_dir, cap);
+
+        Self {
+            cache,
+            cap,
+            page_size,
+            underlying_store,
+        }
+    }
+
     fn normalize_range(&self, range: &Range<usize>) -> Range<usize> {
-        todo!()
+        let start = range.start / self.page_size * self.page_size;
+        let end = (range.end + self.page_size) / self.page_size * self.page_size;
+
+        start..end
     }
 
     fn cache_key(location: &Path, range: &Range<usize>) -> String {
@@ -71,9 +193,9 @@ impl DiskStore {
     }
 }
 
-impl Display for DiskStore {
+impl Display for DiskCacheStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DiskStore")
+        f.debug_struct("DiskCacheStore")
             .field("page_size", &self.page_size)
             .field("cap", &self.cap)
             .field("cache", &self.cache)
@@ -82,7 +204,7 @@ impl Display for DiskStore {
 }
 
 #[async_trait]
-impl ObjectStore for DiskStore {
+impl ObjectStore for DiskCacheStore {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
         self.underlying_store.put(location, bytes).await
     }
@@ -143,5 +265,31 @@ impl ObjectStore for DiskStore {
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         self.underlying_store.copy_if_not_exists(from, to).await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tempfile::tempdir;
+    use upstream::local::LocalFileSystem;
+
+    use super::*;
+
+    fn prepare_store(page_size: usize, cap: usize) -> DiskCacheStore {
+        let local_path = tempdir().unwrap();
+        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+
+        DiskCacheStore::new("/tmp".to_string(), cap, page_size, local_store)
+    }
+
+    #[test]
+    fn test_normalize_range() {
+        let page_size = 4096;
+        let testcases = vec![(0..1, 0..4096), (0..4096, 0..8192)];
+
+        let store = prepare_store(page_size, 1000);
+        for (input, expected) in testcases {
+            assert_eq!(store.normalize_range(&input), expected);
+        }
     }
 }
