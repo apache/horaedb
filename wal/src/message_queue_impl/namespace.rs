@@ -138,12 +138,6 @@ pub struct Namespace<M: MessageQueue> {
 
     /// Handle for cleaner routine
     cleaner_handle: TaskHandle,
-
-    /// Background runtime for cleaner routine
-    ///
-    /// Keep it here to ensure it won't be drop during the lifetime of
-    /// [Namespace].
-    _bg_runtime: Arc<Runtime>,
 }
 
 impl<M: MessageQueue> Namespace<M> {
@@ -163,7 +157,6 @@ impl<M: MessageQueue> Namespace<M> {
         Self {
             inner,
             cleaner_handle,
-            _bg_runtime: bg_runtime,
         }
     }
 
