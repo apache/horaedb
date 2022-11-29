@@ -134,7 +134,7 @@ func (s *metaStorageImpl) GetClusterView(ctx context.Context, req GetClusterView
 		return GetClusterViewResult{}, errors.WithMessagef(err, "get cluster view, clusterID:%d, key:%s", req.ClusterID, key)
 	}
 
-	clusterView := &clusterpb.ClusterTopology{}
+	clusterView := &clusterpb.ClusterView{}
 	if err = proto.Unmarshal([]byte(value), clusterView); err != nil {
 		return GetClusterViewResult{}, ErrDecode.WithCausef("decode cluster view, clusterID:%d, err:%v", req.ClusterID, err)
 	}
@@ -394,7 +394,7 @@ func (s *metaStorageImpl) ListShardViews(ctx context.Context, req ListShardViews
 			return ListShardViewsResult{}, errors.WithMessagef(err, "list shard view, clusterID:%d, shardID:%d, key:%s", req.ClusterID, shardID, key)
 		}
 
-		shardViewPB := &clusterpb.ShardTopology{}
+		shardViewPB := &clusterpb.ShardView{}
 		if err = proto.Unmarshal([]byte(value), shardViewPB); err != nil {
 			return ListShardViewsResult{}, ErrDecode.WithCausef("decode shard view, clusterID:%d, shardID:%d, err:%v", req.ClusterID, shardID, err)
 		}
