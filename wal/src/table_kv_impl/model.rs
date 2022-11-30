@@ -256,7 +256,7 @@ pub struct NamespaceConfig {
 
     /// Outdated log cleaning strategy
     ///  
-    /// Notice: you can just set once, if change after setting, it will lead to
+    /// NOTICE: you can just set once, if change after setting, it will lead to
     /// error. Recommend to use default setting.
     pub ttl: Option<ReadableDuration>,
 

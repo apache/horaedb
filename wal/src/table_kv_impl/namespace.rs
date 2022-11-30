@@ -15,7 +15,7 @@ use common_types::{
 };
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
 use log::{debug, error, info, warn};
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     ScanContext as KvScanContext, ScanIter, TableError, TableKv, WriteBatch, WriteContext,
 };
@@ -214,18 +214,6 @@ pub enum Error {
         table_id: TableId,
         source: crate::table_kv_impl::table_unit::Error,
     },
-
-    #[snafu(display(
-        "Failed to check the clean strategy, namespace:{}, origin ttl:{:?}, current ttl:{:?}",
-        namespace,
-        origin_ttl,
-        current_ttl,
-    ))]
-    CleanStrategyChanged {
-        namespace: String,
-        origin_ttl: Option<ReadableDuration>,
-        current_ttl: Option<ReadableDuration>,
-    },
 }
 
 define_result!(Error);
@@ -262,8 +250,8 @@ impl<T> NamespaceInner<T> {
         &self.table_unit_meta_tables
     }
 
-    fn table_unit_meta_table(&self, table_id: TableId) -> &str {
-        let index = table_id as usize % self.table_unit_meta_tables.len();
+    fn table_unit_meta_table(&self, region_id: RegionId) -> &str {
+        let index = region_id as usize % self.table_unit_meta_tables.len();
 
         &self.table_unit_meta_tables[index]
     }
@@ -553,7 +541,7 @@ impl<T: TableKv> NamespaceInner<T> {
         region_id: RegionId,
         table_id: TableId,
     ) -> Result<Option<TableUnitRef>> {
-        let table_unit_meta_table = self.table_unit_meta_table(table_id);
+        let table_unit_meta_table = self.table_unit_meta_table(region_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
         let table_unit_opt = TableUnit::open(
@@ -609,7 +597,7 @@ impl<T: TableKv> NamespaceInner<T> {
         region_id: RegionId,
         table_id: TableId,
     ) -> Result<TableUnitRef> {
-        let table_unit_meta_table = self.table_unit_meta_table(table_id);
+        let table_unit_meta_table = self.table_unit_meta_table(region_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
         let table_unit = TableUnit::open_or_create(
@@ -949,17 +937,13 @@ impl<T: TableKv> Namespace<T> {
         let namespace =
             match Self::load_namespace_from_meta(table_kv, consts::META_TABLE_NAME, name)? {
                 Some(namespace_entry) => {
-                    // Clean strategy can't changed after namespace has created.
-                    let is_clean_strategy_same =
-                        namespace_entry.wal.enable_ttl == config.ttl.is_some();
-                    ensure!(
-                        is_clean_strategy_same,
-                        CleanStrategyChanged {
-                            namespace: name,
-                            origin_ttl: namespace_entry.wal.ttl,
-                            current_ttl: config.ttl,
-                        }
-                    );
+                    assert!(
+                    namespace_entry.wal.enable_ttl == config.ttl.is_some(),
+                    "It's impossible to be different because the it can't be set by user actually, 
+                        but now the original ttl set is:{}, current in config is:{}",
+                    namespace_entry.wal.enable_ttl,
+                    config.ttl.is_some()
+                );
 
                     Namespace::new(
                         runtimes,
