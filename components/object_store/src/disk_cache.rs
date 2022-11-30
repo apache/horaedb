@@ -7,7 +7,7 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, fs, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
@@ -79,19 +79,6 @@ struct CachedBytes {
     file_path: String,
 }
 
-impl Drop for CachedBytes {
-    fn drop(&mut self) {
-        info!("Remove disk cache, key:{}", &self.file_path);
-
-        if let Err(e) = fs::remove_file(&self.file_path) {
-            error!(
-                "Remove disk cache failed, key:{}, err:{}",
-                self.file_path, e
-            );
-        }
-    }
-}
-
 impl CachedBytes {
     fn new(file_path: String) -> Self {
         Self { file_path }
@@ -136,6 +123,7 @@ impl CachedBytes {
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
+    cap: usize,
     cache: Mutex<LruCache<String, CachedBytes>>,
 }
 
@@ -143,12 +131,25 @@ impl DiskCache {
     fn new(root_dir: String, cap: usize) -> Self {
         Self {
             root_dir,
+            cap,
             cache: Mutex::new(LruCache::new(cap)),
         }
     }
 
+    // TODO: We now hold lock when doing IO, possible to release it?
     async fn insert(&self, key: String, value: Bytes) -> Result<()> {
         let mut cache = self.cache.lock().await;
+        if cache.len() > self.cap {
+            let (_, cached_bytes) = cache.pop_lru().unwrap();
+            info!("Remove disk cache, key:{}", &cached_bytes.file_path);
+            if let Err(e) = tokio::fs::remove_file(&cached_bytes.file_path).await {
+                error!(
+                    "Remove disk cache failed, file:{}, err:{}",
+                    cached_bytes.file_path, e
+                );
+            }
+        }
+
         let file_path = std::path::Path::new(&self.root_dir)
             .join(&key)
             .into_os_string()
@@ -260,7 +261,7 @@ impl ObjectStore for DiskCacheStore {
             .await
     }
 
-    // TODO(chenxiang): don't cache whole path for reasons below
+    // TODO: don't cache whole path for reasons below
     // In sst module, we only use get_range, get is not used
     async fn get(&self, location: &Path) -> Result<GetResult> {
         self.underlying_store.get(location).await
