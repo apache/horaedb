@@ -2,6 +2,8 @@
 
 //! Re-export of [object_store] crate.
 
+#![feature(map_first_last)]
+
 use std::sync::Arc;
 
 pub use upstream::{
