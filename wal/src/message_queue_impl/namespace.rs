@@ -138,12 +138,6 @@ pub struct Namespace<M: MessageQueue> {
 
     /// Handle for cleaner routine
     cleaner_handle: TaskHandle,
-
-    /// Background runtime for cleaner routine
-    ///
-    /// Keep it here to ensure it won't be drop during the lifetime of
-    /// [Namespace].
-    bg_runtime: Arc<Runtime>,
 }
 
 impl<M: MessageQueue> Namespace<M> {
@@ -163,7 +157,6 @@ impl<M: MessageQueue> Namespace<M> {
         Self {
             inner,
             cleaner_handle,
-            bg_runtime,
         }
     }
 
@@ -237,19 +230,6 @@ impl<M: MessageQueue> fmt::Debug for Namespace<M> {
             .field("meta_encoding", &self.inner.meta_encoding)
             .field("log_encoding", &self.inner.log_encoding)
             .finish()
-    }
-}
-
-impl<M: MessageQueue> Drop for Namespace<M> {
-    fn drop(&mut self) {
-        self.bg_runtime.block_on(async {
-            if let Err(e) = self.close().await {
-                error!(
-                    "Close namespace failed, namespace:{}, err:{}",
-                    self.inner.namespace, e
-                );
-            }
-        })
     }
 }
 
