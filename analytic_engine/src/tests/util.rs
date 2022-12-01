@@ -8,7 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
-    table::DEFAULT_SHARD_ID,
+    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     time::Timestamp,
 };
 use common_util::{
@@ -174,6 +174,7 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await
             .unwrap()
@@ -197,6 +198,7 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await?;
 

@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
-use common_types::{table::Location, SequenceNumber};
+use common_types::SequenceNumber;
 use common_util::{define_result, runtime::Runtime};
 use log::{debug, error, info};
 use message_queue::{ConsumeIterator, MessageQueue};
@@ -14,7 +14,10 @@ use tokio::sync::RwLock;
 use crate::{
     kv_encoder::LogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, WriteContext},
+    manager::{
+        ReadContext, ReadRequest, ScanContext, ScanRequest, VersionedRegionId, WalLocation,
+        WriteContext,
+    },
     message_queue_impl::{
         config::Config,
         encoding::MetaEncoding,
@@ -33,7 +36,7 @@ pub enum Error {
     ))]
     GetSequence {
         namespace: String,
-        location: Location,
+        location: WalLocation,
         source: region::Error,
     },
 
@@ -98,7 +101,7 @@ pub enum Error {
     ))]
     Write {
         namespace: String,
-        location: Location,
+        location: WalLocation,
         batch_size: usize,
         source: region::Error,
     },
@@ -112,7 +115,7 @@ pub enum Error {
     ))]
     MarkDeleteTo {
         namespace: String,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
         source: region::Error,
     },
@@ -173,7 +176,7 @@ impl<M: MessageQueue> Namespace<M> {
     }
 
     /// Get table's sequence number.
-    pub async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
+    pub async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.inner.sequence_num(location).await
     }
 
@@ -212,7 +215,7 @@ impl<M: MessageQueue> Namespace<M> {
     /// `sequence_number`] to be deleted in the future.
     pub async fn mark_delete_to(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.inner.mark_delete_to(location, sequence_num).await
@@ -235,7 +238,8 @@ impl<M: MessageQueue> fmt::Debug for Namespace<M> {
 
 struct NamespaceInner<M: MessageQueue> {
     namespace: String,
-    regions: Arc<RwLock<HashMap<RegionId, RegionRef<M>>>>,
+    // TODO: should use some strategies(such as lru) to clean the invalid region.
+    regions: Arc<RwLock<HashMap<VersionedRegionId, RegionRef<M>>>>,
     message_queue: Arc<M>,
     meta_encoding: MetaEncoding,
     log_encoding: LogEncoding,
@@ -261,14 +265,14 @@ impl<M: MessageQueue> NamespaceInner<M> {
     /// about above operations on an empty region.
     async fn get_or_open_region(
         &self,
-        region_id: RegionId,
+        versioned_region_id: VersionedRegionId,
     ) -> std::result::Result<RegionRef<M>, region::Error> {
         {
             let regions = self.regions.read().await;
-            if let Some(region) = regions.get(&region_id) {
+            if let Some(region) = regions.get(&versioned_region_id) {
                 debug!(
-                    "Region exists and return it, namespace:{}, region id:{}",
-                    self.namespace, region_id
+                    "Region exists and return it, namespace:{}, versioned region id:{:?}",
+                    self.namespace, versioned_region_id
                 );
                 return Ok(region.clone());
             }
@@ -276,29 +280,35 @@ impl<M: MessageQueue> NamespaceInner<M> {
 
         let mut regions = self.regions.write().await;
         // Multiple tables share one region, so double check here is needed.
-        if let Some(region) = regions.get(&region_id) {
+        if let Some(region) = regions.get(&versioned_region_id) {
             debug!(
-                "Region exists and return it, namespace:{}, region id:{}",
-                self.namespace, region_id
+                "Region exists and return it, namespace:{}, versioned region id:{:?}",
+                self.namespace, versioned_region_id
             );
             return Ok(region.clone());
         }
 
-        let region =
-            Arc::new(Region::open(&self.namespace, region_id, self.message_queue.clone()).await?);
-        regions.insert(region_id, region.clone());
+        let region = Arc::new(
+            Region::open(
+                &self.namespace,
+                versioned_region_id.id,
+                self.message_queue.clone(),
+            )
+            .await?,
+        );
+        regions.insert(versioned_region_id, region.clone());
 
         info!(
-            "Region open successfully, namespace:{}, region id:{}",
-            self.namespace, region_id
+            "Region open successfully, namespace:{}, versioned region id:{:?}",
+            self.namespace, versioned_region_id
         );
 
         Ok(region)
     }
 
-    pub async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
+    pub async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         let region = self
-            .get_or_open_region(location.shard_id as u64)
+            .get_or_open_region(location.versioned_region_id)
             .await
             .context(GetSequence {
                 namespace: self.namespace.clone(),
@@ -330,7 +340,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(request.location.shard_id as u64)
+            .get_or_open_region(request.location.versioned_region_id)
             .await
             .context(ReadWithCause {
                 namespace: self.namespace.clone(),
@@ -365,7 +375,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(request.region_id)
+            .get_or_open_region(request.versioned_region_id)
             .await
             .context(ScanWithCause {
                 namespace: self.namespace.clone(),
@@ -404,7 +414,7 @@ impl<M: MessageQueue> NamespaceInner<M> {
         );
 
         let region = self
-            .get_or_open_region(log_batch.location.shard_id as RegionId)
+            .get_or_open_region(log_batch.location.versioned_region_id)
             .await
             .context(Write {
                 namespace: self.namespace.clone(),
@@ -421,13 +431,13 @@ impl<M: MessageQueue> NamespaceInner<M> {
 
     pub async fn mark_delete_to(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         debug!("Mark table logs delete in namespace, namespace:{}, location:{:?}, delete to sequence number:{}", self.namespace, location, sequence_num);
 
         let region = self
-            .get_or_open_region(location.shard_id as RegionId)
+            .get_or_open_region(location.versioned_region_id)
             .await
             .context(MarkDeleteTo {
                 namespace: self.namespace.clone(),

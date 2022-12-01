@@ -5,7 +5,7 @@ use catalog::{
     manager::ManagerRef,
     schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest},
 };
-use common_types::table::DEFAULT_SHARD_ID;
+use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
 use log::warn;
 use snafu::{OptionExt, ResultExt};
 use sql::plan::{CreateTablePlan, DropTablePlan};
@@ -77,6 +77,7 @@ impl TableManipulator for TableManipulatorImpl {
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
+            cluster_version: DEFAULT_CLUSTER_VERSION,
         };
 
         let opts = CreateOptions {

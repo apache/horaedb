@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use common_types::table::{Location, ShardId, TableId};
+use common_types::table::TableId;
 use message_queue::MessageQueue;
 
 use super::{
@@ -14,13 +14,14 @@ use super::{
 use crate::{
     kv_encoder::LogBatchEncoder,
     log_batch::LogWriteBatch,
-    manager::RegionId,
+    manager::{RegionId, RegionVersion, WalLocation},
     tests::util::{TestPayload, TestPayloadDecoder},
 };
 
 pub struct TestContext<Mq: MessageQueue> {
     pub region_id: RegionId,
-    pub shard_id: ShardId,
+    pub region_version: RegionVersion,
+    pub table_id: TableId,
     pub test_datas: Vec<(TableId, TestDataOfTable)>,
     pub test_payload_encoder: TestPayloadDecoder,
     pub region: Region<Mq>,
@@ -47,7 +48,8 @@ impl<Mq: MessageQueue> TestContext<Mq> {
     pub async fn new(
         namespace: String,
         region_id: RegionId,
-        shard_id: ShardId,
+        region_version: RegionVersion,
+        table_id: TableId,
         test_datas: Vec<(TableId, Vec<u32>)>,
         message_queue: Arc<Mq>,
     ) -> Self {
@@ -56,7 +58,8 @@ impl<Mq: MessageQueue> TestContext<Mq> {
         let test_datas = test_datas
             .into_iter()
             .map(|(table_id, data)| {
-                let log_batch_encoder = LogBatchEncoder::create(Location::new(shard_id, table_id));
+                let log_batch_encoder =
+                    LogBatchEncoder::create(WalLocation::new(region_id, region_version, table_id));
                 let log_write_batch = log_batch_encoder
                     .encode_batch::<TestPayload, u32>(&data)
                     .unwrap();
@@ -74,7 +77,8 @@ impl<Mq: MessageQueue> TestContext<Mq> {
 
         TestContext {
             region_id,
-            shard_id,
+            region_version,
+            table_id,
             test_datas,
             test_payload_encoder,
             region,
