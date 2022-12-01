@@ -3555,6 +3555,7 @@ dependencies = [
  "proto 0.4.0",
  "serde",
  "serde_derive",
+ "serde_json",
  "snafu 0.6.10",
  "tempfile",
  "tokio 1.20.1",

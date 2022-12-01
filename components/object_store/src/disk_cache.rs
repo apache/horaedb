@@ -7,15 +7,16 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, io::Read, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use futures::stream::BoxStream;
-use log::{error, info};
+use log::{debug, error, info};
 use lru::LruCache;
 use prost::Message;
-use snafu::{Backtrace, ResultExt, Snafu};
+use serde::{Deserialize, Serialize};
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::{
     fs::File,
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -25,6 +26,8 @@ use upstream::{
     path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
     ObjectStore, Result,
 };
+
+const MANIFEST_FILE: &str = "manifest.json";
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -41,7 +44,20 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed persist cache, file:{}, source:{}.\nbacktrace:\n{}",
+        "Failed to deserialize manifest, source:{}.\nbacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    DeserializeManifest {
+        source: serde_json::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Invalid manifest page size, old:{}, new:{}.", old, new))]
+    InvalidManifest { old: usize, new: usize },
+
+    #[snafu(display(
+        "Failed to persist cache, file:{}, source:{}.\nbacktrace:\n{}",
         file,
         source,
         backtrace
@@ -74,6 +90,12 @@ impl From<Error> for ObjectStoreError {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct Manifest {
+    create_at: String,
+    page_size: usize,
+}
+
 struct CachedBytes {
     /// file where bytes is saved on disk
     file_path: String,
@@ -90,12 +112,12 @@ impl CachedBytes {
         })?;
 
         let pb_bytes = proto::cache::Bytes {
-            key: "".to_string(),
+            // TODO: CRC checking
+            crc: 0,
             value: value.to_vec(),
         };
 
         let bs = pb_bytes.encode_to_vec();
-
         f.write_all(&bs).await.with_context(|| PersistCache {
             file: self.file_path.clone(),
         })?;
@@ -139,7 +161,9 @@ impl DiskCache {
     // TODO: We now hold lock when doing IO, possible to release it?
     async fn insert(&self, key: String, value: Bytes) -> Result<()> {
         let mut cache = self.cache.lock().await;
-        if cache.len() > self.cap {
+        debug!("key:{}, len:{}, cap:{}", &key, cache.len(), self.cap);
+
+        if cache.len() >= self.cap {
             let (_, cached_bytes) = cache.pop_lru().unwrap();
             info!("Remove disk cache, key:{}", &cached_bytes.file_path);
             if let Err(e) = tokio::fs::remove_file(&cached_bytes.file_path).await {
@@ -182,34 +206,59 @@ impl Display for DiskCache {
     }
 }
 
+// TODO: support partition to reduce lock contention
 #[derive(Debug)]
 pub struct DiskCacheStore {
     cache: DiskCache,
     // Max disk capacity cache use can
     cap: usize,
     page_size: usize,
+    // location path size cache
     size_cache: Arc<Mutex<LruCache<String, usize>>>,
     underlying_store: Arc<dyn ObjectStore>,
 }
 
 impl DiskCacheStore {
     #[allow(dead_code)]
-    pub fn new(
-        root_dir: String,
+    pub fn try_new(
+        cache_dir: String,
         cap: usize,
         page_size: usize,
         underlying_store: Arc<dyn ObjectStore>,
-    ) -> Self {
-        let cache = DiskCache::new(root_dir, cap);
-        let meta_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
+    ) -> Result<Self> {
+        let cache = DiskCache::new(cache_dir, cap / page_size);
+        let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
 
-        Self {
+        Ok(Self {
             cache,
-            size_cache: meta_cache,
+            size_cache,
             cap,
             page_size,
             underlying_store,
-        }
+        })
+    }
+
+    fn check_manifest(&self, cache_dir: &str) -> Result<()> {
+        let mut file = std::fs::File::open(std::path::Path::new(cache_dir).join(MANIFEST_FILE))
+            .with_context(|| Io {
+                file: MANIFEST_FILE.to_string(),
+            })?;
+
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).with_context(|| Io {
+            file: MANIFEST_FILE.to_string(),
+        })?;
+
+        let manifest: Manifest = serde_json::from_slice(&buf).context(DeserializeManifest)?;
+
+        ensure!(
+            manifest.page_size == self.page_size,
+            InvalidManifest {
+                old: manifest.page_size,
+                new: self.page_size
+            }
+        );
+        Ok(())
     }
 
     fn normalize_range(&self, max_size: usize, range: &Range<usize>) -> Vec<Range<usize>> {
@@ -363,16 +412,32 @@ impl ObjectStore for DiskCacheStore {
 
 #[cfg(test)]
 mod test {
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
     use upstream::local::LocalFileSystem;
 
     use super::*;
 
-    fn prepare_store(page_size: usize, cap: usize) -> DiskCacheStore {
+    struct StoreWithCacheDir {
+        inner: DiskCacheStore,
+        cache_dir: TempDir,
+    }
+
+    fn prepare_store(page_size: usize, cap: usize) -> StoreWithCacheDir {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        DiskCacheStore::new("/tmp".to_string(), cap, page_size, local_store)
+        let cache_dir = tempdir().unwrap();
+        let store = DiskCacheStore::new(
+            cache_dir.as_ref().to_string_lossy().to_string(),
+            cap,
+            page_size,
+            local_store,
+        );
+
+        StoreWithCacheDir {
+            inner: store,
+            cache_dir,
+        }
     }
 
     #[test]
@@ -391,7 +456,7 @@ mod test {
 
         let store = prepare_store(page_size, 1000);
         for (input, expected) in testcases {
-            assert_eq!(store.normalize_range(1024, &input), expected);
+            assert_eq!(store.inner.normalize_range(1024, &input), expected);
         }
     }
 
@@ -408,8 +473,15 @@ mod test {
 
         let store = prepare_store(page_size, 1000);
         for (input, expected) in testcases {
-            assert_eq!(store.normalize_range(20, &input), expected);
+            assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
+    }
+
+    fn test_file_exists(cache_dir: &TempDir, location: &Path, range: &Range<usize>) -> bool {
+        cache_dir
+            .path()
+            .join(DiskCacheStore::cache_key(&location, &range))
+            .exists()
     }
 
     #[tokio::test]
@@ -418,14 +490,14 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("1.sst");
-
         let store = prepare_store(page_size, 1000);
+
         let mut buf = BytesMut::with_capacity(data.len() * 4);
-        // put 4 times, then location will be 200 bytes
+        // extend 4 times, then location will contain 200 bytes
         for _ in 0..4 {
             buf.extend_from_slice(data);
         }
-        store.put(&location, buf.freeze()).await.unwrap();
+        store.inner.put(&location, buf.freeze()).await.unwrap();
 
         let testcases = vec![
             (0..6, "a b c "),
@@ -439,34 +511,62 @@ mod test {
 
         for (input, expected) in testcases {
             assert_eq!(
-                store.get_range(&location, input).await.unwrap(),
+                store.inner.get_range(&location, input).await.unwrap(),
                 Bytes::copy_from_slice(expected.as_bytes())
             );
         }
 
         // remove cached values, then get again
         {
-            let mut data_cache = store.cache.cache.lock().await;
+            let mut data_cache = store.inner.cache.cache.lock().await;
             for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
                 assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
+                assert!(test_file_exists(&store.cache_dir, &location, &range));
             }
 
-            assert!(data_cache
-                .pop(&DiskCacheStore::cache_key(&location, &(16..32)))
-                .is_some());
-            assert!(data_cache
-                .pop(&DiskCacheStore::cache_key(&location, &(48..64)))
-                .is_some());
-            assert!(data_cache
-                .pop(&DiskCacheStore::cache_key(&location, &(80..96)))
-                .is_some());
+            for range in vec![16..32, 48..64, 80..96] {
+                assert!(data_cache
+                    .pop(&DiskCacheStore::cache_key(&location, &range))
+                    .is_some());
+            }
         }
 
         assert_eq!(
-            store.get_range(&location, 16..100).await.unwrap(),
+            store.inner.get_range(&location, 16..100).await.unwrap(),
             Bytes::copy_from_slice(
                 b"i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"
             )
         );
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_remove_cache_file() {
+        let page_size = 16;
+        // 51 byte
+        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
+        let location = Path::from("remove_cache_file.sst");
+        let store = prepare_store(page_size, 32);
+        let mut buf = BytesMut::with_capacity(data.len() * 4);
+        // extend 4 times, then location will contain 200 bytes, but cache cap is 32
+        for _ in 0..4 {
+            buf.extend_from_slice(data);
+        }
+        store.inner.put(&location, buf.freeze()).await.unwrap();
+
+        let _ = store.inner.get_range(&location, 0..16).await.unwrap();
+        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
+        // cache is full now
+        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
+
+        // insert new cache, evict oldest entry
+        let _ = store.inner.get_range(&location, 32..48).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
+
+        // insert new cache, evict oldest entry
+        let _ = store.inner.get_range(&location, 48..64).await.unwrap();
+        assert!(!test_file_exists(&store.cache_dir, &location, &(16..32)));
+        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
     }
 }

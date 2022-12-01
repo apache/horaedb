@@ -12,6 +12,7 @@ upstream = { package = "object_store", version = "0.5.1" }
 oss-rust-sdk = "0.4.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
+serde_json = { workspace = true }
 snafu = { workspace = true }
 lru = { workspace = true }
 chrono = { workspace = true }
