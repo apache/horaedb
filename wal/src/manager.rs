@@ -119,6 +119,9 @@ pub mod error {
 
         #[snafu(display("Failed to execute in runtime, err:{}", source))]
         RuntimeExec { source: common_util::runtime::Error },
+
+        #[snafu(display("Encountered Unknown error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+        Unknown { msg: String, backtrace: Backtrace },
     }
 
     define_result!(Error);

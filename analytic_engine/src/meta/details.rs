@@ -769,7 +769,7 @@ mod tests {
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use wal::{manager::VersionedRegionId, rocks_impl::manager::Builder as WalBuilder};
+    use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;
     use crate::{
@@ -857,18 +857,10 @@ mod tests {
         }
 
         async fn open_manifest(&self) -> ManifestImpl {
-            let versioned_region_id = VersionedRegionId {
-                version: DEFAULT_CLUSTER_VERSION,
-                id: DEFAULT_SHARD_ID as RegionId,
-            };
-
-            let manifest_wal = WalBuilder::with_default_rocksdb_config(
-                self.dir.clone(),
-                self.runtime.clone(),
-                versioned_region_id,
-            )
-            .build()
-            .unwrap();
+            let manifest_wal =
+                WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
+                    .build()
+                    .unwrap();
 
             ManifestImpl::open(Arc::new(manifest_wal), self.options.clone())
                 .await

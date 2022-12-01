@@ -28,7 +28,7 @@ use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SyncLogIterator, VersionedRegionId, WalLocation, WalManager, WriteContext,
+        ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
 
@@ -234,7 +234,7 @@ pub struct RocksImpl {
     /// Encoding for meta data of max sequence
     max_seq_meta_encoding: MaxSeqMetaEncoding,
     /// Table units
-    table_units: RwLock<HashMap<WalLocation, Arc<TableUnit>>>,
+    table_units: RwLock<HashMap<TableId, Arc<TableUnit>>>,
 }
 
 impl Drop for RocksImpl {
@@ -250,8 +250,8 @@ impl Drop for RocksImpl {
 }
 
 impl RocksImpl {
-    fn build_table_units(&self, versioned_region_id: VersionedRegionId) -> Result<()> {
-        let table_seqs = self.find_table_seqs_from_db(versioned_region_id.id)?;
+    fn build_table_units(&self) -> Result<()> {
+        let table_seqs = self.find_table_seqs_from_db()?;
 
         info!(
             "RocksImpl build table units, wal_path:{}, table_seqs:{:?}",
@@ -270,11 +270,7 @@ impl RocksImpl {
                 delete_lock: Mutex::new(()),
             };
 
-            let location = WalLocation {
-                versioned_region_id,
-                table_id,
-            };
-            table_units.insert(location, Arc::new(table_unit));
+            table_units.insert(table_id, Arc::new(table_unit));
         }
 
         Ok(())
@@ -282,13 +278,24 @@ impl RocksImpl {
 
     fn find_table_seqs_from_table_log(
         &self,
-        region_id: RegionId,
         table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
-        let mut current_table_id = TableId::MAX;
+        self.find_table_seqs_from_table_log_by_region_id(table_max_seqs)
+    }
+
+    fn find_table_seqs_from_table_log_by_region_id(
+        &self,
+        table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
+    ) -> Result<()> {
+        let mut current_region_id = RegionId::MAX;
         let mut end_boundary_key_buf = BytesMut::new();
         loop {
-            let log_key = CommonLogKey::new(region_id, current_table_id, MAX_SEQUENCE_NUMBER);
+            debug!(
+                "RocksImpl searches table logs for sequences by region id, region id:{}",
+                current_region_id
+            );
+
+            let log_key = CommonLogKey::new(current_region_id, TableId::MAX, MAX_SEQUENCE_NUMBER);
             self.log_encoding
                 .encode_key(&mut end_boundary_key_buf, &log_key)
                 .map_err(|e| Box::new(e) as _)
@@ -303,7 +310,7 @@ impl RocksImpl {
 
             if !found {
                 debug!(
-                    "RocksImpl find table unit pairs stop scanning, because of no entries to scan"
+                    "RocksImpl find table unit pairs stop scanning by region id, because of no entries to scan."
                 );
                 break;
             }
@@ -315,7 +322,7 @@ impl RocksImpl {
                 .context(Decoding)?
             {
                 debug!(
-                    "RocksImpl find table unit pairs stop scanning, because log keys are exhausted"
+                    "RocksImpl find table unit pairs stop scanning by region id, because log keys are exhausted."
                 );
                 break;
             }
@@ -325,12 +332,95 @@ impl RocksImpl {
                 .decode_key(iter.key())
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
+
+            // Found a valid log key by `current_region_id`, search table sequences by table
+            // id.
+            debug!(
+                "RocksImpl has found log key by region id, log key:{:?}",
+                log_key
+            );
+            self.find_table_seqs_from_table_log_by_table_id(log_key.region_id, table_max_seqs)?;
+
+            if log_key.region_id == 0 {
+                debug!("RocksImpl find table unit pairs stop scanning by region id, because region id 0 is reached.");
+                break;
+            }
+
+            current_region_id = log_key.region_id - 1;
+        }
+
+        Ok(())
+    }
+
+    fn find_table_seqs_from_table_log_by_table_id(
+        &self,
+        region_id: RegionId,
+        table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
+    ) -> Result<()> {
+        let mut current_table_id = TableId::MAX;
+        let mut end_boundary_key_buf = BytesMut::new();
+        loop {
+            debug!("RocksImpl searches table logs for sequences by table id, table id:{}, region id:{}", current_table_id, region_id);
+
+            let log_key = CommonLogKey::new(region_id, current_table_id, MAX_SEQUENCE_NUMBER);
+            self.log_encoding
+                .encode_key(&mut end_boundary_key_buf, &log_key)
+                .map_err(|e| Box::new(e) as _)
+                .context(Encoding)?;
+
+            let mut iter = self.db.iter();
+            let seek_key = SeekKey::Key(&end_boundary_key_buf);
+            let found = iter
+                .seek_for_prev(seek_key)
+                .map_err(|e| e.into())
+                .context(Initialization)?;
+
+            if !found {
+                debug!(
+                    "RocksImpl find table unit pairs stop scanning by table id, because of no entries to scan."
+                );
+                break;
+            }
+
+            if !self
+                .log_encoding
+                .is_log_key(iter.key())
+                .map_err(|e| Box::new(e) as _)
+                .context(Decoding)?
+            {
+                debug!(
+                    "RocksImpl find table unit pairs stop scanning by table id, because log keys are exhausted."
+                );
+                break;
+            }
+
+            // Found a valid log key by `region_id` and `current_table_id`, check and maybe
+            // insert the related information into `table_max_seqs`.
+            let log_key = self
+                .log_encoding
+                .decode_key(iter.key())
+                .map_err(|e| Box::new(e) as _)
+                .context(Decoding)?;
+            debug!(
+                "RocksImpl has found log key by table id, log key:{:?}",
+                log_key
+            );
+
+            if log_key.region_id != region_id {
+                debug!("RocksImpl find table unit pairs stop scanning by table id, because has encountered next region id,
+                    searching table id:{}
+                    current region id:{},
+                    next region id:{}", current_table_id, region_id, log_key.region_id);
+                break;
+            }
+
             table_max_seqs.insert(log_key.table_id, log_key.sequence_num);
 
             if log_key.table_id == 0 {
-                debug!("RocksImpl find table unit pairs stop scanning, because table unit 0 is reached");
+                debug!("RocksImpl find table unit pairs stop scanning by table id, because table id 0 is reached");
                 break;
             }
+
             current_table_id = log_key.table_id - 1;
         }
 
@@ -379,15 +469,12 @@ impl RocksImpl {
     /// Collect all the table units with its max sequence number from the db.
     ///
     /// Returns the mapping: table_id -> max_sequence_number
-    fn find_table_seqs_from_db(
-        &self,
-        region_id: RegionId,
-    ) -> Result<HashMap<TableId, SequenceNumber>> {
+    fn find_table_seqs_from_db(&self) -> Result<HashMap<TableId, SequenceNumber>> {
         // build the mapping: table_id -> max_sequence_number
         let mut table_max_seqs = HashMap::new();
 
         // scan the table unit information from the data part.
-        self.find_table_seqs_from_table_log(region_id, &mut table_max_seqs)?;
+        self.find_table_seqs_from_table_log(&mut table_max_seqs)?;
 
         // scan the table unit information from the meta part.
         self.find_table_seqs_from_table_meta(&mut table_max_seqs)?;
@@ -399,13 +486,13 @@ impl RocksImpl {
     fn get_or_create_table_unit(&self, location: WalLocation) -> Arc<TableUnit> {
         {
             let table_units = self.table_units.read().unwrap();
-            if let Some(table_unit) = table_units.get(&location) {
+            if let Some(table_unit) = table_units.get(&location.table_id) {
                 return table_unit.clone();
             }
         }
 
         let mut table_units = self.table_units.write().unwrap();
-        if let Some(table_unit) = table_units.get(&location) {
+        if let Some(table_unit) = table_units.get(&location.table_id) {
             return table_unit.clone();
         }
 
@@ -426,14 +513,14 @@ impl RocksImpl {
             delete_lock: Mutex::new(()),
         });
 
-        table_units.insert(location, table_unit.clone());
+        table_units.insert(location.table_id, table_unit.clone());
         table_unit
     }
 
     /// Get the table unit.
     fn table_unit(&self, location: &WalLocation) -> Option<Arc<TableUnit>> {
         let table_units = self.table_units.read().unwrap();
-        table_units.get(location).cloned()
+        table_units.get(&location.table_id).cloned()
     }
 }
 
@@ -442,33 +529,29 @@ pub struct Builder {
     wal_path: String,
     rocksdb_config: DBOptions,
     runtime: Arc<Runtime>,
-    versioned_region_id: VersionedRegionId,
 }
 
 impl Builder {
     pub fn with_default_rocksdb_config(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
-        versioned_region_id: VersionedRegionId,
     ) -> Self {
         let mut rocksdb_config = DBOptions::default();
         // TODO(yingwen): Move to another function?
         rocksdb_config.create_if_missing(true);
-        Self::new(wal_path, runtime, rocksdb_config, versioned_region_id)
+        Self::new(wal_path, runtime, rocksdb_config)
     }
 
     pub fn new(
         wal_path: impl Into<PathBuf>,
         runtime: Arc<Runtime>,
         rocksdb_config: DBOptions,
-        versioned_region_id: VersionedRegionId,
     ) -> Self {
         let wal_path: PathBuf = wal_path.into();
         Self {
             wal_path: wal_path.to_str().unwrap().to_owned(),
             rocksdb_config,
             runtime,
-            versioned_region_id,
         }
     }
 
@@ -486,7 +569,7 @@ impl Builder {
             max_seq_meta_encoding: MaxSeqMetaEncoding::newest(),
             table_units: RwLock::new(HashMap::new()),
         };
-        rocks_impl.build_table_units(self.versioned_region_id)?;
+        rocks_impl.build_table_units()?;
 
         Ok(rocks_impl)
     }
