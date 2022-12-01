@@ -277,6 +277,11 @@ impl Instance {
         replay_batch_size: usize,
         read_ctx: &ReadContext,
     ) -> Result<()> {
+        debug!(
+            "Instance recover table from wal, replay batch size:{}, table id:{}, shard id:{}",
+            replay_batch_size, table_data.id, table_data.shard_id
+        );
+
         let read_req = ReadRequest {
             location: table_data.location(),
             start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
@@ -321,6 +326,11 @@ impl Instance {
         log_entries: &VecDeque<LogEntry<ReadPayload>>,
     ) -> Result<()> {
         if log_entries.is_empty() {
+            info!(
+                "Instance replay an empty table log entries, table:{}, table_id:{:?}",
+                table_data.name, table_data.id
+            );
+
             // No data in wal
             return Ok(());
         }
