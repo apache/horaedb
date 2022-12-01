@@ -181,7 +181,7 @@ func (srv *Server) startServer(_ context.Context) error {
 	}
 	srv.procedureManager = procedureManager
 	dispatch := eventdispatch.NewDispatchImpl()
-	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage)
+	procedureFactory := procedure.NewFactory(id.NewAllocatorImpl(srv.etcdCli, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage, manager)
 	srv.procedureFactory = procedureFactory
 	srv.scheduler = coordinator.NewScheduler(manager, procedureManager, procedureFactory, dispatch)
 

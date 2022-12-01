@@ -42,6 +42,8 @@ type TopologyManager interface {
 	UpdateClusterView(ctx context.Context, state storage.ClusterState, shardNodes []storage.ShardNode) error
 	// CreateShardViews create shardViews.
 	CreateShardViews(ctx context.Context, shardViews []CreateShardView) error
+	// UpdateShardView update shardView.
+	UpdateShardView(ctx context.Context, shardView storage.ShardView) (ShardVersionUpdate, error)
 }
 
 type ShardTableIDs struct {
@@ -238,11 +240,37 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, tableID storage.T
 	// Update shardView in memory.
 	shardView.Version = prevVersion + 1
 	shardView.TableIDs = tableIDs
+	delete(m.tableShardMapping, tableID)
 
 	return ShardVersionUpdate{
 		ShardID:     shardID,
 		CurrVersion: prevVersion + 1,
 		PrevVersion: prevVersion,
+	}, nil
+}
+
+func (m *TopologyManagerImpl) UpdateShardView(ctx context.Context, shardView storage.ShardView) (ShardVersionUpdate, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if err := m.storage.UpdateShardView(ctx, storage.UpdateShardViewRequest{
+		ClusterID:     m.clusterID,
+		ShardView:     shardView,
+		LatestVersion: shardView.Version - 1,
+	}); err != nil {
+		return ShardVersionUpdate{}, errors.WithMessage(err, "storage update shard view")
+	}
+
+	// Update shardView in memory.
+	m.shardTablesMapping[shardView.ShardID] = &shardView
+	for _, tableID := range shardView.TableIDs {
+		m.tableShardMapping[tableID] = shardView.ShardID
+	}
+
+	return ShardVersionUpdate{
+		ShardID:     shardView.ShardID,
+		CurrVersion: shardView.Version,
+		PrevVersion: shardView.Version - 1,
 	}, nil
 }
 

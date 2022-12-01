@@ -4,6 +4,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -75,7 +76,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 		}, ShardInfos: shardInfos,
 	}
 
-	log.Info("registerNode", zap.String("name", req.Info.Endpoint), zap.String("info", req.Info.String()))
+	log.Info("registerNode", zap.String("name", req.Info.Endpoint), zap.String("info", fmt.Sprintf("%+v", registeredNode)))
 
 	err = s.h.GetClusterManager().RegisterNode(ctx, req.GetHeader().GetClusterName(), registeredNode)
 	if err != nil {

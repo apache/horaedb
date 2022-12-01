@@ -126,6 +126,11 @@ func computeOnlineNodeNum(nodes []cluster.RegisteredNode) uint32 {
 
 // Allocates shard ids across the registered nodes, and caller should ensure `minNodeCount <= len(allNodes)`.
 func allocNodeShards(shardTotal uint32, minNodeCount uint32, allNodes []cluster.RegisteredNode, shardIDs []storage.ShardID) ([]storage.ShardNode, error) {
+	// If the number of registered nodes exceeds the required number of nodes, intercept the first registered nodes.
+	if len(allNodes) > int(minNodeCount) {
+		allNodes = allNodes[:minNodeCount]
+	}
+
 	shards := make([]storage.ShardNode, 0, shardTotal)
 
 	perNodeShardCount := shardTotal / minNodeCount

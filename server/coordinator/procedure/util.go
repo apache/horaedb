@@ -32,3 +32,24 @@ func getRequestFromEvent[T any](event *fsm.Event) (T, error) {
 		return *new(T), ErrGetRequest.WithCausef("event arg type must be same as return type")
 	}
 }
+
+func IsContains(slice []string, target string) bool {
+	for _, a := range slice {
+		if a == target {
+			return true
+		}
+	}
+	return false
+}
+
+func IsSubSlice(subSlice []string, slice []string) bool {
+	if len(subSlice) > len(slice) {
+		return false
+	}
+	for _, val := range slice {
+		if !IsContains(slice, val) {
+			return false
+		}
+	}
+	return true
+}

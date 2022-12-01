@@ -212,19 +212,23 @@ func transferLeaderUpdateMetadataCallback(event *fsm.Event) {
 		return
 	}
 
-	shardNodes, err := request.cluster.GetShardNodesByShardID(request.shardID)
+	getNodeShardResult, err := request.cluster.GetNodeShards(ctx)
 	if err != nil {
 		cancelEventWithLog(event, err, "get shardNodes by shardID failed")
 		return
 	}
 
 	found := false
+	shardNodes := make([]storage.ShardNode, 0, len(getNodeShardResult.NodeShards))
 	var leaderShardNode storage.ShardNode
-	for _, shardNode := range shardNodes {
-		if shardNode.ShardRole == storage.ShardRoleLeader {
-			found = true
-			leaderShardNode = shardNode
-			leaderShardNode.NodeName = request.newLeaderNodeName
+	for _, shardNodeWithVersion := range getNodeShardResult.NodeShards {
+		if shardNodeWithVersion.ShardNode.ShardRole == storage.ShardRoleLeader {
+			leaderShardNode = shardNodeWithVersion.ShardNode
+			if leaderShardNode.ID == request.shardID {
+				found = true
+				leaderShardNode.NodeName = request.newLeaderNodeName
+			}
+			shardNodes = append(shardNodes, leaderShardNode)
 		}
 	}
 	if !found {
@@ -232,7 +236,7 @@ func transferLeaderUpdateMetadataCallback(event *fsm.Event) {
 		return
 	}
 
-	err = request.cluster.UpdateClusterView(ctx, storage.ClusterStateStable, []storage.ShardNode{leaderShardNode})
+	err = request.cluster.UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
 	if err != nil {
 		cancelEventWithLog(event, storage.ErrUpdateClusterViewConflict, "update cluster view")
 		return

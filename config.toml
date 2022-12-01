@@ -7,7 +7,7 @@ wal-dir = "/tmp/ceresmeta0/wal"
 data-dir = "/tmp/ceresmeta0/data"
 node-name = "meta0"
 initial-cluster = "meta0=http://127.0.0.1:2380"
-default-cluster-node-count = 1
+default-cluster-node-count = 2
 
 [etcd-log]
 file = "/tmp/ceresmeta0/etcd.log"

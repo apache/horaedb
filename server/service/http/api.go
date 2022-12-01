@@ -47,6 +47,7 @@ func (a *API) NewAPIRouter() *Router {
 	// Register post API.
 	router.Post("/getShardTables", a.getShardTables)
 	router.Post("/transferLeader", a.transferLeader)
+	router.Post("/split", a.split)
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
 
@@ -232,4 +233,59 @@ func (a *API) dropTable(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	a.respond(writer, nil)
+}
+
+type SplitRequest struct {
+	ClusterName string   `json:"clusterName"`
+	SchemaName  string   `json:"schemaName"`
+	ShardID     uint32   `json:"shardID"`
+	SplitTables []string `json:"splitTables"`
+	NodeName    string   `json:"nodeName"`
+}
+
+func (a *API) split(writer http.ResponseWriter, req *http.Request) {
+	var splitRequest SplitRequest
+	err := json.NewDecoder(req.Body).Decode(&splitRequest)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		a.respondError(writer, ErrParseRequest, nil)
+		return
+	}
+	ctx := context.Background()
+
+	c, err := a.clusterManager.GetCluster(ctx, splitRequest.ClusterName)
+	if err != nil {
+		log.Error("cluster not found", zap.String("clusterName", splitRequest.ClusterName), zap.Error(err))
+		a.respondError(writer, cluster.ErrClusterNotFound, "cluster not found")
+		return
+	}
+
+	newShardID, err := c.AllocShardID(ctx)
+	if err != nil {
+		log.Error("alloc shard id failed")
+		a.respondError(writer, ErrAllocShardID, "alloc shard id failed")
+		return
+	}
+
+	splitProcedure, err := a.procedureFactory.CreateSplitProcedure(ctx, procedure.SplitRequest{
+		ClusterName:    splitRequest.ClusterName,
+		SchemaName:     splitRequest.SchemaName,
+		TableNames:     splitRequest.SplitTables,
+		ShardID:        storage.ShardID(splitRequest.ShardID),
+		NewShardID:     storage.ShardID(newShardID),
+		TargetNodeName: splitRequest.NodeName,
+	})
+	if err != nil {
+		log.Error("create split procedure", zap.Error(err))
+		a.respondError(writer, ErrCreateProcedure, "create split procedure")
+		return
+	}
+
+	if err := a.procedureManager.Submit(ctx, splitProcedure); err != nil {
+		log.Error("submit split procedure", zap.Error(err))
+		a.respondError(writer, ErrSubmitProcedure, "submit split procedure")
+		return
+	}
+
+	a.respond(writer, newShardID)
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/id"
@@ -98,6 +99,13 @@ func (c *Cluster) GetShardTables(shardIDs []storage.ShardID, nodeName string) ma
 			Tables: tableInfos,
 		}
 	}
+
+	for _, shardID := range shardIDs {
+		_, exists := result[shardID]
+		if !exists {
+			result[shardID] = ShardTables{}
+		}
+	}
 	return result
 }
 
@@ -130,6 +138,27 @@ func (c *Cluster) DropTable(ctx context.Context, schemaName, tableName string) (
 	}
 	log.Info("drop table success", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName), zap.String("result", fmt.Sprintf("%+v", ret)))
 	return ret, nil
+}
+
+func (c *Cluster) UpdateShardTables(ctx context.Context, shardTablesArr []ShardTables) error {
+	for _, shardTables := range shardTablesArr {
+		tableIDs := make([]storage.TableID, 0, len(shardTables.Tables))
+		for _, table := range shardTables.Tables {
+			tableIDs = append(tableIDs, table.ID)
+		}
+
+		_, err := c.topologyManager.UpdateShardView(ctx, storage.ShardView{
+			ShardID:   shardTables.Shard.ID,
+			Version:   shardTables.Shard.Version,
+			TableIDs:  tableIDs,
+			CreatedAt: uint64(time.Now().UnixMilli()),
+		})
+		if err != nil {
+			return errors.WithMessagef(err, "update shard tables")
+		}
+	}
+
+	return nil
 }
 
 // GetOrCreateSchema the second output parameter bool: returns true if the schema was newly created.
@@ -295,6 +324,13 @@ func (c *Cluster) GetNodeShards(_ context.Context) (GetNodeShardsResult, error) 
 		ClusterTopologyVersion: c.topologyManager.GetVersion(),
 		NodeShards:             shardNodesWithVersion,
 	}, nil
+}
+
+func (c *Cluster) GetClusterViewVersion() uint64 {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.topologyManager.GetVersion()
 }
 
 func (c *Cluster) GetClusterMinNodeCount() uint32 {

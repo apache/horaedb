@@ -52,15 +52,16 @@ func dropTablePrepareCallback(event *fsm.Event) {
 		log.Warn("drop non-existing table", zap.String("schema", request.rawReq.GetSchemaName()), zap.String("table", request.rawReq.GetName()))
 		return
 	}
-	result, err := request.cluster.DropTable(request.ctx, request.rawReq.GetSchemaName(), request.rawReq.GetName())
-	if err != nil {
-		cancelEventWithLog(event, err, "cluster drop table")
-		return
-	}
 
 	shardNodesResult, err := request.cluster.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get shard by table id")
+		return
+	}
+
+	result, err := request.cluster.DropTable(request.ctx, request.rawReq.GetSchemaName(), request.rawReq.GetName())
+	if err != nil {
+		cancelEventWithLog(event, err, "cluster drop table")
 		return
 	}
 

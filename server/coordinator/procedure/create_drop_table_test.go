@@ -21,12 +21,12 @@ func TestCreateAndDropTable(t *testing.T) {
 	testTableNum := 20
 	// Create table.
 	for i := 0; i < testTableNum; i++ {
-		tableName := fmt.Sprintf("%s_%d", testTableName, i)
+		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
 		testCreateTable(t, dispatch, c, tableName)
 	}
 	// Check get table.
 	for i := 0; i < testTableNum; i++ {
-		tableName := fmt.Sprintf("%s_%d", testTableName, i)
+		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
 		table, b, err := c.GetTable(testSchemaName, tableName)
 		re.NoError(err)
 		re.Equal(b, true)
@@ -47,12 +47,12 @@ func TestCreateAndDropTable(t *testing.T) {
 
 	// Drop table.
 	for i := 0; i < testTableNum; i++ {
-		tableName := fmt.Sprintf("%s_%d", testTableName, i)
+		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
 		testDropTable(t, dispatch, c, tableName)
 	}
 	// Check table not exists.
 	for i := 0; i < testTableNum; i++ {
-		tableName := fmt.Sprintf("%s_%d", testTableName, i)
+		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
 		_, b, err := c.GetTable(testSchemaName, tableName)
 		re.NoError(err)
 		re.Equal(b, false)

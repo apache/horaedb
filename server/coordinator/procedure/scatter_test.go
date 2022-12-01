@@ -22,7 +22,9 @@ func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
 	totalShardNum := c.GetTotalShardNum()
 	shardIDs := make([]storage.ShardID, 0, totalShardNum)
 	for i := uint32(0); i < totalShardNum; i++ {
-		shardIDs = append(shardIDs, storage.ShardID(i))
+		shardID, err := c.AllocShardID(ctx)
+		re.NoError(err)
+		shardIDs = append(shardIDs, storage.ShardID(shardID))
 	}
 	p := NewScatterProcedure(dispatch, c, 1, shardIDs)
 	go func() {

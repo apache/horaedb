@@ -44,6 +44,10 @@ type DropTableResult struct {
 	ShardVersionUpdate ShardVersionUpdate
 }
 
+type UpdateShardTablesResult struct {
+	ShardVersionUpdate ShardVersionUpdate
+}
+
 type ShardVersionUpdate struct {
 	ShardID     storage.ShardID
 	CurrVersion uint64

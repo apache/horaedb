@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	testTableName            = "testTable"
+	testTableName0           = "table0"
+	testTableName1           = "table1"
 	testSchemaName           = "testSchemaName"
 	nodeName0                = "node0"
 	nodeName1                = "node1"

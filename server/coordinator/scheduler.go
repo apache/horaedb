@@ -134,6 +134,7 @@ func (s *Scheduler) applyMetadataShardInfo(ctx context.Context, node string, rea
 
 		// 1. Shard exists in metadata and not exists in node, reopen lack shards on node.
 		if !exists {
+			log.Info("Shard exists in metadata and not exists in node, reopen lack shards on node.", zap.String("node", node), zap.Uint32("shardID", uint32(expectShard.ID)))
 			if err := s.dispatch.OpenShard(ctx, node, eventdispatch.OpenShardRequest{Shard: expectShard}); err != nil {
 				return errors.WithMessagef(err, "reopen shard failed, shardInfo:%d", expectShard.ID)
 			}
@@ -146,6 +147,7 @@ func (s *Scheduler) applyMetadataShardInfo(ctx context.Context, node string, rea
 		}
 
 		// 3. Shard exists in both metadata and node, versions are inconsistent, close and reopen invalid shard on node.
+		log.Info("Shard exists in both metadata and node, versions are inconsistent, close and reopen invalid shard on node.", zap.String("node", node), zap.Uint32("shardID", uint32(expectShard.ID)))
 		if err := s.dispatch.CloseShard(ctx, node, eventdispatch.CloseShardRequest{ShardID: uint32(expectShard.ID)}); err != nil {
 			return errors.WithMessagef(err, "close shard failed, shardInfo:%d", expectShard.ID)
 		}
@@ -160,6 +162,7 @@ func (s *Scheduler) applyMetadataShardInfo(ctx context.Context, node string, rea
 		if ok {
 			continue
 		}
+		log.Info("Shard exists in node and not exists in metadata, close extra shard on node.", zap.String("node", node), zap.Uint32("shardID", uint32(realShard.ID)))
 		if err := s.dispatch.CloseShard(ctx, node, eventdispatch.CloseShardRequest{ShardID: uint32(realShard.ID)}); err != nil {
 			return errors.WithMessagef(err, "close shard failed, shardInfo:%d", realShard.ID)
 		}
