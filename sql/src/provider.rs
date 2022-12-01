@@ -118,7 +118,7 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
                 return SchemaNotFound {
                     name: resolved.schema,
                 }
-                .fail()
+                .fail();
             }
         };
 
