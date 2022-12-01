@@ -5,7 +5,7 @@
 use std::{path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION};
+use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
 use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
@@ -140,7 +140,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         }
 
         let default_versioned_region_id = VersionedRegionId {
-            version: DEFAULT_SHARD_VERSION,
+            version: DEFAULT_CLUSTER_VERSION,
             id: DEFAULT_SHARD_ID as RegionId,
         };
 

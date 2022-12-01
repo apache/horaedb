@@ -879,7 +879,7 @@ mod tests {
         manager::Manager,
         schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
-    use common_types::table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION};
+    use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
     use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
         engine::{TableEngineRef, TableState},
@@ -930,7 +930,7 @@ mod tests {
             options: HashMap::new(),
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
-            shard_version: DEFAULT_SHARD_VERSION,
+            cluster_version: DEFAULT_CLUSTER_VERSION,
         }
     }
 

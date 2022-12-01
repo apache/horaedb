@@ -415,7 +415,6 @@ impl TableUnit {
         );
 
         // Starts from the latest bucket, find last sequence of given region id.
-        let mut last_sequence = common_types::MIN_SEQUENCE_NUMBER;
         for bucket in buckets.iter().rev() {
             let table_name = bucket.wal_shard_table(region_id);
 

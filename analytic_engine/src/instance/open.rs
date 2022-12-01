@@ -205,7 +205,7 @@ impl Instance {
             .load_data(
                 WalLocation::new(
                     request.shard_id as RegionId,
-                    request.shard_version,
+                    request.cluster_version,
                     request.table_id.as_u64(),
                 ),
                 true,
@@ -252,7 +252,7 @@ impl Instance {
                 &self.file_purger,
                 space.mem_usage_collector.clone(),
                 request.shard_id,
-                request.shard_version,
+                request.cluster_version,
             )
             .context(RecoverTableData {
                 space_id: table_meta.space_id,
@@ -283,7 +283,7 @@ impl Instance {
         read_ctx: &ReadContext,
     ) -> Result<()> {
         debug!(
-            "Instance recover table from wal, replay batch size:{}, table id:{}, shard id:{}",
+            "Instance recover table from wal, replay batch size:{}, table id:{}, shard info:{:?}",
             replay_batch_size, table_data.id, table_data.shard_info
         );
 

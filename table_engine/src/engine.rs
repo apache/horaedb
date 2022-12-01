@@ -7,7 +7,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use common_types::{
     schema::Schema,
-    table::{ShardId, ShardVersion, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+    table::{ClusterVersion, ShardId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
 };
 use common_util::runtime::Runtime;
 use proto::sys_catalog as sys_catalog_pb;
@@ -162,8 +162,9 @@ pub struct CreateTableRequest {
     /// It will be assigned the default value in standalone mode,
     /// and just be useful in cluster mode
     pub shard_id: ShardId,
-    /// Shard version, it will change while cluster's topology changes.
-    pub shard_version: ShardVersion,
+    /// Cluster version of shard, it will change while cluster's topology
+    /// changes.
+    pub cluster_version: ClusterVersion,
 }
 
 impl From<CreateTableRequest> for sys_catalog_pb::TableEntry {
@@ -227,8 +228,8 @@ pub struct OpenTableRequest {
     pub engine: String,
     /// Shard id, shard is the table set about scheduling from nodes
     pub shard_id: ShardId,
-    /// Shard version, same as the one in [CreateTableRequest]
-    pub shard_version: ShardVersion,
+    /// Cluster version, same as the one in [CreateTableRequest]
+    pub cluster_version: ClusterVersion,
 }
 
 impl From<TableInfo> for OpenTableRequest {
@@ -244,7 +245,7 @@ impl From<TableInfo> for OpenTableRequest {
             table_id: table_info.table_id,
             engine: table_info.engine,
             shard_id: DEFAULT_SHARD_ID,
-            shard_version: DEFAULT_SHARD_VERSION,
+            cluster_version: DEFAULT_CLUSTER_VERSION,
         }
     }
 }

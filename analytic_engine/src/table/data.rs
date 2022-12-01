@@ -18,7 +18,7 @@ use arc_swap::ArcSwap;
 use arena::CollectorRef;
 use common_types::{
     schema::{Schema, Version},
-    table::{ShardId, ShardVersion},
+    table::{ClusterVersion, ShardId},
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
@@ -79,12 +79,15 @@ pub type MemTableId = u64;
 #[derive(Debug, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
-    pub version: ShardVersion,
+    pub cluster_version: ClusterVersion,
 }
 
 impl TableShardInfo {
-    pub fn new(shard_id: ShardId, version: ShardVersion) -> Self {
-        Self { shard_id: id, version }
+    pub fn new(shard_id: ShardId, cluster_version: ClusterVersion) -> Self {
+        Self {
+            shard_id,
+            cluster_version,
+        }
     }
 }
 
@@ -221,7 +224,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(request.shard_id, request.shard_version),
+            shard_info: TableShardInfo::new(request.shard_id, request.cluster_version),
         })
     }
 
@@ -234,7 +237,7 @@ impl TableData {
         purger: &FilePurger,
         mem_usage_collector: CollectorRef,
         shard_id: ShardId,
-        shard_version: ShardVersion,
+        cluster_version: ClusterVersion,
     ) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
@@ -260,7 +263,7 @@ impl TableData {
             last_flush_time_ms: AtomicU64::new(0),
             dropped: AtomicBool::new(false),
             metrics,
-            shard_info: TableShardInfo::new(shard_id, shard_version),
+            shard_info: TableShardInfo::new(shard_id, cluster_version),
         })
     }
 
@@ -510,7 +513,7 @@ impl TableData {
     #[inline]
     pub fn wal_location(&self) -> WalLocation {
         let region_id = self.shard_info.shard_id as RegionId;
-        let region_version = self.shard_info.version;
+        let region_version = self.shard_info.cluster_version;
         let table_id = self.id;
 
         WalLocation::new(region_id, region_version, table_id.as_u64())
@@ -608,7 +611,7 @@ pub mod tests {
     use arena::NoopCollector;
     use common_types::{
         datum::DatumKind,
-        table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     };
     use common_util::config::ReadableDuration;
     use table_engine::{engine::TableState, table::SchemaId};
@@ -655,7 +658,7 @@ pub mod tests {
         table_id: TableId,
         table_name: String,
         shard_id: ShardId,
-        shard_version: ShardVersion,
+        cluster_version: ClusterVersion,
         write_handle: Option<WriteHandle>,
     }
 
@@ -675,8 +678,8 @@ pub mod tests {
             self
         }
 
-        pub fn shard_version(mut self, shard_version: ShardVersion) -> Self {
-            self.shard_version = shard_version;
+        pub fn cluster_version(mut self, cluster_version: ClusterVersion) -> Self {
+            self.cluster_version = cluster_version;
             self
         }
 
@@ -700,7 +703,7 @@ pub mod tests {
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: self.shard_id,
-                shard_version: self.shard_version,
+                cluster_version: self.cluster_version,
             };
 
             let write_handle = self.write_handle.unwrap_or_else(|| {
@@ -729,7 +732,7 @@ pub mod tests {
                 table_id: table::new_table_id(2, 1),
                 table_name: "mocked_table".to_string(),
                 shard_id: DEFAULT_SHARD_ID,
-                shard_version: DEFAULT_SHARD_VERSION,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
                 write_handle: None,
             }
         }
@@ -740,18 +743,18 @@ pub mod tests {
         let table_id = table::new_table_id(100, 30);
         let table_name = "new_table".to_string();
         let shard_id = 42;
-        let shard_version = 1;
+        let cluster_version = 1;
         let table_data = TableDataMocker::default()
             .table_id(table_id)
             .table_name(table_name.clone())
             .shard_id(shard_id)
-            .shard_version(shard_version)
+            .cluster_version(cluster_version)
             .build();
 
         assert_eq!(table_id, table_data.id);
         assert_eq!(table_name, table_data.name);
         assert_eq!(
-            TableShardInfo::new(shard_id, shard_version),
+            TableShardInfo::new(shard_id, cluster_version),
             table_data.shard_info
         );
         assert_eq!(0, table_data.last_sequence());

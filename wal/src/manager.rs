@@ -7,7 +7,7 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
 use common_types::{
-    table::{TableId, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::runtime::Runtime;
@@ -250,7 +250,7 @@ impl Default for ReadRequest {
         Self {
             location: WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 TableId::MIN,
             ),
             start: ReadBoundary::Min,

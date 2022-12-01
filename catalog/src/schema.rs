@@ -7,7 +7,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use common_types::{
     column_schema::ColumnSchema,
-    table::{ShardId, ShardVersion},
+    table::{ClusterVersion, ShardId},
 };
 use snafu::{Backtrace, Snafu};
 use table_engine::{
@@ -217,8 +217,8 @@ pub struct CreateTableRequest {
     pub state: TableState,
     /// Shard id of the table
     pub shard_id: ShardId,
-    /// Shard version
-    pub shard_version: ShardVersion,
+    /// Cluster version of shard
+    pub cluster_version: ClusterVersion,
 }
 
 impl CreateTableRequest {
@@ -235,7 +235,7 @@ impl CreateTableRequest {
             options: self.options,
             state: self.state,
             shard_id: self.shard_id,
-            shard_version: self.shard_version,
+            cluster_version: self.cluster_version,
         }
     }
 }

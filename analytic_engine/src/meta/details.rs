@@ -764,7 +764,7 @@ mod tests {
         datum::DatumKind,
         schema,
         schema::Schema,
-        table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
@@ -858,7 +858,7 @@ mod tests {
 
         async fn open_manifest(&self) -> ManifestImpl {
             let versioned_region_id = VersionedRegionId {
-                version: DEFAULT_SHARD_VERSION,
+                version: DEFAULT_CLUSTER_VERSION,
                 id: DEFAULT_SHARD_ID as RegionId,
             };
 
@@ -957,7 +957,7 @@ mod tests {
         ) {
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let add_table = self.meta_update_add_table(table_id);
@@ -976,7 +976,7 @@ mod tests {
         ) {
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let drop_table = self.meta_update_drop_table(table_id);
@@ -996,7 +996,7 @@ mod tests {
         ) {
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
@@ -1047,7 +1047,7 @@ mod tests {
 
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let alter_options = self.meta_update_alter_table_options(table_id);
@@ -1067,7 +1067,7 @@ mod tests {
 
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let alter_schema = self.meta_update_alter_table_schema(table_id);
@@ -1096,7 +1096,7 @@ mod tests {
 
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let expected_table_manifest_data = manifest_data_builder.build();
@@ -1170,7 +1170,7 @@ mod tests {
             let table_id = ctx.alloc_table_id();
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
@@ -1204,7 +1204,7 @@ mod tests {
             let table_id = ctx.alloc_table_id();
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
@@ -1362,7 +1362,7 @@ mod tests {
 
         let location = WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id.as_u64(),
         );
         let log_store = {

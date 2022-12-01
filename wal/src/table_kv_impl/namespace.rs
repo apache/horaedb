@@ -1450,7 +1450,7 @@ mod tests {
 
     use common_types::{
         bytes::BytesMut,
-        table::{DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     };
     use common_util::runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
@@ -1756,7 +1756,7 @@ mod tests {
             let table_id = 123;
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             );
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;

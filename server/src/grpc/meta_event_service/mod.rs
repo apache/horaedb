@@ -153,11 +153,25 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             msg: "fail to open shards in cluster",
         })?;
 
+    let topology = ctx
+        .cluster
+        .fetch_nodes()
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "fail to get topology while opening shard, request:{:?}",
+                request
+            ),
+        })?;
+
     let shard_info = tables_of_shard.shard_info;
     let default_catalog = ctx.default_catalog()?;
     let opts = OpenOptions {
         table_engine: ctx.table_engine,
     };
+
     for table in tables_of_shard.tables {
         let schema = default_catalog
             .schema_by_name(&table.schema_name)
@@ -179,7 +193,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             table_id: TableId::new(table.id),
             engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             shard_id: shard_info.id,
-            shard_version: shard_info.version,
+            cluster_version: topology.cluster_topology_version,
         };
         schema
             .open_table(open_request.clone(), opts.clone())
@@ -264,6 +278,19 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
+    let topology = ctx
+        .cluster
+        .fetch_nodes()
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "fail to get topology while creating table, request:{:?}",
+                request
+            ),
+        })?;
+
     let shard_info = request
         .update_shard_info
         .context(ErrNoCause {
@@ -305,6 +332,7 @@ async fn handle_create_table_on_shard(
                 request.encoded_schema
             ),
         })?;
+
     let create_table_request = CreateTableRequest {
         catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
         schema_name: table.schema_name,
@@ -315,7 +343,7 @@ async fn handle_create_table_on_shard(
         options: request.options,
         state: TableState::Stable,
         shard_id: shard_info.id,
-        shard_version: shard_info.version,
+        cluster_version: topology.cluster_topology_version,
     };
     let create_opts = CreateOptions {
         table_engine: ctx.table_engine,

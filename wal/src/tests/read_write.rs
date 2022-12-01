@@ -6,7 +6,7 @@ use std::{
 };
 
 use common_types::{
-    table::{TableId, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     SequenceNumber,
 };
 
@@ -92,7 +92,7 @@ fn test_simple_read_write_default_batch<B: WalBuilder>(builder: B) {
         &env,
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
     ));
@@ -109,7 +109,7 @@ fn test_simple_read_write_different_batch_size<B: WalBuilder>(builder: B) {
             &env,
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
         ));
@@ -318,7 +318,7 @@ async fn simple_read_write_with_range_and_wal_internal<B: WalBuilder>(
 async fn read_with_boundary<B: WalBuilder>(env: &TestEnv<B>) {
     let wal = env.build_wal().await;
     let versioned_region_id = VersionedRegionId {
-        version: DEFAULT_SHARD_VERSION,
+        version: DEFAULT_CLUSTER_VERSION,
         id: DEFAULT_SHARD_ID as u64,
     };
     let location = WalLocation {
@@ -417,12 +417,12 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
         let read_write_0 = env.runtime.spawn(simple_read_write_with_wal(
             env.clone(),
             wal.clone(),
-            WalLocation::new(DEFAULT_SHARD_ID as RegionId, DEFAULT_SHARD_VERSION, i),
+            WalLocation::new(DEFAULT_SHARD_ID as RegionId, DEFAULT_CLUSTER_VERSION, i),
         ));
         let read_write_1 = env.runtime.spawn(simple_read_write_with_wal(
             env.clone(),
             wal.clone(),
-            WalLocation::new(DEFAULT_SHARD_ID as RegionId, DEFAULT_SHARD_VERSION, i),
+            WalLocation::new(DEFAULT_SHARD_ID as RegionId, DEFAULT_CLUSTER_VERSION, i),
         ));
         handles.push(read_write_0);
         handles.push(read_write_1);
@@ -447,7 +447,7 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
                 wal.clone(),
                 WalLocation::new(
                     DEFAULT_SHARD_ID as RegionId,
-                    DEFAULT_SHARD_VERSION,
+                    DEFAULT_CLUSTER_VERSION,
                     table_id,
                 ),
                 0,
@@ -470,7 +470,7 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -480,7 +480,7 @@ async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
     let read_req = ReadRequest {
         location: WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         start: ReadBoundary::Included(seq + 1 - write_batch.entries.len() as u64),
@@ -513,7 +513,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             start_val,
@@ -529,7 +529,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             mid_val,
@@ -547,7 +547,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_1,
@@ -560,7 +560,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_2,
@@ -575,7 +575,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_3,
@@ -595,7 +595,7 @@ async fn complex_read_write<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_4,
@@ -615,7 +615,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -631,7 +631,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq,
@@ -642,7 +642,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -653,7 +653,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     wal.mark_delete_entries_up_to(
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq,
@@ -663,7 +663,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     let read_req = ReadRequest {
         location: WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         start: ReadBoundary::Min,
@@ -681,7 +681,7 @@ async fn simple_write_delete<B: WalBuilder>(env: &TestEnv<B>) {
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -700,7 +700,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -716,7 +716,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq,
@@ -728,7 +728,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
     wal.mark_delete_entries_up_to(
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq / 2,
@@ -738,7 +738,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
     let read_req = ReadRequest {
         location: WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         start: ReadBoundary::Min,
@@ -757,7 +757,7 @@ async fn write_delete_half<B: WalBuilder>(env: &TestEnv<B>) {
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -776,7 +776,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id_1,
             ),
             0,
@@ -793,7 +793,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id_2,
             ),
             10,
@@ -809,7 +809,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
     wal.mark_delete_entries_up_to(
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id_1,
         ),
         seq_1,
@@ -819,7 +819,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
     let read_req = ReadRequest {
         location: WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id_1,
         ),
         start: ReadBoundary::Min,
@@ -837,7 +837,7 @@ async fn write_delete_multiple_regions<B: WalBuilder>(env: &TestEnv<B>) {
         wal.clone(),
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id_2,
         ),
         seq_2,
@@ -857,7 +857,7 @@ async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &Te
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -873,7 +873,7 @@ async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &Te
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -889,7 +889,7 @@ async fn sequence_increase_monotonically_multiple_writes<B: WalBuilder>(env: &Te
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -918,7 +918,7 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -934,7 +934,7 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
     wal.mark_delete_entries_up_to(
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_1,
@@ -946,7 +946,7 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -962,7 +962,7 @@ async fn sequence_increase_monotonically_delete_write<B: WalBuilder>(env: &TestE
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -984,7 +984,7 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -1000,7 +1000,7 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
     wal.mark_delete_entries_up_to(
         WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ),
         seq_1,
@@ -1019,7 +1019,7 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id,
             ),
             0,
@@ -1034,7 +1034,7 @@ async fn sequence_increase_monotonically_delete_reopen_write<B: WalBuilder>(env:
     let last_seq = wal
         .sequence_num(WalLocation::new(
             DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_SHARD_VERSION,
+            DEFAULT_CLUSTER_VERSION,
             table_id,
         ))
         .await
@@ -1057,7 +1057,7 @@ async fn write_scan<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id_1,
             ),
             0,
@@ -1076,7 +1076,7 @@ async fn write_scan<B: WalBuilder>(env: &TestEnv<B>) {
             wal.clone(),
             WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_SHARD_VERSION,
+                DEFAULT_CLUSTER_VERSION,
                 table_id_2,
             ),
             0,

@@ -12,7 +12,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::{
     bytes::{BufMut, SafeBuf, SafeBufMut},
-    table::{TableId, DEFAULT_SHARD_ID, DEFAULT_SHARD_VERSION},
+    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     SequenceNumber,
 };
 use common_util::{
@@ -54,7 +54,7 @@ impl WalBuilder for RocksWalBuilder {
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let versioned_region_id = VersionedRegionId {
-            version: DEFAULT_SHARD_VERSION,
+            version: DEFAULT_CLUSTER_VERSION,
             id: DEFAULT_SHARD_ID as RegionId,
         };
         let wal_builder = rocks_impl::manager::Builder::with_default_rocksdb_config(
