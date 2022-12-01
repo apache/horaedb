@@ -180,11 +180,11 @@ fn test_move_from_nodes<B: WalBuilder>(builder: B) {
     let region_id = 1;
     let table_id = 0;
 
-    // Use two wal managers to represent datanode 1 and datanode 2.
-    // At first, write some things in node 1.
-    let wal_1 = env.runtime.block_on(async { env.build_wal().await });
-    let region_version_1 = 0;
     env.runtime.block_on(async {
+        // Use two wal managers to represent datanode 1 and datanode 2.
+        // At first, write some things in node 1.
+        let wal_1 = env.build_wal().await;
+        let region_version_1 = 0;
         simple_read_write_with_range_and_wal(
             &env,
             wal_1.clone(),
@@ -193,13 +193,11 @@ fn test_move_from_nodes<B: WalBuilder>(builder: B) {
             10,
         )
         .await;
-    });
 
-    // The table are move to node 2 but in the same shard, so its region id is still
-    // 0, but region version changed to 1 for distinguishing this moving.
-    let wal_2 = env.runtime.block_on(async { env.build_wal().await });
-    let region_version_2 = 1;
-    env.runtime.block_on(async {
+        // The table are move to node 2 but in the same shard, so its region id is still
+        // 0, but region version changed to 1 for distinguishing this moving.
+        let wal_2 = env.build_wal().await;
+        let region_version_2 = 1;
         simple_read_write_with_range_and_wal(
             &env,
             wal_2,
@@ -208,13 +206,11 @@ fn test_move_from_nodes<B: WalBuilder>(builder: B) {
             20,
         )
         .await;
-    });
 
-    // Finally, the table with the same shard is moved to node 1 again.
-    // If version changed, wal manager can distinguish that
-    // the region info in it is outdated, it should reopen the region.
-    let region_version_3 = 2;
-    env.runtime.block_on(async {
+        // Finally, the table with the same shard is moved to node 1 again.
+        // If version changed, wal manager can distinguish that
+        // the region info in it is outdated, it should reopen the region.
+        let region_version_3 = 2;
         simple_read_write_with_range_and_wal(
             &env,
             wal_1,

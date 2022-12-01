@@ -222,6 +222,7 @@ struct NamespaceInner<T> {
     table_kv: T,
     entry: NamespaceEntry,
     bucket_set: RwLock<BucketSet>,
+    // TODO: should use some strategies(such as lru) to clean the invalid table unit.
     table_units: RwLock<HashMap<WalLocation, TableUnitRef>>,
     meta_table_name: String,
     table_unit_meta_tables: Vec<String>,

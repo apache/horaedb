@@ -238,6 +238,7 @@ impl<M: MessageQueue> fmt::Debug for Namespace<M> {
 
 struct NamespaceInner<M: MessageQueue> {
     namespace: String,
+    // TODO: should use some strategies(such as lru) to clean the invalid region.
     regions: Arc<RwLock<HashMap<VersionedRegionId, RegionRef<M>>>>,
     message_queue: Arc<M>,
     meta_encoding: MetaEncoding,

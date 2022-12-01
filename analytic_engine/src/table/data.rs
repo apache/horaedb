@@ -507,9 +507,7 @@ impl TableData {
         self.table_options().storage_format
     }
 
-    /// Get the wal's region info of this table
-    ///
-    /// Now we just use table id as region id
+    /// Get the table's wal location of this table.
     #[inline]
     pub fn wal_location(&self) -> WalLocation {
         let region_id = self.shard_info.shard_id as RegionId;

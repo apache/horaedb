@@ -124,6 +124,7 @@ pub mod error {
     define_result!(Error);
 }
 
+/// Decide where to write logs
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
     pub versioned_region_id: VersionedRegionId,
@@ -144,6 +145,11 @@ impl WalLocation {
     }
 }
 
+/// Region id with version
+///
+/// The `version` may be mapped to cluster version(while shard moved from nodes,
+/// it may changed to mark this moving) now.
+/// Introduce this field is for solving the following bug: https://github.com/CeresDB/ceresdb/issues/441
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VersionedRegionId {
     pub version: RegionVersion,
