@@ -11,6 +11,7 @@ pub struct StorageOptions {
     pub mem_cache_capacity: ReadableSize,
     pub mem_cache_partition_bits: usize,
     // 0 means disable disk cache
+    // Note: disk_cache_capacity % disk_cache_page_size should be 0
     pub disk_cache_capacity: ReadableSize,
     pub disk_cache_page_size: ReadableSize,
     pub disk_cache_path: String,

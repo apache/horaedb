@@ -528,7 +528,7 @@ mod test {
             ),
         ];
 
-        let store = prepare_store(page_size, 1000).await;
+        let store = prepare_store(page_size, 1024).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(1024, &input), expected);
         }
@@ -545,7 +545,7 @@ mod test {
             (32..100, vec![]),
         ];
 
-        let store = prepare_store(page_size, 1000).await;
+        let store = prepare_store(page_size, 1024).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
@@ -564,7 +564,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("1.sst");
-        let store = prepare_store(page_size, 1000).await;
+        let store = prepare_store(page_size, 1024).await;
 
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes
