@@ -7,10 +7,11 @@
 //! Page is used for reasons below:
 //! - reduce file size in case of there are too many request with small range.
 
-use std::{collections::BTreeMap, fmt::Display, io::Read, ops::Range, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
+use common_util::time::current_as_rfc3339;
 use futures::stream::BoxStream;
 use log::{debug, error, info};
 use lru::LruCache;
@@ -18,7 +19,7 @@ use prost::Message;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tokio::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::Mutex,
 };
@@ -49,6 +50,16 @@ enum Error {
         backtrace
     ))]
     DeserializeManifest {
+        source: serde_json::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Failed to serialize manifest, source:{}.\nbacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    SerializeManifest {
         source: serde_json::Error,
         backtrace: Backtrace,
     },
@@ -96,57 +107,12 @@ struct Manifest {
     page_size: usize,
 }
 
-struct CachedBytes {
-    /// file where bytes is saved on disk
-    file_path: String,
-}
-
-impl CachedBytes {
-    fn new(file_path: String) -> Self {
-        Self { file_path }
-    }
-
-    async fn persist(&self, value: Bytes) -> Result<()> {
-        let mut f = File::create(&self.file_path).await.with_context(|| Io {
-            file: self.file_path.clone(),
-        })?;
-
-        let pb_bytes = proto::cache::Bytes {
-            // TODO: CRC checking
-            crc: 0,
-            value: value.to_vec(),
-        };
-
-        let bs = pb_bytes.encode_to_vec();
-        f.write_all(&bs).await.with_context(|| PersistCache {
-            file: self.file_path.clone(),
-        })?;
-
-        Ok(())
-    }
-
-    async fn to_bytes(&self) -> Result<Bytes> {
-        let mut f = File::open(&self.file_path).await.with_context(|| Io {
-            file: self.file_path.clone(),
-        })?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf).await.with_context(|| Io {
-            file: self.file_path.clone(),
-        })?;
-
-        let bytes = proto::cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
-            file: self.file_path.clone(),
-        })?;
-
-        Ok(bytes.value.into())
-    }
-}
-
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
     cap: usize,
-    cache: Mutex<LruCache<String, CachedBytes>>,
+    // cache key is use as filename on disk
+    cache: Mutex<LruCache<String, ()>>,
 }
 
 impl DiskCache {
@@ -159,41 +125,96 @@ impl DiskCache {
     }
 
     // TODO: We now hold lock when doing IO, possible to release it?
-    async fn insert(&self, key: String, value: Bytes) -> Result<()> {
+    // cache key is also used as filename stored in local disk
+    async fn update_cache(&self, key: String, value: Option<Bytes>) -> Result<()> {
         let mut cache = self.cache.lock().await;
         debug!("key:{}, len:{}, cap:{}", &key, cache.len(), self.cap);
 
         if cache.len() >= self.cap {
-            let (_, cached_bytes) = cache.pop_lru().unwrap();
-            info!("Remove disk cache, key:{}", &cached_bytes.file_path);
-            if let Err(e) = tokio::fs::remove_file(&cached_bytes.file_path).await {
-                error!(
-                    "Remove disk cache failed, file:{}, err:{}",
-                    cached_bytes.file_path, e
-                );
+            let (filename, _) = cache.pop_lru().unwrap();
+            let file_path = std::path::Path::new(&self.root_dir)
+                .join(filename)
+                .into_os_string()
+                .into_string()
+                .unwrap();
+
+            info!("Remove disk cache, filename:{}", &file_path);
+            if let Err(e) = tokio::fs::remove_file(&file_path).await {
+                error!("Remove disk cache failed, file:{}, err:{}", file_path, e);
             }
         }
 
-        let file_path = std::path::Path::new(&self.root_dir)
-            .join(&key)
-            .into_os_string()
-            .into_string()
-            .unwrap();
-        let bytes = CachedBytes::new(file_path);
-        bytes.persist(value).await?;
-        cache.push(key, bytes);
+        if let Some(value) = value {
+            self.persist_bytes(&key, value).await?;
+        }
+        cache.push(key, ());
 
         Ok(())
     }
 
+    async fn insert(&self, key: String, value: Bytes) -> Result<()> {
+        self.update_cache(key, Some(value)).await
+    }
+
+    async fn recover(&self, filename: String) -> Result<()> {
+        self.update_cache(filename, None).await
+    }
+
     async fn get(&self, key: &str) -> Result<Option<Bytes>> {
         let mut cache = self.cache.lock().await;
-        if let Some(cached_bytes) = cache.get(key) {
+        if cache.get(key).is_some() {
             // TODO: release lock when doing IO
-            return cached_bytes.to_bytes().await.map(Some);
+            return self.read_bytes(key).await.map(Some);
         }
 
         Ok(None)
+    }
+
+    async fn persist_bytes(&self, filename: &str, value: Bytes) -> Result<()> {
+        let file_path = std::path::Path::new(&self.root_dir)
+            .join(filename)
+            .into_os_string()
+            .into_string()
+            .unwrap();
+
+        let mut f = File::create(&file_path).await.with_context(|| Io {
+            file: file_path.clone(),
+        })?;
+
+        let pb_bytes = proto::cache::Bytes {
+            // TODO: CRC checking
+            crc: 0,
+            value: value.to_vec(),
+        };
+
+        let bs = pb_bytes.encode_to_vec();
+        f.write_all(&bs).await.with_context(|| PersistCache {
+            file: file_path.clone(),
+        })?;
+
+        Ok(())
+    }
+
+    async fn read_bytes(&self, filename: &str) -> Result<Bytes> {
+        let file_path = std::path::Path::new(&self.root_dir)
+            .join(filename)
+            .into_os_string()
+            .into_string()
+            .unwrap();
+
+        let mut f = File::open(&file_path).await.with_context(|| Io {
+            file: file_path.clone(),
+        })?;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf).await.with_context(|| Io {
+            file: file_path.clone(),
+        })?;
+
+        let bytes = proto::cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
+            file: file_path.clone(),
+        })?;
+
+        Ok(bytes.value.into())
     }
 }
 
@@ -220,13 +241,17 @@ pub struct DiskCacheStore {
 
 impl DiskCacheStore {
     #[allow(dead_code)]
-    pub fn try_new(
+    pub async fn try_new(
         cache_dir: String,
         cap: usize,
         page_size: usize,
         underlying_store: Arc<dyn ObjectStore>,
     ) -> Result<Self> {
-        let cache = DiskCache::new(cache_dir, cap / page_size);
+        Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
+
+        let cache = DiskCache::new(cache_dir.clone(), cap / page_size);
+        Self::recover_cache(&cache_dir, &cache).await?;
+
         let size_cache = Arc::new(Mutex::new(LruCache::new(cap / page_size)));
 
         Ok(Self {
@@ -238,26 +263,68 @@ impl DiskCacheStore {
         })
     }
 
-    fn check_manifest(&self, cache_dir: &str) -> Result<()> {
-        let mut file = std::fs::File::open(std::path::Path::new(cache_dir).join(MANIFEST_FILE))
+    async fn create_manifest_if_not_exists(cache_dir: &str, page_size: usize) -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(std::path::Path::new(cache_dir).join(MANIFEST_FILE))
+            .await
             .with_context(|| Io {
                 file: MANIFEST_FILE.to_string(),
             })?;
 
+        let metadata = file.metadata().await.with_context(|| Io {
+            file: MANIFEST_FILE.to_string(),
+        })?;
+
+        // empty file, create a new one
+        if metadata.len() == 0 {
+            let manifest = Manifest {
+                page_size,
+                create_at: current_as_rfc3339(),
+            };
+
+            let buf = serde_json::to_vec_pretty(&manifest).context(SerializeManifest)?;
+            file.write_all(&buf).await.with_context(|| Io {
+                file: MANIFEST_FILE.to_string(),
+            })?;
+
+            return Ok(());
+        }
+
         let mut buf = Vec::new();
-        file.read_to_end(&mut buf).with_context(|| Io {
+        file.read_to_end(&mut buf).await.with_context(|| Io {
             file: MANIFEST_FILE.to_string(),
         })?;
 
         let manifest: Manifest = serde_json::from_slice(&buf).context(DeserializeManifest)?;
 
         ensure!(
-            manifest.page_size == self.page_size,
+            manifest.page_size == page_size,
             InvalidManifest {
                 old: manifest.page_size,
-                new: self.page_size
+                new: page_size
             }
         );
+
+        Ok(())
+    }
+
+    async fn recover_cache(cache_dir: &str, cache: &DiskCache) -> Result<()> {
+        let mut cache_dir = tokio::fs::read_dir(cache_dir).await.with_context(|| Io {
+            file: cache_dir.to_string(),
+        })?;
+
+        // TODO: sort by access time
+        while let Some(entry) = cache_dir.next_entry().await.with_context(|| Io {
+            file: "entry when iter cache_dir".to_string(),
+        })? {
+            cache
+                .recover(entry.file_name().into_string().unwrap())
+                .await?;
+        }
+
         Ok(())
     }
 
@@ -422,17 +489,19 @@ mod test {
         cache_dir: TempDir,
     }
 
-    fn prepare_store(page_size: usize, cap: usize) -> StoreWithCacheDir {
+    async fn prepare_store(page_size: usize, cap: usize) -> StoreWithCacheDir {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
         let cache_dir = tempdir().unwrap();
-        let store = DiskCacheStore::new(
+        let store = DiskCacheStore::try_new(
             cache_dir.as_ref().to_string_lossy().to_string(),
             cap,
             page_size,
             local_store,
-        );
+        )
+        .await
+        .unwrap();
 
         StoreWithCacheDir {
             inner: store,
@@ -440,8 +509,8 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_normalize_range_less_than_file_size() {
+    #[tokio::test]
+    async fn test_normalize_range_less_than_file_size() {
         let page_size = 16;
         let testcases = vec![
             (0..1, vec![0..16]),
@@ -454,14 +523,14 @@ mod test {
             ),
         ];
 
-        let store = prepare_store(page_size, 1000);
+        let store = prepare_store(page_size, 1000).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(1024, &input), expected);
         }
     }
 
-    #[test]
-    fn test_normalize_range_great_than_file_size() {
+    #[tokio::test]
+    async fn test_normalize_range_great_than_file_size() {
         let page_size = 16;
         let testcases = vec![
             (0..1, vec![0..16]),
@@ -471,7 +540,7 @@ mod test {
             (32..100, vec![]),
         ];
 
-        let store = prepare_store(page_size, 1000);
+        let store = prepare_store(page_size, 1000).await;
         for (input, expected) in testcases {
             assert_eq!(store.inner.normalize_range(20, &input), expected);
         }
@@ -480,7 +549,7 @@ mod test {
     fn test_file_exists(cache_dir: &TempDir, location: &Path, range: &Range<usize>) -> bool {
         cache_dir
             .path()
-            .join(DiskCacheStore::cache_key(&location, &range))
+            .join(DiskCacheStore::cache_key(location, range))
             .exists()
     }
 
@@ -490,7 +559,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("1.sst");
-        let store = prepare_store(page_size, 1000);
+        let store = prepare_store(page_size, 1000).await;
 
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes
@@ -545,7 +614,7 @@ mod test {
         // 51 byte
         let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
         let location = Path::from("remove_cache_file.sst");
-        let store = prepare_store(page_size, 32);
+        let store = prepare_store(page_size, 32).await;
         let mut buf = BytesMut::with_capacity(data.len() * 4);
         // extend 4 times, then location will contain 200 bytes, but cache cap is 32
         for _ in 0..4 {

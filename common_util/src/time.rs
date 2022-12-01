@@ -48,6 +48,11 @@ pub fn current_time_millis() -> u64 {
     Utc::now().timestamp_millis() as u64
 }
 
+#[inline]
+pub fn current_as_rfc3339() -> String {
+    Utc::now().to_rfc3339()
+}
+
 #[cfg(test)]
 mod tests {
     use std::thread;
