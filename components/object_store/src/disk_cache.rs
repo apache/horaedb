@@ -29,6 +29,7 @@ use upstream::{
 };
 
 const MANIFEST_FILE: &str = "manifest.json";
+const CURRENT_VERSION: usize = 1;
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -80,7 +81,7 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode prost, file:{}, source:{}.\nbacktrace:\n{}",
+        "Failed to decode cache pb value, file:{}, source:{}.\nbacktrace:\n{}",
         file,
         source,
         backtrace
@@ -101,10 +102,11 @@ impl From<Error> for ObjectStoreError {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
     create_at: String,
     page_size: usize,
+    version: usize,
 }
 
 #[derive(Debug)]
@@ -240,15 +242,15 @@ pub struct DiskCacheStore {
 }
 
 impl DiskCacheStore {
-    #[allow(dead_code)]
     pub async fn try_new(
         cache_dir: String,
         cap: usize,
         page_size: usize,
         underlying_store: Arc<dyn ObjectStore>,
     ) -> Result<Self> {
-        Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
+        assert!(cap % page_size == 0);
 
+        let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
         let cache = DiskCache::new(cache_dir.clone(), cap / page_size);
         Self::recover_cache(&cache_dir, &cache).await?;
 
@@ -263,10 +265,11 @@ impl DiskCacheStore {
         })
     }
 
-    async fn create_manifest_if_not_exists(cache_dir: &str, page_size: usize) -> Result<()> {
+    async fn create_manifest_if_not_exists(cache_dir: &str, page_size: usize) -> Result<Manifest> {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
+            .read(true)
             .truncate(false)
             .open(std::path::Path::new(cache_dir).join(MANIFEST_FILE))
             .await
@@ -283,6 +286,7 @@ impl DiskCacheStore {
             let manifest = Manifest {
                 page_size,
                 create_at: current_as_rfc3339(),
+                version: CURRENT_VERSION,
             };
 
             let buf = serde_json::to_vec_pretty(&manifest).context(SerializeManifest)?;
@@ -290,7 +294,7 @@ impl DiskCacheStore {
                 file: MANIFEST_FILE.to_string(),
             })?;
 
-            return Ok(());
+            return Ok(manifest);
         }
 
         let mut buf = Vec::new();
@@ -307,8 +311,9 @@ impl DiskCacheStore {
                 new: page_size
             }
         );
+        // TODO: check version
 
-        Ok(())
+        Ok(manifest)
     }
 
     async fn recover_cache(cache_dir: &str, cache: &DiskCache) -> Result<()> {
@@ -637,5 +642,66 @@ mod test {
         let _ = store.inner.get_range(&location, 48..64).await.unwrap();
         assert!(!test_file_exists(&store.cache_dir, &location, &(16..32)));
         assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_manifest() {
+        let cache_dir = tempdir().unwrap();
+        let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
+        let page_size = 8;
+        let first_create_time = {
+            let _store = {
+                let local_path = tempdir().unwrap();
+                let local_store =
+                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                    .await
+                    .unwrap()
+            };
+            let manifest =
+                DiskCacheStore::create_manifest_if_not_exists(&cache_root_dir, page_size)
+                    .await
+                    .unwrap();
+
+            assert_eq!(manifest.page_size, 8);
+            assert_eq!(manifest.version, 1);
+            manifest.create_at
+        };
+
+        // open again
+        {
+            let _store = {
+                let local_path = tempdir().unwrap();
+                let local_store =
+                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store)
+                    .await
+                    .unwrap()
+            };
+
+            let manifest =
+                DiskCacheStore::create_manifest_if_not_exists(&cache_root_dir, page_size)
+                    .await
+                    .unwrap();
+            assert_eq!(manifest.create_at, first_create_time);
+            assert_eq!(manifest.page_size, 8);
+            assert_eq!(manifest.version, 1);
+        }
+
+        // open again, but with different page_size
+        {
+            let local_path = tempdir().unwrap();
+            let local_store =
+                Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+            let store = DiskCacheStore::try_new(
+                cache_dir.as_ref().to_string_lossy().to_string(),
+                160,
+                page_size * 2,
+                local_store,
+            )
+            .await;
+
+            assert!(store.is_err())
+        }
     }
 }

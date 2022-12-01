@@ -13,7 +13,7 @@ pub use upstream::{
 
 pub mod aliyun;
 pub mod cache;
-mod disk_cache;
+pub mod disk_cache;
 pub mod mem_cache;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
