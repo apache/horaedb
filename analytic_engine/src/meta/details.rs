@@ -535,8 +535,14 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 ReadBoundary::Included(ctx.new_snapshot_end_seq),
             )
             .await?;
+
         match ctx.curr_snapshot_end_seq {
             Some(prev_snapshot_seq) => {
+                debug!(
+                    "Create snapshot from current, snapshot context:{:?}, location:{:?}",
+                    ctx, self.location
+                );
+
                 Self::create_snapshot_from_current(
                     ctx.new_snapshot_end_seq,
                     prev_snapshot_seq,
@@ -544,7 +550,11 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 )
                 .await
             }
-            None => Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await,
+            None => {
+                debug!("Create snapshot from start, location:{:?}", self.location);
+
+                Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await
+            }
         }
     }
 
@@ -563,14 +573,29 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
         let mut snapshot_states = BTreeMap::new();
         let mut latest_log_seq = SequenceNumber::MIN;
         while let Some((log_seq, log_entry)) = log_entry_reader.next_update().await? {
+            debug!(
+                "Next update returned, log seq:{}, location:{:?}",
+                log_seq, self.location
+            );
+
             latest_log_seq = log_seq;
 
             match log_entry {
                 MetaUpdateLogEntry::SnapshotStart(seq) => {
+                    debug!(
+                        "Found snapshot start, snapshot seq:{}, log seq:{}, location:{:?}",
+                        seq, log_seq, self.location
+                    );
+
                     let old_snapshot = snapshot_states.insert(seq, false);
                     assert!(old_snapshot.is_none());
                 }
                 MetaUpdateLogEntry::SnapshotEnd(seq) => {
+                    debug!(
+                        "Found snapshot end, snapshot seq:{}, log seq:{}, location:{:?}",
+                        seq, log_seq, self.location
+                    );
+
                     let snapshot = snapshot_states
                         .get_mut(&seq)
                         .context(CorruptedSnapshotFlag { seq })?;
@@ -581,6 +606,11 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 }
             }
         }
+
+        debug!(
+            "Finish to get snapshot states, snapshot states:{:?}, location:{:?}",
+            snapshot_states, self.location
+        );
         for (snapshot_seq, successful) in snapshot_states.into_iter().rev() {
             if successful {
                 return Ok(SnapshotContext {
