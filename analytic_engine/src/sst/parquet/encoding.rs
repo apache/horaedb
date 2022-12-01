@@ -143,8 +143,8 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst meta data collapsible_cols_idx is empty, fail to decode hybrid record batch.\nBacktrace:\n{}",
-        backtrace
+    "Sst meta data collapsible_cols_idx is empty, fail to decode hybrid record batch.\nBacktrace:\n{}",
+    backtrace
     ))]
     CollapsibleColsIdxEmpty { backtrace: Backtrace },
 
@@ -909,18 +909,31 @@ mod tests {
             HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
 
         let columns = vec![
-            Arc::new(UInt64Array::from(vec![1, 1, 2, 2])) as ArrayRef,
+            Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100]),
+            string_array(vec![Some("host1"), Some("host1"), Some("host2")]),
+            string_array(vec![Some("region1"), Some("region1"), Some("region2")]),
+            int32_array(vec![Some(1), Some(2), Some(11)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+            ]),
+        ];
+
+        let columns2 = vec![
+            Arc::new(UInt64Array::from(vec![1, 2, 1, 2])) as ArrayRef,
             timestamp_array(vec![100, 101, 100, 101]),
             string_array(vec![
                 Some("host1"),
-                Some("host1"),
                 Some("host2"),
+                Some("host1"),
                 Some("host2"),
             ]),
             string_array(vec![
                 Some("region1"),
-                Some("region1"),
                 Some("region2"),
+                Some("region1"),
                 Some("region2"),
             ]),
             int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
@@ -934,7 +947,11 @@ mod tests {
 
         let input_record_batch =
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
-        let row_nums = encoder.encode(vec![input_record_batch.clone()]).unwrap();
+        let input_record_batch2 =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
+        let row_nums = encoder
+            .encode(vec![input_record_batch, input_record_batch2])
+            .unwrap();
         assert_eq!(2, row_nums);
 
         // read encoded records back, and then compare with input records
@@ -957,6 +974,53 @@ mod tests {
         // Note: decode record batch's schema doesn't have metadata
         // It's encoded in metadata of every fields
         // assert_eq!(decoded_record_batch.schema(), input_record_batch.schema());
-        assert_eq!(decoded_record_batch.columns(), input_record_batch.columns());
+
+        let expected_columns = vec![
+            Arc::new(UInt64Array::from(vec![1, 1, 1, 1, 2, 2, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 100, 100, 101, 101]),
+            string_array(vec![
+                Some("host1"),
+                Some("host1"),
+                Some("host1"),
+                Some("host1"),
+                Some("host2"),
+                Some("host2"),
+                Some("host2"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region1"),
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region2"),
+                Some("region2"),
+            ]),
+            int32_array(vec![
+                Some(1),
+                Some(2),
+                Some(1),
+                Some(11),
+                Some(11),
+                Some(2),
+                Some(12),
+            ]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value1"),
+                Some("string_value3"),
+                Some("string_value3"),
+                Some("string_value2"),
+                Some("string_value4"),
+            ]),
+        ];
+
+        let expect_record_batch =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), expected_columns).unwrap();
+        assert_eq!(
+            decoded_record_batch.columns(),
+            expect_record_batch.columns()
+        );
     }
 }
