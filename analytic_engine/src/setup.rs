@@ -319,7 +319,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv.clone(),
         runtimes.clone(),
         WAL_DIR_NAME,
-        config.wal.clone(),
+        config.wal.clone().into(),
     )
     .await
     .context(OpenWal)?;
@@ -328,7 +328,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv,
         runtimes,
         MANIFEST_DIR_NAME,
-        config.manifest.clone(),
+        config.manifest.clone().into(),
     )
     .await
     .context(OpenManifestWal)?;

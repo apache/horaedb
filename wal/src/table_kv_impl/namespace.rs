@@ -936,13 +936,24 @@ impl<T: TableKv> Namespace<T> {
 
         let namespace =
             match Self::load_namespace_from_meta(table_kv, consts::META_TABLE_NAME, name)? {
-                Some(namespace_entry) => Namespace::new(
-                    runtimes,
-                    table_kv.clone(),
-                    consts::META_TABLE_NAME,
-                    namespace_entry,
-                    config,
-                )?,
+                Some(namespace_entry) => {
+                    assert!(
+                    namespace_entry.wal.enable_ttl == config.ttl.is_some(),
+                    "It's impossible to be different because the it can't be set by user actually, 
+                        but now the original ttl set is:{}, current in config is:{}",
+                    namespace_entry.wal.enable_ttl,
+                    config.ttl.is_some()
+                );
+
+                    Namespace::new(
+                        runtimes,
+                        table_kv.clone(),
+                        consts::META_TABLE_NAME,
+                        namespace_entry,
+                        config,
+                    )?
+                }
+
                 None => Namespace::try_persist_namespace(
                     runtimes,
                     table_kv,
