@@ -34,6 +34,9 @@ pub enum Error {
         source: catalog::Error,
     },
 
+    #[snafu(display("Failed to find schema, name:{}", name))]
+    SchemaNotFound { name: String },
+
     #[snafu(display("Failed to find table, name:{}, err:{}", name, source))]
     FindTable {
         name: String,
@@ -111,7 +114,12 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
                 name: resolved.schema,
             })? {
             Some(s) => s,
-            None => return Ok(None),
+            None => {
+                return SchemaNotFound {
+                    name: resolved.schema,
+                }
+                .fail();
+            }
         };
 
         schema.table_by_name(resolved.table).context(FindTable {
