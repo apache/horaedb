@@ -109,12 +109,12 @@ struct Manifest {
     version: usize,
 }
 
-// TODO: support partition to reduce lock contention
+// TODO: support partition to reduce lock contention.
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
     cap: usize,
-    // cache key is use as filename on disk
+    // Cache key is used as filename on disk.
     cache: Mutex<LruCache<String, ()>>,
 }
 
@@ -128,10 +128,14 @@ impl DiskCache {
     }
 
     // TODO: We now hold lock when doing IO, possible to release it?
-    // cache key is also used as filename stored in local disk
     async fn update_cache(&self, key: String, value: Option<Bytes>) -> Result<()> {
         let mut cache = self.cache.lock().await;
-        debug!("key:{}, len:{}, cap:{}", &key, cache.len(), self.cap);
+        debug!(
+            "Disk cache update, key:{}, len:{}, cap:{}.",
+            &key,
+            cache.len(),
+            self.cap
+        );
 
         if cache.len() >= self.cap {
             let (filename, _) = cache.pop_lru().unwrap();
@@ -141,9 +145,9 @@ impl DiskCache {
                 .into_string()
                 .unwrap();
 
-            info!("Remove disk cache, filename:{}", &file_path);
+            info!("Remove disk cache, filename:{}.", &file_path);
             if let Err(e) = tokio::fs::remove_file(&file_path).await {
-                error!("Remove disk cache failed, file:{}, err:{}", file_path, e);
+                error!("Remove disk cache failed, file:{}, err:{}.", file_path, e);
             }
         }
 
@@ -180,20 +184,21 @@ impl DiskCache {
             .into_string()
             .unwrap();
 
-        let mut f = File::create(&file_path).await.with_context(|| Io {
+        let mut file = File::create(&file_path).await.with_context(|| Io {
             file: file_path.clone(),
         })?;
 
-        let pb_bytes = proto::cache::Bytes {
+        let pb_bytes = proto::oss_cache::Bytes {
             // TODO: CRC checking
             crc: 0,
             value: value.to_vec(),
         };
 
-        let bs = pb_bytes.encode_to_vec();
-        f.write_all(&bs).await.with_context(|| PersistCache {
-            file: file_path.clone(),
-        })?;
+        file.write_all(&pb_bytes.encode_to_vec())
+            .await
+            .with_context(|| PersistCache {
+                file: file_path.clone(),
+            })?;
 
         Ok(())
     }
@@ -213,7 +218,7 @@ impl DiskCache {
             file: file_path.clone(),
         })?;
 
-        let bytes = proto::cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
+        let bytes = proto::oss_cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
             file: file_path.clone(),
         })?;
 
@@ -240,7 +245,7 @@ impl Display for DiskCache {
 /// }
 /// ```
 /// 2. ${sst-path}-${range.start}-${range.end}, which contains bytes of given
-/// range, start/end are aligned to page_size
+/// range, start/end are aligned to page_size.
 #[derive(Debug)]
 pub struct DiskCacheStore {
     cache: DiskCache,
@@ -338,7 +343,7 @@ impl DiskCacheStore {
             file: "entry when iter cache_dir".to_string(),
         })? {
             let filename = entry.file_name().into_string().unwrap();
-            info!("recover_cache, filename:{}", &filename);
+            info!("Disk cache recover_cache, filename:{}.", &filename);
 
             if filename != MANIFEST_FILE {
                 cache.recover(filename).await?;

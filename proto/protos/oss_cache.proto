@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 syntax = "proto3";
-package cache;
+package oss_cache;
 
 message Bytes {
   // Cache value
