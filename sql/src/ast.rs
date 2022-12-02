@@ -48,7 +48,7 @@ impl ToString for TableName {
         self.0
              .0
             .iter()
-            .map(|ident| Self::normalize_ident(ident))
+            .map(Self::normalize_ident)
             .collect::<Vec<_>>()
             .join(".")
     }
