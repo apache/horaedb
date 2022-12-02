@@ -109,6 +109,7 @@ struct Manifest {
     version: usize,
 }
 
+// TODO: support partition to reduce lock contention
 #[derive(Debug)]
 struct DiskCache {
     root_dir: String,
@@ -229,12 +230,23 @@ impl Display for DiskCache {
     }
 }
 
-// TODO: support partition to reduce lock contention
+/// There will be two kinds of file in this cache:
+/// 1. manifest.json, which contains metadata, like
+/// ```json
+/// {
+///     "create_at": "2022-12-01T08:51:15.167795+00:00",
+///     "page_size": 1048576,
+///     "version": 1
+/// }
+/// ```
+/// 2. ${sst-path}-${range.start}-${range.end}, which contains bytes of given
+/// range, start/end are aligned to page_size
 #[derive(Debug)]
 pub struct DiskCacheStore {
     cache: DiskCache,
     // Max disk capacity cache use can
     cap: usize,
+    // Size of each cached bytes
     page_size: usize,
     // location path size cache
     size_cache: Arc<Mutex<LruCache<String, usize>>>,
@@ -325,9 +337,12 @@ impl DiskCacheStore {
         while let Some(entry) = cache_dir.next_entry().await.with_context(|| Io {
             file: "entry when iter cache_dir".to_string(),
         })? {
-            cache
-                .recover(entry.file_name().into_string().unwrap())
-                .await?;
+            let filename = entry.file_name().into_string().unwrap();
+            info!("recover_cache, filename:{}", &filename);
+
+            if filename != MANIFEST_FILE {
+                cache.recover(filename).await?;
+            }
         }
 
         Ok(())
@@ -430,7 +445,6 @@ impl ObjectStore for DiskCacheStore {
         }
 
         // we get all bytes for each aligned_range, organize real bytes
-
         // fast path
         if ranged_bytes.len() == 1 {
             let (range_start, bytes) = ranged_bytes.pop_first().unwrap();
@@ -703,5 +717,51 @@ mod test {
 
             assert!(store.is_err())
         }
+    }
+
+    #[tokio::test]
+    async fn test_disk_cache_recovery() {
+        let cache_dir = tempdir().unwrap();
+        let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
+        let page_size = 16;
+        let location = Path::from("recovery.sst");
+        {
+            let store = {
+                let local_path = tempdir().unwrap();
+                let local_store =
+                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store)
+                    .await
+                    .unwrap()
+            };
+            let data = b"abcd";
+            let mut buf = BytesMut::with_capacity(data.len() * 1024);
+            for _ in 0..1024 {
+                buf.extend_from_slice(data);
+            }
+            store.put(&location, buf.freeze()).await.unwrap();
+            assert!(!store
+                .get_range(&location, 16..100)
+                .await
+                .unwrap()
+                .is_empty());
+        };
+
+        // recover
+        {
+            let store = {
+                let local_path = tempdir().unwrap();
+                let local_store =
+                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store)
+                    .await
+                    .unwrap()
+            };
+            let cache = store.cache.cache.lock().await;
+            for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
+                assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
+                assert!(test_file_exists(&cache_dir, &location, &range));
+            }
+        };
     }
 }

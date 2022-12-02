@@ -372,6 +372,19 @@ async fn open_instance(
     Ok(instance)
 }
 
+// Build store in multiple layer, access speed decrease in turn.
+// MemCacheStore -> DiskCacheStore -> real ObjectStore(OSS/S3...)
+//
+// ```plaintext
+// +-------------------------------+
+// |    MemCacheStore              |
+// |       +-----------------------+
+// |       |    DiskCacheStore     |
+// |       |      +----------------+
+// |       |      |                |
+// |       |      |    OSS/S3....  |
+// +-------+------+----------------+
+// ```
 fn open_storage(
     opts: StorageOptions,
 ) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
@@ -404,14 +417,6 @@ fn open_storage(
             }
         };
 
-        if opts.mem_cache_capacity.as_bytes() > 0 {
-            store = Arc::new(MemCacheStore::new(
-                opts.mem_cache_partition_bits,
-                opts.mem_cache_capacity.as_bytes() as usize,
-                store,
-            )) as _;
-        }
-
         if opts.disk_cache_capacity.as_bytes() > 0 {
             let path = Path::new(&opts.disk_cache_path).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
@@ -428,6 +433,14 @@ fn open_storage(
                 .await
                 .context(OpenObjectStore)?,
             ) as _;
+        }
+
+        if opts.mem_cache_capacity.as_bytes() > 0 {
+            store = Arc::new(MemCacheStore::new(
+                opts.mem_cache_partition_bits,
+                opts.mem_cache_capacity.as_bytes() as usize,
+                store,
+            )) as _;
         }
 
         Ok(store)
