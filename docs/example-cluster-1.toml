@@ -7,10 +7,12 @@ deploy_mode = "Cluster"
 
 [analytic]
 wal_path = "/tmp/ceresdb2"
-sst_data_cache_cap = 10000
-sst_meta_cache_cap = 10000
 
 [analytic.storage]
+mem_cache_capacity = '1G'
+mem_cache_partition_bits = 0
+
+[analytic.storage.object_store]
 type = "Local"
 data_path = "/tmp/ceresdb2"
 
