@@ -10,8 +10,8 @@ use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS, cache::CachedStore, mem_cache::MemCacheStore, LocalFileSystem,
-    ObjectStoreRef,
+    aliyun::AliyunOSS, cache::CachedStore, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
+    LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -90,6 +90,7 @@ define_result!(Error);
 const WAL_DIR_NAME: &str = "wal";
 const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
+const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
 /// Analytic engine builder.
 #[async_trait]
@@ -371,11 +372,24 @@ async fn open_instance(
     Ok(instance)
 }
 
+// Build store in multiple layer, access speed decrease in turn.
+// MemCacheStore -> DiskCacheStore -> real ObjectStore(OSS/S3...)
+//
+// ```plaintext
+// +-------------------------------+
+// |    MemCacheStore              |
+// |       +-----------------------+
+// |       |    DiskCacheStore     |
+// |       |      +----------------+
+// |       |      |                |
+// |       |      |    OSS/S3....  |
+// +-------+------+----------------+
+// ```
 fn open_storage(
     opts: StorageOptions,
 ) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
     Box::pin(async move {
-        let underlying_store = match opts.object_store {
+        let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
                 let data_path = Path::new(&local_opts.data_path);
                 let sst_path = data_path.join(STORE_DIR_NAME);
@@ -403,15 +417,31 @@ fn open_storage(
             }
         };
 
-        if opts.mem_cache_capacity.as_bytes() == 0 {
-            return Ok(underlying_store);
+        if opts.disk_cache_capacity.as_bytes() > 0 {
+            let path = Path::new(&opts.disk_cache_path).join(DISK_CACHE_DIR_NAME);
+            tokio::fs::create_dir_all(&path).await.context(CreateDir {
+                path: path.to_string_lossy().into_owned(),
+            })?;
+
+            store = Arc::new(
+                DiskCacheStore::try_new(
+                    path.to_string_lossy().into_owned(),
+                    opts.disk_cache_capacity.as_bytes() as usize,
+                    opts.disk_cache_page_size.as_bytes() as usize,
+                    store,
+                )
+                .await
+                .context(OpenObjectStore)?,
+            ) as _;
         }
 
-        let store = Arc::new(MemCacheStore::new(
-            opts.mem_cache_partition_bits,
-            opts.mem_cache_capacity.as_bytes() as usize,
-            underlying_store,
-        )) as _;
+        if opts.mem_cache_capacity.as_bytes() > 0 {
+            store = Arc::new(MemCacheStore::new(
+                opts.mem_cache_partition_bits,
+                opts.mem_cache_capacity.as_bytes() as usize,
+                store,
+            )) as _;
+        }
 
         Ok(store)
     })

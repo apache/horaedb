@@ -2,6 +2,8 @@
 
 //! Re-export of [object_store] crate.
 
+#![feature(map_first_last)]
+
 use std::sync::Arc;
 
 pub use upstream::{
@@ -11,6 +13,7 @@ pub use upstream::{
 
 pub mod aliyun;
 pub mod cache;
+pub mod disk_cache;
 pub mod mem_cache;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
