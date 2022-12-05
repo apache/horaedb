@@ -772,4 +772,14 @@ mod test {
             }
         };
     }
+
+    #[test]
+    fn test_disk_cache_bytes_crc() {
+        let testcases = vec![("abc", 910901175), ("hello ceresdb", 2026251212)];
+
+        for (input, expect) in testcases {
+            let actual = CASTAGNOLI.checksum(input.as_bytes());
+            assert_eq!(actual, expect);
+        }
+    }
 }
