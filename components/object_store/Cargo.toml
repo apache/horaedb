@@ -8,6 +8,7 @@ edition.workspace = true
 async-trait = { workspace = true }
 bytes = { workspace = true }
 common_util = { workspace = true }
+crc = "3.0.0"
 futures = { workspace = true }
 upstream = { package = "object_store", version = "0.5.1" }
 oss-rust-sdk = "0.4.0"

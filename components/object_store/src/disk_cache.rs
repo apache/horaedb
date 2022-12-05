@@ -12,6 +12,7 @@ use std::{collections::BTreeMap, fmt::Display, ops::Range, sync::Arc};
 use async_trait::async_trait;
 use bytes::{Bytes, BytesMut};
 use common_util::time::current_as_rfc3339;
+use crc::{Crc, CRC_32_ISCSI};
 use futures::stream::BoxStream;
 use log::{debug, error, info};
 use lru::LruCache;
@@ -30,6 +31,7 @@ use upstream::{
 
 const MANIFEST_FILE: &str = "manifest.json";
 const CURRENT_VERSION: usize = 1;
+pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -188,10 +190,10 @@ impl DiskCache {
             file: file_path.clone(),
         })?;
 
+        let bytes = value.to_vec();
         let pb_bytes = proto::oss_cache::Bytes {
-            // TODO: CRC checking
-            crc: 0,
-            value: value.to_vec(),
+            crc: CASTAGNOLI.checksum(&bytes),
+            value: bytes,
         };
 
         file.write_all(&pb_bytes.encode_to_vec())
@@ -221,6 +223,7 @@ impl DiskCache {
         let bytes = proto::oss_cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
             file: file_path.clone(),
         })?;
+        // TODO: CRC checking
 
         Ok(bytes.value.into())
     }
@@ -768,5 +771,15 @@ mod test {
                 assert!(test_file_exists(&cache_dir, &location, &range));
             }
         };
+    }
+
+    #[test]
+    fn test_disk_cache_bytes_crc() {
+        let testcases = vec![("abc", 910901175), ("hello ceresdb", 2026251212)];
+
+        for (input, expect) in testcases {
+            let actual = CASTAGNOLI.checksum(input.as_bytes());
+            assert_eq!(actual, expect);
+        }
     }
 }
