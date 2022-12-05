@@ -74,31 +74,50 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
 }
 
 /// Run a server, returns when the server is shutdown by user
-pub fn run_server(config: Config) {
+pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
     let runtimes = Arc::new(build_engine_runtimes(&config.runtime));
     let engine_runtimes = runtimes.clone();
+    let log_runtime = Arc::new(log_runtime);
 
     info!("Server starts up, config:{:#?}", config);
 
     runtimes.bg_runtime.block_on(async {
         match config.analytic.wal_storage {
             WalStorageConfig::RocksDB => {
-                run_server_with_runtimes::<RocksDBWalEngineBuilder>(config, engine_runtimes).await
+                run_server_with_runtimes::<RocksDBWalEngineBuilder>(
+                    config,
+                    engine_runtimes,
+                    log_runtime,
+                )
+                .await
             }
 
             WalStorageConfig::Obkv(_) => {
-                run_server_with_runtimes::<ObkvWalEngineBuilder>(config, engine_runtimes).await;
+                run_server_with_runtimes::<ObkvWalEngineBuilder>(
+                    config,
+                    engine_runtimes,
+                    log_runtime,
+                )
+                .await;
             }
 
             WalStorageConfig::Kafka(_) => {
-                run_server_with_runtimes::<KafkaWalEngineBuilder>(config, engine_runtimes).await;
+                run_server_with_runtimes::<KafkaWalEngineBuilder>(
+                    config,
+                    engine_runtimes,
+                    log_runtime,
+                )
+                .await;
             }
         }
     });
 }
 
-async fn run_server_with_runtimes<T>(config: Config, runtimes: Arc<EngineRuntimes>)
-where
+async fn run_server_with_runtimes<T>(
+    config: Config,
+    runtimes: Arc<EngineRuntimes>,
+    log_runtime: Arc<RuntimeLevel>,
+) where
     T: EngineBuilder,
 {
     // Build all table engine
@@ -132,7 +151,8 @@ where
     let limiter = Limiter::new(config.limiter.clone());
 
     let builder = Builder::new(config.clone())
-        .runtimes(runtimes.clone())
+        .engine_runtimes(runtimes.clone())
+        .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
         .table_engine(engine_proxy.clone())
         .function_registry(function_registry)
