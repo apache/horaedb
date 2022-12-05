@@ -64,7 +64,7 @@ fn main() {
     }
 
     // Setup log.
-    let _runtime_level = setup::setup_log(&config);
+    let runtime_level = setup::setup_log(&config);
     // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 
@@ -73,5 +73,5 @@ fn main() {
     // Log version.
     info!("version:{}", version);
 
-    setup::run_server(config);
+    setup::run_server(config, runtime_level);
 }
