@@ -19,7 +19,10 @@ use common_types::{
 };
 use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::datasource::file_format;
-use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{
+    future::{try_join_all, BoxFuture},
+    FutureExt, Stream, StreamExt, TryFutureExt,
+};
 use log::{debug, error, info};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::{
@@ -237,6 +240,31 @@ impl AsyncFileReader for ObjectStoreReader {
                 ))
             })
             .boxed()
+    }
+
+    fn get_byte_ranges(
+        &mut self,
+        ranges: Vec<Range<usize>>,
+    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
+        let mut futures = Vec::with_capacity(ranges.len());
+        for range in ranges {
+            let storage = self.storage.clone();
+            let path = self.path.clone();
+            self.metrics.bytes_scanned += range.end - range.start;
+            futures.push(async move {
+                storage
+                    .get_range(&path, range)
+                    .map_err(|e| {
+                        parquet::errors::ParquetError::General(format!(
+                            "ObjectStoreReader::get_bytes error: {}",
+                            e
+                        ))
+                    })
+                    .await
+            });
+        }
+
+        try_join_all(futures).boxed()
     }
 
     fn get_metadata(
