@@ -115,15 +115,15 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
 
     for write_metric in write_request.metrics {
-        let table_name = &write_metric.metric;
-        let mut table = try_get_table(ctx, table_name)?;
+        let normalized_table_name = &write_metric.metric.to_ascii_lowercase();
+        let mut table = try_get_table(ctx, normalized_table_name)?;
 
         if table.is_none() {
             if let Some(config) = ctx.schema_config {
                 if config.auto_create_tables {
                     create_table(ctx, &write_metric, request_id).await?;
                     // try to get table again
-                    table = try_get_table(ctx, table_name)?;
+                    table = try_get_table(ctx, normalized_table_name)?;
                 }
             }
         }
@@ -139,7 +139,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                     msg: format!(
                         "Table not found, tenant:{}, table:{}",
                         ctx.tenant(),
-                        table_name
+                        normalized_table_name
                     ),
                 }
                 .fail();
