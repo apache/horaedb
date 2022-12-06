@@ -31,7 +31,7 @@ use hashbrown::HashMap as NoStdHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    ColumnDef, ColumnOption, Expr, ObjectName, Query, SetExpr, SqlOption,
+    ColumnDef, ColumnOption, Expr, Ident, ObjectName, Query, SetExpr, SqlOption,
     Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
 };
 use table_engine::table::TableRef;
@@ -99,6 +99,13 @@ pub enum Error {
         kind: DatumKind,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Undefined column is used in primary key, column name:{}.\nBacktrace:\n{}",
+        name,
+        backtrace
+    ))]
+    UndefinedColumnInPrimaryKey { name: String, backtrace: Backtrace },
 
     #[snafu(display("Primary key not found, column name:{}", name))]
     PrimaryKeyNotFound { name: String },
@@ -214,6 +221,8 @@ pub enum Error {
 
 define_result!(Error);
 
+const DEFAULT_QUOTE_CHAR: char = '`';
+
 /// Planner produces logical plans from SQL AST
 // TODO(yingwen): Rewrite Planner instead of using datafusion's planner
 pub struct Planner<'a, P: MetaProvider> {
@@ -322,6 +331,108 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             })
     }
 
+    fn create_table_schema(
+        columns: &[Ident],
+        primary_key_columns: &[Ident],
+        mut columns_by_name: BTreeMap<&str, ColumnSchema>,
+        column_idxs_by_name: BTreeMap<&str, usize>,
+    ) -> Result<Schema> {
+        assert_eq!(columns_by_name.len(), column_idxs_by_name.len());
+
+        let mut schema_builder =
+            schema::Builder::with_capacity(columns_by_name.len()).auto_increment_column_id(true);
+
+        let mut primary_key_column_idxs = Vec::with_capacity(primary_key_columns.len());
+        for column in primary_key_columns {
+            if let Some(idx) = column_idxs_by_name.get(&*column.value) {
+                primary_key_column_idxs.push(*idx);
+            } else {
+                UndefinedColumnInPrimaryKey {
+                    name: &column.value,
+                }
+                .fail()?;
+            }
+        }
+
+        // The key columns have been consumed.
+        for (idx, col) in columns.iter().enumerate() {
+            let col_name = col.value.as_str();
+            if let Some(col) = columns_by_name.remove(col_name) {
+                if primary_key_column_idxs.contains(&idx) {
+                    schema_builder = schema_builder
+                        .add_key_column(col)
+                        .context(BuildTableSchema)?;
+                } else {
+                    schema_builder = schema_builder
+                        .add_normal_column(col)
+                        .context(BuildTableSchema)?;
+                }
+            }
+        }
+
+        schema_builder.build().context(BuildTableSchema)
+    }
+
+    fn find_primary_key_columns(constraints: &[TableConstraint]) -> Option<Vec<Ident>> {
+        // Find primary key columns
+        for constraint in constraints {
+            if let TableConstraint::Unique {
+                columns,
+                is_primary,
+                ..
+            } = constraint
+            {
+                if *is_primary {
+                    return Some(columns.clone());
+                }
+            }
+        }
+
+        None
+    }
+
+    // Find the timestamp column and ensure its valid existence (only one).
+    fn find_and_ensure_timestamp_column(
+        columns_by_name: &BTreeMap<&str, ColumnSchema>,
+        constraints: &[TableConstraint],
+    ) -> Result<Ident> {
+        let mut timestamp_column_name = None;
+        for constraint in constraints {
+            if let TableConstraint::Unique { columns, .. } = constraint {
+                if parser::is_timestamp_key_constraint(constraint) {
+                    // Only one timestamp key constraint
+                    ensure!(timestamp_column_name.is_none(), InvalidTimestampKey);
+                    // Only one column in constraint
+                    ensure!(columns.len() == 1, InvalidTimestampKey);
+                    let timestamp_ident = columns[0].clone();
+
+                    let timestamp_column = columns_by_name
+                        .get(timestamp_ident.value.as_str())
+                        .context(TimestampColumnNotFound {
+                            name: &timestamp_ident.value,
+                        })?;
+
+                    // Ensure the timestamp key's type is timestamp.
+                    ensure!(
+                        timestamp_column.data_type == DatumKind::Timestamp,
+                        InvalidTimestampKey
+                    );
+                    // Ensure the timestamp key is not a tag.
+                    ensure!(
+                        !timestamp_column.is_tag,
+                        TimestampKeyTag {
+                            name: &timestamp_ident.value,
+                        }
+                    );
+
+                    timestamp_column_name = Some(timestamp_ident);
+                }
+            }
+        }
+
+        timestamp_column_name.context(RequireTimestamp)
+    }
+
     fn create_table_to_plan(&self, stmt: CreateTable) -> Result<Plan> {
         ensure!(!stmt.table_name.is_empty(), CreateTableNameEmpty);
 
@@ -334,17 +445,14 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // Now we only takes the table name and ignore the schema and catalog name
         let table = table_ref.table().to_string();
 
-        let mut schema_builder =
-            schema::Builder::with_capacity(stmt.columns.len()).auto_increment_column_id(true);
-
         // Build all column schemas.
-        let mut name_column_map = stmt
+        let mut columns_by_name = stmt
             .columns
             .iter()
             .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
             .collect::<Result<BTreeMap<_, _>>>()?;
 
-        let name_column_index_map = stmt
+        let mut column_idxs_by_name = stmt
             .columns
             .iter()
             .enumerate()
@@ -353,106 +461,44 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         // Tsid column is a reserved column.
         ensure!(
-            !name_column_map.contains_key(TSID_COLUMN),
+            !columns_by_name.contains_key(TSID_COLUMN),
             ColumnNameReserved {
                 name: TSID_COLUMN.to_string(),
             }
         );
 
-        // Find timestamp key and primary key contraint
-
-        let mut timestamp_column_idx = None;
-        let mut timestamp_name = None;
-
-        let mut primary_key_column_idxs = vec![];
-
-        for constraint in stmt.constraints.iter() {
-            if let TableConstraint::Unique {
-                columns,
-                is_primary,
-                ..
-            } = constraint
-            {
-                if *is_primary {
-                    // Build primary key, the builder will check timestamp column is in primary key.
-                    for column in columns {
-                        if let Some(idx) = name_column_index_map.get(&*column.value) {
-                            primary_key_column_idxs.push(*idx);
-                        }
+        let timestamp_column =
+            Self::find_and_ensure_timestamp_column(&columns_by_name, &stmt.constraints)?;
+        let tsid_column = Ident::with_quote(DEFAULT_QUOTE_CHAR, TSID_COLUMN);
+        let mut columns: Vec<_> = stmt.columns.iter().map(|col| col.name.clone()).collect();
+        let primary_key_columns = match Self::find_primary_key_columns(&stmt.constraints) {
+            Some(primary_key_columns) => {
+                // Ensure the primary key is defined already.
+                for col in &primary_key_columns {
+                    let col_name = &col.value;
+                    if col_name == TSID_COLUMN {
+                        // tsid column is a reserved column which can't be
+                        // defined by user, so let's add it manually.
+                        columns_by_name.insert(TSID_COLUMN, Self::tsid_column_schema()?);
+                        column_idxs_by_name.insert(TSID_COLUMN, columns.len());
+                        columns.push(tsid_column.clone());
                     }
-                } else if parser::is_timestamp_key_constraint(constraint) {
-                    // Only one timestamp key constraint
-                    ensure!(timestamp_column_idx.is_none(), InvalidTimestampKey);
-                    // Only one column in constraint
-                    ensure!(columns.len() == 1, InvalidTimestampKey);
-
-                    let name = &columns[0].value;
-                    let timestamp_column = name_column_map
-                        .get(name as &str)
-                        .context(TimestampColumnNotFound { name })?;
-                    // Ensure type is timestamp
-                    ensure!(
-                        timestamp_column.data_type == DatumKind::Timestamp,
-                        InvalidTimestampKey
-                    );
-                    let column_idx = name_column_index_map
-                        .get(name as &str)
-                        .context(TimestampColumnNotFound { name })?;
-
-                    timestamp_column_idx = Some(*column_idx);
-                    timestamp_name = Some(name.clone());
                 }
+
+                primary_key_columns
             }
-        }
-
-        // Timestamp column must be provided.
-        let timestamp_name = timestamp_name.context(RequireTimestamp)?;
-        // The timestamp key column must not be a Tag column
-        if let Some(timestamp_column) = name_column_map.get(&timestamp_name.as_str()) {
-            ensure!(
-                !timestamp_column.is_tag,
-                TimestampKeyTag {
-                    name: &timestamp_name,
-                }
-            )
-        }
-
-        let timestamp_col_idx = timestamp_column_idx.context(RequireTimestamp)?;
-        // The key columns have been consumed.
-        for (idx, col) in stmt.columns.iter().enumerate() {
-            let col_name = col.name.value.as_str();
-            if let Some(col) = name_column_map.remove(col_name) {
-                if !primary_key_column_idxs.is_empty() {
-                    if primary_key_column_idxs.contains(&idx) {
-                        let key_column = if TSID_COLUMN == col.name {
-                            schema_builder = schema_builder.enable_tsid_primary_key(true);
-                            Self::tsid_column_schema()?
-                        } else {
-                            col
-                        };
-                        schema_builder = schema_builder
-                            .add_key_column(key_column)
-                            .context(BuildTableSchema)?;
-                        continue;
-                    }
-                } else if timestamp_col_idx == idx {
-                    // If primary key is not set, Use (timestamp, tsid) as primary key.
-                    schema_builder = schema_builder
-                        .enable_tsid_primary_key(true)
-                        .add_key_column(col)
-                        .context(BuildTableSchema)?
-                        .add_key_column(Self::tsid_column_schema()?)
-                        .context(BuildTableSchema)?;
-                    continue;
-                }
-
-                schema_builder = schema_builder
-                    .add_normal_column(col)
-                    .context(BuildTableSchema)?;
+            None => {
+                // No primary key is provided explicitly, so let's use `(tsid,
+                // timestamp_key)` as the default primary key.
+                vec![tsid_column, timestamp_column]
             }
-        }
-
-        let table_schema = schema_builder.build().context(BuildTableSchema)?;
+        };
+        let table_schema = Self::create_table_schema(
+            &columns,
+            &primary_key_columns,
+            columns_by_name,
+            column_idxs_by_name,
+        )?;
 
         let options = parse_options(stmt.options)?;
 
