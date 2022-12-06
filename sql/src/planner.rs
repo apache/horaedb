@@ -110,11 +110,23 @@ pub enum Error {
     #[snafu(display("Primary key not found, column name:{}", name))]
     PrimaryKeyNotFound { name: String },
 
+    #[snafu(display(
+        "Duplicate definitions of primary key are found, first:{:?}, second:{:?}.\nBacktrace:\n{:?}",
+        first,
+        second,
+        backtrace,
+    ))]
+    DuplicatePrimaryKey {
+        first: Vec<Ident>,
+        second: Vec<Ident>,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Tag column not found, name:{}", name))]
     TagColumnNotFound { name: String },
 
     #[snafu(display(
-        "Timestamp key column can not be tag, name:{}.\nBactrace:\n{:?}",
+        "Timestamp key column can not be tag, name:{}.\nBacktrace:\n{:?}",
         name,
         backtrace
     ))]
@@ -375,8 +387,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         schema_builder.build().context(BuildTableSchema)
     }
 
-    fn find_primary_key_columns(constraints: &[TableConstraint]) -> Option<Vec<Ident>> {
-        // Find primary key columns
+    // Find the primary key columns and ensure at most only one exists.
+    fn find_and_ensure_primary_key_columns(
+        constraints: &[TableConstraint],
+    ) -> Result<Option<Vec<Ident>>> {
+        let mut primary_key_columns: Option<Vec<Ident>> = None;
         for constraint in constraints {
             if let TableConstraint::Unique {
                 columns,
@@ -385,12 +400,19 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             } = constraint
             {
                 if *is_primary {
-                    return Some(columns.clone());
+                    ensure!(
+                        primary_key_columns.is_none(),
+                        DuplicatePrimaryKey {
+                            first: primary_key_columns.unwrap(),
+                            second: columns.clone()
+                        }
+                    );
+                    primary_key_columns = Some(columns.clone());
                 }
             }
         }
 
-        None
+        Ok(primary_key_columns)
     }
 
     // Find the timestamp column and ensure its valid existence (only one).
@@ -440,13 +462,6 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         debug!("Create table to plan, stmt:{:?}", stmt);
 
-        // TODO(yingwen): Maybe support create table on other schema?
-        let table_name = stmt.table_name.to_string();
-        let table_ref = TableReference::from(table_name.as_str());
-
-        // Now we only takes the table name and ignore the schema and catalog name
-        let table = table_ref.table().to_string();
-
         // Build all column schemas.
         let mut columns_by_name = stmt
             .columns
@@ -482,28 +497,29 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             enable_tsid_primary_key = true;
             Ok(())
         };
-        let primary_key_columns = match Self::find_primary_key_columns(&stmt.constraints) {
-            Some(primary_key_columns) => {
-                // Ensure the primary key is defined already.
-                for col in &primary_key_columns {
-                    let col_name = &col.value;
-                    if col_name == TSID_COLUMN {
-                        // tsid column is a reserved column which can't be
-                        // defined by user, so let's add it manually.
-                        add_tsid_column()?;
+        let primary_key_columns =
+            match Self::find_and_ensure_primary_key_columns(&stmt.constraints)? {
+                Some(primary_key_columns) => {
+                    // Ensure the primary key is defined already.
+                    for col in &primary_key_columns {
+                        let col_name = &col.value;
+                        if col_name == TSID_COLUMN {
+                            // tsid column is a reserved column which can't be
+                            // defined by user, so let's add it manually.
+                            add_tsid_column()?;
+                        }
                     }
+
+                    primary_key_columns
                 }
+                None => {
+                    // No primary key is provided explicitly, so let's use `(tsid,
+                    // timestamp_key)` as the default primary key.
+                    add_tsid_column()?;
 
-                primary_key_columns
-            }
-            None => {
-                // No primary key is provided explicitly, so let's use `(tsid,
-                // timestamp_key)` as the default primary key.
-                add_tsid_column()?;
-
-                vec![tsid_column, timestamp_column]
-            }
-        };
+                    vec![tsid_column, timestamp_column]
+                }
+            };
         let table_schema = Self::create_table_schema(
             &columns,
             &primary_key_columns,
@@ -516,6 +532,12 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
         // ensure default value options are valid
         ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
+
+        // TODO(yingwen): Maybe support create table on other schema?
+        let table_name = stmt.table_name.to_string();
+        let table_ref = TableReference::from(table_name.as_str());
+        // Now we only takes the table name and ignore the schema and catalog name
+        let table = table_ref.table().to_string();
 
         let plan = CreateTablePlan {
             engine: stmt.engine,
