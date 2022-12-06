@@ -239,6 +239,24 @@ impl AsyncFileReader for ObjectStoreReader {
             .boxed()
     }
 
+    fn get_byte_ranges(
+        &mut self,
+        ranges: Vec<Range<usize>>,
+    ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
+        async move {
+            self.storage
+                .get_ranges(&self.path, &ranges)
+                .map_err(|e| {
+                    parquet::errors::ParquetError::General(format!(
+                        "ObjectStoreReader::get_byte_ranges error: {}",
+                        e
+                    ))
+                })
+                .await
+        }
+        .boxed()
+    }
+
     fn get_metadata(
         &mut self,
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<parquet::file::metadata::ParquetMetaData>>> {
