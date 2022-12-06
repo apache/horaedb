@@ -27,6 +27,7 @@ use parquet::{
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::ParquetMetaDataRef;
+use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -36,6 +37,7 @@ use crate::{
         factory::SstReaderOptions,
         file::{BloomFilter, SstMetaData},
         meta_cache::{MetaCacheRef, MetaData},
+        metrics,
         parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
         reader::{error::*, Result, SstReader},
     },
@@ -196,9 +198,10 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ReaderMetrics {
     bytes_scanned: usize,
+    sst_get_range_length_histogram: LocalHistogram,
 }
 
 struct ObjectStoreReader {
@@ -214,7 +217,10 @@ impl ObjectStoreReader {
             storage,
             path,
             meta_data,
-            metrics: Default::default(),
+            metrics: ReaderMetrics {
+                bytes_scanned: 0,
+                sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
+            },
         }
     }
 }
@@ -228,11 +234,14 @@ impl Drop for ObjectStoreReader {
 impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
+        self.metrics
+            .sst_get_range_length_histogram
+            .observe((range.end - range.start) as f64);
         self.storage
             .get_range(&self.path, range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "ObjectStoreReader::get_bytes error: {}",
+                    "Failed to fetch ranges from object store, err:{}",
                     e
                 ))
             })
@@ -243,6 +252,11 @@ impl AsyncFileReader for ObjectStoreReader {
         &mut self,
         ranges: Vec<Range<usize>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
+        for range in &ranges {
+            self.metrics
+                .sst_get_range_length_histogram
+                .observe((range.end - range.start) as f64);
+        }
         async move {
             self.storage
                 .get_ranges(&self.path, &ranges)
