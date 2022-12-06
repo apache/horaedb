@@ -3,6 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
+pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
@@ -12,9 +13,6 @@ use serde_derive::Deserialize;
 use snafu::OptionExt;
 
 use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
-
-pub type ShardId = u32;
-pub type ShardVersion = u64;
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
 
 #[derive(Debug, Clone)]

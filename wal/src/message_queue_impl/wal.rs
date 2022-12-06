@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::{table::Location, SequenceNumber};
+use common_types::SequenceNumber;
 use common_util::runtime::Runtime;
 use message_queue::{ConsumeIterator, MessageQueue};
 use snafu::ResultExt;
@@ -14,7 +14,7 @@ use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
-        ScanRequest, WalManager, WriteContext,
+        ScanRequest, WalLocation, WalManager, WriteContext,
     },
     message_queue_impl::{
         config::Config,
@@ -43,7 +43,7 @@ impl<M: MessageQueue> MessageQueueImpl<M> {
 
 #[async_trait]
 impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
-    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber> {
+    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.0
             .sequence_num(location)
             .await
@@ -53,7 +53,7 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
 
     async fn mark_delete_entries_up_to(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.0

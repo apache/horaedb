@@ -7,6 +7,7 @@ use std::{
 };
 
 use log::error;
+use logger::RuntimeLevel;
 use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
 use serde_derive::Serialize;
@@ -41,8 +42,14 @@ pub enum Error {
         source: Box<crate::handlers::error::Error>,
     },
 
-    #[snafu(display("Missing runtimes to build service.\nBacktrace:\n{}", backtrace))]
-    MissingRuntimes { backtrace: Backtrace },
+    #[snafu(display("Failed to handle update log level, err:{}", msg))]
+    HandleUpdateLogLevel { msg: String },
+
+    #[snafu(display("Missing engine runtimes to build service.\nBacktrace:\n{}", backtrace))]
+    MissingEngineRuntimes { backtrace: Backtrace },
+
+    #[snafu(display("Missing log runtime to build service.\nBacktrace:\n{}", backtrace))]
+    MissingLogRuntime { backtrace: Backtrace },
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
@@ -82,16 +89,18 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
-const MAX_BODY_SIZE: u64 = 4096;
+pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
 
 /// Http service
 ///
 /// Note that the service does not owns the runtime
 pub struct Service<Q> {
-    runtimes: Arc<EngineRuntimes>,
+    engine_runtimes: Arc<EngineRuntimes>,
+    log_runtime: Arc<RuntimeLevel>,
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     tx: Sender<()>,
+    config: HttpConfig,
 }
 
 impl<Q> Service<Q> {
@@ -109,6 +118,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.heap_profile())
             .or(self.admin_block())
             .or(self.flush_memtable())
+            .or(self.update_log_level())
     }
 
     fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -128,7 +138,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("sql")
             .and(warp::post())
-            .and(warp::body::content_length_limit(MAX_BODY_SIZE))
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
@@ -230,6 +240,25 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
+    fn update_log_level(
+        &self,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::path!("log_level" / String)
+            .and(warp::put())
+            .and(self.with_log_runtime())
+            .and_then(
+                |log_level: String, log_runtime: Arc<RuntimeLevel>| async move {
+                    let result = log_runtime
+                        .set_level_by_str(log_level.as_str())
+                        .map_err(|e| Error::HandleUpdateLogLevel { msg: e });
+                    match result {
+                        Ok(()) => Ok(reply::reply()),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            )
+    }
+
     fn with_context(
         &self,
     ) -> impl Filter<Extract = (RequestContext,), Error = warp::Rejection> + Clone {
@@ -244,7 +273,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .default_schema_name()
             .to_string();
         //TODO(boyan) use read/write runtime by sql type.
-        let runtime = self.runtimes.bg_runtime.clone();
+        let runtime = self.engine_runtimes.bg_runtime.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::TENANT_HEADER))
@@ -277,6 +306,13 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || instance.clone())
     }
 
+    fn with_log_runtime(
+        &self,
+    ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
+        let log_runtime = self.log_runtime.clone();
+        warp::any().map(move || log_runtime.clone())
+    }
+
     fn admin_block(
         &self,
     ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -304,22 +340,29 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
-    endpoint: Endpoint,
-    runtimes: Option<Arc<EngineRuntimes>>,
+    config: HttpConfig,
+    engine_runtimes: Option<Arc<EngineRuntimes>>,
+    log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
 }
 
 impl<Q> Builder<Q> {
-    pub fn new(endpoint: Endpoint) -> Self {
+    pub fn new(config: HttpConfig) -> Self {
         Self {
-            endpoint,
-            runtimes: None,
+            config,
+            engine_runtimes: None,
+            log_runtime: None,
             instance: None,
         }
     }
 
-    pub fn runtimes(mut self, runtimes: Arc<EngineRuntimes>) -> Self {
-        self.runtimes = Some(runtimes);
+    pub fn engine_runtimes(mut self, engine_runtimes: Arc<EngineRuntimes>) -> Self {
+        self.engine_runtimes = Some(engine_runtimes);
+        self
+    }
+
+    pub fn log_runtime(mut self, log_runtime: Arc<RuntimeLevel>) -> Self {
+        self.log_runtime = Some(log_runtime);
         self
     }
 
@@ -332,32 +375,44 @@ impl<Q> Builder<Q> {
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     /// Build and start the service
     pub fn build(self) -> Result<Service<Q>> {
-        let runtimes = self.runtimes.context(MissingRuntimes)?;
+        let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
-            runtimes: runtimes.clone(),
+            engine_runtimes: engine_runtime.clone(),
+            log_runtime,
             instance,
             profiler: Arc::new(Profiler::default()),
             tx,
+            config: self.config.clone(),
         };
 
-        let ip_addr: IpAddr = self.endpoint.addr.parse().context(ParseIpAddr {
-            ip: self.endpoint.addr,
+        let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
+            ip: self.config.endpoint.addr,
         })?;
 
         // Register filters to warp and rejection handler
         let routes = service.routes().recover(handle_rejection);
-        let (_addr, server) =
-            warp::serve(routes).bind_with_graceful_shutdown((ip_addr, self.endpoint.port), async {
+        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
+            (ip_addr, self.config.endpoint.port),
+            async {
                 rx.await.ok();
-            });
+            },
+        );
         // Run the service
-        runtimes.bg_runtime.spawn(server);
+        engine_runtime.bg_runtime.spawn(server);
 
         Ok(service)
     }
+}
+
+/// Http service config
+#[derive(Debug, Clone)]
+pub struct HttpConfig {
+    pub endpoint: Endpoint,
+    pub max_body_size: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -371,12 +426,14 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         Error::CreateContext { .. } => StatusCode::BAD_REQUEST,
         // TODO(yingwen): Map handle request error to more accurate status code
         Error::HandleRequest { .. }
-        | Error::MissingRuntimes { .. }
+        | Error::MissingEngineRuntimes { .. }
+        | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }
-        | Error::JoinAsyncTask { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        | Error::JoinAsyncTask { .. }
+        | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

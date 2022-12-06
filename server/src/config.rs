@@ -13,6 +13,7 @@ use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::{
+    http::DEFAULT_MAX_BODY_SIZE,
     limiter::LimiterConfig,
     route::rule_based::{ClusterView, RuleList},
 };
@@ -176,6 +177,7 @@ pub struct Config {
     pub bind_addr: String,
     pub mysql_port: u16,
     pub http_port: u16,
+    pub http_max_body_size: u64,
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
 
@@ -226,6 +228,7 @@ impl Default for Config {
         Self {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5000,
+            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
             mysql_port: 3307,
             grpc_port,
             grpc_server_cq_count: 20,

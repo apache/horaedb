@@ -7,16 +7,22 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+common_util = { workspace = true }
+crc = "3.0.0"
 futures = { workspace = true }
 upstream = { package = "object_store", version = "0.5.1" }
 oss-rust-sdk = "0.4.0"
 serde = { workspace = true }
 serde_derive = { workspace = true }
+serde_json = { workspace = true }
 snafu = { workspace = true }
 lru = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
 lru-weighted-cache = { git = "https://github.com/jiacai2050/lru-weighted-cache.git" , rev="1cf61aaf88469387e610dc7154fa318843491428"}
+log = { workspace = true }
+proto = { workspace = true }
+prost = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -9,12 +9,9 @@ use std::{
     time::Duration,
 };
 
-use common_types::{
-    table::{Location, TableId},
-    time::Timestamp,
-};
+use common_types::{table::TableId, time::Timestamp};
 use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
     ScanContext as KvScanContext, ScanIter, TableError, TableKv, WriteBatch, WriteContext,
@@ -23,7 +20,10 @@ use table_kv::{
 use crate::{
     kv_encoder::CommonLogKey,
     log_batch::LogWriteBatch,
-    manager::{self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber},
+    manager::{
+        self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber,
+        WalLocation,
+    },
     table_kv_impl::{
         consts, encoding,
         model::{BucketEntry, NamespaceConfig, NamespaceEntry},
@@ -140,58 +140,50 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to create table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
+        "Failed to create table unit, namespace:{}, wal location:{:?}, err:{}",
         namespace,
-        region_id,
-        table_id,
+        location,
         source
     ))]
     CreateTableUnit {
         namespace: String,
-        region_id: RegionId,
-        table_id: TableId,
+        location: WalLocation,
         source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to write table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
+        "Failed to write table unit, namespace:{}, wal location:{:?}, err:{}",
         namespace,
-        region_id,
-        table_id,
+        location,
         source
     ))]
     WriteTableUnit {
         namespace: String,
-        region_id: RegionId,
-        table_id: TableId,
+        location: WalLocation,
         source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to read table unit, namespace:{}, region_id:{}, table_id:{}, err:{}",
+        "Failed to read table unit, namespace:{}, wal location:{:?}, err:{}",
         namespace,
-        region_id,
-        table_id,
+        location,
         source
     ))]
     ReadTableUnit {
         namespace: String,
-        region_id: RegionId,
-        table_id: TableId,
+        location: WalLocation,
         source: crate::table_kv_impl::table_unit::Error,
     },
 
     #[snafu(display(
-        "Failed to delete entries, namespace:{}, region_id:{}, table_id:{}, err:{}",
+        "Failed to delete entries, namespace:{}, wal location:{:?}, err:{}",
         namespace,
-        region_id,
-        table_id,
+        location,
         source
     ))]
     DeleteEntries {
         namespace: String,
-        region_id: RegionId,
-        table_id: TableId,
+        location: WalLocation,
         source: crate::table_kv_impl::table_unit::Error,
     },
 
@@ -230,7 +222,8 @@ struct NamespaceInner<T> {
     table_kv: T,
     entry: NamespaceEntry,
     bucket_set: RwLock<BucketSet>,
-    table_units: RwLock<HashMap<TableId, TableUnitRef>>,
+    // TODO: should use some strategies(such as lru) to clean the invalid table unit.
+    table_units: RwLock<HashMap<WalLocation, TableUnitRef>>,
     meta_table_name: String,
     table_unit_meta_tables: Vec<String>,
     operator: Mutex<TableOperator>,
@@ -250,8 +243,8 @@ impl<T> NamespaceInner<T> {
         &self.table_unit_meta_tables
     }
 
-    fn table_unit_meta_table(&self, region_id: RegionId) -> &str {
-        let index = region_id as usize % self.table_unit_meta_tables.len();
+    fn table_unit_meta_table(&self, table_id: TableId) -> &str {
+        let index = table_id as usize % self.table_unit_meta_tables.len();
 
         &self.table_unit_meta_tables[index]
     }
@@ -478,21 +471,23 @@ impl<T: TableKv> NamespaceInner<T> {
         Ok(())
     }
 
-    fn get_table_unit_from_memory(&self, region_id: RegionId) -> Option<TableUnitRef> {
+    fn get_table_unit_from_memory(&self, location: &WalLocation) -> Option<TableUnitRef> {
         let table_units = self.table_units.read().unwrap();
-        table_units.get(&region_id).cloned()
+        table_units.get(location).cloned()
     }
 
-    fn insert_or_get_table_unit(&self, table_unit: TableUnitRef) -> TableUnitRef {
+    fn insert_or_get_table_unit(
+        &self,
+        location: WalLocation,
+        table_unit: TableUnitRef,
+    ) -> TableUnitRef {
         let mut table_units = self.table_units.write().unwrap();
         // Table unit already exists.
-        if let Some(v) = table_units.get(&table_unit.table_id()) &&
-            v.region_id() == table_unit.region_id()
-        {
+        if let Some(v) = table_units.get(&location) {
             return v.clone();
         }
 
-        table_units.insert(table_unit.table_id(), table_unit.clone());
+        table_units.insert(location, table_unit.clone());
 
         table_unit
     }
@@ -521,27 +516,20 @@ impl<T: TableKv> NamespaceInner<T> {
     // FIXME: a dangerous bug, when table are scheduled to another node and
     // scheduled back after, we should deprecate the `TableUnit` entry in memory
     // but now we will continue to use the outdated entry.
-    async fn get_or_open_table_unit(
-        &self,
-        region_id: RegionId,
-        table_id: TableId,
-    ) -> Result<Option<TableUnitRef>> {
-        if let Some(table_unit) = self.get_table_unit_from_memory(table_id) &&
-            table_unit.region_id() == region_id
-        {
+    async fn get_or_open_table_unit(&self, location: WalLocation) -> Result<Option<TableUnitRef>> {
+        if let Some(table_unit) = self.get_table_unit_from_memory(&location) {
             return Ok(Some(table_unit));
         }
 
-        self.open_table_unit(region_id, table_id).await
+        self.open_table_unit(location).await
     }
 
     // TODO(yingwen): Provide a close_table_unit() method.
-    async fn open_table_unit(
-        &self,
-        region_id: RegionId,
-        table_id: TableId,
-    ) -> Result<Option<TableUnitRef>> {
-        let table_unit_meta_table = self.table_unit_meta_table(region_id);
+    async fn open_table_unit(&self, location: WalLocation) -> Result<Option<TableUnitRef>> {
+        let region_id = location.versioned_region_id.id;
+        let table_id = location.table_id;
+
+        let table_unit_meta_table = self.table_unit_meta_table(table_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
         let table_unit_opt = TableUnit::open(
@@ -570,7 +558,7 @@ impl<T: TableKv> NamespaceInner<T> {
             region_id
         );
 
-        let table_unit = self.insert_or_get_table_unit(table_unit);
+        let table_unit = self.insert_or_get_table_unit(location, table_unit);
 
         Ok(Some(table_unit))
     }
@@ -578,26 +566,16 @@ impl<T: TableKv> NamespaceInner<T> {
     // FIXME: a dangerous bug, when table are scheduled to another node and
     // scheduled back after, we should deprecate the `TableUnit` entry in memory
     // but now we will continue to use the outdated entry.
-    async fn get_or_create_table_unit(
-        &self,
-        region_id: RegionId,
-        table_id: TableId,
-    ) -> Result<TableUnitRef> {
-        if let Some(table_unit) = self.get_table_unit_from_memory(table_id) &&
-            table_unit.region_id() == region_id
-        {
+    async fn get_or_create_table_unit(&self, location: WalLocation) -> Result<TableUnitRef> {
+        if let Some(table_unit) = self.get_table_unit_from_memory(&location) {
             return Ok(table_unit);
         }
 
-        self.create_table_unit(region_id, table_id).await
+        self.create_table_unit(location).await
     }
 
-    async fn create_table_unit(
-        &self,
-        region_id: RegionId,
-        table_id: TableId,
-    ) -> Result<TableUnitRef> {
-        let table_unit_meta_table = self.table_unit_meta_table(region_id);
+    async fn create_table_unit(&self, location: WalLocation) -> Result<TableUnitRef> {
+        let table_unit_meta_table = self.table_unit_meta_table(location.table_id);
         let buckets = self.bucket_set.read().unwrap().buckets();
 
         let table_unit = TableUnit::open_or_create(
@@ -605,25 +583,23 @@ impl<T: TableKv> NamespaceInner<T> {
             &self.table_kv,
             self.config.new_init_scan_ctx(),
             table_unit_meta_table,
-            region_id,
-            table_id,
+            location.versioned_region_id.id,
+            location.table_id,
             buckets,
         )
         .await
         .context(CreateTableUnit {
             namespace: self.name(),
-            region_id,
-            table_id,
+            location,
         })?;
 
         debug!(
-            "Create wal table unit, namespace:{}, region_id:{}, table_id:{}",
+            "Create wal table unit, namespace:{}, wal location:{:?}",
             self.name(),
-            region_id,
-            table_id,
+            location
         );
 
-        let table_unit = self.insert_or_get_table_unit(Arc::new(table_unit));
+        let table_unit = self.insert_or_get_table_unit(location, Arc::new(table_unit));
 
         Ok(table_unit)
     }
@@ -634,32 +610,33 @@ impl<T: TableKv> NamespaceInner<T> {
         ctx: &manager::WriteContext,
         batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
-        let region_id = batch.location.shard_id as RegionId;
-        let table_id = batch.location.table_id;
+        trace!(
+            "Write batch to namespace:{}, location:{:?}, entries num:{}",
+            self.name(),
+            batch.location,
+            batch.entries.len()
+        );
+
         let now = Timestamp::now();
         // Get current bucket to write.
         let bucket = self.get_or_create_bucket(now)?;
 
-        let table_unit = self.get_or_create_table_unit(region_id, table_id).await?;
+        let table_unit = self.get_or_create_table_unit(batch.location).await?;
 
         let sequence = table_unit
             .write_log(&self.table_kv, &bucket, ctx, batch)
             .await
             .context(WriteTableUnit {
                 namespace: self.name(),
-                region_id,
-                table_id,
+                location: batch.location,
             })?;
 
         Ok(sequence)
     }
 
     /// Get last sequence number of this region.
-    async fn last_sequence(&self, location: Location) -> Result<SequenceNumber> {
-        let region_id = location.shard_id as RegionId;
-        let table_id = location.table_id;
-
-        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
+    async fn last_sequence(&self, location: WalLocation) -> Result<SequenceNumber> {
+        if let Some(table_unit) = self.get_or_open_table_unit(location).await? {
             return Ok(table_unit.last_sequence());
         }
 
@@ -673,16 +650,13 @@ impl<T: TableKv> NamespaceInner<T> {
         // buckets.
         let buckets = self.list_buckets();
 
-        let region_id = req.location.shard_id as RegionId;
-        let table_id = req.location.table_id;
-        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
+        if let Some(table_unit) = self.get_or_open_table_unit(req.location).await? {
             table_unit
                 .read_log(&self.table_kv, buckets, ctx, req)
                 .await
                 .context(ReadTableUnit {
                     namespace: self.name(),
-                    region_id,
-                    table_id,
+                    location: req.location,
                 })
         } else {
             Ok(TableLogIterator::new_empty(self.table_kv.clone()))
@@ -691,19 +665,20 @@ impl<T: TableKv> NamespaceInner<T> {
 
     /// Delete entries up to `sequence_num` of table unit identified by
     /// `location`.
-    async fn delete_entries(&self, location: Location, sequence_num: SequenceNumber) -> Result<()> {
-        let region_id = location.shard_id as RegionId;
-        let table_id = location.table_id;
-        if let Some(table_unit) = self.get_or_open_table_unit(region_id, table_id).await? {
-            let table_unit_meta_table = self.table_unit_meta_table(table_id);
+    async fn delete_entries(
+        &self,
+        location: WalLocation,
+        sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        if let Some(table_unit) = self.get_or_open_table_unit(location).await? {
+            let table_unit_meta_table = self.table_unit_meta_table(location.table_id);
 
             table_unit
                 .delete_entries_up_to(&self.table_kv, table_unit_meta_table, sequence_num)
                 .await
                 .context(DeleteEntries {
                     namespace: self.name(),
-                    region_id,
-                    table_id,
+                    location,
                 })?;
         }
 
@@ -720,7 +695,7 @@ impl<T: TableKv> NamespaceInner<T> {
         // during reading start/end sequence.
         let buckets = self.list_buckets();
 
-        let region_id = request.region_id;
+        let region_id = request.versioned_region_id.id;
         let min_log_key = CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN);
         let max_log_key = CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX);
 
@@ -1144,7 +1119,7 @@ impl<T: TableKv> Namespace<T> {
     }
 
     /// Get last sequence number of this table unit.
-    pub async fn last_sequence(&self, location: Location) -> Result<SequenceNumber> {
+    pub async fn last_sequence(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.inner.last_sequence(location).await
     }
 
@@ -1162,7 +1137,7 @@ impl<T: TableKv> Namespace<T> {
     /// `region_id` and `table_id`.
     pub async fn delete_entries(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.inner.delete_entries(location, sequence_num).await
@@ -1487,7 +1462,7 @@ mod tests {
 
     use common_types::{
         bytes::BytesMut,
-        table::{Location, DEFAULT_SHARD_ID},
+        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     };
     use common_util::runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
@@ -1791,8 +1766,11 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let location = Location::new(DEFAULT_SHARD_ID, table_id);
-
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id,
+            );
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;
 
@@ -1869,7 +1847,7 @@ mod tests {
 
     async fn write_test_payloads<T: TableKv>(
         namespace: &Namespace<T>,
-        location: Location,
+        location: WalLocation,
         start_sequence: u32,
         end_sequence: u32,
     ) -> SequenceNumber {

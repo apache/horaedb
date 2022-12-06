@@ -7,7 +7,6 @@ use std::convert::TryFrom;
 use bytes::{Buf, BufMut};
 use common_types::{
     schema::{Schema, Version},
-    table::Location,
     SequenceNumber,
 };
 use common_util::define_result;
@@ -15,7 +14,10 @@ use prost::Message;
 use proto::{analytic_common, common as common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
-use wal::log_batch::{Payload, PayloadDecoder};
+use wal::{
+    log_batch::{Payload, PayloadDecoder},
+    manager::WalLocation,
+};
 
 use crate::{
     space::SpaceId,
@@ -447,12 +449,12 @@ impl PayloadDecoder for MetaUpdateDecoder {
 
 #[derive(Debug, Clone)]
 pub struct MetaUpdateRequest {
-    pub location: Location,
+    pub location: WalLocation,
     pub meta_update: MetaUpdate,
 }
 
 impl MetaUpdateRequest {
-    pub fn new(location: Location, meta_update: MetaUpdate) -> Self {
+    pub fn new(location: WalLocation, meta_update: MetaUpdate) -> Self {
         Self {
             location,
             meta_update,

@@ -9,7 +9,6 @@ use common_types::{
     record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
-    table::Location,
     time::TimeRange,
     SequenceNumber,
 };
@@ -23,6 +22,7 @@ use log::{error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
+use wal::manager::WalLocation;
 
 use crate::{
     compaction::{
@@ -64,12 +64,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to purge wal, table_location:{:?}, sequence:{}",
-        table_location,
+        "Failed to purge wal, wal_location:{:?}, sequence:{}",
+        wal_location,
         sequence
     ))]
     PurgeWal {
-        table_location: Location,
+        wal_location: WalLocation,
         sequence: SequenceNumber,
         source: wal::manager::Error,
     },
@@ -300,7 +300,10 @@ impl Instance {
             });
             self.space_store
                 .manifest
-                .store_update(MetaUpdateRequest::new(table_data.location(), meta_update))
+                .store_update(MetaUpdateRequest::new(
+                    table_data.wal_location(),
+                    meta_update,
+                ))
                 .await
                 .context(StoreVersionEdit)?;
 
@@ -540,7 +543,10 @@ impl Instance {
         let meta_update = MetaUpdate::VersionEdit(edit_meta);
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.location(), meta_update))
+            .store_update(MetaUpdateRequest::new(
+                table_data.wal_location(),
+                meta_update,
+            ))
             .await
             .context(StoreVersionEdit)?;
 
@@ -557,10 +563,10 @@ impl Instance {
         // Mark sequence <= flushed_sequence to be deleted.
         self.space_store
             .wal_manager
-            .mark_delete_entries_up_to(table_data.location(), flushed_sequence)
+            .mark_delete_entries_up_to(table_data.wal_location(), flushed_sequence)
             .await
             .context(PurgeWal {
-                table_location: table_data.location(),
+                wal_location: table_data.wal_location(),
                 sequence: flushed_sequence,
             })?;
 
@@ -821,7 +827,10 @@ impl SpaceStore {
 
         let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
         self.manifest
-            .store_update(MetaUpdateRequest::new(table_data.location(), meta_update))
+            .store_update(MetaUpdateRequest::new(
+                table_data.wal_location(),
+                meta_update,
+            ))
             .await
             .context(StoreVersionEdit)?;
 

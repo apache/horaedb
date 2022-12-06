@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use common_types::{table::Location, SequenceNumber};
+use common_types::SequenceNumber;
 use common_util::{
     define_result,
     runtime::{JoinHandle, Runtime},
@@ -28,7 +28,9 @@ use tokio::{
 };
 use wal::{
     log_batch::LogEntry,
-    manager::{BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
+    manager::{
+        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, WalLocation, WalManagerRef,
+    },
 };
 
 use self::role_table::ReaderTable;
@@ -129,7 +131,7 @@ impl WalSynchronizer {
     }
 
     #[allow(dead_code)]
-    pub async fn register_table(&self, location: Location, table: ReaderTable) {
+    pub async fn register_table(&self, location: WalLocation, table: ReaderTable) {
         self.inner.register_table(location, table).await;
     }
 
@@ -146,12 +148,12 @@ impl WalSynchronizer {
 pub struct Inner {
     wal: WalManagerRef,
     config: WalSynchronizerConfig,
-    tables: RwLock<BTreeMap<Location, SynchronizeState>>,
+    tables: RwLock<BTreeMap<WalLocation, SynchronizeState>>,
 }
 
 impl Inner {
     #[allow(dead_code)]
-    pub async fn register_table(&self, location: Location, table: ReaderTable) {
+    pub async fn register_table(&self, location: WalLocation, table: ReaderTable) {
         let state = SynchronizeState {
             location,
             table,
@@ -286,7 +288,7 @@ impl Inner {
 
     /// Remove invalid tables from poll list. This function will clear the
     /// `invalid_table` vec.
-    async fn purge_invalid_tables(&self, invalid_tables: &mut Vec<Location>) {
+    async fn purge_invalid_tables(&self, invalid_tables: &mut Vec<WalLocation>) {
         if invalid_tables.is_empty() {
             return;
         }
@@ -303,7 +305,7 @@ impl Inner {
 }
 
 struct SynchronizeState {
-    location: Location,
+    location: WalLocation,
     table: ReaderTable,
     /// Atomic version of [SequenceNumber]
     last_synced_seq: AtomicU64,
