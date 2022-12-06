@@ -17,7 +17,7 @@ use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use crate::{
     config::{Config, Endpoint},
     grpc::{self, RpcServices},
-    http::{self, Service},
+    http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     mysql,
@@ -255,9 +255,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         // Create http config
-        let http_config = Endpoint {
+        let endpoint = Endpoint {
             addr: self.config.bind_addr.clone(),
             port: self.config.http_port,
+        };
+
+        let http_config = HttpConfig {
+            endpoint,
+            max_body_size: self.config.http_max_body_size,
         };
 
         // Start http service

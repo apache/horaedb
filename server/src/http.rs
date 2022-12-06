@@ -89,7 +89,7 @@ define_result!(Error);
 
 impl reject::Reject for Error {}
 
-const MAX_BODY_SIZE: u64 = 4096;
+pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
 
 /// Http service
 ///
@@ -100,6 +100,7 @@ pub struct Service<Q> {
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     tx: Sender<()>,
+    config: HttpConfig,
 }
 
 impl<Q> Service<Q> {
@@ -137,7 +138,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("sql")
             .and(warp::post())
-            .and(warp::body::content_length_limit(MAX_BODY_SIZE))
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
@@ -339,16 +340,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
-    endpoint: Endpoint,
+    config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
 }
 
 impl<Q> Builder<Q> {
-    pub fn new(endpoint: Endpoint) -> Self {
+    pub fn new(config: HttpConfig) -> Self {
         Self {
-            endpoint,
+            config,
             engine_runtimes: None,
             log_runtime: None,
             instance: None,
@@ -385,23 +386,33 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             instance,
             profiler: Arc::new(Profiler::default()),
             tx,
+            config: self.config.clone(),
         };
 
-        let ip_addr: IpAddr = self.endpoint.addr.parse().context(ParseIpAddr {
-            ip: self.endpoint.addr,
+        let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
+            ip: self.config.endpoint.addr,
         })?;
 
         // Register filters to warp and rejection handler
         let routes = service.routes().recover(handle_rejection);
-        let (_addr, server) =
-            warp::serve(routes).bind_with_graceful_shutdown((ip_addr, self.endpoint.port), async {
+        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
+            (ip_addr, self.config.endpoint.port),
+            async {
                 rx.await.ok();
-            });
+            },
+        );
         // Run the service
         engine_runtime.bg_runtime.spawn(server);
 
         Ok(service)
     }
+}
+
+/// Http service config
+#[derive(Debug, Clone)]
+pub struct HttpConfig {
+    pub endpoint: Endpoint,
+    pub max_body_size: u64,
 }
 
 #[derive(Debug, Serialize)]
