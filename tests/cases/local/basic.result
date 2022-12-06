@@ -49,11 +49,11 @@ CREATE TABLE `DeMo` (
 
 affected_rows: 0
 
-SELECT `nAmE` FROM `DeMo`;
+SELECT `nAmE` FROM demo;
 
 affected_rows: 0
 
-DROP TABLE `DeMo`;
+DROP TABLE demo;
 
 affected_rows: 0
 

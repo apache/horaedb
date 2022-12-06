@@ -31,6 +31,6 @@ CREATE TABLE `DeMo` (
 );
 
 
-SELECT `nAmE` FROM `DeMo`;
+SELECT `nAmE` FROM demo;
 
-DROP TABLE `DeMo`;
+DROP TABLE demo;
