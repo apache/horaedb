@@ -75,7 +75,7 @@ show create table `05_create_tables_t10`;
 drop table `05_create_tables_t10`;
 
 -- Explicit primary key with tsid
-CREATE TABLE `05_create_tables_t11`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(t1, tsid, c1)) ENGINE = Analytic;
+CREATE TABLE `05_create_tables_t11`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(t1, tsid)) ENGINE = Analytic;
 show create table `05_create_tables_t11`;
 drop table `05_create_tables_t11`;
 
