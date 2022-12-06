@@ -7,7 +7,10 @@
 use log::debug;
 use paste::paste;
 use sqlparser::{
-    ast::{ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, TableConstraint},
+    ast::{
+        ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, Join, ObjectName, SetExpr,
+        Statement as SqlStatement, TableConstraint, TableFactor, TableWithJoins,
+    },
     dialect::{keywords::Keyword, Dialect, MySqlDialect},
     parser::{IsOptional::Mandatory, Parser as SqlParser, ParserError},
     tokenizer::{Token, Tokenizer},
@@ -177,6 +180,7 @@ impl<'a> Parser<'a> {
                         self.parser.next_token();
                         self.parse_exists()
                     }
+                    // Keyword::Q
                     _ => {
                         // use the native parser
                         Ok(Statement::Standard(Box::new(
@@ -188,7 +192,7 @@ impl<'a> Parser<'a> {
             _ => {
                 // use the native parser
                 Ok(Statement::Standard(Box::new(
-                    self.parser.parse_statement()?,
+                    normalize_table_name_in_select(self.parser.parse_statement()?),
                 )))
             }
         }
@@ -538,6 +542,134 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
             };
         }
     }
+}
+
+/// Add quotes in table name, for example:
+///     
+///     table --> `table`
+///
+/// It is used to process table name in `SELECT`, for preventing `datafusion`
+/// converting the table name to lowercase, because `CeresDB` only support
+/// case-sensitive in sql.
+pub fn normalize_table_name_in_select(statement: SqlStatement) -> SqlStatement {
+    let origin_statement = statement.clone();
+    if let SqlStatement::Query(query) = statement {
+        let sqlparser::ast::Query {
+            with,
+            body,
+            order_by,
+            limit,
+            offset,
+            fetch,
+            lock,
+        } = *query;
+
+        let body = if let SetExpr::Select(select) = *body {
+            let sqlparser::ast::Select {
+                distinct,
+                top,
+                projection,
+                into,
+                from,
+                lateral_views,
+                selection,
+                group_by,
+                cluster_by,
+                distribute_by,
+                sort_by,
+                having,
+                qualify,
+            } = *select;
+
+            let from: Vec<_> = from
+                .into_iter()
+                .map(convert_one_from)
+                .collect();
+
+            Box::new(SetExpr::Select(Box::new(sqlparser::ast::Select {
+                distinct,
+                top,
+                projection,
+                into,
+                from,
+                lateral_views,
+                selection,
+                group_by,
+                cluster_by,
+                distribute_by,
+                sort_by,
+                having,
+                qualify,
+            })))
+        } else {
+            return origin_statement;
+        };
+
+        SqlStatement::Query(Box::new(sqlparser::ast::Query {
+            with,
+            body,
+            order_by,
+            limit,
+            offset,
+            fetch,
+            lock,
+        }))
+    } else {
+        origin_statement
+    }
+}
+
+fn convert_one_from(one_from: TableWithJoins) -> TableWithJoins {
+    let TableWithJoins { relation, joins } = one_from;
+
+    let relation = convert_relation(relation);
+    let joins: Vec<_> = joins
+        .into_iter()
+        .map(|join| Join {
+            relation: convert_relation(join.relation),
+            join_operator: join.join_operator,
+        })
+        .collect();
+
+    TableWithJoins { relation, joins }
+}
+
+fn convert_relation(relation: TableFactor) -> TableFactor {
+    if let TableFactor::Table {
+        name,
+        alias,
+        args,
+        with_hints,
+    } = relation.clone()
+    {
+        let new_name = maybe_convert_to_quoted_style(name);
+
+        TableFactor::Table {
+            name: new_name,
+            alias,
+            args,
+            with_hints,
+        }
+    } else {
+        relation
+    }
+}
+
+fn maybe_convert_to_quoted_style(object_name: ObjectName) -> ObjectName {
+    // let mut quoted_idents = Vec::with_capacity(object_name.0.len());
+    let quoteds: Vec<_> = object_name
+        .0
+        .into_iter()
+        .map(|id| {
+            if id.quote_style.is_none() {
+                Ident::with_quote('`', id.value)
+            } else {
+                id
+            }
+        })
+        .collect();
+
+    ObjectName(quoteds)
 }
 
 #[cfg(test)]
