@@ -121,6 +121,12 @@ pub enum Error {
     },
 
     #[snafu(display(
+        "Primary key with tsid should only contains tsid and timestamp key.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    InvalidPrimaryKeyWithTsid { backtrace: Backtrace },
+
+    #[snafu(display(
         "Invalid arrow schema key, key:{:?}, raw_value:{}, err:{:?}.\nBacktrace:\n{}",
         key,
         raw_value,
@@ -1129,6 +1135,12 @@ impl Builder {
         assert!(!self.primary_key_indexes.is_empty());
 
         let tsid_index = Self::find_tsid_index(&self.columns);
+        if tsid_index.is_some() {
+            ensure!(
+                self.primary_key_indexes.len() == 2,
+                InvalidPrimaryKeyWithTsid
+            );
+        }
 
         let fields = self.columns.iter().map(|c| c.to_arrow_field()).collect();
         let meta = self.build_arrow_schema_meta();
