@@ -27,7 +27,7 @@ check: install-tools
 
 test: install-tools
 	@ echo "go test ..."
-	@ go test -timeout 5m -race -cover $(PACKAGES)
+	@ go test -timeout 5m -coverprofile=coverage.txt -covermode=atomic $(PACKAGES)
 
 check-license:
 	@ sh ./scripts/check-license.sh

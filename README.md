@@ -1,5 +1,6 @@
 # Ceresmeta
 
+[![codecov](https://codecov.io/gh/CeresDB/ceresmeta/branch/main/graph/badge.svg?token=VTYXEAB2WU)](https://codecov.io/gh/CeresDB/ceresmeta)
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 
 CeresMeta is the meta service for managing the CeresDB cluster.
