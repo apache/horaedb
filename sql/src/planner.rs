@@ -356,31 +356,25 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .auto_increment_column_id(true)
             .enable_tsid_primary_key(enable_tsid_primary_key);
 
-        let mut primary_key_column_idxs = Vec::with_capacity(primary_key_columns.len());
-        for column in primary_key_columns {
-            if let Some(idx) = column_idxs_by_name.get(&*column.value) {
-                primary_key_column_idxs.push(*idx);
-            } else {
-                UndefinedColumnInPrimaryKey {
-                    name: &column.value,
-                }
-                .fail()?;
-            }
+        // Collect the key columns.
+        for key_col in primary_key_columns {
+            let col_name = key_col.value.as_str();
+            let col = columns_by_name
+                .remove(col_name)
+                .context(UndefinedColumnInPrimaryKey { name: col_name })?;
+            schema_builder = schema_builder
+                .add_key_column(col)
+                .context(BuildTableSchema)?;
         }
 
-        // The key columns have been consumed.
-        for (idx, col) in columns.iter().enumerate() {
-            let col_name = col.value.as_str();
+        // Collect the normal columns.
+        for normal_col in columns {
+            let col_name = normal_col.value.as_str();
+            // Only normal columns are kept in the `columns_by_name`.
             if let Some(col) = columns_by_name.remove(col_name) {
-                if primary_key_column_idxs.contains(&idx) {
-                    schema_builder = schema_builder
-                        .add_key_column(col)
-                        .context(BuildTableSchema)?;
-                } else {
-                    schema_builder = schema_builder
-                        .add_normal_column(col)
-                        .context(BuildTableSchema)?;
-                }
+                schema_builder = schema_builder
+                    .add_normal_column(col)
+                    .context(BuildTableSchema)?;
             }
         }
 
