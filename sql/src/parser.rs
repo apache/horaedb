@@ -180,7 +180,6 @@ impl<'a> Parser<'a> {
                         self.parser.next_token();
                         self.parse_exists()
                     }
-                    // Keyword::Q
                     _ => {
                         // use the native parser
                         Ok(Statement::Standard(Box::new(maybe_normalize_table_name(
@@ -653,7 +652,6 @@ fn convert_relation(relation: TableFactor) -> TableFactor {
 }
 
 fn maybe_convert_table_name(object_name: ObjectName) -> ObjectName {
-    // let mut quoted_idents = Vec::with_capacity(object_name.0.len());
     let quoteds: Vec<_> = object_name
         .0
         .into_iter()

@@ -214,7 +214,6 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             request_id, meta, self.num_rows_per_row_group
         );
 
-        //
         let total_row_num = Arc::new(AtomicUsize::new(0));
         let reader = RecordBytesReader {
             request_id,
@@ -226,8 +225,6 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             meta_data: meta.to_owned(),
             partitioned_record_batch: Default::default(),
         };
-
-        //
         let bytes = reader.read_all().await?;
         self.storage
             .put(self.path, bytes.into())
