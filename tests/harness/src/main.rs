@@ -1,7 +1,5 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-#![feature(try_blocks)]
-
 use anyhow::Result;
 use runner::Runner;
 use setup::Environment;
@@ -17,7 +15,6 @@ async fn main() -> Result<()> {
     let cases = env.get_case_path();
     let runner = Runner::new(cases, client);
     runner.run().await?;
-    env.stop_server();
 
     Ok(())
 }

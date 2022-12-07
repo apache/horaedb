@@ -62,8 +62,10 @@ impl Environment {
             )
         })
     }
+}
 
-    pub fn stop_server(mut self) {
+impl Drop for Environment {
+    fn drop(&mut self) {
         self.server_process.kill().unwrap();
     }
 }
