@@ -55,6 +55,7 @@ pub struct AliyunOptions {
     pub key_secret: String,
     pub endpoint: String,
     pub bucket: String,
+    pub prefix: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
