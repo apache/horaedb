@@ -121,12 +121,6 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid schema to generate tsid primary key.\nBacktrace:\n{}",
-        backtrace
-    ))]
-    InvalidTsidSchema { backtrace: Backtrace },
-
-    #[snafu(display(
         "Invalid arrow schema key, key:{:?}, raw_value:{}, err:{:?}.\nBacktrace:\n{}",
         key,
         raw_value,

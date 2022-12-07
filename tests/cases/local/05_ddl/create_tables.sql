@@ -79,6 +79,10 @@ CREATE TABLE `05_create_tables_t11`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY,
 show create table `05_create_tables_t11`;
 drop table `05_create_tables_t11`;
 
+CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
+show create table `05_create_tables_t12`;
+drop table `05_create_tables_t12`;
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 DROP TABLE IF EXISTS `05_create_tables_t3`;
@@ -90,3 +94,4 @@ DROP TABLE IF EXISTS `05_create_tables_t8`;
 DROP TABLE IF EXISTS `05_create_tables_t9`;
 DROP TABLE IF EXISTS `05_create_tables_t10`;
 DROP TABLE IF EXISTS `05_create_tables_t11`;
+DROP TABLE IF EXISTS `05_create_tables_t12`;
