@@ -24,9 +24,9 @@ impl Default for StorageOptions {
 
         StorageOptions {
             mem_cache_capacity: ReadableSize::mb(512),
-            mem_cache_partition_bits: 1,
+            mem_cache_partition_bits: 6,
             disk_cache_path: root_path.clone(),
-            disk_cache_capacity: ReadableSize::gb(5),
+            disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
             object_store: ObjectStoreOptions::Local(LocalOptions {
                 data_path: root_path,
