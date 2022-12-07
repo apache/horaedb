@@ -21,16 +21,7 @@ export HostIP0={your_ip}
 
 # ceresmeta0
 mkdir /tmp/ceresmeta0
-./ceresmeta -etcd-start-timeout-ms 30000 \
-            -peer-urls "http://${HostIP0}:2380" \
-            -advertise-client-urls "http://${HostIP0}:2379" \
-            -advertise-peer-urls "http://${HostIP0}:2380" \
-            -client-urls "http://${HostIP0}:2379" \
-            -wal-dir /tmp/ceresmeta0/wal \
-            -data-dir /tmp/ceresmeta0/data \
-            -node-name "meta0" \
-            -etcd-log-file /tmp/ceresmeta0/etcd.log \
-            -initial-cluster "meta0=http://${HostIP0}:2380"
+./ceresmeta --config ./config/example-standalone.toml
 ```
 
 ### Cluster mode
@@ -47,40 +38,13 @@ mkdir /tmp/ceresmeta1
 mkdir /tmp/ceresmeta2
 
 # Ceresmeta0
-./ceresmeta -etcd-start-timeout-ms 30000 \
-            -peer-urls "http://${HostIP0}:2380" \
-            -advertise-client-urls "http://${HostIP0}:2379" \
-            -advertise-peer-urls "http://${HostIP0}:2380" \
-            -client-urls "http://${HostIP0}:2379" \
-            -wal-dir /tmp/ceresmeta0/wal \
-            -data-dir /tmp/ceresmeta0/data \
-            -node-name "meta0" \
-            -etcd-log-file /tmp/ceresmeta0/etcd.log \
-            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+./ceresmeta --config ./config/exampl-cluster0.toml
 
 # Ceresmeta1
-./ceresmeta -etcd-start-timeout-ms 30000 \
-            -peer-urls "http://${HostIP1}:12380" \
-            -advertise-client-urls "http://${HostIP1}:12379" \
-            -advertise-peer-urls "http://${HostIP1}:12380" \
-            -client-urls "http://${HostIP1}:12379" \
-            -wal-dir /tmp/ceresmeta1/wal \
-            -data-dir /tmp/ceresmeta1/data \
-            -node-name "meta1" \
-            -etcd-log-file /tmp/ceresmeta1/etcd.log \
-            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+./ceresmeta --config ./config/exampl-cluster1.toml
 
 # Ceresmeta2
-./ceresmeta -etcd-start-timeout-ms 30000 \
-            -peer-urls "http://${HostIP2}:22380" \
-            -advertise-client-urls "http://${HostIP2}:22379" \
-            -advertise-peer-urls "http://${HostIP2}:22380" \
-            -client-urls "http://${HostIP2}:22379" \
-            -wal-dir /tmp/ceresmeta2/wal \
-            -data-dir /tmp/ceresmeta2/data \
-            -node-name "meta2" \
-            -etcd-log-file /tmp/ceresmeta2/etcd.log \
-            -initial-cluster "meta0=http://${HostIP0}:2380,meta1=http://${HostIP1}:12380,meta2=http://${HostIP2}:22380"
+./ceresmeta --config ./config/exampl-cluster2.toml
 ```
 
 ## Acknowledgment
