@@ -241,7 +241,7 @@ impl AsyncFileReader for ObjectStoreReader {
             .get_range(&self.path, range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch ranges from object store, err:{}",
+                    "Failed to fetch range from object store, err:{}",
                     e
                 ))
             })
@@ -262,7 +262,7 @@ impl AsyncFileReader for ObjectStoreReader {
                 .get_ranges(&self.path, &ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
-                        "ObjectStoreReader::get_byte_ranges error: {}",
+                        "Failed to fetch ranges from object store, err:{}",
                         e
                     ))
                 })
