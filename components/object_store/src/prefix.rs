@@ -38,8 +38,12 @@ impl StoreWithPrefix {
     }
 
     fn loc_with_prefix(&self, loc: &Path) -> Path {
-        let splitted_prefix = self.prefix.as_ref().split(DELIMITER).into_iter();
-        let splitted_loc = loc.as_ref().split(DELIMITER).into_iter();
+        if self.prefix.as_ref().is_empty() {
+            return loc.clone();
+        }
+
+        let splitted_prefix = self.prefix.as_ref().split(DELIMITER);
+        let splitted_loc = loc.as_ref().split(DELIMITER);
         Path::from_iter(splitted_prefix.chain(splitted_loc))
     }
 }
