@@ -11,7 +11,7 @@ common_util = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }
 upstream = { package = "object_store", version = "0.5.1" }
-oss-rust-sdk = "0.4.0"
+oss-rust-sdk = { git = "https://github.com/jiacai2050/oss-rust-sdk.git" , rev="a6c54471d0b187667395d6cac931bd4e01a9f4e4" }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
