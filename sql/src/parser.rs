@@ -183,16 +183,16 @@ impl<'a> Parser<'a> {
                     // Keyword::Q
                     _ => {
                         // use the native parser
-                        Ok(Statement::Standard(Box::new(
+                        Ok(Statement::Standard(Box::new(maybe_normalize_table_name(
                             self.parser.parse_statement()?,
-                        )))
+                        ))))
                     }
                 }
             }
             _ => {
                 // use the native parser
                 Ok(Statement::Standard(Box::new(
-                    normalize_table_name_in_select(self.parser.parse_statement()?),
+                    self.parser.parse_statement()?,
                 )))
             }
         }
@@ -551,8 +551,9 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
 /// It is used to process table name in `SELECT`, for preventing `datafusion`
 /// converting the table name to lowercase, because `CeresDB` only support
 /// case-sensitive in sql.
-pub fn normalize_table_name_in_select(statement: SqlStatement) -> SqlStatement {
-    let origin_statement = statement.clone();
+// TODO: other items(such as: alias, column name) are not normalized now.
+pub fn maybe_normalize_table_name(statement: SqlStatement) -> SqlStatement {
+    let original_statement = statement.clone();
     if let SqlStatement::Query(query) = statement {
         let sqlparser::ast::Query {
             with,
@@ -581,10 +582,7 @@ pub fn normalize_table_name_in_select(statement: SqlStatement) -> SqlStatement {
                 qualify,
             } = *select;
 
-            let from: Vec<_> = from
-                .into_iter()
-                .map(convert_one_from)
-                .collect();
+            let from: Vec<_> = from.into_iter().map(convert_one_from).collect();
 
             Box::new(SetExpr::Select(Box::new(sqlparser::ast::Select {
                 distinct,
@@ -602,7 +600,7 @@ pub fn normalize_table_name_in_select(statement: SqlStatement) -> SqlStatement {
                 qualify,
             })))
         } else {
-            return origin_statement;
+            return original_statement;
         };
 
         SqlStatement::Query(Box::new(sqlparser::ast::Query {
@@ -615,7 +613,7 @@ pub fn normalize_table_name_in_select(statement: SqlStatement) -> SqlStatement {
             lock,
         }))
     } else {
-        origin_statement
+        original_statement
     }
 }
 
@@ -642,7 +640,7 @@ fn convert_relation(relation: TableFactor) -> TableFactor {
         with_hints,
     } = relation.clone()
     {
-        let new_name = maybe_convert_to_quoted_style(name);
+        let new_name = maybe_convert_table_name(name);
 
         TableFactor::Table {
             name: new_name,
@@ -655,7 +653,7 @@ fn convert_relation(relation: TableFactor) -> TableFactor {
     }
 }
 
-fn maybe_convert_to_quoted_style(object_name: ObjectName) -> ObjectName {
+fn maybe_convert_table_name(object_name: ObjectName) -> ObjectName {
     // let mut quoted_idents = Vec::with_capacity(object_name.0.len());
     let quoteds: Vec<_> = object_name
         .0
@@ -1067,6 +1065,56 @@ mod tests {
         {
             let sql = "show tables '%abc%'";
             assert!(Parser::parse_sql(sql).is_err());
+        }
+    }
+
+    #[test]
+    fn test_normalizing_table_name_in_select() {
+        {
+            let sql = "select * from testa;";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
+        }
+
+        {
+            let sql = "select * from `testa`";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
+        }
+
+        {
+            let sql = "select * from `testa` join TEstB join TESTC";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+                    assert!(standard_statement_str.contains("`TEstB`"));
+                    assert!(standard_statement_str.contains("`TESTC`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
         }
     }
 }
