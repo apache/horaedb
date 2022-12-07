@@ -5,6 +5,7 @@ use object_store::cache::CachedStoreConfig;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 /// Options for storage backend
 pub struct StorageOptions {
     // 0 means disable mem cache
@@ -16,6 +17,23 @@ pub struct StorageOptions {
     pub disk_cache_page_size: ReadableSize,
     pub disk_cache_path: String,
     pub object_store: ObjectStoreOptions,
+}
+
+impl Default for StorageOptions {
+    fn default() -> Self {
+        let root_path = "/tmp/ceresdb".to_string();
+
+        StorageOptions {
+            mem_cache_capacity: ReadableSize::mb(512),
+            mem_cache_partition_bits: 1,
+            disk_cache_path: root_path.clone(),
+            disk_cache_capacity: ReadableSize::gb(5),
+            disk_cache_page_size: ReadableSize::mb(2),
+            object_store: ObjectStoreOptions::Local(LocalOptions {
+                data_path: root_path,
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
