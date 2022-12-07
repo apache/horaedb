@@ -346,8 +346,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn create_table_schema(
         columns: &[Ident],
         primary_key_columns: &[Ident],
-        mut columns_by_name: BTreeMap<&str, ColumnSchema>,
-        column_idxs_by_name: BTreeMap<&str, usize>,
+        mut columns_by_name: HashMap<&str, ColumnSchema>,
+        column_idxs_by_name: HashMap<&str, usize>,
         enable_tsid_primary_key: bool,
     ) -> Result<Schema> {
         assert_eq!(columns_by_name.len(), column_idxs_by_name.len());
@@ -411,7 +411,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     // Find the timestamp column and ensure its valid existence (only one).
     fn find_and_ensure_timestamp_column(
-        columns_by_name: &BTreeMap<&str, ColumnSchema>,
+        columns_by_name: &HashMap<&str, ColumnSchema>,
         constraints: &[TableConstraint],
     ) -> Result<Ident> {
         let mut timestamp_column_name = None;
@@ -461,14 +461,14 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .columns
             .iter()
             .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
-            .collect::<Result<BTreeMap<_, _>>>()?;
+            .collect::<Result<HashMap<_, _>>>()?;
 
-        let mut column_idxs_by_name = stmt
+        let mut column_idxs_by_name: HashMap<_, _> = stmt
             .columns
             .iter()
             .enumerate()
             .map(|(idx, col)| (col.name.value.as_str(), idx))
-            .collect::<BTreeMap<_, _>>();
+            .collect();
 
         // Tsid column is a reserved column.
         ensure!(
