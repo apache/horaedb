@@ -5,7 +5,6 @@
 use std::{path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
 use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
@@ -17,7 +16,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
-    manager::{self, RegionId, VersionedRegionId, WalManagerRef},
+    manager::{self, WalManagerRef},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as WalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
@@ -140,30 +139,17 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
             }
         }
 
-        let default_versioned_region_id = VersionedRegionId {
-            version: DEFAULT_CLUSTER_VERSION,
-            id: DEFAULT_SHARD_ID as RegionId,
-        };
-
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&config.wal_path);
         let wal_path = data_path.join(WAL_DIR_NAME);
-        let wal_manager = WalBuilder::with_default_rocksdb_config(
-            wal_path,
-            write_runtime.clone(),
-            default_versioned_region_id,
-        )
-        .build()
-        .context(OpenWal)?;
+        let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
+            .build()
+            .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
-        let manifest_wal = WalBuilder::with_default_rocksdb_config(
-            manifest_path,
-            write_runtime,
-            default_versioned_region_id,
-        )
-        .build()
-        .context(OpenManifestWal)?;
+        let manifest_wal = WalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
+            .build()
+            .context(OpenManifestWal)?;
 
         let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
             .await
