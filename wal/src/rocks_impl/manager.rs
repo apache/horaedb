@@ -280,13 +280,6 @@ impl RocksImpl {
         &self,
         table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
-        self.find_table_seqs_from_table_log_by_region_id(table_max_seqs)
-    }
-
-    fn find_table_seqs_from_table_log_by_region_id(
-        &self,
-        table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
-    ) -> Result<()> {
         let mut current_region_id = RegionId::MAX;
         let mut end_boundary_key_buf = BytesMut::new();
         loop {
@@ -333,7 +326,7 @@ impl RocksImpl {
                 .map_err(|e| Box::new(e) as _)
                 .context(Decoding)?;
 
-            // Found a valid log key by `current_region_id`, search table sequences by table
+            // The max valid log key in a region is found, search table sequences by table
             // id.
             debug!(
                 "RocksImpl has found log key by region id, log key:{:?}",
@@ -407,10 +400,12 @@ impl RocksImpl {
             );
 
             if log_key.region_id != region_id {
-                debug!("RocksImpl find table unit pairs stop scanning by table id, because has encountered next region id,
-                    searching table id:{}
-                    current region id:{},
-                    next region id:{}", current_table_id, region_id, log_key.region_id);
+                debug!(
+                    "RocksImpl find table unit pairs stop scanning by table id,
+                    because has encountered next region id,
+                    searching table id:{}, current region id:{}, next region id:{}",
+                    current_table_id, region_id, log_key.region_id
+                );
                 break;
             }
 
