@@ -3,7 +3,7 @@
 //! SQL statement
 
 use sqlparser::ast::{
-    ColumnDef, Ident, ObjectName, SqlOption, Statement as SqlStatement, TableConstraint,
+    ColumnDef, ObjectName, SqlOption, Statement as SqlStatement, TableConstraint,
 };
 
 /// Statement representations
@@ -33,14 +33,6 @@ impl TableName {
     pub fn is_empty(&self) -> bool {
         self.0 .0.is_empty()
     }
-
-    // Normalize an identifer to a lowercase string unless the identifier is quoted.
-    fn normalize_ident(id: &Ident) -> String {
-        match id.quote_style {
-            Some(_) => id.value.clone(),
-            None => id.value.to_ascii_lowercase(),
-        }
-    }
 }
 
 impl ToString for TableName {
@@ -48,7 +40,7 @@ impl ToString for TableName {
         self.0
              .0
             .iter()
-            .map(Self::normalize_ident)
+            .map(|ident| ident.value.as_str())
             .collect::<Vec<_>>()
             .join(".")
     }
