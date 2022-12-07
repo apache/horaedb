@@ -1,7 +1,9 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use lazy_static::lazy_static;
 use prometheus::{register_histogram, Histogram};
 lazy_static! {
-    // Histograms:
+    // Histogram:
     // Buckets: 100B,500B,1KB,100KB,500KB,1M,5M
     pub static ref SST_GET_RANGE_HISTOGRAM: Histogram = register_histogram!(
         "sst_get_range_length",
