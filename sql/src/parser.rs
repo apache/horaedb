@@ -544,14 +544,13 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
     }
 }
 
-/// Add quotes in table name, for example:
-///     
-///     table --> `table`
+/// Add quotes in table name (for example: convert table to `table`).
 ///
 /// It is used to process table name in `SELECT`, for preventing `datafusion`
 /// converting the table name to lowercase, because `CeresDB` only support
 /// case-sensitive in sql.
-// TODO: other items(such as: alias, column name) are not normalized now.
+// TODO: maybe other items(such as: alias, column name) need to be normalized,
+// too.
 pub fn maybe_normalize_table_name(statement: SqlStatement) -> SqlStatement {
     let original_statement = statement.clone();
     if let SqlStatement::Query(query) = statement {
