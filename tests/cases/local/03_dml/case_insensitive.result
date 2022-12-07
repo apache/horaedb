@@ -40,10 +40,10 @@ SELECT
 FROM
     `case_insensitive_table1`;
 
-ts,tsid,value1,
-Timestamp(Timestamp(1)),Int64(0),Double(10.0),
-Timestamp(Timestamp(2)),Int64(0),Double(20.0),
-Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+tsid,ts,value1,
+Int64(0),Timestamp(Timestamp(1)),Double(10.0),
+Int64(0),Timestamp(Timestamp(2)),Double(20.0),
+Int64(0),Timestamp(Timestamp(3)),Double(30.0),
 
 
 SELECT
