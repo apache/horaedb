@@ -23,12 +23,12 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::{ReadableDuration, ReadableSize};
+use common_util::config::ReadableDuration;
 use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
 use serde::Serialize;
 use serde_derive::Deserialize;
-use storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
+use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
@@ -89,20 +89,9 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let root_path = "/tmp/ceresdb".to_string();
-
         Self {
-            storage: StorageOptions {
-                mem_cache_capacity: ReadableSize::mb(512),
-                mem_cache_partition_bits: 1,
-                disk_cache_path: root_path.clone(),
-                disk_cache_capacity: ReadableSize::gb(5),
-                disk_cache_page_size: ReadableSize::mb(2),
-                object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: root_path.clone(),
-                }),
-            },
-            wal_path: root_path,
+            storage: Default::default(),
+            wal_path: "/tmp/ceresdb".to_string(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
