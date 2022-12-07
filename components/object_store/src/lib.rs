@@ -12,7 +12,6 @@ pub use upstream::{
 };
 
 pub mod aliyun;
-pub mod cache;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod prefix;

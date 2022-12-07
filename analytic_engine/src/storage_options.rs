@@ -1,7 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use common_util::config::ReadableSize;
-use object_store::cache::CachedStoreConfig;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -41,7 +40,6 @@ impl Default for StorageOptions {
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
-    Cache(CacheOptions),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -56,11 +54,4 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct CacheOptions {
-    pub local_store: Box<StorageOptions>,
-    pub remote_store: Box<StorageOptions>,
-    pub cache_opts: CachedStoreConfig,
 }

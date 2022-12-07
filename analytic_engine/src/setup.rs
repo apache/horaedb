@@ -9,7 +9,7 @@ use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS, cache::CachedStore, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
+    aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
     prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -396,14 +396,6 @@ fn open_storage(
                 ));
                 Arc::new(StoreWithPrefix::new(aliyun_opts.prefix, oss).context(OpenObjectStore)?)
                     as _
-            }
-            ObjectStoreOptions::Cache(cache_opts) => {
-                let local_store = open_storage(*cache_opts.local_store).await?;
-                let remote_store = open_storage(*cache_opts.remote_store).await?;
-                let store = CachedStore::init(local_store, remote_store, cache_opts.cache_opts)
-                    .await
-                    .context(OpenObjectStore)?;
-                Arc::new(store) as _
             }
         };
 
