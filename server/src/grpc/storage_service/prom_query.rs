@@ -339,7 +339,6 @@ mod tests {
     fn build_schema() -> schema::Schema {
         schema::Builder::new()
             .auto_increment_column_id(true)
-            .enable_tsid_primary_key(true)
             .add_key_column(
                 column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
                     .build()

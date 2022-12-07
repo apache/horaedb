@@ -348,13 +348,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         primary_key_columns: &[Ident],
         mut columns_by_name: HashMap<&str, ColumnSchema>,
         column_idxs_by_name: HashMap<&str, usize>,
-        enable_tsid_primary_key: bool,
     ) -> Result<Schema> {
         assert_eq!(columns_by_name.len(), column_idxs_by_name.len());
 
-        let mut schema_builder = schema::Builder::with_capacity(columns_by_name.len())
-            .auto_increment_column_id(true)
-            .enable_tsid_primary_key(enable_tsid_primary_key);
+        let mut schema_builder =
+            schema::Builder::with_capacity(columns_by_name.len()).auto_increment_column_id(true);
 
         // Collect the key columns.
         for key_col in primary_key_columns {
@@ -482,13 +480,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             Self::find_and_ensure_timestamp_column(&columns_by_name, &stmt.constraints)?;
         let tsid_column = Ident::with_quote(DEFAULT_QUOTE_CHAR, TSID_COLUMN);
         let mut columns: Vec<_> = stmt.columns.iter().map(|col| col.name.clone()).collect();
-        let mut enable_tsid_primary_key = false;
 
         let mut add_tsid_column = || {
             columns_by_name.insert(TSID_COLUMN, Self::tsid_column_schema()?);
             column_idxs_by_name.insert(TSID_COLUMN, columns.len());
             columns.push(tsid_column.clone());
-            enable_tsid_primary_key = true;
             Ok(())
         };
         let primary_key_columns =
@@ -519,7 +515,6 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             &primary_key_columns,
             columns_by_name,
             column_idxs_by_name,
-            enable_tsid_primary_key,
         )?;
 
         let options = parse_options(stmt.options)?;
@@ -1089,7 +1084,6 @@ mod tests {
         table_schema: Schema {
             timestamp_index: 1,
             tsid_index: None,
-            enable_tsid_primary_key: false,
             column_schemas: ColumnSchemas {
                 columns: [
                     ColumnSchema {
@@ -1257,7 +1251,6 @@ mod tests {
             schema: Schema {
                 timestamp_index: 1,
                 tsid_index: None,
-                enable_tsid_primary_key: false,
                 column_schemas: ColumnSchemas {
                     columns: [
                         ColumnSchema {
@@ -1313,7 +1306,6 @@ mod tests {
             schema: Schema {
                 timestamp_index: 1,
                 tsid_index: None,
-                enable_tsid_primary_key: false,
                 column_schemas: ColumnSchemas {
                     columns: [
                         ColumnSchema {
@@ -1450,7 +1442,6 @@ mod tests {
             schema: Schema {
                 timestamp_index: 1,
                 tsid_index: None,
-                enable_tsid_primary_key: false,
                 column_schemas: ColumnSchemas {
                     columns: [
                         ColumnSchema {
@@ -1526,7 +1517,6 @@ mod tests {
             schema: Schema {
                 timestamp_index: 1,
                 tsid_index: None,
-                enable_tsid_primary_key: false,
                 column_schemas: ColumnSchemas {
                     columns: [
                         ColumnSchema {
@@ -1616,7 +1606,6 @@ mod tests {
             schema: Schema {
                 timestamp_index: 1,
                 tsid_index: None,
-                enable_tsid_primary_key: false,
                 column_schemas: ColumnSchemas {
                     columns: [
                         ColumnSchema {
@@ -1698,7 +1687,6 @@ mod tests {
                 schema: Schema {
                     timestamp_index: 1,
                     tsid_index: None,
-                    enable_tsid_primary_key: false,
                     column_schemas: ColumnSchemas {
                         columns: [
                             ColumnSchema {

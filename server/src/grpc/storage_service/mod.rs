@@ -627,7 +627,6 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
             })?;
 
     schema_builder = schema_builder
-        .enable_tsid_primary_key(true)
         .add_key_column(timestamp_column_schema)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {

@@ -98,8 +98,7 @@ fn build_new_schema(current_schema: &Schema, column_schemas: Vec<ColumnSchema>) 
 
     builder = builder
         // Enable column id generation of the schema builder.
-        .auto_increment_column_id(true)
-        .enable_tsid_primary_key(current_schema.index_of_tsid().is_some());
+        .auto_increment_column_id(true);
 
     // Add new columns
     for mut column_schema in column_schemas {

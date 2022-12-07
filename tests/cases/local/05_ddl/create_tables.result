@@ -219,6 +219,18 @@ drop table `05_create_tables_t11`;
 
 affected_rows: 0
 
+CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Primary key with tsid should only contains tsid and timestamp key." })
+
+show create table `05_create_tables_t12`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: show create table `05_create_tables_t12`;. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12" })
+
+drop table `05_create_tables_t12`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: drop table `05_create_tables_t12`;. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12" })
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 
 affected_rows: 0
@@ -260,6 +272,10 @@ DROP TABLE IF EXISTS `05_create_tables_t10`;
 affected_rows: 0
 
 DROP TABLE IF EXISTS `05_create_tables_t11`;
+
+affected_rows: 0
+
+DROP TABLE IF EXISTS `05_create_tables_t12`;
 
 affected_rows: 0
 
