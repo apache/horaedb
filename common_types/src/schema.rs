@@ -208,15 +208,10 @@ pub enum CompatError {
 pub struct ArrowSchemaMeta {
     num_key_columns: usize,
     timestamp_index: usize,
-    enable_tsid_primary_key: bool,
     version: u32,
 }
 
 impl ArrowSchemaMeta {
-    pub fn enable_tsid_primary_key(&self) -> bool {
-        self.enable_tsid_primary_key
-    }
-
     fn parse_arrow_schema_meta_value<T>(
         meta: &HashMap<String, String>,
         key: ArrowSchemaMetaKey,
@@ -248,10 +243,6 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
                 meta,
                 ArrowSchemaMetaKey::TimestampIndex,
             )?,
-            enable_tsid_primary_key: Self::parse_arrow_schema_meta_value(
-                meta,
-                ArrowSchemaMetaKey::EnableTsidPrimaryKey,
-            )?,
             version: Self::parse_arrow_schema_meta_value(meta, ArrowSchemaMetaKey::Version)?,
         })
     }
@@ -261,7 +252,6 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
 pub enum ArrowSchemaMetaKey {
     NumKeyColumns,
     TimestampIndex,
-    EnableTsidPrimaryKey,
     Version,
 }
 
@@ -270,7 +260,6 @@ impl ArrowSchemaMetaKey {
         match self {
             Self::NumKeyColumns => "schema:num_key_columns",
             Self::TimestampIndex => "schema::timestamp_index",
-            Self::EnableTsidPrimaryKey => "schema::enable_tsid_primary_key",
             Self::Version => "schema::version",
         }
     }
@@ -549,11 +538,8 @@ pub struct Schema {
     // TODO(yingwen): Maybe we can remove the restriction that timestamp column must exists in
     //  schema (mainly for projected schema)
     timestamp_index: usize,
-    /// Index of tsid key column and None denotes the `enable_tsid_primary_key`
-    /// is not set.
+    /// Index of tsid key column
     tsid_index: Option<usize>,
-    /// Control whether to generate tsid as primary key
-    enable_tsid_primary_key: bool,
     /// Column schemas, only holds arc pointer so the Schema can be cloned
     /// without much overhead.
     column_schemas: Arc<ColumnSchemas>,
@@ -567,7 +553,6 @@ impl fmt::Debug for Schema {
             // arrow_schema is ignored.
             .field("timestamp_index", &self.timestamp_index)
             .field("tsid_index", &self.tsid_index)
-            .field("enable_tsid_primary_key", &self.enable_tsid_primary_key)
             .field("column_schemas", &self.column_schemas)
             .field("version", &self.version)
             .field("primary_key_indexes", &self.primary_key_indexes)
@@ -882,9 +867,7 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     type Error = Error;
 
     fn try_from(schema: common_pb::TableSchema) -> Result<Self> {
-        let mut builder = Builder::with_capacity(schema.columns.len())
-            .version(schema.version)
-            .enable_tsid_primary_key(schema.enable_tsid_primary_key);
+        let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_indexes = schema.primary_key_indexes;
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
@@ -911,7 +894,6 @@ impl From<&Schema> for common_pb::TableSchema {
 
         let table_schema = common_pb::TableSchema {
             timestamp_index: schema.timestamp_index as u32,
-            enable_tsid_primary_key: schema.enable_tsid_primary_key,
             version: schema.version,
             columns,
             primary_key_indexes: schema
@@ -941,7 +923,6 @@ pub struct Builder {
     /// [crate::column_schema::COLUMN_ID_UNINIT].
     auto_increment_column_id: bool,
     max_column_id: ColumnId,
-    enable_tsid_primary_key: bool,
 }
 
 impl Default for Builder {
@@ -967,7 +948,6 @@ impl Builder {
             version: DEFAULT_SCHEMA_VERSION,
             auto_increment_column_id: false,
             max_column_id: column_schema::COLUMN_ID_UNINIT,
-            enable_tsid_primary_key: false,
         }
     }
 
@@ -1020,12 +1000,6 @@ impl Builder {
     /// Default is false
     pub fn auto_increment_column_id(mut self, auto_increment: bool) -> Self {
         self.auto_increment_column_id = auto_increment;
-        self
-    }
-
-    /// Enable tsid as primary key.
-    pub fn enable_tsid_primary_key(mut self, enable_tsid_primary_key: bool) -> Self {
-        self.enable_tsid_primary_key = enable_tsid_primary_key;
         self
     }
 
@@ -1090,10 +1064,9 @@ impl Builder {
         let ArrowSchemaMeta {
             num_key_columns,
             timestamp_index,
-            enable_tsid_primary_key,
             version,
         } = Self::parse_arrow_schema_meta_or_default(arrow_schema.metadata())?;
-        let tsid_index = Self::find_tsid_index(enable_tsid_primary_key, &columns)?;
+        let tsid_index = Self::find_tsid_index(&columns);
 
         let column_schemas = Arc::new(ColumnSchemas::new(columns));
 
@@ -1106,7 +1079,6 @@ impl Builder {
             primary_key_indexes,
             timestamp_index,
             tsid_index,
-            enable_tsid_primary_key,
             column_schemas,
             version,
         })
@@ -1140,36 +1112,19 @@ impl Builder {
                 ArrowSchemaMetaKey::Version.to_string(),
                 self.version.to_string(),
             ),
-            (
-                ArrowSchemaMetaKey::EnableTsidPrimaryKey.to_string(),
-                self.enable_tsid_primary_key.to_string(),
-            ),
         ]
         .into_iter()
         .collect()
     }
 
-    fn find_tsid_index(
-        enable_tsid_primary_key: bool,
-        columns: &[ColumnSchema],
-    ) -> Result<Option<usize>> {
-        if !enable_tsid_primary_key {
-            return Ok(None);
-        }
-
-        let idx = columns
-            .iter()
-            .enumerate()
-            .find_map(|(idx, col_schema)| {
-                if col_schema.name == TSID_COLUMN {
-                    Some(idx)
-                } else {
-                    None
-                }
-            })
-            .context(InvalidTsidSchema)?;
-
-        Ok(Some(idx))
+    fn find_tsid_index(columns: &[ColumnSchema]) -> Option<usize> {
+        columns.iter().enumerate().find_map(|(idx, col_schema)| {
+            if col_schema.name == TSID_COLUMN {
+                Some(idx)
+            } else {
+                None
+            }
+        })
     }
 
     /// Build the schema
@@ -1178,11 +1133,8 @@ impl Builder {
 
         // Timestamp key column is exists, so key columns should not be zero
         assert!(!self.primary_key_indexes.is_empty());
-        if self.enable_tsid_primary_key {
-            ensure!(self.primary_key_indexes.len() == 2, InvalidTsidSchema);
-        }
 
-        let tsid_index = Self::find_tsid_index(self.enable_tsid_primary_key, &self.columns)?;
+        let tsid_index = Self::find_tsid_index(&self.columns);
 
         let fields = self.columns.iter().map(|c| c.to_arrow_field()).collect();
         let meta = self.build_arrow_schema_meta();
@@ -1192,7 +1144,6 @@ impl Builder {
             primary_key_indexes: self.primary_key_indexes,
             timestamp_index,
             tsid_index,
-            enable_tsid_primary_key: self.enable_tsid_primary_key,
             column_schemas: Arc::new(ColumnSchemas::new(self.columns)),
             version: self.version,
         })
@@ -1684,7 +1635,6 @@ mod tests {
     fn test_build_from_arrow_schema() {
         let schema = Builder::new()
             .auto_increment_column_id(true)
-            .enable_tsid_primary_key(true)
             .add_key_column(
                 column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
                     .build()
