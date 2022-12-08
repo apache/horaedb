@@ -24,11 +24,28 @@ SELECT
 FROM
     CASE_INSENSITIVE_TABLE1;
 
+SELECT
+    *
+FROM
+    `case_insensitive_table1`;
+
+SELECT
+    *
+FROM
+    `CASE_INSENSITIVE_TABLE1`;
 
 SHOW CREATE TABLE case_insensitive_table1;
 
 SHOW CREATE TABLE CASE_INSENSITIVE_TABLE1;
 
+SHOW CREATE TABLE `case_insensitive_table1`;
+
+SHOW CREATE TABLE `CASE_INSENSITIVE_TABLE1`;
+
 DESC case_insensitive_table1;
 
 DESC CASE_INSENSITIVE_TABLE1;
+
+DESC `case_insensitive_table1`;
+
+DESC `CASE_INSENSITIVE_TABLE1`;

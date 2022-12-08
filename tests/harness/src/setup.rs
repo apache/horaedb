@@ -63,7 +63,7 @@ impl Environment {
         })
     }
 
-    pub fn stop_server(mut self) {
+    pub fn stop_server(&mut self) {
         self.server_process.kill().unwrap();
     }
 }

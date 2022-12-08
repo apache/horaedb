@@ -129,7 +129,7 @@ fn test_write_multiple_regions<B: WalBuilder>(builder: B) {
 
 fn test_reopen<B: WalBuilder>(builder: B) {
     let env = TestEnv::new(2, builder);
-    env.runtime.block_on(reopen(&env));
+    env.runtime.block_on(reopen(&env, 5));
 }
 
 fn test_complex_read_write<B: WalBuilder>(builder: B) {
@@ -434,61 +434,63 @@ async fn write_multiple_regions_parallelly<B: WalBuilder + 'static>(env: Arc<Tes
 }
 
 /// Test whether the written logs can be read after reopen.
-async fn reopen<B: WalBuilder>(env: &TestEnv<B>) {
-    let table_id = 0;
-    let (payload_batch, write_batch, seq) = {
+async fn reopen<B: WalBuilder>(env: &TestEnv<B>, result_len: usize) {
+    let mut write_results = Vec::with_capacity(result_len);
+    // Write logs.
+    {
         let wal = env.build_wal().await;
-        let (payload_batch, write_batch) = env
-            .build_log_batch(
-                wal.clone(),
-                WalLocation::new(
-                    DEFAULT_SHARD_ID as RegionId,
-                    DEFAULT_CLUSTER_VERSION,
-                    table_id,
-                ),
-                0,
-                10,
-            )
-            .await;
-        let seq = wal
-            .write(&env.write_ctx, &write_batch)
-            .await
-            .expect("should succeed to write");
+        for result_idx in 0..result_len {
+            let region_id = result_idx as u64;
+            let region_version = result_idx as u64;
+            let table_id = result_idx as u64;
+            let (payload_batch, write_batch) = env
+                .build_log_batch(
+                    wal.clone(),
+                    WalLocation::new(region_id, region_version, table_id),
+                    0,
+                    10,
+                )
+                .await;
+            let seq = wal
+                .write(&env.write_ctx, &write_batch)
+                .await
+                .expect("should succeed to write");
 
+            let last_seq = wal
+                .sequence_num(WalLocation::new(region_id, region_version, table_id))
+                .await
+                .unwrap();
+            assert_eq!(seq, last_seq);
+
+            write_results.push((
+                region_id,
+                region_version,
+                table_id,
+                payload_batch,
+                write_batch,
+                seq,
+            ));
+        }
         wal.close_gracefully().await.unwrap();
+    }
 
-        (payload_batch, write_batch, seq)
-    };
-
-    // reopen the wal
+    // Reopen the wal.
     let wal = env.build_wal().await;
 
-    let last_seq = wal
-        .sequence_num(WalLocation::new(
-            DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_CLUSTER_VERSION,
-            table_id,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(seq, last_seq);
+    for (region_id, region_version, table_id, payload_batch, write_batch, seq) in write_results {
+        let read_req = ReadRequest {
+            location: WalLocation::new(region_id, region_version, table_id),
+            start: ReadBoundary::Included(seq + 1 - write_batch.entries.len() as u64),
+            end: ReadBoundary::Included(seq),
+        };
+        let iter = wal
+            .read_batch(&env.read_ctx, &read_req)
+            .await
+            .expect("should succeed to read");
 
-    let read_req = ReadRequest {
-        location: WalLocation::new(
-            DEFAULT_SHARD_ID as RegionId,
-            DEFAULT_CLUSTER_VERSION,
-            table_id,
-        ),
-        start: ReadBoundary::Included(seq + 1 - write_batch.entries.len() as u64),
-        end: ReadBoundary::Included(seq),
-    };
-    let iter = wal
-        .read_batch(&env.read_ctx, &read_req)
-        .await
-        .expect("should succeed to read");
-
-    let test_table_data = TestTableData::new(table_id, payload_batch, seq);
-    env.check_log_entries(vec![test_table_data], iter).await;
+        let test_table_data = TestTableData::new(table_id, payload_batch, seq);
+        env.check_log_entries(vec![test_table_data], iter).await;
+    }
 
     wal.close_gracefully().await.unwrap();
 }

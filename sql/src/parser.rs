@@ -7,7 +7,10 @@
 use log::debug;
 use paste::paste;
 use sqlparser::{
-    ast::{ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, TableConstraint},
+    ast::{
+        ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, ObjectName, SetExpr,
+        Statement as SqlStatement, TableConstraint, TableFactor, TableWithJoins,
+    },
     dialect::{keywords::Keyword, Dialect, MySqlDialect},
     parser::{IsOptional::Mandatory, Parser as SqlParser, ParserError},
     tokenizer::{Token, Tokenizer},
@@ -179,9 +182,9 @@ impl<'a> Parser<'a> {
                     }
                     _ => {
                         // use the native parser
-                        Ok(Statement::Standard(Box::new(
-                            self.parser.parse_statement()?,
-                        )))
+                        let mut statement = self.parser.parse_statement()?;
+                        maybe_normalize_table_name(&mut statement);
+                        Ok(Statement::Standard(Box::new(statement)))
                     }
                 }
             }
@@ -538,6 +541,43 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
             };
         }
     }
+}
+
+/// Add quotes in table name (for example: convert table to `table`).
+///
+/// It is used to process table name in `SELECT`, for preventing `datafusion`
+/// converting the table name to lowercase, because `CeresDB` only support
+/// case-sensitive in sql.
+// TODO: maybe other items(such as: alias, column name) need to be normalized,
+// too.
+pub fn maybe_normalize_table_name(statement: &mut SqlStatement) {
+    if let SqlStatement::Query(query) = statement {
+        if let SetExpr::Select(select) = query.body.as_mut() {
+            select.from.iter_mut().for_each(maybe_convert_one_from);
+        }
+    }
+}
+
+fn maybe_convert_one_from(one_from: &mut TableWithJoins) {
+    let TableWithJoins { relation, joins } = one_from;
+    maybe_convert_relation(relation);
+    joins.iter_mut().for_each(|join| {
+        maybe_convert_relation(&mut join.relation);
+    });
+}
+
+fn maybe_convert_relation(relation: &mut TableFactor) {
+    if let TableFactor::Table { name, .. } = relation {
+        maybe_convert_table_name(name);
+    }
+}
+
+fn maybe_convert_table_name(object_name: &mut ObjectName) {
+    object_name.0.iter_mut().for_each(|id| {
+        if id.quote_style.is_none() {
+            let _ = std::mem::replace(id, Ident::with_quote('`', id.value.clone()));
+        }
+    })
 }
 
 #[cfg(test)]
@@ -935,6 +975,56 @@ mod tests {
         {
             let sql = "show tables '%abc%'";
             assert!(Parser::parse_sql(sql).is_err());
+        }
+    }
+
+    #[test]
+    fn test_normalizing_table_name_in_select() {
+        {
+            let sql = "select * from testa;";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
+        }
+
+        {
+            let sql = "select * from `testa`";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
+        }
+
+        {
+            let sql = "select * from `testa` join TEstB join TESTC";
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert!(
+                if let Statement::Standard(standard_statement) = &statements[0] {
+                    let standard_statement_str = format!("{}", standard_statement);
+                    assert!(standard_statement_str.contains("`testa`"));
+                    assert!(standard_statement_str.contains("`TEstB`"));
+                    assert!(standard_statement_str.contains("`TESTC`"));
+
+                    true
+                } else {
+                    false
+                }
+            )
         }
     }
 }

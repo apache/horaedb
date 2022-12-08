@@ -12,7 +12,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::{
     bytes::{BufMut, SafeBuf, SafeBufMut},
-    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::TableId,
     SequenceNumber,
 };
 use common_util::{
@@ -27,8 +27,7 @@ use tempfile::TempDir;
 use crate::{
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
-        BatchLogIteratorAdapter, ReadContext, RegionId, VersionedRegionId, WalLocation, WalManager,
-        WalManagerRef, WriteContext,
+        BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WriteContext,
     },
     message_queue_impl::{config::Config, wal::MessageQueueImpl},
     rocks_impl::{self, manager::RocksImpl},
@@ -53,15 +52,8 @@ impl WalBuilder for RocksWalBuilder {
     type Wal = RocksImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let versioned_region_id = VersionedRegionId {
-            version: DEFAULT_CLUSTER_VERSION,
-            id: DEFAULT_SHARD_ID as RegionId,
-        };
-        let wal_builder = rocks_impl::manager::Builder::with_default_rocksdb_config(
-            data_path,
-            runtime,
-            versioned_region_id,
-        );
+        let wal_builder =
+            rocks_impl::manager::Builder::with_default_rocksdb_config(data_path, runtime);
 
         Arc::new(
             wal_builder
