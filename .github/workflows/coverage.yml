@@ -45,6 +45,7 @@ jobs:
       - run: |
           rustup set auto-self-update disable
           rustup toolchain install ${{ matrix.rust }}
+          rustup component add llvm-tools-preview
       - name: Release Disk Quota
         run: |
           sudo rm -rf /usr/local/lib/android # release about 10 GB
@@ -52,14 +53,12 @@ jobs:
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
-      - name: Build
-        run: cargo build --verbose
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Run build and test
+        run: cargo build --verbose && cargo test --verbose
         env:
           CARGO_INCREMENTAL: '0'
           RUSTFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
-          RUSTDOCFLAGS: '-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests'
+          RUSTDOCFLAGS: '-Cpanic=abort'
       - name: rust-grcov
         uses: actions-rs/grcov@v0.1
       - name: Codecov
