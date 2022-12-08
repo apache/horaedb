@@ -193,10 +193,172 @@ impl ObjectStore for StoreWithPrefix {
 mod tests {
     use std::sync::Arc;
 
+    use chrono::{DateTime, Utc};
+    use futures::stream;
     use tempfile::tempdir;
     use upstream::local::LocalFileSystem;
 
     use super::*;
+
+    #[derive(Debug, Clone)]
+    struct PathPrefixChecker {
+        prefix: String,
+    }
+
+    impl PathPrefixChecker {
+        fn check(&self, location: &Path) {
+            assert!(location.as_ref().starts_with(&self.prefix));
+        }
+    }
+
+    // Simple mock object store, only used for test.
+    #[derive(Debug, Clone)]
+    struct MockObjectStore {
+        file_num: usize,
+        content: Bytes,
+        prefix_checker: PathPrefixChecker,
+    }
+
+    impl Display for MockObjectStore {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "MockObjectStore")
+        }
+    }
+
+    #[async_trait]
+    impl ObjectStore for MockObjectStore {
+        async fn put(&self, location: &Path, _bytes: Bytes) -> Result<()> {
+            self.prefix_checker.check(location);
+            Ok(())
+        }
+
+        async fn put_multipart(
+            &self,
+            _location: &Path,
+        ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+            todo!()
+        }
+
+        async fn abort_multipart(
+            &self,
+            _location: &Path,
+            _multipart_id: &MultipartId,
+        ) -> Result<()> {
+            todo!()
+        }
+
+        async fn get(&self, location: &Path) -> Result<GetResult> {
+            self.prefix_checker.check(location);
+            Err(Error::NotImplemented)
+        }
+
+        async fn get_range(&self, location: &Path, _range: Range<usize>) -> Result<Bytes> {
+            self.prefix_checker.check(location);
+            Ok(self.content.clone())
+        }
+
+        async fn head(&self, location: &Path) -> Result<ObjectMeta> {
+            self.prefix_checker.check(location);
+
+            Ok(ObjectMeta {
+                location: location.clone(),
+                last_modified: DateTime::<Utc>::default(),
+                size: 0,
+            })
+        }
+
+        async fn delete(&self, location: &Path) -> Result<()> {
+            self.prefix_checker.check(location);
+
+            Err(Error::NotImplemented)
+        }
+
+        async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+            if let Some(loc) = prefix {
+                self.prefix_checker.check(loc);
+            }
+            let prefix = prefix.map(|v| v.to_string()).unwrap_or_default();
+            let mut objects = Vec::with_capacity(self.file_num);
+            for file_idx in 0..self.file_num {
+                let raw_filepath = format!("{}/{}", prefix, file_idx);
+                let filepath = Path::from(raw_filepath);
+                let object = ObjectMeta {
+                    location: filepath,
+                    last_modified: DateTime::<Utc>::default(),
+                    size: 0,
+                };
+                objects.push(Ok(object));
+            }
+
+            Ok(stream::iter(objects).boxed())
+        }
+
+        async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
+            if let Some(loc) = prefix {
+                self.prefix_checker.check(loc);
+            }
+            Err(Error::NotImplemented)
+        }
+
+        async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
+            self.prefix_checker.check(from);
+            self.prefix_checker.check(to);
+            Err(Error::NotImplemented)
+        }
+
+        async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
+            self.prefix_checker.check(from);
+            self.prefix_checker.check(to);
+            Err(Error::NotImplemented)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_with_mock_store() {
+        let test_prefix = "test";
+        let mock_store = MockObjectStore {
+            file_num: 3,
+            content: Bytes::from_static(b"00000"),
+            prefix_checker: PathPrefixChecker {
+                prefix: test_prefix.to_string(),
+            },
+        };
+        let mock_store = Arc::new(mock_store);
+        let prefix_store = StoreWithPrefix::new(test_prefix.to_string(), mock_store).unwrap();
+
+        let test_filepath = Path::from("0/100");
+
+        // Ignore the result and let the `prefix_checker` in the `MockObjectStore` to do
+        // the assertion.
+        let _ = prefix_store
+            .put(&test_filepath, Bytes::from_static(b"1111"))
+            .await;
+
+        let _ = prefix_store.get(&test_filepath).await;
+        let _ = prefix_store.get_range(&test_filepath, 0..1).await;
+        let _ = prefix_store.get_ranges(&test_filepath, &[0..2]).await;
+
+        let meta = prefix_store.head(&test_filepath).await.unwrap();
+        assert!(!meta.location.as_ref().starts_with(test_prefix));
+
+        let _ = prefix_store.delete(&test_filepath).await;
+
+        for meta in prefix_store
+            .list(Some(&test_filepath))
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await
+        {
+            let meta = meta.unwrap();
+            assert!(!meta.location.as_ref().starts_with(test_prefix));
+        }
+
+        let _ = prefix_store.copy(&test_filepath, &test_filepath).await;
+        let _ = prefix_store
+            .copy_if_not_exists(&test_filepath, &test_filepath)
+            .await;
+    }
 
     #[test]
     fn test_prefix() {
