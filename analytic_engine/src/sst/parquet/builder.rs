@@ -372,6 +372,7 @@ mod tests {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 runtime: runtime.clone(),
+                row_group_num_per_reader: usize::MAX,
             };
 
             let mut reader: Box<dyn SstReader + Send> = if async_reader {
@@ -423,14 +424,14 @@ mod tests {
                 Box::new(reader)
             };
 
-            let mut stream = reader.read().await.unwrap();
+            let mut streams = reader.read().await.unwrap();
             let mut expect_rows = vec![];
             for counter in &[4, 3, 2, 1, 0] {
                 expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4"));
                 expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4"));
                 expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4"));
             }
-            check_stream(&mut stream, expect_rows).await;
+            check_stream(streams.get_mut(0).unwrap(), expect_rows).await;
         });
     }
 

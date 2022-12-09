@@ -202,7 +202,7 @@ impl<'a> MergeBuilder<'a> {
         let mut sst_ids = Vec::with_capacity(self.ssts.len());
         for leveled_ssts in &self.ssts {
             for f in leveled_ssts {
-                let stream = record_batch_stream::filtered_stream_from_sst_file(
+                let sst_streams = record_batch_stream::filtered_stream_from_sst_file(
                     self.config.space_id,
                     self.config.table_id,
                     f,
@@ -212,7 +212,7 @@ impl<'a> MergeBuilder<'a> {
                 )
                 .await
                 .context(BuildStreamFromSst)?;
-                streams.push(stream);
+                streams.extend(sst_streams);
                 sst_ids.push(f.id());
             }
         }

@@ -66,6 +66,7 @@ impl MergeSstBench {
             predicate,
             meta_cache: meta_cache.clone(),
             runtime: runtime.clone(),
+            row_group_num_per_reader: usize::MAX,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 

@@ -217,6 +217,7 @@ impl ScanTable {
             opts: ReadOptions {
                 batch_size: state.config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
                 read_parallelism: self.read_parallelism,
+                row_group_num_per_sst_reader: usize::MAX,
             },
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),

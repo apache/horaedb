@@ -259,7 +259,7 @@ pub async fn filtered_stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
     store: &ObjectStoreRef,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<Vec<SequencedRecordBatchStream>> {
     stream_from_sst_file(
         space_id,
         table_id,
@@ -269,15 +269,20 @@ pub async fn filtered_stream_from_sst_file(
         store,
     )
     .await
-    .and_then(|origin_stream| {
-        filter_stream(
-            origin_stream,
-            sst_reader_options
-                .projected_schema
-                .as_record_schema_with_key()
-                .to_arrow_schema_ref(),
-            sst_reader_options.predicate.as_ref(),
-        )
+    .and_then(|origin_streams| {
+        origin_streams
+            .into_iter()
+            .map(|origin_stream| {
+                filter_stream(
+                    origin_stream,
+                    sst_reader_options
+                        .projected_schema
+                        .as_record_schema_with_key()
+                        .to_arrow_schema_ref(),
+                    sst_reader_options.predicate.as_ref(),
+                )
+            })
+            .collect()
     })
 }
 
@@ -289,7 +294,7 @@ pub async fn stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
     store: &ObjectStoreRef,
-) -> Result<SequencedRecordBatchStream> {
+) -> Result<Vec<SequencedRecordBatchStream>> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
     let mut sst_reader = sst_factory
@@ -299,17 +304,34 @@ pub async fn stream_from_sst_file(
         })?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
     let max_seq = meta.max_sequence;
-    let sst_stream = sst_reader.read().await.context(ReadSstData)?;
+    let sst_streams = sst_reader.read().await.context(ReadSstData)?;
 
-    let stream = Box::new(sst_stream.map(move |v| {
-        v.map(|record_batch| SequencedRecordBatch {
-            record_batch,
-            sequence: max_seq,
-        })
-        .map_err(|e| Box::new(e) as _)
-    }));
+    let mut new_sst_streams = Vec::new();
+    for sst_stream in sst_streams {
+        let a = Box::new(sst_stream.map(move |v| {
+            v.map(|record_batch| SequencedRecordBatch {
+                record_batch,
+                sequence: max_seq,
+            })
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+        })) as SequencedRecordBatchStream;
 
-    Ok(stream)
+        new_sst_streams.push(a);
+    }
+
+    // let sst_streams: Vec<_> = sst_streams.into_iter().map(|sst_stream| {
+    //     Ok(Box::new(sst_stream.map(move |v| {
+    //         v.map(|record_batch| SequencedRecordBatch {
+    //             record_batch,
+    //             sequence: max_seq,
+    //         })
+    //         .map_err(|e| Box::new(e) as _)
+
+    //     })))
+    // })
+    // .collect();
+
+    Ok(new_sst_streams)
 }
 
 #[cfg(test)]

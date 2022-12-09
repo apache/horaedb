@@ -52,6 +52,7 @@ pub struct SstReaderOptions {
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
+    pub row_group_num_per_reader: usize,
 }
 
 #[derive(Debug, Clone)]

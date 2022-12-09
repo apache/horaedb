@@ -86,7 +86,7 @@ pub trait SstReader {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>;
+    ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>>;
 }
 
 #[cfg(test)]

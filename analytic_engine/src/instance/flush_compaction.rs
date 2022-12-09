@@ -898,6 +898,7 @@ impl SpaceStore {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),
                 runtime: runtime.clone(),
+                row_group_num_per_reader: usize::MAX,
             };
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,

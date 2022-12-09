@@ -160,6 +160,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            row_group_num_per_reader: request.opts.row_group_num_per_sst_reader,
         };
 
         let time_range = request.predicate.time_range();
@@ -220,6 +221,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            row_group_num_per_reader: request.opts.row_group_num_per_sst_reader,
         };
 
         let time_range = request.predicate.time_range();

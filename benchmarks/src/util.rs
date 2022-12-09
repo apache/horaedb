@@ -103,13 +103,14 @@ pub async fn load_sst_to_memtable(
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        row_group_num_per_reader: usize::MAX,
     };
     let sst_factory = FactoryImpl;
     let mut sst_reader = sst_factory
         .new_sst_reader(&sst_reader_options, sst_path, store)
         .unwrap();
 
-    let mut sst_stream = sst_reader.read().await.unwrap();
+    let mut sst_stream = sst_reader.read().await.unwrap().pop().unwrap();
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
     let mut ctx = PutContext::new(index_in_writer);
 

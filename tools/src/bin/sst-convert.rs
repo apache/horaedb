@@ -79,6 +79,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        row_group_num_per_reader: usize::MAX,
     };
     let mut reader = factory
         .new_sst_reader(&reader_opts, &input_path, &storage)
@@ -98,12 +99,13 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         StorageFormat::try_from(args.format.as_str())
             .with_context(|| format!("invalid storage format:{}", args.format))?,
     );
-    let sst_stream = reader
-        .read()
-        .await
-        .unwrap()
-        .map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>));
-    let sst_stream = Box::new(sst_stream) as _;
+    let mut sst_streams = reader.read().await.unwrap();
+    // It just support pulling sst in one stream in converting tool.
+    assert_eq!(sst_streams.len(), 1);
+    let sst_stream = sst_streams.pop().unwrap();
+    let sst_stream = Box::new(
+        sst_stream.map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)),
+    ) as _;
     let sst_info = builder
         .build(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;

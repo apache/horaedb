@@ -385,7 +385,7 @@ impl<'a> SstReader for ParquetSstReader<'a> {
     // TODO(yingwen): Project the schema in parquet
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+    ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
         debug!(
             "read sst:{}, projected_schema:{:?}, predicate:{:?}",
             self.path.to_string(),
@@ -397,6 +397,6 @@ impl<'a> SstReader for ParquetSstReader<'a> {
         let (tx, rx) = mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap);
         self.read_record_batches(tx)?;
 
-        Ok(Box::new(RecordBatchReceiver { rx }))
+        Ok(vec![Box::new(RecordBatchReceiver { rx }) as _])
     }
 }

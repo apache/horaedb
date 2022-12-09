@@ -40,7 +40,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RowProjector {
     schema_with_key: RecordSchemaWithKey,
     source_schema: Schema,

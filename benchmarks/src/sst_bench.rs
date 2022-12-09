@@ -45,6 +45,7 @@ impl SstBench {
             predicate,
             meta_cache,
             runtime: runtime.clone(),
+            row_group_num_per_reader: usize::MAX,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 
@@ -80,7 +81,7 @@ impl SstBench {
 
         self.runtime.block_on(async {
             let begin_instant = Instant::now();
-            let mut sst_stream = sst_reader.read().await.unwrap();
+            let mut sst_stream = sst_reader.read().await.unwrap().pop().unwrap();
 
             let mut total_rows = 0;
             let mut batch_num = 0;

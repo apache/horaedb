@@ -197,5 +197,6 @@ fn mock_sst_reader_options(
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        row_group_num_per_reader: usize::MAX,
     }
 }

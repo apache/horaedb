@@ -99,6 +99,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         runtime,
+        row_group_num_per_reader: usize::MAX,
     };
 
     let record_batch_stream =
@@ -127,7 +128,7 @@ async fn sst_to_record_batch_stream(
         .new_sst_reader(sst_reader_options, input_path, store)
         .unwrap();
 
-    let sst_stream = sst_reader.read().await.unwrap();
+    let sst_stream = sst_reader.read().await.unwrap().pop().unwrap();
 
     Box::new(sst_stream.map_err(|e| Box::new(e) as _))
 }
@@ -198,6 +199,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
             runtime: runtime.clone(),
+            row_group_num_per_reader: usize::MAX,
         };
 
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());

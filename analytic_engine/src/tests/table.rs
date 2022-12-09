@@ -154,18 +154,22 @@ pub fn read_opts_list() -> Vec<ReadOptions> {
         ReadOptions {
             batch_size: 1,
             read_parallelism: 1,
+            row_group_num_per_sst_reader: usize::MAX,
         },
         ReadOptions {
             batch_size: 1,
             read_parallelism: 4,
+            row_group_num_per_sst_reader: usize::MAX,
         },
         ReadOptions {
             batch_size: 100,
             read_parallelism: 1,
+            row_group_num_per_sst_reader: usize::MAX,
         },
         ReadOptions {
             batch_size: 100,
             read_parallelism: 4,
+            row_group_num_per_sst_reader: usize::MAX,
         },
     ]
 }

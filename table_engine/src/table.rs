@@ -279,6 +279,7 @@ pub struct ReadOptions {
     /// Suggested read parallelism, the actual returned stream should equal to
     /// `read_parallelism`.
     pub read_parallelism: usize,
+    pub row_group_num_per_sst_reader: usize,
 }
 
 impl Default for ReadOptions {
@@ -286,6 +287,7 @@ impl Default for ReadOptions {
         Self {
             batch_size: 10000,
             read_parallelism: DEFAULT_READ_PARALLELISM,
+            row_group_num_per_sst_reader: usize::MAX,
         }
     }
 }
