@@ -42,6 +42,7 @@ members = [
     "system_catalog",
     "table_engine",
     "tests/harness",
+    "tests/sqlness",
     "tools",
     "wal",
 ]

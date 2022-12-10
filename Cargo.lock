@@ -873,6 +873,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ceresdb-test-sqlness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "ceresdb-client-rs",
+ "prettydiff",
+ "sqlness",
+ "tokio 1.22.0",
+ "walkdir",
+]
+
+[[package]]
 name = "ceresdbproto"
 version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=12024e7f5c18cca7e40461f51b275c824dd37851#12024e7f5c18cca7e40461f51b275c824dd37851"
