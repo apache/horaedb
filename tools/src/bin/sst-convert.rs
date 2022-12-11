@@ -79,6 +79,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        read_parallelism: 1,
     };
     let mut reader = factory
         .new_sst_reader(&reader_opts, &input_path, &storage)

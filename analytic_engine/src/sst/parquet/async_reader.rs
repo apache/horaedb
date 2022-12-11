@@ -56,7 +56,7 @@ pub struct Reader<'a> {
     predicate: PredicateRef,
     batch_size: usize,
 
-    /// init those fields in `init_if_necessary`
+    /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
 }
@@ -76,6 +76,40 @@ impl<'a> Reader<'a> {
         }
     }
 
+    async fn read_parallelly(
+        &mut self,
+        read_parallelism: usize,
+    ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
+        self.init_if_necessary().await?;
+
+        let streams = self.fetch_record_batch_streams(read_parallelism).await?;
+        let row_projector = self.row_projector.take().unwrap();
+        let row_projector = ArrowRecordBatchProjector::from(row_projector);
+
+        let storage_format_opts = self
+            .meta_data
+            .as_ref()
+            // metadata must be inited after `init_if_necessary`.
+            .unwrap()
+            .custom()
+            .storage_format_opts
+            .clone();
+
+        let streams: Vec<_> = streams
+            .into_iter()
+            .map(|stream| {
+                Box::new(RecordBatchProjector::new(
+                    self.path.to_string(),
+                    stream,
+                    row_projector.clone(),
+                    storage_format_opts.clone(),
+                )) as _
+            })
+            .collect();
+
+        Ok(streams)
+    }
+
     fn filter_row_groups(
         &self,
         schema: SchemaRef,
@@ -92,7 +126,10 @@ impl<'a> Reader<'a> {
         Ok(filter.filter())
     }
 
-    async fn fetch_record_batch_stream(&mut self) -> Result<SendableRecordBatchStream> {
+    async fn fetch_record_batch_streams(
+        &mut self,
+        read_parallelism: usize,
+    ) -> Result<Vec<SendableRecordBatchStream>> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
@@ -106,28 +143,53 @@ impl<'a> Reader<'a> {
         )?;
 
         debug!(
-            "fetch_record_batch row_groups total:{}, after filter:{}",
+            "fetch_record_batch row_groups total:{}, after filter:{}, row_group_num_per_reader:{}",
             meta_data.parquet().num_row_groups(),
-            filtered_row_groups.len()
+            filtered_row_groups.len(),
+            read_parallelism,
         );
+
+        // TODO: now `batch_size` is equal to `num_rows_per_row_group`, other situations
+        // as following:
+        // + `batch_size` less than `num_rows_per_row_group`,
+        // maybe we need to consider it.
+        // + `batch_size` greater than `num_rows_per_row_group`,
+        // batch with `num_rows_per_row_group` rows will be returned, all the things are
+        // same as now.
+        let chunks_num = read_parallelism;
+        let chunk_size = filtered_row_groups.len() / read_parallelism + 1;
+        let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); read_parallelism];
+        for (row_group_idx, row_group) in filtered_row_groups.into_iter().enumerate() {
+            let chunk_idx = row_group_idx % chunks_num;
+            filtered_row_group_chunks
+                .get_mut(chunk_idx)
+                .unwrap()
+                .push(row_group);
+        }
 
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
             row_projector.existed_source_projection().iter().copied(),
         );
 
-        let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
-            .await
-            .with_context(|| ParquetError)?;
-        let stream = builder
-            .with_batch_size(self.batch_size)
-            .with_row_groups(filtered_row_groups)
-            .with_projection(proj_mask)
-            .build()
-            .with_context(|| ParquetError)?
-            .map(|batch| batch.with_context(|| ParquetError));
+        let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
+        for chunk in filtered_row_group_chunks {
+            let object_store_reader = object_store_reader.clone();
+            let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
+                .await
+                .with_context(|| ParquetError)?;
+            let stream = builder
+                .with_batch_size(self.batch_size)
+                .with_row_groups(chunk)
+                .with_projection(proj_mask.clone())
+                .build()
+                .with_context(|| ParquetError)?
+                .map(|batch| batch.with_context(|| ParquetError));
 
-        Ok(Box::pin(stream))
+            streams.push(Box::pin(stream) as _);
+        }
+
+        Ok(streams)
     }
 
     async fn init_if_necessary(&mut self) -> Result<()> {
@@ -198,12 +260,13 @@ impl<'a> Reader<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ReaderMetrics {
     bytes_scanned: usize,
     sst_get_range_length_histogram: LocalHistogram,
 }
 
+#[derive(Clone)]
 struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
@@ -371,39 +434,31 @@ impl<'a> SstReader for Reader<'a> {
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
-        self.init_if_necessary().await?;
+        let mut streams = self.read_parallelly(1).await?;
+        assert_eq!(streams.len(), 1);
+        let stream = streams.pop().expect("impossible to fetch no stream");
 
-        let stream = self.fetch_record_batch_stream().await?;
-        let row_projector = self.row_projector.take().unwrap();
-        let row_projector = ArrowRecordBatchProjector::from(row_projector);
-
-        let storage_format_opts = self
-            .meta_data
-            .as_ref()
-            // metadata must be inited after `init_if_necessary`.
-            .unwrap()
-            .custom()
-            .storage_format_opts
-            .clone();
-
-        Ok(Box::new(RecordBatchProjector::new(
-            self.path.to_string(),
-            stream,
-            row_projector,
-            storage_format_opts,
-        )))
+        Ok(stream)
     }
 }
 
 struct RecordBatchReceiver {
-    rx: Receiver<Result<RecordBatchWithKey>>,
+    rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
+    cur_rx_idx: usize,
 }
 
 impl Stream for RecordBatchReceiver {
     type Item = Result<RecordBatchWithKey>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.as_mut().rx.poll_recv(cx)
+        let cur_rx_idx = self.cur_rx_idx;
+        // `cur_rx_idx` is impossible to be out-of-range, because it is got by round
+        // robin.
+        let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap();
+        let poll_result = cur_rx.poll_recv(cx);
+
+        self.cur_rx_idx = (self.cur_rx_idx + 1) % self.rx_group.len();
+        poll_result
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -419,28 +474,36 @@ pub struct ThreadedReader<'a> {
     runtime: Arc<Runtime>,
 
     channel_cap: usize,
+    read_parallelism: usize,
 }
 
 impl<'a> ThreadedReader<'a> {
-    pub fn new(reader: Reader<'a>, runtime: Arc<Runtime>) -> Self {
+    pub fn new(reader: Reader<'a>, runtime: Arc<Runtime>, read_parallelism: usize) -> Self {
+        assert!(
+            read_parallelism > 0,
+            "read parallelism must be greater than 0"
+        );
+
         Self {
             inner: reader,
             runtime,
             channel_cap: DEFAULT_CHANNEL_CAP,
+            read_parallelism,
         }
     }
 
-    async fn read_record_batches(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
-        let mut stream = self.inner.read().await?;
+    fn read_record_batches_from_sub_reader(
+        &mut self,
+        mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
+        tx: Sender<Result<RecordBatchWithKey>>,
+    ) {
         self.runtime.spawn(async move {
-            while let Some(batch) = stream.next().await {
+            while let Some(batch) = reader.next().await {
                 if let Err(e) = tx.send(batch).await {
                     error!("fail to send the fetched record batch result, err:{}", e);
                 }
             }
         });
-
-        Ok(())
     }
 }
 
@@ -453,9 +516,23 @@ impl<'a> SstReader for ThreadedReader<'a> {
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
-        let (tx, rx) = mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap);
-        self.read_record_batches(tx).await?;
+        let channel_cap_per_sub_reader = self.channel_cap / self.read_parallelism + 1;
+        let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..self.read_parallelism)
+            .into_iter()
+            .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
+            .unzip();
 
-        Ok(Box::new(RecordBatchReceiver { rx }))
+        // Get underlying sst readers.
+        let sub_readers = self.inner.read_parallelly(self.read_parallelism).await?;
+
+        // Start the background readings.
+        for (sub_reader, tx) in sub_readers.into_iter().zip(tx_group.into_iter()) {
+            self.read_record_batches_from_sub_reader(sub_reader, tx);
+        }
+
+        Ok(Box::new(RecordBatchReceiver {
+            rx_group,
+            cur_rx_idx: 0,
+        }) as _)
     }
 }

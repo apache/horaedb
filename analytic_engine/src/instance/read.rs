@@ -94,7 +94,7 @@ impl Instance {
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
 
-        let iter_options = IterOptions::new(self.scan_batch_size);
+        let iter_options = self.iter_options.clone();
         let table_options = table_data.table_options();
 
         if need_merge_sort_streams(&table_data.table_options(), &request) {
@@ -104,7 +104,7 @@ impl Instance {
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, &table_options)
+                .build_chain_iters(table_data, &request, iter_options, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -160,6 +160,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            read_parallelism: iter_options.sst_background_read_parallelism,
         };
 
         let time_range = request.predicate.time_range();
@@ -205,6 +206,7 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
+        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
@@ -220,6 +222,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            read_parallelism: iter_options.sst_background_read_parallelism,
         };
 
         let time_range = request.predicate.time_range();

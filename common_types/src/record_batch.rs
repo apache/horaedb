@@ -544,7 +544,7 @@ impl RecordBatchWithKeyBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArrowRecordBatchProjector {
     row_projector: RowProjector,
 }

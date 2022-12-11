@@ -52,6 +52,9 @@ pub struct SstReaderOptions {
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
+
+    /// The parallelism while reading sst
+    pub read_parallelism: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +81,11 @@ impl Factory for FactoryImpl {
                     Some(Box::new(ParquetSstReader::new(path, storage, options)))
                 } else {
                     let reader = AsyncParquetReader::new(path, storage, options);
-                    let reader = ThreadedReader::new(reader, options.runtime.clone());
+                    let reader = ThreadedReader::new(
+                        reader,
+                        options.runtime.clone(),
+                        options.read_parallelism,
+                    );
                     Some(Box::new(reader))
                 }
             }
