@@ -1,7 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{collections::HashMap, fmt::Display, ops::Range};
-use std::time::Duration;
+use std::{collections::HashMap, fmt::Display, ops::Range, time::Duration};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -9,8 +8,9 @@ use futures::{
     stream::{self, BoxStream},
     StreamExt,
 };
-use oss_rust_sdk::{async_object::AsyncObjectAPI, errors::Error as AliyunError, prelude::OSS};
-use oss_rust_sdk::oss::Options;
+use oss_rust_sdk::{
+    async_object::AsyncObjectAPI, errors::Error as AliyunError, oss::Options, prelude::OSS,
+};
 use snafu::{ResultExt, Snafu};
 use tokio::io::AsyncWrite;
 use upstream::{

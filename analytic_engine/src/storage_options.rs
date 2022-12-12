@@ -1,5 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use std::time::Duration;
+
 use common_util::config::{ReadableDuration, ReadableSize};
 use serde::Deserialize;
 
@@ -54,6 +56,18 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "AliyunOptions::default_pool_max_idle_per_host")]
     pub pool_max_idle_per_host: usize,
+    #[serde(default = "AliyunOptions::default_timeout")]
     pub timeout: ReadableDuration,
+}
+
+impl AliyunOptions {
+    fn default_pool_max_idle_per_host() -> usize {
+        1024
+    }
+
+    fn default_timeout() -> ReadableDuration {
+        ReadableDuration::from(Duration::from_secs(60))
+    }
 }
