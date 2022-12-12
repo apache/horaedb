@@ -26,7 +26,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
     sync::{
-        mpsc::{self, Receiver, Sender},
+        mpsc::{self, error::SendError, Receiver, Sender},
         Mutex,
     },
     time,
@@ -37,7 +37,12 @@ use crate::{
         metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext, CompactionTask,
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
-    instance::{flush_compaction::TableFlushOptions, Instance, SpaceStore},
+    instance::{
+        flush_compaction::{self, TableFlushOptions},
+        write_worker::CompactionNotifier,
+        Instance, SpaceStore,
+    },
+    table::data::TableDataRef,
     TableOptions,
 };
 
@@ -133,6 +138,60 @@ impl<K: Eq + Hash + Clone, V> RequestQueue<K, V> {
 }
 
 type RequestBuf = RwLock<RequestQueue<TableId, TableCompactionRequest>>;
+
+#[derive(Clone, Debug)]
+struct TaskMemoryLimit {
+    memory_usage: Arc<AtomicUsize>,
+    // TODO: support to adjust this threshold dynamically.
+    memory_threshold: usize,
+}
+
+/// The token for the memory usage, which should not derive Clone.
+#[derive(Debug)]
+struct MemoryUsageToken {
+    shared_memory_usage: Arc<AtomicUsize>,
+    applied_memory_usage: usize,
+}
+
+impl Drop for MemoryUsageToken {
+    fn drop(&mut self) {
+        self.shared_memory_usage
+            .fetch_sub(self.applied_memory_usage, Ordering::Relaxed);
+    }
+}
+
+impl TaskMemoryLimit {
+    fn new(threshold: usize) -> Self {
+        Self {
+            memory_usage: Arc::new(AtomicUsize::new(0)),
+            memory_threshold: threshold,
+        }
+    }
+
+    /// Try to apply a token if possible.
+    fn try_apply_token(&self, bytes: usize) -> Option<MemoryUsageToken> {
+        let token = self.apply_token(bytes);
+        if self.is_exhausted() {
+            Some(token)
+        } else {
+            None
+        }
+    }
+
+    fn apply_token(&self, bytes: usize) -> MemoryUsageToken {
+        self.memory_usage.fetch_add(bytes, Ordering::Relaxed);
+
+        MemoryUsageToken {
+            shared_memory_usage: self.memory_usage.clone(),
+            applied_memory_usage: bytes,
+        }
+    }
+
+    #[inline]
+    fn is_exhausted(&self) -> bool {
+        self.memory_usage.load(Ordering::Relaxed) > self.memory_threshold
+    }
+}
 
 struct OngoingTaskLimit {
     ongoing_tasks: AtomicUsize,
@@ -243,6 +302,7 @@ impl SchedulerImpl {
                 request_buf: RwLock::new(RequestQueue::default()),
             }),
             running: running.clone(),
+            memory_limit: TaskMemoryLimit::new(4 * 1024 * 1024),
         };
 
         let handle = runtime.spawn(async move {
@@ -306,6 +366,7 @@ struct ScheduleWorker {
     max_ongoing_tasks: usize,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
+    memory_limit: TaskMemoryLimit,
 }
 
 #[inline]
@@ -375,39 +436,14 @@ impl ScheduleWorker {
         };
     }
 
-    async fn do_table_compaction_request(&self, compact_req: TableCompactionRequest) {
-        let table_data = compact_req.table_data;
-        let compaction_notifier = compact_req.compaction_notifier;
-        let waiter_notifier = WaiterNotifier::new(compact_req.waiter);
-
-        let table_options = table_data.table_options();
-        let compaction_strategy = table_options.compaction_strategy;
-        let picker = self.picker_manager.get_picker(compaction_strategy);
-        let picker_ctx = match new_picker_context(&table_options) {
-            Some(v) => v,
-            None => {
-                warn!("No valid context can be created, compaction request will be ignored, table_id:{}, table_name:{}",
-                    table_data.id, table_data.name);
-                return;
-            }
-        };
-        let version = table_data.current_version();
-
-        // Pick compaction task.
-        let compaction_task = version.pick_for_compaction(picker_ctx, &picker);
-        let compaction_task = match compaction_task {
-            Ok(v) => v,
-            Err(e) => {
-                error!(
-                    "Compaction scheduler failed to pick compaction, table:{}, table_id:{}, err:{}",
-                    table_data.name, table_data.id, e
-                );
-                // Now the error of picking compaction is considered not fatal and not sent to
-                // compaction notifier.
-                return;
-            }
-        };
-
+    async fn do_table_compaction_task(
+        &self,
+        table_data: TableDataRef,
+        compaction_task: CompactionTask,
+        compaction_notifier: CompactionNotifier,
+        waiter_notifier: WaiterNotifier,
+        token: MemoryUsageToken,
+    ) {
         // Mark files are in compaction.
         compaction_task.mark_files_being_compacted(true);
 
@@ -425,6 +461,9 @@ impl ScheduleWorker {
         let request_id = RequestId::next_id();
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
+            // Release the token after compaction finished.
+            let _token = token;
+
             let res = space_store
                 .compact_table(runtime, &table_data, request_id, &compaction_task)
                 .await;
@@ -468,6 +507,91 @@ impl ScheduleWorker {
                 }
             }
         });
+    }
+
+    // Try to apply the memory usage token. Return `None` if the current memory
+    // usage exceeds the limit.
+    fn try_apply_memory_usage_token_for_task(
+        &self,
+        task: &CompactionTask,
+    ) -> Option<MemoryUsageToken> {
+        let input_size = task.estimate_total_input_size();
+        let estimate_memory_usage = input_size * 2;
+        self.memory_limit.try_apply_token(estimate_memory_usage)
+    }
+
+    async fn do_table_compaction_request(&self, compact_req: TableCompactionRequest) {
+        let table_data = compact_req.table_data.clone();
+        let table_options = table_data.table_options();
+        let compaction_strategy = table_options.compaction_strategy;
+        let picker = self.picker_manager.get_picker(compaction_strategy);
+        let picker_ctx = match new_picker_context(&table_options) {
+            Some(v) => v,
+            None => {
+                warn!("No valid context can be created, compaction request will be ignored, table_id:{}, table_name:{}",
+                    table_data.id, table_data.name);
+                return;
+            }
+        };
+        let version = table_data.current_version();
+
+        // Pick compaction task.
+        let compaction_task = version.pick_for_compaction(picker_ctx, &picker);
+        let compaction_task = match compaction_task {
+            Ok(v) => v,
+            Err(e) => {
+                error!(
+                    "Compaction scheduler failed to pick compaction, table:{}, table_id:{}, err:{}",
+                    table_data.name, table_data.id, e
+                );
+                // Now the error of picking compaction is considered not fatal and not sent to
+                // compaction notifier.
+                return;
+            }
+        };
+
+        let token = match self.try_apply_memory_usage_token_for_task(&compaction_task) {
+            Some(v) => v,
+            None => {
+                // Memory usage exceeds the threshold, let's put pack the
+                // request.
+                self.put_back_compaction_request(compact_req).await;
+                return;
+            }
+        };
+
+        let compaction_notifier = compact_req.compaction_notifier;
+        let waiter_notifier = WaiterNotifier::new(compact_req.waiter);
+
+        self.do_table_compaction_task(
+            table_data,
+            compaction_task,
+            compaction_notifier,
+            waiter_notifier,
+            token,
+        )
+        .await;
+    }
+
+    async fn put_back_compaction_request(&self, req: TableCompactionRequest) {
+        if let Err(SendError(ScheduleTask::Request(TableCompactionRequest {
+            compaction_notifier,
+            waiter,
+            ..
+        }))) = self.sender.send(ScheduleTask::Request(req)).await
+        {
+            let e = Arc::new(
+                flush_compaction::Other {
+                    msg: "Failed to put back the compaction request for memory usage exceeds",
+                }
+                .build(),
+            );
+            compaction_notifier.notify_err(e.clone());
+
+            let waiter_notifier = WaiterNotifier::new(waiter);
+            let wait_err = WaitError::Compaction { source: e };
+            waiter_notifier.notify_wait_result(Err(wait_err));
+        }
     }
 
     async fn schedule(&mut self) {
