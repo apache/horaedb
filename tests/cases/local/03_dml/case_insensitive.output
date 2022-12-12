@@ -1,0 +1,103 @@
+DROP TABLE IF EXISTS case_insensitive_table1;
+
+affected_rows: 0
+
+CREATE TABLE case_insensitive_table1 (
+    ts timestamp NOT NULL,
+    value1 double,
+    timestamp KEY (ts)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false'
+);
+
+affected_rows: 0
+
+INSERT INTO case_insensitive_table1 (ts, value1)
+    VALUES (1, 10), (2, 20), (3, 30);
+
+affected_rows: 3
+
+SELECT
+    *
+FROM
+    case_insensitive_table1;
+
+ts,tsid,value1,
+Timestamp(Timestamp(1)),Int64(0),Double(10.0),
+Timestamp(Timestamp(2)),Int64(0),Double(20.0),
+Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+
+
+SELECT
+    *
+FROM
+    CASE_INSENSITIVE_TABLE1;
+
+ts,tsid,value1,
+Timestamp(Timestamp(1)),Int64(0),Double(10.0),
+Timestamp(Timestamp(2)),Int64(0),Double(20.0),
+Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+
+
+SELECT
+    *
+FROM
+    `case_insensitive_table1`;
+
+ts,tsid,value1,
+Timestamp(Timestamp(1)),Int64(0),Double(10.0),
+Timestamp(Timestamp(2)),Int64(0),Double(20.0),
+Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+
+
+SELECT
+    *
+FROM
+    `CASE_INSENSITIVE_TABLE1`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT \n     * \n FROM \n     `CASE_INSENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Execution error: Table is not found, \"table:CASE_INSENSITIVE_TABLE1\"" })
+
+SHOW CREATE TABLE case_insensitive_table1;
+
+Table,Create Table,
+String(StringBytes(b"case_insensitive_table1")),String(StringBytes(b"CREATE TABLE `case_insensitive_table1` (`ts` timestamp NOT NULL, `tsid` uint64 NOT NULL, `value1` double, PRIMARY KEY(ts,tsid), TIMESTAMP KEY(ts)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+
+
+SHOW CREATE TABLE CASE_INSENSITIVE_TABLE1;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE CASE_INSENSITIVE_TABLE1;. Caused by: Failed to create plan, err:Table not found, table:CASE_INSENSITIVE_TABLE1" })
+
+SHOW CREATE TABLE `case_insensitive_table1`;
+
+Table,Create Table,
+String(StringBytes(b"case_insensitive_table1")),String(StringBytes(b"CREATE TABLE `case_insensitive_table1` (`ts` timestamp NOT NULL, `tsid` uint64 NOT NULL, `value1` double, PRIMARY KEY(ts,tsid), TIMESTAMP KEY(ts)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='false', num_rows_per_row_group='8192', segment_duration='', storage_format='COLUMNAR', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')")),
+
+
+SHOW CREATE TABLE `CASE_INSENSITIVE_TABLE1`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SHOW CREATE TABLE `CASE_INSENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Table not found, table:CASE_INSENSITIVE_TABLE1" })
+
+DESC case_insensitive_table1;
+
+name,type,is_primary,is_nullable,is_tag,
+String(StringBytes(b"ts")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"tsid")),String(StringBytes(b"uint64")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"value1")),String(StringBytes(b"double")),Boolean(false),Boolean(true),Boolean(false),
+
+
+DESC CASE_INSENSITIVE_TABLE1;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DESC CASE_INSENSITIVE_TABLE1;. Caused by: Failed to create plan, err:Table not found, table:CASE_INSENSITIVE_TABLE1" })
+
+DESC `case_insensitive_table1`;
+
+name,type,is_primary,is_nullable,is_tag,
+String(StringBytes(b"ts")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"tsid")),String(StringBytes(b"uint64")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"value1")),String(StringBytes(b"double")),Boolean(false),Boolean(true),Boolean(false),
+
+
+DESC `CASE_INSENSITIVE_TABLE1`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: DESC `CASE_INSENSITIVE_TABLE1`;. Caused by: Failed to create plan, err:Table not found, table:CASE_INSENSITIVE_TABLE1" })
+

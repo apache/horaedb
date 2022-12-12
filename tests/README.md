@@ -2,7 +2,7 @@
 
 ## Running test
 
-First the harness needs to be compiled. Run `cargo build --release` under this folder. It will be compiled to `ceresdb-test` under `$REPO/target/release`.
+First the sqlness needs to be compiled. Run `cargo build --release` under this folder. It will be compiled to `ceresdb-test` under `$REPO/target/release`.
 
 The binary takes these env variables to run:
 - `BINARY_PATH_ENV`: The binary to test.

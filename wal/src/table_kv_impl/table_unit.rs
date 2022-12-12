@@ -43,9 +43,15 @@ pub enum Error {
         source: crate::table_kv_impl::model::Error,
     },
 
-    #[snafu(display("Failed to encode entry, key:{}, err:{}", key, source,))]
+    #[snafu(display(
+        "Failed to encode entry, key:{}, meta table:{}, err:{}",
+        key,
+        meta_table,
+        source,
+    ))]
     Encode {
         key: String,
+        meta_table: String,
         source: crate::table_kv_impl::model::Error,
     },
 
@@ -57,20 +63,24 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Failed to write value, key:{}, err:{}", key, source))]
+    #[snafu(display(
+        "Failed to write value, key:{}, meta table:{}, err:{}",
+        key,
+        meta_table,
+        source
+    ))]
     WriteValue {
         key: String,
+        meta_table: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     #[snafu(display(
-        "Sequence of region overflow, region_id:{}, table_id:{}.\nBacktrace:\n{}",
-        region_id,
+        "Sequence of region overflow, table_id:{}.\nBacktrace:\n{}",
         table_id,
         backtrace
     ))]
     SequenceOverflow {
-        region_id: RegionId,
         table_id: TableId,
         backtrace: Backtrace,
     },
@@ -197,6 +207,10 @@ impl TableUnit {
                     Some(v) => v,
                     None => return Ok(None),
                 };
+            debug!(
+                "Open table unit, table unit entry:{:?}, region id:{}, table id:{}",
+                table_unit_entry, region_id, table_id
+            );
 
             // Load last sequence of this table unit.
             let last_sequence =
@@ -317,8 +331,8 @@ impl TableUnit {
             None => return Ok(TableLogIterator::new_empty(table_kv.clone())),
         };
 
-        let region_id = self.state.region_id;
-        let table_id = self.state.table_id;
+        let region_id = request.location.versioned_region_id.id;
+        let table_id = request.location.table_id;
         let min_log_key = CommonLogKey::new(region_id, table_id, start_sequence);
         let max_log_key = CommonLogKey::new(region_id, table_id, end_sequence);
 
@@ -395,8 +409,12 @@ impl TableUnit {
         table_id: TableId,
         buckets: &[BucketRef],
     ) -> Result<SequenceNumber> {
+        debug!(
+            "Load last sequence, buckets{:?}, region id:{}, table id:{}",
+            buckets, region_id, table_id
+        );
+
         // Starts from the latest bucket, find last sequence of given region id.
-        let mut last_sequence = common_types::MIN_SEQUENCE_NUMBER;
         for bucket in buckets.iter().rev() {
             let table_name = bucket.wal_shard_table(region_id);
 
@@ -407,11 +425,11 @@ impl TableUnit {
                 region_id,
                 table_id,
             )? {
-                last_sequence = seq;
+                return Ok(seq);
             }
         }
 
-        Ok(last_sequence)
+        Ok(common_types::MIN_SEQUENCE_NUMBER)
     }
 
     fn load_last_sequence_from_table<T: TableKv>(
@@ -761,7 +779,10 @@ impl TableUnitWriter {
         table_unit_entry: TableUnitEntry,
     ) -> Result<TableUnitEntry> {
         let key = encoding::format_table_unit_key(table_unit_entry.table_id);
-        let value = table_unit_entry.encode().context(Encode { key: &key })?;
+        let value = table_unit_entry.encode().context(Encode {
+            key: &key,
+            meta_table: table_unit_meta_table,
+        })?;
 
         let mut batch = T::WriteBatch::default();
         batch.insert(key.as_bytes(), &value);
@@ -781,8 +802,10 @@ impl TableUnitWriter {
                         region_id: table_unit_entry.table_id,
                     })
                 } else {
-                    res.map_err(|e| Box::new(e) as _)
-                        .context(WriteValue { key: &key })?;
+                    res.map_err(|e| Box::new(e) as _).context(WriteValue {
+                        key: &key,
+                        meta_table: table_unit_meta_table,
+                    })?;
 
                     Ok(table_unit_entry)
                 }
@@ -796,7 +819,10 @@ impl TableUnitWriter {
         table_unit_entry: &TableUnitEntry,
     ) -> Result<()> {
         let key = encoding::format_table_unit_key(table_unit_entry.table_id);
-        let value = table_unit_entry.encode().context(Encode { key: &key })?;
+        let value = table_unit_entry.encode().context(Encode {
+            key: &key,
+            meta_table: table_unit_meta_table,
+        })?;
 
         let mut batch = T::WriteBatch::default();
         batch.insert_or_update(key.as_bytes(), &value);
@@ -804,7 +830,10 @@ impl TableUnitWriter {
         table_kv
             .write(WriteContext::default(), table_unit_meta_table, batch)
             .map_err(|e| Box::new(e) as _)
-            .context(WriteValue { key: &key })
+            .context(WriteValue {
+                key: &key,
+                meta_table: table_unit_meta_table,
+            })
     }
 
     /// Allocate a continuous range of [SequenceNumber] and returns the starts
@@ -817,7 +846,6 @@ impl TableUnitWriter {
         ensure!(
             table_unit_state.last_sequence() < common_types::MAX_SEQUENCE_NUMBER,
             SequenceOverflow {
-                region_id: table_unit_state.region_id,
                 table_id: table_unit_state.table_id,
             }
         );
@@ -840,17 +868,16 @@ impl TableUnitWriter {
         log_batch: &LogWriteBatch,
     ) -> Result<SequenceNumber> {
         debug!(
-            "Wal table unit begin writing, ctx:{:?}, region_id:{}, table_id:{}, log_entries_num:{}",
+            "Wal table unit begin writing, ctx:{:?}, wal location:{:?}, log_entries_num:{}",
             ctx,
-            table_unit_state.region_id,
-            table_unit_state.table_id,
+            log_batch.location,
             log_batch.entries.len()
         );
 
         let log_encoding = CommonLogEncoding::newest();
         let entries_num = log_batch.len() as u64;
-        let region_id = table_unit_state.region_id;
-        let table_id = table_unit_state.table_id;
+        let region_id = log_batch.location.versioned_region_id.id;
+        let table_id = log_batch.location.table_id;
         let (wb, max_sequence_num) = {
             let mut wb = T::WriteBatch::with_capacity(log_batch.len());
             let mut next_sequence_num = self.alloc_sequence_num(table_unit_state, entries_num)?;
@@ -899,14 +926,13 @@ impl TableUnitWriter {
         mut sequence_num: SequenceNumber,
     ) -> Result<()> {
         debug!(
-            "Try to delete entries, region_id:{}, table_id:{}, sequence_num:{}",
-            table_unit_state.region_id, table_unit_state.table_id, sequence_num
+            "Try to delete entries, table_id:{}, sequence_num:{}, meta table:{}",
+            table_unit_state.table_id, sequence_num, table_unit_meta_table
         );
 
         ensure!(
             sequence_num < common_types::MAX_SEQUENCE_NUMBER,
             SequenceOverflow {
-                region_id: table_unit_state.region_id,
                 table_id: table_unit_state.table_id,
             }
         );
@@ -923,8 +949,8 @@ impl TableUnitWriter {
         }
 
         debug!(
-            "Update table unit entry due to deletion, table:{}, table_unit_entry:{:?}",
-            table_unit_meta_table, table_unit_entry
+            "Update table unit entry due to deletion, table:{}, table_unit_entry:{:?}, meta table:{}",
+            table_unit_meta_table, table_unit_entry, table_unit_meta_table
         );
 
         let table_kv = table_kv.clone();

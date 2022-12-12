@@ -23,11 +23,12 @@ mod wal_synchronizer;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::ReadableSize;
+use common_util::config::ReadableDuration;
 use message_queue::kafka::config::Config as KafkaConfig;
 use meta::details::Options as ManifestOptions;
+use serde::Serialize;
 use serde_derive::Deserialize;
-use storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions};
+use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
@@ -89,14 +90,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            storage: StorageOptions {
-                mem_cache_capacity: ReadableSize::mb(512),
-                mem_cache_partition_bits: 1,
-                object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: String::from("/tmp/ceresdb"),
-                }),
-            },
-            wal_path: String::from("/tmp/ceresdb"),
+            storage: Default::default(),
+            wal_path: "/tmp/ceresdb".to_string(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
@@ -119,27 +114,108 @@ impl Default for Config {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
     /// Wal (stores data) namespace config
-    pub wal: NamespaceConfig,
+    pub wal: WalNamespaceConfig,
     /// Manifest (stores meta data) namespace config
-    pub manifest: NamespaceConfig,
+    pub manifest: ManifestNamespaceConfig,
 }
 
-impl Default for ObkvWalConfig {
+/// Config of obkv wal based manifest
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ManifestNamespaceConfig {
+    /// Decide how many wal data shards will be created
+    ///
+    /// NOTICE: it can just be set once, the later setting makes no effect.
+    pub shard_num: usize,
+
+    /// Decide how many wal meta shards will be created
+    ///
+    /// NOTICE: it can just be set once, the later setting makes no effect.
+    pub meta_shard_num: usize,
+
+    pub init_scan_timeout: ReadableDuration,
+    pub init_scan_batch_size: i32,
+    pub clean_scan_timeout: ReadableDuration,
+    pub clean_scan_batch_size: usize,
+}
+
+impl Default for ManifestNamespaceConfig {
     fn default() -> Self {
+        let namespace_config = NamespaceConfig::default();
+
         Self {
-            obkv: ObkvConfig::default(),
-            wal: NamespaceConfig::default(),
-            manifest: NamespaceConfig {
-                // Manifest has no ttl.
-                ttl: None,
-                ..Default::default()
-            },
+            shard_num: namespace_config.wal_shard_num,
+            meta_shard_num: namespace_config.table_unit_meta_shard_num,
+            init_scan_timeout: namespace_config.init_scan_timeout,
+            init_scan_batch_size: namespace_config.init_scan_batch_size,
+            clean_scan_timeout: namespace_config.clean_scan_timeout,
+            clean_scan_batch_size: namespace_config.clean_scan_batch_size,
+        }
+    }
+}
+
+impl From<ManifestNamespaceConfig> for NamespaceConfig {
+    fn from(manifest_config: ManifestNamespaceConfig) -> Self {
+        NamespaceConfig {
+            wal_shard_num: manifest_config.shard_num,
+            table_unit_meta_shard_num: manifest_config.meta_shard_num,
+            ttl: None,
+            init_scan_timeout: manifest_config.init_scan_timeout,
+            init_scan_batch_size: manifest_config.init_scan_batch_size,
+            clean_scan_timeout: manifest_config.clean_scan_timeout,
+            clean_scan_batch_size: manifest_config.clean_scan_batch_size,
+        }
+    }
+}
+
+/// Config of obkv wal based wal module
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WalNamespaceConfig {
+    /// Decide how many wal data shards will be created
+    ///
+    /// NOTICE: it can just be set once, the later setting makes no effect.
+    pub shard_num: usize,
+
+    /// Decide how many wal meta shards will be created
+    ///
+    /// NOTICE: it can just be set once, the later setting makes no effect.
+    pub meta_shard_num: usize,
+
+    pub ttl: ReadableDuration,
+    pub init_scan_timeout: ReadableDuration,
+    pub init_scan_batch_size: i32,
+}
+
+impl Default for WalNamespaceConfig {
+    fn default() -> Self {
+        let namespace_config = NamespaceConfig::default();
+
+        Self {
+            shard_num: namespace_config.wal_shard_num,
+            meta_shard_num: namespace_config.table_unit_meta_shard_num,
+            ttl: namespace_config.ttl.unwrap(),
+            init_scan_timeout: namespace_config.init_scan_timeout,
+            init_scan_batch_size: namespace_config.init_scan_batch_size,
+        }
+    }
+}
+
+impl From<WalNamespaceConfig> for NamespaceConfig {
+    fn from(wal_config: WalNamespaceConfig) -> Self {
+        Self {
+            wal_shard_num: wal_config.shard_num,
+            table_unit_meta_shard_num: wal_config.meta_shard_num,
+            ttl: Some(wal_config.ttl),
+            init_scan_timeout: wal_config.init_scan_timeout,
+            init_scan_batch_size: wal_config.init_scan_batch_size,
+            ..Default::default()
         }
     }
 }

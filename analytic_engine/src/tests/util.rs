@@ -8,7 +8,7 @@ use common_types::{
     datum::Datum,
     record_batch::RecordBatch,
     row::{Row, RowGroup},
-    table::DEFAULT_SHARD_ID,
+    table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     time::Timestamp,
 };
 use common_util::{
@@ -174,6 +174,7 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await
             .unwrap()
@@ -197,6 +198,7 @@ impl<T: EngineContext> TestContext<T> {
                 table_id,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
             })
             .await?;
 
@@ -403,6 +405,9 @@ impl Builder {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
+                disk_cache_path: "".to_string(),
+                disk_cache_capacity: ReadableSize::mb(0),
+                disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_path: dir.path().to_str().unwrap().to_string(),
                 }),
@@ -457,6 +462,9 @@ impl Default for RocksDBEngineContext {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
+                disk_cache_path: "".to_string(),
+                disk_cache_capacity: ReadableSize::mb(0),
+                disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_path: dir.path().to_str().unwrap().to_string(),
                 }),
@@ -479,6 +487,9 @@ impl Clone for RocksDBEngineContext {
         let storage = StorageOptions {
             mem_cache_capacity: ReadableSize::mb(0),
             mem_cache_partition_bits: 0,
+            disk_cache_path: "".to_string(),
+            disk_cache_capacity: ReadableSize::mb(0),
+            disk_cache_page_size: ReadableSize::mb(0),
             object_store: ObjectStoreOptions::Local(LocalOptions {
                 data_path: dir.path().to_str().unwrap().to_string(),
             }),
@@ -516,6 +527,9 @@ impl Default for MemoryEngineContext {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
+                disk_cache_path: "".to_string(),
+                disk_cache_capacity: ReadableSize::mb(0),
+                disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_path: dir.path().to_str().unwrap().to_string(),
                 }),

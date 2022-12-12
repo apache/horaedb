@@ -7,7 +7,7 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
 use common_types::{
-    table::{Location, TableId, DEFAULT_SHARD_ID},
+    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::runtime::Runtime;
@@ -21,9 +21,10 @@ use crate::{
 };
 
 pub mod error {
-    use common_types::table::Location;
     use common_util::define_result;
     use snafu::{Backtrace, Snafu};
+
+    use crate::manager::WalLocation;
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -49,12 +50,12 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, table_location:{:?}.\nBacktrace:\n{}",
+            "Region is not found, wal location:{:?}.\nBacktrace:\n{}",
             location,
             backtrace
         ))]
         RegionNotFound {
-            location: Location,
+            location: WalLocation,
             backtrace: Backtrace,
         },
 
@@ -118,13 +119,49 @@ pub mod error {
 
         #[snafu(display("Failed to execute in runtime, err:{}", source))]
         RuntimeExec { source: common_util::runtime::Error },
+
+        #[snafu(display("Encountered unknown error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+        Unknown { msg: String, backtrace: Backtrace },
     }
 
     define_result!(Error);
 }
 
+/// Decide where to write logs
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WalLocation {
+    pub versioned_region_id: VersionedRegionId,
+    pub table_id: TableId,
+}
+
+impl WalLocation {
+    pub fn new(region_id: RegionId, region_version: RegionVersion, table_id: TableId) -> Self {
+        let versioned_region_id = VersionedRegionId {
+            version: region_version,
+            id: region_id,
+        };
+
+        WalLocation {
+            versioned_region_id,
+            table_id,
+        }
+    }
+}
+
+/// Region id with version
+///
+/// The `version` may be mapped to cluster version(while shard moved from nodes,
+/// it may changed to mark this moving) now.
+/// Introduce this field is for solving the following bug: https://github.com/CeresDB/ceresdb/issues/441
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VersionedRegionId {
+    pub version: RegionVersion,
+    pub id: RegionId,
+}
+
 pub type RegionId = u64;
 pub const MAX_REGION_ID: RegionId = u64::MAX;
+pub type RegionVersion = u64;
 
 #[derive(Debug, Clone)]
 pub struct WriteContext {
@@ -209,7 +246,7 @@ impl ReadBoundary {
 #[derive(Debug, Clone)]
 pub struct ReadRequest {
     /// Location of the wal to read
-    pub location: Location,
+    pub location: WalLocation,
     // TODO(yingwen): Or just rename to ReadBound?
     /// Start bound
     pub start: ReadBoundary,
@@ -220,7 +257,11 @@ pub struct ReadRequest {
 impl Default for ReadRequest {
     fn default() -> Self {
         Self {
-            location: Location::new(DEFAULT_SHARD_ID, TableId::MIN),
+            location: WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                TableId::MIN,
+            ),
             start: ReadBoundary::Min,
             end: ReadBoundary::Min,
         }
@@ -230,7 +271,7 @@ impl Default for ReadRequest {
 #[derive(Debug, Clone, Default)]
 pub struct ScanRequest {
     /// Region id of the wals to be scanned
-    pub region_id: RegionId,
+    pub versioned_region_id: VersionedRegionId,
 }
 
 pub type ScanContext = ReadContext;
@@ -257,13 +298,13 @@ pub trait AsyncLogIterator: Send + fmt::Debug {
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
-    async fn sequence_num(&self, location: Location) -> Result<SequenceNumber>;
+    async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber>;
 
     /// Mark the entries whose sequence number is in [0, `sequence_number`] to
     /// be deleted in the future.
     async fn mark_delete_entries_up_to(
         &self,
-        location: Location,
+        location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
@@ -278,7 +319,7 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     ) -> Result<BatchLogIteratorAdapter>;
 
     /// Provide the encoder for encoding payloads.
-    fn encoder(&self, location: Location) -> Result<LogBatchEncoder> {
+    fn encoder(&self, location: WalLocation) -> Result<LogBatchEncoder> {
         Ok(LogBatchEncoder::create(location))
     }
 

@@ -87,23 +87,17 @@ impl ArrayHandle {
 #[derive(Debug)]
 struct TsidBatch {
     non_collapsible_col_values: Vec<String>,
-    collapsible_col_arrays: Vec<ArrayHandle>,
+    // record_batch_idx -> ArrayHandle
+    // Store collapsible data in multi record batch.
+    // Vec<ArrayHandle> contains multi columns data.
+    collapsible_col_arrays: BTreeMap<usize, Vec<ArrayHandle>>,
 }
 
 impl TsidBatch {
-    fn new(non_collapsible_col_values: Vec<String>, collapsible_col_arrays: Vec<ArrayRef>) -> Self {
+    fn new(non_collapsible_col_values: Vec<String>) -> Self {
         Self {
             non_collapsible_col_values,
-            collapsible_col_arrays: collapsible_col_arrays
-                .into_iter()
-                .map(|f| ArrayHandle::new(f))
-                .collect(),
-        }
-    }
-
-    fn append_slice_arg(&mut self, arg: SliceArg) {
-        for handle in &mut self.collapsible_col_arrays {
-            handle.append_slice_arg(arg);
+            collapsible_col_arrays: BTreeMap::new(),
         }
     }
 }
@@ -187,19 +181,25 @@ impl_offsets!(BinaryArrayWrapper<'a>);
 /// ArrayHandle into one ListArray
 struct ListArrayBuilder {
     datum_kind: DatumKind,
-    list_of_arrays: Vec<ArrayHandle>,
+    // Vec<ArrayHandle> of row
+    multi_row_arrays: Vec<Vec<ArrayHandle>>,
 }
 
 impl ListArrayBuilder {
-    fn new(datum_kind: DatumKind, list_of_arrays: Vec<ArrayHandle>) -> Self {
+    fn new(datum_kind: DatumKind, multi_row_arrays: Vec<Vec<ArrayHandle>>) -> Self {
         Self {
             datum_kind,
-            list_of_arrays,
+            multi_row_arrays,
         }
     }
 
     fn build_child_data(&self, offsets: &mut MutableBuffer) -> Result<ArrayData> {
-        let values_num = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
+        // Num of raw data in child data.
+        let values_num = self
+            .multi_row_arrays
+            .iter()
+            .map(|handles| handles.iter().map(|h| h.len()).sum::<usize>())
+            .sum();
 
         // Initialize null_buffer with all 1, so we don't need to set it when array's
         // null_bitmap is None
@@ -209,23 +209,25 @@ impl ListArrayBuilder {
         let null_slice = null_buffer.as_slice_mut();
 
         let mut length_so_far: i32 = 0;
-        for array_handle in &self.list_of_arrays {
-            let null_bitmap = array_handle.null_bitmap();
+        for arrays in &self.multi_row_arrays {
+            for array_handle in arrays {
+                let null_bitmap = array_handle.null_bitmap();
 
-            for slice_arg in &array_handle.slice_args {
-                let offset = slice_arg.offset;
-                let length = slice_arg.length;
-                if let Some(bitmap) = null_bitmap {
-                    // TODO: We now set bitmap one by one, a more complicated but efficient way is
-                    // to operate on bitmap buffer bits directly, like what we do
-                    // with values(slice and shift)
-                    for i in 0..length {
-                        if !bitmap.is_set(i + offset) {
-                            bit_util::unset_bit(null_slice, length_so_far as usize + i);
+                for slice_arg in &array_handle.slice_args {
+                    let offset = slice_arg.offset;
+                    let length = slice_arg.length;
+                    if let Some(bitmap) = null_bitmap {
+                        // TODO: We now set bitmap one by one, a more complicated but efficient way
+                        // is to operate on bitmap buffer bits directly,
+                        // like what we do with values(slice and shift)
+                        for i in 0..length {
+                            if !bitmap.is_set(i + offset) {
+                                bit_util::unset_bit(null_slice, length_so_far as usize + i);
+                            }
                         }
                     }
+                    length_so_far += length as i32;
                 }
-                length_so_far += length as i32;
             }
         }
 
@@ -272,23 +274,30 @@ impl ListArrayBuilder {
         let mut length_so_far: i32 = 0;
         offsets.push(length_so_far);
 
-        let values_num: usize = self.list_of_arrays.iter().map(|handle| handle.len()).sum();
+        let values_num: usize = self
+            .multi_row_arrays
+            .iter()
+            .map(|handles| handles.iter().map(|handle| handle.len()).sum::<usize>())
+            .sum();
         let mut values = MutableBuffer::new(values_num * data_type_size);
+        for arrays in &self.multi_row_arrays {
+            for array_handle in arrays {
+                let shared_buffer = array_handle.data_slice();
+                for slice_arg in &array_handle.slice_args {
+                    let offset = slice_arg.offset;
+                    let length = slice_arg.length;
+                    length_so_far += length as i32;
 
-        for array_handle in &self.list_of_arrays {
-            let shared_buffer = array_handle.data_slice();
-
-            for slice_arg in &array_handle.slice_args {
-                let offset = slice_arg.offset;
-                let length = slice_arg.length;
-                length_so_far += length as i32;
-
-                values.extend_from_slice(
-                    &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
-                );
+                    values.extend_from_slice(
+                        &shared_buffer[offset * data_type_size..(offset + length) * data_type_size],
+                    );
+                }
             }
+            // The data in the arrays belong to the same tsid, so the offsets is the total
+            // len.
             offsets.push(length_so_far);
         }
+
         values
     }
 
@@ -304,7 +313,7 @@ impl ListArrayBuilder {
         let (offsets_length_total, values_length_total) =
             self.compute_variable_size_array_buffer_length()?;
 
-        let mut inner_values = MutableBuffer::new(values_length_total as usize);
+        let mut inner_values = MutableBuffer::new(values_length_total);
         let mut inner_offsets = MutableBuffer::new(offsets_length_total);
 
         self.build_variable_size_array_buffer_data(
@@ -348,16 +357,19 @@ impl ListArrayBuilder {
         let mut offsets_length_total = 0;
         let mut values_length_total = 0;
 
-        for array_handle in &self.list_of_arrays {
-            let array = self.convert_to_variable_size_array(array_handle)?;
-            for slice_arg in &array_handle.slice_args {
-                let start = array.value_offsets()[slice_arg.offset];
-                let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
+        for multi_row_array in &self.multi_row_arrays {
+            for array_handle in multi_row_array {
+                let array = self.convert_to_variable_size_array(array_handle)?;
+                for slice_arg in &array_handle.slice_args {
+                    let start = array.value_offsets()[slice_arg.offset];
+                    let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
 
-                offsets_length_total += slice_arg.length;
-                values_length_total += (end - start) as usize;
+                    offsets_length_total += slice_arg.length;
+                    values_length_total += (end - start) as usize;
+                }
             }
         }
+
         Ok((offsets_length_total, values_length_total))
     }
 
@@ -375,34 +387,42 @@ impl ListArrayBuilder {
         let mut inner_length_so_far: i32 = 0;
         inner_offsets.push(inner_length_so_far);
 
-        for array_handle in &self.list_of_arrays {
-            let array = self.convert_to_variable_size_array(array_handle)?;
-            for slice_arg in &array_handle.slice_args {
-                *length_so_far += slice_arg.length as i32;
+        for arrays in &self.multi_row_arrays {
+            for array_handle in arrays {
+                let array = self.convert_to_variable_size_array(array_handle)?;
 
-                let start = array.value_offsets()[slice_arg.offset];
-                let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
+                for slice_arg in &array_handle.slice_args {
+                    *length_so_far += slice_arg.length as i32;
 
-                for i in (slice_arg.offset as usize)..(slice_arg.offset + slice_arg.length as usize)
-                {
-                    inner_length_so_far += array.value_length(i);
-                    inner_offsets.push(inner_length_so_far);
+                    let start = array.value_offsets()[slice_arg.offset];
+                    let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
+
+                    for i in
+                        (slice_arg.offset as usize)..(slice_arg.offset + slice_arg.length as usize)
+                    {
+                        inner_length_so_far += array.value_length(i);
+                        inner_offsets.push(inner_length_so_far);
+                    }
+
+                    inner_values.extend_from_slice(
+                        &array.value_data().as_slice()[start as usize..end as usize],
+                    );
                 }
-
-                inner_values.extend_from_slice(
-                    &array.value_data().as_slice()[start as usize..end as usize],
-                );
             }
+            // The data in the arrays belong to the same tsid, so the offsets is the total
+            // len.
             offsets.push(*length_so_far);
         }
+
         Ok(())
     }
 
     /// This function is a translation of [GenericListArray.from_iter_primitive](https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#151)
     fn build(self) -> Result<ListArray> {
-        let array_len = self.list_of_arrays.len();
-        let mut offsets =
-            MutableBuffer::new(self.list_of_arrays.len() * std::mem::size_of::<i32>());
+        // The data in multi_row_arrays belong to different tsids.
+        // So the values num is the len of multi_row_arrays.
+        let array_len = self.multi_row_arrays.len();
+        let mut offsets = MutableBuffer::new(array_len * std::mem::size_of::<i32>());
         let child_data = self.build_child_data(&mut offsets)?;
         let field = Box::new(Field::new(
             LIST_ITEM_NAME,
@@ -433,18 +453,32 @@ fn build_hybrid_record(
     tsid_type: &IndexedType,
     non_collapsible_col_types: &[IndexedType],
     collapsible_col_types: &[IndexedType],
+    // tsid -> TsidBatch
     batch_by_tsid: BTreeMap<u64, TsidBatch>,
 ) -> Result<ArrowRecordBatch> {
     let tsid_array = UInt64Array::from_iter_values(batch_by_tsid.keys().cloned());
-    let mut collapsible_col_arrays = vec![Vec::new(); collapsible_col_types.len()];
+
+    // col_idx -> tsid -> data array
+    let mut collapsible_col_arrays =
+        vec![vec![Vec::new(); tsid_array.len()]; collapsible_col_types.len()];
     let mut non_collapsible_col_arrays = vec![Vec::new(); non_collapsible_col_types.len()];
 
-    for batch in batch_by_tsid.into_values() {
-        for (idx, arr) in batch.collapsible_col_arrays.into_iter().enumerate() {
-            collapsible_col_arrays[idx].push(arr);
+    // Reorganize data in batch_by_tsid.
+    // tsid-> col_idx-> data array ==> col_idx -> tsid -> data array
+    // example:
+    // tsid0 -> vec![ data_arrays0 of col0, data_array1 of col1]
+    // tsid1 -> vec![ data_arrays2 of col0, data_array3 of col1]
+    // ==>
+    // col0 -> vec![ data_arrays0 of tsid0, data_array2 of tsid1]
+    // col1 -> vec![ data_arrays1 of tsid0, data_array3 of tsid1]
+    for (tsid_idx, batch) in batch_by_tsid.into_values().enumerate() {
+        for col_array in batch.collapsible_col_arrays.into_values() {
+            for (col_idx, arr) in col_array.into_iter().enumerate() {
+                collapsible_col_arrays[col_idx][tsid_idx].push(arr);
+            }
         }
-        for (idx, arr) in batch.non_collapsible_col_values.into_iter().enumerate() {
-            non_collapsible_col_arrays[idx].push(arr);
+        for (col_idx, arr) in batch.non_collapsible_col_values.into_iter().enumerate() {
+            non_collapsible_col_arrays[col_idx].push(arr);
         }
     }
     let tsid_array = IndexedArray {
@@ -469,6 +503,7 @@ fn build_hybrid_record(
             })
         })
         .collect::<Result<Vec<_>>>()?;
+
     let all_columns = [
         vec![tsid_array],
         non_collapsible_col_arrays,
@@ -493,11 +528,11 @@ pub fn convert_to_hybrid_record(
     non_collapsible_col_types: &[IndexedType],
     collapsible_col_types: &[IndexedType],
     hybrid_arrow_schema: ArrowSchemaRef,
-    arrow_record_batchs: Vec<ArrowRecordBatch>,
+    arrow_record_batches: Vec<ArrowRecordBatch>,
 ) -> Result<ArrowRecordBatch> {
     // TODO: should keep tsid ordering here?
     let mut batch_by_tsid = BTreeMap::new();
-    for record_batch in arrow_record_batchs {
+    for (record_idx, record_batch) in arrow_record_batches.iter().enumerate() {
         let tsid_array = record_batch
             .column(tsid_type.idx)
             .as_any()
@@ -544,16 +579,23 @@ pub fn convert_to_hybrid_record(
                         .iter()
                         .map(|col| col.value(offset).to_string())
                         .collect(),
-                    collapsible_col_types
-                        .iter()
-                        .map(|col| record_batch.column(col.idx).clone())
-                        .collect(),
                 )
             });
-            batch.append_slice_arg(SliceArg { offset, length });
+            let collapsible_col_arrays = batch
+                .collapsible_col_arrays
+                .entry(record_idx)
+                .or_insert_with(|| {
+                    collapsible_col_types
+                        .iter()
+                        .map(|col| ArrayHandle::new(record_batch.column(col.idx).clone()))
+                        .collect()
+                });
+            // Append the slice arg to all columns in the same record batch.
+            for handle in collapsible_col_arrays {
+                handle.append_slice_arg(SliceArg { offset, length });
+            }
         }
     }
-
     build_hybrid_record(
         hybrid_arrow_schema,
         tsid_type,
@@ -607,23 +649,21 @@ mod tests {
 
     #[test]
     fn merge_timestamp_array_to_list() {
-        let list_of_arrays = vec![
-            ArrayHandle::with_slice_args(
-                timestamp_array(1, 20),
-                vec![(1, 2).into(), (10, 3).into()],
-            ),
-            ArrayHandle::with_slice_args(
-                timestamp_array(100, 120),
-                vec![(1, 2).into(), (10, 3).into()],
-            ),
-        ];
+        let row0 = vec![ArrayHandle::with_slice_args(
+            timestamp_array(1, 20),
+            vec![(1, 2).into(), (10, 3).into()],
+        )];
+        let row1 = vec![ArrayHandle::with_slice_args(
+            timestamp_array(100, 120),
+            vec![(1, 2).into(), (10, 3).into()],
+        )];
 
         let data = vec![
             Some(vec![Some(2), Some(3), Some(11), Some(12), Some(13)]),
             Some(vec![Some(101), Some(102), Some(110), Some(111), Some(112)]),
         ];
         let expected = ListArray::from_iter_primitive::<TimestampMillisecondType, _, _>(data);
-        let list_array = ListArrayBuilder::new(DatumKind::Timestamp, list_of_arrays)
+        let list_array = ListArrayBuilder::new(DatumKind::Timestamp, vec![row0, row1])
             .build()
             .unwrap();
 
@@ -632,39 +672,37 @@ mod tests {
 
     #[test]
     fn merge_u16_array_with_none_to_list() {
-        let list_of_arrays = vec![
-            ArrayHandle::with_slice_args(
-                uint16_array(vec![
-                    Some(1),
-                    Some(2),
-                    None,
-                    Some(3),
-                    Some(4),
-                    Some(5),
-                    Some(6),
-                ]),
-                vec![(1, 3).into(), (4, 1).into()],
-            ),
-            ArrayHandle::with_slice_args(
-                uint16_array(vec![
-                    Some(1),
-                    Some(2),
-                    None,
-                    Some(3),
-                    Some(4),
-                    Some(5),
-                    Some(6),
-                ]),
-                vec![(0, 1).into()],
-            ),
-        ];
+        let row0 = vec![ArrayHandle::with_slice_args(
+            uint16_array(vec![
+                Some(1),
+                Some(2),
+                None,
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+            ]),
+            vec![(1, 3).into(), (4, 1).into()],
+        )];
+        let row1 = vec![ArrayHandle::with_slice_args(
+            uint16_array(vec![
+                Some(1),
+                Some(2),
+                None,
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+            ]),
+            vec![(0, 1).into()],
+        )];
 
         let data = vec![
             Some(vec![Some(2), None, Some(3), Some(4)]),
             Some(vec![Some(1)]),
         ];
         let expected = ListArray::from_iter_primitive::<UInt16Type, _, _>(data);
-        let list_array = ListArrayBuilder::new(DatumKind::UInt16, list_of_arrays)
+        let list_array = ListArrayBuilder::new(DatumKind::UInt16, vec![row0, row1])
             .build()
             .unwrap();
 
@@ -673,34 +711,34 @@ mod tests {
 
     #[test]
     fn merge_string_array_with_none_to_list() {
-        let list_of_arrays = vec![
-            ArrayHandle::with_slice_args(
-                string_array(vec![
-                    Some("a"),
-                    Some("bb"),
-                    None,
-                    Some("ccc"),
-                    Some("d"),
-                    Some("eeee"),
-                    Some("eee"),
-                ]),
-                vec![(1, 3).into(), (4, 1).into()],
-            ),
-            ArrayHandle::with_slice_args(
-                string_array(vec![
-                    Some("a"),
-                    Some("bb"),
-                    None,
-                    Some("ccc"),
-                    Some("d"),
-                    Some("eeee"),
-                    Some("eee"),
-                ]),
-                vec![(0, 1).into()],
-            ),
-        ];
+        let row0 = vec![ArrayHandle::with_slice_args(
+            string_array(vec![
+                Some("a"),
+                Some("bb"),
+                None,
+                Some("ccc"),
+                Some("d"),
+                Some("eeee"),
+                Some("eee"),
+            ]),
+            vec![(1, 3).into(), (5, 1).into()],
+        )];
 
-        let string_data = string_array(vec![Some("bb"), None, Some("ccc"), Some("d"), Some("a")]);
+        let row1 = vec![ArrayHandle::with_slice_args(
+            string_array(vec![
+                Some("a"),
+                Some("bb"),
+                None,
+                Some("ccc"),
+                Some("d"),
+                Some("eeee"),
+                Some("eee"),
+            ]),
+            vec![(0, 1).into()],
+        )];
+
+        let string_data =
+            string_array(vec![Some("bb"), None, Some("ccc"), Some("eeee"), Some("a")]);
         let offsets: [i32; 3] = [0, 4, 5];
         let array_data = ArrayData::builder(DataType::List(Box::new(Field::new(
             LIST_ITEM_NAME,
@@ -713,7 +751,7 @@ mod tests {
         .build()
         .unwrap();
         let expected = ListArray::from(array_data);
-        let list_array = ListArrayBuilder::new(DatumKind::String, list_of_arrays)
+        let list_array = ListArrayBuilder::new(DatumKind::String, vec![row0, row1])
             .build()
             .unwrap();
 

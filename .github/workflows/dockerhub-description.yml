@@ -1,6 +1,7 @@
 name: Update Docker Hub Description
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

@@ -13,7 +13,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::table::Location;
 use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info};
 use serde_derive::Deserialize;
@@ -23,7 +22,7 @@ use wal::{
     log_batch::LogEntry,
     manager::{
         BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
-        WalManagerRef, WriteContext,
+        WalLocation, WalManagerRef, WriteContext,
     },
 };
 
@@ -39,22 +38,22 @@ use crate::meta::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to get to get log batch encoder, table_location:{:?}, err:{}",
-        table_location,
+        "Failed to get to get log batch encoder, wal_location:{:?}, err:{}",
+        wal_location,
         source
     ))]
     GetLogBatchEncoder {
-        table_location: Location,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table_location:{:?}, err:{}",
-        table_location,
+        "Failed to encode payloads, wal_location:{:?}, err:{}",
+        wal_location,
         source
     ))]
     EncodePayloads {
-        table_location: Location,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
     #[snafu(display("Failed to write update to wal, err:{}", source))]
@@ -233,10 +232,10 @@ impl ManifestImpl {
             self.wal_manager
                 .encoder(request.location)
                 .context(GetLogBatchEncoder {
-                    table_location: request.location,
+                    wal_location: request.location,
                 })?;
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            table_location: request.location,
+            wal_location: request.location,
         })?;
 
         let store_ctx = self.opts.store_context();
@@ -253,7 +252,7 @@ impl ManifestImpl {
     /// Do snapshot if no other snapshot is triggered.
     ///
     /// Returns the latest snapshot if snapshot is done.
-    async fn maybe_do_snapshot(&self, location: Location) -> Result<Option<Snapshot>> {
+    async fn maybe_do_snapshot(&self, location: WalLocation) -> Result<Option<Snapshot>> {
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
             let snapshotter = Snapshotter {
                 location,
@@ -305,7 +304,7 @@ impl Manifest for ManifestImpl {
 
     async fn load_data(
         &self,
-        location: Location,
+        location: WalLocation,
         do_snapshot: bool,
     ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
     {
@@ -342,12 +341,12 @@ trait MetaUpdateLogStore: std::fmt::Debug {
 
 #[derive(Debug, Clone)]
 struct RegionWal {
-    location: Location,
+    location: WalLocation,
     wal_manager: WalManagerRef,
 }
 
 impl RegionWal {
-    fn new(location: Location, wal_manager: WalManagerRef) -> Self {
+    fn new(location: WalLocation, wal_manager: WalManagerRef) -> Self {
         Self {
             location,
             wal_manager,
@@ -390,14 +389,14 @@ impl MetaUpdateLogStore for RegionWal {
     }
 
     async fn store(&self, ctx: &StoreContext, log_entries: &[MetaUpdateLogEntry]) -> Result<()> {
-        let table_location = self.location;
+        let wal_location = self.location;
         let log_batch_encoder = self
             .wal_manager
-            .encoder(table_location)
-            .context(GetLogBatchEncoder { table_location })?;
+            .encoder(wal_location)
+            .context(GetLogBatchEncoder { wal_location })?;
         let log_batch = log_batch_encoder
             .encode_batch::<MetaUpdatePayload, MetaUpdateLogEntry>(log_entries)
-            .context(EncodePayloads { table_location })?;
+            .context(EncodePayloads { wal_location })?;
 
         let write_ctx = WriteContext {
             timeout: ctx.timeout,
@@ -472,7 +471,7 @@ impl MetaUpdateLogStore for RegionWal {
 ///     just read all logs and convert them into snapshot.
 #[derive(Debug, Clone)]
 struct Snapshotter<S> {
-    location: Location,
+    location: WalLocation,
     log_store: S,
     options: Options,
 }
@@ -535,8 +534,14 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 ReadBoundary::Included(ctx.new_snapshot_end_seq),
             )
             .await?;
+
         match ctx.curr_snapshot_end_seq {
             Some(prev_snapshot_seq) => {
+                debug!(
+                    "Create snapshot from current, snapshot context:{:?}, location:{:?}",
+                    ctx, self.location
+                );
+
                 Self::create_snapshot_from_current(
                     ctx.new_snapshot_end_seq,
                     prev_snapshot_seq,
@@ -544,7 +549,11 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 )
                 .await
             }
-            None => Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await,
+            None => {
+                debug!("Create snapshot from start, location:{:?}", self.location);
+
+                Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await
+            }
         }
     }
 
@@ -563,14 +572,29 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
         let mut snapshot_states = BTreeMap::new();
         let mut latest_log_seq = SequenceNumber::MIN;
         while let Some((log_seq, log_entry)) = log_entry_reader.next_update().await? {
+            debug!(
+                "Next update returned, log seq:{}, location:{:?}",
+                log_seq, self.location
+            );
+
             latest_log_seq = log_seq;
 
             match log_entry {
                 MetaUpdateLogEntry::SnapshotStart(seq) => {
+                    debug!(
+                        "Found snapshot start, snapshot seq:{}, log seq:{}, location:{:?}",
+                        seq, log_seq, self.location
+                    );
+
                     let old_snapshot = snapshot_states.insert(seq, false);
                     assert!(old_snapshot.is_none());
                 }
                 MetaUpdateLogEntry::SnapshotEnd(seq) => {
+                    debug!(
+                        "Found snapshot end, snapshot seq:{}, log seq:{}, location:{:?}",
+                        seq, log_seq, self.location
+                    );
+
                     let snapshot = snapshot_states
                         .get_mut(&seq)
                         .context(CorruptedSnapshotFlag { seq })?;
@@ -581,6 +605,11 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 }
             }
         }
+
+        debug!(
+            "Finish to get snapshot states, snapshot states:{:?}, location:{:?}",
+            snapshot_states, self.location
+        );
         for (snapshot_seq, successful) in snapshot_states.into_iter().rev() {
             if successful {
                 return Ok(SnapshotContext {
@@ -735,7 +764,7 @@ mod tests {
         datum::DatumKind,
         schema,
         schema::Schema,
-        table::{Location, DEFAULT_SHARD_ID},
+        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
@@ -828,13 +857,10 @@ mod tests {
         }
 
         async fn open_manifest(&self) -> ManifestImpl {
-            let manifest_wal = WalBuilder::with_default_rocksdb_config(
-                self.dir.clone(),
-                self.runtime.clone(),
-                DEFAULT_SHARD_ID as RegionId,
-            )
-            .build()
-            .unwrap();
+            let manifest_wal =
+                WalBuilder::with_default_rocksdb_config(self.dir.clone(), self.runtime.clone())
+                    .build()
+                    .unwrap();
 
             ManifestImpl::open(Arc::new(manifest_wal), self.options.clone())
                 .await
@@ -843,7 +869,7 @@ mod tests {
 
         async fn check_table_manifest_data_with_manifest(
             &self,
-            location: Location,
+            location: WalLocation,
             expected: &Option<TableManifestData>,
             manifest: &ManifestImpl,
         ) {
@@ -853,7 +879,7 @@ mod tests {
 
         async fn check_table_manifest_data(
             &self,
-            location: Location,
+            location: WalLocation,
             expected: &Option<TableManifestData>,
         ) {
             let manifest = self.open_manifest().await;
@@ -921,7 +947,11 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let add_table = self.meta_update_add_table(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, add_table.clone()))
@@ -936,7 +966,11 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let drop_table = self.meta_update_drop_table(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, drop_table.clone()))
@@ -952,7 +986,11 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
             manifest
                 .store_update(MetaUpdateRequest::new(location, version_edit.clone()))
@@ -999,7 +1037,11 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let alter_options = self.meta_update_alter_table_options(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, alter_options.clone()))
@@ -1015,7 +1057,11 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let alter_schema = self.meta_update_alter_table_schema(table_id);
             manifest
                 .store_update(MetaUpdateRequest::new(location, alter_schema.clone()))
@@ -1040,7 +1086,11 @@ mod tests {
 
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
 
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let expected_table_manifest_data = manifest_data_builder.build();
             ctx.check_table_manifest_data(location, &expected_table_manifest_data)
                 .await;
@@ -1110,7 +1160,11 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
@@ -1140,7 +1194,11 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+            let location = WalLocation::new(
+                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
@@ -1294,7 +1352,11 @@ mod tests {
             manifest_builder.build()
         };
 
-        let location = Location::new(DEFAULT_SHARD_ID, table_id.as_u64());
+        let location = WalLocation::new(
+            DEFAULT_SHARD_ID as RegionId,
+            DEFAULT_CLUSTER_VERSION,
+            table_id.as_u64(),
+        );
         let log_store = {
             let log_entries: Vec<_> = logs
                 .iter()

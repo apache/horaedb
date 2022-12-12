@@ -9,7 +9,7 @@ pub mod meta_update;
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::table::Location;
+use wal::manager::WalLocation;
 
 use crate::meta::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
 
@@ -28,7 +28,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// the manifest data.
     async fn load_data(
         &self,
-        location: Location,
+        location: WalLocation,
         do_snapshot: bool,
     ) -> Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>;
 }

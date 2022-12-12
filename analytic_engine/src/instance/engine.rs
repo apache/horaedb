@@ -4,13 +4,14 @@
 
 use std::sync::Arc;
 
-use common_types::{schema::Version, table::Location};
+use common_types::schema::Version;
 use common_util::define_result;
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
     table::TableId,
 };
+use wal::manager::WalLocation;
 
 use crate::{
     instance::{write_worker::WriteGroup, Instance},
@@ -191,26 +192,26 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, table_location:{:?}, err:{}",
+        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
         table,
-        table_location,
+        wal_location,
         source
     ))]
     GetLogBatchEncoder {
         table: String,
-        table_location: Location,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{},table_location:{:?}, err:{}",
+        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
         table,
-        table_location,
+        wal_location,
         source
     ))]
     EncodePayloads {
         table: String,
-        table_location: Location,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 }

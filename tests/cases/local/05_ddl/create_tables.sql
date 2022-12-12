@@ -69,6 +69,20 @@ CREATE TABLE `05_create_tables_t9`(c1 int, c2 bigint default 0, c3 uint32 defaul
 show create table `05_create_tables_t9`;
 drop table `05_create_tables_t9`;
 
+-- Explicit primary key with tsid
+CREATE TABLE `05_create_tables_t10`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1)) ENGINE = Analytic;
+show create table `05_create_tables_t10`;
+drop table `05_create_tables_t10`;
+
+-- Explicit primary key with tsid
+CREATE TABLE `05_create_tables_t11`(c1 int, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(t1, tsid)) ENGINE = Analytic;
+show create table `05_create_tables_t11`;
+drop table `05_create_tables_t11`;
+
+CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMESTAMP KEY, PRIMARY KEY(tsid, t1, c1)) ENGINE = Analytic;
+show create table `05_create_tables_t12`;
+drop table `05_create_tables_t12`;
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 DROP TABLE IF EXISTS `05_create_tables_t3`;
@@ -77,3 +91,7 @@ DROP TABLE IF EXISTS `05_create_tables_t5`;
 DROP TABLE IF EXISTS `05_create_tables_t6`;
 DROP TABLE IF EXISTS `05_create_tables_t7`;
 DROP TABLE IF EXISTS `05_create_tables_t8`;
+DROP TABLE IF EXISTS `05_create_tables_t9`;
+DROP TABLE IF EXISTS `05_create_tables_t10`;
+DROP TABLE IF EXISTS `05_create_tables_t11`;
+DROP TABLE IF EXISTS `05_create_tables_t12`;

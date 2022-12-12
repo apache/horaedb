@@ -9,6 +9,7 @@ use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use log::warn;
+use logger::RuntimeLevel;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -16,7 +17,7 @@ use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use crate::{
     config::{Config, Endpoint},
     grpc::{self, RpcServices},
-    http::{self, Service},
+    http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
     limiter::Limiter,
     mysql,
@@ -27,8 +28,11 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Missing runtimes.\nBacktrace:\n{}", backtrace))]
-    MissingRuntimes { backtrace: Backtrace },
+    #[snafu(display("Missing engine runtimes.\nBacktrace:\n{}", backtrace))]
+    MissingEngineRuntimes { backtrace: Backtrace },
+
+    #[snafu(display("Missing log runtime.\nBacktrace:\n{}", backtrace))]
+    MissingLogRuntime { backtrace: Backtrace },
 
     #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
     MissingRouter { backtrace: Backtrace },
@@ -140,7 +144,8 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 #[must_use]
 pub struct Builder<Q> {
     config: Config,
-    runtimes: Option<Arc<EngineRuntimes>>,
+    engine_runtimes: Option<Arc<EngineRuntimes>>,
+    log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
     query_executor: Option<Q>,
     table_engine: Option<TableEngineRef>,
@@ -156,7 +161,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            runtimes: None,
+            engine_runtimes: None,
+            log_runtime: None,
             catalog_manager: None,
             query_executor: None,
             table_engine: None,
@@ -169,8 +175,13 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         }
     }
 
-    pub fn runtimes(mut self, runtimes: Arc<EngineRuntimes>) -> Self {
-        self.runtimes = Some(runtimes);
+    pub fn engine_runtimes(mut self, engine_runtimes: Arc<EngineRuntimes>) -> Self {
+        self.engine_runtimes = Some(engine_runtimes);
+        self
+    }
+
+    pub fn log_runtime(mut self, log_runtime: Arc<RuntimeLevel>) -> Self {
+        self.log_runtime = Some(log_runtime);
         self
     }
 
@@ -244,15 +255,22 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         // Create http config
-        let http_config = Endpoint {
+        let endpoint = Endpoint {
             addr: self.config.bind_addr.clone(),
             port: self.config.http_port,
         };
 
+        let http_config = HttpConfig {
+            endpoint,
+            max_body_size: self.config.http_max_body_size,
+        };
+
         // Start http service
-        let runtimes = self.runtimes.context(MissingRuntimes)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let http_service = http::Builder::new(http_config)
-            .runtimes(runtimes.clone())
+            .engine_runtimes(engine_runtimes.clone())
+            .log_runtime(log_runtime)
             .instance(instance.clone())
             .build()
             .context(StartHttpService)?;
@@ -263,7 +281,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
-            .runtimes(runtimes.clone())
+            .runtimes(engine_runtimes.clone())
             .instance(instance.clone())
             .build()
             .context(BuildMysqlService)?;
@@ -274,7 +292,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
             .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .runtimes(runtimes)
+            .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())

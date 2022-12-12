@@ -4,7 +4,7 @@
 
 use common_types::{
     bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut},
-    table::{Location, TableId},
+    table::TableId,
     SequenceNumber,
 };
 use common_util::{
@@ -15,7 +15,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload},
-    manager::{self, Encoding, RegionId},
+    manager::{self, Encoding, RegionId, WalLocation},
 };
 
 pub const LOG_KEY_ENCODING_V0: u8 = 0;
@@ -535,13 +535,13 @@ impl LogEncoding {
 /// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
-    location: Location,
+    location: WalLocation,
     log_encoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
     /// Create LogBatchEncoder with specific region_id.
-    pub fn create(location: Location) -> Self {
+    pub fn create(location: WalLocation) -> Self {
         Self {
             location,
             log_encoding: LogEncoding::newest(),

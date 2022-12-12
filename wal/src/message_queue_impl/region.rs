@@ -946,12 +946,20 @@ mod tests {
         message_queue: Arc<M>,
     ) {
         let namespace = format!("test_{}", uuid::Uuid::new_v4());
-        let shard_id = 42;
         let region_id = 42;
+        let region_version = 4242;
+        let table_id = 424242;
 
         let table_num = test_datas.len();
-        let test_context =
-            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
+        let test_context = TestContext::new(
+            namespace,
+            region_id,
+            region_version,
+            table_id,
+            test_datas,
+            message_queue,
+        )
+        .await;
 
         // Write.
         let mut mixed_test_payloads = Vec::new();
@@ -994,12 +1002,20 @@ mod tests {
         message_queue: Arc<M>,
     ) {
         let namespace = format!("test_{}", uuid::Uuid::new_v4());
-        let shard_id = 42;
         let region_id = 42;
+        let region_version = 4242;
+        let table_id = 424242;
 
         let table_num = test_datas.len();
-        let test_context =
-            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
+        let test_context = TestContext::new(
+            namespace,
+            region_id,
+            region_version,
+            table_id,
+            test_datas,
+            message_queue,
+        )
+        .await;
 
         // Mark deleted and check
         for table_idx in 0..table_num {
@@ -1118,15 +1134,17 @@ mod tests {
         message_queue: Arc<M>,
     ) {
         let namespace = format!("test_{}", uuid::Uuid::new_v4());
-        let shard_id = 42;
         let region_id = 42;
+        let region_version = 4242;
+        let table_id = 424242;
 
         let mut snapshot_from_origin = {
             let table_num = test_datas.len();
             let test_context = TestContext::new(
                 namespace.clone(),
                 region_id,
-                shard_id,
+                region_version,
+                table_id,
                 test_datas.clone(),
                 message_queue.clone(),
             )
@@ -1151,8 +1169,15 @@ mod tests {
             test_context.region.make_meta_snapshot().await
         };
 
-        let test_context =
-            TestContext::new(namespace, region_id, shard_id, test_datas, message_queue).await;
+        let test_context = TestContext::new(
+            namespace,
+            region_id,
+            region_version,
+            table_id,
+            test_datas,
+            message_queue,
+        )
+        .await;
         let mut snapshot_from_recovered = test_context.region.make_meta_snapshot().await;
 
         snapshot_from_origin

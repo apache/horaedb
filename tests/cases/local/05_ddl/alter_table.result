@@ -12,8 +12,8 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-a,t,tsid,
-Int32(1),Timestamp(Timestamp(1)),Int64(0),
+tsid,t,a,
+Int64(0),Timestamp(Timestamp(1)),Int32(1),
 
 
 ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
@@ -27,9 +27,9 @@ affected_rows: 0
 DESCRIBE TABLE `05_alter_table_t0`;
 
 name,type,is_primary,is_nullable,is_tag,
-String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(true),Boolean(false),
-String(StringBytes(b"t")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
 String(StringBytes(b"tsid")),String(StringBytes(b"uint64")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"t")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(true),Boolean(false),
 String(StringBytes(b"b")),String(StringBytes(b"string")),Boolean(false),Boolean(true),Boolean(false),
 
 
@@ -39,9 +39,9 @@ affected_rows: 1
 
 SELECT * FROM `05_alter_table_t0`;
 
-a,t,tsid,b,
-Int32(1),Timestamp(Timestamp(1)),Int64(0),Null,
-Int32(2),Timestamp(Timestamp(2)),Int64(0),String(StringBytes(b"2")),
+tsid,t,a,b,
+Int64(0),Timestamp(Timestamp(1)),Int32(1),Null,
+Int64(0),Timestamp(Timestamp(2)),Int32(2),String(StringBytes(b"2")),
 
 
 ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
@@ -51,17 +51,17 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 DESCRIBE TABLE `05_alter_table_t0`;
 
 name,type,is_primary,is_nullable,is_tag,
-String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(true),Boolean(false),
-String(StringBytes(b"t")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
 String(StringBytes(b"tsid")),String(StringBytes(b"uint64")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"t")),String(StringBytes(b"timestamp")),Boolean(true),Boolean(false),Boolean(false),
+String(StringBytes(b"a")),String(StringBytes(b"int")),Boolean(false),Boolean(true),Boolean(false),
 String(StringBytes(b"b")),String(StringBytes(b"string")),Boolean(false),Boolean(true),Boolean(false),
 
 
 SELECT * FROM `05_alter_table_t0`;
 
-a,t,tsid,b,
-Int32(1),Timestamp(Timestamp(1)),Int64(0),Null,
-Int32(2),Timestamp(Timestamp(2)),Int64(0),String(StringBytes(b"2")),
+tsid,t,a,b,
+Int64(0),Timestamp(Timestamp(1)),Int32(1),Null,
+Int64(0),Timestamp(Timestamp(2)),Int32(2),String(StringBytes(b"2")),
 
 
 DROP TABLE `05_alter_table_t0`;

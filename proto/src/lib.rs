@@ -7,6 +7,7 @@
 pub mod analytic_common;
 pub mod common;
 pub mod meta_update;
+pub mod oss_cache;
 pub mod sst;
 pub mod sys_catalog;
 pub mod table_requests;

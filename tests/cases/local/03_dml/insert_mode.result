@@ -25,10 +25,10 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(3)),Int64(0),Double(-30.0),
-Timestamp(Timestamp(2)),Int64(0),Double(0.0),
-Timestamp(Timestamp(1)),Int64(0),Double(10.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(3)),Double(-30.0),
+Int64(0),Timestamp(Timestamp(2)),Double(0.0),
+Int64(0),Timestamp(Timestamp(1)),Double(10.0),
 
 
 INSERT INTO `03_dml_insert_mode_table1` (`timestamp`, `value`)
@@ -43,10 +43,10 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(1)),Int64(0),Double(100.0),
-Timestamp(Timestamp(2)),Int64(0),Double(200.0),
-Timestamp(Timestamp(3)),Int64(0),Double(300.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(1)),Double(100.0),
+Int64(0),Timestamp(Timestamp(2)),Double(200.0),
+Int64(0),Timestamp(Timestamp(3)),Double(300.0),
 
 
 DROP TABLE `03_dml_insert_mode_table1`;
@@ -80,10 +80,10 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(1)),Int64(0),Double(10.0),
-Timestamp(Timestamp(2)),Int64(0),Double(20.0),
-Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(1)),Double(10.0),
+Int64(0),Timestamp(Timestamp(2)),Double(20.0),
+Int64(0),Timestamp(Timestamp(3)),Double(30.0),
 
 
 INSERT INTO `03_dml_insert_mode_table2` (`timestamp`, `value`)
@@ -98,13 +98,13 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(1)),Int64(0),Double(10.0),
-Timestamp(Timestamp(2)),Int64(0),Double(20.0),
-Timestamp(Timestamp(3)),Int64(0),Double(30.0),
-Timestamp(Timestamp(1)),Int64(0),Double(100.0),
-Timestamp(Timestamp(2)),Int64(0),Double(200.0),
-Timestamp(Timestamp(3)),Int64(0),Double(300.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(1)),Double(10.0),
+Int64(0),Timestamp(Timestamp(2)),Double(20.0),
+Int64(0),Timestamp(Timestamp(3)),Double(30.0),
+Int64(0),Timestamp(Timestamp(1)),Double(100.0),
+Int64(0),Timestamp(Timestamp(2)),Double(200.0),
+Int64(0),Timestamp(Timestamp(3)),Double(300.0),
 
 
 DROP TABLE `03_dml_insert_mode_table2`;
@@ -137,10 +137,10 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(1)),Int64(0),Double(10.0),
-Timestamp(Timestamp(2)),Int64(0),Double(20.0),
-Timestamp(Timestamp(3)),Int64(0),Double(30.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(1)),Double(10.0),
+Int64(0),Timestamp(Timestamp(2)),Double(20.0),
+Int64(0),Timestamp(Timestamp(3)),Double(30.0),
 
 
 INSERT INTO `03_dml_insert_mode_table3` (`timestamp`, `value`)
@@ -155,10 +155,10 @@ FROM
 ORDER BY
     `value` ASC;
 
-timestamp,tsid,value,
-Timestamp(Timestamp(1)),Int64(0),Double(100.0),
-Timestamp(Timestamp(2)),Int64(0),Double(200.0),
-Timestamp(Timestamp(3)),Int64(0),Double(300.0),
+tsid,timestamp,value,
+Int64(0),Timestamp(Timestamp(1)),Double(100.0),
+Int64(0),Timestamp(Timestamp(2)),Double(200.0),
+Int64(0),Timestamp(Timestamp(3)),Double(300.0),
 
 
 DROP TABLE `03_dml_insert_mode_table3`;
@@ -195,9 +195,9 @@ FROM
 ORDER BY
     `c1` ASC;
 
-timestamp,tsid,c1,c2,c3,c4,c5,
-Timestamp(Timestamp(1)),Int64(0),Int64(10),String(StringBytes(b"123")),Int64(11),Int64(12),Int64(3),
-Timestamp(Timestamp(2)),Int64(0),Int64(20),String(StringBytes(b"123")),Int64(21),Int64(22),Int64(4),
-Timestamp(Timestamp(3)),Int64(0),Int64(30),String(StringBytes(b"123")),Int64(31),Int64(32),Int64(5),
+tsid,timestamp,c1,c2,c3,c4,c5,
+Int64(0),Timestamp(Timestamp(1)),Int64(10),String(StringBytes(b"123")),Int64(11),Int64(12),Int64(3),
+Int64(0),Timestamp(Timestamp(2)),Int64(20),String(StringBytes(b"123")),Int64(21),Int64(22),Int64(4),
+Int64(0),Timestamp(Timestamp(3)),Int64(30),String(StringBytes(b"123")),Int64(31),Int64(32),Int64(5),
 
 

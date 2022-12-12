@@ -5,19 +5,18 @@
 use std::{path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::table::DEFAULT_SHARD_ID;
 use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS, cache::CachedStore, mem_cache::MemCacheStore, LocalFileSystem,
-    ObjectStoreRef,
+    aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
+    prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
-    manager::{self, RegionId, WalManagerRef},
+    manager::{self, WalManagerRef},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as WalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
@@ -90,6 +89,7 @@ define_result!(Error);
 const WAL_DIR_NAME: &str = "wal";
 const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
+const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
 /// Analytic engine builder.
 #[async_trait]
@@ -139,27 +139,17 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
             }
         }
 
-        let default_region_id = DEFAULT_SHARD_ID as RegionId;
-
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&config.wal_path);
         let wal_path = data_path.join(WAL_DIR_NAME);
-        let wal_manager = WalBuilder::with_default_rocksdb_config(
-            wal_path,
-            write_runtime.clone(),
-            default_region_id,
-        )
-        .build()
-        .context(OpenWal)?;
+        let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
+            .build()
+            .context(OpenWal)?;
 
         let manifest_path = data_path.join(MANIFEST_DIR_NAME);
-        let manifest_wal = WalBuilder::with_default_rocksdb_config(
-            manifest_path,
-            write_runtime,
-            default_region_id,
-        )
-        .build()
-        .context(OpenManifestWal)?;
+        let manifest_wal = WalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
+            .build()
+            .context(OpenManifestWal)?;
 
         let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
             .await
@@ -319,7 +309,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv.clone(),
         runtimes.clone(),
         WAL_DIR_NAME,
-        config.wal.clone(),
+        config.wal.clone().into(),
     )
     .await
     .context(OpenWal)?;
@@ -328,7 +318,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv,
         runtimes,
         MANIFEST_DIR_NAME,
-        config.manifest.clone(),
+        config.manifest.clone().into(),
     )
     .await
     .context(OpenManifestWal)?;
@@ -368,11 +358,24 @@ async fn open_instance(
     Ok(instance)
 }
 
+// Build store in multiple layer, access speed decrease in turn.
+// MemCacheStore -> DiskCacheStore -> real ObjectStore(OSS/S3...)
+//
+// ```plaintext
+// +-------------------------------+
+// |    MemCacheStore              |
+// |       +-----------------------+
+// |       |    DiskCacheStore     |
+// |       |      +----------------+
+// |       |      |                |
+// |       |      |    OSS/S3....  |
+// +-------+------+----------------+
+// ```
 fn open_storage(
     opts: StorageOptions,
 ) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
     Box::pin(async move {
-        let underlying_store = match opts.object_store {
+        let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
                 let data_path = Path::new(&local_opts.data_path);
                 let sst_path = data_path.join(STORE_DIR_NAME);
@@ -384,31 +387,43 @@ fn open_storage(
                 let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
                 Arc::new(store) as _
             }
-            ObjectStoreOptions::Aliyun(aliyun_opts) => Arc::new(AliyunOSS::new(
-                aliyun_opts.key_id,
-                aliyun_opts.key_secret,
-                aliyun_opts.endpoint,
-                aliyun_opts.bucket,
-            )) as _,
-            ObjectStoreOptions::Cache(cache_opts) => {
-                let local_store = open_storage(*cache_opts.local_store).await?;
-                let remote_store = open_storage(*cache_opts.remote_store).await?;
-                let store = CachedStore::init(local_store, remote_store, cache_opts.cache_opts)
-                    .await
-                    .context(OpenObjectStore)?;
-                Arc::new(store) as _
+            ObjectStoreOptions::Aliyun(aliyun_opts) => {
+                let oss = Arc::new(AliyunOSS::new(
+                    aliyun_opts.key_id,
+                    aliyun_opts.key_secret,
+                    aliyun_opts.endpoint,
+                    aliyun_opts.bucket,
+                ));
+                Arc::new(StoreWithPrefix::new(aliyun_opts.prefix, oss).context(OpenObjectStore)?)
+                    as _
             }
         };
 
-        if opts.mem_cache_capacity.as_bytes() == 0 {
-            return Ok(underlying_store);
+        if opts.disk_cache_capacity.as_bytes() > 0 {
+            let path = Path::new(&opts.disk_cache_path).join(DISK_CACHE_DIR_NAME);
+            tokio::fs::create_dir_all(&path).await.context(CreateDir {
+                path: path.to_string_lossy().into_owned(),
+            })?;
+
+            store = Arc::new(
+                DiskCacheStore::try_new(
+                    path.to_string_lossy().into_owned(),
+                    opts.disk_cache_capacity.as_bytes() as usize,
+                    opts.disk_cache_page_size.as_bytes() as usize,
+                    store,
+                )
+                .await
+                .context(OpenObjectStore)?,
+            ) as _;
         }
 
-        let store = Arc::new(MemCacheStore::new(
-            opts.mem_cache_partition_bits,
-            opts.mem_cache_capacity.as_bytes() as usize,
-            underlying_store,
-        )) as _;
+        if opts.mem_cache_capacity.as_bytes() > 0 {
+            store = Arc::new(MemCacheStore::new(
+                opts.mem_cache_partition_bits,
+                opts.mem_cache_capacity.as_bytes() as usize,
+                store,
+            )) as _;
+        }
 
         Ok(store)
     })
