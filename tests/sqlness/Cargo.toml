@@ -11,7 +11,4 @@ workspace = true
 anyhow = "1.0.58"
 async-trait = "0.1"
 ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a9d9190f4f7b55171ea2ad142fb41dc9909c19c5" }
-prettydiff = { version = "0.6.1", features = [ "prettytable-rs"]}
 sqlness = { git = "https://github.com/CeresDB/sqlness.git", rev = "c077b17d73ab25460c152dc34e8f80f904522a57"}
-tokio = { workspace = true }
-walkdir = "2.3.2"

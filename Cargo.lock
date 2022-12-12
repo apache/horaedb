@@ -879,10 +879,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "ceresdb-client-rs",
- "prettydiff",
  "sqlness",
- "tokio 1.22.0",
- "walkdir",
 ]
 
 [[package]]
