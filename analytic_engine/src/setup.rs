@@ -10,7 +10,7 @@ use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
-    prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
+    metrics::StoreWithMetrics, prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -394,8 +394,11 @@ fn open_storage(
                     aliyun_opts.endpoint,
                     aliyun_opts.bucket,
                 ));
-                Arc::new(StoreWithPrefix::new(aliyun_opts.prefix, oss).context(OpenObjectStore)?)
-                    as _
+                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
+                Arc::new(
+                    StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
+                        .context(OpenObjectStore)?,
+                ) as _
             }
         };
 

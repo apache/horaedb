@@ -3593,6 +3593,7 @@ dependencies = [
  "object_store 0.5.1",
  "oss-rust-sdk",
  "prometheus 0.12.0",
+ "prometheus-static-metric",
  "prost",
  "proto 1.0.0-alpha01",
  "serde",

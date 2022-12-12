@@ -25,6 +25,7 @@ oss-rust-sdk = { git = "https://github.com/jiacai2050/oss-rust-sdk.git", rev = "
 prost = { workspace = true }
 proto = { workspace = true }
 prometheus = { workspace = true }
+prometheus-static-metric = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
