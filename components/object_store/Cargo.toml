@@ -21,7 +21,7 @@ lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
 lru-weighted-cache = { git = "https://github.com/jiacai2050/lru-weighted-cache.git", rev = "1cf61aaf88469387e610dc7154fa318843491428" }
-oss-rust-sdk = { git = "https://github.com/jiacai2050/oss-rust-sdk.git", rev = "a6c54471d0b187667395d6cac931bd4e01a9f4e4" }
+oss-rust-sdk = "0.6.1"
 prost = { workspace = true }
 proto = { workspace = true }
 prometheus = { workspace = true }

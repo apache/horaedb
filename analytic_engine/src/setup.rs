@@ -393,6 +393,8 @@ fn open_storage(
                     aliyun_opts.key_secret,
                     aliyun_opts.endpoint,
                     aliyun_opts.bucket,
+                    aliyun_opts.pool_max_idle_per_host,
+                    aliyun_opts.timeout,
                 ));
                 let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
                 Arc::new(

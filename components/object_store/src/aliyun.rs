@@ -1,6 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{collections::HashMap, fmt::Display, ops::Range};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -9,6 +10,7 @@ use futures::{
     StreamExt,
 };
 use oss_rust_sdk::{async_object::AsyncObjectAPI, errors::Error as AliyunError, prelude::OSS};
+use oss_rust_sdk::oss::Options;
 use snafu::{ResultExt, Snafu};
 use tokio::io::AsyncWrite;
 use upstream::{
@@ -63,12 +65,18 @@ impl AliyunOSS {
         key_secret: impl Into<String>,
         endpoint: impl Into<String>,
         bucket: impl Into<String>,
+        pool_max_idle_per_host: impl Into<usize>,
+        timeout: impl Into<Duration>,
     ) -> Self {
-        let oss = OSS::new(
+        let oss = OSS::new_with_opts(
             key_id.into(),
             key_secret.into(),
             endpoint.into(),
             bucket.into(),
+            Options {
+                pool_max_idle_per_host: Some(pool_max_idle_per_host.into()),
+                timeout: Some(timeout.into()),
+            },
         );
         Self { oss }
     }

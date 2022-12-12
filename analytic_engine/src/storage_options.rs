@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use common_util::config::ReadableSize;
+use common_util::config::{ReadableDuration, ReadableSize};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -54,4 +54,6 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    pub pool_max_idle_per_host: usize,
+    pub timeout: ReadableDuration,
 }
