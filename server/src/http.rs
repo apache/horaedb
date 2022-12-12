@@ -252,7 +252,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                         .set_level_by_str(log_level.as_str())
                         .map_err(|e| Error::HandleUpdateLogLevel { msg: e });
                     match result {
-                        Ok(()) => Ok(reply::reply()),
+                        Ok(()) => Ok(reply::json(&"ok")),
                         Err(e) => Err(reject::custom(e)),
                     }
                 },
