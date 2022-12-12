@@ -139,57 +139,60 @@ impl<K: Eq + Hash + Clone, V> RequestQueue<K, V> {
 
 type RequestBuf = RwLock<RequestQueue<TableId, TableCompactionRequest>>;
 
+/// Combined with [`MemoryUsageToken`], [`MemoryLimit`] provides a mechanism to
+/// impose limit on the memory usage.
 #[derive(Clone, Debug)]
-struct TaskMemoryLimit {
-    memory_usage: Arc<AtomicUsize>,
+struct MemoryLimit {
+    usage: Arc<AtomicUsize>,
     // TODO: support to adjust this threshold dynamically.
-    memory_threshold: usize,
+    limit: usize,
 }
 
 /// The token for the memory usage, which should not derive Clone.
+/// The applied memory will be subtracted from the global memory usage.
 #[derive(Debug)]
 struct MemoryUsageToken {
-    shared_memory_usage: Arc<AtomicUsize>,
-    applied_memory_usage: usize,
+    global_usage: Arc<AtomicUsize>,
+    applied_usage: usize,
 }
 
 impl Drop for MemoryUsageToken {
     fn drop(&mut self) {
-        self.shared_memory_usage
-            .fetch_sub(self.applied_memory_usage, Ordering::Relaxed);
+        self.global_usage
+            .fetch_sub(self.applied_usage, Ordering::Relaxed);
     }
 }
 
-impl TaskMemoryLimit {
-    fn new(threshold: usize) -> Self {
+impl MemoryLimit {
+    fn new(limit: usize) -> Self {
         Self {
-            memory_usage: Arc::new(AtomicUsize::new(0)),
-            memory_threshold: threshold,
+            usage: Arc::new(AtomicUsize::new(0)),
+            limit,
         }
     }
 
     /// Try to apply a token if possible.
     fn try_apply_token(&self, bytes: usize) -> Option<MemoryUsageToken> {
         let token = self.apply_token(bytes);
-        if self.is_exhausted() {
-            Some(token)
-        } else {
+        if self.is_exceeded() {
             None
+        } else {
+            Some(token)
         }
     }
 
     fn apply_token(&self, bytes: usize) -> MemoryUsageToken {
-        self.memory_usage.fetch_add(bytes, Ordering::Relaxed);
+        self.usage.fetch_add(bytes, Ordering::Relaxed);
 
         MemoryUsageToken {
-            shared_memory_usage: self.memory_usage.clone(),
-            applied_memory_usage: bytes,
+            global_usage: self.usage.clone(),
+            applied_usage: bytes,
         }
     }
 
     #[inline]
-    fn is_exhausted(&self) -> bool {
-        self.memory_usage.load(Ordering::Relaxed) > self.memory_threshold
+    fn is_exceeded(&self) -> bool {
+        self.usage.load(Ordering::Relaxed) > self.limit
     }
 }
 
@@ -302,7 +305,7 @@ impl SchedulerImpl {
                 request_buf: RwLock::new(RequestQueue::default()),
             }),
             running: running.clone(),
-            memory_limit: TaskMemoryLimit::new(4 * 1024 * 1024),
+            memory_limit: MemoryLimit::new(4 * 1024 * 1024),
         };
 
         let handle = runtime.spawn(async move {
@@ -366,7 +369,7 @@ struct ScheduleWorker {
     max_ongoing_tasks: usize,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
-    memory_limit: TaskMemoryLimit,
+    memory_limit: MemoryLimit,
 }
 
 #[inline]
@@ -419,7 +422,7 @@ impl ScheduleWorker {
                         self.limit.request_buf_len()
                     );
                 } else {
-                    self.do_table_compaction_request(compact_req).await;
+                    self.handle_table_compaction_request(compact_req).await;
                 }
             }
             ScheduleTask::Schedule => {
@@ -427,7 +430,7 @@ impl ScheduleWorker {
                     let pending = self.limit.drain_requests(self.max_ongoing_tasks - ongoing);
                     let len = pending.len();
                     for compact_req in pending {
-                        self.do_table_compaction_request(compact_req).await;
+                        self.handle_table_compaction_request(compact_req).await;
                     }
                     debug!("Scheduled {} pending compaction tasks.", len);
                 }
@@ -520,7 +523,7 @@ impl ScheduleWorker {
         self.memory_limit.try_apply_token(estimate_memory_usage)
     }
 
-    async fn do_table_compaction_request(&self, compact_req: TableCompactionRequest) {
+    async fn handle_table_compaction_request(&self, compact_req: TableCompactionRequest) {
         let table_data = compact_req.table_data.clone();
         let table_options = table_data.table_options();
         let compaction_strategy = table_options.compaction_strategy;
@@ -693,6 +696,71 @@ fn new_picker_context(table_opts: &TableOptions) -> Option<PickerContext> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_memory_usage_limit_apply() {
+        let limit = MemoryLimit::new(100);
+        let cases = vec![
+            // One case is (applied_requests, applied_results).
+            (vec![10, 20, 90, 30], vec![true, true, false, true]),
+            (vec![100, 10], vec![true, false]),
+            (vec![0, 90, 10], vec![true, true, true]),
+        ];
+
+        for (apply_requests, expect_applied_results) in cases {
+            assert_eq!(limit.usage.load(Ordering::Relaxed), 0);
+
+            let mut applied_tokens = Vec::with_capacity(apply_requests.len());
+            for bytes in &apply_requests {
+                let token = limit.try_apply_token(*bytes);
+                applied_tokens.push(token);
+            }
+            assert_eq!(applied_tokens.len(), expect_applied_results.len());
+            assert_eq!(applied_tokens.len(), applied_tokens.len());
+
+            for (token, (apply_bytes, applied)) in applied_tokens.into_iter().zip(
+                apply_requests
+                    .into_iter()
+                    .zip(expect_applied_results.into_iter()),
+            ) {
+                if applied {
+                    let token = token.unwrap();
+                    assert_eq!(token.applied_usage, apply_bytes);
+                    assert_eq!(
+                        token.global_usage.load(Ordering::Relaxed),
+                        limit.usage.load(Ordering::Relaxed),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_memory_usage_limit_release() {
+        let limit = MemoryLimit::new(100);
+
+        let cases = vec![
+            // One case includes the operation consisting of (applied bytes, whether to keep the
+            // applied token) and final memory usage.
+            (vec![(10, false), (20, false)], 0),
+            (vec![(100, false), (10, true), (20, true), (30, true)], 60),
+            (vec![(0, false), (100, false), (20, true), (30, false)], 20),
+        ];
+
+        for (ops, expect_memory_usage) in cases {
+            assert_eq!(limit.usage.load(Ordering::Relaxed), 0);
+
+            let mut tokens = Vec::new();
+            for (applied_bytes, keep_token) in ops {
+                let token = limit.try_apply_token(applied_bytes);
+                if keep_token {
+                    tokens.push(token);
+                }
+            }
+
+            assert_eq!(limit.usage.load(Ordering::Relaxed), expect_memory_usage);
+        }
+    }
 
     #[test]
     fn test_request_queue() {
