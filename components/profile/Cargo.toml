@@ -8,9 +8,4 @@ edition.workspace = true
 [dependencies]
 log = { workspace = true }
 tempfile = { workspace = true }
-jemallocator = "0.3.2"
-jemalloc-ctl = "0.3.2"
-
-[dependencies.jemalloc-sys]
-version = "0.3.2"
-features = ["stats", "profiling", "unprefixed_malloc_on_supported_platforms"]
+heappy = { git = "https://github.com/mkmik/heappy", rev = "99a7ae15a49de3fdb4cc82abc0ead01df7a0db7d", features = ["enable_heap_profiler", "measure_free"], optional = true }

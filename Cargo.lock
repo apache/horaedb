@@ -445,7 +445,7 @@ dependencies = [
  "object_store 1.0.0-alpha01",
  "parquet",
  "parquet_ext",
- "pprof",
+ "pprof 0.10.1",
  "rand 0.7.3",
  "serde",
  "serde_derive",
@@ -1044,7 +1044,7 @@ dependencies = [
  "bytes_ext 0.4.0",
  "chrono",
  "murmur3",
- "paste 1.0.8",
+ "paste",
  "prost",
  "proto 0.4.0",
  "serde",
@@ -1065,7 +1065,7 @@ dependencies = [
  "chrono",
  "datafusion",
  "murmur3",
- "paste 1.0.8",
+ "paste",
  "prost",
  "proto 1.0.0-alpha01",
  "serde",
@@ -1189,6 +1189,15 @@ name = "cpp_demangle"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eeaa953eaad386a53111e47172c2fedba671e5684c8dd601a5f474f4f118710f"
+dependencies = [
+ "cfg-if 1.0.0",
+]
+
+[[package]]
+name = "cpp_demangle"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b446fd40bcc17eddd6a4a78f24315eb90afdb3334999ddfd4909985c47722442"
 dependencies = [
  "cfg-if 1.0.0",
 ]
@@ -1477,7 +1486,7 @@ dependencies = [
  "ordered-float 3.0.0",
  "parking_lot 0.12.1",
  "parquet",
- "paste 1.0.8",
+ "paste",
  "pin-project-lite",
  "rand 0.8.5",
  "smallvec 1.9.0",
@@ -1545,7 +1554,7 @@ dependencies = [
  "lazy_static",
  "md-5",
  "ordered-float 3.0.0",
- "paste 1.0.8",
+ "paste",
  "rand 0.8.5",
  "regex",
  "sha2 0.10.2",
@@ -1559,7 +1568,7 @@ source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=d84ea9c79c9e83
 dependencies = [
  "arrow",
  "datafusion-common",
- "paste 1.0.8",
+ "paste",
  "rand 0.8.5",
 ]
 
@@ -2295,6 +2304,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "heappy"
+version = "0.1.0"
+dependencies = [
+ "backtrace",
+ "bytes 1.2.1",
+ "lazy_static",
+ "libc",
+ "pprof 0.11.0",
+ "spin 0.9.4",
+ "thiserror",
+ "tikv-jemalloc-sys",
+]
+
+[[package]]
 name = "heck"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2654,38 +2677,6 @@ name = "itoa"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c8af84674fe1f223a982c933a0ee1086ac4d4052aa0fb8060c12c6ad838e754"
-
-[[package]]
-name = "jemalloc-ctl"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c502a5ff9dd2924f1ed32ba96e3b65735d837b4bfd978d3161b1702e66aca4b7"
-dependencies = [
- "jemalloc-sys",
- "libc",
- "paste 0.1.18",
-]
-
-[[package]]
-name = "jemalloc-sys"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d3b9f3f5c9b31aa0f5ed3260385ac205db665baa41d49bb8338008ae94ede45"
-dependencies = [
- "cc",
- "fs_extra",
- "libc",
-]
-
-[[package]]
-name = "jemallocator"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43ae63fcfc45e99ab3d1b29a46782ad679e98436c3169d15a167a1108a724b69"
-dependencies = [
- "jemalloc-sys",
- "libc",
-]
 
 [[package]]
 name = "jobserver"
@@ -3628,7 +3619,7 @@ dependencies = [
  "serde_bytes",
  "serde_derive",
  "serde_json",
- "spin",
+ "spin 0.5.2",
  "tokio-codec",
  "uuid 0.7.4",
  "zstd",
@@ -3910,28 +3901,9 @@ dependencies = [
 
 [[package]]
 name = "paste"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45ca20c77d80be666aef2b45486da86238fabe33e38306bd3118fe4af33fa880"
-dependencies = [
- "paste-impl",
- "proc-macro-hack",
-]
-
-[[package]]
-name = "paste"
 version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9423e2b32f7a043629287a536f21951e8c6a82482d0acb1eeebfc90bc2225b22"
-
-[[package]]
-name = "paste-impl"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d95a7db200b97ef370c8e6de0088252f7e0dfff7d047a28528e47456c0fc98b6"
-dependencies = [
- "proc-macro-hack",
-]
 
 [[package]]
 name = "peeking_take_while"
@@ -4053,7 +4025,33 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "smallvec 1.9.0",
- "symbolic-demangle",
+ "symbolic-demangle 9.2.1",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "pprof"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e20150f965e0e4c925982b9356da71c84bcd56cb66ef4e894825837cbcf6613e"
+dependencies = [
+ "backtrace",
+ "cfg-if 1.0.0",
+ "findshlibs",
+ "inferno",
+ "libc",
+ "log",
+ "nix 0.24.2",
+ "once_cell",
+ "parking_lot 0.12.1",
+ "prost",
+ "prost-build",
+ "prost-derive",
+ "protobuf",
+ "sha2 0.10.2",
+ "smallvec 1.9.0",
+ "symbolic-demangle 10.2.1",
  "tempfile",
  "thiserror",
 ]
@@ -4142,9 +4140,7 @@ dependencies = [
 name = "profile"
 version = "1.0.0-alpha01"
 dependencies = [
- "jemalloc-ctl",
- "jemalloc-sys",
- "jemallocator",
+ "heappy",
  "log",
  "tempfile",
 ]
@@ -4160,7 +4156,7 @@ dependencies = [
  "lazy_static",
  "protobuf",
  "quick-error",
- "spin",
+ "spin 0.5.2",
 ]
 
 [[package]]
@@ -5153,7 +5149,7 @@ dependencies = [
  "logger",
  "meta_client",
  "opensrv-mysql",
- "paste 1.0.8",
+ "paste",
  "profile",
  "prometheus 0.12.0",
  "prometheus-static-metric",
@@ -5466,6 +5462,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
+name = "spin"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f6002a767bff9e83f8eeecf883ecb8011875a21ae8da43bffb817a57e78cc09"
+dependencies = [
+ "lock_api 0.4.9",
+]
+
+[[package]]
 name = "sql"
 version = "1.0.0-alpha01"
 dependencies = [
@@ -5479,7 +5484,7 @@ dependencies = [
  "df_operator",
  "hashbrown",
  "log",
- "paste 1.0.8",
+ "paste",
  "regex",
  "snafu 0.6.10",
  "sqlparser",
@@ -5647,14 +5652,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolic-common"
+version = "10.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
+dependencies = [
+ "debugid",
+ "memmap2",
+ "stable_deref_trait",
+ "uuid 1.1.2",
+]
+
+[[package]]
 name = "symbolic-demangle"
 version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b940a1fdbc72bb3369e38714efe6cd332dbbe46d093cf03d668b9ac390d1ad0"
 dependencies = [
- "cpp_demangle",
+ "cpp_demangle 0.3.5",
  "rustc-demangle",
- "symbolic-common",
+ "symbolic-common 9.2.1",
+]
+
+[[package]]
+name = "symbolic-demangle"
+version = "10.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79be897be8a483a81fff6a3a4e195b4ac838ef73ca42d348b3f722da9902e489"
+dependencies = [
+ "cpp_demangle 0.4.0",
+ "rustc-demangle",
+ "symbolic-common 10.2.1",
 ]
 
 [[package]]
@@ -5872,6 +5900,17 @@ dependencies = [
  "byteorder",
  "integer-encoding 3.0.4",
  "ordered-float 1.1.1",
+]
+
+[[package]]
+name = "tikv-jemalloc-sys"
+version = "0.5.2+5.3.0-patched"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec45c14da997d0925c7835883e4d5c181f196fa142f8c19d7643d1e9af2592c3"
+dependencies = [
+ "cc",
+ "fs_extra",
+ "libc",
 ]
 
 [[package]]
