@@ -421,6 +421,16 @@ impl RecordEncoder for HybridRecordEncoder {
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
+        // The num in row group will always be less than `num_rows_per_row_group`,
+        // so we need to flush manually here.
+        // TODO: maybe we should merge multiple hybrid record batch to one row group.
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .flush()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
         Ok(record_batch.num_rows())
     }
 
@@ -733,7 +743,6 @@ impl ParquetDecoder {
 
 #[cfg(test)]
 mod tests {
-
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
@@ -741,7 +750,7 @@ mod tests {
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
     };
-    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use parquet::{arrow::arrow_reader::ParquetRecordBatchReaderBuilder, file::footer};
 
     use super::*;
     use crate::table_options::StorageFormatOptions;
@@ -889,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_record_encode_and_decode() {
+    fn test_hybrid_record_encode_and_decode() {
         let schema = build_schema();
         let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
 
@@ -1021,5 +1030,125 @@ mod tests {
             decoded_record_batch.columns(),
             expect_record_batch.columns()
         );
+    }
+
+    #[test]
+    fn test_hybrid_flush() {
+        let schema = build_schema();
+        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
+
+        let meta_data = SstMetaData {
+            min_key: Bytes::from_static(b"100"),
+            max_key: Bytes::from_static(b"200"),
+            time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
+            max_sequence: 200,
+            schema: schema.clone(),
+            size: 10,
+            row_num: 4,
+            storage_format_opts,
+            bloom_filter: Default::default(),
+        };
+        let mut encoder = HybridRecordEncoder::try_new(10, Compression::ZSTD, meta_data).unwrap();
+
+        let columns = vec![
+            Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100]),
+            string_array(vec![Some("host1"), Some("host1"), Some("host2")]),
+            string_array(vec![Some("region1"), Some("region1"), Some("region2")]),
+            int32_array(vec![Some(1), Some(2), Some(11)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+            ]),
+        ];
+
+        let columns2 = vec![
+            Arc::new(UInt64Array::from(vec![1, 2, 1, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 101]),
+            string_array(vec![
+                Some("host1"),
+                Some("host2"),
+                Some("host1"),
+                Some("host2"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region2"),
+                Some("region1"),
+                Some("region2"),
+            ]),
+            int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
+        ];
+
+        let columns3 = vec![
+            Arc::new(UInt64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 100, 101, 100, 102, 103]),
+            string_array(vec![
+                Some("host1"),
+                Some("host1"),
+                Some("host2"),
+                Some("host3"),
+                Some("host4"),
+                Some("host2"),
+                Some("host3"),
+                Some("host4"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region3"),
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region3"),
+            ]),
+            int32_array(vec![
+                Some(1),
+                Some(2),
+                Some(11),
+                Some(12),
+                Some(1),
+                Some(2),
+                Some(11),
+                Some(12),
+            ]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
+        ];
+
+        let input_record_batch =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
+        let input_record_batch2 =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
+        let row_nums = encoder
+            .encode(vec![input_record_batch, input_record_batch2])
+            .unwrap();
+        assert_eq!(2, row_nums);
+
+        let input_record_batch3 =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns3).unwrap();
+        let row_nums2 = encoder.encode(vec![input_record_batch3]).unwrap();
+        assert_eq!(8, row_nums2);
+
+        let sst = encoder.close().unwrap();
+        let bytes = Bytes::from(sst);
+        let parquet_metadata = footer::parse_metadata(&bytes).unwrap();
+        assert_eq!(2, parquet_metadata.num_row_groups());
     }
 }
