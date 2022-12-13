@@ -52,3 +52,4 @@ common_types = { workspace = true, features = ["test"] }
 common_util = { workspace = true, features = ["test"] }
 env_logger = { workspace = true }
 wal = { workspace = true, features = ["test"] }
+rand = "0.8.5"
