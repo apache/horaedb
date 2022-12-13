@@ -17,8 +17,15 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use clru::{CLruCache, CLruCacheConfig, WeightScale};
 use futures::stream::BoxStream;
+use snafu::{OptionExt, Snafu};
 use tokio::{io::AsyncWrite, sync::Mutex};
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("mem cache cap must large than 0",))]
+    InvalidCapacity,
+}
 
 struct CustomScale;
 
@@ -33,17 +40,15 @@ struct Partition {
 }
 
 impl Partition {
-    fn new(mem_cap: usize) -> Self {
-        let cache = CLruCache::with_config(
-            CLruCacheConfig::new(NonZeroUsize::new(mem_cap).expect("mem cap must large than 0"))
-                .with_scale(CustomScale),
-        );
+    fn new(mem_cap: NonZeroUsize) -> Self {
+        let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
 
         Self {
             inner: Mutex::new(cache),
         }
     }
 }
+
 impl Partition {
     async fn get(&self, key: &str) -> Option<Bytes> {
         let mut guard = self.inner.lock().await;
@@ -69,24 +74,26 @@ impl Partition {
 
 struct MemCache {
     /// Max memory this store can use
-    mem_cap: usize,
+    mem_cap: NonZeroUsize,
     partitions: Vec<Arc<Partition>>,
     partition_mask: usize,
 }
 
 impl MemCache {
-    fn new(partition_bits: usize, mem_cap: usize) -> Self {
+    fn try_new(partition_bits: usize, mem_cap: NonZeroUsize) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
-        let cap_per_part = mem_cap / partition_num;
+        let cap_per_part = mem_cap
+            .checked_mul(NonZeroUsize::new(partition_num).unwrap())
+            .context(InvalidCapacity)?;
         let partitions = (0..partition_num)
             .map(|_| Arc::new(Partition::new(cap_per_part)))
             .collect::<Vec<_>>();
 
-        Self {
+        Ok(Self {
             mem_cap,
             partitions,
             partition_mask: partition_num - 1,
-        }
+        })
     }
 
     fn locate_partition(&self, key: &str) -> Arc<Partition> {
@@ -137,18 +144,15 @@ pub struct MemCacheStore {
 }
 
 impl MemCacheStore {
-    // Note: mem_cap must be larger than 0
-    pub fn new(
+    pub fn try_new(
         partition_bits: usize,
-        mem_cap: usize,
+        mem_cap: NonZeroUsize,
         underlying_store: Arc<dyn ObjectStore>,
-    ) -> Self {
-        assert!(mem_cap > 0);
-
-        Self {
-            cache: MemCache::new(partition_bits, mem_cap),
+    ) -> std::result::Result<Self, Error> {
+        MemCache::try_new(partition_bits, mem_cap).map(|cache| Self {
+            cache,
             underlying_store,
-        }
+        })
     }
 
     fn cache_key(location: &Path, range: &Range<usize>) -> String {
@@ -248,7 +252,7 @@ mod test {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        MemCacheStore::new(bits, mem_cap, local_store)
+        MemCacheStore::try_new(bits, NonZeroUsize::new(mem_cap).unwrap(), local_store).unwrap()
     }
 
     #[tokio::test]

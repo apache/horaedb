@@ -2,7 +2,7 @@
 
 //! Setup the analytic engine
 
-use std::{path::Path, pin::Pin, sync::Arc};
+use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
@@ -81,6 +81,11 @@ pub enum Error {
     #[snafu(display("Failed to open kafka, err:{}", source))]
     OpenKafka {
         source: message_queue::kafka::kafka_impl::Error,
+    },
+
+    #[snafu(display("Failed to create mem cache, err:{}", source))]
+    OpenMemCache {
+        source: object_store::mem_cache::Error,
     },
 }
 
@@ -423,11 +428,14 @@ fn open_storage(
         }
 
         if opts.mem_cache_capacity.as_bytes() > 0 {
-            store = Arc::new(MemCacheStore::new(
-                opts.mem_cache_partition_bits,
-                opts.mem_cache_capacity.as_bytes() as usize,
-                store,
-            )) as _;
+            store = Arc::new(
+                MemCacheStore::try_new(
+                    opts.mem_cache_partition_bits,
+                    NonZeroUsize::new(opts.mem_cache_capacity.as_bytes() as usize).unwrap(),
+                    store,
+                )
+                .context(OpenMemCache)?,
+            ) as _;
         }
 
         Ok(store)
