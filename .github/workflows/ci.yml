@@ -76,9 +76,9 @@ jobs:
       - name: Run Style Check
         run: |
           make check-license
+          make clippy
           make fmt
           make check-cargo-toml
-          make clippy
       - name: Run Unit Tests
         run: |
           make test-ut
