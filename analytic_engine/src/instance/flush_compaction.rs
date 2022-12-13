@@ -57,6 +57,7 @@ use crate::{
 const DEFAULT_CHANNEL_SIZE: usize = 5;
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
     StoreVersionEdit {
@@ -132,7 +133,10 @@ pub enum Error {
     #[snafu(display("Runtime join error, source:{}", source))]
     RuntimeJoin { source: common_util::runtime::Error },
 
-    #[snafu(display("Unknown flush policy"))]
+    #[snafu(display("Other failure, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
+    Other { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Unknown flush policy.\nBacktrace:\n{:?}", backtrace))]
     UnknownPolicy { backtrace: Backtrace },
 }
 
