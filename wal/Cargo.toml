@@ -1,5 +1,6 @@
 [package]
 name = "wal"
+
 [package.version]
 workspace = true
 
@@ -8,7 +9,6 @@ workspace = true
 
 [package.edition]
 workspace = true
-
 [features]
 test = ["tempfile", "futures", "uuid"]
 
@@ -16,7 +16,7 @@ test = ["tempfile", "futures", "uuid"]
 git = "https://github.com/tikv/rust-rocksdb.git"
 rev = "084102f7e4d1901cbe3f2782c5c63cb7af628bac" # at branch tikv-6.1
 features = ["portable"]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 
 [dependencies]
 async-trait = { workspace = true }

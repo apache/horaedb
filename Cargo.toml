@@ -3,7 +3,7 @@ name = "ceresdb"
 version = "1.0.0-alpha01"
 authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
 edition = "2021"
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 
 [workspace.package]
 version = "1.0.0-alpha01"

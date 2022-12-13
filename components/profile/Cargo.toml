@@ -1,5 +1,6 @@
 [package]
 name = "profile"
+
 [package.version]
 workspace = true
 
@@ -8,12 +9,11 @@ workspace = true
 
 [package.edition]
 workspace = true
-
 [dependencies.jemalloc-sys]
 version = "0.3.2"
 features = ["stats", "profiling", "unprefixed_malloc_on_supported_platforms"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 jemalloc-ctl = "0.3.2"
 jemallocator = "0.3.2"

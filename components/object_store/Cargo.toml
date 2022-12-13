@@ -9,7 +9,6 @@ workspace = true
 
 [package.edition]
 workspace = true
-
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
