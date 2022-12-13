@@ -9,6 +9,7 @@ workspace = true
 
 [package.edition]
 workspace = true
+
 [dependencies]
 analytic_engine = { workspace = true }
 arena = { workspace = true }

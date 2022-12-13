@@ -17,7 +17,6 @@ git = "https://github.com/tikv/rust-rocksdb.git"
 rev = "084102f7e4d1901cbe3f2782c5c63cb7af628bac" # at branch tikv-6.1
 features = ["portable"]
 
-
 [dependencies]
 async-trait = { workspace = true }
 chrono = { workspace = true }

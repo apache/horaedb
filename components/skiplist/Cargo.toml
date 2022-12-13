@@ -2,12 +2,12 @@
 name = "skiplist"
 authors = ["Jay Lee <busyjaylee@gmail.com>", "CeresDB Authors <ceresdbservice@gmail.com>"]
 
-
 [package.version]
 workspace = true
 
 [package.edition]
 workspace = true
+
 [dependencies]
 arena = { workspace = true }
 bytes = { workspace = true }
