@@ -45,7 +45,7 @@ impl SstBench {
             predicate,
             meta_cache,
             runtime: runtime.clone(),
-            read_parallelism: 1,
+            background_read_parallelism: 1,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 

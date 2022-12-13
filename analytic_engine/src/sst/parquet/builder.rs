@@ -365,7 +365,7 @@ mod tests {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 runtime: runtime.clone(),
-                read_parallelism: 1,
+                background_read_parallelism: 1,
             };
 
             let mut reader: Box<dyn SstReader + Send> = if async_reader {

@@ -160,7 +160,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            read_parallelism: iter_options.sst_background_read_parallelism,
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
         };
 
         let time_range = request.predicate.time_range();
@@ -222,7 +222,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            read_parallelism: iter_options.sst_background_read_parallelism,
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
         };
 
         let time_range = request.predicate.time_range();

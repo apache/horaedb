@@ -99,7 +99,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         runtime,
-        read_parallelism: 1,
+        background_read_parallelism: 1,
     };
 
     let record_batch_stream =
@@ -200,7 +200,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
             runtime: runtime.clone(),
-            read_parallelism: iter_options.sst_background_read_parallelism,
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
         };
 
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());

@@ -103,7 +103,7 @@ pub async fn load_sst_to_memtable(
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
-        read_parallelism: 1,
+        background_read_parallelism: 1,
     };
     let sst_factory = FactoryImpl;
     let mut sst_reader = sst_factory

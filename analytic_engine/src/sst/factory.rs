@@ -54,7 +54,7 @@ pub struct SstReaderOptions {
     pub runtime: Arc<Runtime>,
 
     /// The parallelism while reading sst
-    pub read_parallelism: usize,
+    pub background_read_parallelism: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +84,7 @@ impl Factory for FactoryImpl {
                     let reader = ThreadedReader::new(
                         reader,
                         options.runtime.clone(),
-                        options.read_parallelism,
+                        options.background_read_parallelism,
                     );
                     Some(Box::new(reader))
                 }
