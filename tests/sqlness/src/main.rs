@@ -13,7 +13,7 @@ const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
 #[tokio::main]
 async fn main() -> Result<()> {
     let case_dir = env::var(CASE_ROOT_PATH_ENV)?;
-    let env = setup::Environment::start_server();
+    let env = setup::CeresDBEnv::start_server();
     let config = sqlness::Config {
         case_dir,
         test_case_extension: String::from("sql"),
