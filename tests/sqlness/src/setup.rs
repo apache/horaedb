@@ -1,3 +1,5 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use std::{
     env,
     fs::File,
@@ -38,7 +40,7 @@ impl SqlnessEnv for CeresDBEnv {
 
     /// Stop one [`Database`].
     async fn stop(&self, _mode: &str, _database: Self::DB) {
-        // self.server_process.kill().unwrap()
+        // self._server_process.kill().unwrap()
     }
 }
 
