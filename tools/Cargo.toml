@@ -1,21 +1,25 @@
 [package]
 name = "tools"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
 
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 analytic_engine = { workspace = true }
+anyhow = { version = "1.0", features = ["backtrace"] }
+clap = { workspace = true, features = ["derive"] }
 common_types = { workspace = true }
 common_util = { workspace = true }
 env_logger = { workspace = true }
+futures = { workspace = true }
 object_store = { workspace = true }
-tokio = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
-anyhow = { version = "1.0", features = ["backtrace"] }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
 table_engine = { workspace = true }
-futures = { workspace = true }
+tokio = { workspace = true }

@@ -1,9 +1,13 @@
 [package]
 name = "common_util"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
 
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
@@ -13,23 +17,28 @@ test = ["env_logger"]
 # In alphabetical order
 arrow = { workspace = true }
 backtrace = "0.3.9"
-common_types = { workspace = true , features = ["test"] }
 chrono = { workspace = true }
+common_types = { workspace = true, features = ["test"] }
 crossbeam-utils = "0.8.7"
 env_logger = { workspace = true, optional = true }
 lazy_static = { workspace = true }
 libc = "0.2"
 log = { workspace = true }
 logger = { workspace = true }
-snafu = { workspace = true }
-serde = { workspace = true}
-serde_derive = { workspace = true }
 pin-project-lite = "0.2.8"
 prometheus = { workspace = true }
 proto = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+snafu = { workspace = true }
 time = "0.1"
 tokio = { workspace = true }
 toml = "0.5"
+
+[dev-dependencies.slog-global]
+version = "0.1"
+git = "https://github.com/tikv/slog-global.git"
+rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
 
 [dev-dependencies]
 env_logger = { workspace = true }
@@ -38,8 +47,3 @@ nix = "0.22"
 slog = { workspace = true }
 tempfile = { workspace = true }
 tokio-test = "0.4.2"
-
-[dev-dependencies.slog-global]
-version = "0.1"
-git = "https://github.com/tikv/slog-global.git"
-rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"

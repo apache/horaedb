@@ -1,9 +1,13 @@
 [package]
 name = "common_types"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
 
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
@@ -13,18 +17,18 @@ test = []
 [dependencies]
 # In alphabetical order
 arrow = { workspace = true, optional = true }
-datafusion = { workspace = true, optional = true }
 arrow_ext = { workspace = true }
 byteorder = "1.2"
 bytes_ext = { workspace = true }
 chrono = { workspace = true }
+datafusion = { workspace = true, optional = true }
 murmur3 = "0.4.1"
 paste = { workspace = true }
-proto = { workspace = true }
 prost = { workspace = true }
-snafu = { workspace = true }
-# TODO(yingwen): Make sqlparser support a feature
-sqlparser = { version = "0.23.0", features = ["serde"] }
+proto = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
+snafu = { workspace = true }
+# TODO(yingwen): Make sqlparser support a feature
+sqlparser = { version = "0.23.0", features = ["serde"] }

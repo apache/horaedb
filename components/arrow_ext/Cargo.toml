@@ -1,15 +1,19 @@
 [package]
 name = "arrow_ext"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.authors]
+workspace = true
 
-[dependencies]
-arrow = { workspace = true }
+[package.edition]
+workspace = true
 
 [dependencies.uncover]
 git = "https://github.com/matklad/uncover.git"
 rev = "1d0770d997e29731b287e9e11e4ffbbea5f456da"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+arrow = { workspace = true }
 

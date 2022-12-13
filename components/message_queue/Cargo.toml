@@ -4,18 +4,17 @@ version = "0.1.0"
 
 [package.edition]
 workspace = true
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
 common_util = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 snafu = { workspace = true }
-chrono = { workspace = true }
-async-trait = { workspace = true }
-log = { workspace = true }
-futures = { workspace = true }
 tokio = { workspace = true }
 
 [dependencies.rskafka]

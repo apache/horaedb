@@ -1,9 +1,13 @@
 [package]
 name = "meta_client"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
 
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

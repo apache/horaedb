@@ -4,12 +4,11 @@ version = "0.1.0"
 
 [package.edition]
 workspace = true
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.58"
 ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a9d9190f4f7b55171ea2ad142fb41dc9909c19c5" }
-prettydiff = { version = "0.6.1", features = [ "prettytable-rs"]}
+prettydiff = { version = "0.6.1", features = [ "prettytable-rs"] }
 tokio = { workspace = true }
 walkdir = "2.3.2"

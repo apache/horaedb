@@ -1,40 +1,44 @@
 [package]
 name = "wal"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [features]
 test = ["tempfile", "futures", "uuid"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-async-trait = { workspace = true }
-common_util = { workspace = true }
-common_types = { workspace = true }
-chrono = { workspace = true }
-futures = { workspace = true, features = ["async-await"], optional = true }
-log = { workspace = true }
-serde = { workspace = true }
-serde_derive = { workspace = true }
-serde_json = { workspace = true }
-snafu = { workspace = true }
-table_kv = { workspace = true }
-smallvec = { workspace = true }
-tokio = { workspace = true }
-tempfile = { workspace = true, optional = true }
-message_queue = { workspace = true }
-proto = { workspace = true }
-prost = { workspace = true }
-uuid = { version = "1.0", features = ["v4"], optional = true }
-
-[dev-dependencies]
-futures = { workspace = true, features = ["async-await"] }
-env_logger = { workspace = true }
-rand = "0.8.5"
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
 rev = "084102f7e4d1901cbe3f2782c5c63cb7af628bac" # at branch tikv-6.1
 features = ["portable"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+futures = { workspace = true, features = ["async-await"], optional = true }
+log = { workspace = true }
+message_queue = { workspace = true }
+prost = { workspace = true }
+proto = { workspace = true }
+serde = { workspace = true }
+serde_derive = { workspace = true }
+serde_json = { workspace = true }
+smallvec = { workspace = true }
+snafu = { workspace = true }
+table_kv = { workspace = true }
+tempfile = { workspace = true, optional = true }
+tokio = { workspace = true }
+uuid = { version = "1.0", features = ["v4"], optional = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+futures = { workspace = true, features = ["async-await"] }
+rand = "0.8.5"
