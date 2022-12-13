@@ -1,5 +1,5 @@
 [package]
-name = "ceresdb-test-sqlness"
+name = "ceresdb-test"
 version = "0.1.0"
 
 [package.edition]
