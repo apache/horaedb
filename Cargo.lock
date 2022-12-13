@@ -995,6 +995,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "clru"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
+
+[[package]]
 name = "cluster"
 version = "1.0.0-alpha01"
 dependencies = [
@@ -2973,11 +2979,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lru-weighted-cache"
-version = "0.1.2"
-source = "git+https://github.com/jiacai2050/lru-weighted-cache.git?rev=1cf61aaf88469387e610dc7154fa318843491428#1cf61aaf88469387e610dc7154fa318843491428"
-
-[[package]]
 name = "lz4"
 version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3583,13 +3584,13 @@ dependencies = [
  "async-trait",
  "bytes 1.2.1",
  "chrono",
+ "clru",
  "common_util",
  "crc",
  "futures 0.3.21",
  "lazy_static",
  "log",
  "lru",
- "lru-weighted-cache",
  "object_store 0.5.1",
  "oss-rust-sdk",
  "prometheus 0.12.0",

@@ -15,12 +15,12 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 common_util = { workspace = true }
+clru = "0.6.1"
 crc = "3.0.0"
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
-lru-weighted-cache = { git = "https://github.com/jiacai2050/lru-weighted-cache.git", rev = "1cf61aaf88469387e610dc7154fa318843491428" }
 oss-rust-sdk = "0.6.1"
 prost = { workspace = true }
 proto = { workspace = true }
