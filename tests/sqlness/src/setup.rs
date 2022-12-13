@@ -16,12 +16,12 @@ const SERVER_ENDPOINT_ENV: &str = "CERESDB_SERVER_ENDPOINT";
 const CERESDB_STDOUT_FILE: &str = "CERESDB_STDOUT_FILE";
 const CERESDB_STDERR_FILE: &str = "CERESDB_STDERR_FILE";
 
-pub struct Environment {
+pub struct CeresDBEnv {
     _server_process: Child,
 }
 
 #[async_trait]
-impl SqlnessEnv for Environment {
+impl SqlnessEnv for CeresDBEnv {
     type DB = Client;
 
     async fn start(&self, _mode: &str, _config: Option<String>) -> Self::DB {
@@ -42,7 +42,7 @@ impl SqlnessEnv for Environment {
     }
 }
 
-impl Environment {
+impl CeresDBEnv {
     pub fn start_server() -> Self {
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
         let config = env::var(CONFIG_PATH_ENV).expect("Cannot parse config path env");
