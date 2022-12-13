@@ -142,7 +142,7 @@ impl<'a> Reader<'a> {
             &meta_data.custom().bloom_filter,
         )?;
 
-        debug!(
+        info!(
             "fetch_record_batch row_groups total:{}, after filter:{}, row_group_num_per_reader:{}",
             meta_data.parquet().num_row_groups(),
             filtered_row_groups.len(),
