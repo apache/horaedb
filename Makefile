@@ -40,6 +40,9 @@ test-ut:
 fmt:
 	cd $(DIR); cargo fmt -- --check
 
+check-cargo-toml:
+	cd $(DIR); cargo sort --workspace --check 
+
 check-license:
 	cd $(DIR); sh scripts/check-license.sh
 

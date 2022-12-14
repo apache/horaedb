@@ -72,11 +72,13 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
+          cargo install cargo-sort
       - name: Run Style Check
         run: |
           make check-license
           make clippy
           make fmt
+          make check-cargo-toml
       - name: Run Unit Tests
         run: |
           make test-ut

@@ -1,14 +1,18 @@
 [package]
 name = "proto"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
 prost = { workspace = true }
 
 [build-dependencies]
-tonic-build = "0.8"
 protoc-bin-vendored = "3.0.0"
+tonic-build = "0.8"

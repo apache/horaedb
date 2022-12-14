@@ -14,18 +14,18 @@ workspace = true
 async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
-common_util = { workspace = true }
 clru = "0.6.1"
+common_util = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
 oss-rust-sdk = "0.6.1"
-prost = { workspace = true }
-proto = { workspace = true }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
+prost = { workspace = true }
+proto = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
