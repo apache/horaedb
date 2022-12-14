@@ -59,7 +59,6 @@ impl CeresDBEnv {
             .stderr(stderr)
             .spawn()
             .unwrap_or_else(|_| panic!("Failed to start server at {:?}", bin));
-        println!("Server from {:?} is starting ...", bin);
 
         // Wait for a while
         std::thread::sleep(std::time::Duration::from_secs(5));
