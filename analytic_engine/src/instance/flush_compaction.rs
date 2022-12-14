@@ -801,7 +801,7 @@ impl SpaceStore {
         task: &CompactionTask,
     ) -> Result<()> {
         debug!(
-            "Begin compact table, table_name:{}, id:{},task:{:?}",
+            "Begin compact table, table_name:{}, id:{}, task:{:?}",
             table_data.name, table_data.id, task
         );
         let mut edit_meta = VersionEditMeta {

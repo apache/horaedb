@@ -614,13 +614,14 @@ impl ScheduleWorker {
         self.space_store.list_all_tables(&mut tables_buf);
 
         let request_id = RequestId::next_id();
-        // Spawn a background job to purge ssts and avoid schedule thread blocked.
         for table_data in tables_buf {
             info!(
                 "Period purge, table:{}, table_id:{}, request_id:{}",
                 table_data.name, table_data.id, request_id
             );
 
+            // This will spawn a background job to purge ssts and avoid schedule thread
+            // blocked.
             self.handle_table_compaction_request(TableCompactionRequest::no_waiter(
                 table_data, None,
             ))
