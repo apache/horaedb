@@ -18,7 +18,7 @@ use futures::{
     future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
-use log::{error, info};
+use log::{debug, error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
@@ -800,6 +800,10 @@ impl SpaceStore {
         request_id: RequestId,
         task: &CompactionTask,
     ) -> Result<()> {
+        debug!(
+            "Begin compact table, table_name:{}, id:{},task:{:?}",
+            table_data.name, table_data.id, task
+        );
         let mut edit_meta = VersionEditMeta {
             space_id: table_data.space_id,
             table_id: table_data.id,
@@ -853,6 +857,10 @@ impl SpaceStore {
         input: &CompactionInputFiles,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
+        debug!(
+            "Compact input files, table_name:{}, id:{}, input::{:?}, edit_meta:{:?}",
+            table_data.name, table_data.id, input, edit_meta
+        );
         if input.files.is_empty() {
             return Ok(());
         }

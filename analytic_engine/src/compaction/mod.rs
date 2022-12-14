@@ -302,7 +302,7 @@ pub struct CompactionInputFiles {
     pub output_level: Level,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ExpiredFiles {
     /// Level of the expired files.
     pub level: Level,
@@ -310,7 +310,7 @@ pub struct ExpiredFiles {
     pub files: Vec<FileHandle>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct CompactionTask {
     pub compaction_inputs: Vec<CompactionInputFiles>,
     pub expired: Vec<ExpiredFiles>,

@@ -159,7 +159,7 @@ fn find_uncompact_files(
         .iter_ssts_at_level(level)
         // Only use files not being compacted and not expired.
         .filter(|file| !file.being_compacted() && !file.time_range().is_expired(expire_time))
-        .map(Clone::clone)
+        .cloned()
         .collect()
 }
 
@@ -312,6 +312,11 @@ impl SizeTieredPicker {
         min_threshold: usize,
         max_threshold: usize,
     ) -> Option<Vec<FileHandle>> {
+        debug!(
+            "Find most_interesting_bucket buckets:{:?}, min:{}, max:{}",
+            buckets, min_threshold, max_threshold
+        );
+
         let mut pruned_bucket_and_hotness = Vec::with_capacity(buckets.len());
         // skip buckets containing less than min_threshold sstables,
         // and limit other buckets to max_threshold sstables
