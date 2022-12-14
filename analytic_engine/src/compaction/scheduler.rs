@@ -623,8 +623,6 @@ impl ScheduleWorker {
                     "Table has no expired sst, table:{}, table_id:{}, expire_time:{:?}",
                     table_data.name, table_data.id, expire_time
                 );
-
-                continue;
             }
 
             // Create a compaction task that only purge expired files.
