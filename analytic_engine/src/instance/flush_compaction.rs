@@ -345,7 +345,7 @@ impl Instance {
 
         let compact_req = TableCompactionRequest::no_waiter(
             table_data.clone(),
-            worker_local.compaction_notifier(),
+            Some(worker_local.compaction_notifier()),
         );
         let instance = self.clone();
 

@@ -13,7 +13,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{request_id::RequestId, time::Timestamp};
+use common_types::request_id::RequestId;
 use common_util::{
     config::{ReadableDuration, ReadableSize},
     define_result,
@@ -441,11 +441,11 @@ impl ScheduleWorker {
         };
     }
 
-    async fn do_table_compaction_task(
+    fn do_table_compaction_task(
         &self,
         table_data: TableDataRef,
         compaction_task: CompactionTask,
-        compaction_notifier: CompactionNotifier,
+        compaction_notifier: Option<CompactionNotifier>,
         waiter_notifier: WaiterNotifier,
         token: MemoryUsageToken,
     ) {
@@ -489,8 +489,9 @@ impl ScheduleWorker {
             // Notify the background compact table result.
             match res {
                 Ok(()) => {
-                    let new_compaction_notifier = compaction_notifier.clone();
-                    compaction_notifier.notify_ok();
+                    if let Some(notifier) = compaction_notifier.clone() {
+                        notifier.notify_ok();
+                    }
                     waiter_notifier.notify_wait_result(Ok(()));
 
                     if keep_scheduling_compaction {
@@ -498,7 +499,7 @@ impl ScheduleWorker {
                             sender,
                             TableCompactionRequest::no_waiter(
                                 table_data.clone(),
-                                new_compaction_notifier,
+                                compaction_notifier.clone(),
                             ),
                         )
                         .await;
@@ -506,7 +507,10 @@ impl ScheduleWorker {
                 }
                 Err(e) => {
                     let e = Arc::new(e);
-                    compaction_notifier.notify_err(e.clone());
+                    if let Some(notifier) = compaction_notifier {
+                        notifier.notify_err(e.clone());
+                    }
+
                     let wait_err = WaitError::Compaction { source: e };
                     waiter_notifier.notify_wait_result(Err(wait_err));
                 }
@@ -574,8 +578,7 @@ impl ScheduleWorker {
             compaction_notifier,
             waiter_notifier,
             token,
-        )
-        .await;
+        );
     }
 
     async fn put_back_compaction_request(&self, req: TableCompactionRequest) {
@@ -591,7 +594,9 @@ impl ScheduleWorker {
                 }
                 .build(),
             );
-            compaction_notifier.notify_err(e.clone());
+            if let Some(notifier) = compaction_notifier {
+                notifier.notify_err(e.clone());
+            }
 
             let waiter_notifier = WaiterNotifier::new(waiter);
             let wait_err = WaitError::Compaction { source: e };
@@ -600,65 +605,27 @@ impl ScheduleWorker {
     }
 
     async fn schedule(&mut self) {
-        self.purge_tables();
+        self.purge_tables().await;
         self.flush_tables().await;
     }
 
-    fn purge_tables(&mut self) {
+    async fn purge_tables(&mut self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
 
-        let mut to_purge = Vec::new();
-
-        let now = Timestamp::now();
-        for table_data in &tables_buf {
-            let expire_time = table_data
-                .table_options()
-                .ttl()
-                .map(|ttl| now.sub_duration_or_min(ttl.0));
-
-            let version = table_data.current_version();
-            if !version.has_expired_sst(expire_time) {
-                debug!(
-                    "Table has no expired sst, table:{}, table_id:{}, expire_time:{:?}",
-                    table_data.name, table_data.id, expire_time
-                );
-            }
-
-            // Create a compaction task that only purge expired files.
-            let compaction_task = CompactionTask {
-                expired: version.expired_ssts(expire_time),
-                ..Default::default()
-            };
-
-            // Marks being compacted.
-            compaction_task.mark_files_being_compacted(true);
-
-            to_purge.push((table_data.clone(), compaction_task));
-        }
-
-        let runtime = self.runtime.clone();
-        let space_store = self.space_store.clone();
         let request_id = RequestId::next_id();
         // Spawn a background job to purge ssts and avoid schedule thread blocked.
-        self.runtime.spawn(async move {
-            for (table_data, compaction_task) in to_purge {
-                info!("Period purge expired files, table:{}, table_id:{}, request_id:{}", table_data.name, table_data.id, request_id);
+        for table_data in tables_buf {
+            info!(
+                "Period purge, table:{}, table_id:{}, request_id:{}",
+                table_data.name, table_data.id, request_id
+            );
 
-                if let Err(e) = space_store
-                    .compact_table(runtime.clone(), &table_data, request_id, &compaction_task)
-                    .await
-                {
-                    error!(
-                        "Failed to purge expired files of table, table:{}, table_id:{}, request_id:{}, err:{}",
-                        table_data.name, table_data.id, request_id, e
-                    );
-
-                    // Unset the compaction mark.
-                    compaction_task.mark_files_being_compacted(false);
-                }
-            }
-        });
+            self.handle_table_compaction_request(TableCompactionRequest::no_waiter(
+                table_data, None,
+            ))
+            .await;
+        }
     }
 
     async fn flush_tables(&self) {
