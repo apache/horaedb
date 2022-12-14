@@ -524,9 +524,19 @@ impl ScheduleWorker {
         &self,
         task: &CompactionTask,
     ) -> Option<MemoryUsageToken> {
-        let input_size = task.estimate_total_input_size();
+        let input_size = task.estimated_total_input_file_size();
         let estimate_memory_usage = input_size * 2;
-        self.memory_limit.try_apply_token(estimate_memory_usage)
+
+        let token = self.memory_limit.try_apply_token(estimate_memory_usage);
+
+        debug!(
+            "Apply memory for compaction, current usage:{}, applied:{}, applied_result:{:?}",
+            self.memory_limit.usage.load(Ordering::Relaxed),
+            estimate_memory_usage,
+            token,
+        );
+
+        token
     }
 
     async fn handle_table_compaction_request(&self, compact_req: TableCompactionRequest) {
@@ -564,6 +574,11 @@ impl ScheduleWorker {
             None => {
                 // Memory usage exceeds the threshold, let's put pack the
                 // request.
+                debug!(
+                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}",
+                    self.memory_limit.usage.load(Ordering::Relaxed),
+                    compaction_task,
+                );
                 self.put_back_compaction_request(compact_req).await;
                 return;
             }

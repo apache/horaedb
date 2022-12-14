@@ -822,6 +822,14 @@ impl SpaceStore {
             self.delete_expired_files(table_data, request_id, files, &mut edit_meta);
         }
 
+        info!(
+            "try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
+            table_data.name,
+            table_data.id,
+            task.estimated_total_input_file_size(),
+            task.num_input_files(),
+        );
+
         for input in &task.compaction_inputs {
             self.compact_input_files(
                 runtime.clone(),
