@@ -1,10 +1,14 @@
 [package]
 name = "table_engine"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
 # In alphabetical order
@@ -18,8 +22,8 @@ futures = { workspace = true }
 log = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
-proto = { workspace = true }
 prost = { workspace = true }
+proto = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 smallvec = { workspace = true }

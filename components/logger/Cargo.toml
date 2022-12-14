@@ -1,10 +1,18 @@
 [package]
 name = "logger"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+[dependencies.slog-global]
+version = "0.1"
+git = "https://github.com/tikv/slog-global.git"
+rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
 
 [dependencies]
 chrono = { workspace = true }
@@ -13,8 +21,3 @@ slog = { workspace = true }
 slog-async = "2.6"
 slog-term = "2.8"
 slog_derive = "0.2"
-
-[dependencies.slog-global]
-version = "0.1"
-git = "https://github.com/tikv/slog-global.git"
-rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"

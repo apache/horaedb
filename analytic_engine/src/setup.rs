@@ -2,7 +2,7 @@
 
 //! Setup the analytic engine
 
-use std::{path::Path, pin::Pin, sync::Arc};
+use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
@@ -10,7 +10,7 @@ use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
     aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
-    prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
+    metrics::StoreWithMetrics, prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -81,6 +81,11 @@ pub enum Error {
     #[snafu(display("Failed to open kafka, err:{}", source))]
     OpenKafka {
         source: message_queue::kafka::kafka_impl::Error,
+    },
+
+    #[snafu(display("Failed to create mem cache, err:{}", source))]
+    OpenMemCache {
+        source: object_store::mem_cache::Error,
     },
 }
 
@@ -393,9 +398,14 @@ fn open_storage(
                     aliyun_opts.key_secret,
                     aliyun_opts.endpoint,
                     aliyun_opts.bucket,
+                    aliyun_opts.pool_max_idle_per_host,
+                    aliyun_opts.timeout,
                 ));
-                Arc::new(StoreWithPrefix::new(aliyun_opts.prefix, oss).context(OpenObjectStore)?)
-                    as _
+                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
+                Arc::new(
+                    StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
+                        .context(OpenObjectStore)?,
+                ) as _
             }
         };
 
@@ -418,11 +428,14 @@ fn open_storage(
         }
 
         if opts.mem_cache_capacity.as_bytes() > 0 {
-            store = Arc::new(MemCacheStore::new(
-                opts.mem_cache_partition_bits,
-                opts.mem_cache_capacity.as_bytes() as usize,
-                store,
-            )) as _;
+            store = Arc::new(
+                MemCacheStore::try_new(
+                    opts.mem_cache_partition_bits,
+                    NonZeroUsize::new(opts.mem_cache_capacity.as_bytes() as usize).unwrap(),
+                    store,
+                )
+                .context(OpenMemCache)?,
+            ) as _;
         }
 
         Ok(store)

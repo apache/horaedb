@@ -1,28 +1,37 @@
 [package]
 name = "object_store"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+chrono = { workspace = true }
+clru = "0.6.1"
 common_util = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }
-upstream = { package = "object_store", version = "0.5.1" }
-oss-rust-sdk = { git = "https://github.com/jiacai2050/oss-rust-sdk.git" , rev="a6c54471d0b187667395d6cac931bd4e01a9f4e4" }
+lazy_static = { workspace = true }
+log = { workspace = true }
+lru = { workspace = true }
+oss-rust-sdk = "0.6.1"
+prometheus = { workspace = true }
+prometheus-static-metric = { workspace = true }
+prost = { workspace = true }
+proto = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-lru = { workspace = true }
-chrono = { workspace = true }
 tokio = { workspace = true }
-lru-weighted-cache = { git = "https://github.com/jiacai2050/lru-weighted-cache.git" , rev="1cf61aaf88469387e610dc7154fa318843491428"}
-log = { workspace = true }
-proto = { workspace = true }
-prost = { workspace = true }
+upstream = { package = "object_store", version = "0.5.1" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

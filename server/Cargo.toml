@@ -1,16 +1,21 @@
 [package]
 name = "server"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
 analytic_engine = { workspace = true }
 arrow = { workspace = true }
 async-trait = { workspace = true }
 avro-rs = "0.13"
+bytes = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 cluster = { workspace = true }
@@ -28,10 +33,10 @@ meta_client = { workspace = true }
 opensrv-mysql = "0.1.0"
 paste = { workspace = true }
 profile = { workspace = true }
+prometheus = { workspace = true }
+prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
-prometheus = { workspace = true }
-prometheus-static-metric = "0.5"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
@@ -44,7 +49,6 @@ tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
 twox-hash = "1.6"
 warp = "0.3"
-bytes = { workspace = true }
 
 [dev-dependencies]
-sql = { workspace = true , features=["test"] }
+sql = { workspace = true, features = ["test"] }

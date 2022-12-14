@@ -995,6 +995,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "clru"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
+
+[[package]]
 name = "cluster"
 version = "1.0.0-alpha01"
 dependencies = [
@@ -3045,11 +3051,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lru-weighted-cache"
-version = "0.1.2"
-source = "git+https://github.com/jiacai2050/lru-weighted-cache.git?rev=1cf61aaf88469387e610dc7154fa318843491428#1cf61aaf88469387e610dc7154fa318843491428"
-
-[[package]]
 name = "lz4"
 version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3655,14 +3656,17 @@ dependencies = [
  "async-trait",
  "bytes 1.2.1",
  "chrono",
+ "clru",
  "common_util",
  "crc",
  "futures 0.3.21",
+ "lazy_static",
  "log",
  "lru",
- "lru-weighted-cache",
  "object_store 0.5.1",
  "oss-rust-sdk",
+ "prometheus 0.12.0",
+ "prometheus-static-metric",
  "prost",
  "proto 1.0.0-alpha01",
  "serde",
@@ -3815,8 +3819,9 @@ checksum = "3baf96e39c5359d2eb0dd6ccb42c62b91d9678aa68160d261b9e0ccbf9e9dea9"
 
 [[package]]
 name = "oss-rust-sdk"
-version = "0.5.0"
-source = "git+https://github.com/jiacai2050/oss-rust-sdk.git?rev=a6c54471d0b187667395d6cac931bd4e01a9f4e4#a6c54471d0b187667395d6cac931bd4e01a9f4e4"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24b457bcf7bb4b31a098c70f2ea83aace64937181ba6e88f9564bc4d05b655d5"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
