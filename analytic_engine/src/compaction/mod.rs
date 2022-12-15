@@ -115,7 +115,6 @@ const MIN_THRESHOLD_KEY: &str = "compaction_min_threshold";
 const MAX_THRESHOLD_KEY: &str = "compaction_max_threshold";
 const MIN_SSTABLE_SIZE_KEY: &str = "compaction_min_sstable_size";
 const TIMESTAMP_RESOLUTION_KEY: &str = "compaction_timestamp_resolution";
-const MAX_INPUT_SSTABLE_SIZE_KEY: &str = "compaction_max_input_sstable_size";
 const DEFAULT_STRATEGY: &str = "default";
 const STC_STRATEGY: &str = "size_tiered";
 const TWC_STRATEGY: &str = "time_window";
@@ -190,10 +189,6 @@ impl SizeTieredCompactionOptions {
             MIN_THRESHOLD_KEY.to_string(),
             format!("{}", self.min_threshold),
         );
-        m.insert(
-            MAX_INPUT_SSTABLE_SIZE_KEY.to_string(),
-            format!("{}", self.max_input_sstable_size.0),
-        );
     }
 
     pub(crate) fn parse_from(
@@ -231,16 +226,6 @@ impl SizeTieredCompactionOptions {
                 key: MIN_THRESHOLD_KEY,
                 value: v,
             })?;
-        }
-
-        if let Some(v) = options.get(MAX_INPUT_SSTABLE_SIZE_KEY) {
-            opts.max_input_sstable_size =
-                v.parse::<ReadableSize>().map_err(|err| Error::ParseSize {
-                    key: MIN_SSTABLE_SIZE_KEY.to_string(),
-                    value: v.to_string(),
-                    error: err,
-                    backtrace: Backtrace::generate(),
-                })?;
         }
 
         opts.validate()?;
@@ -477,14 +462,13 @@ mod tests {
         let c = CompactionStrategy::SizeTiered(opts);
         let mut m = HashMap::new();
         c.fill_raw_map(&mut m);
-        assert_eq!(7, m.len());
+        assert_eq!(6, m.len());
         assert_eq!(m[COMPACTION_STRATEGY], "size_tiered");
         assert_eq!(m[BUCKET_LOW_KEY], "0.1");
         assert_eq!(m[BUCKET_HIGH_KEY], "1.5");
         assert_eq!(m[MIN_SSTABLE_SIZE_KEY], "1024");
         assert_eq!(m[MIN_THRESHOLD_KEY], "4");
         assert_eq!(m[MAX_THRESHOLD_KEY], "10");
-        assert_eq!(m[MAX_INPUT_SSTABLE_SIZE_KEY], "1258291200");
         assert_eq!(
             c,
             CompactionStrategy::parse_from("size_tiered", &m).unwrap()
@@ -498,7 +482,7 @@ mod tests {
         let mut m = HashMap::new();
         c.fill_raw_map(&mut m);
 
-        assert_eq!(8, m.len());
+        assert_eq!(7, m.len());
         assert_eq!(m[COMPACTION_STRATEGY], "time_window");
         assert_eq!(m[BUCKET_LOW_KEY], "0.1");
         assert_eq!(m[BUCKET_HIGH_KEY], "1.5");
@@ -506,7 +490,6 @@ mod tests {
         assert_eq!(m[MIN_THRESHOLD_KEY], "4");
         assert_eq!(m[MAX_THRESHOLD_KEY], "10");
         assert_eq!(m[TIMESTAMP_RESOLUTION_KEY], "milliseconds");
-        assert_eq!(m[MAX_INPUT_SSTABLE_SIZE_KEY], "1258291200");
 
         assert_eq!(
             c,

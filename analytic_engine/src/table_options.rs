@@ -459,7 +459,6 @@ impl From<SizeTieredCompactionOptions> for common_pb::CompactionOptions {
             max_threshold: opts.max_threshold as u32,
             // FIXME: Is it ok to use the default timestamp resolution here?
             timestamp_resolution: common_pb::TimeUnit::Nanoseconds as i32,
-            max_input_sstable_size: opts.max_input_sstable_size.as_bytes() as u32,
         }
     }
 }
@@ -472,7 +471,7 @@ impl From<common_pb::CompactionOptions> for SizeTieredCompactionOptions {
             min_sstable_size: ReadableSize(opts.min_sstable_size as u64),
             min_threshold: opts.min_threshold as usize,
             max_threshold: opts.max_threshold as usize,
-            max_input_sstable_size: ReadableSize(opts.max_input_sstable_size as u64),
+            max_input_sstable_size: ReadableSize(1200),
         }
     }
 }
@@ -486,7 +485,6 @@ impl From<TimeWindowCompactionOptions> for common_pb::CompactionOptions {
             min_threshold: v.size_tiered.min_threshold as u32,
             max_threshold: v.size_tiered.max_threshold as u32,
             timestamp_resolution: common_pb::TimeUnit::from(v.timestamp_resolution) as i32,
-            max_input_sstable_size: v.size_tiered.max_input_sstable_size.as_bytes() as u32,
         }
     }
 }
