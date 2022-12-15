@@ -605,11 +605,11 @@ impl ScheduleWorker {
     }
 
     async fn schedule(&mut self) {
-        self.purge_tables().await;
+        self.compact_tables().await;
         self.flush_tables().await;
     }
 
-    async fn purge_tables(&mut self) {
+    async fn compact_tables(&mut self) {
         let mut tables_buf = Vec::new();
         self.space_store.list_all_tables(&mut tables_buf);
 
