@@ -206,10 +206,8 @@ impl Bucket {
 
     #[inline]
     fn hotness(f: &FileHandle) -> f64 {
-        let row_num = match f.row_num() {
-            0 => 1, //prevent NAN hotness
-            v => v,
-        };
+        //prevent NAN hotness
+        let row_num = f.row_num().max(1);
         f.read_meter().h2_rate() / (row_num as f64)
     }
 }
@@ -242,8 +240,12 @@ impl LevelPicker for SizeTieredPicker {
                     opts.min_sstable_size.as_bytes() as f32,
                 );
 
-                let files =
-                    Self::most_interesting_bucket(buckets, opts.min_threshold, opts.max_threshold);
+                let files = Self::most_interesting_bucket(
+                    buckets,
+                    opts.min_threshold,
+                    opts.max_threshold,
+                    opts.max_input_sstable_size.as_bytes(),
+                );
 
                 if files.is_some() {
                     info!(
@@ -311,6 +313,7 @@ impl SizeTieredPicker {
         buckets: Vec<Bucket>,
         min_threshold: usize,
         max_threshold: usize,
+        max_input_sstable_size: u64,
     ) -> Option<Vec<FileHandle>> {
         debug!(
             "Find most_interesting_bucket buckets:{:?}, min:{}, max:{}",
@@ -321,7 +324,8 @@ impl SizeTieredPicker {
         // skip buckets containing less than min_threshold sstables,
         // and limit other buckets to max_threshold sstables
         for bucket in buckets {
-            let (bucket, hotness) = Self::trim_to_threshold_with_hotness(bucket, max_threshold);
+            let (bucket, hotness) =
+                Self::trim_to_threshold_with_hotness(bucket, max_threshold, max_input_sstable_size);
             if bucket.files.len() >= min_threshold {
                 pruned_bucket_and_hotness.push((bucket, hotness));
             }
@@ -375,7 +379,11 @@ impl SizeTieredPicker {
         files_by_segment
     }
 
-    fn trim_to_threshold_with_hotness(bucket: Bucket, max_threshold: usize) -> (Bucket, f64) {
+    fn trim_to_threshold_with_hotness(
+        bucket: Bucket,
+        max_threshold: usize,
+        max_input_sstable_size: u64,
+    ) -> (Bucket, f64) {
         let hotness_snapshot = bucket.get_hotness_map();
 
         // Sort by sstable hotness (descending).
@@ -389,9 +397,14 @@ impl SizeTieredPicker {
 
         // and then trim the coldest sstables off the end to meet the max_threshold
         let len = sorted_files.len();
+        let mut input_size = 0;
         let pruned_bucket: Vec<FileHandle> = sorted_files
             .into_iter()
             .take(std::cmp::min(max_threshold, len))
+            .take_while(|f| {
+                input_size += f.size();
+                input_size <= max_input_sstable_size
+            })
             .collect();
 
         // bucket hotness is the sum of the hotness of all sstable members
@@ -488,6 +501,7 @@ impl TimeWindowPicker {
                         buckets,
                         size_tiered_opts.min_threshold,
                         size_tiered_opts.max_threshold,
+                        size_tiered_opts.max_input_sstable_size.as_bytes(),
                     );
 
                     if files.is_some() {

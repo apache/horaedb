@@ -71,6 +71,7 @@ pub struct SizeTieredCompactionOptions {
     pub min_sstable_size: ReadableSize,
     pub min_threshold: usize,
     pub max_threshold: usize,
+    pub max_input_sstable_size: ReadableSize,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -86,8 +87,9 @@ impl Default for SizeTieredCompactionOptions {
             bucket_low: 0.5,
             bucket_high: 1.5,
             min_sstable_size: ReadableSize::mb(50),
-            min_threshold: 4,
+            min_threshold: 2,
             max_threshold: 16,
+            max_input_sstable_size: ReadableSize::mb(1200),
         }
     }
 }
@@ -113,6 +115,7 @@ const MIN_THRESHOLD_KEY: &str = "compaction_min_threshold";
 const MAX_THRESHOLD_KEY: &str = "compaction_max_threshold";
 const MIN_SSTABLE_SIZE_KEY: &str = "compaction_min_sstable_size";
 const TIMESTAMP_RESOLUTION_KEY: &str = "compaction_timestamp_resolution";
+const MAX_INPUT_SSTABLE_SIZE_KEY: &str = "compaction_max_input_sstable_size";
 const DEFAULT_STRATEGY: &str = "default";
 const STC_STRATEGY: &str = "size_tiered";
 const TWC_STRATEGY: &str = "time_window";
@@ -187,6 +190,10 @@ impl SizeTieredCompactionOptions {
             MIN_THRESHOLD_KEY.to_string(),
             format!("{}", self.min_threshold),
         );
+        m.insert(
+            MAX_INPUT_SSTABLE_SIZE_KEY.to_string(),
+            format!("{}", self.max_input_sstable_size.0),
+        );
     }
 
     pub(crate) fn parse_from(
@@ -224,6 +231,16 @@ impl SizeTieredCompactionOptions {
                 key: MIN_THRESHOLD_KEY,
                 value: v,
             })?;
+        }
+
+        if let Some(v) = options.get(MAX_INPUT_SSTABLE_SIZE_KEY) {
+            opts.max_input_sstable_size =
+                v.parse::<ReadableSize>().map_err(|err| Error::ParseSize {
+                    key: MIN_SSTABLE_SIZE_KEY.to_string(),
+                    value: v.to_string(),
+                    error: err,
+                    backtrace: Backtrace::generate(),
+                })?;
         }
 
         opts.validate()?;

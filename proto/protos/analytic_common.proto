@@ -47,6 +47,7 @@ message CompactionOptions {
   uint32 max_threshold = 5;
   // Options for TWCS
   TimeUnit timestamp_resolution = 6;
+  uint32 max_input_sstable_size = 7;
 }
 
 enum TimeUnit {
