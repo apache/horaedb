@@ -331,7 +331,7 @@ impl CompactionTask {
     }
 
     // Estimate the size of the total input files.
-    pub fn estimate_total_input_size(&self) -> usize {
+    pub fn estimated_total_input_file_size(&self) -> usize {
         let total_input_size: u64 = self
             .compaction_inputs
             .iter()
@@ -339,6 +339,10 @@ impl CompactionTask {
             .sum();
 
         total_input_size as usize
+    }
+
+    pub fn num_input_files(&self) -> usize {
+        self.compaction_inputs.iter().map(|v| v.files.len()).sum()
     }
 }
 
