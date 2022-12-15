@@ -302,7 +302,7 @@ pub struct CompactionInputFiles {
     pub output_level: Level,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ExpiredFiles {
     /// Level of the expired files.
     pub level: Level,
@@ -310,7 +310,7 @@ pub struct ExpiredFiles {
     pub files: Vec<FileHandle>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct CompactionTask {
     pub compaction_inputs: Vec<CompactionInputFiles>,
     pub expired: Vec<ExpiredFiles>,
@@ -418,12 +418,15 @@ impl Drop for WaiterNotifier {
 /// Request to compact single table.
 pub struct TableCompactionRequest {
     pub table_data: TableDataRef,
-    pub compaction_notifier: CompactionNotifier,
+    pub compaction_notifier: Option<CompactionNotifier>,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
 }
 
 impl TableCompactionRequest {
-    pub fn no_waiter(table_data: TableDataRef, compaction_notifier: CompactionNotifier) -> Self {
+    pub fn no_waiter(
+        table_data: TableDataRef,
+        compaction_notifier: Option<CompactionNotifier>,
+    ) -> Self {
         TableCompactionRequest {
             table_data,
             compaction_notifier,
