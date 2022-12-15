@@ -2,7 +2,7 @@
 
 //! Compaction.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
 use serde_derive::Deserialize;
@@ -81,6 +81,16 @@ pub struct TimeWindowCompactionOptions {
     pub timestamp_resolution: TimeUnit,
 }
 
+// TODO: MAX_INPUT_SSTABLE_SIZE is a temp solution to control sst size
+// Remove this when we can control compaction's output size
+// https://github.com/CeresDB/ceresdb/issues/408
+pub fn get_max_input_sstable_size() -> ReadableSize {
+    match std::env::var("CERESDB_MAX_INPUT_SSTABLE_SIZE") {
+        Ok(size) => ReadableSize::from_str(&size).unwrap_or_else(|_| ReadableSize::mb(1200)),
+        Err(_) => ReadableSize::mb(1200),
+    }
+}
+
 impl Default for SizeTieredCompactionOptions {
     fn default() -> Self {
         Self {
@@ -89,7 +99,7 @@ impl Default for SizeTieredCompactionOptions {
             min_sstable_size: ReadableSize::mb(50),
             min_threshold: 4,
             max_threshold: 16,
-            max_input_sstable_size: ReadableSize::mb(1200),
+            max_input_sstable_size: get_max_input_sstable_size(),
         }
     }
 }

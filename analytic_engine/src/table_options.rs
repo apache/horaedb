@@ -17,7 +17,7 @@ use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
 
 use crate::compaction::{
-    CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
+    self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
 };
 
 pub const SEGMENT_DURATION: &str = "segment_duration";
@@ -471,7 +471,7 @@ impl From<common_pb::CompactionOptions> for SizeTieredCompactionOptions {
             min_sstable_size: ReadableSize(opts.min_sstable_size as u64),
             min_threshold: opts.min_threshold as usize,
             max_threshold: opts.max_threshold as usize,
-            max_input_sstable_size: ReadableSize(1200),
+            max_input_sstable_size: compaction::get_max_input_sstable_size(),
         }
     }
 }
