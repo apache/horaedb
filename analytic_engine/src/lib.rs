@@ -111,7 +111,7 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             scan_batch_size: 500,
-            sst_background_read_parallelism: 4,
+            sst_background_read_parallelism: 8,
             wal_storage: WalStorageConfig::RocksDB,
         }
     }

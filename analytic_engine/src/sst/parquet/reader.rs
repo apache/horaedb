@@ -143,6 +143,7 @@ impl<'a> ParquetSstReader<'a> {
         Ok(())
     }
 
+    // This method is not used since we are in favor of `maybe_read_parallelly` now.
     fn read_record_batches(&mut self, tx: Sender<Result<RecordBatchWithKey>>) -> Result<()> {
         let path = self.path.to_string();
         ensure!(self.reader_builder.is_some(), ReadAgain { path });
