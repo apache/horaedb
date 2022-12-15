@@ -4,7 +4,7 @@
 
 use std::{
     fmt::Formatter,
-    fs::File,
+    fs::{File, OpenOptions},
     io,
     io::Read,
     sync::{Mutex, MutexGuard},
@@ -105,16 +105,15 @@ impl Profiler {
         thread::sleep(time::Duration::from_secs(seconds));
 
         // clearing the profile output file before dumping profile results.
-        {
-            let f = File::open(PROFILE_OUTPUT_FILE_PATH).map_err(|e| {
+        let _ = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(PROFILE_OUTPUT_FILE_PATH)
+            .map_err(|e| {
                 error!("Failed to open prof data file, err:{}", e);
                 Error::IO(e)
             })?;
-            f.set_len(0).map_err(|e| {
-                error!("Failed to truncate profile output file, err:{}", e);
-                Error::IO(e)
-            })?;
-        }
 
         // dump the profile results to profile output file.
         dump_profile().map_err(|e| {
