@@ -80,6 +80,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         meta_cache: None,
         runtime,
         background_read_parallelism: 1,
+        num_rows_per_row_group: 8192,
     };
     let mut reader = factory
         .new_sst_reader(&reader_opts, &input_path, &storage)

@@ -104,6 +104,7 @@ pub async fn load_sst_to_memtable(
         meta_cache: None,
         runtime,
         background_read_parallelism: 1,
+        num_rows_per_row_group: 500,
     };
     let sst_factory = FactoryImpl;
     let mut sst_reader = sst_factory

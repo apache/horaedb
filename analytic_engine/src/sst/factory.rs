@@ -53,7 +53,10 @@ pub struct SstReaderOptions {
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
 
-    /// The parallelism while reading sst
+    /// The max number of rows in one row group
+    pub num_rows_per_row_group: usize,
+
+    /// The suggested parallelism while reading sst
     pub background_read_parallelism: usize,
 }
 

@@ -198,5 +198,6 @@ fn mock_sst_reader_options(
         meta_cache: None,
         runtime,
         background_read_parallelism: 1,
+        num_rows_per_row_group: 500,
     }
 }

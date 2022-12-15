@@ -20,7 +20,7 @@ use common_types::{
 use common_util::{runtime::Runtime, time::InstantExt};
 use datafusion::datasource::file_format;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
-use log::{error, info};
+use log::{debug, error, info, warn};
 use object_store::{ObjectMeta, ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -59,11 +59,17 @@ pub struct Reader<'a> {
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
     row_projector: Option<RowProjector>,
+
+    /// Options for `read_parallelly`
+    parallelism_options: ParallelismOptions,
 }
 
 impl<'a> Reader<'a> {
     pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
         let batch_size = options.read_batch_row_num;
+        let parallelism_options =
+            ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
+
         Self {
             path,
             storage,
@@ -73,6 +79,7 @@ impl<'a> Reader<'a> {
             batch_size,
             meta_data: None,
             row_projector: None,
+            parallelism_options,
         }
     }
 
@@ -80,9 +87,24 @@ impl<'a> Reader<'a> {
         &mut self,
         read_parallelism: usize,
     ) -> Result<Vec<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>>> {
-        self.init_if_necessary().await?;
+        assert!(read_parallelism > 0);
+        let read_parallelism = if self.parallelism_options.enable_read_parallelly {
+            read_parallelism
+        } else {
+            1
+        };
 
-        let streams = self.fetch_record_batch_streams(read_parallelism).await?;
+        self.init_if_necessary().await?;
+        let streams = self
+            .fetch_record_batch_streams(
+                read_parallelism,
+                self.parallelism_options.max_row_groups_in_batch,
+            )
+            .await?;
+        if streams.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
 
@@ -129,42 +151,57 @@ impl<'a> Reader<'a> {
     async fn fetch_record_batch_streams(
         &mut self,
         read_parallelism: usize,
+        max_row_groups_in_batch: usize,
     ) -> Result<Vec<SendableRecordBatchStream>> {
         assert!(self.meta_data.is_some());
+        assert!(max_row_groups_in_batch > 0);
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
         let object_store_reader =
             ObjectStoreReader::new(self.storage.clone(), self.path.clone(), meta_data.clone());
+
+        // Get target row groups.
         let filtered_row_groups = self.filter_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
             &meta_data.custom().bloom_filter,
         )?;
+        let filtered_row_group_len = filtered_row_groups.len();
 
         info!(
-            "fetch_record_batch row_groups total:{}, after filter:{}, row_group_num_per_reader:{}",
+            "Reader fetch record batches, row_groups total:{}, after filter:{}",
             meta_data.parquet().num_row_groups(),
-            filtered_row_groups.len(),
+            filtered_row_group_len,
+        );
+
+        if filtered_row_groups.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Partition by `max_row_groups_in_a_batch`.
+        let row_group_batches = partition_row_groups(filtered_row_groups, max_row_groups_in_batch);
+        debug!(
+            "Reader fetch record batches parallelly,
+            row_groups total:{}, after filter:{}, max_row_groups_in_a_batch:{}, row_group_batches:{}, read_parallelism:{}",
+            meta_data.parquet().num_row_groups(),
+            filtered_row_group_len,
+            max_row_groups_in_batch,
+            row_group_batches.len(),
             read_parallelism,
         );
 
-        // TODO: now `batch_size` is equal to `num_rows_per_row_group`, other situations
-        // as following:
-        // + `batch_size` less than `num_rows_per_row_group`,
-        // maybe we need to consider it.
-        // + `batch_size` greater than `num_rows_per_row_group`,
-        // batch with `num_rows_per_row_group` rows will be returned, all the things are
-        // same as now.
+        // Partition the batches by `read_parallelism`.
+        let read_parallelism = std::cmp::min(row_group_batches.len(), read_parallelism);
         let chunks_num = read_parallelism;
-        let chunk_size = filtered_row_groups.len() / read_parallelism + 1;
-        let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); read_parallelism];
-        for (row_group_idx, row_group) in filtered_row_groups.into_iter().enumerate() {
-            let chunk_idx = row_group_idx % chunks_num;
+        let chunk_size = filtered_row_group_len / read_parallelism + 1;
+        let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
+        for (row_group_batch_idx, row_group_batch) in row_group_batches.into_iter().enumerate() {
+            let chunk_idx = row_group_batch_idx % chunks_num;
             filtered_row_group_chunks
                 .get_mut(chunk_idx)
                 .unwrap()
-                .push(row_group);
+                .extend(row_group_batch);
         }
 
         let proj_mask = ProjectionMask::leaves(
@@ -258,6 +295,58 @@ impl<'a> Reader<'a> {
             .unwrap();
         meta_data.parquet().row_groups().to_vec()
     }
+}
+
+/// Options for `read_parallely` in [Reader]
+#[derive(Debug, Clone, Copy)]
+struct ParallelismOptions {
+    /// Whether allow parallelly reading.
+    ///
+    /// NOTICE: now we only allow `read_parallelly` when
+    /// `read_batch_row_num` % `num_rows_per_row_group` == 0
+    /// (surely, `num_rows_per_row_group` > 0).
+    // TODO: maybe we should support `read_parallelly` in all situations.
+    enable_read_parallelly: bool,
+
+    /// The max row groups in a batch
+    max_row_groups_in_batch: usize,
+}
+
+impl ParallelismOptions {
+    fn new(read_batch_row_num: usize, num_rows_per_row_group: usize) -> Self {
+        // Check if `read_batch_row_num` % `num_rows_per_row_group` != 0.
+        // If `false`, parallelly reading is not allowed.
+        let enable_read_parallelly = read_batch_row_num % num_rows_per_row_group == 0;
+        if !enable_read_parallelly {
+            warn!(
+                "Reader new parallelism options not enable, don't allow read parallelly,
+                read_batch_row_num:{}, num_rows_per_row_group:{}",
+                read_batch_row_num, num_rows_per_row_group
+            );
+        }
+
+        let max_row_groups_in_batch = if read_batch_row_num >= num_rows_per_row_group {
+            read_batch_row_num / num_rows_per_row_group
+        } else {
+            1
+        };
+
+        Self {
+            enable_read_parallelly,
+            max_row_groups_in_batch,
+        }
+    }
+}
+
+#[inline]
+fn partition_row_groups(
+    filtered_row_groups: Vec<usize>,
+    max_row_groups_in_a_batch: usize,
+) -> Vec<Vec<usize>> {
+    filtered_row_groups
+        .chunks(max_row_groups_in_a_batch)
+        .map(|chunk| chunk.to_vec())
+        .collect()
 }
 
 #[derive(Debug, Clone)]
@@ -451,10 +540,20 @@ impl Stream for RecordBatchReceiver {
     type Item = Result<RecordBatchWithKey>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.rx_group.is_empty() {
+            return Poll::Ready(None);
+        }
+
         let cur_rx_idx = self.cur_rx_idx;
         // `cur_rx_idx` is impossible to be out-of-range, because it is got by round
         // robin.
-        let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap();
+        let rx_group_len = self.rx_group.len();
+        let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap_or_else(|| {
+            panic!(
+                "cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{}, rx_group len:{}",
+                cur_rx_idx, rx_group_len
+            )
+        });
         let poll_result = cur_rx.poll_recv(cx);
 
         match poll_result {
@@ -521,14 +620,30 @@ impl<'a> SstReader for ThreadedReader<'a> {
     async fn read(
         &mut self,
     ) -> Result<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>> {
+        // Get underlying sst readers and channels.
+        let sub_readers = self.inner.read_parallelly(self.read_parallelism).await?;
+        if sub_readers.is_empty() {
+            return Ok(Box::new(RecordBatchReceiver {
+                rx_group: Vec::new(),
+                cur_rx_idx: 0,
+            }) as _);
+        }
+
+        let read_parallelism = if self.read_parallelism >= sub_readers.len() {
+            sub_readers.len()
+        } else {
+            self.read_parallelism
+        };
+        debug!(
+            "ThreadedReader read, suggest read_parallelism:{}, actual:{}",
+            self.read_parallelism, read_parallelism
+        );
+
         let channel_cap_per_sub_reader = self.channel_cap / self.read_parallelism + 1;
-        let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..self.read_parallelism)
+        let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
             .into_iter()
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
-
-        // Get underlying sst readers.
-        let sub_readers = self.inner.read_parallelly(self.read_parallelism).await?;
 
         // Start the background readings.
         for (sub_reader, tx) in sub_readers.into_iter().zip(tx_group.into_iter()) {
@@ -552,6 +667,8 @@ mod tests {
 
     use futures::{Stream, StreamExt};
     use tokio::sync::mpsc::{self, Receiver, Sender};
+
+    use super::{partition_row_groups, ParallelismOptions};
 
     struct MockReceivers {
         rx_group: Vec<Receiver<u32>>,
@@ -612,6 +729,8 @@ mod tests {
 
     // We mock a thread model same as the one in `ThreadedReader` to check its
     // validity.
+    // TODO: we should make the `ThreadedReader` mockable and refactor this test
+    // using it.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_simulated_threaded_reader() {
         let test_data = gen_test_data(123);
@@ -649,5 +768,52 @@ mod tests {
         }
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_parallelism_options() {
+        // `read_batch_row_num` < num_rows_per_row_group` && `read_batch_row_num` %
+        // num_rows_per_row_group` == 0
+        let read_batch_row_num = 2;
+        let num_rows_per_row_group = 4;
+        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
+        assert!(!options.enable_read_parallelly);
+        assert_eq!(options.max_row_groups_in_batch, 1);
+
+        // `read_batch_row_num` < num_rows_per_row_group` && `read_batch_row_num` %
+        // num_rows_per_row_group` != 0
+        let read_batch_row_num = 3;
+        let num_rows_per_row_group = 4;
+        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
+        assert!(!options.enable_read_parallelly);
+        assert_eq!(options.max_row_groups_in_batch, 1);
+
+        // `read_batch_row_num` >= num_rows_per_row_group` && `read_batch_row_num` %
+        // num_rows_per_row_group` == 0
+        let read_batch_row_num = 8;
+        let num_rows_per_row_group = 4;
+        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
+        assert!(options.enable_read_parallelly);
+        assert_eq!(options.max_row_groups_in_batch, 2);
+
+        // `read_batch_row_num` >= num_rows_per_row_group` && `read_batch_row_num` %
+        // num_rows_per_row_group` != 0
+        let read_batch_row_num = 7;
+        let num_rows_per_row_group = 4;
+        let options = ParallelismOptions::new(read_batch_row_num, num_rows_per_row_group);
+        assert!(!options.enable_read_parallelly);
+        assert_eq!(options.max_row_groups_in_batch, 1);
+    }
+
+    #[test]
+    fn test_partition_row_groups() {
+        let test_row_groups = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let test_max_groups_in_batch = 3;
+
+        let expected = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9], vec![10]];
+        let partitioned_row_group_batches =
+            partition_row_groups(test_row_groups, test_max_groups_in_batch);
+        assert_eq!(partitioned_row_group_batches.len(), 4);
+        assert_eq!(expected, partitioned_row_group_batches);
     }
 }
