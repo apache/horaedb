@@ -169,7 +169,7 @@ fn find_uncompact_files(
 pub struct SizeTieredPicker {}
 
 /// Similar size files group
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Bucket {
     pub avg_size: usize,
     pub files: Vec<FileHandle>,
@@ -606,11 +606,13 @@ mod tests {
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };
+    use tokio::sync::mpsc;
 
+    use super::*;
     use crate::{
-        compaction::{picker::PickerContext, CompactionStrategy, PickerManager},
+        compaction::PickerManager,
         sst::{
-            file::SstMetaData,
+            file::{FileMeta, FilePurgeQueue, SstMetaData},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
         },
     };
@@ -757,5 +759,61 @@ mod tests {
             assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
             assert!(task.expired[0].files.is_empty());
         }
+    }
+
+    fn build_file_handles(sizes: Vec<u64>) -> Vec<FileHandle> {
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        sizes
+            .into_iter()
+            .map(|size| {
+                let file_meta = FileMeta {
+                    id: 1,
+                    meta: build_sst_meta_data(TimeRange::empty(), size),
+                };
+                let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
+                FileHandle::new(file_meta, queue)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_size_tiered_picker() {
+        let bucket = Bucket::with_files(build_file_handles(vec![100, 110, 200]));
+
+        let (out_bucket, _) =
+            SizeTieredPicker::trim_to_threshold_with_hotness(bucket.clone(), 10, 300);
+        // limited by max input size
+        assert_eq!(
+            vec![100, 110],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
+
+        // no limit
+        let (out_bucket, _) =
+            SizeTieredPicker::trim_to_threshold_with_hotness(bucket.clone(), 10, 3000);
+        assert_eq!(
+            vec![100, 110, 200],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
+
+        // limited by max_threshold
+        let (out_bucket, _) = SizeTieredPicker::trim_to_threshold_with_hotness(bucket, 2, 3000);
+        assert_eq!(
+            vec![100, 110],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
     }
 }
