@@ -86,7 +86,7 @@ jobs:
       - name: Check Lock File
         run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-      - name: Run Harness
+      - name: Run Sqlness
         run: |
           cd tests
           make run
