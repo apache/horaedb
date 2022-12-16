@@ -2,7 +2,7 @@
 
 //! Compaction.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
 use serde_derive::Deserialize;
@@ -71,6 +71,7 @@ pub struct SizeTieredCompactionOptions {
     pub min_sstable_size: ReadableSize,
     pub min_threshold: usize,
     pub max_threshold: usize,
+    pub max_input_sstable_size: ReadableSize,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
@@ -78,6 +79,16 @@ pub struct TimeWindowCompactionOptions {
     pub size_tiered: SizeTieredCompactionOptions,
     // TODO(boyan) In fact right now we only supports TimeUnit::Milliseconds resolution.
     pub timestamp_resolution: TimeUnit,
+}
+
+// TODO: MAX_INPUT_SSTABLE_SIZE is a temp solution to control sst size
+// Remove this when we can control compaction's output size
+// https://github.com/CeresDB/ceresdb/issues/408
+pub fn get_max_input_sstable_size() -> ReadableSize {
+    match std::env::var("CERESDB_MAX_INPUT_SSTABLE_SIZE") {
+        Ok(size) => ReadableSize::from_str(&size).unwrap_or_else(|_| ReadableSize::mb(1200)),
+        Err(_) => ReadableSize::mb(1200),
+    }
 }
 
 impl Default for SizeTieredCompactionOptions {
@@ -88,6 +99,7 @@ impl Default for SizeTieredCompactionOptions {
             min_sstable_size: ReadableSize::mb(50),
             min_threshold: 4,
             max_threshold: 16,
+            max_input_sstable_size: get_max_input_sstable_size(),
         }
     }
 }
@@ -302,7 +314,7 @@ pub struct CompactionInputFiles {
     pub output_level: Level,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ExpiredFiles {
     /// Level of the expired files.
     pub level: Level,
@@ -310,7 +322,7 @@ pub struct ExpiredFiles {
     pub files: Vec<FileHandle>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct CompactionTask {
     pub compaction_inputs: Vec<CompactionInputFiles>,
     pub expired: Vec<ExpiredFiles>,
@@ -331,7 +343,7 @@ impl CompactionTask {
     }
 
     // Estimate the size of the total input files.
-    pub fn estimate_total_input_size(&self) -> usize {
+    pub fn estimated_total_input_file_size(&self) -> usize {
         let total_input_size: u64 = self
             .compaction_inputs
             .iter()
@@ -339,6 +351,10 @@ impl CompactionTask {
             .sum();
 
         total_input_size as usize
+    }
+
+    pub fn num_input_files(&self) -> usize {
+        self.compaction_inputs.iter().map(|v| v.files.len()).sum()
     }
 }
 
@@ -418,12 +434,15 @@ impl Drop for WaiterNotifier {
 /// Request to compact single table.
 pub struct TableCompactionRequest {
     pub table_data: TableDataRef,
-    pub compaction_notifier: CompactionNotifier,
+    pub compaction_notifier: Option<CompactionNotifier>,
     pub waiter: Option<oneshot::Sender<WaitResult<()>>>,
 }
 
 impl TableCompactionRequest {
-    pub fn no_waiter(table_data: TableDataRef, compaction_notifier: CompactionNotifier) -> Self {
+    pub fn no_waiter(
+        table_data: TableDataRef,
+        compaction_notifier: Option<CompactionNotifier>,
+    ) -> Self {
         TableCompactionRequest {
             table_data,
             compaction_notifier,
@@ -485,6 +504,7 @@ mod tests {
         assert_eq!(m[MIN_THRESHOLD_KEY], "4");
         assert_eq!(m[MAX_THRESHOLD_KEY], "10");
         assert_eq!(m[TIMESTAMP_RESOLUTION_KEY], "milliseconds");
+
         assert_eq!(
             c,
             CompactionStrategy::parse_from("time_window", &m).unwrap()

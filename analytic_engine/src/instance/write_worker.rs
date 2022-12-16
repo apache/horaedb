@@ -967,7 +967,7 @@ impl WriteWorker {
 
         let request = TableCompactionRequest {
             table_data,
-            compaction_notifier: self.local.compaction_notifier(),
+            compaction_notifier: Some(self.local.compaction_notifier()),
             waiter,
         };
 

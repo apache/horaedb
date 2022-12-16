@@ -4,7 +4,7 @@
 
 use std::{
     fmt::Formatter,
-    fs::File,
+    fs::{File, OpenOptions},
     io,
     io::Read,
     sync::{Mutex, MutexGuard},
@@ -36,7 +36,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 const PROF_ACTIVE: &[u8] = b"prof.active\0";
 const PROF_DUMP: &[u8] = b"prof.dump\0";
-const PROFILE_OUTPUT: &[u8] = b"profile.out\0";
+const PROFILE_OUTPUT_FILE_OS_PATH: &[u8] = b"/tmp/profile.out\0";
 const PROFILE_OUTPUT_FILE_PATH: &str = "/tmp/profile.out";
 
 fn set_prof_active(active: bool) -> Result<()> {
@@ -46,7 +46,8 @@ fn set_prof_active(active: bool) -> Result<()> {
 
 fn dump_profile() -> Result<()> {
     let name = PROF_DUMP.name();
-    name.write(PROFILE_OUTPUT).map_err(Error::Jemalloc)
+    name.write(PROFILE_OUTPUT_FILE_OS_PATH)
+        .map_err(Error::Jemalloc)
 }
 
 struct ProfLockGuard<'a>(MutexGuard<'a, ()>);
@@ -93,27 +94,26 @@ impl Profiler {
         let lock_guard = self.mem_prof_lock.try_lock().map_err(|e| Error::Internal {
             msg: format!("failed to acquire mem_prof_lock, err:{}", e),
         })?;
-
-        let _guard = ProfLockGuard::new(lock_guard)?;
-
         info!(
             "Profiler::dump_mem_prof start memory profiling {} seconds",
             seconds
         );
+
+        let _guard = ProfLockGuard::new(lock_guard)?;
+
         // wait for seconds for collect the profiling data
         thread::sleep(time::Duration::from_secs(seconds));
 
         // clearing the profile output file before dumping profile results.
-        {
-            let f = File::open(PROFILE_OUTPUT_FILE_PATH).map_err(|e| {
+        let _ = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(PROFILE_OUTPUT_FILE_PATH)
+            .map_err(|e| {
                 error!("Failed to open prof data file, err:{}", e);
                 Error::IO(e)
             })?;
-            f.set_len(0).map_err(|e| {
-                error!("Failed to truncate profile output file, err:{}", e);
-                Error::IO(e)
-            })?;
-        }
 
         // dump the profile results to profile output file.
         dump_profile().map_err(|e| {
