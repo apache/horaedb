@@ -19,7 +19,7 @@ const CERESDB_STDOUT_FILE: &str = "CERESDB_STDOUT_FILE";
 const CERESDB_STDERR_FILE: &str = "CERESDB_STDERR_FILE";
 
 pub struct CeresDBEnv {
-    _server_process: Child,
+    server_process: Child,
 }
 
 #[async_trait]
@@ -40,7 +40,14 @@ impl SqlnessEnv for CeresDBEnv {
 
     /// Stop one [`Database`].
     async fn stop(&self, _mode: &str, _database: Self::DB) {
-        // self._server_process.kill().unwrap()
+        // TODO: stop in `drop` now
+        // Need refactor to support stop here
+    }
+}
+
+impl Drop for CeresDBEnv {
+    fn drop(&mut self) {
+        self.server_process.kill().unwrap()
     }
 }
 
@@ -63,8 +70,6 @@ impl CeresDBEnv {
         // Wait for a while
         std::thread::sleep(std::time::Duration::from_secs(5));
 
-        Self {
-            _server_process: server_process,
-        }
+        Self { server_process }
     }
 }
