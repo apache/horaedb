@@ -34,6 +34,7 @@ use crate::{
     },
     meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
+    row_iter::IterOptions,
     space::{Space, SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
     table::data::{TableData, TableDataRef},
@@ -72,6 +73,11 @@ impl Instance {
             WalSynchronizer::new(WalSynchronizerConfig::default(), wal_manager);
         wal_synchronizer.start(&bg_runtime).await;
 
+        let iter_options = IterOptions {
+            batch_size: ctx.config.scan_batch_size,
+            sst_background_read_parallelism: ctx.config.sst_background_read_parallelism,
+        };
+
         let instance = Arc::new(Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
@@ -86,7 +92,7 @@ impl Instance {
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
-            scan_batch_size: ctx.config.scan_batch_size,
+            iter_options,
         });
 
         Ok(instance)

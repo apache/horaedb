@@ -106,6 +106,7 @@ dependencies = [
  "prometheus 0.12.0",
  "prost",
  "proto 1.0.0-alpha01",
+ "rand 0.7.3",
  "serde",
  "serde_derive",
  "skiplist",
@@ -833,6 +834,7 @@ dependencies = [
  "query_engine",
  "server",
  "signal-hook",
+ "sort",
  "table_engine",
  "tracing_util",
  "vergen",
@@ -5535,6 +5537,12 @@ dependencies = [
  "libc",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "sort"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79b736394cbcbad245669dc12a0caff9b2570e9ad81ce9906f5d7831551cb0c5"
 
 [[package]]
 name = "spin"
