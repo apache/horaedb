@@ -24,7 +24,7 @@ use crate::sst::reader::error::{OtherNoCause, Result};
 pub struct RowGroupFilter<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
-    blooms: &'a [Vec<Bloom>],
+    blooms: Option<&'a [Vec<Bloom>]>,
     predicates: &'a [Expr],
 }
 
@@ -32,12 +32,14 @@ impl<'a> RowGroupFilter<'a> {
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
-        blooms: &'a [Vec<Bloom>],
+        blooms: Option<&'a [Vec<Bloom>]>,
         predicates: &'a [Expr],
     ) -> Result<Self> {
-        ensure!(blooms.len() == row_groups.len(), OtherNoCause {
-            msg: format!("expect the same number of bloom filter as the number of row groups, num_bloom_filters:{}, num_row_groups:{}", blooms.len(), row_groups.len()),
-        });
+        if let Some(blooms) = blooms {
+            ensure!(blooms.len() == row_groups.len(), OtherNoCause {
+                msg: format!("expect the same number of bloom filter as the number of row groups, num_bloom_filters:{}, num_row_groups:{}", blooms.len(), row_groups.len()),
+            });
+        }
 
         Ok(Self {
             schema,
@@ -49,24 +51,27 @@ impl<'a> RowGroupFilter<'a> {
 
     pub fn filter(&self) -> Vec<usize> {
         let filtered0 = self.filter_by_min_max();
-        // TODO: We can do continuous filtering based on the `filtered0` to reduce the
-        // filtering cost.
-        let filtered1 = self.filter_by_bloom();
-        Self::intersect_filtered_row_groups(&filtered0, &filtered1)
+        match self.blooms {
+            Some(v) => {
+                // TODO: We can do continuous filtering based on the `filtered0` to reduce the
+                // filtering cost.
+                let filtered1 = self.filter_by_bloom(v);
+                Self::intersect_filtered_row_groups(&filtered0, &filtered1)
+            }
+            None => filtered0,
+        }
     }
 
     fn filter_by_min_max(&self) -> Vec<usize> {
         min_max::filter_row_groups(self.schema.clone(), self.predicates, self.row_groups)
     }
 
-    fn filter_by_bloom(&self) -> Vec<usize> {
+    /// Filter row groups according to the bloom filter.
+    fn filter_by_bloom(&self, blooms: &[Vec<Bloom>]) -> Vec<usize> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
-                let col_bloom = self
-                    .blooms
-                    .get(col_pos.row_group_idx)?
-                    .get(col_pos.column_idx)?;
+                let col_bloom = blooms.get(col_pos.row_group_idx)?.get(col_pos.column_idx)?;
                 let exist = col_bloom.contains_input(Input::Raw(&datum.to_bytes()));
                 if exist {
                     // bloom filter has false positivity, that is to say we are unsure whether this

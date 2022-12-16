@@ -131,12 +131,12 @@ impl<'a> Reader<'a> {
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        bloom_filter: &BloomFilter,
+        bloom_filter: &Option<BloomFilter>,
     ) -> Result<Vec<usize>> {
         let filter = RowGroupFilter::try_new(
             &schema,
             row_groups,
-            bloom_filter.filters(),
+            bloom_filter.as_ref().map(|v| v.filters()),
             self.predicate.exprs(),
         )?;
 

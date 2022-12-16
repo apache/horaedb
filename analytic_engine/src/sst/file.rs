@@ -57,9 +57,6 @@ pub enum Error {
     #[snafu(display("Storage format options are not found.\nBacktrace\n:{}", backtrace))]
     StorageFormatOptionsNotFound { backtrace: Backtrace },
 
-    #[snafu(display("Bloom filter options are not found.\nBacktrace\n:{}", backtrace))]
-    BloomFilterNotFound { backtrace: Backtrace },
-
     #[snafu(display(
         "Bloom filter should be 256 byte, current:{}.\nBacktrace\n:{}",
         size,
@@ -516,7 +513,7 @@ pub struct SstMetaData {
     // total row number
     pub row_num: u64,
     pub storage_format_opts: StorageFormatOptions,
-    pub bloom_filter: BloomFilter,
+    pub bloom_filter: Option<BloomFilter>,
 }
 
 pub type SstMetaDataRef = Arc<SstMetaData>;
@@ -538,7 +535,7 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             size: src.size,
             row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
-            bloom_filter: Some(src.bloom_filter.into()),
+            bloom_filter: src.bloom_filter.map(|v| v.into()),
         }
     }
 }
@@ -559,10 +556,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             src.storage_format_opts
                 .context(StorageFormatOptionsNotFound)?,
         );
-        let bloom_filter = {
-            let pb_filter = src.bloom_filter.context(BloomFilterNotFound)?;
-            BloomFilter::try_from(pb_filter)?
-        };
+        let bloom_filter = src.bloom_filter.map(BloomFilter::try_from).transpose()?;
 
         Ok(Self {
             min_key: src.min_key.into(),

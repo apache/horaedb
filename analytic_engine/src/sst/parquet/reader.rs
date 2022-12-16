@@ -253,7 +253,7 @@ impl ProjectAndFilterReader {
         let filter = RowGroupFilter::try_new(
             self.schema.as_arrow_schema_ref(),
             row_groups,
-            self.meta_data.bloom_filter.filters(),
+            self.meta_data.bloom_filter.as_ref().map(|v| v.filters()),
             self.predicate.exprs(),
         )?;
 
