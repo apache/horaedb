@@ -19,8 +19,8 @@ affected_rows: 1
 
 SELECT * FROM demo;
 
-name,value,t,tsid,
-String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
+tsid,t,name,value,
+Int64(-6317898613073581291),Timestamp(Timestamp(1651737067000)),String(StringBytes(b"ceresdb")),Double(100.0),
 
 
 INSERT INTO demo (t, name, value)
@@ -30,9 +30,9 @@ affected_rows: 1
 
 SELECT * FROM demo;
 
-name,value,t,tsid,
-String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067000)),Int64(102432447525557625),
-String(StringBytes(b"ceresdb")),Double(100.0),Timestamp(Timestamp(1651737067001)),Int64(102432447525557625),
+tsid,t,name,value,
+Int64(-6317898613073581291),Timestamp(Timestamp(1651737067000)),String(StringBytes(b"ceresdb")),Double(100.0),
+Int64(-6317898613073581291),Timestamp(Timestamp(1651737067001)),String(StringBytes(b"ceresdb")),Double(100.0),
 
 
 DROP TABLE IF EXISTS `demo`;
