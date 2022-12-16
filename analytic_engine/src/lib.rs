@@ -73,10 +73,13 @@ pub struct Config {
     pub space_write_buffer_size: usize,
     /// The maximum size of all Write Buffers across all spaces.
     pub db_write_buffer_size: usize,
-    // End of global write buffer options.
+    /// End of global write buffer options.
 
-    // Batch size for scan sst
+    // Iterator scanning options
+    /// Batch size for iterator
     pub scan_batch_size: usize,
+    /// Sst background reading parallelism
+    pub sst_background_read_parallelism: usize,
 
     /// Wal storage config
     ///
@@ -108,6 +111,7 @@ impl Default for Config {
             /// it.
             db_write_buffer_size: 0,
             scan_batch_size: 500,
+            sst_background_read_parallelism: 8,
             wal_storage: WalStorageConfig::RocksDB,
         }
     }

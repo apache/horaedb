@@ -33,6 +33,7 @@ use wal::manager::WalManagerRef;
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     meta::ManifestRef,
+    row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
     sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger, meta_cache::MetaCacheRef},
     table::data::TableDataRef,
@@ -170,10 +171,10 @@ pub struct Instance {
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size
     pub(crate) space_write_buffer_size: usize,
-    /// replay wal batch size
+    /// Replay wal batch size
     pub(crate) replay_batch_size: usize,
-    /// batch size for scan sst
-    pub(crate) scan_batch_size: usize,
+    /// Options for scanning sst
+    pub(crate) iter_options: IterOptions,
 }
 
 impl Instance {
