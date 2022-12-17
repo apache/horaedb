@@ -8,7 +8,7 @@ use log::debug;
 use paste::paste;
 use sqlparser::{
     ast::{
-        ColumnDef, ColumnOption, ColumnOptionDef, Expr, Ident, ObjectName, SetExpr,
+        ColumnDef, ColumnOption, ColumnOptionDef, DataType, Expr, Ident, ObjectName, SetExpr,
         Statement as SqlStatement, TableConstraint, TableFactor, TableWithJoins,
     },
     dialect::{keywords::Keyword, Dialect, MySqlDialect},
@@ -19,7 +19,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::ast::{
     AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    ShowCreate, ShowCreateObject, ShowTables, Statement,
+    HashPartition, Partition, ShowCreate, ShowCreateObject, ShowTables, Statement,
 };
 
 define_result!(ParserError);
@@ -251,10 +251,10 @@ impl<'a> Parser<'a> {
     fn parse_show_create(&mut self) -> Result<Statement> {
         let obj_type = match self.parser.expect_one_of_keywords(&[Keyword::TABLE])? {
             Keyword::TABLE => Ok(ShowCreateObject::Table),
-            keyword => Err(ParserError::ParserError(format!(
+            keyword => parser_err!(format!(
                 "Unable to map keyword to ShowCreateObject: {:?}",
                 keyword
-            ))),
+            )),
         }?;
 
         let table_name = self.parser.parse_object_name()?.into();
@@ -311,17 +311,25 @@ impl<'a> Parser<'a> {
                 .parse_keywords(&[Keyword::IF, Keyword::NOT, Keyword::EXISTS]);
         let table_name = self.parser.parse_object_name()?.into();
         let (columns, constraints) = self.parse_columns()?;
+
+        // PARTITION BY...
+        let partition = self.parse_and_check_partition(Keyword::PARTITION, &columns)?;
+
+        // ENGINE = ...
         let engine = self.parse_table_engine()?;
+
+        // WITH ...
         let options = self.parser.parse_options(Keyword::WITH)?;
 
-        Ok(Statement::Create(CreateTable {
+        Ok(Statement::Create(Box::new(CreateTable {
             if_not_exists,
             table_name,
             columns,
             engine,
             constraints,
             options,
-        }))
+            partition,
+        })))
     }
 
     pub fn parse_drop(&mut self) -> Result<Statement> {
@@ -510,6 +518,119 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_and_check_partition(
+        &mut self,
+        keyword: Keyword,
+        columns: &[ColumnDef],
+    ) -> Result<Option<Partition>> {
+        // PARTITION BY ...
+        if !self.parser.parse_keyword(keyword) {
+            return Ok(None);
+        }
+        self.parser.expect_keyword(Keyword::BY)?;
+
+        // Parse partition strategy.
+        self.parse_and_check_partition_strategy(columns)
+    }
+
+    fn parse_and_check_partition_strategy(
+        &mut self,
+        columns: &[ColumnDef],
+    ) -> Result<Option<Partition>> {
+        // TODO: only hash type is supported now, we should support other types.
+        if let Some(hash) = self.maybe_parse_and_check_hash_partition(columns)? {
+            return Ok(Some(Partition::Hash(hash)));
+        }
+
+        Ok(None)
+    }
+
+    // TODO: should we only support tag and timestamp as the partition key?
+    fn maybe_parse_and_check_hash_partition(
+        &mut self,
+        columns: &[ColumnDef],
+    ) -> Result<Option<HashPartition>> {
+        // Parse first part: "PARTITION BY HASH(expr)".
+        let (is_hash_partition, is_linear) = {
+            if self.consume_token("HASH") {
+                (true, false)
+            } else if self.consume_tokens(&["LINEAR", "HASH"]) {
+                (true, true)
+            } else {
+                (false, false)
+            }
+        };
+
+        if !is_hash_partition {
+            return Ok(None);
+        }
+
+        // TODO: support all valid exprs not only column expr.
+        let expr = self.parse_and_check_expr_in_hash(columns)?;
+
+        // Parse second part: "PARTITIONS num" (if not set, num will use 1 as default).
+        let partition_num = if self.parser.parse_keyword(Keyword::PARTITIONS) {
+            match self.parser.parse_number_value()? {
+                sqlparser::ast::Value::Number(v, _) => match v.parse::<u64>() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return parser_err!(format!(
+                            "valid partition num after PARTITIONS, err:{}",
+                            e
+                        ))
+                    }
+                },
+                _ => return parser_err!("expect partition num after PARTITIONS"),
+            }
+        } else {
+            1
+        };
+
+        // Parse successfully.
+        Ok(Some(HashPartition {
+            linear: is_linear,
+            partition_num,
+            expr,
+        }))
+    }
+
+    fn parse_and_check_expr_in_hash(&mut self, columns: &[ColumnDef]) -> Result<Expr> {
+        let expr = self.parser.parse_expr()?;
+        if let Expr::Nested(inner) = expr {
+            match inner.as_ref() {
+                Expr::Identifier(id) => {
+                    let valid_column = columns.iter().find(|col| {
+                        if col.name == *id {
+                            matches!(col.data_type,
+                                DataType::Int(_)|
+                                DataType::TinyInt(_)|
+                                DataType::SmallInt(_)|
+                                DataType::BigInt(_)|
+                                DataType::UnsignedInt(_)|
+                                DataType::UnsignedTinyInt(_)|
+                                DataType::UnsignedSmallInt(_)|
+                                DataType::UnsignedBigInt(_))
+                        } else {
+                            false
+                        }
+                    });
+
+                    if valid_column.is_none() {
+                        parser_err!(format!("Expect column(type: int, tiny int, small int, big int), search by column name:{}", id))
+                    } else {
+                        Ok(*inner)
+                    }
+                },
+
+                other => parser_err!(
+                    format!("Only column expr in hash partition now, example: HASH(column name), found:{:?}", other)
+                ),
+            }
+        } else {
+            parser_err!(format!("Expect nested expr, found:{:?}", expr))
+        }
+    }
+
     fn consume_token(&mut self, expected: &str) -> bool {
         if self.parser.peek_token().to_string().to_uppercase() == *expected.to_uppercase() {
             self.parser.next_token();
@@ -517,6 +638,15 @@ impl<'a> Parser<'a> {
         } else {
             false
         }
+    }
+
+    fn consume_tokens(&mut self, expecteds: &[&str]) -> bool {
+        for expected in expecteds {
+            if !self.consume_token(expected) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -673,19 +803,20 @@ mod tests {
     fn create_table() {
         // positive case
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 double)";
-        let expected = Statement::Create(CreateTable {
+        let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: true,
             table_name: make_table_name("t"),
             columns: vec![make_column_def("c1", DataType::Double)],
             engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
             constraints: vec![],
             options: vec![],
-        });
+            partition: None,
+        }));
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double, c3 string,) ENGINE = XX";
-        let expected = Statement::Create(CreateTable {
+        let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
@@ -696,12 +827,13 @@ mod tests {
             engine: "XX".to_string(),
             constraints: vec![],
             options: vec![],
-        });
+            partition: None,
+        }));
         expect_parse_ok(sql, expected).unwrap();
 
         // positive case, multiple columns with comment
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double comment 'id', c3 string comment 'name',) ENGINE = XX";
-        let expected = Statement::Create(CreateTable {
+        let expected = Statement::Create(Box::new(CreateTable {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
@@ -712,7 +844,8 @@ mod tests {
             engine: "XX".to_string(),
             constraints: vec![],
             options: vec![],
-        });
+            partition: None,
+        }));
         expect_parse_ok(sql, expected).unwrap();
 
         // Error cases: Invalid sql
@@ -790,7 +923,7 @@ mod tests {
     }
 
     #[test]
-    fn create_table_engine() {
+    fn test_create_table_engine() {
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 double)";
         let statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
@@ -1025,6 +1158,107 @@ mod tests {
                     false
                 }
             )
+        }
+    }
+
+    #[test]
+    fn test_hash_partition() {
+        HashPartitionTableCases::basic();
+        HashPartitionTableCases::default_partitions();
+        HashPartitionTableCases::with_defined_engine();
+        HashPartitionTableCases::invalid_expr_in_hash();
+        HashPartitionTableCases::invalid_partitions_num();
+    }
+
+    struct HashPartitionTableCases;
+    impl HashPartitionTableCases {
+        // Basic
+        fn basic() {
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            match &statements[0] {
+                Statement::Create(v) => {
+                    if let Some(Partition::Hash(p)) = &v.partition {
+                        assert!(!p.linear);
+                        assert_eq!(
+                            format!("{:?}", p.expr).as_str(),
+                            r#"Identifier(Ident { value: "c2", quote_style: None })"#
+                        );
+                        assert_eq!(p.partition_num, 4);
+                    } else {
+                        panic!("failed");
+                    };
+                }
+                _ => panic!("failed"),
+            }
+        }
+
+        fn default_partitions() {
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2)"#;
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            match &statements[0] {
+                Statement::Create(v) => {
+                    if let Some(Partition::Hash(p)) = &v.partition {
+                        assert!(!p.linear);
+                        assert_eq!(
+                            format!("{:?}", p.expr).as_str(),
+                            r#"Identifier(Ident { value: "c2", quote_style: None })"#
+                        );
+                        assert_eq!(p.partition_num, 1);
+                    } else {
+                        panic!("failed");
+                    };
+                }
+                _ => panic!("failed"),
+            }
+        }
+
+        // Partition with defined engine
+        fn with_defined_engine() {
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4 ENGINE = XX"#;
+            let statements = Parser::parse_sql(sql).unwrap();
+            assert_eq!(statements.len(), 1);
+            match &statements[0] {
+                Statement::Create(v) => {
+                    if let Some(Partition::Hash(p)) = &v.partition {
+                        assert!(!p.linear);
+                        assert_eq!(
+                            format!("{:?}", p.expr).as_str(),
+                            r#"Identifier(Ident { value: "c2", quote_style: None })"#
+                        );
+                        assert_eq!(p.partition_num, 4);
+                    } else {
+                        panic!("failed");
+                    };
+                }
+                _ => panic!("failed"),
+            }
+        }
+
+        // Partition with error in HASH(...), should return error
+        fn invalid_expr_in_hash() {
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2, c3) PARTITIONS 4"#;
+            assert!(
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
+                    && format!("{:?}", e).contains("Expect nested expr"))
+            );
+
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c1) PARTITIONS 4"#;
+            assert!(
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
+                    && format!("{:?}", e).contains("Expect column"))
+            );
+        }
+
+        // Partitions with a invalid num
+        fn invalid_partitions_num() {
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 'string'"#;
+            assert!(
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
+                    && format!("{:?}", e).contains("Expected literal number"))
+            );
         }
     }
 }

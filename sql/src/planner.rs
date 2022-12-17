@@ -268,7 +268,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
 
         match statement {
             Statement::Standard(s) => planner.sql_statement_to_plan(*s),
-            Statement::Create(s) => planner.create_table_to_plan(s),
+            Statement::Create(s) => planner.create_table_to_plan(*s),
             Statement::Drop(s) => planner.drop_table_to_plan(s),
             Statement::Describe(s) => planner.describe_table_to_plan(s),
             Statement::AlterModifySetting(s) => planner.alter_modify_setting_to_plan(s),
