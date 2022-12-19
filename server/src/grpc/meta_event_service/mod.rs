@@ -344,6 +344,7 @@ async fn handle_create_table_on_shard(
         state: TableState::Stable,
         shard_id: shard_info.id,
         cluster_version: topology.cluster_topology_version,
+        partition_info: None,
     };
     let create_opts = CreateOptions {
         table_engine: ctx.table_engine,

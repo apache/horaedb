@@ -149,9 +149,6 @@ pub struct CreateTableRequest {
     pub table_name: String,
     /// Table schema
     pub table_schema: Schema,
-    /// Partition info if this is a partitioned table
-    // TODO(yingwen): TableEngine should not have knowledge of partitioning
-    pub partition_info: Option<PartitionInfo>,
     /// Table engine type
     pub engine: String,
     /// Table options used by each engine
@@ -165,6 +162,8 @@ pub struct CreateTableRequest {
     /// Cluster version of shard, it will change while cluster's topology
     /// changes.
     pub cluster_version: ClusterVersion,
+    /// Partition info if this is a partitioned table
+    pub partition_info: Option<PartitionInfo>,
 }
 
 impl From<CreateTableRequest> for sys_catalog_pb::TableEntry {

@@ -33,6 +33,11 @@ pub struct AllocSchemaIdResponse {
 }
 
 #[derive(Clone, Debug)]
+pub struct PartitionInfo {
+    pub names: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct CreateTableRequest {
     pub schema_name: String,
     pub name: String,
@@ -40,6 +45,7 @@ pub struct CreateTableRequest {
     pub engine: String,
     pub create_if_not_exist: bool,
     pub options: HashMap<String, String>,
+    pub partition_info: Option<PartitionInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -308,6 +314,9 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
             engine: req.engine,
             create_if_not_exist: req.create_if_not_exist,
             options: req.options,
+            partition_info: req.partition_info.map(|v| meta_service_pb::PartitionInfo {
+                names: v.names,
+            }),
         }
     }
 }

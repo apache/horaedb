@@ -534,6 +534,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             table,
             table_schema,
             options,
+            // TODO: sql parse supports `partition by` syntax.
+            partition_info: None,
         };
 
         debug!("Create table to plan, plan:{:?}", plan);

@@ -471,6 +471,7 @@ pub fn write_metric_to_create_table_plan<Q: QueryExecutor + 'static>(
         table: write_metric.metric.clone(),
         table_schema: build_schema_from_metric(schema_config, write_metric)?,
         options: HashMap::default(),
+        partition_info: None,
     })
 }
 

@@ -13,7 +13,7 @@ use common_util::define_result;
 use prost::Message;
 use proto::{analytic_common, common as common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::table::TableId;
+use table_engine::{partition::PartitionInfo, table::TableId};
 use wal::{
     log_batch::{Payload, PayloadDecoder},
     manager::WalLocation,
@@ -208,6 +208,7 @@ pub struct AddTableMeta {
     pub schema: Schema,
     // Options needed to persist
     pub opts: TableOptions,
+    pub partition_info: Option<PartitionInfo>,
 }
 
 impl From<AddTableMeta> for meta_pb::AddTableMeta {
@@ -218,6 +219,7 @@ impl From<AddTableMeta> for meta_pb::AddTableMeta {
             table_name: v.table_name,
             schema: Some(common_pb::TableSchema::from(&v.schema)),
             options: Some(analytic_common::TableOptions::from(v.opts)),
+            partition_info: v.partition_info.map(|info| info.into()),
         }
     }
 }
@@ -234,6 +236,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
             table_name: src.table_name,
             schema: Schema::try_from(table_schema).context(ConvertSchema)?,
             opts: TableOptions::from(opts),
+            partition_info: src.partition_info.map(|v| v.into()),
         })
     }
 }

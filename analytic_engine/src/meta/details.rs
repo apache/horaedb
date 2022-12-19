@@ -768,7 +768,10 @@ mod tests {
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
-    use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
+    use table_engine::{
+        partition::{Definition, HashPartitionInfo, PartitionInfo},
+        table::{SchemaId, TableId, TableSeqGenerator},
+    };
     use wal::rocks_impl::manager::Builder as WalBuilder;
 
     use super::*;
@@ -895,6 +898,23 @@ mod tests {
                 table_name,
                 schema: common_types::tests::build_schema(),
                 opts: TableOptions::default(),
+                partition_info: None,
+            })
+        }
+
+        fn meta_update_add_table_with_partition_info(
+            &self,
+            table_id: TableId,
+            partition_info: Option<PartitionInfo>,
+        ) -> MetaUpdate {
+            let table_name = Self::table_name_from_id(table_id);
+            MetaUpdate::AddTable(AddTableMeta {
+                space_id: self.schema_id.as_u32(),
+                table_id,
+                table_name,
+                schema: common_types::tests::build_schema(),
+                opts: TableOptions::default(),
+                partition_info,
             })
         }
 
@@ -944,6 +964,7 @@ mod tests {
         async fn add_table_with_manifest(
             &self,
             table_id: TableId,
+            partition_info: Option<PartitionInfo>,
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
@@ -952,7 +973,8 @@ mod tests {
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
-            let add_table = self.meta_update_add_table(table_id);
+            let add_table =
+                self.meta_update_add_table_with_partition_info(table_id, partition_info);
             manifest
                 .store_update(MetaUpdateRequest::new(location, add_table.clone()))
                 .await
@@ -1005,7 +1027,7 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
         ) {
             let manifest = self.open_manifest().await;
-            self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
+            self.add_table_with_manifest(table_id, None, manifest_data_builder, &manifest)
                 .await;
         }
 
@@ -1158,8 +1180,16 @@ mod tests {
     fn test_manifest_snapshot_one_table() {
         let ctx = TestContext::new("snapshot_one_table", SchemaId::from_u32(0));
         let runtime = ctx.runtime.clone();
+
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
+            let partition_info = Some(PartitionInfo::Hash(HashPartitionInfo {
+                definitions: vec![Definition {
+                    name: "p0".to_string(),
+                    origin_name: Some("region0".to_string()),
+                }],
+                columns: vec!["test".to_string()],
+            }));
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,
                 DEFAULT_CLUSTER_VERSION,
@@ -1167,8 +1197,13 @@ mod tests {
             );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
-                .await;
+            ctx.add_table_with_manifest(
+                table_id,
+                partition_info,
+                &mut manifest_data_builder,
+                &manifest,
+            )
+            .await;
 
             manifest.maybe_do_snapshot(location).await.unwrap();
 
@@ -1201,7 +1236,7 @@ mod tests {
             );
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
+            ctx.add_table_with_manifest(table_id, None, &mut manifest_data_builder, &manifest)
                 .await;
 
             for i in 0..500 {
