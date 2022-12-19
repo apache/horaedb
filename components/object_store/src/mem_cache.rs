@@ -158,6 +158,7 @@ pub struct MemCacheStore {
 }
 
 impl MemCacheStore {
+    /// Create a default [`MemCacheStore`].
     pub fn new(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
         Self {
             cache,
@@ -166,7 +167,8 @@ impl MemCacheStore {
         }
     }
 
-    pub fn new_read_only(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+    /// Create a [`MemCacheStore`] with a readonly cache.
+    pub fn new_with_readonly_cache(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
         Self {
             cache,
             underlying_store,
