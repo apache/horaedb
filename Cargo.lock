@@ -1570,6 +1570,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "datafusion-proto"
+version = "12.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=d84ea9c79c9e83ff0b4dadf8880a4983af59ef48#d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
+dependencies = [
+ "arrow",
+ "datafusion",
+ "datafusion-common",
+ "datafusion-expr",
+ "prost",
+ "prost-build",
+]
+
+[[package]]
 name = "datafusion-row"
 version = "12.0.0"
 source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=d84ea9c79c9e83ff0b4dadf8880a4983af59ef48#d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
@@ -2625,6 +2638,7 @@ dependencies = [
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
  "df_operator",
  "log",
  "meta_client",

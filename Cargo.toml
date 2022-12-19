@@ -116,6 +116,10 @@ rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
 git = "https://github.com/CeresDB/arrow-datafusion.git"
 rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
 
+[workspace.dependencies.datafusion-proto]
+git = "https://github.com/CeresDB/arrow-datafusion.git"
+rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
+
 [dependencies]
 analytic_engine = { workspace = true }
 catalog = { workspace = true }
