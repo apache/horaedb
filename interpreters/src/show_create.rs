@@ -10,7 +10,7 @@ use arrow::{
 use query_engine::executor::RecordBatchVec;
 use snafu::ensure;
 use sql::{ast::ShowCreateObject, plan::ShowCreatePlan};
-use table_engine::table::TableRef;
+use table_engine::{partition::PartitionInfo, table::TableRef};
 
 use crate::{
     interpreter::Output,
@@ -63,9 +63,10 @@ impl ShowCreateInterpreter {
     fn render_table_sql(table_ref: TableRef) -> String {
         //TODO(boyan) pretty output
         format!(
-            "CREATE TABLE `{}` ({}) ENGINE={}{}",
+            "CREATE TABLE `{}` ({}){} ENGINE={}{}",
             table_ref.name(),
             Self::render_columns_and_constrains(&table_ref),
+            Self::render_partitions(&table_ref),
             table_ref.engine_type(),
             Self::render_options(table_ref.options())
         )
@@ -99,6 +100,26 @@ impl ShowCreateInterpreter {
         res += format!("PRIMARY KEY({}), ", keys.join(",")).as_str();
         res += format!("TIMESTAMP KEY({})", timestamp_key).as_str();
 
+        res
+    }
+
+    fn render_partitions(table_ref: &TableRef) -> String {
+        let mut res = String::new();
+        let partition_info = table_ref.partition_info();
+        if partition_info.is_none() {
+            return res;
+        }
+        let partition_info = partition_info.unwrap();
+        match partition_info {
+            PartitionInfo::Hash(v) => {
+                res += format!(
+                    " PARTITION BY HASH({}) PARTITIONS {}",
+                    v.columns.join(","),
+                    v.definitions.len()
+                )
+                .as_str()
+            }
+        }
         res
     }
 
