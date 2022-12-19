@@ -67,7 +67,7 @@ pub enum Error {
 
     #[snafu(display("Failed to apply table meta update, err:{}", source))]
     ApplyUpdate {
-        source: crate::meta::meta_data::Error,
+        source: Box<crate::meta::meta_data::Error>,
     },
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
@@ -642,6 +642,7 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
                 MetaUpdateLogEntry::Normal(meta_update) => {
                     manifest_builder
                         .apply_update(meta_update)
+                        .map_err(Box::new)
                         .context(ApplyUpdate)?;
                     original_logs_num += 1;
                 }
@@ -698,7 +699,10 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
             .into_iter()
             .chain(updates_after_snapshot.into_iter())
         {
-            manifest_builder.apply_update(update).context(ApplyUpdate)?;
+            manifest_builder
+                .apply_update(update)
+                .map_err(Box::new)
+                .context(ApplyUpdate)?;
         }
 
         Ok(Snapshot {
