@@ -113,8 +113,8 @@ impl ShowCreateInterpreter {
         match partition_info {
             PartitionInfo::Hash(v) => {
                 res += format!(
-                    " PARTITION BY HASH({}) PARTITIONS {}",
-                    v.columns.join(","),
+                    " PARTITION BY HASH({:?}) PARTITIONS {}",
+                    v.expr,
                     v.definitions.len()
                 )
                 .as_str()

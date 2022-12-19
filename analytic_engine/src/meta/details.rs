@@ -763,6 +763,7 @@ impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
 mod tests {
     use std::{collections::HashMap, iter::FromIterator, path::PathBuf, sync::Arc, vec};
 
+    use bytes::Bytes;
     use common_types::{
         column_schema,
         datum::DatumKind,
@@ -1192,7 +1193,8 @@ mod tests {
                     name: "p0".to_string(),
                     origin_name: Some("region0".to_string()),
                 }],
-                columns: vec!["test".to_string()],
+                expr: Bytes::from("test"),
+                linear: false,
             }));
             let location = WalLocation::new(
                 DEFAULT_SHARD_ID as RegionId,

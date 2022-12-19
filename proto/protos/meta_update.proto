@@ -22,7 +22,8 @@ message Definition {
 
 message HashPartitionInfo {
   repeated Definition definitions = 1;
-  repeated string columns = 2;
+  bytes expr = 2;
+  bool linear = 3;
 }
 
 // Meta update for a new table

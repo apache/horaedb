@@ -4,6 +4,7 @@
 
 pub mod rule;
 
+use common_types::bytes::Bytes;
 use proto::meta_update as meta_pb;
 
 /// Info for how to partition table
@@ -29,7 +30,8 @@ pub struct Definition {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashPartitionInfo {
     pub definitions: Vec<Definition>,
-    pub columns: Vec<String>,
+    pub expr: Bytes,
+    pub linear: bool,
 }
 
 impl From<Definition> for meta_pb::Definition {
@@ -63,7 +65,8 @@ impl From<PartitionInfo> for meta_pb::add_table_meta::PartitionInfo {
         match partition_info {
             PartitionInfo::Hash(v) => Self::Hash(meta_pb::HashPartitionInfo {
                 definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                columns: v.columns,
+                expr: v.expr.to_vec(),
+                linear: v.linear,
             }),
         }
     }
@@ -74,7 +77,8 @@ impl From<meta_pb::add_table_meta::PartitionInfo> for PartitionInfo {
         match pb {
             meta_pb::add_table_meta::PartitionInfo::Hash(v) => Self::Hash(HashPartitionInfo {
                 definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                columns: v.columns,
+                expr: Bytes::from(v.expr),
+                linear: v.linear,
             }),
         }
     }
