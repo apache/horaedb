@@ -40,12 +40,20 @@ pub enum SstType {
     Parquet,
 }
 
+/// The frequency of query execution may decide some behavior in the sst reader,
+/// e.g. cache policy.
+#[derive(Debug, Copy, Clone)]
+pub enum ReadFrequency {
+    Once,
+    Frequent,
+}
+
 #[derive(Debug, Clone)]
 pub struct SstReaderOptions {
     pub sst_type: SstType,
     pub read_batch_row_num: usize,
     pub reverse: bool,
-    pub just_once: bool,
+    pub frequency: ReadFrequency,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,

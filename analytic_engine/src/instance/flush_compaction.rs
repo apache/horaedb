@@ -43,7 +43,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{SstBuilderOptions, SstReaderOptions, SstType},
+        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
         file::{self, FileMeta, SstMetaData},
     },
     table::{
@@ -914,7 +914,7 @@ impl SpaceStore {
                 sst_type: table_data.sst_type,
                 read_batch_row_num: table_options.num_rows_per_row_group,
                 reverse: false,
-                just_once: true,
+                frequency: ReadFrequency::Once,
                 projected_schema: projected_schema.clone(),
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),

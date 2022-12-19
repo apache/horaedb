@@ -14,7 +14,9 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
+        factory::{
+            FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstReaderOptions, SstType,
+        },
         file::{FileHandle, FilePurgeQueue, Request},
         meta_cache::MetaCacheRef,
     },
@@ -62,7 +64,7 @@ impl MergeSstBench {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
-            just_once: false,
+            frequency: ReadFrequency::Frequent,
             projected_schema,
             predicate,
             meta_cache: meta_cache.clone(),

@@ -34,7 +34,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{
     sst::{
-        factory::SstReaderOptions,
+        factory::{ReadFrequency, SstReaderOptions},
         file::{BloomFilter, SstMetaData},
         meta_cache::{MetaCacheRef, MetaData},
         metrics,
@@ -54,10 +54,8 @@ pub struct Reader<'a> {
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
-    /// If this field is set, it denotes such read is temporal and won't happen
-    /// again, e.g. reading triggered by compaction, which means no
-    /// need to do caching for it.
-    just_once: bool,
+    /// Current frequency decides the cache policy.
+    frequency: ReadFrequency,
     batch_size: usize,
 
     /// Init those fields in `init_if_necessary`
@@ -80,7 +78,7 @@ impl<'a> Reader<'a> {
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
-            just_once: options.just_once,
+            frequency: options.frequency,
             batch_size,
             meta_data: None,
             row_projector: None,
@@ -255,6 +253,13 @@ impl<'a> Reader<'a> {
         Ok(Arc::new(meta_data))
     }
 
+    fn need_update_cache(&self) -> bool {
+        match self.frequency {
+            ReadFrequency::Once => false,
+            ReadFrequency::Frequent => true,
+        }
+    }
+
     async fn read_sst_meta(&self) -> Result<MetaData> {
         if let Some(cache) = &self.meta_cache {
             if let Some(meta_data) = cache.get(self.path.as_ref()) {
@@ -264,7 +269,7 @@ impl<'a> Reader<'a> {
 
         // The metadata can't be found in the cache, and let's fetch it from the
         // storage.
-        let avoid_update_cache = self.just_once;
+        let avoid_update_cache = !self.need_update_cache();
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {

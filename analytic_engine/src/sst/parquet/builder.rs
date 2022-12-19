@@ -257,7 +257,9 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
+            factory::{
+                Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
+            },
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -341,7 +343,7 @@ mod tests {
                 sst_type: SstType::Parquet,
                 read_batch_row_num: 5,
                 reverse: false,
-                just_once: false,
+                frequency: ReadFrequency::Frequent,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,

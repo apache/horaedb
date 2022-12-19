@@ -5,7 +5,7 @@
 use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::sst::{
-    factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
+    factory::{Factory, FactoryImpl, ReadFrequency, SstReaderOptions, SstType},
     meta_cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
@@ -41,7 +41,7 @@ impl SstBench {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
-            just_once: false,
+            frequency: ReadFrequency::Frequent,
             projected_schema,
             predicate,
             meta_cache,
