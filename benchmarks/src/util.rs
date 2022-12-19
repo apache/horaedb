@@ -8,11 +8,11 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
-        factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
+        factory::{Factory, FactoryImpl, ReadFrequency, SstReaderOptions, SstType},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
         meta_cache::MetaCacheRef,
-        parquet::reader,
+        parquet::encoding,
     },
     table::sst_util,
 };
@@ -57,11 +57,12 @@ pub async fn meta_from_sst(
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
 ) -> SstMetaData {
-    let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
-        .await
-        .unwrap();
+    let get_result = store.get(sst_path).await.unwrap();
+    let chunk_reader = get_result.bytes().await.unwrap();
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
-    reader::read_sst_meta(&metadata).unwrap()
+    let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
+
+    encoding::decode_sst_meta_data(&kv_metas[0]).unwrap()
 }
 
 pub async fn schema_from_sst(
@@ -99,6 +100,7 @@ pub async fn load_sst_to_memtable(
         sst_type: SstType::Parquet,
         read_batch_row_num: 500,
         reverse: false,
+        frequency: ReadFrequency::Frequent,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,

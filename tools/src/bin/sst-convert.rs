@@ -5,7 +5,9 @@
 use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
-    sst::factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
+    sst::factory::{
+        Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
+    },
     table_options::{Compression, StorageFormat, StorageFormatOptions},
 };
 use anyhow::{Context, Result};
@@ -75,6 +77,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         sst_type: SstType::Parquet,
         read_batch_row_num: 8192,
         reverse: false,
+        frequency: ReadFrequency::Once,
         projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,

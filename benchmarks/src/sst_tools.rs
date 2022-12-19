@@ -15,8 +15,8 @@ use analytic_engine::{
     sst::{
         builder::RecordBatchStream,
         factory::{
-            Factory, FactoryImpl, FactoryRef as SstFactoryRef, SstBuilderOptions, SstReaderOptions,
-            SstType,
+            Factory, FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstBuilderOptions,
+            SstReaderOptions, SstType,
         },
         file::{self, FilePurgeQueue, SstMetaData},
         manager::FileId,
@@ -95,6 +95,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         sst_type: SstType::Parquet,
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
+        frequency: ReadFrequency::Once,
         projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
@@ -197,6 +198,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
+            frequency: ReadFrequency::Once,
             projected_schema: projected_schema.clone(),
             predicate: config.predicate.into_predicate(),
             meta_cache: None,

@@ -34,7 +34,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{
     sst::{
-        factory::SstReaderOptions,
+        factory::{ReadFrequency, SstReaderOptions},
         file::{BloomFilter, SstMetaData},
         meta_cache::{MetaCacheRef, MetaData},
         metrics,
@@ -54,6 +54,8 @@ pub struct Reader<'a> {
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
+    /// Current frequency decides the cache policy.
+    frequency: ReadFrequency,
     batch_size: usize,
 
     /// Init those fields in `init_if_necessary`
@@ -76,6 +78,7 @@ impl<'a> Reader<'a> {
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
+            frequency: options.frequency,
             batch_size,
             meta_data: None,
             row_projector: None,
@@ -225,7 +228,7 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
+        let meta_data = self.read_sst_meta().await?;
 
         let row_projector = self
             .projected_schema
@@ -238,57 +241,72 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_meta_data_from_storage(
-        storage: &ObjectStoreRef,
+        &self,
         object_meta: &ObjectMeta,
     ) -> Result<ParquetMetaDataRef> {
         let meta_data =
-            file_format::parquet::fetch_parquet_metadata(storage.as_ref(), object_meta, None)
+            file_format::parquet::fetch_parquet_metadata(self.storage.as_ref(), object_meta, None)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?;
+
         Ok(Arc::new(meta_data))
     }
 
-    async fn read_sst_meta(
-        storage: &ObjectStoreRef,
-        path: &Path,
-        meta_cache: &Option<MetaCacheRef>,
-    ) -> Result<MetaData> {
-        if let Some(cache) = meta_cache {
-            if let Some(meta_data) = cache.get(path.as_ref()) {
+    fn need_update_cache(&self) -> bool {
+        match self.frequency {
+            ReadFrequency::Once => false,
+            ReadFrequency::Frequent => true,
+        }
+    }
+
+    async fn read_sst_meta(&self) -> Result<MetaData> {
+        if let Some(cache) = &self.meta_cache {
+            if let Some(meta_data) = cache.get(self.path.as_ref()) {
                 return Ok(meta_data);
             }
         }
+
         // The metadata can't be found in the cache, and let's fetch it from the
         // storage.
+        let avoid_update_cache = !self.need_update_cache();
+        let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
-            let parquet_meta_data =
-                Self::load_meta_data_from_storage(storage, &object_meta).await?;
-            MetaData::try_new(&parquet_meta_data, object_meta.size)
+            let object_meta = self
+                .storage
+                .head(self.path)
+                .await
+                .context(ObjectStoreError {})?;
+            let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
+
+            let ignore_bloom_filter = avoid_update_cache && empty_predicate;
+            MetaData::try_new(&parquet_meta_data, object_meta.size, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };
 
-        // Update the cache if necessary.
-        if let Some(cache) = meta_cache {
-            cache.put(path.to_string(), meta_data.clone());
+        if avoid_update_cache || self.meta_cache.is_none() {
+            return Ok(meta_data);
         }
+
+        // Update the cache.
+        self.meta_cache
+            .as_ref()
+            .unwrap()
+            .put(self.path.to_string(), meta_data.clone());
 
         Ok(meta_data)
     }
 
     #[cfg(test)]
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache)
-            .await
-            .unwrap();
+        let meta_data = self.read_sst_meta().await.unwrap();
         meta_data.parquet().row_groups().to_vec()
     }
 }
 
-/// Options for `read_parallely` in [Reader]
+/// Options for `read_parallelly` in [Reader]
 #[derive(Debug, Clone, Copy)]
 struct ParallelismOptions {
     /// Whether allow parallelly reading.
