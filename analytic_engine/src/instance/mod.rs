@@ -101,6 +101,8 @@ pub struct SpaceStore {
     wal_manager: WalManagerRef,
     /// Sst storage.
     store: ObjectStoreRef,
+    /// Sst storage with read only storage cache.
+    store_with_readonly_cache: ObjectStoreRef,
     /// Sst factory.
     sst_factory: SstFactoryRef,
 
@@ -126,8 +128,12 @@ impl SpaceStore {
 }
 
 impl SpaceStore {
-    fn store_ref(&self) -> &ObjectStoreRef {
+    fn default_store(&self) -> &ObjectStoreRef {
         &self.store
+    }
+
+    fn store_with_readonly_cache(&self) -> &ObjectStoreRef {
+        &self.store_with_readonly_cache
     }
 
     /// List all tables of all spaces

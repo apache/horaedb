@@ -9,8 +9,12 @@ use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
-    metrics::StoreWithMetrics, prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
+    aliyun::AliyunOSS,
+    disk_cache::DiskCacheStore,
+    mem_cache::{MemCache, MemCacheStore},
+    metrics::StoreWithMetrics,
+    prefix::StoreWithPrefix,
+    LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
@@ -108,8 +112,16 @@ pub trait EngineBuilder: Send + Sync + Default {
         let (wal, manifest) = self
             .open_wal_and_manifest(config.clone(), engine_runtimes.clone())
             .await?;
-        let store = open_storage(config.storage.clone()).await?;
-        let instance = open_instance(config.clone(), engine_runtimes, wal, manifest, store).await?;
+        let opened_storages = open_storage(config.storage.clone()).await?;
+        let instance = open_instance(
+            config.clone(),
+            engine_runtimes,
+            wal,
+            manifest,
+            opened_storages.default_store,
+            opened_storages.store_with_readonly_cache,
+        )
+        .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 
@@ -340,6 +352,7 @@ async fn open_instance(
     wal_manager: WalManagerRef,
     manifest: ManifestRef,
     store: ObjectStoreRef,
+    store_with_readonly_cache: ObjectStoreRef,
 ) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -356,6 +369,7 @@ async fn open_instance(
         manifest,
         wal_manager,
         store,
+        store_with_readonly_cache,
         Arc::new(FactoryImpl::default()),
     )
     .await
@@ -363,9 +377,14 @@ async fn open_instance(
     Ok(instance)
 }
 
+struct OpenedStorages {
+    default_store: ObjectStoreRef,
+    store_with_readonly_cache: ObjectStoreRef,
+}
+
 // Build store in multiple layer, access speed decrease in turn.
-// MemCacheStore -> DiskCacheStore -> real ObjectStore(OSS/S3...)
-//
+// MemCacheStore           → DiskCacheStore → real ObjectStore(OSS/S3...)
+// MemCacheStore(ReadOnly) ↑
 // ```plaintext
 // +-------------------------------+
 // |    MemCacheStore              |
@@ -378,7 +397,7 @@ async fn open_instance(
 // ```
 fn open_storage(
     opts: StorageOptions,
-) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
+) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
@@ -428,16 +447,26 @@ fn open_storage(
         }
 
         if opts.mem_cache_capacity.as_bytes() > 0 {
-            store = Arc::new(
-                MemCacheStore::try_new(
+            let mem_cache = Arc::new(
+                MemCache::try_new(
                     opts.mem_cache_partition_bits,
                     NonZeroUsize::new(opts.mem_cache_capacity.as_bytes() as usize).unwrap(),
-                    store,
                 )
                 .context(OpenMemCache)?,
-            ) as _;
+            );
+            let default_store = Arc::new(MemCacheStore::new(mem_cache.clone(), store.clone())) as _;
+            let store_with_readonly_cache =
+                Arc::new(MemCacheStore::new_read_only(mem_cache, store)) as _;
+            Ok(OpenedStorages {
+                default_store,
+                store_with_readonly_cache,
+            })
+        } else {
+            let store_with_readonly_cache = store.clone();
+            Ok(OpenedStorages {
+                default_store: store,
+                store_with_readonly_cache,
+            })
         }
-
-        Ok(store)
     })
 }

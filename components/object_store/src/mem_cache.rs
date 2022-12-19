@@ -21,6 +21,8 @@ use snafu::{OptionExt, Snafu};
 use tokio::{io::AsyncWrite, sync::Mutex};
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
+use crate::ObjectStoreRef;
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("mem cache cap must large than 0",))]
@@ -72,15 +74,20 @@ impl Partition {
     }
 }
 
-struct MemCache {
+pub struct MemCache {
     /// Max memory this store can use
     mem_cap: NonZeroUsize,
     partitions: Vec<Arc<Partition>>,
     partition_mask: usize,
 }
 
+pub type MemCacheRef = Arc<MemCache>;
+
 impl MemCache {
-    fn try_new(partition_bits: usize, mem_cap: NonZeroUsize) -> std::result::Result<Self, Error> {
+    pub fn try_new(
+        partition_bits: usize,
+        mem_cap: NonZeroUsize,
+    ) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
         let cap_per_part = mem_cap
             .checked_mul(NonZeroUsize::new(partition_num).unwrap())
@@ -133,26 +140,38 @@ impl Display for MemCache {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
             .field("mask", &self.partition_mask)
-            .field("partitons", &self.partitions.len())
+            .field("partitions", &self.partitions.len())
             .finish()
     }
 }
 
+/// Assembled with [`MemCache`], the [`MemCacheStore`] can cache the loaded data
+/// from the `underlying_store` to avoid unnecessary data loading.
+///
+/// With the `read_only_cache` field, caller can control whether to do caching
+/// for the loaded data. BTW, all the accesses are forced to the order:
+/// `cache` -> `underlying_store`.
 pub struct MemCacheStore {
-    cache: MemCache,
-    underlying_store: Arc<dyn ObjectStore>,
+    cache: MemCacheRef,
+    underlying_store: ObjectStoreRef,
+    read_only_cache: bool,
 }
 
 impl MemCacheStore {
-    pub fn try_new(
-        partition_bits: usize,
-        mem_cap: NonZeroUsize,
-        underlying_store: Arc<dyn ObjectStore>,
-    ) -> std::result::Result<Self, Error> {
-        MemCache::try_new(partition_bits, mem_cap).map(|cache| Self {
+    pub fn new(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+        Self {
             cache,
             underlying_store,
-        })
+            read_only_cache: false,
+        }
+    }
+
+    pub fn new_read_only(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+        Self {
+            cache,
+            underlying_store,
+            read_only_cache: true,
+        }
     }
 
     fn cache_key(location: &Path, range: &Range<usize>) -> String {
@@ -209,6 +228,10 @@ impl ObjectStore for MemCacheStore {
         // TODO(chenxiang): What if two threads reach here? It's better to
         // pend one thread, and only let one to fetch data from underlying store.
         let bytes = self.underlying_store.get_range(location, range).await;
+        if self.read_only_cache {
+            return bytes;
+        }
+
         if let Ok(bytes) = &bytes {
             self.cache.insert(cache_key, bytes.clone()).await;
         }
@@ -252,7 +275,9 @@ mod test {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        MemCacheStore::try_new(bits, NonZeroUsize::new(mem_cap).unwrap(), local_store).unwrap()
+        let mem_cache =
+            Arc::new(MemCache::try_new(bits, NonZeroUsize::new(mem_cap).unwrap()).unwrap());
+        MemCacheStore::new(mem_cache, local_store)
     }
 
     #[tokio::test]
@@ -337,7 +362,7 @@ mod test {
 1: [partition.sst-100-105]
 2: []
 3: [partition.sst-0-5]"#,
-            store.cache.to_string().await
+            store.cache.as_ref().to_string().await
         );
 
         assert!(store

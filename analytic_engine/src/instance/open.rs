@@ -48,6 +48,7 @@ impl Instance {
         manifest: ManifestRef,
         wal_manager: WalManagerRef,
         store: ObjectStoreRef,
+        store_with_readonly_cache: ObjectStoreRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
@@ -55,6 +56,7 @@ impl Instance {
             manifest,
             wal_manager: wal_manager.clone(),
             store: store.clone(),
+            store_with_readonly_cache,
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
         });
