@@ -12,7 +12,7 @@ use analytic_engine::{
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
         meta_cache::MetaCacheRef,
-        parquet::reader,
+        parquet::encoding,
     },
     table::sst_util,
 };
@@ -57,11 +57,12 @@ pub async fn meta_from_sst(
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
 ) -> SstMetaData {
-    let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
-        .await
-        .unwrap();
+    let get_result = store.get(sst_path).await.unwrap();
+    let chunk_reader = get_result.bytes().await.unwrap();
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
-    reader::read_sst_meta(&metadata).unwrap()
+    let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
+
+    encoding::decode_sst_meta_data(&kv_metas[0]).unwrap()
 }
 
 pub async fn schema_from_sst(

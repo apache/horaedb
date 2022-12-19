@@ -258,7 +258,7 @@ mod tests {
         row_iter::tests::build_record_batch_with_key,
         sst::{
             factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
-            parquet::{reader::ParquetSstReader, AsyncParquetReader},
+            parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
         table_options,
@@ -280,26 +280,6 @@ mod tests {
         runtime: Arc<Runtime>,
         num_rows_per_row_group: usize,
         expected_num_rows: Vec<i64>,
-    ) {
-        parquet_write_and_then_read_back_inner(
-            runtime.clone(),
-            num_rows_per_row_group,
-            expected_num_rows.clone(),
-            false,
-        );
-        parquet_write_and_then_read_back_inner(
-            runtime,
-            num_rows_per_row_group,
-            expected_num_rows,
-            true,
-        );
-    }
-
-    fn parquet_write_and_then_read_back_inner(
-        runtime: Arc<Runtime>,
-        num_rows_per_row_group: usize,
-        expected_num_rows: Vec<i64>,
-        async_reader: bool,
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
@@ -370,7 +350,7 @@ mod tests {
                 background_read_parallelism: 1,
             };
 
-            let mut reader: Box<dyn SstReader + Send> = if async_reader {
+            let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader =
                     AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
                 let mut sst_meta_readback = {
@@ -383,28 +363,6 @@ mod tests {
                 // bloom filter is built insider sst writer, so overwrite to default for
                 // comparsion
                 sst_meta_readback.bloom_filter = Default::default();
-                assert_eq!(&sst_meta_readback, &sst_meta);
-                assert_eq!(
-                    expected_num_rows,
-                    reader
-                        .row_groups()
-                        .await
-                        .iter()
-                        .map(|g| g.num_rows())
-                        .collect::<Vec<_>>()
-                );
-
-                Box::new(reader)
-            } else {
-                let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-                let sst_meta_readback = {
-                    let mut meta = reader.meta_data().await.unwrap().clone();
-                    // bloom filter is built insider sst writer, so overwrite to default for
-                    // comparsion
-                    meta.bloom_filter = Default::default();
-                    meta
-                };
-
                 assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,

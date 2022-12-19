@@ -13,10 +13,7 @@ use crate::{
     sst::{
         builder::SstBuilder,
         meta_cache::MetaCacheRef,
-        parquet::{
-            builder::ParquetSstBuilder, reader::ParquetSstReader, AsyncParquetReader,
-            ThreadedReader,
-        },
+        parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
     },
     table_options::Compression,
@@ -80,18 +77,13 @@ impl Factory for FactoryImpl {
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         match options.sst_type {
             SstType::Parquet => {
-                // FIXME: remove sync reader before 1.0
-                if std::env::var("ENABLE_SYNC_PARQUET_READER").unwrap_or_default() == "true" {
-                    Some(Box::new(ParquetSstReader::new(path, storage, options)))
-                } else {
-                    let reader = AsyncParquetReader::new(path, storage, options);
-                    let reader = ThreadedReader::new(
-                        reader,
-                        options.runtime.clone(),
-                        options.background_read_parallelism,
-                    );
-                    Some(Box::new(reader))
-                }
+                let reader = AsyncParquetReader::new(path, storage, options);
+                let reader = ThreadedReader::new(
+                    reader,
+                    options.runtime.clone(),
+                    options.background_read_parallelism,
+                );
+                Some(Box::new(reader))
             }
         }
     }
