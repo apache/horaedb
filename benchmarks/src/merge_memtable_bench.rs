@@ -193,6 +193,7 @@ fn mock_sst_reader_options(
         sst_type: SstType::Parquet,
         read_batch_row_num: 500,
         reverse: false,
+        just_once: false,
         projected_schema,
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,

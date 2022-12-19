@@ -361,6 +361,7 @@ mod tests {
                 sst_type: SstType::Parquet,
                 read_batch_row_num: 5,
                 reverse: false,
+                just_once: false,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,

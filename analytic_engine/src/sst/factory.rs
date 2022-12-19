@@ -48,6 +48,7 @@ pub struct SstReaderOptions {
     pub sst_type: SstType,
     pub read_batch_row_num: usize,
     pub reverse: bool,
+    pub just_once: bool,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,

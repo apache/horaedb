@@ -156,6 +156,7 @@ impl Instance {
             sst_type: table_data.sst_type,
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
+            just_once: false,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
@@ -219,6 +220,7 @@ impl Instance {
             read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
+            just_once: false,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),

@@ -41,6 +41,7 @@ impl SstBench {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
+            just_once: false,
             projected_schema,
             predicate,
             meta_cache,

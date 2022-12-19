@@ -99,6 +99,7 @@ pub async fn load_sst_to_memtable(
         sst_type: SstType::Parquet,
         read_batch_row_num: 500,
         reverse: false,
+        just_once: false,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,

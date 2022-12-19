@@ -54,6 +54,10 @@ pub struct Reader<'a> {
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
+    /// If this field is set, it denotes such read is temporal and won't happen
+    /// again, e.g. reading triggered by compaction, which means no
+    /// need to do caching for it.
+    just_once: bool,
     batch_size: usize,
 
     /// Init those fields in `init_if_necessary`
@@ -76,6 +80,7 @@ impl<'a> Reader<'a> {
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
+            just_once: options.just_once,
             batch_size,
             meta_data: None,
             row_projector: None,
@@ -225,7 +230,15 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache).await?;
+        let ignore_bloom_filter = self.predicate.exprs().is_empty();
+        let meta_data = Self::read_sst_meta(
+            self.storage,
+            self.path,
+            &self.meta_cache,
+            self.just_once,
+            ignore_bloom_filter,
+        )
+        .await?;
 
         let row_projector = self
             .projected_schema
@@ -253,6 +266,8 @@ impl<'a> Reader<'a> {
         storage: &ObjectStoreRef,
         path: &Path,
         meta_cache: &Option<MetaCacheRef>,
+        avoid_update_cache: bool,
+        empty_predicate: bool,
     ) -> Result<MetaData> {
         if let Some(cache) = meta_cache {
             if let Some(meta_data) = cache.get(path.as_ref()) {
@@ -266,24 +281,32 @@ impl<'a> Reader<'a> {
             let object_meta = storage.head(path).await.context(ObjectStoreError {})?;
             let parquet_meta_data =
                 Self::load_meta_data_from_storage(storage, &object_meta).await?;
-            MetaData::try_new(&parquet_meta_data, object_meta.size)
+
+            let ignore_bloom_filter = avoid_update_cache && empty_predicate;
+            MetaData::try_new(&parquet_meta_data, object_meta.size, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };
 
-        // Update the cache if necessary.
-        if let Some(cache) = meta_cache {
-            cache.put(path.to_string(), meta_data.clone());
+        if avoid_update_cache || meta_cache.is_none() {
+            return Ok(meta_data);
         }
+
+        // Update the cache.
+        meta_cache
+            .as_ref()
+            .unwrap()
+            .put(path.to_string(), meta_data.clone());
 
         Ok(meta_data)
     }
 
     #[cfg(test)]
     pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let meta_data = Self::read_sst_meta(self.storage, self.path, &self.meta_cache)
-            .await
-            .unwrap();
+        let meta_data =
+            Self::read_sst_meta(self.storage, self.path, &self.meta_cache, false, false)
+                .await
+                .unwrap();
         meta_data.parquet().row_groups().to_vec()
     }
 }

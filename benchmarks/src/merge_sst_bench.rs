@@ -62,6 +62,7 @@ impl MergeSstBench {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
+            just_once: false,
             projected_schema,
             predicate,
             meta_cache: meta_cache.clone(),
