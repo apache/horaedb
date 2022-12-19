@@ -57,6 +57,12 @@ impl Partition {
         guard.get(key).cloned()
     }
 
+    async fn peek(&self, key: &str) -> Option<Bytes> {
+        // FIXME: actually, here write lock is not necessary.
+        let guard = self.inner.lock().await;
+        guard.peek(key).cloned()
+    }
+
     async fn insert(&self, key: String, value: Bytes) {
         let mut guard = self.inner.lock().await;
         // don't care error now.
@@ -114,6 +120,11 @@ impl MemCache {
         partition.get(key).await
     }
 
+    async fn peek(&self, key: &str) -> Option<Bytes> {
+        let partition = self.locate_partition(key);
+        partition.peek(key).await
+    }
+
     async fn insert(&self, key: String, value: Bytes) {
         let partition = self.locate_partition(&key);
         partition.insert(key, value).await;
@@ -154,7 +165,7 @@ impl Display for MemCache {
 pub struct MemCacheStore {
     cache: MemCacheRef,
     underlying_store: ObjectStoreRef,
-    read_only_cache: bool,
+    readonly_cache: bool,
 }
 
 impl MemCacheStore {
@@ -163,7 +174,7 @@ impl MemCacheStore {
         Self {
             cache,
             underlying_store,
-            read_only_cache: false,
+            readonly_cache: false,
         }
     }
 
@@ -172,12 +183,39 @@ impl MemCacheStore {
         Self {
             cache,
             underlying_store,
-            read_only_cache: true,
+            readonly_cache: true,
         }
     }
 
     fn cache_key(location: &Path, range: &Range<usize>) -> String {
         format!("{}-{}-{}", location, range.start, range.end)
+    }
+
+    async fn get_range_with_rw_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        // TODO(chenxiang): What if there are some overlapping range in cache?
+        // A request with range [5, 10) can also use [0, 20) cache
+        let cache_key = Self::cache_key(location, &range);
+        if let Some(bytes) = self.cache.get(&cache_key).await {
+            return Ok(bytes);
+        }
+
+        // TODO(chenxiang): What if two threads reach here? It's better to
+        // pend one thread, and only let one to fetch data from underlying store.
+        let bytes = self.underlying_store.get_range(location, range).await?;
+        self.cache.insert(cache_key, bytes.clone()).await;
+
+        Ok(bytes)
+    }
+
+    async fn get_range_with_ro_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let cache_key = Self::cache_key(location, &range);
+        if let Some(bytes) = self.cache.peek(&cache_key).await {
+            return Ok(bytes);
+        }
+
+        // TODO(chenxiang): What if two threads reach here? It's better to
+        // pend one thread, and only let one to fetch data from underlying store.
+        self.underlying_store.get_range(location, range).await
     }
 }
 
@@ -220,25 +258,11 @@ impl ObjectStore for MemCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        // TODO(chenxiang): What if there are some overlapping range in cache?
-        // A request with range [5, 10) can also use [0, 20) cache
-        let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.get(&cache_key).await {
-            return Ok(bytes);
+        if self.readonly_cache {
+            self.get_range_with_ro_cache(location, range).await
+        } else {
+            self.get_range_with_rw_cache(location, range).await
         }
-
-        // TODO(chenxiang): What if two threads reach here? It's better to
-        // pend one thread, and only let one to fetch data from underlying store.
-        let bytes = self.underlying_store.get_range(location, range).await;
-        if self.read_only_cache {
-            return bytes;
-        }
-
-        if let Ok(bytes) = &bytes {
-            self.cache.insert(cache_key, bytes.clone()).await;
-        }
-
-        bytes
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
