@@ -159,8 +159,8 @@ impl RecordBytesReader {
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
         self.partition_record_batch().await?;
-        let filters = self.build_bloom_filter();
-        self.meta_data.bloom_filter = filters;
+        let filter = self.build_bloom_filter();
+        self.meta_data.bloom_filter = Some(filter);
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             self.num_rows_per_row_group,
