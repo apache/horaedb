@@ -644,7 +644,7 @@ impl Instance {
                     .new_sst_builder(
                         &sst_builder_options_clone,
                         &sst_file_path,
-                        store.store_ref(),
+                        store.default_store(),
                     )
                     .context(InvalidSstType { sst_type })?;
 
@@ -754,7 +754,7 @@ impl Instance {
             .new_sst_builder(
                 &sst_builder_options,
                 &sst_file_path,
-                self.space_store.store_ref(),
+                self.space_store.default_store(),
             )
             .context(InvalidSstType {
                 sst_type: table_data.sst_type,
@@ -930,7 +930,7 @@ impl SpaceStore {
                 predicate: Arc::new(Predicate::empty()),
                 sst_factory: &self.sst_factory,
                 sst_reader_options,
-                store: self.store_ref(),
+                store: self.store_with_readonly_cache(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
                 reverse: false,
@@ -966,7 +966,7 @@ impl SpaceStore {
         };
         let mut sst_builder = self
             .sst_factory
-            .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_ref())
+            .new_sst_builder(&sst_builder_options, &sst_file_path, self.default_store())
             .context(InvalidSstType {
                 sst_type: table_data.sst_type,
             })?;
