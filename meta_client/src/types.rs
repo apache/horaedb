@@ -314,9 +314,9 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
             engine: req.engine,
             create_if_not_exist: req.create_if_not_exist,
             options: req.options,
-            partition_info: req.partition_info.map(|v| meta_service_pb::PartitionInfo {
-                names: v.names,
-            }),
+            partition_info: req
+                .partition_info
+                .map(|v| meta_service_pb::PartitionInfo { names: v.names }),
         }
     }
 }

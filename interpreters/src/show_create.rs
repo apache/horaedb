@@ -66,7 +66,7 @@ impl ShowCreateInterpreter {
             "CREATE TABLE `{}` ({}){} ENGINE={}{}",
             table_ref.name(),
             Self::render_columns_and_constrains(&table_ref),
-            Self::render_partitions(&table_ref),
+            Self::render_partition_info(&table_ref),
             table_ref.engine_type(),
             Self::render_options(table_ref.options())
         )
@@ -103,7 +103,7 @@ impl ShowCreateInterpreter {
         res
     }
 
-    fn render_partitions(table_ref: &TableRef) -> String {
+    fn render_partition_info(table_ref: &TableRef) -> String {
         let mut res = String::new();
         let partition_info = table_ref.partition_info();
         if partition_info.is_none() {

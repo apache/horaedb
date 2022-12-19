@@ -7,7 +7,7 @@ pub mod rule;
 use proto::meta_update as meta_pb;
 
 /// Info for how to partition table
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PartitionInfo {
     Hash(HashPartitionInfo),
 }
@@ -26,7 +26,7 @@ pub struct Definition {
     pub origin_name: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashPartitionInfo {
     pub definitions: Vec<Definition>,
     pub columns: Vec<String>,
