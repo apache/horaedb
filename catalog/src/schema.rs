@@ -12,6 +12,7 @@ use common_types::{
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},
+    partition::PartitionInfo,
     table::{SchemaId, TableId, TableRef},
 };
 
@@ -219,6 +220,8 @@ pub struct CreateTableRequest {
     pub shard_id: ShardId,
     /// Cluster version of shard
     pub cluster_version: ClusterVersion,
+    /// Partition info if this is a partitioned table
+    pub partition_info: Option<PartitionInfo>,
 }
 
 impl CreateTableRequest {
@@ -230,12 +233,12 @@ impl CreateTableRequest {
             table_name: self.table_name,
             table_id,
             table_schema: self.table_schema,
-            partition_info: None,
             engine: self.engine,
             options: self.options,
             state: self.state,
             shard_id: self.shard_id,
             cluster_version: self.cluster_version,
+            partition_info: self.partition_info,
         }
     }
 }

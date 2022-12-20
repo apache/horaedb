@@ -7,7 +7,7 @@ use catalog::{
 };
 use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
 use log::warn;
-use snafu::{OptionExt, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::{TableEngineRef, TableState};
 
@@ -15,8 +15,8 @@ use crate::{
     context::Context,
     interpreter::Output,
     table_manipulator::{
-        CatalogNotExists, FindCatalog, FindSchema, Result, SchemaCreateTable, SchemaDropTable,
-        SchemaNotExists, TableManipulator,
+        CatalogNotExists, FindCatalog, FindSchema, PartitionTableNotSupported, Result,
+        SchemaCreateTable, SchemaDropTable, SchemaNotExists, TableManipulator,
     },
 };
 
@@ -38,6 +38,10 @@ impl TableManipulator for TableManipulatorImpl {
         plan: CreateTablePlan,
         table_engine: TableEngineRef,
     ) -> Result<Output> {
+        ensure!(
+            plan.partition_info.is_none(),
+            PartitionTableNotSupported { table: plan.table }
+        );
         let default_catalog = ctx.default_catalog();
         let catalog = self
             .catalog_manager
@@ -65,6 +69,7 @@ impl TableManipulator for TableManipulatorImpl {
             table_schema,
             if_not_exists,
             options,
+            ..
         } = plan;
 
         let request = CreateTableRequest {
@@ -78,6 +83,7 @@ impl TableManipulator for TableManipulatorImpl {
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
             cluster_version: DEFAULT_CLUSTER_VERSION,
+            partition_info: None,
         };
 
         let opts = CreateOptions {

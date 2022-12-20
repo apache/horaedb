@@ -931,6 +931,7 @@ mod tests {
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
             cluster_version: DEFAULT_CLUSTER_VERSION,
+            partition_info: None,
         }
     }
 

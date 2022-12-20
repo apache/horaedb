@@ -4,6 +4,8 @@
 //!
 //! Inspired by fuse-query: <https://github.com/datafuselabs/fuse-query> and ClickHouse
 
+#![feature(string_remove_matches)]
+
 #[macro_use]
 extern crate common_util;
 

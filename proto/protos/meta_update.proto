@@ -13,6 +13,19 @@ message AddSpaceMeta {
   string space_name = 2;
 }
 
+message Definition {
+  string name = 1;
+  oneof origin_name{
+    string origin = 2;
+  }
+}
+
+message HashPartitionInfo {
+  repeated Definition definitions = 1;
+  bytes expr = 2;
+  bool linear = 3;
+}
+
 // Meta update for a new table
 message AddTableMeta {
   uint32 space_id = 1;
@@ -22,6 +35,9 @@ message AddTableMeta {
   common.TableSchema schema = 4;
   // Options of the table
   analytic_common.TableOptions options = 5;
+  oneof partition_info {
+    HashPartitionInfo hash  = 6;
+  }
 }
 
 // Meta update for dropping a table

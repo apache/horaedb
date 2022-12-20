@@ -26,6 +26,7 @@ use snafu::{Backtrace, Snafu};
 
 use crate::{
     engine::TableState,
+    partition::PartitionInfo,
     predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
@@ -392,6 +393,10 @@ pub trait Table: std::fmt::Debug {
 
     /// Options of this table.
     fn options(&self) -> HashMap<String, String>;
+
+    fn partition_info(&self) -> Option<PartitionInfo> {
+        None
+    }
 
     /// Engine type of this table.
     fn engine_type(&self) -> &str;

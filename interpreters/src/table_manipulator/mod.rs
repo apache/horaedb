@@ -64,6 +64,9 @@ pub enum Error {
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("Failed to create partition table without ceresmeta, table:{}", table))]
+    PartitionTableNotSupported { table: String },
 }
 
 define_result!(Error);

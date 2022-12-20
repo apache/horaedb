@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use common_types::schema::SchemaEncoder;
 use log::info;
 use meta_client::{
-    types::{CreateTableRequest, DropTableRequest},
+    types::{CreateTableRequest, DropTableRequest, PartitionInfo},
     MetaClientRef,
 };
 use snafu::ResultExt;
 use sql::plan::{CreateTablePlan, DropTablePlan};
-use table_engine::engine::TableEngineRef;
+use table_engine::{engine::TableEngineRef, partition::format_sub_partition_table_name};
 
 use crate::{
     context::Context,
@@ -45,6 +45,13 @@ impl TableManipulator for TableManipulatorImpl {
                 ),
             })?;
 
+        let partition_info = plan.partition_info.map(|v| {
+            v.get_definitions()
+                .iter()
+                .map(|def| format_sub_partition_table_name(&plan.table, &def.name))
+                .collect::<Vec<String>>()
+        });
+
         let req = CreateTableRequest {
             schema_name: ctx.default_schema().to_string(),
             name: plan.table,
@@ -52,6 +59,7 @@ impl TableManipulator for TableManipulatorImpl {
             engine: plan.engine,
             create_if_not_exist: plan.if_not_exists,
             options: plan.options,
+            partition_info: partition_info.map(|v| PartitionInfo { names: v }),
         };
 
         let resp = self
