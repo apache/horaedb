@@ -39,7 +39,7 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
-    "tests/harness",
+    "tests/sqlness",
     "tools",
     "wal",
 ]
@@ -100,7 +100,7 @@ table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
 tracing_util = { path = "components/tracing_util" }
 tonic = "0.8.1"
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.21", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
 
@@ -135,6 +135,7 @@ meta_client = { workspace = true }
 query_engine = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
+sort = "0.8.5"
 table_engine = { workspace = true }
 tracing_util = { workspace = true }
 

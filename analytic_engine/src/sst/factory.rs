@@ -13,10 +13,7 @@ use crate::{
     sst::{
         builder::SstBuilder,
         meta_cache::MetaCacheRef,
-        parquet::{
-            builder::ParquetSstBuilder, reader::ParquetSstReader, AsyncParquetReader,
-            ThreadedReader,
-        },
+        parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
     },
     table_options::Compression,
@@ -43,15 +40,30 @@ pub enum SstType {
     Parquet,
 }
 
+/// The frequency of query execution may decide some behavior in the sst reader,
+/// e.g. cache policy.
+#[derive(Debug, Copy, Clone)]
+pub enum ReadFrequency {
+    Once,
+    Frequent,
+}
+
 #[derive(Debug, Clone)]
 pub struct SstReaderOptions {
     pub sst_type: SstType,
     pub read_batch_row_num: usize,
     pub reverse: bool,
+    pub frequency: ReadFrequency,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
+
+    /// The max number of rows in one row group
+    pub num_rows_per_row_group: usize,
+
+    /// The suggested parallelism while reading sst
+    pub background_read_parallelism: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -73,14 +85,13 @@ impl Factory for FactoryImpl {
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         match options.sst_type {
             SstType::Parquet => {
-                // FIXME: remove sync reader before 1.0
-                if std::env::var("ENABLE_SYNC_PARQUET_READER").unwrap_or_default() == "true" {
-                    Some(Box::new(ParquetSstReader::new(path, storage, options)))
-                } else {
-                    let reader = AsyncParquetReader::new(path, storage, options);
-                    let reader = ThreadedReader::new(reader, options.runtime.clone());
-                    Some(Box::new(reader))
-                }
+                let reader = AsyncParquetReader::new(path, storage, options);
+                let reader = ThreadedReader::new(
+                    reader,
+                    options.runtime.clone(),
+                    options.background_read_parallelism,
+                );
+                Some(Box::new(reader))
             }
         }
     }

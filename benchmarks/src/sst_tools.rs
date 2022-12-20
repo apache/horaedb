@@ -15,8 +15,8 @@ use analytic_engine::{
     sst::{
         builder::RecordBatchStream,
         factory::{
-            Factory, FactoryImpl, FactoryRef as SstFactoryRef, SstBuilderOptions, SstReaderOptions,
-            SstType,
+            Factory, FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstBuilderOptions,
+            SstReaderOptions, SstType,
         },
         file::{self, FilePurgeQueue, SstMetaData},
         manager::FileId,
@@ -95,10 +95,13 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         sst_type: SstType::Parquet,
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
+        frequency: ReadFrequency::Once,
         projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         runtime,
+        background_read_parallelism: 1,
+        num_rows_per_row_group: config.read_batch_row_num,
     };
 
     let record_batch_stream =
@@ -182,6 +185,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let schema = util::schema_from_sst(&store, &first_sst_path, &None).await;
     let iter_options = IterOptions {
         batch_size: config.read_batch_row_num,
+        sst_background_read_parallelism: 1,
     };
 
     let request_id = RequestId::next_id();
@@ -194,10 +198,13 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
+            frequency: ReadFrequency::Once,
             projected_schema: projected_schema.clone(),
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
             runtime: runtime.clone(),
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
+            num_rows_per_row_group: config.read_batch_row_num,
         };
 
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());

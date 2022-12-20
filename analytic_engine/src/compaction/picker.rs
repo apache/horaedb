@@ -159,7 +159,7 @@ fn find_uncompact_files(
         .iter_ssts_at_level(level)
         // Only use files not being compacted and not expired.
         .filter(|file| !file.being_compacted() && !file.time_range().is_expired(expire_time))
-        .map(Clone::clone)
+        .cloned()
         .collect()
 }
 
@@ -169,7 +169,7 @@ fn find_uncompact_files(
 pub struct SizeTieredPicker {}
 
 /// Similar size files group
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Bucket {
     pub avg_size: usize,
     pub files: Vec<FileHandle>,
@@ -206,10 +206,8 @@ impl Bucket {
 
     #[inline]
     fn hotness(f: &FileHandle) -> f64 {
-        let row_num = match f.row_num() {
-            0 => 1, //prevent NAN hotness
-            v => v,
-        };
+        //prevent NAN hotness
+        let row_num = f.row_num().max(1);
         f.read_meter().h2_rate() / (row_num as f64)
     }
 }
@@ -242,8 +240,12 @@ impl LevelPicker for SizeTieredPicker {
                     opts.min_sstable_size.as_bytes() as f32,
                 );
 
-                let files =
-                    Self::most_interesting_bucket(buckets, opts.min_threshold, opts.max_threshold);
+                let files = Self::most_interesting_bucket(
+                    buckets,
+                    opts.min_threshold,
+                    opts.max_threshold,
+                    opts.max_input_sstable_size.as_bytes(),
+                );
 
                 if files.is_some() {
                     info!(
@@ -311,12 +313,19 @@ impl SizeTieredPicker {
         buckets: Vec<Bucket>,
         min_threshold: usize,
         max_threshold: usize,
+        max_input_sstable_size: u64,
     ) -> Option<Vec<FileHandle>> {
+        debug!(
+            "Find most_interesting_bucket buckets:{:?}, min:{}, max:{}",
+            buckets, min_threshold, max_threshold
+        );
+
         let mut pruned_bucket_and_hotness = Vec::with_capacity(buckets.len());
         // skip buckets containing less than min_threshold sstables,
         // and limit other buckets to max_threshold sstables
         for bucket in buckets {
-            let (bucket, hotness) = Self::trim_to_threshold_with_hotness(bucket, max_threshold);
+            let (bucket, hotness) =
+                Self::trim_to_threshold_with_hotness(bucket, max_threshold, max_input_sstable_size);
             if bucket.files.len() >= min_threshold {
                 pruned_bucket_and_hotness.push((bucket, hotness));
             }
@@ -370,7 +379,11 @@ impl SizeTieredPicker {
         files_by_segment
     }
 
-    fn trim_to_threshold_with_hotness(bucket: Bucket, max_threshold: usize) -> (Bucket, f64) {
+    fn trim_to_threshold_with_hotness(
+        bucket: Bucket,
+        max_threshold: usize,
+        max_input_sstable_size: u64,
+    ) -> (Bucket, f64) {
         let hotness_snapshot = bucket.get_hotness_map();
 
         // Sort by sstable hotness (descending).
@@ -384,9 +397,14 @@ impl SizeTieredPicker {
 
         // and then trim the coldest sstables off the end to meet the max_threshold
         let len = sorted_files.len();
+        let mut input_size = 0;
         let pruned_bucket: Vec<FileHandle> = sorted_files
             .into_iter()
             .take(std::cmp::min(max_threshold, len))
+            .take_while(|f| {
+                input_size += f.size();
+                input_size <= max_input_sstable_size
+            })
             .collect();
 
         // bucket hotness is the sum of the hotness of all sstable members
@@ -483,6 +501,7 @@ impl TimeWindowPicker {
                         buckets,
                         size_tiered_opts.min_threshold,
                         size_tiered_opts.max_threshold,
+                        size_tiered_opts.max_input_sstable_size.as_bytes(),
                     );
 
                     if files.is_some() {
@@ -587,11 +606,13 @@ mod tests {
         tests::build_schema,
         time::{TimeRange, Timestamp},
     };
+    use tokio::sync::mpsc;
 
+    use super::*;
     use crate::{
-        compaction::{picker::PickerContext, CompactionStrategy, PickerManager},
+        compaction::PickerManager,
         sst::{
-            file::SstMetaData,
+            file::{FileMeta, FilePurgeQueue, SstMetaData},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
         },
     };
@@ -738,5 +759,61 @@ mod tests {
             assert_eq!(task.compaction_inputs[0].files[1].id(), 1);
             assert!(task.expired[0].files.is_empty());
         }
+    }
+
+    fn build_file_handles(sizes: Vec<u64>) -> Vec<FileHandle> {
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        sizes
+            .into_iter()
+            .map(|size| {
+                let file_meta = FileMeta {
+                    id: 1,
+                    meta: build_sst_meta_data(TimeRange::empty(), size),
+                };
+                let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
+                FileHandle::new(file_meta, queue)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_size_tiered_picker() {
+        let bucket = Bucket::with_files(build_file_handles(vec![100, 110, 200]));
+
+        let (out_bucket, _) =
+            SizeTieredPicker::trim_to_threshold_with_hotness(bucket.clone(), 10, 300);
+        // limited by max input size
+        assert_eq!(
+            vec![100, 110],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
+
+        // no limit
+        let (out_bucket, _) =
+            SizeTieredPicker::trim_to_threshold_with_hotness(bucket.clone(), 10, 3000);
+        assert_eq!(
+            vec![100, 110, 200],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
+
+        // limited by max_threshold
+        let (out_bucket, _) = SizeTieredPicker::trim_to_threshold_with_hotness(bucket, 2, 3000);
+        assert_eq!(
+            vec![100, 110],
+            out_bucket
+                .files
+                .iter()
+                .map(|f| f.size())
+                .collect::<Vec<_>>()
+        );
     }
 }

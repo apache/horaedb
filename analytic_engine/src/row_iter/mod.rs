@@ -28,17 +28,21 @@ const RECORD_BATCH_READ_BUF_SIZE: usize = 10;
 #[derive(Debug, Clone)]
 pub struct IterOptions {
     pub batch_size: usize,
+    pub sst_background_read_parallelism: usize,
 }
 
 impl IterOptions {
-    pub fn new(batch_size: usize) -> Self {
-        Self { batch_size }
+    pub fn new(batch_size: usize, sst_background_read_parallelism: usize) -> Self {
+        Self {
+            batch_size,
+            sst_background_read_parallelism,
+        }
     }
 }
 
 impl Default for IterOptions {
     fn default() -> Self {
-        Self::new(500)
+        Self::new(500, 1)
     }
 }
 
