@@ -157,7 +157,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
             query: &request.query,
         })?;
 
-    instance.limiter.should_limit(&plan).context(QueryBlock {
+    instance.limiter.try_limit(&plan).context(QueryBlock {
         query: &request.query,
     })?;
 

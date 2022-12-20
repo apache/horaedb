@@ -130,7 +130,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 
     ctx.instance
         .limiter
-        .should_limit(&plan)
+        .try_limit(&plan)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
