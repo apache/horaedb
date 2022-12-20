@@ -75,6 +75,7 @@ pub struct CreateTable {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Partition {
     Hash(HashPartition),
+    Key(KeyPartition),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -85,6 +86,13 @@ pub struct HashPartition {
     pub linear: bool,
     pub partition_num: u64,
     pub expr: sqlparser::ast::Expr,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub struct KeyPartition {
+    /// Key partition description: https://dev.mysql.com/doc/refman/5.7/en/partitioning-key.html
+    pub linear: bool,
+    pub partition_num: u64,
+    pub partition_key: ColumnDef,
 }
 
 #[derive(Debug, PartialEq, Eq)]

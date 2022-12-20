@@ -139,6 +139,7 @@ impl ShowCreateInterpreter {
                     .as_str()
                 }
             }
+            PartitionInfo::Key(_) => {}
         }
 
         // TODO: update datafusion to remove `#`.

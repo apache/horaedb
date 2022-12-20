@@ -7,10 +7,10 @@ use datafusion_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;
-use table_engine::partition::{Definition, HashPartitionInfo, PartitionInfo};
+use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
 
 use crate::{
-    ast::{HashPartition, Partition},
+    ast::{HashPartition, KeyPartition, Partition},
     planner::{ParsePartitionWithCause, Result, UnsupportedPartition},
 };
 
@@ -20,6 +20,7 @@ impl PartitionParser {
     pub fn parse(partition_stmt: Partition) -> Result<PartitionInfo> {
         Ok(match partition_stmt {
             Partition::Hash(stmt) => PartitionInfo::Hash(PartitionParser::parse_hash(stmt)?),
+            Partition::Key(stmt) => PartitionInfo::Key(PartitionParser::parse_key_partition(stmt)?),
         })
     }
 
@@ -52,6 +53,35 @@ impl PartitionParser {
             }
             .fail()
         }
+    }
+
+    pub fn parse_key_partition(key_partition_stmt: KeyPartition) -> Result<KeyPartitionInfo> {
+        let KeyPartition {
+            linear,
+            partition_num,
+            partition_key,
+        } = key_partition_stmt;
+
+        let definitions = parse_to_definition(partition_num);
+
+        // TODO: In order to convert to pb format for persistence, columnDef is
+        // converted to expression, maybe there is better way?
+        let partition_key = Expr::Column(Column::from_name(partition_key.name.value));
+        let partition_key = partition_key
+            .to_bytes()
+            .map_err(|e| Box::new(e) as _)
+            .context(ParsePartitionWithCause {
+                msg: format!(
+                    "found invalid expr in partition key, partition_key:{}",
+                    partition_key
+                ),
+            })?;
+
+        Ok(KeyPartitionInfo {
+            definitions,
+            partition_key,
+            linear,
+        })
     }
 }
 
