@@ -12,7 +12,7 @@ pub enum Operation {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RejectRequest {
+pub struct BlockRequest {
     operation: Operation,
     write_block_list: Vec<String>,
     read_block_list: Vec<String>,
@@ -20,7 +20,7 @@ pub struct RejectRequest {
 }
 
 #[derive(Serialize)]
-pub struct RejectResponse {
+pub struct BlockResponse {
     write_block_list: BTreeSet<String>,
     read_block_list: BTreeSet<String>,
     block_rules: BTreeSet<BlockRule>,
@@ -29,8 +29,8 @@ pub struct RejectResponse {
 pub async fn handle_block<Q: QueryExecutor + 'static>(
     _ctx: RequestContext,
     instance: InstanceRef<Q>,
-    request: RejectRequest,
-) -> Result<RejectResponse> {
+    request: BlockRequest,
+) -> Result<BlockResponse> {
     let limiter = &instance.limiter;
     match request.operation {
         Operation::Add => {
@@ -50,7 +50,7 @@ pub async fn handle_block<Q: QueryExecutor + 'static>(
         }
     }
 
-    Ok(RejectResponse {
+    Ok(BlockResponse {
         write_block_list: limiter
             .get_write_block_list()
             .into_iter()
