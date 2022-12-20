@@ -43,6 +43,7 @@ use crate::{
     },
     container::TableReference,
     parser,
+    partition::PartitionParser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
         ExistsTablePlan, InsertPlan, Plan, QueryPlan, ShowCreatePlan, ShowPlan, ShowTablesPlan,
@@ -55,6 +56,7 @@ use crate::{
 // handler and the error is usually caused by invalid/unsupported sql, which
 // should be easy to find out the reason.
 #[derive(Debug, Snafu)]
+#[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to generate datafusion plan, err:{}", source))]
     DatafusionPlan { source: DataFusionError },
@@ -229,6 +231,19 @@ pub enum Error {
         from: ArrowDataType,
         to: ArrowDataType,
     },
+
+    #[snafu(display(
+        "Failed to parse partition statement to partition info, msg:{}, err:{}",
+        msg,
+        source,
+    ))]
+    ParsePartitionWithCause {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Unsupported partition method, msg:{}", msg,))]
+    UnsupportedPartition { msg: String },
 }
 
 define_result!(Error);
@@ -517,6 +532,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             column_idxs_by_name,
         )?;
 
+        let partition_info = match stmt.partition {
+            Some(p) => Some(PartitionParser::parse(p)?),
+            None => None,
+        };
+
         let options = parse_options(stmt.options)?;
 
         // ensure default value options are valid
@@ -535,7 +555,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             table_schema,
             options,
             // TODO: sql parse supports `partition by` syntax.
-            partition_info: None,
+            partition_info,
         };
 
         debug!("Create table to plan, plan:{:?}", plan);

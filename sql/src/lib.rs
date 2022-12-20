@@ -11,6 +11,7 @@ pub mod ast;
 pub mod container;
 pub mod frontend;
 pub mod parser;
+pub(crate) mod partition;
 pub mod plan;
 pub mod planner;
 pub mod promql;

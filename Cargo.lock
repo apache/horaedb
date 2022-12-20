@@ -5586,6 +5586,7 @@ dependencies = [
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
  "df_operator",
  "hashbrown",
  "log",

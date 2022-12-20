@@ -85,5 +85,5 @@ impl From<meta_pb::add_table_meta::PartitionInfo> for PartitionInfo {
 }
 
 pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -> String {
-    format!("__{}_{}", table_name, partition_name)
+    format!("____{}_{}", table_name, partition_name)
 }

@@ -313,7 +313,7 @@ impl<'a> Parser<'a> {
         let (columns, constraints) = self.parse_columns()?;
 
         // PARTITION BY...
-        let partition = self.parse_and_check_partition(Keyword::PARTITION, &columns)?;
+        let partition = self.maybe_parse_and_check_partition(Keyword::PARTITION, &columns)?;
 
         // ENGINE = ...
         let engine = self.parse_table_engine()?;
@@ -518,7 +518,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_and_check_partition(
+    fn maybe_parse_and_check_partition(
         &mut self,
         keyword: Keyword,
         columns: &[ColumnDef],
@@ -545,7 +545,6 @@ impl<'a> Parser<'a> {
         Ok(None)
     }
 
-    // TODO: should we only support tag and timestamp as the partition key?
     fn maybe_parse_and_check_hash_partition(
         &mut self,
         columns: &[ColumnDef],
@@ -599,26 +598,10 @@ impl<'a> Parser<'a> {
         if let Expr::Nested(inner) = expr {
             match inner.as_ref() {
                 Expr::Identifier(id) => {
-                    let valid_column = columns.iter().find(|col| {
-                        if col.name == *id {
-                            matches!(col.data_type,
-                                DataType::Int(_)|
-                                DataType::TinyInt(_)|
-                                DataType::SmallInt(_)|
-                                DataType::BigInt(_)|
-                                DataType::UnsignedInt(_)|
-                                DataType::UnsignedTinyInt(_)|
-                                DataType::UnsignedSmallInt(_)|
-                                DataType::UnsignedBigInt(_))
-                        } else {
-                            false
-                        }
-                    });
-
-                    if valid_column.is_none() {
-                        parser_err!(format!("Expect column(type: int, tiny int, small int, big int), search by column name:{}", id))
-                    } else {
+                    if check_column_expr_validity_in_hash(id, columns) {
                         Ok(*inner)
+                    } else {
+                        parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{}", id))
                     }
                 },
 
@@ -648,6 +631,42 @@ impl<'a> Parser<'a> {
         }
         true
     }
+}
+
+// Valid column expr in hash should meet following conditions:
+// 1. column must be a tag, tsid + timestamp can be seen as the combined unique
+// key, and partition key must be the subset of it(for supporting overwritten
+// insert mode). About the reason, maybe you can see: https://docs.pingcap.com/zh/tidb/stable/partitioned-table
+//
+// 2. column's datatype must be integer(int, tiny int, small int, big int ...).
+//
+// TODO: we should consider the situation: no tag column is set.
+fn check_column_expr_validity_in_hash(column: &Ident, columns: &[ColumnDef]) -> bool {
+    let valid_column = columns.iter().find(|col| {
+        if col.name == *column {
+            let is_integer = matches!(
+                col.data_type,
+                DataType::Int(_)
+                    | DataType::TinyInt(_)
+                    | DataType::SmallInt(_)
+                    | DataType::BigInt(_)
+                    | DataType::UnsignedInt(_)
+                    | DataType::UnsignedTinyInt(_)
+                    | DataType::UnsignedSmallInt(_)
+                    | DataType::UnsignedBigInt(_)
+            );
+
+            let tag_option = col.options.iter().find(|opt| {
+                opt.option == ColumnOption::DialectSpecific(vec![Token::make_keyword(TAG)])
+            });
+
+            is_integer && tag_option.is_some()
+        } else {
+            false
+        }
+    });
+
+    valid_column.is_some()
 }
 
 // Build the tskey constraint from the column definitions if any.
@@ -1174,7 +1193,7 @@ mod tests {
     impl HashPartitionTableCases {
         // Basic
         fn basic() {
-            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
+            let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
             let statements = Parser::parse_sql(sql).unwrap();
             assert_eq!(statements.len(), 1);
             match &statements[0] {
@@ -1195,7 +1214,7 @@ mod tests {
         }
 
         fn default_partitions() {
-            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2)"#;
+            let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2)"#;
             let statements = Parser::parse_sql(sql).unwrap();
             assert_eq!(statements.len(), 1);
             match &statements[0] {
@@ -1217,7 +1236,7 @@ mod tests {
 
         // Partition with defined engine
         fn with_defined_engine() {
-            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4 ENGINE = XX"#;
+            let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4 ENGINE = XX"#;
             let statements = Parser::parse_sql(sql).unwrap();
             assert_eq!(statements.len(), 1);
             match &statements[0] {
@@ -1239,13 +1258,22 @@ mod tests {
 
         // Partition with error in HASH(...), should return error
         fn invalid_expr_in_hash() {
-            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2, c3) PARTITIONS 4"#;
+            // Unsupported expr
+            let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint TAG) PARTITION BY HASH(c2, c3) PARTITIONS 4"#;
             assert!(
                 matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
                     && format!("{:?}", e).contains("Expect nested expr"))
             );
 
+            // Column of invalid type
             let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c1) PARTITIONS 4"#;
+            assert!(
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
+                    && format!("{:?}", e).contains("Expect column"))
+            );
+
+            // Column not tag
+            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
             assert!(
                 matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
                     && format!("{:?}", e).contains("Expect column"))
@@ -1254,7 +1282,7 @@ mod tests {
 
         // Partitions with a invalid num
         fn invalid_partitions_num() {
-            let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 'string'"#;
+            let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 'string'"#;
             assert!(
                 matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
                     && format!("{:?}", e).contains("Expected literal number"))
