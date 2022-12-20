@@ -18,14 +18,14 @@ use serde::{
     ser::{SerializeMap, SerializeSeq},
     Serialize,
 };
-use snafu::ensure;
+use snafu::{ensure, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, Error::QueryBlock, InterpreterExec, ParseSql, TooMuchStmt},
+    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, TooMuchStmt},
     prelude::*,
 };
 
@@ -157,11 +157,9 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
             query: &request.query,
         })?;
 
-    if instance.limiter.should_limit(&plan) {
-        return Err(QueryBlock {
-            query: request.query.to_owned(),
-        });
-    }
+    instance.limiter.should_limit(&plan).context(QueryBlock {
+        query: &request.query,
+    })?;
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id)

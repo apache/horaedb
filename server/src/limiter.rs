@@ -2,13 +2,77 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use datafusion::catalog::TableReference;
+use datafusion::{catalog::TableReference, logical_plan::LogicalPlan};
 use serde_derive::Deserialize;
+use snafu::{Backtrace, Snafu};
 use sql::plan::Plan;
+
+#[derive(Snafu, Debug)]
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display(
+        "Queried table is blocked, table:{}.\nBacktrace:\n{}",
+        table,
+        backtrace
+    ))]
+    BlockedTable { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Query is blocked by rule:{:?}.\nBacktrace:\n{}", rule, backtrace))]
+    BlockedByRule {
+        rule: BlockRule,
+        backtrace: Backtrace,
+    },
+}
+
+define_result!(Error);
+
+#[derive(Clone, Copy, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub enum BlockRule {
+    QueryWithoutPredicate,
+}
+
+#[derive(Default, Clone, Deserialize, Debug)]
+#[serde(default)]
+pub struct LimiterConfig {
+    pub write_block_list: Vec<String>,
+    pub read_block_list: Vec<String>,
+    pub rules: Vec<BlockRule>,
+}
+
+impl BlockRule {
+    fn should_limit(&self, plan: &Plan) -> bool {
+        match self {
+            BlockRule::QueryWithoutPredicate => self.is_query_without_predicate(plan),
+        }
+    }
+
+    fn is_query_without_predicate(&self, plan: &Plan) -> bool {
+        if let Plan::Query(query) = plan {
+            Self::contains_scan_without_predicate(&query.df_plan)
+        } else {
+            false
+        }
+    }
+
+    fn contains_scan_without_predicate(plan: &LogicalPlan) -> bool {
+        if let LogicalPlan::TableScan(table_scan) = plan {
+            return table_scan.filters.is_empty();
+        }
+
+        for input in plan.inputs() {
+            if Self::contains_scan_without_predicate(input) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
 
 pub struct Limiter {
     write_block_list: RwLock<HashSet<String>>,
     read_block_list: RwLock<HashSet<String>>,
+    rules: RwLock<HashSet<BlockRule>>,
 }
 
 impl Default for Limiter {
@@ -16,6 +80,7 @@ impl Default for Limiter {
         Self {
             write_block_list: RwLock::new(HashSet::new()),
             read_block_list: RwLock::new(HashSet::new()),
+            rules: RwLock::new(HashSet::new()),
         }
     }
 }
@@ -25,24 +90,58 @@ impl Limiter {
         Self {
             write_block_list: RwLock::new(limit_config.write_block_list.into_iter().collect()),
             read_block_list: RwLock::new(limit_config.read_block_list.into_iter().collect()),
+            rules: RwLock::new(limit_config.rules.into_iter().collect()),
         }
     }
 
-    pub fn should_limit(&self, plan: &Plan) -> bool {
+    fn should_limit_by_block_list(&self, plan: &Plan) -> Result<()> {
         match plan {
-            Plan::Query(query) => self.read_block_list.read().unwrap().iter().any(|table| {
-                query
-                    .tables
-                    .get(TableReference::from(table.as_str()))
-                    .is_some()
-            }),
-            Plan::Insert(insert) => self
-                .write_block_list
-                .read()
-                .unwrap()
-                .contains(insert.table.name()),
-            _ => false,
+            Plan::Query(query) => {
+                for blocked_table in self.read_block_list.read().unwrap().iter() {
+                    if query
+                        .tables
+                        .get(TableReference::from(blocked_table.as_str()))
+                        .is_some()
+                    {
+                        BlockedTable {
+                            table: blocked_table,
+                        }
+                        .fail()?;
+                    }
+                }
+            }
+            Plan::Insert(insert) => {
+                if self
+                    .write_block_list
+                    .read()
+                    .unwrap()
+                    .contains(insert.table.name())
+                {
+                    BlockedTable {
+                        table: insert.table.name(),
+                    }
+                    .fail()?;
+                }
+            }
+            _ => (),
         }
+
+        Ok(())
+    }
+
+    fn should_limit_by_rules(&self, plan: &Plan) -> Result<()> {
+        for rule in self.rules.read().unwrap().iter() {
+            if rule.should_limit(plan) {
+                BlockedByRule { rule: *rule }.fail()?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn should_limit(&self, plan: &Plan) -> Result<()> {
+        self.should_limit_by_block_list(plan)?;
+        self.should_limit_by_rules(plan)
     }
 
     pub fn add_write_block_list(&self, block_list: Vec<String>) {
@@ -90,13 +189,6 @@ impl Limiter {
     }
 }
 
-#[derive(Default, Clone, Deserialize, Debug)]
-#[serde(default)]
-pub struct LimiterConfig {
-    pub write_block_list: Vec<String>,
-    pub read_block_list: Vec<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use common_types::request_id::RequestId;
@@ -126,11 +218,11 @@ mod tests {
         let (mock, limiter) = prepare();
         let query = "select * from test_table";
         let query_plan = sql_to_plan(&mock, query);
-        assert!(limiter.should_limit(&query_plan));
+        assert!(limiter.should_limit(&query_plan).is_err());
 
         let insert="INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
-        assert!(limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&insert_plan).is_err());
     }
 
     #[test]
@@ -140,16 +232,16 @@ mod tests {
 
         let query = "select * from test_table";
         let query_plan = sql_to_plan(&mock, query);
-        assert!(limiter.should_limit(&query_plan));
+        assert!(limiter.should_limit(&query_plan).is_err());
 
         let insert="INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
-        assert!(limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&insert_plan).is_err());
 
         limiter.remove_write_block_list(test_data.clone());
         limiter.remove_read_block_list(test_data);
-        assert!(!limiter.should_limit(&query_plan));
-        assert!(!limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&query_plan).is_ok());
+        assert!(limiter.should_limit(&insert_plan).is_ok());
     }
 
     #[test]
@@ -159,16 +251,16 @@ mod tests {
 
         let query = "select * from test_table2";
         let query_plan = sql_to_plan(&mock, query);
-        assert!(!limiter.should_limit(&query_plan));
+        assert!(limiter.should_limit(&query_plan).is_ok());
 
         let insert="INSERT INTO test_table2(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
-        assert!(!limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&insert_plan).is_ok());
 
         limiter.add_write_block_list(test_data.clone());
         limiter.add_read_block_list(test_data);
-        assert!(limiter.should_limit(&query_plan));
-        assert!(limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&query_plan).is_err());
+        assert!(limiter.should_limit(&insert_plan).is_err());
     }
 
     #[test]
@@ -178,25 +270,25 @@ mod tests {
 
         let query = "select * from test_table";
         let query_plan = sql_to_plan(&mock, query);
-        assert!(limiter.should_limit(&query_plan));
+        assert!(limiter.should_limit(&query_plan).is_err());
 
         let query2 = "select * from test_table2";
         let query_plan2 = sql_to_plan(&mock, query2);
-        assert!(!limiter.should_limit(&query_plan2));
+        assert!(limiter.should_limit(&query_plan2).is_ok());
 
         let insert="INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
-        assert!(limiter.should_limit(&insert_plan));
+        assert!(limiter.should_limit(&insert_plan).is_err());
 
         let insert2="INSERT INTO test_table2(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3')";
         let insert_plan2 = sql_to_plan(&mock, insert2);
-        assert!(!limiter.should_limit(&insert_plan2));
+        assert!(limiter.should_limit(&insert_plan2).is_ok());
 
         limiter.set_read_block_list(test_data.clone());
         limiter.set_write_block_list(test_data);
-        assert!(!limiter.should_limit(&query_plan));
-        assert!(!limiter.should_limit(&insert_plan));
-        assert!(limiter.should_limit(&query_plan2));
-        assert!(limiter.should_limit(&insert_plan2));
+        assert!(limiter.should_limit(&query_plan).is_ok());
+        assert!(limiter.should_limit(&insert_plan).is_ok());
+        assert!(limiter.should_limit(&query_plan2).is_err());
+        assert!(limiter.should_limit(&insert_plan2).is_err());
     }
 }

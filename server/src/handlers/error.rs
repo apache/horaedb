@@ -3,6 +3,8 @@
 //! Error of handlers
 
 use snafu::{Backtrace, Snafu};
+
+use crate::limiter;
 // TODO(yingwen): Avoid printing huge sql string
 // TODO(yingwen): Maybe add an error type to sql sub mod
 
@@ -48,8 +50,11 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Query limited by block list, query:{}", query))]
-    QueryBlock { query: String },
+    #[snafu(display("Query limited by block list, query:{}, err:{}", query, source))]
+    QueryBlock {
+        query: String,
+        source: limiter::Error,
+    },
 }
 
 define_result!(Error);
