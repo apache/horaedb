@@ -26,6 +26,12 @@ message HashPartitionInfo {
   bool linear = 3;
 }
 
+message KeyPartitionInfo {
+  repeated Definition definitions = 1;
+  bytes partition_key = 2;
+  bool linear = 3;
+}
+
 // Meta update for a new table
 message AddTableMeta {
   uint32 space_id = 1;
@@ -37,6 +43,7 @@ message AddTableMeta {
   analytic_common.TableOptions options = 5;
   oneof partition_info {
     HashPartitionInfo hash  = 6;
+    KeyPartitionInfo key_partition = 7;
   }
 }
 
