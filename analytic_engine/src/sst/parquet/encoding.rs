@@ -1,10 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    convert::TryFrom,
-    io::Write,
-    sync::{Arc, Mutex},
-};
+use std::{convert::TryFrom, sync::Arc};
 
 use arrow::{
     array::{Array, ArrayData, ArrayRef},
@@ -227,37 +223,9 @@ trait RecordEncoder {
     fn close(&mut self) -> Result<Vec<u8>>;
 }
 
-/// EncodingWriter implements `Write` trait, useful when Writer need shared
-/// ownership.
-///
-/// TODO: This is a temp workaround for [ArrowWriter](https://docs.rs/parquet/20.0.0/parquet/arrow/arrow_writer/struct.ArrowWriter.html), since it has no method to get underlying Writer
-/// We can fix this by add `into_inner` method to it, or just replace it with
-/// parquet2, which already have this method
-/// https://github.com/CeresDB/ceresdb/issues/53
-#[derive(Clone)]
-struct EncodingWriter(Arc<Mutex<Vec<u8>>>);
-
-impl EncodingWriter {
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.lock().unwrap().clone()
-    }
-}
-
-impl Write for EncodingWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut inner = self.0.lock().unwrap();
-        inner.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 struct ColumnarRecordEncoder {
-    buf: EncodingWriter,
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
     arrow_schema: ArrowSchemaRef,
 }
 
@@ -275,14 +243,12 @@ impl ColumnarRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
-            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
 
         Ok(Self {
-            buf,
             arrow_writer: Some(arrow_writer),
             arrow_schema,
         })
@@ -311,19 +277,18 @@ impl RecordEncoder for ColumnarRecordEncoder {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        arrow_writer
-            .close()
+        let bytes = arrow_writer
+            .into_inner()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
-        Ok(self.buf.clone().into_bytes())
+        Ok(bytes)
     }
 }
 
 struct HybridRecordEncoder {
-    buf: EncodingWriter,
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
@@ -384,13 +349,11 @@ impl HybridRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
-            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
         Ok(Self {
-            buf,
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             tsid_type,
@@ -438,11 +401,11 @@ impl RecordEncoder for HybridRecordEncoder {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        arrow_writer
-            .close()
+        let bytes = arrow_writer
+            .into_inner()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
-        Ok(self.buf.clone().into_bytes())
+        Ok(bytes)
     }
 }
 
