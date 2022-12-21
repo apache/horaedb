@@ -34,7 +34,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{
     sst::{
-        factory::{ReadFrequency, SstReaderOptions},
+        factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
         file::{BloomFilter, SstMetaData},
         meta_cache::{MetaCacheRef, MetaData},
         metrics,
@@ -50,7 +50,7 @@ pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    storage: &'a ObjectStoreRef,
+    store: &'a ObjectStoreRef,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -67,14 +67,19 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstReaderOptions) -> Self {
+    pub fn new(
+        path: &'a Path,
+        store_picker: &'a ObjectStorePickerRef,
+        options: &SstReaderOptions,
+    ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
             ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
+        let store = store_picker.pick_by_freq(options.frequency);
 
         Self {
             path,
-            storage,
+            store,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
@@ -155,7 +160,7 @@ impl<'a> Reader<'a> {
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
         let object_store_reader =
-            ObjectStoreReader::new(self.storage.clone(), self.path.clone(), meta_data.clone());
+            ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
 
         // Get target row groups.
         let filtered_row_groups = self.filter_row_groups(
@@ -245,7 +250,7 @@ impl<'a> Reader<'a> {
         object_meta: &ObjectMeta,
     ) -> Result<ParquetMetaDataRef> {
         let meta_data =
-            file_format::parquet::fetch_parquet_metadata(self.storage.as_ref(), object_meta, None)
+            file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?;
@@ -274,7 +279,7 @@ impl<'a> Reader<'a> {
 
         let meta_data = {
             let object_meta = self
-                .storage
+                .store
                 .head(self.path)
                 .await
                 .context(ObjectStoreError {})?;

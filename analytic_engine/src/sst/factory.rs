@@ -19,19 +19,42 @@ use crate::{
     table_options::Compression,
 };
 
+/// Pick suitable object store for different scenes.
+pub trait ObjectStorePicker: Send + Sync + Debug {
+    /// Just provide default object store for the scenes where user don't care
+    /// about it.
+    fn default_store(&self) -> &ObjectStoreRef;
+
+    /// Pick an object store according to the read frequency.
+    fn pick_by_freq(&self, freq: ReadFrequency) -> &ObjectStoreRef;
+}
+
+pub type ObjectStorePickerRef = Arc<dyn ObjectStorePicker>;
+
+/// For any [`ObjectStoreRef`], it can be used as an [`ObjectStorePicker`].
+impl ObjectStorePicker for ObjectStoreRef {
+    fn default_store(&self) -> &ObjectStoreRef {
+        self
+    }
+
+    fn pick_by_freq(&self, _freq: ReadFrequency) -> &ObjectStoreRef {
+        self
+    }
+}
+
 pub trait Factory: Send + Sync + Debug {
     fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
-        storage: &'a ObjectStoreRef,
+        store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>>;
 
     fn new_sst_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
-        storage: &'a ObjectStoreRef,
+        store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
 }
 
@@ -81,11 +104,11 @@ impl Factory for FactoryImpl {
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
-        storage: &'a ObjectStoreRef,
+        store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         // TODO: Currently, we only have one sst format, and we have to choose right
         // reader for sst according to its real format in the future.
-        let reader = AsyncParquetReader::new(path, storage, options);
+        let reader = AsyncParquetReader::new(path, store_picker, options);
         let reader = ThreadedReader::new(
             reader,
             options.runtime.clone(),
@@ -98,12 +121,14 @@ impl Factory for FactoryImpl {
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
-        storage: &'a ObjectStoreRef,
+        store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
         match options.sst_type {
-            SstType::Parquet | SstType::Auto => {
-                Some(Box::new(ParquetSstBuilder::new(path, storage, options)))
-            }
+            SstType::Parquet | SstType::Auto => Some(Box::new(ParquetSstBuilder::new(
+                path,
+                store_picker,
+                options,
+            ))),
         }
     }
 }

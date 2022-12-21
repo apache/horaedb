@@ -6,7 +6,8 @@ use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
     sst::factory::{
-        Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstBuilderOptions,
+        SstReaderOptions, SstType,
     },
     table_options::{Compression, StorageFormat, StorageFormatOptions},
 };
@@ -69,9 +70,9 @@ fn main() {
 
 async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let storage = LocalFileSystem::new_with_prefix(args.store_path).expect("invalid path");
-    let storage = Arc::new(storage) as _;
+    let store = Arc::new(storage) as _;
     let input_path = Path::from(args.input);
-    let mut sst_meta = sst_util::meta_from_sst(&storage, &input_path).await;
+    let mut sst_meta = sst_util::meta_from_sst(&store, &input_path).await;
     let factory = FactoryImpl;
     let reader_opts = SstReaderOptions {
         read_batch_row_num: 8192,
@@ -84,8 +85,9 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         background_read_parallelism: 1,
         num_rows_per_row_group: 8192,
     };
+    let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory
-        .new_sst_reader(&reader_opts, &input_path, &storage)
+        .new_sst_reader(&reader_opts, &input_path, &store_picker)
         .expect("no sst reader found");
 
     let builder_opts = SstBuilderOptions {
@@ -96,7 +98,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     };
     let output = Path::from(args.output);
     let mut builder = factory
-        .new_sst_builder(&builder_opts, &output, &storage)
+        .new_sst_builder(&builder_opts, &output, &store_picker)
         .expect("no sst builder found");
     sst_meta.storage_format_opts = StorageFormatOptions::new(
         StorageFormat::try_from(args.format.as_str())

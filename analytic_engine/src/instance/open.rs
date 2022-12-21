@@ -9,7 +9,6 @@ use std::{
 
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
-use object_store::ObjectStoreRef;
 use snafu::ResultExt;
 use table_engine::engine::OpenTableRequest;
 use tokio::sync::oneshot;
@@ -36,7 +35,10 @@ use crate::{
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{Space, SpaceId, SpaceRef},
-    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger},
+    sst::{
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        file::FilePurger,
+    },
     table::data::{TableData, TableDataRef},
     wal_synchronizer::{WalSynchronizer, WalSynchronizerConfig},
 };
@@ -47,16 +49,14 @@ impl Instance {
         ctx: OpenContext,
         manifest: ManifestRef,
         wal_manager: WalManagerRef,
-        store: ObjectStoreRef,
-        store_with_readonly_cache: ObjectStoreRef,
+        store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
             manifest,
             wal_manager: wal_manager.clone(),
-            store: store.clone(),
-            store_with_readonly_cache,
+            store_picker: store_picker.clone(),
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
         });
@@ -69,7 +69,7 @@ impl Instance {
             scheduler_config,
         ));
 
-        let file_purger = FilePurger::start(&bg_runtime, store);
+        let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
 
         let mut wal_synchronizer =
             WalSynchronizer::new(WalSynchronizerConfig::default(), wal_manager);
