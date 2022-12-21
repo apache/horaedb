@@ -5,7 +5,7 @@
 use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::sst::{
-    factory::{Factory, FactoryImpl, ReadFrequency, SstReaderOptions},
+    factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
     meta_cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
@@ -76,8 +76,9 @@ impl SstBench {
         let sst_path = Path::from(self.sst_file_name.clone());
 
         let sst_factory = FactoryImpl;
+        let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut sst_reader = sst_factory
-            .new_sst_reader(&self.sst_reader_options, &sst_path, &self.store)
+            .new_sst_reader(&self.sst_reader_options, &sst_path, &store_picker)
             .unwrap();
 
         self.runtime.block_on(async {

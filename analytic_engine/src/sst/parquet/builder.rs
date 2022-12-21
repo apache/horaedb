@@ -18,7 +18,7 @@ use snafu::ResultExt;
 
 use crate::sst::{
     builder::{RecordBatchStream, SstBuilder, *},
-    factory::SstBuilderOptions,
+    factory::{ObjectStorePickerRef, SstBuilderOptions},
     file::{BloomFilter, SstMetaData},
     parquet::encoding::ParquetEncoder,
 };
@@ -29,17 +29,22 @@ pub struct ParquetSstBuilder<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    storage: &'a ObjectStoreRef,
+    store: &'a ObjectStoreRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
     compression: Compression,
 }
 
 impl<'a> ParquetSstBuilder<'a> {
-    pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstBuilderOptions) -> Self {
+    pub fn new(
+        path: &'a Path,
+        store_picker: &'a ObjectStorePickerRef,
+        options: &SstBuilderOptions,
+    ) -> Self {
+        let store = store_picker.default_store();
         Self {
             path,
-            storage,
+            store,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
         }
@@ -219,12 +224,12 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
-        self.storage
+        self.store
             .put(self.path, bytes.into())
             .await
             .context(Storage)?;
 
-        let file_head = self.storage.head(self.path).await.context(Storage)?;
+        let file_head = self.store.head(self.path).await.context(Storage)?;
 
         Ok(SstInfo {
             file_size: file_head.size,
@@ -293,7 +298,8 @@ mod tests {
 
             let dir = tempdir().unwrap();
             let root = dir.path();
-            let store = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap()) as _;
+            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema();
@@ -329,7 +335,7 @@ mod tests {
             }));
 
             let mut builder = sst_factory
-                .new_sst_builder(&sst_builder_options, &sst_file_path, &store)
+                .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
                 .unwrap();
             let sst_info = builder
                 .build(RequestId::next_id(), &sst_meta, record_batch_stream)
@@ -353,7 +359,7 @@ mod tests {
 
             let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader =
-                    AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
+                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
                 let mut sst_meta_readback = {
                     // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                     // https://github.com/CeresDB/ceresdb/issues/321

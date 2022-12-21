@@ -10,7 +10,6 @@ use common_types::{
 use common_util::define_result;
 use futures::StreamExt;
 use log::debug;
-use object_store::ObjectStoreRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 
@@ -21,7 +20,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
     },
     table::version::{MemTableVec, SamplingMemTable},
@@ -61,8 +60,8 @@ pub struct ChainConfig<'a> {
     pub sst_reader_options: SstReaderOptions,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
-    /// Sst storage
-    pub store: &'a ObjectStoreRef,
+    /// Store picker for persisting sst.
+    pub store_picker: &'a ObjectStorePickerRef,
 }
 
 /// Builder for [ChainIterator].
@@ -144,7 +143,7 @@ impl<'a> Builder<'a> {
                     sst,
                     self.config.sst_factory,
                     &self.config.sst_reader_options,
-                    self.config.store,
+                    self.config.store_picker,
                 )
                 .await
                 .context(BuildStreamFromSst)?;

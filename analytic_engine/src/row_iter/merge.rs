@@ -21,7 +21,6 @@ use common_types::{
 use common_util::define_result;
 use futures::{future::try_join_all, StreamExt};
 use log::{debug, info, trace};
-use object_store::ObjectStoreRef;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 
@@ -33,7 +32,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
         manager::{FileId, MAX_LEVEL},
     },
@@ -98,8 +97,8 @@ pub struct MergeConfig<'a> {
     pub sst_reader_options: SstReaderOptions,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
-    /// Sst storage
-    pub store: &'a ObjectStoreRef,
+    /// Store picker for persisting sst.
+    pub store_picker: &'a ObjectStorePickerRef,
 
     pub merge_iter_options: IterOptions,
 
@@ -208,7 +207,7 @@ impl<'a> MergeBuilder<'a> {
                     f,
                     self.config.sst_factory,
                     &self.config.sst_reader_options,
-                    self.config.store,
+                    self.config.store_picker,
                 )
                 .await
                 .context(BuildStreamFromSst)?;

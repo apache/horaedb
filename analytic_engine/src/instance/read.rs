@@ -179,7 +179,7 @@ impl Instance {
                 predicate: request.predicate.clone(),
                 sst_factory: &self.space_store.sst_factory,
                 sst_reader_options: sst_reader_options.clone(),
-                store: self.space_store.default_store(),
+                store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
                 reverse: request.order.is_in_desc_order(),
@@ -241,7 +241,7 @@ impl Instance {
                 predicate: request.predicate.clone(),
                 sst_reader_options: sst_reader_options.clone(),
                 sst_factory: &self.space_store.sst_factory,
-                store: self.space_store.default_store(),
+                store_picker: self.space_store.store_picker(),
             };
             let builder = chain::Builder::new(chain_config);
             let chain_iter = builder

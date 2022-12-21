@@ -16,7 +16,10 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstReaderOptions},
+        factory::{
+            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
+            SstReaderOptions,
+        },
         meta_cache::MetaCacheRef,
     },
     table::{
@@ -136,6 +139,7 @@ impl MergeMemTableBench {
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
+        let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
             space_id,
@@ -145,7 +149,7 @@ impl MergeMemTableBench {
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
-            store: &self.store,
+            store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
             reverse: false,

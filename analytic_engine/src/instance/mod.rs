@@ -25,7 +25,6 @@ use std::{
 use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
-use object_store::ObjectStoreRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use wal::manager::WalManagerRef;
@@ -35,7 +34,11 @@ use crate::{
     meta::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
-    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger, meta_cache::MetaCacheRef},
+    sst::{
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        file::FilePurger,
+        meta_cache::MetaCacheRef,
+    },
     table::data::TableDataRef,
     wal_synchronizer::WalSynchronizer,
     TableOptions,
@@ -99,10 +102,8 @@ pub struct SpaceStore {
     manifest: ManifestRef,
     /// Wal of all tables
     wal_manager: WalManagerRef,
-    /// Sst storage.
-    store: ObjectStoreRef,
-    /// Sst storage with read only storage cache.
-    store_with_readonly_cache: ObjectStoreRef,
+    /// Object store picker for persisting data.
+    store_picker: ObjectStorePickerRef,
     /// Sst factory.
     sst_factory: SstFactoryRef,
 
@@ -128,12 +129,8 @@ impl SpaceStore {
 }
 
 impl SpaceStore {
-    fn default_store(&self) -> &ObjectStoreRef {
-        &self.store
-    }
-
-    fn store_with_readonly_cache(&self) -> &ObjectStoreRef {
-        &self.store_with_readonly_cache
+    fn store_picker(&self) -> &ObjectStorePickerRef {
+        &self.store_picker
     }
 
     /// List all tables of all spaces

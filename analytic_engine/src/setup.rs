@@ -35,7 +35,7 @@ use crate::{
         ManifestRef,
     },
     sst::{
-        factory::FactoryImpl,
+        factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_cache::{MetaCache, MetaCacheRef},
     },
     storage_options::{ObjectStoreOptions, StorageOptions},
@@ -118,8 +118,7 @@ pub trait EngineBuilder: Send + Sync + Default {
             engine_runtimes,
             wal,
             manifest,
-            opened_storages.default_store,
-            opened_storages.store_with_readonly_cache,
+            Arc::new(opened_storages),
         )
         .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
@@ -351,8 +350,7 @@ async fn open_instance(
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
     manifest: ManifestRef,
-    store: ObjectStoreRef,
-    store_with_readonly_cache: ObjectStoreRef,
+    store_picker: ObjectStorePickerRef,
 ) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -368,8 +366,7 @@ async fn open_instance(
         open_ctx,
         manifest,
         wal_manager,
-        store,
-        store_with_readonly_cache,
+        store_picker,
         Arc::new(FactoryImpl::default()),
     )
     .await
@@ -377,9 +374,23 @@ async fn open_instance(
     Ok(instance)
 }
 
+#[derive(Debug)]
 struct OpenedStorages {
     default_store: ObjectStoreRef,
     store_with_readonly_cache: ObjectStoreRef,
+}
+
+impl ObjectStorePicker for OpenedStorages {
+    fn default_store(&self) -> &ObjectStoreRef {
+        &self.default_store
+    }
+
+    fn pick_by_freq(&self, freq: ReadFrequency) -> &ObjectStoreRef {
+        match freq {
+            ReadFrequency::Once => &self.store_with_readonly_cache,
+            ReadFrequency::Frequent => &self.default_store,
+        }
+    }
 }
 
 // Build store in multiple layer, access speed decrease in turn.
