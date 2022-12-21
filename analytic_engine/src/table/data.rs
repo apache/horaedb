@@ -214,7 +214,7 @@ impl TableData {
             schema: Mutex::new(request.table_schema),
             space_id,
             // TODO(xikai): sst type should be decided by the `request`.
-            sst_type: SstType::Parquet,
+            sst_type: SstType::Auto,
             mutable_limit: AtomicU32::new(get_mutable_limit(&table_opts)),
             opts: ArcSwap::new(Arc::new(table_opts)),
             memtable_factory,

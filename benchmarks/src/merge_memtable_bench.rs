@@ -16,9 +16,7 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstReaderOptions, SstType,
-        },
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, ReadFrequency, SstReaderOptions},
         meta_cache::MetaCacheRef,
     },
     table::{
@@ -192,7 +190,6 @@ fn mock_sst_reader_options(
     runtime: Arc<Runtime>,
 ) -> SstReaderOptions {
     SstReaderOptions {
-        sst_type: SstType::Parquet,
         read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,

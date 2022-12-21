@@ -74,7 +74,6 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let mut sst_meta = sst_util::meta_from_sst(&storage, &input_path).await;
     let factory = FactoryImpl;
     let reader_opts = SstReaderOptions {
-        sst_type: SstType::Parquet,
         read_batch_row_num: 8192,
         reverse: false,
         frequency: ReadFrequency::Once,
