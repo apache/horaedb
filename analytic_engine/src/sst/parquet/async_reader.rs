@@ -17,16 +17,21 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::{runtime::Runtime, time::InstantExt};
-use datafusion::datasource::file_format;
+use common_util::{error::GenericError, runtime::Runtime, time::InstantExt};
+use datafusion::error::DataFusionError as DfError;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
-use object_store::{ObjectMeta, ObjectStoreRef, Path};
+use object_store::Path;
 use parquet::{
-    arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
-    file::metadata::RowGroupMetaData,
+    arrow::{
+        async_reader::AsyncFileReader as AsyncParquetFileReader, ParquetRecordBatchStreamBuilder,
+        ProjectionMask,
+    },
+    file::{
+        footer,
+        metadata::{ParquetMetaData, RowGroupMetaData},
+    },
 };
-use parquet_ext::ParquetMetaDataRef;
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -34,7 +39,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{
     sst::{
-        factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+        factory::{ReadFrequency, SstReaderOptions},
         file::{BloomFilter, SstMetaData},
         meta_cache::{MetaCacheRef, MetaData},
         metrics,
@@ -46,11 +51,71 @@ use crate::{
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
+pub type AsyncFileReaderRef = Arc<dyn AsyncFileReader>;
+
+#[async_trait]
+pub trait AsyncFileReader: Send + Sync {
+    async fn file_size(&self) -> std::result::Result<usize, GenericError>;
+
+    async fn get_byte_range(&self, range: Range<usize>)
+        -> std::result::Result<Bytes, GenericError>;
+
+    async fn get_byte_ranges(
+        &self,
+        ranges: &[Range<usize>],
+    ) -> std::result::Result<Vec<Bytes>, GenericError>;
+}
+
+/// Fetch and parse [`ParquetMetadata`] from the file reader.
+///
+/// Referring to: https://github.com/apache/arrow-datafusion/blob/ac2e5d15e5452e83c835d793a95335e87bf35569/datafusion/core/src/datasource/file_format/parquet.rs#L390-L449
+async fn fetch_parquet_metadata_from_file_reader(
+    file_reader: &dyn AsyncFileReader,
+) -> std::result::Result<ParquetMetaData, DfError> {
+    const FOOTER_LEN: usize = 8;
+
+    let file_size = file_reader.file_size().await?;
+
+    if file_size < FOOTER_LEN {
+        let err_msg = format!("file size of {} is less than footer", file_size);
+        return Err(DfError::Execution(err_msg));
+    }
+
+    let footer_start = file_size - 8;
+
+    let footer_bytes = file_reader
+        .get_byte_range(footer_start..file_size)
+        .await
+        .map_err(|e| DfError::External(e))?;
+
+    assert_eq!(footer_bytes.len(), FOOTER_LEN);
+    let mut footer = [0; 8];
+    footer.copy_from_slice(&footer_bytes);
+
+    let metadata_len = footer::decode_footer(&footer)?;
+
+    if file_size < metadata_len + FOOTER_LEN {
+        let err_msg = format!(
+            "file size of {} is smaller than footer + metadata {}",
+            file_size,
+            metadata_len + 8
+        );
+        return Err(DfError::Execution(err_msg));
+    }
+
+    let metadata_start = file_size - metadata_len - FOOTER_LEN;
+    let metadata_bytes = file_reader
+        .get_byte_range(metadata_start..footer_start)
+        .await?;
+
+    Ok(footer::decode_metadata(&metadata_bytes)?)
+}
+
 pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    store: &'a ObjectStoreRef,
+    file_reader: AsyncFileReaderRef,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -69,17 +134,16 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
-        store_picker: &'a ObjectStorePickerRef,
+        file_reader: AsyncFileReaderRef,
         options: &SstReaderOptions,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
             ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
-        let store = store_picker.pick_by_freq(options.frequency);
 
         Self {
             path,
-            store,
+            file_reader,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
@@ -160,7 +224,7 @@ impl<'a> Reader<'a> {
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
         let object_store_reader =
-            ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
+            ObjectStoreReader::new(self.file_reader.clone(), meta_data.clone());
 
         // Get target row groups.
         let filtered_row_groups = self.filter_row_groups(
@@ -245,17 +309,11 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    async fn load_meta_data_from_storage(
-        &self,
-        object_meta: &ObjectMeta,
-    ) -> Result<ParquetMetaDataRef> {
-        let meta_data =
-            file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeSstMeta)?;
-
-        Ok(Arc::new(meta_data))
+    async fn load_meta_data_from_storage(&self) -> Result<ParquetMetaData> {
+        fetch_parquet_metadata_from_file_reader(self.file_reader.as_ref())
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeSstMeta)
     }
 
     fn need_update_cache(&self) -> bool {
@@ -278,15 +336,11 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let object_meta = self
-                .store
-                .head(self.path)
-                .await
-                .context(ObjectStoreError {})?;
-            let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
+            let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, object_meta.size, ignore_bloom_filter)
+            let file_size = self.file_reader.file_size().await.context(DecodeSstMeta)?;
+            MetaData::try_new(&parquet_meta_data, file_size, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };
@@ -353,17 +407,15 @@ struct ReaderMetrics {
 
 #[derive(Clone)]
 struct ObjectStoreReader {
-    storage: ObjectStoreRef,
-    path: Path,
+    file_reader: AsyncFileReaderRef,
     meta_data: MetaData,
     metrics: ReaderMetrics,
 }
 
 impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
+    fn new(file_reader: AsyncFileReaderRef, meta_data: MetaData) -> Self {
         Self {
-            storage,
-            path,
+            file_reader,
             meta_data,
             metrics: ReaderMetrics {
                 bytes_scanned: 0,
@@ -379,14 +431,15 @@ impl Drop for ObjectStoreReader {
     }
 }
 
-impl AsyncFileReader for ObjectStoreReader {
+impl AsyncParquetFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
         self.metrics
             .sst_get_range_length_histogram
             .observe((range.end - range.start) as f64);
-        self.storage
-            .get_range(&self.path, range)
+
+        self.file_reader
+            .get_byte_range(range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
                     "Failed to fetch range from object store, err:{}",
@@ -406,8 +459,8 @@ impl AsyncFileReader for ObjectStoreReader {
                 .observe((range.end - range.start) as f64);
         }
         async move {
-            self.storage
-                .get_ranges(&self.path, &ranges)
+            self.file_reader
+                .get_byte_ranges(&ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
                         "Failed to fetch ranges from object store, err:{}",

@@ -2,10 +2,16 @@
 
 //! Factory for different kinds sst builder and reader.
 
-use std::{fmt::Debug, sync::Arc};
+use std::{
+    fmt::Debug,
+    ops::Range,
+    sync::{Arc, RwLock},
+};
 
+use async_trait::async_trait;
+use bytes::Bytes;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::runtime::Runtime;
+use common_util::{error::GenericError, runtime::Runtime};
 use object_store::{ObjectStoreRef, Path};
 use table_engine::predicate::PredicateRef;
 
@@ -13,7 +19,10 @@ use crate::{
     sst::{
         builder::SstBuilder,
         meta_cache::MetaCacheRef,
-        parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
+        parquet::{
+            async_reader::AsyncFileReader, builder::ParquetSstBuilder, AsyncParquetReader,
+            ThreadedReader,
+        },
         reader::SstReader,
     },
     table_options::Compression,
@@ -96,6 +105,64 @@ pub struct SstBuilderOptions {
     pub compression: Compression,
 }
 
+pub struct FileReaderOnObjectStore {
+    path: Path,
+    store: ObjectStoreRef,
+    cached_file_size: RwLock<Option<usize>>,
+}
+
+impl FileReaderOnObjectStore {
+    pub fn new(path: Path, store: ObjectStoreRef) -> Self {
+        Self {
+            path,
+            store,
+            cached_file_size: RwLock::new(None),
+        }
+    }
+}
+
+#[async_trait]
+impl AsyncFileReader for FileReaderOnObjectStore {
+    async fn file_size(&self) -> std::result::Result<usize, GenericError> {
+        // check cached filed_size first
+        {
+            let file_size = self.cached_file_size.read().unwrap();
+            if let Some(s) = file_size.as_ref() {
+                return Ok(*s);
+            }
+        }
+
+        // fetch the size from the underlying store
+        let head = self
+            .store
+            .head(&self.path)
+            .await
+            .map_err(|e| Box::new(e) as GenericError)?;
+        *self.cached_file_size.write().unwrap() = Some(head.size);
+        Ok(head.size)
+    }
+
+    async fn get_byte_range(
+        &self,
+        range: Range<usize>,
+    ) -> std::result::Result<Bytes, GenericError> {
+        self.store
+            .get_range(&self.path, range)
+            .await
+            .map_err(|e| Box::new(e) as _)
+    }
+
+    async fn get_byte_ranges(
+        &self,
+        ranges: &[Range<usize>],
+    ) -> std::result::Result<Vec<Bytes>, GenericError> {
+        self.store
+            .get_ranges(&self.path, &ranges)
+            .await
+            .map_err(|e| Box::new(e) as _)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct FactoryImpl;
 
@@ -106,11 +173,13 @@ impl Factory for FactoryImpl {
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
+        let store = store_picker.pick_by_freq(options.frequency).clone();
+        let file_reader = FileReaderOnObjectStore::new(path.clone(), store);
+        let parquet_reader = AsyncParquetReader::new(path, Arc::new(file_reader), options);
         // TODO: Currently, we only have one sst format, and we have to choose right
         // reader for sst according to its real format in the future.
-        let reader = AsyncParquetReader::new(path, store_picker, options);
         let reader = ThreadedReader::new(
-            reader,
+            parquet_reader,
             options.runtime.clone(),
             options.background_read_parallelism,
         );
