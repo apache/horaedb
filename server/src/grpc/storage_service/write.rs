@@ -56,13 +56,14 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         );
         let plan = Plan::Insert(insert_plan);
 
-        if ctx.instance.limiter.should_limit(&plan) {
-            ErrNoCause {
-                code: StatusCode::TOO_MANY_REQUESTS,
-                msg: "Insert limited by reject list",
-            }
-            .fail()?;
-        }
+        ctx.instance
+            .limiter
+            .try_limit(&plan)
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::FORBIDDEN,
+                msg: "Insert is blocked",
+            })?;
 
         let interpreter_ctx = InterpreterContext::builder(request_id)
             // Use current ctx's catalog and tenant as default catalog and tenant
@@ -207,13 +208,14 @@ async fn create_table<Q: QueryExecutor + 'static>(
 
     let instance = &ctx.instance;
 
-    if instance.limiter.should_limit(&plan) {
-        ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "Create table limited by reject list",
-        }
-        .fail()?;
-    }
+    instance
+        .limiter
+        .try_limit(&plan)
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::FORBIDDEN,
+            msg: "Create table is blocked",
+        })?;
 
     let interpreter_ctx = InterpreterContext::builder(request_id)
         // Use current ctx's catalog and tenant as default catalog and tenant

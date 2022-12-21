@@ -128,13 +128,14 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             msg: format!("Failed to create plan, query:{}", req.ql),
         })?;
 
-    if ctx.instance.limiter.should_limit(&plan) {
-        ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "query limited by block list",
-        }
-        .fail()?;
-    }
+    ctx.instance
+        .limiter
+        .try_limit(&plan)
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::FORBIDDEN,
+            msg: "Query is blocked",
+        })?;
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id)
