@@ -14,13 +14,13 @@ define_result!(Error);
 
 /// Partition rule locate partition
 pub trait PartitionRule {
-    /// Locate the partition for each row in `row_group`
+    /// Locate the partition for each row in `row_group`.
     ///
     /// Len of returned value should be equal to the one of rows in `row group`.
-    fn locate_partitions_for_write(row_group: &RowGroup) -> Vec<usize>;
+    fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>>;
 
-    /// locate partitions according to `filters`
-    fn locate_partitions_for_read(filters: &[PartitionFilter]) -> Vec<usize>;
+    /// Locate partitions according to `filters`.
+    fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>>;
 }
 
 /// Filter using for partition
