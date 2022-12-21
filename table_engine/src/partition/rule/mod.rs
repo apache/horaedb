@@ -2,6 +2,8 @@
 
 //! Partition rules
 
+pub mod mock;
+
 use common_types::row::RowGroup;
 use common_util::define_result;
 use datafusion_expr::{Expr, Operator};
