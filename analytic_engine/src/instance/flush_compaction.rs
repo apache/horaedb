@@ -911,7 +911,6 @@ impl SpaceStore {
             let sequence = table_data.last_sequence();
             let projected_schema = ProjectedSchema::no_projection(schema.clone());
             let sst_reader_options = SstReaderOptions {
-                sst_type: table_data.sst_type,
                 read_batch_row_num: table_options.num_rows_per_row_group,
                 reverse: false,
                 frequency: ReadFrequency::Once,

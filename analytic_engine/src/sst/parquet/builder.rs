@@ -340,7 +340,6 @@ mod tests {
 
             // read sst back to test
             let sst_reader_options = SstReaderOptions {
-                sst_type: SstType::Parquet,
                 read_batch_row_num: 5,
                 reverse: false,
                 frequency: ReadFrequency::Frequent,

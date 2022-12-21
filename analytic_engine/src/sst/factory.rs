@@ -37,6 +37,7 @@ pub trait Factory: Send + Sync + Debug {
 
 #[derive(Debug, Copy, Clone)]
 pub enum SstType {
+    Auto,
     Parquet,
 }
 
@@ -50,7 +51,6 @@ pub enum ReadFrequency {
 
 #[derive(Debug, Clone)]
 pub struct SstReaderOptions {
-    pub sst_type: SstType,
     pub read_batch_row_num: usize,
     pub reverse: bool,
     pub frequency: ReadFrequency,
@@ -83,17 +83,15 @@ impl Factory for FactoryImpl {
         path: &'a Path,
         storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
-        match options.sst_type {
-            SstType::Parquet => {
-                let reader = AsyncParquetReader::new(path, storage, options);
-                let reader = ThreadedReader::new(
-                    reader,
-                    options.runtime.clone(),
-                    options.background_read_parallelism,
-                );
-                Some(Box::new(reader))
-            }
-        }
+        // TODO: Currently, we only have one sst format, and we have to choose right
+        // reader for sst according to its real format in the future.
+        let reader = AsyncParquetReader::new(path, storage, options);
+        let reader = ThreadedReader::new(
+            reader,
+            options.runtime.clone(),
+            options.background_read_parallelism,
+        );
+        Some(Box::new(reader))
     }
 
     fn new_sst_builder<'a>(
@@ -103,7 +101,9 @@ impl Factory for FactoryImpl {
         storage: &'a ObjectStoreRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
         match options.sst_type {
-            SstType::Parquet => Some(Box::new(ParquetSstBuilder::new(path, storage, options))),
+            SstType::Parquet | SstType::Auto => {
+                Some(Box::new(ParquetSstBuilder::new(path, storage, options)))
+            }
         }
     }
 }

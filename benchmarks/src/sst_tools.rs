@@ -92,7 +92,6 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let sst_reader_options = SstReaderOptions {
-        sst_type: SstType::Parquet,
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
         frequency: ReadFrequency::Once,
@@ -195,7 +194,6 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         let sequence = max_sequence + 1;
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_reader_options = SstReaderOptions {
-            sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
             frequency: ReadFrequency::Once,

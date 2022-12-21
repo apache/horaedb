@@ -153,7 +153,6 @@ impl Instance {
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_reader_options = SstReaderOptions {
-            sst_type: table_data.sst_type,
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
@@ -216,7 +215,6 @@ impl Instance {
         assert!(request.order.is_out_of_order());
 
         let sst_reader_options = SstReaderOptions {
-            sst_type: table_data.sst_type,
             read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
