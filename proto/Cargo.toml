@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 prost = { workspace = true }
+tonic = { workspace = true }
 
 [build-dependencies]
 protoc-bin-vendored = "3.0.0"
