@@ -17,7 +17,7 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::{error::GenericError, runtime::Runtime, time::InstantExt};
+use common_util::{error::GenericResult, runtime::Runtime, time::InstantExt};
 use datafusion::error::DataFusionError as DfError;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -55,15 +55,11 @@ pub type AsyncFileReaderRef = Arc<dyn AsyncFileReader>;
 
 #[async_trait]
 pub trait AsyncFileReader: Send + Sync {
-    async fn file_size(&self) -> std::result::Result<usize, GenericError>;
+    async fn file_size(&self) -> GenericResult<usize>;
 
-    async fn get_byte_range(&self, range: Range<usize>)
-        -> std::result::Result<Bytes, GenericError>;
+    async fn get_byte_range(&self, range: Range<usize>) -> GenericResult<Bytes>;
 
-    async fn get_byte_ranges(
-        &self,
-        ranges: &[Range<usize>],
-    ) -> std::result::Result<Vec<Bytes>, GenericError>;
+    async fn get_byte_ranges(&self, ranges: &[Range<usize>]) -> GenericResult<Vec<Bytes>>;
 }
 
 /// Fetch and parse [`ParquetMetadata`] from the file reader.

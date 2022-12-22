@@ -11,7 +11,10 @@ use std::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::{error::GenericError, runtime::Runtime};
+use common_util::{
+    error::{GenericError, GenericResult},
+    runtime::Runtime,
+};
 use object_store::{ObjectStoreRef, Path};
 use table_engine::predicate::PredicateRef;
 
@@ -123,7 +126,7 @@ impl FileReaderOnObjectStore {
 
 #[async_trait]
 impl AsyncFileReader for FileReaderOnObjectStore {
-    async fn file_size(&self) -> std::result::Result<usize, GenericError> {
+    async fn file_size(&self) -> GenericResult<usize> {
         // check cached filed_size first
         {
             let file_size = self.cached_file_size.read().unwrap();
@@ -142,20 +145,14 @@ impl AsyncFileReader for FileReaderOnObjectStore {
         Ok(head.size)
     }
 
-    async fn get_byte_range(
-        &self,
-        range: Range<usize>,
-    ) -> std::result::Result<Bytes, GenericError> {
+    async fn get_byte_range(&self, range: Range<usize>) -> GenericResult<Bytes> {
         self.store
             .get_range(&self.path, range)
             .await
             .map_err(|e| Box::new(e) as _)
     }
 
-    async fn get_byte_ranges(
-        &self,
-        ranges: &[Range<usize>],
-    ) -> std::result::Result<Vec<Bytes>, GenericError> {
+    async fn get_byte_ranges(&self, ranges: &[Range<usize>]) -> GenericResult<Vec<Bytes>> {
         self.store
             .get_ranges(&self.path, ranges)
             .await
