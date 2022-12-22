@@ -252,7 +252,11 @@ impl From<Error> for table_engine::engine::Error {
 
 impl Instance {
     /// Find space by name, create if the space is not exists
-    pub async fn find_or_create_space(self: &Arc<Self>, space_id: SpaceId) -> Result<SpaceRef> {
+    pub async fn find_or_create_space(
+        self: &Arc<Self>,
+        space_id: SpaceId,
+        schema_name: String,
+    ) -> Result<SpaceRef> {
         // Find space first
         if let Some(space) = self.get_space_by_read_lock(space_id) {
             return Ok(space);
@@ -273,6 +277,7 @@ impl Instance {
         // Create space
         let space = Arc::new(Space::new(
             space_id,
+            schema_name,
             self.space_write_buffer_size,
             write_group,
             self.mem_usage_collector.clone(),
@@ -295,7 +300,9 @@ impl Instance {
         space_id: SpaceId,
         request: CreateTableRequest,
     ) -> Result<SpaceAndTable> {
-        let space = self.find_or_create_space(space_id).await?;
+        let space = self
+            .find_or_create_space(space_id, request.schema_name.clone())
+            .await?;
         let table_data = self.do_create_table(space.clone(), request).await?;
 
         Ok(SpaceAndTable::new(space, table_data))
@@ -330,7 +337,9 @@ impl Instance {
         space_id: SpaceId,
         request: &OpenTableRequest,
     ) -> Result<Option<SpaceAndTable>> {
-        let space = self.find_or_create_space(space_id).await?;
+        let space = self
+            .find_or_create_space(space_id, request.schema_name.clone())
+            .await?;
 
         let table_data = self.do_open_table(space.clone(), request).await?;
 

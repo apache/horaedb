@@ -76,6 +76,8 @@ pub type SpaceId = u32;
 pub struct Space {
     /// Space id
     pub id: SpaceId,
+    /// Schema name
+    pub schema_name: String,
     /// Data of tables in this space
     ///
     /// Adding table into it should acquire the space lock first, then the write
@@ -93,12 +95,14 @@ pub struct Space {
 impl Space {
     pub fn new(
         id: SpaceId,
+        schema_name: String,
         write_buffer_size: usize,
         write_group: WriteGroup,
         engine_mem_collector: CollectorRef,
     ) -> Self {
         Self {
             id,
+            schema_name,
             table_datas: RwLock::new(TableDataSet::new()),
             write_group,
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),

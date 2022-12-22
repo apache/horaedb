@@ -101,7 +101,11 @@ impl Instance {
     }
 
     /// Open the space if it is not opened before.
-    async fn open_space(self: &Arc<Self>, space_id: SpaceId) -> Result<SpaceRef> {
+    async fn open_space(
+        self: &Arc<Self>,
+        space_id: SpaceId,
+        schema_name: String,
+    ) -> Result<SpaceRef> {
         {
             let spaces = self.space_store.spaces.read().unwrap();
 
@@ -123,6 +127,7 @@ impl Instance {
         // Add this space to instance.
         let space = Arc::new(Space::new(
             space_id,
+            schema_name,
             self.space_write_buffer_size,
             write_group,
             self.mem_usage_collector.clone(),
@@ -245,7 +250,9 @@ impl Instance {
             version_meta,
         } = manifest_data;
 
-        let space = self.open_space(table_meta.space_id).await?;
+        let space = self
+            .open_space(table_meta.space_id, request.schema_name.clone())
+            .await?;
 
         let (table_id, table_name) = (table_meta.table_id, table_meta.table_name.clone());
         // Choose write worker for this table
