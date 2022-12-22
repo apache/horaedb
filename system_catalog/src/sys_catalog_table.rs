@@ -520,7 +520,12 @@ impl SysCatalogTable {
 
     /// Visit all data in the sys catalog table
     // TODO(yingwen): Expose read options
-    pub async fn visit(&self, opts: ReadOptions, visitor: &mut dyn Visitor) -> Result<()> {
+    pub async fn visit(
+        &self,
+        opts: ReadOptions,
+        visitor_inner: &mut dyn VisitorInner,
+        options: VisitOptions,
+    ) -> Result<()> {
         let read_request = ReadRequest {
             request_id: RequestId::next_id(),
             opts,
@@ -533,10 +538,15 @@ impl SysCatalogTable {
 
         info!("batch_stream schema is:{:?}", batch_stream.schema());
         // TODO(yingwen): Check stream schema and table schema?
+        let mut visitor = Visitor {
+            inner: visitor_inner,
+            options,
+        };
+
         while let Some(batch) = batch_stream.try_next().await.context(ReadStream)? {
             // Visit all requests in the record batch
             info!("real batch_stream schema is:{:?}", batch.schema());
-            self.visit_record_batch(batch, visitor).await?;
+            self.visit_record_batch(batch, &mut visitor).await?;
         }
 
         Ok(())
@@ -546,7 +556,7 @@ impl SysCatalogTable {
     async fn visit_record_batch(
         &self,
         batch: RecordBatch,
-        visitor: &mut dyn Visitor,
+        visitor: &mut Visitor<'_>,
     ) -> Result<()> {
         let key_column = batch.column(self.key_column_index);
         let value_column = batch.column(self.value_column_index);
@@ -572,33 +582,107 @@ impl SysCatalogTable {
             let request =
                 decode_one_request(key.as_varbinary().unwrap(), value.as_varbinary().unwrap())?;
 
-            Self::call_visitor(request, visitor).await?;
+            visitor.visit(request)?;
         }
 
         Ok(())
     }
-
-    /// Invoke visitor
-    async fn call_visitor(request: DecodedRequest, visitor: &mut dyn Visitor) -> Result<()> {
-        match request {
-            DecodedRequest::CreateCatalog(req) => visitor.visit_catalog(req),
-            DecodedRequest::CreateSchema(req) => visitor.visit_schema(req),
-            DecodedRequest::TableEntry(req) => visitor.visit_tables(req).await,
-        }
-    }
 }
 
-/// Visitor for sys catalog requests
+/// Visitor inner for sys catalog requests
 // TODO(yingwen): Define an Error for visitor
 #[async_trait]
-pub trait Visitor {
+pub trait VisitorInner {
     // TODO(yingwen): Use enum another type if need more operation (delete/update)
     fn visit_catalog(&mut self, request: CreateCatalogRequest) -> Result<()>;
 
     fn visit_schema(&mut self, request: CreateSchemaRequest) -> Result<()>;
 
     // FIXME(xikai): Should this method be called visit_table?
-    async fn visit_tables(&mut self, table_info: TableInfo) -> Result<()>;
+    fn visit_tables(&mut self, table_info: TableInfo) -> Result<()>;
+}
+
+/// Options for visiting sys catalog requests
+///
+/// Following infos can be visited:
+/// + catalog
+/// + schema
+/// + table
+/// One or more you can select.
+#[derive(Debug)]
+pub struct VisitOptions {
+    pub visit_catalog: bool,
+    pub visit_schema: bool,
+    pub visit_table: bool,
+}
+
+/// Builder for [VisitOptions]
+#[derive(Debug, Default)]
+pub struct VisitOptionsBuilder {
+    visit_catalog: bool,
+    visit_schema: bool,
+    visit_table: bool,
+}
+
+impl VisitOptionsBuilder {
+    pub fn build(self) -> VisitOptions {
+        VisitOptions {
+            visit_catalog: self.visit_catalog,
+            visit_schema: self.visit_schema,
+            visit_table: self.visit_table,
+        }
+    }
+
+    pub fn visit_catalog(mut self) -> Self {
+        self.visit_catalog = true;
+        self
+    }
+
+    pub fn visit_schema(mut self) -> Self {
+        self.visit_schema = true;
+        self
+    }
+
+    pub fn visit_table(mut self) -> Self {
+        self.visit_table = true;
+        self
+    }
+}
+
+pub struct Visitor<'a> {
+    inner: &'a mut dyn VisitorInner,
+    options: VisitOptions,
+}
+
+impl<'a> Visitor<'a> {
+    fn visit(&mut self, request: DecodedRequest) -> Result<()> {
+        debug!("Visitor begin to visit, options:{:?}", self.options);
+
+        match request {
+            DecodedRequest::CreateCatalog(req) => {
+                if self.options.visit_catalog {
+                    self.inner.visit_catalog(req)
+                } else {
+                    Ok(())
+                }
+            }
+
+            DecodedRequest::CreateSchema(req) => {
+                if self.options.visit_schema {
+                    self.inner.visit_schema(req)
+                } else {
+                    Ok(())
+                }
+            }
+            DecodedRequest::TableEntry(req) => {
+                if self.options.visit_table {
+                    self.inner.visit_tables(req)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
 }
 
 /// Build a new table schema for sys catalog
