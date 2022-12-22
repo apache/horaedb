@@ -18,6 +18,7 @@ mod handlers;
 mod http;
 mod instance;
 pub mod limiter;
+pub mod local_tables;
 pub mod logger;
 mod metrics;
 mod mysql;

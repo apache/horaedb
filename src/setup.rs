@@ -9,11 +9,7 @@ use analytic_engine::{
     setup::{EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder},
     WalStorageConfig,
 };
-use catalog::{
-    manager::ManagerRef,
-    schema::{OpenOptions, OpenTableRequest},
-    CatalogRef,
-};
+use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, shard_tables_cache::ShardTablesCache};
 use common_util::runtime;
@@ -26,6 +22,7 @@ use query_engine::executor::{Executor, ExecutorImpl};
 use server::{
     config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
     limiter::Limiter,
+    local_tables::LocalTablesRecoverer,
     route::{
         cluster_based::ClusterBasedRouter,
         rule_based::{ClusterView, RuleBasedRouter},
@@ -225,12 +222,15 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     table_engine: TableEngineRef,
     engine_proxy: TableEngineRef,
 ) -> Builder<Q> {
-    let table_based_manager = TableBasedManager::new(table_engine)
+    let mut table_based_manager = TableBasedManager::new(table_engine)
         .await
         .expect("Failed to create catalog manager");
 
     // Get collected table infos.
-    let table_infos = table_based_manager.get_table_infos();
+    let table_infos = table_based_manager
+        .fetch_table_infos()
+        .await
+        .expect("Failed to fetch table infos for opening");
 
     // Create catalog manager, use analytic table as backend
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
@@ -240,23 +240,12 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
 
     // Iterate the table infos to recover.
     let default_catalog = default_catalog(catalog_manager.clone());
-    let opts = OpenOptions {
+    let open_opts = OpenOptions {
         table_engine: engine_proxy,
     };
 
-    for table_info in table_infos {
-        let schema = default_catalog
-            .schema_by_name(&table_info.schema_name)
-            .unwrap_or_else(|_| panic!("fail to get schema of table, table_info:{:?}", table_info))
-            .unwrap_or_else(|| panic!("schema of table is not found, table_info:{:?}", table_info));
-
-        let open_request = OpenTableRequest::from(table_info);
-        schema
-            .open_table(open_request.clone(), opts.clone())
-            .await
-            .unwrap_or_else(|_| panic!("fail to open table, open_request:{:?}", open_request))
-            .unwrap_or_else(|| panic!("no table is opened, open_request:{:?}", open_request));
-    }
+    // Create local tables recoverer.
+    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, default_catalog, open_opts);
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -279,6 +268,7 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
         .table_manipulator(table_manipulator)
         .router(router)
         .schema_config_provider(schema_config_provider)
+        .local_tables_recoverer(local_tables_recoverer)
 }
 
 async fn create_static_topology_schema(

@@ -8,7 +8,7 @@ use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
-use log::warn;
+use log::{info, warn};
 use logger::RuntimeLevel;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -20,6 +20,7 @@ use crate::{
     http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
     limiter::Limiter,
+    local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
     route::RouterRef,
@@ -78,6 +79,9 @@ pub enum Error {
 
     #[snafu(display("Failed to start cluster, err:{}", source))]
     StartCluster { source: cluster::Error },
+
+    #[snafu(display("Failed to open tables in standalone mode, err:{}", source))]
+    OpenLocalTables { source: local_tables::Error },
 }
 
 define_result!(Error);
@@ -90,6 +94,7 @@ pub struct Server<Q: QueryExecutor + 'static> {
     mysql_service: mysql::MysqlService<Q>,
     instance: InstanceRef<Q>,
     cluster: Option<ClusterRef>,
+    local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
 impl<Q: QueryExecutor + 'static> Server<Q> {
@@ -104,18 +109,33 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
     }
 
     pub async fn start(&mut self) -> Result<()> {
+        // Run in standalone mode
+        if let Some(local_tables_recoverer) = &self.local_tables_recoverer {
+            info!("Server start, open local tables");
+            local_tables_recoverer
+                .recover()
+                .await
+                .context(OpenLocalTables)?;
+        }
+
+        // Run in cluster mode
         if let Some(cluster) = &self.cluster {
+            info!("Server start, start cluster");
             cluster.start().await.context(StartCluster)?;
         }
 
         // TODO: Is it necessary to create default schema in cluster mode?
+        info!("Server start, create default schema if not exist");
         self.create_default_schema_if_not_exists().await;
 
+        info!("Server start, start services");
         self.mysql_service
             .start()
             .await
             .context(StartMysqlService)?;
         self.rpc_services.start().await.context(StartGrpcService)?;
+
+        info!("Server start finished");
 
         Ok(())
     }
@@ -155,6 +175,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     router: Option<RouterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -172,6 +193,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             cluster: None,
             router: None,
             schema_config_provider: None,
+            local_tables_recoverer: None,
         }
     }
 
@@ -230,6 +252,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         schema_config_provider: SchemaConfigProviderRef,
     ) -> Self {
         self.schema_config_provider = Some(schema_config_provider);
+        self
+    }
+
+    pub fn local_tables_recoverer(mut self, local_tables_recoverer: LocalTablesRecoverer) -> Self {
+        self.local_tables_recoverer = Some(local_tables_recoverer);
         self
     }
 
@@ -306,6 +333,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             mysql_service,
             instance,
             cluster: self.cluster,
+            local_tables_recoverer: self.local_tables_recoverer,
         };
         Ok(server)
     }
