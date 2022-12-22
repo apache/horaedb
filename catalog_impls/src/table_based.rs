@@ -94,8 +94,6 @@ pub struct TableBasedManager {
     catalogs: CatalogMap,
     /// Global schema id generator, Each schema has a unique schema id.
     schema_id_generator: Arc<SchemaIdGenerator>,
-    /// Collect table
-    table_infos: Vec<TableInfo>,
 }
 
 impl Manager for TableBasedManager {
@@ -131,7 +129,6 @@ impl TableBasedManager {
             catalog_table: Arc::new(catalog_table),
             catalogs: HashMap::new(),
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
-            table_infos: Vec::new(),
         };
 
         manager.init().await?;
@@ -140,12 +137,21 @@ impl TableBasedManager {
     }
 
     pub async fn fetch_table_infos(&mut self) -> Result<Vec<TableInfo>> {
-        self.table_infos.clear();
+        let catalog_table = self.catalog_table.clone();
+
+        let mut table_infos = Vec::default();
+        let visitor_inner = VisitorInnerImpl {
+            catalog_table: catalog_table.clone(),
+            catalogs: &mut self.catalogs,
+            schema_id_generator: self.schema_id_generator.clone(),
+            table_infos: &mut table_infos,
+        };
 
         let visit_opts = VisitOptionsBuilder::default().visit_table().build();
-        self.visit_catalog_table_with_options(visit_opts).await?;
 
-        Ok(self.table_infos.clone())
+        Self::visit_catalog_table_with_options(catalog_table, visitor_inner, visit_opts).await?;
+
+        Ok(table_infos)
     }
 
     /// Load all data from sys catalog table.
@@ -154,11 +160,21 @@ impl TableBasedManager {
         self.load_system_catalog();
 
         // Load all existent catalog/schema from catalog_table
+        let catalog_table = self.catalog_table.clone();
+
+        let visitor_inner = VisitorInnerImpl {
+            catalog_table: self.catalog_table.clone(),
+            catalogs: &mut self.catalogs,
+            schema_id_generator: self.schema_id_generator.clone(),
+            table_infos: &mut Vec::default(),
+        };
+
         let visit_opts = VisitOptionsBuilder::default()
             .visit_catalog()
             .visit_schema()
             .build();
-        self.visit_catalog_table_with_options(visit_opts).await?;
+
+        Self::visit_catalog_table_with_options(catalog_table, visitor_inner, visit_opts).await?;
 
         // Create default catalog if it is not exists.
         self.maybe_create_default_catalog().await?;
@@ -166,17 +182,14 @@ impl TableBasedManager {
         Ok(())
     }
 
-    async fn visit_catalog_table_with_options(&mut self, visit_opts: VisitOptions) -> Result<()> {
+    async fn visit_catalog_table_with_options(
+        catalog_table: Arc<SysCatalogTable>,
+        mut visitor_inner: VisitorInnerImpl<'_>,
+        visit_opts: VisitOptions,
+    ) -> Result<()> {
         let opts = ReadOptions::default();
 
-        let mut visitor_inner = VisitorInnerImpl {
-            catalog_table: self.catalog_table.clone(),
-            catalogs: &mut self.catalogs,
-            schema_id_generator: self.schema_id_generator.clone(),
-            table_infos: &mut self.table_infos,
-        };
-
-        self.catalog_table
+        catalog_table
             .visit(opts, &mut visitor_inner, visit_opts)
             .await
             .context(VisitSysCatalog)
