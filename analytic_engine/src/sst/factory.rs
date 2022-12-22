@@ -157,7 +157,7 @@ impl AsyncFileReader for FileReaderOnObjectStore {
         ranges: &[Range<usize>],
     ) -> std::result::Result<Vec<Bytes>, GenericError> {
         self.store
-            .get_ranges(&self.path, &ranges)
+            .get_ranges(&self.path, ranges)
             .await
             .map_err(|e| Box::new(e) as _)
     }

@@ -224,7 +224,7 @@ impl<'a> Reader<'a> {
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
         let object_store_reader =
-            ObjectStoreReader::new(self.file_reader.clone(), meta_data.clone());
+            ParquetFileReaderAdapter::new(self.file_reader.clone(), meta_data.clone());
 
         // Get target row groups.
         let filtered_row_groups = self.filter_row_groups(
@@ -406,13 +406,13 @@ struct ReaderMetrics {
 }
 
 #[derive(Clone)]
-struct ObjectStoreReader {
+struct ParquetFileReaderAdapter {
     file_reader: AsyncFileReaderRef,
     meta_data: MetaData,
     metrics: ReaderMetrics,
 }
 
-impl ObjectStoreReader {
+impl ParquetFileReaderAdapter {
     fn new(file_reader: AsyncFileReaderRef, meta_data: MetaData) -> Self {
         Self {
             file_reader,
@@ -425,13 +425,16 @@ impl ObjectStoreReader {
     }
 }
 
-impl Drop for ObjectStoreReader {
+impl Drop for ParquetFileReaderAdapter {
     fn drop(&mut self) {
-        info!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
+        info!(
+            "ParquetFileReaderAdapter is dropped, metrics:{:?}",
+            self.metrics
+        );
     }
 }
 
-impl AsyncParquetFileReader for ObjectStoreReader {
+impl AsyncParquetFileReader for ParquetFileReaderAdapter {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
         self.metrics
@@ -463,7 +466,7 @@ impl AsyncParquetFileReader for ObjectStoreReader {
                 .get_byte_ranges(&ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{}",
+                        "Failed to fetch ranges from underlying reader, err:{}",
                         e
                     ))
                 })
