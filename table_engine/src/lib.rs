@@ -10,6 +10,7 @@ pub mod memory;
 pub mod partition;
 pub mod predicate;
 pub mod provider;
+pub mod remote;
 pub mod stream;
 pub mod table;
 
