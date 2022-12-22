@@ -81,7 +81,7 @@ async fn fetch_parquet_metadata_from_file_reader(
         return Err(DfError::Execution(err_msg));
     }
 
-    let footer_start = file_size - 8;
+    let footer_start = file_size - FOOTER_LEN;
 
     let footer_bytes = file_reader
         .get_byte_range(footer_start..file_size)
@@ -89,7 +89,7 @@ async fn fetch_parquet_metadata_from_file_reader(
         .map_err(|e| DfError::External(e))?;
 
     assert_eq!(footer_bytes.len(), FOOTER_LEN);
-    let mut footer = [0; 8];
+    let mut footer = [0; FOOTER_LEN];
     footer.copy_from_slice(&footer_bytes);
 
     let metadata_len = footer::decode_footer(&footer)?;
@@ -98,7 +98,7 @@ async fn fetch_parquet_metadata_from_file_reader(
         let err_msg = format!(
             "file size of {} is smaller than footer + metadata {}",
             file_size,
-            metadata_len + 8
+            metadata_len + FOOTER_LEN
         );
         return Err(DfError::Execution(err_msg));
     }
