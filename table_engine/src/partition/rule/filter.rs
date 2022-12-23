@@ -1,16 +1,14 @@
-use std::collections::HashSet;
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Partition filter
 
 use common_types::datum::Datum;
-use datafusion_expr::{Expr, Operator};
-use df_operator::visitor::find_columns_by_expr;
-
-use super::ColumnWithType;
 
 /// Filter using for partition
 ///
 /// Now, it is same as the `BinaryExpr`in datafusion.
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PartitionCondition {
     /// Expressions are equal
     Eq(Datum),
@@ -26,7 +24,7 @@ pub enum PartitionCondition {
     GtEq(Datum),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionFilter {
     pub column: String,
     pub condition: PartitionCondition,

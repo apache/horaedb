@@ -31,3 +31,9 @@ pub struct ColumnWithType {
     column: String,
     datum_type: DatumKind,
 }
+
+impl ColumnWithType {
+    pub fn new(column: String, datum_type: DatumKind) -> Self {
+        Self { column, datum_type }
+    }
+}

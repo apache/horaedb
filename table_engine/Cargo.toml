@@ -18,7 +18,9 @@ common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
+df_operator = { workspace = true }
 futures = { workspace = true }
+itertools = "0.10.5"
 log = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
@@ -29,4 +31,3 @@ serde_derive = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
-df_operator = { workspace = true }

@@ -16,14 +16,14 @@ pub enum Error {
         msg,
         backtrace
     ))]
-    LocateWritePartitionNoCause { msg: String, backtrace: Backtrace },
+    LocateWritePartition { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
         "Failed to locate partitions for write, msg:{}.\nBacktrace:{}\n",
         msg,
         backtrace
     ))]
-    LocateReadPartitionNoCause { msg: String, backtrace: Backtrace },
+    LocateReadPartition { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
