@@ -789,7 +789,10 @@ fn maybe_convert_table_name(object_name: &mut ObjectName) {
 
 #[cfg(test)]
 mod tests {
-    use sqlparser::ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value};
+    use sqlparser::{
+        ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value},
+        parser::ParserError::ParserError,
+    };
 
     use super::*;
     use crate::ast::TableName;
@@ -1346,6 +1349,54 @@ mod tests {
                 matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
                     && format!("{:?}", e).contains("Expected literal number"))
             );
+        }
+    }
+
+    #[test]
+    fn test_key_partition() {
+        KeyPartitionTableCases::basic();
+        KeyPartitionTableCases::default_key_partition();
+        KeyPartitionTableCases::invalid_column_type();
+    }
+
+    struct KeyPartitionTableCases;
+
+    impl KeyPartitionTableCases {
+        fn basic() {
+            let sql = r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS 2 ENGINE=Analytic with (enable_ttl="false")"#;
+            let stmt = Parser::parse_sql(sql).unwrap();
+            assert_eq!(stmt.len(), 1);
+            match &stmt[0] {
+                Statement::Create(v) => {
+                    if let Some(Partition::Key(p)) = &v.partition {
+                        assert!(!p.linear);
+                        assert_eq!(p.partition_key.name.value, "name");
+                        assert_eq!(p.partition_num, 2);
+                    } else {
+                        panic!("failed");
+                    };
+                }
+                _ => panic!("failed"),
+            }
+        }
+
+        fn default_key_partition() {
+            let sql = r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY() PARTITIONS 2 ENGINE=Analytic with (enable_ttl="false")"#;
+            let stmt = Parser::parse_sql(sql);
+            assert_eq!(
+                stmt.err().unwrap(),
+                ParserError("Expected identifier, found: )".to_string())
+            );
+        }
+
+        fn invalid_column_type() {
+            let sql = r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(value) PARTITIONS 2 ENGINE=Analytic with (enable_ttl="false")"#;
+            let stmt = Parser::parse_sql(sql);
+
+            assert_eq!(
+                stmt.err().unwrap(),
+                ParserError(r#"partition key must be tag, key name:"value""#.to_string())
+            )
         }
     }
 }
