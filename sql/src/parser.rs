@@ -585,7 +585,12 @@ impl<'a> Parser<'a> {
             return Ok(None);
         };
 
-        let key_columns = self.parser.parse_parenthesized_column_list(Mandatory)?;
+        let key_columns = self
+            .parser
+            .parse_parenthesized_column_list(Mandatory)
+            .map_err(|e| {
+                ParserError::ParserError(format!("Fail to parse partition key, err:{}", e))
+            })?;
 
         // Ensure at least one column for partition key.
         if key_columns.is_empty() {
