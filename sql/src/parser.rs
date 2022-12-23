@@ -1378,7 +1378,9 @@ mod tests {
             let stmt = Parser::parse_sql(sql);
             assert_eq!(
                 stmt.err().unwrap(),
-                ParserError("Expected identifier, found: )".to_string())
+                ParserError(
+                    "Fail to parse partition key, err:sql parser error: Expected identifier, found: )".to_string()
+                )
             );
         }
 
