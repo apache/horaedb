@@ -5841,6 +5841,7 @@ dependencies = [
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "df_operator",
  "futures 0.3.21",
  "log",
  "parquet",

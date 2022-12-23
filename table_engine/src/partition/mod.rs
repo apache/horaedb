@@ -6,6 +6,27 @@ pub mod rule;
 
 use common_types::bytes::Bytes;
 use proto::meta_update as meta_pb;
+use snafu::{Backtrace, Snafu};
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display(
+        "Failed to locate partitions for write, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    LocateWritePartitionNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to locate partitions for write, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    LocateReadPartitionNoCause { msg: String, backtrace: Backtrace },
+}
+
+define_result!(Error);
 
 /// Info for how to partition table
 #[derive(Clone, Debug, PartialEq, Eq)]

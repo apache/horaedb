@@ -11,6 +11,10 @@ pub struct MockRule {
 }
 
 impl PartitionRule for MockRule {
+    fn columns(&self) -> Vec<String> {
+        Vec::default()
+    }
+
     fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>> {
         Ok(vec![self.wanted; row_group.num_rows()])
     }

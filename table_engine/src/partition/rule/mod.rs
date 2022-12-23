@@ -2,20 +2,20 @@
 
 //! Partition rules
 
+pub mod extractor;
+pub mod filter;
+pub mod key;
 pub mod mock;
 
-use common_types::row::RowGroup;
-use common_util::define_result;
-use datafusion_expr::{Expr, Operator};
-use snafu::Snafu;
+use common_types::{datum::DatumKind, row::RowGroup};
 
-#[derive(Debug, Snafu)]
-pub enum Error {}
-
-define_result!(Error);
+use self::filter::PartitionFilter;
+use crate::partition::Result;
 
 /// Partition rule locate partition
 pub trait PartitionRule {
+    fn columns(&self) -> Vec<String>;
+
     /// Locate the partition for each row in `row_group`.
     ///
     /// Len of returned value should be equal to the one of rows in `row group`.
@@ -25,15 +25,9 @@ pub trait PartitionRule {
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>>;
 }
 
-/// Filter using for partition
-///
-/// Now, it is same as the `BinaryExpr`in datafusion.
 #[allow(dead_code)]
-pub struct PartitionFilter {
-    /// Left-hand side of the expression
-    left: Box<Expr>,
-    /// The comparison operator
-    op: Operator,
-    /// Right-hand side of the expression
-    right: Box<Expr>,
+#[derive(Debug)]
+pub struct ColumnWithType {
+    column: String,
+    datum_type: DatumKind,
 }

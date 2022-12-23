@@ -29,3 +29,4 @@ serde_derive = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
+df_operator = { workspace = true }
