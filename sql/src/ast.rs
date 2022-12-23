@@ -87,12 +87,13 @@ pub struct HashPartition {
     pub partition_num: u64,
     pub expr: sqlparser::ast::Expr,
 }
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct KeyPartition {
     /// Key partition description: https://dev.mysql.com/doc/refman/5.7/en/partitioning-key.html
     pub linear: bool,
     pub partition_num: u64,
-    pub partition_key: ColumnDef,
+    pub partition_key: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -31,7 +31,7 @@ impl PartitionParser {
             expr,
         } = hash_stmt;
 
-        let definitions = parse_to_definition(partition_num);
+        let definitions = make_partition_definitions(partition_num);
 
         if let SqlExpr::Identifier(id) = expr {
             let expr = Expr::Column(Column::from_name(id.value));
@@ -62,20 +62,7 @@ impl PartitionParser {
             partition_key,
         } = key_partition_stmt;
 
-        let definitions = parse_to_definition(partition_num);
-
-        // TODO: In order to convert to pb format for persistence, columnDef is
-        // converted to expression, maybe there is better way?
-        let partition_key = Expr::Column(Column::from_name(partition_key.name.value));
-        let partition_key = partition_key
-            .to_bytes()
-            .map_err(|e| Box::new(e) as _)
-            .context(ParsePartitionWithCause {
-                msg: format!(
-                    "found invalid expr in partition key, partition_key:{}",
-                    partition_key
-                ),
-            })?;
+        let definitions = make_partition_definitions(partition_num);
 
         Ok(KeyPartitionInfo {
             definitions,
@@ -85,11 +72,11 @@ impl PartitionParser {
     }
 }
 
-fn parse_to_definition(partition_num: u64) -> Vec<Definition> {
+fn make_partition_definitions(partition_num: u64) -> Vec<Definition> {
     (0..partition_num)
         .into_iter()
         .map(|p| Definition {
-            name: format!("{}", p),
+            name: p.to_string(),
             origin_name: None,
         })
         .collect()

@@ -15,7 +15,7 @@ message AddSpaceMeta {
 
 message Definition {
   string name = 1;
-  oneof origin_name{
+  oneof origin_name {
     string origin = 2;
   }
 }
@@ -28,7 +28,7 @@ message HashPartitionInfo {
 
 message KeyPartitionInfo {
   repeated Definition definitions = 1;
-  bytes partition_key = 2;
+  repeated string partition_key = 2;
   bool linear = 3;
 }
 
