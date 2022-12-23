@@ -5,7 +5,6 @@
 pub mod rule;
 
 use common_types::bytes::Bytes;
-use datafusion::{common::Column, sql::sqlparser::ast::ColumnDef};
 use proto::meta_update as meta_pb;
 
 /// Info for how to partition table
@@ -40,7 +39,7 @@ pub struct HashPartitionInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyPartitionInfo {
     pub definitions: Vec<Definition>,
-    pub partition_key: Bytes,
+    pub columns: Vec<String>,
     pub linear: bool,
 }
 
@@ -80,7 +79,7 @@ impl From<PartitionInfo> for meta_pb::add_table_meta::PartitionInfo {
             }),
             PartitionInfo::Key(v) => Self::KeyPartition(meta_pb::KeyPartitionInfo {
                 definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                partition_key: v.partition_key.to_vec(),
+                columns: v.columns,
                 linear: v.linear,
             }),
         }
@@ -98,7 +97,7 @@ impl From<meta_pb::add_table_meta::PartitionInfo> for PartitionInfo {
             meta_pb::add_table_meta::PartitionInfo::KeyPartition(v) => {
                 Self::Key(KeyPartitionInfo {
                     definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                    partition_key: Bytes::from(v.partition_key),
+                    columns: v.columns,
                     linear: v.linear,
                 })
             }

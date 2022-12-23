@@ -28,7 +28,7 @@ message HashPartitionInfo {
 
 message KeyPartitionInfo {
   repeated Definition definitions = 1;
-  bytes partition_key = 2;
+  repeated string columns = 2;
   bool linear = 3;
 }
 

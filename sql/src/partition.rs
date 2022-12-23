@@ -64,22 +64,9 @@ impl PartitionParser {
 
         let definitions = parse_to_definition(partition_num);
 
-        // TODO: In order to convert to pb format for persistence, columnDef is
-        // converted to expression, maybe there is better way?
-        let partition_key = Expr::Column(Column::from_name(partition_key.name.value));
-        let partition_key = partition_key
-            .to_bytes()
-            .map_err(|e| Box::new(e) as _)
-            .context(ParsePartitionWithCause {
-                msg: format!(
-                    "found invalid expr in partition key, partition_key:{}",
-                    partition_key
-                ),
-            })?;
-
         Ok(KeyPartitionInfo {
             definitions,
-            partition_key,
+            columns: partition_key,
             linear,
         })
     }

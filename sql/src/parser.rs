@@ -537,7 +537,6 @@ impl<'a> Parser<'a> {
         &mut self,
         columns: &[ColumnDef],
     ) -> Result<Option<Partition>> {
-        // TODO: only hash type is supported now, we should support other types.
         if let Some(key) = self.maybe_parse_and_check_key_partition(columns)? {
             return Ok(Some(Partition::Key(key)));
         }
@@ -602,40 +601,41 @@ impl<'a> Parser<'a> {
         let column_names = self.parser.parse_parenthesized_column_list(Mandatory)?;
 
         // Partition key length must be 1, we do not supported default key now.
-        if column_names.len() != 1 {
-            return parser_err!(format!(
-                "except only one partition key, found key length:{:?}",
-                column_names.len()
-            ));
+        if column_names.len() < 1 {
+            return parser_err!(format!("Default partition key is unsupported now"));
         }
-        let key_column_name = column_names.get(0).unwrap().clone().value;
+        let key_column_names: Vec<String> = column_names
+            .clone()
+            .into_iter()
+            .map(|column_name| column_name.value)
+            .collect();
 
         let mut found = false;
-        let mut partition_key = columns[0].clone();
+        let mut partition_key = Vec::new();
         for column in columns {
-            if column.name.value == key_column_name {
+            if key_column_names.contains(&column.name.value) {
                 found = true;
-                partition_key = column.clone();
                 let tag_option = column.options.iter().find(|opt| {
                     opt.option == ColumnOption::DialectSpecific(vec![Token::make_keyword(TAG)])
                 });
                 if tag_option.is_none() {
                     return parser_err!(format!(
                         "partition key must be tag, key name:{:?}",
-                        key_column_name
+                        column.name.value
                     ));
                 }
+                partition_key.push(column.name.value.clone());
             }
         }
 
-        let partition_num = self.parse_partition_num()?;
-
         if !found {
             return parser_err!(format!(
-                "partition key not found in table columns, key name:{:?}",
-                key_column_name
+                "partition key not found in table columns, key names:{:?}",
+                column_names
             ));
         }
+
+        let partition_num = self.parse_partition_num()?;
 
         // Parse successfully.
         Ok(Some(KeyPartition {
@@ -1385,7 +1385,7 @@ mod tests {
                 Statement::Create(v) => {
                     if let Some(Partition::Key(p)) = &v.partition {
                         assert!(!p.linear);
-                        assert_eq!(p.partition_key.name.value, "name");
+                        assert_eq!(p.partition_key.get(0).unwrap(), "name");
                         assert_eq!(p.partition_num, 2);
                     } else {
                         panic!("failed");
