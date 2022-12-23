@@ -53,3 +53,10 @@ func IsSubSlice(subSlice []string, slice []string) bool {
 	}
 	return true
 }
+
+func Max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}

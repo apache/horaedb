@@ -43,10 +43,11 @@ const (
 	defaultMinScanLimit    int  = 20
 	defaultIDAllocatorStep uint = 20
 
-	defaultClusterName              = "defaultCluster"
-	defaultClusterNodeCount         = 2
-	defaultClusterReplicationFactor = 1
-	defaultClusterShardTotal        = 8
+	defaultClusterName                     = "defaultCluster"
+	defaultClusterNodeCount                = 2
+	defaultClusterReplicationFactor        = 1
+	defaultClusterShardTotal               = 8
+	defaultPartitionTableProportionOfNodes = 0.5
 
 	defaultHTTPPort = 8080
 )
@@ -103,6 +104,8 @@ type Config struct {
 	PeerUrls            string `toml:"peer-urls" env:"PEER_URLS"`
 	AdvertiseClientUrls string `toml:"advertise-client-urls" env:"ADVERTISE_CLIENT_URLS"`
 	AdvertisePeerUrls   string `toml:"advertise-peer-urls" env:"ADVERTISE_PEER_URLS"`
+
+	DefaultPartitionTableProportionOfNodes float32 `toml:"default-partition_table_proportion_of_nodes" env:"DEFAULT_PARTITION_TABLE_PROPORTION_OF_NODES"`
 
 	HTTPPort int `toml:"default-http-port" env:"DEFAULT_HTTP_PORT"`
 }
@@ -248,10 +251,11 @@ func MakeConfigParser() (*Parser, error) {
 		MinScanLimit:            defaultMinScanLimit,
 		IDAllocatorStep:         defaultIDAllocatorStep,
 
-		DefaultClusterName:              defaultClusterName,
-		DefaultClusterNodeCount:         defaultClusterNodeCount,
-		DefaultClusterReplicationFactor: defaultClusterReplicationFactor,
-		DefaultClusterShardTotal:        defaultClusterShardTotal,
+		DefaultClusterName:                     defaultClusterName,
+		DefaultClusterNodeCount:                defaultClusterNodeCount,
+		DefaultClusterReplicationFactor:        defaultClusterReplicationFactor,
+		DefaultClusterShardTotal:               defaultClusterShardTotal,
+		DefaultPartitionTableProportionOfNodes: defaultPartitionTableProportionOfNodes,
 
 		HTTPPort: defaultHTTPPort,
 	}

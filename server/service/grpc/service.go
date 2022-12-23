@@ -170,17 +170,18 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		return nil
 	}
 
-	procedure, err := factory.CreateCreateTableProcedure(ctx, procedure.CreateTableRequest{
+	p, err := factory.MakeCreateTableProcedure(ctx, procedure.CreateTableRequest{
 		Cluster:     c,
 		SourceReq:   req,
 		OnSucceeded: onSucceeded,
 		OnFailed:    onFailed,
 	})
 	if err != nil {
-		log.Error("fail to create table", zap.Error(err))
+		log.Error("fail to create table, factory create procedure", zap.Error(err))
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
 	}
-	err = manager.Submit(ctx, procedure)
+
+	err = manager.Submit(ctx, p)
 	if err != nil {
 		log.Error("fail to create table, manager submit procedure", zap.Error(err))
 		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil

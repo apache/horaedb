@@ -16,17 +16,18 @@ import (
 )
 
 const (
-	testTableName0           = "table0"
-	testTableName1           = "table1"
-	testSchemaName           = "testSchemaName"
-	nodeName0                = "node0"
-	nodeName1                = "node1"
-	testRootPath             = "/rootPath"
-	defaultIDAllocatorStep   = 20
-	clusterName              = "ceresdbCluster1"
-	defaultNodeCount         = 2
-	defaultReplicationFactor = 1
-	defaultShardTotal        = 2
+	testTableName0                         = "table0"
+	testTableName1                         = "table1"
+	testSchemaName                         = "testSchemaName"
+	nodeName0                              = "node0"
+	nodeName1                              = "node1"
+	testRootPath                           = "/rootPath"
+	defaultIDAllocatorStep                 = 20
+	clusterName                            = "ceresdbCluster1"
+	defaultNodeCount                       = 2
+	defaultReplicationFactor               = 1
+	defaultPartitionTableProportionOfNodes = 0.5
+	defaultShardTotal                      = 2
 )
 
 type MockDispatch struct{}
@@ -55,25 +56,29 @@ func newTestEtcdStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.Cl
 	return storage, client, closeSrv
 }
 
-func newTestCluster(ctx context.Context, t *testing.T) *cluster.Cluster {
+func newTestCluster(ctx context.Context, t *testing.T) (cluster.Manager, *cluster.Cluster) {
 	re := require.New(t)
 	storage, kv, _ := newTestEtcdStorage(t)
 	manager, err := cluster.NewManagerImpl(storage, kv, testRootPath, defaultIDAllocatorStep)
 	re.NoError(err)
 
-	cluster, err := manager.CreateCluster(ctx, clusterName, defaultNodeCount, defaultReplicationFactor, defaultShardTotal)
+	cluster, err := manager.CreateCluster(ctx, clusterName, cluster.CreateClusterOpts{
+		NodeCount:         defaultNodeCount,
+		ReplicationFactor: defaultReplicationFactor,
+		ShardTotal:        defaultShardTotal,
+	})
 	re.NoError(err)
-	return cluster
+	return manager, cluster
 }
 
 // Prepare a test cluster which has scattered shards and created test schema.
 // Notice: sleep(5s) will be called in this function.
-func prepare(t *testing.T) *cluster.Cluster {
+func prepare(t *testing.T) (cluster.Manager, *cluster.Cluster) {
 	re := require.New(t)
-	cluster := newClusterAndRegisterNode(t)
+	manager, cluster := newClusterAndRegisterNode(t)
 	// Wait for the cluster to be ready.
 	time.Sleep(time.Second * 5)
 	_, _, err := cluster.GetOrCreateSchema(context.Background(), testSchemaName)
 	re.NoError(err)
-	return cluster
+	return manager, cluster
 }

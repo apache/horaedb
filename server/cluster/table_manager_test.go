@@ -17,28 +17,29 @@ import (
 )
 
 const (
-	defaultTimeout                  = time.Second * 10
-	cluster1                        = "ceresdbCluster1"
-	cluster2                        = "ceresdbCluster2"
-	defaultSchema                   = "ceresdbSchema"
-	defaultNodeCount                = 2
-	defaultReplicationFactor        = 1
-	defaultShardTotal               = 8
-	defaultLease                    = 100
-	node1                           = "127.0.0.1:8081"
-	node2                           = "127.0.0.2:8081"
-	table1                          = "table1"
-	table2                          = "table2"
-	table3                          = "table3"
-	table4                          = "table4"
-	defaultSchemaID          uint32 = 0
-	tableID1                 uint64 = 0
-	tableID2                 uint64 = 1
-	tableID3                 uint64 = 2
-	tableID4                 uint64 = 3
-	testRootPath                    = "/rootPath"
-	defaultIDAllocatorStep          = 20
-	defaultThreadNum                = 20
+	defaultTimeout                           = time.Second * 10
+	cluster1                                 = "ceresdbCluster1"
+	cluster2                                 = "ceresdbCluster2"
+	defaultSchema                            = "ceresdbSchema"
+	defaultNodeCount                         = 2
+	defaultReplicationFactor                 = 1
+	defaultShardTotal                        = 8
+	defaultPartitionTableRatioOfNodes        = 2
+	defaultLease                             = 100
+	node1                                    = "127.0.0.1:8081"
+	node2                                    = "127.0.0.2:8081"
+	table1                                   = "table1"
+	table2                                   = "table2"
+	table3                                   = "table3"
+	table4                                   = "table4"
+	defaultSchemaID                   uint32 = 0
+	tableID1                          uint64 = 0
+	tableID2                          uint64 = 1
+	tableID3                          uint64 = 2
+	tableID4                          uint64 = 3
+	testRootPath                             = "/rootPath"
+	defaultIDAllocatorStep                   = 20
+	defaultThreadNum                         = 20
 )
 
 func newTestStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseFn) {
@@ -158,7 +159,11 @@ func testCluster(ctx context.Context, re *require.Assertions, manager Manager, c
 }
 
 func testCreateCluster(ctx context.Context, re *require.Assertions, manager Manager, clusterName string) {
-	_, err := manager.CreateCluster(ctx, clusterName, defaultNodeCount, defaultReplicationFactor, defaultShardTotal)
+	_, err := manager.CreateCluster(ctx, clusterName, CreateClusterOpts{
+		NodeCount:         defaultNodeCount,
+		ReplicationFactor: defaultReplicationFactor,
+		ShardTotal:        defaultShardTotal,
+	})
 	re.NoError(err)
 }
 
@@ -188,7 +193,7 @@ func testCreateTable(ctx context.Context, re *require.Assertions, manager Manage
 ) {
 	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
-	table, err := c.CreateTable(ctx, node, schema, tableName)
+	table, err := c.CreateTable(ctx, node, schema, tableName, false)
 	re.NoError(err)
 	re.Equal(tableID, table.Table.ID)
 }

@@ -17,7 +17,7 @@ import (
 func TestCreateAndDropTable(t *testing.T) {
 	re := require.New(t)
 	dispatch := MockDispatch{}
-	c := prepare(t)
+	_, c := prepare(t)
 	testTableNum := 20
 	// Create table.
 	for i := 0; i < testTableNum; i++ {
@@ -70,7 +70,7 @@ func TestCreateAndDropTable(t *testing.T) {
 func testCreateTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, tableName string) {
 	re := require.New(t)
 	// New CreateTableProcedure to create a new table.
-	procedure := NewCreateTableProcedure(dispatch, c, uint64(1), &metaservicepb.CreateTableRequest{
+	procedure := NewCreateNormalTableProcedure(dispatch, c, uint64(1), &metaservicepb.CreateTableRequest{
 		Header: &metaservicepb.RequestHeader{
 			Node:        nodeName0,
 			ClusterName: clusterName,

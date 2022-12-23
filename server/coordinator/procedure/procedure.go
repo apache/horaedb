@@ -28,6 +28,7 @@ const (
 	Scatter
 	CreateTable
 	DropTable
+	CreatePartitionTable
 )
 
 // Procedure is used to describe how to execute a set of operations from the scheduler, e.g. SwitchLeaderProcedure, MergeShardProcedure.

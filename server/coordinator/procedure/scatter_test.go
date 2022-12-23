@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
+func newClusterAndRegisterNode(t *testing.T) (cluster.Manager, *cluster.Cluster) {
 	re := require.New(t)
 	ctx := context.Background()
 	dispatch := MockDispatch{}
-	c := newTestCluster(ctx, t)
+	m, c := newTestCluster(ctx, t)
 
 	totalShardNum := c.GetTotalShardNum()
 	shardIDs := make([]storage.ShardID, 0, totalShardNum)
@@ -48,7 +48,7 @@ func newClusterAndRegisterNode(t *testing.T) *cluster.Cluster {
 		}, ShardInfos: []cluster.ShardInfo{},
 	})
 	re.NoError(err)
-	return c
+	return m, c
 }
 
 func checkScatterWithCluster(t *testing.T, cluster *cluster.Cluster) {
@@ -74,7 +74,7 @@ func checkScatterWithCluster(t *testing.T, cluster *cluster.Cluster) {
 }
 
 func TestScatter(t *testing.T) {
-	cluster := newClusterAndRegisterNode(t)
+	_, cluster := newClusterAndRegisterNode(t)
 	time.Sleep(time.Second * 5)
 	checkScatterWithCluster(t, cluster)
 }

@@ -171,7 +171,7 @@ func (c *Cluster) GetTable(schemaName, tableName string) (storage.Table, bool, e
 	return c.tableManager.GetTable(schemaName, tableName)
 }
 
-func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName string, tableName string) (CreateTableResult, error) {
+func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName string, tableName string, partitioned bool) (CreateTableResult, error) {
 	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("nodeName", nodeName), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
 
 	_, exists, err := c.tableManager.GetTable(schemaName, tableName)
@@ -184,7 +184,7 @@ func (c *Cluster) CreateTable(ctx context.Context, nodeName string, schemaName s
 	}
 
 	// Create table in table manager.
-	table, err := c.tableManager.CreateTable(ctx, schemaName, tableName)
+	table, err := c.tableManager.CreateTable(ctx, schemaName, tableName, partitioned)
 	if err != nil {
 		return CreateTableResult{}, errors.WithMessage(err, "table manager create table")
 	}

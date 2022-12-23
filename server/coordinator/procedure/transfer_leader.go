@@ -65,12 +65,13 @@ type TransferLeaderProcedure struct {
 
 // TransferLeaderProcedurePersistRawData used for storage, procedure will be converted to persist raw data before saved in storage.
 type TransferLeaderProcedurePersistRawData struct {
-	ID                uint64
-	FsmState          string
+	ID       uint64
+	FsmState string
+	State    State
+
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
 	NewLeaderNodeName string
-	State             State
 }
 
 // TransferLeaderCallbackRequest is fsm callbacks param.
