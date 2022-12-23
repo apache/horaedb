@@ -552,19 +552,13 @@ impl<'a> Parser<'a> {
         columns: &[ColumnDef],
     ) -> Result<Option<HashPartition>> {
         // Parse first part: "PARTITION BY HASH(expr)".
-        let (is_hash_partition, is_linear) = {
-            if self.consume_token("HASH") {
-                (true, false)
-            } else if self.consume_tokens(&["LINEAR", "HASH"]) {
-                (true, true)
-            } else {
-                (false, false)
-            }
-        };
-
-        if !is_hash_partition {
+        let linear = if self.consume_token("HASH") {
+            false
+        } else if self.consume_tokens(&["LINEAR", "HASH"]) {
+            true
+        } else {
             return Ok(None);
-        }
+        };
 
         // TODO: support all valid exprs not only column expr.
         let expr = self.parse_and_check_expr_in_hash(columns)?;
@@ -573,7 +567,7 @@ impl<'a> Parser<'a> {
 
         // Parse successfully.
         Ok(Some(HashPartition {
-            linear: is_linear,
+            linear,
             partition_num,
             expr,
         }))
@@ -614,10 +608,8 @@ impl<'a> Parser<'a> {
                     ))
                 }
             };
-            let tag_option = col_def.options.iter().find(|opt| {
-                opt.option == ColumnOption::DialectSpecific(vec![Token::make_keyword(TAG)])
-            });
-            if tag_option.is_none() {
+            let tag_column = col_def.options.iter().any(|opt| is_tag_column(&opt.option));
+            if !tag_column {
                 return parser_err!(format!(
                     "partition key must be tag, key name:{:?}",
                     key_col.value
@@ -713,12 +705,8 @@ fn check_column_expr_validity_in_hash(column: &Ident, columns: &[ColumnDef]) -> 
                     | DataType::UnsignedSmallInt(_)
                     | DataType::UnsignedBigInt(_)
             );
-
-            let tag_option = col.options.iter().find(|opt| {
-                opt.option == ColumnOption::DialectSpecific(vec![Token::make_keyword(TAG)])
-            });
-
-            is_integer && tag_option.is_some()
+            let tag_column = col.options.iter().any(|opt| is_tag_column(&opt.option));
+            is_integer && tag_column
         } else {
             false
         }

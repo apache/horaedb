@@ -18,7 +18,7 @@ impl PartitionInfo {
     pub fn get_definitions(&self) -> Vec<Definition> {
         match self {
             Self::Hash(v) => v.definitions.clone(),
-            PartitionInfo::Key(v) => v.definitions.clone(),
+            Self::Key(v) => v.definitions.clone(),
         }
     }
 }
