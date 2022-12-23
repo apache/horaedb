@@ -1370,7 +1370,7 @@ mod tests {
                 Statement::Create(v) => {
                     if let Some(Partition::Key(p)) = &v.partition {
                         assert!(!p.linear);
-                        assert_eq!(p.partition_key.name.value, "name");
+                        assert_eq!(&p.partition_key[0], "name");
                         assert_eq!(p.partition_num, 2);
                     } else {
                         panic!("failed");

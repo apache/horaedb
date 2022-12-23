@@ -140,24 +140,18 @@ impl ShowCreateInterpreter {
                 }
             }
             PartitionInfo::Key(v) => {
-                let partition_key = match Expr::from_bytes(&v.partition_key) {
-                    Ok(expr) => expr,
-                    Err(e) => {
-                        error!("show create table parse partition info failed, err:{}", e);
-                        return res;
-                    }
-                };
+                let rendered_partition_key = v.partition_key.join(",");
                 if v.linear {
                     res += format!(
                         " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
-                        partition_key,
+                        rendered_partition_key,
                         v.definitions.len()
                     )
                     .as_str()
                 } else {
                     res += format!(
                         " PARTITION BY KEY({}) PARTITIONS {}",
-                        partition_key,
+                        rendered_partition_key,
                         v.definitions.len()
                     )
                     .as_str()
@@ -223,7 +217,7 @@ mod test {
 
     #[test]
     fn test_render_key_partition_info() {
-        let expr = col("col1");
+        let partition_key_col_name = "col1";
         let partition_info = PartitionInfo::Key(KeyPartitionInfo {
             definitions: vec![
                 Definition {
@@ -235,7 +229,7 @@ mod test {
                     origin_name: None,
                 },
             ],
-            partition_key: expr.to_bytes().unwrap(),
+            partition_key: vec![partition_key_col_name.to_string()],
             linear: false,
         });
 
