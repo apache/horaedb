@@ -8,9 +8,9 @@ use common_types::datum::Datum;
 use datafusion_expr::{Expr, Operator};
 use df_operator::visitor::find_columns_by_expr;
 
-use super::filter::{PartitionCondition, PartitionFilter};
+use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 
-pub trait FilterExtractor {
+pub trait FilterExtractor: Send + Sync + 'static {
     fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter>;
 }
 pub struct KeyExtractor;
@@ -36,10 +36,9 @@ impl FilterExtractor for KeyExtractor {
             }
 
             // If target columns included, now only the situation that only targe column in
-            // filter is supported. Once other type column found here, we stop
-            // our scanning. TODO: targe
+            // filter is supported. Once other type column found here, we ignore it.
             if columns_in_filter.len() != 1 {
-                return Vec::default();
+                continue;
             }
 
             // Finally, we try to convert `filter` to `PartitionFilter`.
@@ -57,15 +56,16 @@ impl FilterExtractor for KeyExtractor {
                 _ => None,
             };
 
-            match partition_filter {
-                Some(pf) => target.push(pf),
-                None => return Vec::default(),
+            if let Some(pf) = partition_filter {
+                target.push(pf);
             }
         }
 
         target
     }
 }
+
+pub type FilterExtractorRef = Box<dyn FilterExtractor>;
 
 #[cfg(test)]
 mod tests {

@@ -2,10 +2,11 @@
 
 //! Partition rules
 
-pub mod extractor;
-pub mod filter;
-pub mod key;
-pub mod mock;
+pub mod df_adapter;
+pub(crate) mod factory;
+pub(crate) mod filter;
+pub(crate) mod key;
+pub(crate) mod mock;
 
 use common_types::{datum::DatumKind, row::RowGroup};
 
@@ -13,7 +14,7 @@ use self::filter::PartitionFilter;
 use crate::partition::Result;
 
 /// Partition rule locate partition
-pub trait PartitionRule {
+pub trait PartitionRule: Send + Sync + 'static {
     fn columns(&self) -> Vec<String>;
 
     /// Locate the partition for each row in `row_group`.

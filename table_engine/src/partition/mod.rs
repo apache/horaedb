@@ -12,6 +12,13 @@ use snafu::{Backtrace, Snafu};
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display(
+        "Failed to build partition rule, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    BuildPartitionRule { msg: String, backtrace: Backtrace },
+
+    #[snafu(display(
         "Failed to locate partitions for write, msg:{}.\nBacktrace:{}\n",
         msg,
         backtrace
