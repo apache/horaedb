@@ -5842,6 +5842,7 @@ dependencies = [
  "datafusion",
  "datafusion-expr",
  "df_operator",
+ "env_logger",
  "futures 0.3.21",
  "itertools",
  "log",
