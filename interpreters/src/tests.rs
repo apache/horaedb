@@ -21,7 +21,7 @@ use crate::{
 
 async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
     // Create catalog manager, use analytic table as backend
-    TableBasedManager::new(analytic.clone(), analytic)
+    TableBasedManager::new(analytic.clone())
         .await
         .expect("Failed to create catalog manager")
 }

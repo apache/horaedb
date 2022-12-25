@@ -7,10 +7,10 @@ use datafusion_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;
-use table_engine::partition::{Definition, HashPartitionInfo, PartitionInfo};
+use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
 
 use crate::{
-    ast::{HashPartition, Partition},
+    ast::{HashPartition, KeyPartition, Partition},
     planner::{ParsePartitionWithCause, Result, UnsupportedPartition},
 };
 
@@ -20,6 +20,7 @@ impl PartitionParser {
     pub fn parse(partition_stmt: Partition) -> Result<PartitionInfo> {
         Ok(match partition_stmt {
             Partition::Hash(stmt) => PartitionInfo::Hash(PartitionParser::parse_hash(stmt)?),
+            Partition::Key(stmt) => PartitionInfo::Key(PartitionParser::parse_key_partition(stmt)?),
         })
     }
 
@@ -30,7 +31,7 @@ impl PartitionParser {
             expr,
         } = hash_stmt;
 
-        let definitions = parse_to_definition(partition_num);
+        let definitions = make_partition_definitions(partition_num);
 
         if let SqlExpr::Identifier(id) = expr {
             let expr = Expr::Column(Column::from_name(id.value));
@@ -53,13 +54,29 @@ impl PartitionParser {
             .fail()
         }
     }
+
+    pub fn parse_key_partition(key_partition_stmt: KeyPartition) -> Result<KeyPartitionInfo> {
+        let KeyPartition {
+            linear,
+            partition_num,
+            partition_key,
+        } = key_partition_stmt;
+
+        let definitions = make_partition_definitions(partition_num);
+
+        Ok(KeyPartitionInfo {
+            definitions,
+            partition_key,
+            linear,
+        })
+    }
 }
 
-fn parse_to_definition(partition_num: u64) -> Vec<Definition> {
+fn make_partition_definitions(partition_num: u64) -> Vec<Definition> {
     (0..partition_num)
         .into_iter()
         .map(|p| Definition {
-            name: format!("{}", p),
+            name: p.to_string(),
             origin_name: None,
         })
         .collect()

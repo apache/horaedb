@@ -139,6 +139,24 @@ impl ShowCreateInterpreter {
                     .as_str()
                 }
             }
+            PartitionInfo::Key(v) => {
+                let rendered_partition_key = v.partition_key.join(",");
+                if v.linear {
+                    res += format!(
+                        " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
+                        rendered_partition_key,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                } else {
+                    res += format!(
+                        " PARTITION BY KEY({}) PARTITIONS {}",
+                        rendered_partition_key,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                }
+            }
         }
 
         // TODO: update datafusion to remove `#`.
@@ -168,12 +186,12 @@ mod test {
 
     use datafusion_expr::col;
     use datafusion_proto::bytes::Serializeable;
-    use table_engine::partition::{Definition, HashPartitionInfo, PartitionInfo};
+    use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
 
     use super::ShowCreateInterpreter;
 
     #[test]
-    fn test_render_partition_info() {
+    fn test_render_hash_partition_info() {
         let expr = col("col1").add(col("col2"));
         let partition_info = PartitionInfo::Hash(HashPartitionInfo {
             definitions: vec![
@@ -191,6 +209,31 @@ mod test {
         });
 
         let expected = " PARTITION BY HASH(col1 + col2) PARTITIONS 2".to_string();
+        assert_eq!(
+            expected,
+            ShowCreateInterpreter::render_partition_info(Some(partition_info))
+        );
+    }
+
+    #[test]
+    fn test_render_key_partition_info() {
+        let partition_key_col_name = "col1";
+        let partition_info = PartitionInfo::Key(KeyPartitionInfo {
+            definitions: vec![
+                Definition {
+                    name: "p0".to_string(),
+                    origin_name: None,
+                },
+                Definition {
+                    name: "p1".to_string(),
+                    origin_name: None,
+                },
+            ],
+            partition_key: vec![partition_key_col_name.to_string()],
+            linear: false,
+        });
+
+        let expected = " PARTITION BY KEY(col1) PARTITIONS 2".to_string();
         assert_eq!(
             expected,
             ShowCreateInterpreter::render_partition_info(Some(partition_info))

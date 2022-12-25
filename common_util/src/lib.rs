@@ -11,6 +11,7 @@ pub mod macros;
 pub mod alloc_tracker;
 pub mod codec;
 pub mod config;
+pub mod error;
 pub mod metric;
 pub mod panic;
 pub mod record_batch;
