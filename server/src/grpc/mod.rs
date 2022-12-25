@@ -38,6 +38,7 @@ use crate::{
 
 mod meta_event_service;
 mod metrics;
+mod remote_engine_service;
 mod storage_service;
 
 #[derive(Debug, Snafu)]

@@ -36,6 +36,7 @@ profile = { workspace = true }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
+proto = { workspace = true }
 query_engine = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }

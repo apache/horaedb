@@ -4,7 +4,7 @@
 
 use std::{fmt, sync::Arc};
 
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     column_schema::{ColumnSchema, ReadOp},
@@ -36,6 +36,17 @@ pub enum Error {
         backtrace
     ))]
     MissingReadColumn { name: String, backtrace: Backtrace },
+
+    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
+    EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert table schema, err:{}", source))]
+    ConvertTableSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Empty projection.\nBacktrace:\n{}", backtrace))]
+    EmptyProjection { backtrace: Backtrace },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -144,6 +155,26 @@ impl ProjectedSchema {
     /// Returns the arrow schema after projection.
     pub fn to_projected_arrow_schema(&self) -> ArrowSchemaRef {
         self.0.record_schema.to_arrow_schema_ref()
+    }
+}
+
+impl TryFrom<proto::remote_engine::ProjectedSchema> for ProjectedSchema {
+    type Error = Error;
+
+    fn try_from(
+        pb: proto::remote_engine::ProjectedSchema,
+    ) -> std::result::Result<Self, Self::Error> {
+        let schema: Schema = pb
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertTableSchema)?;
+        let projection = pb
+            .projection
+            .map(|v| v.idx.into_iter().map(|id| id as usize).collect());
+
+        ProjectedSchema::new(schema, projection)
     }
 }
 

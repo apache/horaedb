@@ -7,12 +7,26 @@ pub mod model;
 use async_trait::async_trait;
 use common_util::define_result;
 use model::{ReadRequest, WriteRequest};
-use snafu::Snafu;
+use snafu::{Backtrace, Snafu};
 
 use crate::stream::SendableRecordBatchStream;
 
 #[derive(Debug, Snafu)]
-pub enum Error {}
+pub enum Error {
+    #[snafu(display("Empty table identifier.\nBacktrace:\n{}", backtrace))]
+    EmptyTableIdentifier { backtrace: Backtrace },
+
+    #[snafu(display("Empty table read request.\nBacktrace:\n{}", backtrace))]
+    EmptyTableReadRequest { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert table read request, err:{}", source))]
+    ConvertTableReadRequest {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
+    EmptyRowGroup { backtrace: Backtrace },
+}
 
 define_result!(Error);
 
