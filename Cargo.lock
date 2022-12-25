@@ -4377,6 +4377,7 @@ version = "1.0.0-alpha01"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
+ "tonic",
  "tonic-build",
 ]
 
