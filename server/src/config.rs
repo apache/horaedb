@@ -51,7 +51,7 @@ pub struct StaticRouteConfig {
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Eq, Hash, PartialEq)]
 pub struct Endpoint {
     pub addr: String,
     pub port: u16,
@@ -97,6 +97,15 @@ impl From<Endpoint> for storage::Endpoint {
         storage::Endpoint {
             ip: endpoint.addr,
             port: endpoint.port as u32,
+        }
+    }
+}
+
+impl From<storage::Endpoint> for Endpoint {
+    fn from(endpoint: storage::Endpoint) -> Self {
+        Endpoint {
+            addr: endpoint.ip,
+            port: endpoint.port as u16,
         }
     }
 }

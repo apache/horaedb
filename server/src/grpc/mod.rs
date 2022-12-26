@@ -30,12 +30,16 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    grpc::{meta_event_service::MetaServiceImpl, storage_service::StorageServiceImpl},
+    grpc::{
+        forward::Forwarder, meta_event_service::MetaServiceImpl,
+        storage_service::StorageServiceImpl,
+    },
     instance::InstanceRef,
     route::RouterRef,
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
+mod forward;
 mod meta_event_service;
 mod metrics;
 mod storage_service;
@@ -178,6 +182,7 @@ pub struct Builder<Q> {
     router: Option<RouterRef>,
     cluster: Option<ClusterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    forward_config: Option<forward::Config>,
 }
 
 impl<Q> Builder<Q> {
@@ -189,6 +194,7 @@ impl<Q> Builder<Q> {
             router: None,
             cluster: None,
             schema_config_provider: None,
+            forward_config: None,
         }
     }
 
@@ -242,12 +248,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             MetaEventServiceServer::new(meta_service)
         });
 
+        let forwarder = {
+            let conf = self.forward_config.unwrap_or_default();
+            Arc::new(Forwarder::new(conf, router.clone()))
+        };
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
             router,
             instance,
             runtimes,
             schema_config_provider,
+            forwarder,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

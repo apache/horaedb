@@ -36,6 +36,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
+use super::forward::ForwarderRef;
 use crate::{
     consts,
     grpc::{
@@ -98,6 +99,7 @@ pub struct HandlerContext<'a, Q> {
     catalog: String,
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
+    forwarder: ForwarderRef,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -106,6 +108,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         router: Arc<dyn Router + Sync + Send>,
         instance: InstanceRef<Q>,
         schema_config_provider: &'a SchemaConfigProviderRef,
+        forwarder: ForwarderRef,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -147,6 +150,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             catalog,
             schema,
             schema_config,
+            forwarder,
         })
     }
 
@@ -166,6 +170,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
     pub schema_config_provider: SchemaConfigProviderRef,
+    pub forwarder: ForwarderRef,
 }
 
 impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
@@ -175,6 +180,7 @@ impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
             instance: self.instance.clone(),
             runtimes: self.runtimes.clone(),
             schema_config_provider: self.schema_config_provider.clone(),
+            forwarder: self.forwarder.clone(),
         }
     }
 }
@@ -191,6 +197,7 @@ macro_rules! handle_request {
                 let router = self.router.clone();
                 let header = RequestHeader::from(request.metadata());
                 let instance = self.instance.clone();
+                let forwarder = self.forwarder.clone();
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -204,7 +211,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -274,12 +281,18 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
 
-        let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "invalid header",
-            })?;
+        let handler_ctx = HandlerContext::new(
+            header,
+            router,
+            instance,
+            &schema_config_provider,
+            self.forwarder.clone(),
+        )
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid header",
+        })?;
 
         let mut total_success = 0;
         let mut resp = WriteResponse::default();
@@ -332,10 +345,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let header = RequestHeader::from(request.metadata());
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
+        let forwarder = self.forwarder.clone();
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
