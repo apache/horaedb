@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use common_types::{record_batch::RecordBatch, schema::Schema};
+use common_types::record_batch::RecordBatch;
+use common_util::avro;
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{
@@ -20,7 +21,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    avro_util::{convert_avro_rows_to_row_group, convert_record_batch_to_avro},
     grpc::remote_engine_service::error::{
         build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
     },
@@ -128,7 +128,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
-                        let resp = match convert_record_batch_to_avro(record_batch)
+                        let resp = match avro::convert_record_batch_to_avro(record_batch)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::Internal,
@@ -140,6 +140,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                             },
                             Ok(rows) => ReadResponse {
                                 header: Some(build_ok_header()),
+                                version: 0,
                                 rows,
                             },
                         };
@@ -203,42 +204,13 @@ async fn handle_stream_read(
 }
 
 async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<WriteResponse> {
-    let table_identifier: TableIdentifier = request
-        .table
-        .context(ErrNoCause {
-            code: StatusCode::Internal,
-            msg: "table identifier not found",
-        })?
-        .into();
-    let row_group = request.row_group.context(ErrNoCause {
-        code: StatusCode::Internal,
-        msg: "row group not found",
-    })?;
-
-    let table_schema: Schema = row_group
-        .table_schema
-        .context(ErrNoCause {
-            code: StatusCode::Internal,
-            msg: "table schema not found",
-        })?
+    let write_request: table_engine::remote::model::WriteRequest = request
         .try_into()
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: "fail to convert table schema",
+            msg: "fail to convert write request",
         })?;
-
-    let row_group = convert_avro_rows_to_row_group(table_schema, &row_group.rows)
-        .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: "fail to convert row group",
-        })?;
-
-    let write_request = table_engine::remote::model::WriteRequest {
-        table: table_identifier,
-        write_request: table_engine::table::WriteRequest { row_group },
-    };
 
     let table = find_table_by_identifier(&ctx, &write_request.table)?;
 

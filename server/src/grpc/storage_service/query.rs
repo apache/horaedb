@@ -9,7 +9,7 @@ use ceresdbproto::{
     storage::{query_response, QueryRequest, QueryResponse},
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::time::InstantExt;
+use common_util::{avro, time::InstantExt};
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
@@ -20,12 +20,9 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
-use crate::{
-    avro_util,
-    grpc::storage_service::{
-        error::{ErrNoCause, ErrWithCause, Result},
-        HandlerContext,
-    },
+use crate::grpc::storage_service::{
+    error::{ErrNoCause, ErrWithCause, Result},
+    HandlerContext,
 };
 
 /// Schema name of the record
@@ -209,7 +206,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
         let avro_schema = match avro_schema_opt.as_ref() {
             Some(schema) => schema,
             None => {
-                let avro_schema = avro_util::to_avro_schema(RECORD_NAME, record_batch.schema());
+                let avro_schema = avro::to_avro_schema(RECORD_NAME, record_batch.schema());
 
                 // We only set schema_json once, so all record batches need to have same schema
                 resp.schema_type = query_response::SchemaType::Avro as i32;
@@ -221,7 +218,7 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
             }
         };
 
-        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut resp.rows)
+        avro::record_batch_to_avro(record_batch, avro_schema, &mut resp.rows)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,

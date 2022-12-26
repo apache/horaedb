@@ -2,10 +2,15 @@
 
 //! Model for remote table engine
 
+use common_types::schema::Schema;
+use common_util::avro;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
-    remote::{ConvertTableReadRequest, EmptyTableIdentifier, EmptyTableReadRequest, Error},
+    remote::{
+        ConvertRowGroup, ConvertTableReadRequest, ConvertTableSchema, EmptyRowGroup,
+        EmptyTableIdentifier, EmptyTableReadRequest, EmptyTableSchema, Error,
+    },
     table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest},
 };
 
@@ -53,4 +58,27 @@ impl TryFrom<proto::remote_engine::ReadRequest> for ReadRequest {
 pub struct WriteRequest {
     pub table: TableIdentifier,
     pub write_request: TableWriteRequest,
+}
+
+impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::WriteRequest) -> Result<Self, Self::Error> {
+        let table_identifier = pb.table.context(EmptyTableIdentifier)?;
+        let row_group = pb.row_group.context(EmptyRowGroup)?;
+        let table_schema: Schema = row_group
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertTableSchema)?;
+        Ok(Self {
+            table: table_identifier.into(),
+            write_request: TableWriteRequest {
+                row_group: avro::convert_avro_rows_to_row_group(table_schema, &row_group.rows)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(ConvertRowGroup)?,
+            },
+        })
+    }
 }

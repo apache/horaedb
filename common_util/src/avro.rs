@@ -19,7 +19,6 @@ use common_types::{
     string::StringBytes,
     time::Timestamp,
 };
-use common_util::define_result;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 /// Schema name of the record
@@ -236,11 +235,11 @@ fn may_union(val: Value, is_nullable: bool) -> Value {
 }
 
 pub fn convert_avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
-    let avro_schema = to_avro_schema(RECORD_NAME, &schema.clone().to_record_schema());
+    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
     let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
     for raw_row in rows {
         let mut row = Vec::with_capacity(schema.num_columns());
-        parse_one_row(&avro_schema, &*raw_row, &mut row)?;
+        parse_one_row(&avro_schema, raw_row, &mut row)?;
         builder.push_checked_row(Row::from_datums(row));
     }
 

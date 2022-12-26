@@ -26,6 +26,19 @@ pub enum Error {
 
     #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
     EmptyRowGroup { backtrace: Backtrace },
+
+    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
+    EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert table schema, err:{}", source))]
+    ConvertTableSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to covert row group, err:{}", source))]
+    ConvertRowGroup {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 define_result!(Error);

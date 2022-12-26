@@ -158,12 +158,10 @@ impl ProjectedSchema {
     }
 }
 
-impl TryFrom<proto::remote_engine::ProjectedSchema> for ProjectedSchema {
+impl TryFrom<proto::common::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
-    fn try_from(
-        pb: proto::remote_engine::ProjectedSchema,
-    ) -> std::result::Result<Self, Self::Error> {
+    fn try_from(pb: proto::common::ProjectedSchema) -> std::result::Result<Self, Self::Error> {
         let schema: Schema = pb
             .table_schema
             .context(EmptyTableSchema)?
