@@ -54,6 +54,11 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: &QueryRequest,
 ) -> Option<Result<QueryResponse>> {
+    if ctx.forwarder.is_none() {
+        return None;
+    }
+    let forwarder = ctx.forwarder.as_ref().unwrap();
+
     if req.metrics.len() != 1 {
         warn!(
             "Unable to forward query without exactly one metric, req:{:?}",
@@ -86,7 +91,7 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
         Box::new(query) as _
     };
 
-    match ctx.forwarder.forward(forward_req, do_query).await {
+    match forwarder.forward(forward_req, do_query).await {
         Ok(forward_res) => match forward_res {
             ForwardResult::Forwarded(v) => Some(v),
             ForwardResult::Original => None,

@@ -99,7 +99,7 @@ pub struct HandlerContext<'a, Q> {
     catalog: String,
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
-    forwarder: ForwarderRef,
+    forwarder: Option<ForwarderRef>,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -108,7 +108,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         router: Arc<dyn Router + Sync + Send>,
         instance: InstanceRef<Q>,
         schema_config_provider: &'a SchemaConfigProviderRef,
-        forwarder: ForwarderRef,
+        forwarder: Option<ForwarderRef>,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -170,7 +170,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
     pub schema_config_provider: SchemaConfigProviderRef,
-    pub forwarder: ForwarderRef,
+    pub forwarder: Option<ForwarderRef>,
 }
 
 impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {

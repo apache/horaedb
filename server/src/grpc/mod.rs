@@ -4,6 +4,7 @@
 
 use std::{
     net::{AddrParseError, SocketAddr},
+    str::FromStr,
     stringify,
     sync::Arc,
 };
@@ -19,6 +20,7 @@ use common_types::{
 };
 use common_util::{
     define_result,
+    error::GenericError,
     runtime::{JoinHandle, Runtime},
 };
 use futures::FutureExt;
@@ -75,6 +77,15 @@ pub enum Error {
 
     #[snafu(display("Missing runtimes.\nBacktrace:\n{}", backtrace))]
     MissingRuntimes { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Missing local endpoint when forwarder enabled.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MissingLocalEndpoint { backtrace: Backtrace },
+
+    #[snafu(display("Invalid local endpoint when forwarder enabled, err:{}", source,))]
+    InvalidLocalEndpoint { source: GenericError },
 
     #[snafu(display("Missing instance.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
@@ -261,16 +272,18 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             MetaEventServiceServer::new(meta_service)
         });
 
-        let forwarder = {
-            let conf = self.forward_config.unwrap_or_default();
-            Arc::new(
-                Forwarder::try_new(
-                    conf,
-                    router.clone(),
-                    Endpoint::new("127.0.0.1".to_string(), 12),
-                )
-                .context(BuildForwarder)?,
-            )
+        let forward_config = self.forward_config.unwrap_or_default();
+        let forwarder = if forward_config.enable {
+            let local_endpoint =
+                Endpoint::from_str(&self.local_endpoint.context(MissingLocalEndpoint)?)
+                    .context(InvalidLocalEndpoint)?;
+            let forwarder = Arc::new(
+                Forwarder::try_new(forward_config, router.clone(), local_endpoint)
+                    .context(BuildForwarder)?,
+            );
+            Some(forwarder)
+        } else {
+            None
         };
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
