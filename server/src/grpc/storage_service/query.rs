@@ -54,10 +54,7 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: &QueryRequest,
 ) -> Option<Result<QueryResponse>> {
-    if ctx.forwarder.is_none() {
-        return None;
-    }
-    let forwarder = ctx.forwarder.as_ref().unwrap();
+    let forwarder = ctx.forwarder.as_ref()?;
 
     if req.metrics.len() != 1 {
         warn!(
@@ -83,7 +80,7 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!("Forwarded query failed"),
+                    msg: "Forwarded query failed".to_string(),
                 })
         }
         .boxed();

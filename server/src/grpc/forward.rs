@@ -213,15 +213,15 @@ impl Forwarder {
             Err(e) => {
                 // Release the grpc client for the error doesn't belong to the normal error.
                 self.release_client(&endpoint);
-                return Ok(ForwardResult::Forwarded(Err(e)));
+                Ok(ForwardResult::Forwarded(Err(e)))
             }
-            Ok(resp) => return Ok(ForwardResult::Forwarded(Ok(resp))),
+            Ok(resp) => Ok(ForwardResult::Forwarded(Ok(resp))),
         }
     }
 
     fn is_loopback_ip(ip_addr: &str) -> Result<bool> {
         let ip = ip_addr.parse::<Ipv4Addr>().context(InvalidIpAddr {
-            ip_addr: ip_addr,
+            ip_addr,
         })?;
 
         Ok(ip.is_loopback())
