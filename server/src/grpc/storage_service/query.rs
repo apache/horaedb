@@ -22,14 +22,14 @@ use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
-use tonic::transport::Channel;
+use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     avro_util,
     grpc::{
         forward::{ForwardRequest, ForwardResult},
         storage_service::{
-            error::{ErrNoCause, ErrWithCause, Error, Result},
+            error::{ErrNoCause, ErrWithCause, Result},
             HandlerContext,
         },
     },
@@ -52,24 +52,25 @@ fn empty_ok_resp() -> QueryResponse {
 
 async fn maybe_forward_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
-    req: QueryRequest,
-) -> ForwardResult<QueryRequest, QueryResponse, Error> {
+    req: &QueryRequest,
+) -> Option<Result<QueryResponse>> {
     if req.metrics.len() != 1 {
         warn!(
             "Unable to forward query without exactly one metric, req:{:?}",
             req
         );
 
-        return ForwardResult::OrigReq(req);
+        return None;
     }
 
     let forward_req = ForwardRequest {
         schema: ctx.schema.clone(),
         metric: req.metrics[0].clone(),
-        req: req.clone(),
+        req: req.clone().into_request(),
     };
-    let do_query = |mut client: StorageServiceClient<Channel>, request: QueryRequest| {
-        async move {
+    let do_query = |mut client: StorageServiceClient<Channel>,
+                    request: tonic::Request<QueryRequest>| {
+        let query = async move {
             client
                 .query(request)
                 .await
@@ -80,14 +81,19 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
                     msg: format!("Forwarded query failed"),
                 })
         }
-        .boxed()
+        .boxed();
+
+        Box::new(query) as _
     };
 
     match ctx.forwarder.forward(forward_req, do_query).await {
-        Ok(v) => v,
+        Ok(forward_res) => match forward_res {
+            ForwardResult::Forwarded(v) => Some(v),
+            ForwardResult::Original => None,
+        },
         Err(e) => {
             error!("Failed to forward req but the error is ignored, err:{}", e);
-            ForwardResult::OrigReq(req)
+            None
         }
     }
 }
@@ -96,9 +102,9 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: QueryRequest,
 ) -> Result<QueryResponse> {
-    let req = match maybe_forward_query(ctx, req).await {
-        ForwardResult::Resp(resp) => return resp,
-        ForwardResult::OrigReq(req) => req,
+    let req = match maybe_forward_query(ctx, &req).await {
+        Some(resp) => return resp,
+        None => req,
     };
 
     let output_result = fetch_query_output(ctx, &req).await?;

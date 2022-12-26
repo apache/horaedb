@@ -30,6 +30,7 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
+    config::Endpoint,
     grpc::{
         forward::Forwarder, meta_event_service::MetaServiceImpl,
         storage_service::StorageServiceImpl,
@@ -96,8 +97,11 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to build table schema for metric: {}, err:{}", metric, source))]
+    #[snafu(display("Fail to build table schema for metric:{}, err:{}", metric, source))]
     BuildTableSchema { metric: String, source: SchemaError },
+
+    #[snafu(display("Fail to build forwarder, err:{}", source))]
+    BuildForwarder { source: forward::Error },
 
     #[snafu(display(
         "Fail to build column schema from column: {}, err:{}",
@@ -108,6 +112,7 @@ pub enum Error {
         column_name: String,
         source: column_schema::Error,
     },
+
     #[snafu(display("Invalid column: {} schema, err:{}", column_name, source))]
     InvalidColumnSchema {
         column_name: String,
@@ -177,6 +182,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 
 pub struct Builder<Q> {
     endpoint: String,
+    local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
     router: Option<RouterRef>,
@@ -189,6 +195,7 @@ impl<Q> Builder<Q> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
+            local_endpoint: None,
             runtimes: None,
             instance: None,
             router: None,
@@ -200,6 +207,12 @@ impl<Q> Builder<Q> {
 
     pub fn endpoint(mut self, endpoint: String) -> Self {
         self.endpoint = endpoint;
+        self
+    }
+
+    pub fn local_endpoint(mut self, endpoint: String) -> Self {
+        self.local_endpoint = Some(endpoint);
+
         self
     }
 
@@ -250,7 +263,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let forwarder = {
             let conf = self.forward_config.unwrap_or_default();
-            Arc::new(Forwarder::new(conf, router.clone()))
+            Arc::new(
+                Forwarder::try_new(
+                    conf,
+                    router.clone(),
+                    Endpoint::new("127.0.0.1".to_string(), 12),
+                )
+                .context(BuildForwarder)?,
+            )
         };
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {

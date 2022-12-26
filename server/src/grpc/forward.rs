@@ -4,14 +4,14 @@
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::Duration, pin::Pin,
+    time::Duration, net::{Ipv4Addr, AddrParseError}, 
 };
 
 use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
 use log::{error, warn};
 use serde_derive::Deserialize;
-use snafu::{Backtrace, ResultExt, Snafu};
-use tonic::transport::{self, Channel};
+use snafu::{Backtrace, ResultExt, Snafu, ensure};
+use tonic::{transport::{self, Channel}, metadata::errors::InvalidMetadataValue};
 
 use crate::{config::Endpoint, consts::TENANT_HEADER, route::RouterRef};
 
@@ -26,6 +26,40 @@ pub enum Error {
     InvalidEndpoint {
         endpoint: String,
         source: tonic::transport::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Invalid ip address, addr:{}, err:{}.\nBacktrace:\n{}",
+        ip_addr,
+        source,
+        backtrace
+    ))]
+    InvalidIpAddr {
+        ip_addr: String,
+        source: AddrParseError, 
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Local ip addr should not be loopback, addr:{}.\nBacktrace:\n{}",
+        ip_addr,
+        backtrace
+    ))]
+    LoopbackLocalIpAddr {
+        ip_addr: String,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
+        "Invalid schema, schema:{}, err:{}.\nBacktrace:\n{}",
+        schema,
+        source,
+        backtrace
+    ))]
+    InvalidSchema {
+        schema: String,
+        source: InvalidMetadataValue,
         backtrace: Backtrace,
     },
 
@@ -49,6 +83,7 @@ pub type ForwarderRef = Arc<Forwarder>;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub enable: bool,
     /// Thread num for grpc polling
     pub thread_num: usize,
     /// -1 means unlimited
@@ -72,6 +107,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            enable: false,
             thread_num: 4,
             // 20MB
             max_send_msg_len: 20 * (1 << 20),
@@ -90,47 +126,56 @@ impl Default for Config {
 pub struct Forwarder {
     config: Config,
     router: RouterRef,
+    local_endpoint: Endpoint,
     clients: RwLock<HashMap<Endpoint, StorageServiceClient<Channel>>>,
 }
 
-pub enum ForwardResult<Req, Resp, Err> {
-    OrigReq(Req),
-    Resp(std::result::Result<Resp, Err>),
+pub enum ForwardResult<Resp, Err> {
+    Original,
+    Forwarded(std::result::Result<Resp, Err>),
 }
 
-#[derive(Debug, Clone)]
 pub struct ForwardRequest<Req: std::fmt::Debug + Clone> {
     pub schema: String,
     pub metric: String,
-    pub req: Req,
+    pub req: tonic::Request<Req>,
 }
 
 impl Forwarder {
-    pub fn new(config: Config, router: RouterRef) -> Self {
-        Self {
+    pub fn try_new(config: Config, router: RouterRef, local_endpoint: Endpoint) -> Result<Self> {
+        ensure!(!Self::is_loopback_ip(&local_endpoint.addr)?, LoopbackLocalIpAddr {
+            ip_addr: &local_endpoint.addr,
+        });
+
+        Ok(Self {
             config,
+            local_endpoint,
             router,
             clients: RwLock::new(HashMap::new()),
-        }
+        })
     }
 
     pub async fn forward<Req, Resp, Err, F>(
         &self,
         forward_req: ForwardRequest<Req>,
         do_rpc: F,
-    ) -> Result<ForwardResult<Req, Resp, Err>>
+    ) -> Result<ForwardResult<Resp, Err>>
     where
         F: FnOnce(
             StorageServiceClient<Channel>,
-            Req,
+            tonic::Request<Req>,
         )
-            -> Pin<Box<dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send>>,
+            -> Box<dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin>,
         Req: std::fmt::Debug + Clone,
     {
+        if !self.config.enable {
+            return Ok(ForwardResult::Original)
+        }
+
         let ForwardRequest {
             schema,
             metric,
-            req,
+            mut req,
         } = forward_req;
 
         let route_req = RouteRequest {
@@ -144,34 +189,55 @@ impl Forwarder {
                         "Fail to forward request for multiple route results, routes result:{:?}, req:{:?}",
                         routes, req 
                     );
-                    return Ok(ForwardResult::OrigReq(req));
+                    return Ok(ForwardResult::Original);
                 }
 
                 Endpoint::from(routes.remove(0).endpoint.unwrap())
             }
             Err(e) => {
                 error!("Fail to route request, req:{:?}, err:{}", req, e);
-                return Ok(ForwardResult::OrigReq(req));
+                return Ok(ForwardResult::Original);
             }
         };
 
         // TODO: Detect the loopback forwarding to avoid endless calling.
-        let is_local_ip = true;
-        let is_local_port = true;
-        if is_local_ip && is_local_port {
-            return Ok(ForwardResult::OrigReq(req));
+        if self.is_local_endpoint(&endpoint)? {
+            return Ok(ForwardResult::Original);
         }
 
         let client = self.get_or_create_client(&endpoint).await?;
+        let metadata = req.metadata_mut();
+        metadata.insert(TENANT_HEADER, schema.parse().context(InvalidSchema{schema})?);
 
         match do_rpc(client, req).await {
             Err(e) => {
                 // Release the grpc client for the error doesn't belong to the normal error.
                 self.release_client(&endpoint);
-                return Ok(ForwardResult::Resp(Err(e)));
+                return Ok(ForwardResult::Forwarded(Err(e)));
             }
-            Ok(resp) => return Ok(ForwardResult::Resp(Ok(resp))),
+            Ok(resp) => return Ok(ForwardResult::Forwarded(Ok(resp))),
         }
+    }
+
+    fn is_loopback_ip(ip_addr: &str) -> Result<bool> {
+        let ip = ip_addr.parse::<Ipv4Addr>().context(InvalidIpAddr {
+            ip_addr: ip_addr,
+        })?;
+
+        Ok(ip.is_loopback())
+    }
+
+    fn is_local_endpoint(&self, remote: &Endpoint) -> Result<bool> {
+        if &self.local_endpoint == remote {
+            return Ok(true)
+        }
+
+        if self.local_endpoint.port != remote.port {
+            return Ok(false)
+        }
+
+        // Only need to check the remote is loopback addr.
+        Self::is_loopback_ip(&remote.addr)
     }
 
     async fn get_or_create_client(
