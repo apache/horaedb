@@ -128,16 +128,16 @@ pub enum Error {
     #[snafu(display("Empty read options.\nBacktrace:\n{}", backtrace))]
     EmptyReadOptions { backtrace: Backtrace },
 
-    #[snafu(display("Empty projection.\nBacktrace:\n{}", backtrace))]
-    EmptyProjection { backtrace: Backtrace },
-
-    #[snafu(display("Failed to covert projection, err:{}", source))]
-    ConvertProjection {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    #[snafu(display("Empty projected schema.\nBacktrace:\n{}", backtrace))]
+    EmptyProjectedSchema { backtrace: Backtrace },
 
     #[snafu(display("Empty predicate.\nBacktrace:\n{}", backtrace))]
     EmptyPredicate { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert projected schema, err:{}", source))]
+    ConvertProjectedSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display("Failed to covert predicate, err:{}", source))]
     ConvertPredicate {
@@ -392,14 +392,14 @@ impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
 
     fn try_from(pb: proto::remote_engine::TableReadRequest) -> Result<Self> {
         Ok(Self {
-            request_id: RequestId::new(pb.request_id),
+            request_id: RequestId::next_id(),
             opts: pb.opts.context(EmptyReadOptions)?.into(),
             projected_schema: pb
                 .projected_schema
-                .context(EmptyProjection)?
+                .context(EmptyProjectedSchema)?
                 .try_into()
                 .map_err(|e| Box::new(e) as _)
-                .context(ConvertProjection)?,
+                .context(ConvertProjectedSchema)?,
             predicate: Arc::new(
                 pb.predicate
                     .context(EmptyPredicate)?

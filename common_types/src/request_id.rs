@@ -11,10 +11,6 @@ use std::{
 pub struct RequestId(u64);
 
 impl RequestId {
-    pub fn new(id: u64) -> Self {
-        Self(id)
-    }
-
     /// Acquire next request id.
     pub fn next_id() -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);

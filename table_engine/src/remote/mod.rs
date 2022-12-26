@@ -19,16 +19,16 @@ pub enum Error {
     #[snafu(display("Empty table read request.\nBacktrace:\n{}", backtrace))]
     EmptyTableReadRequest { backtrace: Backtrace },
 
-    #[snafu(display("Failed to covert table read request, err:{}", source))]
-    ConvertTableReadRequest {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
+    EmptyTableSchema { backtrace: Backtrace },
 
     #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
     EmptyRowGroup { backtrace: Backtrace },
 
-    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
-    EmptyTableSchema { backtrace: Backtrace },
+    #[snafu(display("Failed to covert table read request, err:{}", source))]
+    ConvertTableReadRequest {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display("Failed to covert table schema, err:{}", source))]
     ConvertTableSchema {
@@ -39,6 +39,13 @@ pub enum Error {
     ConvertRowGroup {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display(
+        "Failed to covert row group, encode version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    UnsupportedConvertRowGroup { version: u32, backtrace: Backtrace },
 }
 
 define_result!(Error);

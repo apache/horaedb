@@ -44,9 +44,6 @@ pub enum Error {
     ConvertTableSchema {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-
-    #[snafu(display("Empty projection.\nBacktrace:\n{}", backtrace))]
-    EmptyProjection { backtrace: Backtrace },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

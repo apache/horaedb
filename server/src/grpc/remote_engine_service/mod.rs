@@ -1,3 +1,7 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+// Remote engine rpc service implementation.
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -30,6 +34,7 @@ use crate::{
 pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
+const ENCODE_ROWS_WITH_AVRO: u32 = 0;
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -59,12 +64,16 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         for mut stream in streams.streams.into_iter() {
             let tx = tx.clone();
             let _ = self.runtimes.read_runtime.spawn(async move {
-                while let Some(batch) = stream.next().await{
-                    if tx.send(batch.map_err(|e| Box::new(e) as _).context(ErrWithCause {
-                        code: StatusCode::Internal,
-                        msg: "record batch failed",
-                    })).await.is_err() {
-                        error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
+                while let Some(batch) = stream.next().await {
+                    if tx
+                        .send(batch.map_err(|e| Box::new(e) as _).context(ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: "record batch failed",
+                        }))
+                        .await
+                        .is_err()
+                    {
+                        error!("Failed to send handler result.");
                         break;
                     }
                 }
@@ -111,7 +120,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
     }
 }
 
-/// Context for handling all kinds of meta event service.
+/// Context for handling all kinds of remote engine service.
 struct HandlerContext {
     catalog_manager: ManagerRef,
 }
@@ -140,7 +149,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                             },
                             Ok(rows) => ReadResponse {
                                 header: Some(build_ok_header()),
-                                version: 0,
+                                version: ENCODE_ROWS_WITH_AVRO,
                                 rows,
                             },
                         };
@@ -184,9 +193,9 @@ async fn handle_stream_read(
     let read_request: table_engine::remote::model::ReadRequest = request
         .try_into()
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
-            msg: "fail to convert write request",
+        .context(ErrWithCause {
+            code: StatusCode::BadRequest,
+            msg: "fail to convert read request",
         })?;
 
     let table = find_table_by_identifier(&ctx, &read_request.table)?;
@@ -195,9 +204,9 @@ async fn handle_stream_read(
         .partitioned_read(read_request.read_request)
         .await
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to write table, table:{:?}", read_request.table),
+            msg: format!("fail to read table, table:{:?}", read_request.table),
         })?;
 
     Ok(streams)
@@ -207,8 +216,8 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
     let write_request: table_engine::remote::model::WriteRequest = request
         .try_into()
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::Internal,
+        .context(ErrWithCause {
+            code: StatusCode::BadRequest,
             msg: "fail to convert write request",
         })?;
 
@@ -218,7 +227,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
         .write(write_request.write_request)
         .await
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to write table, table:{:?}", write_request.table),
         })?;
@@ -247,14 +256,14 @@ fn find_table_by_identifier(
     let schema = catalog
         .schema_by_name(&table_identifier.schema)
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
                 "fail to get schema of table, schema:{}",
                 table_identifier.schema
             ),
         })?
-        .with_context(|| ErrNoCause {
+        .context(ErrNoCause {
             code: StatusCode::NotFound,
             msg: format!(
                 "schema of table is not found, schema:{}",
@@ -265,11 +274,11 @@ fn find_table_by_identifier(
     schema
         .table_by_name(&table_identifier.table)
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to get table, table:{}", table_identifier.table),
         })?
-        .with_context(|| ErrNoCause {
+        .context(ErrNoCause {
             code: StatusCode::NotFound,
             msg: format!("table is not found, table:{}", table_identifier.table),
         })

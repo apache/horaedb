@@ -42,7 +42,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid avro record, expect record, actual:{:?}.\nBacktrace:\n{}",
+        "Invalid avro record, expect record, value:{:?}.\nBacktrace:\n{}",
         value,
         backtrace
     ))]
@@ -163,13 +163,21 @@ pub fn convert_record_batch_to_avro(record_batch: RecordBatch) -> Result<Vec<Byt
     Ok(rows)
 }
 
+pub fn convert_avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
+    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
+    let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+    for raw_row in rows {
+        let mut row = Vec::with_capacity(schema.num_columns());
+        parse_one_row(&avro_schema, raw_row, &mut row)?;
+        builder.push_checked_row(Row::from_datums(row));
+    }
+
+    Ok(builder.build())
+}
+
 /// Panic if row_idx is out of bound.
 fn column_to_value(array: &ColumnBlock, row_idx: usize, is_nullable: bool) -> Value {
     let datum = array.datum(row_idx);
-    datum_to_value(datum, is_nullable)
-}
-
-pub fn datum_to_value(datum: Datum, is_nullable: bool) -> Value {
     match datum {
         Datum::Null => may_union(Value::Null, is_nullable),
         Datum::Timestamp(v) => may_union(Value::TimestampMillis(v.as_i64()), is_nullable),
@@ -232,18 +240,6 @@ fn may_union(val: Value, is_nullable: bool) -> Value {
     } else {
         val
     }
-}
-
-pub fn convert_avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
-    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
-    let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
-    for raw_row in rows {
-        let mut row = Vec::with_capacity(schema.num_columns());
-        parse_one_row(&avro_schema, raw_row, &mut row)?;
-        builder.push_checked_row(Row::from_datums(row));
-    }
-
-    Ok(builder.build())
 }
 
 fn parse_one_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
