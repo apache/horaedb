@@ -10,6 +10,16 @@ use df_operator::visitor::find_columns_by_expr;
 
 use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 
+/// The datafusion filter exprs extractor
+///
+/// It's used to extract the meaningful `Expr`s and convert them to
+/// [PartitionFilter](the inner filter type in ceresdb).
+///
+/// NOTICE: When you implements [PartitionRule] for specific partition strategy,
+/// you should implement the corresponding [FilterExtractor], too.
+///
+/// For example: [KeyRule] and [KeyExtractor].
+/// If they are not related, [PartitionRule] may not take effect.
 pub trait FilterExtractor: Send + Sync + 'static {
     fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter>;
 }
@@ -35,8 +45,9 @@ impl FilterExtractor for KeyExtractor {
                 continue;
             }
 
-            // If target columns included, now only the situation that only targe column in
+            // If target columns included, now only the situation that only target column in
             // filter is supported. Once other type column found here, we ignore it.
+            // TODO: support above situation.
             if columns_in_filter.len() != 1 {
                 continue;
             }
@@ -44,6 +55,9 @@ impl FilterExtractor for KeyExtractor {
             // Finally, we try to convert `filter` to `PartitionFilter`.
             // We just support the simple situation: "colum = value" now.
             // TODO: support "colum in [value list]".
+            // TODO: we need to compare and check the datatype of column and value.
+            // (Actually, there is type conversion on high-level, but when converted data
+            // is overflow, it may take no effect).
             let partition_filter = match filter.clone() {
                 Expr::BinaryExpr { left, op, right } => match (*left, op, *right) {
                     (Expr::Column(col), Operator::Eq, Expr::Literal(val))

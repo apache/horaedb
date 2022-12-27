@@ -7,7 +7,7 @@ use snafu::OptionExt;
 
 use super::{key::KeyRule, ColumnWithType};
 use crate::partition::{
-    rule::PartitionRule, BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
+    rule::PartitionRuleRef, BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
 };
 
 pub struct PartitionRuleFactory;
@@ -27,7 +27,7 @@ impl PartitionRuleFactory {
     }
 
     fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
-        let typed_columns = key_info
+        let typed_key_columns = key_info
             .partition_key
             .into_iter()
             .map(|col| {
@@ -44,10 +44,8 @@ impl PartitionRuleFactory {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Box::new(KeyRule {
-            typed_columns,
+            typed_key_columns,
             partition_num: key_info.definitions.len() as u64,
         }))
     }
 }
-
-pub type PartitionRuleRef = Box<dyn PartitionRule>;

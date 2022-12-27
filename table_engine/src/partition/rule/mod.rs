@@ -6,7 +6,6 @@ pub mod df_adapter;
 pub(crate) mod factory;
 pub(crate) mod filter;
 pub(crate) mod key;
-pub(crate) mod mock;
 
 use common_types::{datum::DatumKind, row::RowGroup};
 
@@ -23,6 +22,16 @@ pub trait PartitionRule: Send + Sync + 'static {
     fn locate_partitions_for_write(&self, row_group: &RowGroup) -> Result<Vec<usize>>;
 
     /// Locate partitions according to `filters`.
+    ///
+    /// NOTICE: Exprs which are useless for partitioning in specific partition
+    /// strategy will be considered to have been filtered by corresponding
+    /// [Extractor].
+    ///
+    /// For example:
+    ///     In key partition, only filters like "a = 1", "a in [1,2,3]" can be
+    /// passed here.
+    ///
+    /// If unexpected filters still found, all partitions will be returned.
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>>;
 }
 
@@ -38,3 +47,5 @@ impl ColumnWithType {
         Self { column, datum_type }
     }
 }
+
+pub type PartitionRuleRef = Box<dyn PartitionRule>;
