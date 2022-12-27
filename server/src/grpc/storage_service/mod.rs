@@ -36,10 +36,10 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
-use super::forward::ForwarderRef;
 use crate::{
     consts,
     grpc::{
+        forward::ForwarderRef,
         metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
         storage_service::error::{ErrNoCause, ErrWithCause, Result},
     },
