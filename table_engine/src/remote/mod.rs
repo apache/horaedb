@@ -12,7 +12,18 @@ use snafu::Snafu;
 use crate::stream::SendableRecordBatchStream;
 
 #[derive(Debug, Snafu)]
-pub enum Error {}
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display("Failed to read from remote, err:{}", source))]
+    Read {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to write to remote, err:{}", source))]
+    Write {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+}
 
 define_result!(Error);
 

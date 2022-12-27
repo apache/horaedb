@@ -8,7 +8,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct RequestId(u64);
+pub struct RequestId(pub u64);
 
 impl RequestId {
     /// Acquire next request id.

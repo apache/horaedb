@@ -22,7 +22,7 @@ use common_types::{
 };
 use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
-use snafu::{Backtrace, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::{
     engine::TableState,
@@ -122,6 +122,12 @@ pub enum Error {
     #[snafu(display("Failed to compact table, table:{}, err:{}", table, source))]
     Compact {
         table: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to convert read request to pb, msg:{}, err:{}", msg, source))]
+    ReadRequestToPb {
+        msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
@@ -291,6 +297,15 @@ impl Default for ReadOptions {
     }
 }
 
+impl From<ReadOptions> for proto::remote_engine::ReadOptions {
+    fn from(opts: ReadOptions) -> Self {
+        Self {
+            batch_size: opts.batch_size as u64,
+            read_parallelism: opts.read_parallelism as u64,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct GetRequest {
     /// Query request id.
@@ -305,7 +320,7 @@ pub struct GetRequest {
 #[derive(Copy, Clone, Debug)]
 pub enum ReadOrder {
     /// No order requirements from the read request.
-    None,
+    None = 0,
     Asc,
     Desc,
 }
@@ -333,6 +348,11 @@ impl ReadOrder {
     pub fn is_in_desc_order(&self) -> bool {
         matches!(self, ReadOrder::Desc)
     }
+
+    #[inline]
+    pub fn into_i32(self) -> i32 {
+        self as i32
+    }
 }
 
 #[derive(Debug)]
@@ -348,6 +368,32 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Read the rows in reverse order.
     pub order: ReadOrder,
+}
+
+impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
+    type Error = Error;
+
+    fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
+        let predicate_pb = request
+            .predicate
+            .as_ref()
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ReadRequestToPb {
+                msg: format!(
+                    "convert predicate failed, predicate:{:?}",
+                    request.predicate
+                ),
+            })?;
+
+        Ok(Self {
+            request_id: request.request_id.0,
+            opts: Some(request.opts.into()),
+            projected_schema: Some(request.projected_schema.into()),
+            predicate: Some(predicate_pb),
+            order: request.order.into_i32(),
+        })
+    }
 }
 
 #[derive(Debug)]

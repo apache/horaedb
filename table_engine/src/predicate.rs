@@ -13,14 +13,21 @@ use datafusion::{
     logical_plan::{Expr, Operator},
     scalar::ScalarValue,
 };
+use datafusion_proto::{self, bytes::Serializeable};
 use log::debug;
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display("Failed ot do pruning, err:{}", source))]
+    #[snafu(display("Failed to do pruning, err:{}", source))]
     Prune {
+        source: datafusion::error::DataFusionError,
+    },
+
+    #[snafu(display("Failed to convert predicate to pb, msg:{}, err:{}", msg, source))]
+    PredicateToPb {
+        msg: String,
         source: datafusion::error::DataFusionError,
     },
 }
@@ -66,6 +73,32 @@ impl Predicate {
             .fold(self.time_range.to_df_expr(time_column_name), |acc, expr| {
                 acc.and(expr)
             })
+    }
+}
+
+impl TryFrom<&Predicate> for proto::remote_engine::Predicate {
+    type Error = Error;
+
+    fn try_from(predicate: &Predicate) -> std::result::Result<Self, Self::Error> {
+        let time_range = predicate.time_range;
+        let mut exprs = Vec::with_capacity(predicate.exprs.len());
+        for expr in &predicate.exprs {
+            let expr = expr
+                .to_bytes()
+                .context(PredicateToPb {
+                    msg: format!("convert expr failed, expr:{}", expr),
+                })?
+                .to_vec();
+            exprs.push(expr);
+        }
+
+        Ok(Self {
+            exprs,
+            time_range: Some(proto::common::TimeRange {
+                start: time_range.inclusive_start().as_i64(),
+                end: time_range.exclusive_end().as_i64(),
+            }),
+        })
     }
 }
 

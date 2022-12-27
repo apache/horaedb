@@ -1,0 +1,26 @@
+[package]
+name = "remote_engine_client"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = { workspace = true }
+ceresdbproto = { workspace = true }
+clru = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+futures = { workspace = true }
+proto = { workspace = true }
+router = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }

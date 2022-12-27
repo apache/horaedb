@@ -147,6 +147,24 @@ impl ProjectedSchema {
     }
 }
 
+impl From<ProjectedSchema> for proto::remote_engine::ProjectedSchema {
+    fn from(request: ProjectedSchema) -> Self {
+        let table_schema_pb = (&request.0.original_schema).into();
+        let projection_pb = request.0.projection.as_ref().map(|project| {
+            let project = project
+                .iter()
+                .map(|one_project| *one_project as u64)
+                .collect::<Vec<u64>>();
+            proto::remote_engine::Projection { idx: project }
+        });
+
+        Self {
+            table_schema: Some(table_schema_pb),
+            projection: projection_pb,
+        }
+    }
+}
+
 /// Schema with projection informations
 struct ProjectedSchemaInner {
     /// The schema before projection that the reader intended to read, may
