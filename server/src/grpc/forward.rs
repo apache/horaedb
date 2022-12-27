@@ -359,19 +359,19 @@ mod tests {
 
     #[test]
     fn test_check_loopback_endpoint() {
-        let loopback_ips = vec!["127.0.0.1", "0.0.0.0", "localhost"];
+        let loopback_ips = vec!["127.0.0.1", "127.0.0.2"];
         for loopback_ip in loopback_ips {
             assert!(Forwarder::<DefaultClientBuilder>::is_loopback_ip(
                 loopback_ip
             ));
         }
 
-        let normal_ips = vec!["10.100.10.14", "192.168.1.2"];
+        let normal_ips = vec!["10.100.10.14", "192.168.1.2", "0.0.0.0"];
         for ip in normal_ips {
             assert!(!Forwarder::<DefaultClientBuilder>::is_loopback_ip(ip));
         }
 
-        let invalid_addrs = vec!["hello.world.com", "test", ""];
+        let invalid_addrs = vec!["hello.world.com", "test", "localhost", ""];
         for ip in invalid_addrs {
             assert!(!Forwarder::<DefaultClientBuilder>::is_loopback_ip(ip));
         }

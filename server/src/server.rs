@@ -327,6 +327,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
+            .forward_config(self.config.forward)
             .build()
             .context(BuildGrpcService)?;
 

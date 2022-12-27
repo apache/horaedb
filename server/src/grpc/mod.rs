@@ -42,7 +42,7 @@ use crate::{
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
-mod forward;
+pub mod forward;
 mod meta_event_service;
 mod metrics;
 mod storage_service;
@@ -250,6 +250,11 @@ impl<Q> Builder<Q> {
 
     pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
         self.schema_config_provider = Some(provider);
+        self
+    }
+
+    pub fn forward_config(mut self, config: forward::Config) -> Self {
+        self.forward_config = Some(config);
         self
     }
 }
