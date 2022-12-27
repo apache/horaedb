@@ -6,6 +6,38 @@ pub mod rule;
 
 use common_types::bytes::Bytes;
 use proto::meta_update as meta_pb;
+use snafu::{Backtrace, Snafu};
+
+// TODO: we should refactor for splitting the errors.
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display(
+        "Failed to build partition rule, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    BuildPartitionRule { msg: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to locate partitions for write, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    LocateWritePartition { msg: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to locate partitions for read, msg:{}.\nBacktrace:{}\n",
+        msg,
+        backtrace
+    ))]
+    LocateReadPartition { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Internal error occurred, msg:{}", msg,))]
+    Internal { msg: String },
+}
+
+define_result!(Error);
 
 /// Info for how to partition table
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,7 +55,7 @@ impl PartitionInfo {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Definition {
     pub name: String,
     pub origin_name: Option<String>,
