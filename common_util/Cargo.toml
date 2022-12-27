@@ -16,7 +16,7 @@ test = ["env_logger"]
 [dependencies]
 # In alphabetical order
 arrow = { workspace = true }
-avro-rs = { workspace = true }
+avro-rs = "0.13"
 backtrace = "0.3.9"
 chrono = { workspace = true }
 common_types = { workspace = true, features = ["test"] }

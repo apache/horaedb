@@ -7,7 +7,7 @@ use std::str::FromStr;
 use ceresdbproto::storage;
 use serde_derive::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 pub struct Endpoint {
     pub addr: String,
     pub port: u16,

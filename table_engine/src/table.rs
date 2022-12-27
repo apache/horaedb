@@ -22,7 +22,7 @@ use common_types::{
 };
 use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     engine::TableState,
@@ -128,6 +128,25 @@ pub enum Error {
     #[snafu(display("Failed to convert read request to pb, msg:{}, err:{}", msg, source))]
     ReadRequestToPb {
         msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Empty read options.\nBacktrace:\n{}", backtrace))]
+    EmptyReadOptions { backtrace: Backtrace },
+
+    #[snafu(display("Empty projected schema.\nBacktrace:\n{}", backtrace))]
+    EmptyProjectedSchema { backtrace: Backtrace },
+
+    #[snafu(display("Empty predicate.\nBacktrace:\n{}", backtrace))]
+    EmptyPredicate { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert projected schema, err:{}", source))]
+    ConvertProjectedSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to covert predicate, err:{}", source))]
+    ConvertPredicate {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
@@ -297,6 +316,15 @@ impl Default for ReadOptions {
     }
 }
 
+impl From<proto::remote_engine::ReadOptions> for ReadOptions {
+    fn from(pb: proto::remote_engine::ReadOptions) -> Self {
+        Self {
+            batch_size: pb.batch_size as usize,
+            read_parallelism: pb.read_parallelism as usize,
+        }
+    }
+}
+
 impl From<ReadOptions> for proto::remote_engine::ReadOptions {
     fn from(opts: ReadOptions) -> Self {
         Self {
@@ -392,6 +420,41 @@ impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
             order: request.order.into_i32(),
+        })
+    }
+}
+
+impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::TableReadRequest) -> Result<Self> {
+        let opts = pb.opts.context(EmptyReadOptions)?.into();
+        let projected_schema = pb
+            .projected_schema
+            .context(EmptyProjectedSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertProjectedSchema)?;
+        let predicate = Arc::new(
+            pb.predicate
+                .context(EmptyPredicate)?
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertPredicate)?,
+        );
+        let order = if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {
+            ReadOrder::Asc
+        } else if pb.order == proto::remote_engine::ReadOrder::Desc as i32 {
+            ReadOrder::Desc
+        } else {
+            ReadOrder::None
+        };
+        Ok(Self {
+            request_id: RequestId::next_id(),
+            opts,
+            projected_schema,
+            predicate,
+            order,
         })
     }
 }

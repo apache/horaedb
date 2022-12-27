@@ -21,7 +21,9 @@ common_util = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
+df_operator = { workspace = true }
 futures = { workspace = true }
+itertools = "0.10.5"
 log = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
@@ -33,3 +35,6 @@ smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }

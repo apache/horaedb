@@ -15,7 +15,7 @@ use datafusion::{
 };
 use datafusion_proto::{self, bytes::Serializeable};
 use log::debug;
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -29,6 +29,17 @@ pub enum Error {
     PredicateToPb {
         msg: String,
         source: datafusion::error::DataFusionError,
+    },
+
+    #[snafu(display("Empty time range.\nBacktrace:\n{}", backtrace))]
+    EmptyTimeRange { backtrace: Backtrace },
+
+    #[snafu(display("Invalid time range.\nBacktrace:\n{}", backtrace))]
+    InvalidTimeRange { backtrace: Backtrace },
+
+    #[snafu(display("Expr decode failed., err:{}", source))]
+    DecodeExpr {
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 
@@ -98,6 +109,29 @@ impl TryFrom<&Predicate> for proto::remote_engine::Predicate {
                 start: time_range.inclusive_start().as_i64(),
                 end: time_range.exclusive_end().as_i64(),
             }),
+        })
+    }
+}
+
+impl TryFrom<proto::remote_engine::Predicate> for Predicate {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::Predicate) -> std::result::Result<Self, Self::Error> {
+        let time_range = pb.time_range.context(EmptyTimeRange)?;
+        let mut exprs = Vec::with_capacity(pb.exprs.len());
+        for pb_expr in pb.exprs {
+            let expr = Expr::from_bytes(&pb_expr)
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeExpr)?;
+            exprs.push(expr);
+        }
+        Ok(Self {
+            exprs,
+            time_range: TimeRange::new(
+                Timestamp::new(time_range.start),
+                Timestamp::new(time_range.end),
+            )
+            .context(InvalidTimeRange)?,
         })
     }
 }

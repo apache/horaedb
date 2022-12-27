@@ -3,11 +3,13 @@
 //! Model for remote table engine
 
 use avro_rs::types::Record;
-use common_types::row::RowGroup;
-use common_util::avro_util;
+use common_types::{row::RowGroup, schema::Schema};
+use common_util::avro;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest};
+
+const ENCODE_ROWS_WITH_AVRO: u32 = 0;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -26,6 +28,40 @@ pub enum Error {
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("Empty table identifier.\nBacktrace:\n{}", backtrace))]
+    EmptyTableIdentifier { backtrace: Backtrace },
+
+    #[snafu(display("Empty table read request.\nBacktrace:\n{}", backtrace))]
+    EmptyTableReadRequest { backtrace: Backtrace },
+
+    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
+    EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display("Empty row group.\nBacktrace:\n{}", backtrace))]
+    EmptyRowGroup { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert table read request, err:{}", source))]
+    ConvertTableReadRequest {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to covert table schema, err:{}", source))]
+    ConvertTableSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to covert row group, err:{}", source))]
+    ConvertRowGroup {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to covert row group, encoding version:{}.\nBacktrace:\n{}",
+        version,
+        backtrace
+    ))]
+    UnsupportedConvertRowGroup { version: u32, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -38,16 +74,70 @@ pub struct TableIdentifier {
     pub table: String,
 }
 
-#[allow(dead_code)]
+impl From<proto::remote_engine::TableIdentifier> for TableIdentifier {
+    fn from(pb: proto::remote_engine::TableIdentifier) -> Self {
+        Self {
+            catalog: pb.catalog,
+            schema: pb.schema,
+            table: pb.table,
+        }
+    }
+}
+
 pub struct ReadRequest {
     pub table: TableIdentifier,
-    pub table_request: TableReadRequest,
+    pub read_request: TableReadRequest,
+}
+
+impl TryFrom<proto::remote_engine::ReadRequest> for ReadRequest {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::ReadRequest) -> std::result::Result<Self, Self::Error> {
+        let table_identifier = pb.table.context(EmptyTableIdentifier)?;
+        let table_read_request = pb.read_request.context(EmptyTableReadRequest)?;
+        Ok(Self {
+            table: table_identifier.into(),
+            read_request: table_read_request
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertTableReadRequest)?,
+        })
+    }
 }
 
 #[allow(dead_code)]
 pub struct WriteRequest {
     pub table: TableIdentifier,
-    pub table_request: TableWriteRequest,
+    pub write_request: TableWriteRequest,
+}
+
+impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::WriteRequest) -> std::result::Result<Self, Self::Error> {
+        let table_identifier = pb.table.context(EmptyTableIdentifier)?;
+        let row_group_pb = pb.row_group.context(EmptyRowGroup)?;
+        let table_schema: Schema = row_group_pb
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertTableSchema)?;
+        let row_group = if row_group_pb.version == ENCODE_ROWS_WITH_AVRO {
+            avro::avro_rows_to_row_group(table_schema, &row_group_pb.rows)
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertRowGroup)?
+        } else {
+            UnsupportedConvertRowGroup {
+                version: row_group_pb.version,
+            }
+            .fail()?
+        };
+        Ok(Self {
+            table: table_identifier.into(),
+            write_request: TableWriteRequest { row_group },
+        })
+    }
 }
 
 impl From<TableIdentifier> for proto::remote_engine::TableIdentifier {
@@ -65,7 +155,7 @@ impl TryFrom<ReadRequest> for proto::remote_engine::ReadRequest {
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Self::Error> {
         let table_pb = request.table.into();
-        let request_pb = request.table_request.try_into().context(ReadRequestToPb)?;
+        let request_pb = request.read_request.try_into().context(ReadRequestToPb)?;
 
         Ok(Self {
             table: Some(table_pb),
@@ -79,7 +169,7 @@ impl TryFrom<WriteRequest> for proto::remote_engine::WriteRequest {
 
     fn try_from(request: WriteRequest) -> std::result::Result<Self, Self::Error> {
         let table_pb = request.table.into();
-        let row_group_pb = convert_row_group_to_pb(request.table_request.row_group)?;
+        let row_group_pb = convert_row_group_to_pb(request.write_request.row_group)?;
 
         Ok(Self {
             table: Some(table_pb),
@@ -90,7 +180,7 @@ impl TryFrom<WriteRequest> for proto::remote_engine::WriteRequest {
 
 fn convert_row_group_to_pb(row_group: RowGroup) -> Result<proto::remote_engine::RowGroup> {
     let column_schemas = row_group.schema().columns();
-    let avro_schema = avro_util::columns_to_avro_schema("RemoteEngine", column_schemas);
+    let avro_schema = avro::columns_to_avro_schema("RemoteEngine", column_schemas);
 
     let mut rows = Vec::with_capacity(row_group.num_rows());
     let row_len = row_group.num_rows();
@@ -107,7 +197,7 @@ fn convert_row_group_to_pb(row_group: RowGroup) -> Result<proto::remote_engine::
 
         for (col_idx, column_schema) in column_schemas.iter().enumerate() {
             let column_value = row[col_idx].clone();
-            let avro_value = avro_util::datum_to_value(column_value, column_schema.is_nullable);
+            let avro_value = avro::datum_to_avro_value(column_value, column_schema.is_nullable);
             avro_record.put(&column_schema.name, avro_value);
         }
 
@@ -123,6 +213,7 @@ fn convert_row_group_to_pb(row_group: RowGroup) -> Result<proto::remote_engine::
     }
 
     Ok(proto::remote_engine::RowGroup {
+        version: ENCODE_ROWS_WITH_AVRO,
         table_schema: Some(row_group.schema().into()),
         rows,
         min_timestamp: row_group.min_timestamp().as_i64(),

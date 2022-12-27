@@ -4,7 +4,7 @@
 
 use std::{fmt, sync::Arc};
 
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     column_schema::{ColumnSchema, ReadOp},
@@ -36,6 +36,14 @@ pub enum Error {
         backtrace
     ))]
     MissingReadColumn { name: String, backtrace: Backtrace },
+
+    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
+    EmptyTableSchema { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert table schema, err:{}", source))]
+    ConvertTableSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -147,7 +155,7 @@ impl ProjectedSchema {
     }
 }
 
-impl From<ProjectedSchema> for proto::remote_engine::ProjectedSchema {
+impl From<ProjectedSchema> for proto::common::ProjectedSchema {
     fn from(request: ProjectedSchema) -> Self {
         let table_schema_pb = (&request.0.original_schema).into();
         let projection_pb = request.0.projection.as_ref().map(|project| {
@@ -155,13 +163,31 @@ impl From<ProjectedSchema> for proto::remote_engine::ProjectedSchema {
                 .iter()
                 .map(|one_project| *one_project as u64)
                 .collect::<Vec<u64>>();
-            proto::remote_engine::Projection { idx: project }
+            proto::common::Projection { idx: project }
         });
 
         Self {
             table_schema: Some(table_schema_pb),
             projection: projection_pb,
         }
+    }
+}
+
+impl TryFrom<proto::common::ProjectedSchema> for ProjectedSchema {
+    type Error = Error;
+
+    fn try_from(pb: proto::common::ProjectedSchema) -> std::result::Result<Self, Self::Error> {
+        let schema: Schema = pb
+            .table_schema
+            .context(EmptyTableSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertTableSchema)?;
+        let projection = pb
+            .projection
+            .map(|v| v.idx.into_iter().map(|id| id as usize).collect());
+
+        ProjectedSchema::new(schema, projection)
     }
 }
 

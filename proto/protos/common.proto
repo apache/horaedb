@@ -61,3 +61,13 @@ message TimeRange {
   // exclusive end
   int64 end = 2;
 }
+
+// Projected Schema
+message ProjectedSchema {
+  common.TableSchema table_schema = 1;
+  Projection projection = 2;
+}
+
+message Projection {
+  repeated uint64 idx = 1;
+}

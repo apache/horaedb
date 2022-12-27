@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use avro_rs::{
     schema::{Name, RecordField, RecordFieldOrder},
     types::{Record, Value},
+    Schema as AvroSchema,
 };
 use common_types::{
     bytes::{ByteVec, Bytes},
@@ -14,13 +15,15 @@ use common_types::{
     column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
-    schema::RecordSchema,
+    row::{Row, RowGroup, RowGroupBuilder},
+    schema::{RecordSchema, Schema},
     string::StringBytes,
     time::Timestamp,
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 
-use crate::define_result;
+/// Schema name of the record
+const RECORD_NAME: &str = "Result";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -34,15 +37,20 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to convert avro raw to row, err:{}.", source,))]
-    RawToRowWithCause { source: avro_rs::Error },
+    #[snafu(display("Failed to convert to avro record, err:{}", source))]
+    ConvertToAvroRecord {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     #[snafu(display(
-        "Failed to convert avro raw to row, msg:{}.\nBacktrace:\n{}",
-        msg,
+        "Invalid avro record, expect record, value:{:?}.\nBacktrace:\n{}",
+        value,
         backtrace
     ))]
-    RawToRowNoCause { msg: String, backtrace: Backtrace },
+    InvalidAvroRecord { value: Value, backtrace: Backtrace },
+
+    #[snafu(display("Unsupported arvo type, value:{:?}.\nBacktrace:\n{}", value, backtrace))]
+    UnsupportedType { value: Value, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -103,6 +111,25 @@ pub fn columns_to_avro_schema(name: &str, columns: &[ColumnSchema]) -> avro_rs::
     }
 }
 
+pub fn record_batch_to_avro_rows(record_batch: &RecordBatch) -> Result<Vec<ByteVec>> {
+    let mut rows = Vec::new();
+    let avro_schema = to_avro_schema(RECORD_NAME, record_batch.schema());
+    record_batch_to_avro(record_batch, &avro_schema, &mut rows)?;
+    Ok(rows)
+}
+
+pub fn avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
+    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
+    let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+    for raw_row in rows {
+        let mut row = Vec::with_capacity(schema.num_columns());
+        avro_row_to_row(&avro_schema, raw_row, &mut row)?;
+        builder.push_checked_row(Row::from_datums(row));
+    }
+
+    Ok(builder.build())
+}
+
 fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
     match data_type {
         DatumKind::Null => avro_rs::Schema::Null,
@@ -122,7 +149,7 @@ fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
 }
 
 /// Convert record batch to avro format
-pub fn record_batch_to_avro(
+fn record_batch_to_avro(
     record_batch: &RecordBatch,
     schema: &avro_rs::Schema,
     rows: &mut Vec<ByteVec>,
@@ -156,10 +183,10 @@ pub fn record_batch_to_avro(
 /// Panic if row_idx is out of bound.
 fn column_to_value(array: &ColumnBlock, row_idx: usize, is_nullable: bool) -> Value {
     let datum = array.datum(row_idx);
-    datum_to_value(datum, is_nullable)
+    datum_to_avro_value(datum, is_nullable)
 }
 
-pub fn datum_to_value(datum: Datum, is_nullable: bool) -> Value {
+pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
     match datum {
         Datum::Null => may_union(Value::Null, is_nullable),
         Datum::Timestamp(v) => may_union(Value::TimestampMillis(v.as_i64()), is_nullable),
@@ -180,34 +207,11 @@ pub fn datum_to_value(datum: Datum, is_nullable: bool) -> Value {
     }
 }
 
-#[inline]
-fn may_union(val: Value, is_nullable: bool) -> Value {
-    if is_nullable {
-        Value::Union(Box::new(val))
-    } else {
-        val
-    }
-}
-
-pub fn raw_to_row(schema: &avro_rs::Schema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
-    let record = avro_rs::from_avro_datum(schema, &mut raw, None).context(RawToRowWithCause)?;
-
-    if let Value::Record(cols) = record {
-        for (_, column_value) in cols {
-            let datum = value_to_datum(column_value)?;
-            row.push(datum);
-        }
-
-        Ok(())
-    } else {
-        RawToRowNoCause {
-            msg: "invalid avro record",
-        }
-        .fail()
-    }
-}
-
-fn value_to_datum(value: Value) -> Result<Datum> {
+/// Convert the avro `Value` into the `Datum`.
+///
+/// Some types defined by avro are not used and the conversion rule is totally
+/// based on the implementation in the server.
+fn avro_value_to_datum(value: Value) -> Result<Datum> {
     let datum = match value {
         Value::Null => Datum::Null,
         Value::TimestampMillis(v) => Datum::Timestamp(Timestamp::new(v)),
@@ -220,7 +224,7 @@ fn value_to_datum(value: Value) -> Result<Datum> {
         Value::Long(v) => Datum::Int64(v),
         Value::Int(v) => Datum::Int32(v),
         Value::Boolean(v) => Datum::Boolean(v),
-        Value::Union(inner_val) => value_to_datum(*inner_val)?,
+        Value::Union(inner_val) => avro_value_to_datum(*inner_val)?,
         Value::Fixed(_, _)
         | Value::Enum(_, _)
         | Value::Array(_)
@@ -232,13 +236,33 @@ fn value_to_datum(value: Value) -> Result<Datum> {
         | Value::TimeMicros(_)
         | Value::TimestampMicros(_)
         | Value::Duration(_)
-        | Value::Uuid(_) => {
-            return RawToRowNoCause {
-                msg: "invalid avro value type",
-            }
-            .fail()
-        }
+        | Value::Uuid(_) => return UnsupportedType { value }.fail(),
     };
 
     Ok(datum)
+}
+
+#[inline]
+fn may_union(val: Value, is_nullable: bool) -> Value {
+    if is_nullable {
+        Value::Union(Box::new(val))
+    } else {
+        val
+    }
+}
+
+pub fn avro_row_to_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
+    let record = avro_rs::from_avro_datum(schema, &mut raw, None)
+        .map_err(|e| Box::new(e) as _)
+        .context(ConvertToAvroRecord)?;
+    if let Value::Record(cols) = record {
+        for (_, column_value) in cols {
+            let datum = avro_value_to_datum(column_value)?;
+            row.push(datum);
+        }
+
+        Ok(())
+    } else {
+        InvalidAvroRecord { value: record }.fail()
+    }
 }

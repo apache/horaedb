@@ -12,7 +12,7 @@ use common_types::{
     column::ColumnBlockBuilder, projected_schema::ProjectedSchema, record_batch::RecordBatch,
     schema::RecordSchema,
 };
-use common_util::avro_util;
+use common_util::avro;
 use futures::{Stream, StreamExt};
 use proto::remote_engine::{self, remote_engine_service_client::*};
 use router::{endpoint::Endpoint, RouterRef};
@@ -46,7 +46,7 @@ impl Client {
 
         // Read from remote.
         let table_ident = request.table.clone();
-        let projected_schema = request.table_request.projected_schema.clone();
+        let projected_schema = request.read_request.projected_schema.clone();
 
         let channel = self.channel_pool.get(&endpoint).await?;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
@@ -206,7 +206,7 @@ fn convert_avro_rows_to_record_batch(
     projected_schema: &ProjectedSchema,
 ) -> Result<RecordBatch> {
     let schema = projected_schema.to_record_schema();
-    let avro_schema = avro_util::to_avro_schema("RemoteEngine", &schema);
+    let avro_schema = avro::to_avro_schema("RemoteEngine", &schema);
 
     // Collect datums and append to `ColumnBlockBuilder`s.
     let mut row_buf = Vec::with_capacity(schema.num_columns());
@@ -218,7 +218,7 @@ fn convert_avro_rows_to_record_batch(
 
     for raw in raws {
         row_buf.clear();
-        avro_util::raw_to_row(&avro_schema, &raw, &mut row_buf)
+        avro::avro_row_to_row(&avro_schema, &raw, &mut row_buf)
             .map_err(|e| Box::new(e) as _)
             .context(ConvertReadResponse {
                 msg: format!(

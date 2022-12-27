@@ -15,7 +15,7 @@ use router::{
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{http::DEFAULT_MAX_BODY_SIZE, limiter::LimiterConfig};
+use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE, limiter::LimiterConfig};
 
 /// The deployment mode decides how to start the CeresDB.
 ///
@@ -130,34 +130,37 @@ pub struct Config {
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
 
-    // Engine related configs:
+    /// Engine related configs:
     pub runtime: RuntimeConfig,
 
-    // Log related configs:
+    /// Log related configs:
     pub log_level: String,
     pub enable_async_log: bool,
     pub async_log_channel_len: i32,
 
-    // Tracing related configs:
+    /// Tracing related configs:
     pub tracing_log_dir: String,
     pub tracing_log_name: String,
     pub tracing_level: String,
 
-    // Config of static router.
+    /// Config of static router.
     pub static_route: StaticRouteConfig,
 
-    // Analytic engine configs.
+    /// Analytic engine configs.
     pub analytic: analytic_engine::Config,
 
-    // Query engine config.
+    /// Query engine config.
     pub query: query_engine::Config,
 
-    // Deployment configs:
+    /// Deployment configs:
     pub deploy_mode: DeployMode,
     pub cluster: ClusterConfig,
 
-    // Config of limiter
+    /// Config of limiter
     pub limiter: LimiterConfig,
+
+    /// Config for forwarding
+    pub forward: forward::Config,
 }
 
 impl Default for RuntimeConfig {
@@ -194,6 +197,7 @@ impl Default for Config {
             deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
             limiter: LimiterConfig::default(),
+            forward: forward::Config::default(),
         }
     }
 }

@@ -26,15 +26,6 @@ message ReadOptions {
   uint64 read_parallelism = 2;
 }
 
-message Projection {
-  repeated uint64 idx = 1;
-}
-
-message ProjectedSchema {
-  common.TableSchema table_schema = 1;
-  Projection projection = 2;
-}
-
 message Predicate {
   repeated bytes exprs = 1;
   common.TimeRange time_range = 2;
@@ -49,7 +40,7 @@ enum ReadOrder {
 message TableReadRequest {
   uint64 request_id = 1;
   ReadOptions opts = 2;
-  ProjectedSchema projected_schema = 3;
+  common.ProjectedSchema projected_schema = 3;
   Predicate predicate = 4;
   ReadOrder order = 5;
 }
@@ -61,14 +52,18 @@ message ReadRequest {
 
 message ReadResponse {
   ResponseHeader header = 1;
-  repeated bytes rows = 2;
+  // Version of row encoding method
+  uint32 version = 2;
+  repeated bytes rows = 3;
 }
 
 message RowGroup {
+  // Version of row encoding method
   common.TableSchema table_schema = 1;
-  repeated bytes rows = 2;
-  int64 min_timestamp = 3;
-  int64 max_timestamp = 4;
+  int64 min_timestamp = 2;
+  int64 max_timestamp = 3;
+  uint32 version = 4;
+  repeated bytes rows = 5;
 }
 
 message WriteRequest {
