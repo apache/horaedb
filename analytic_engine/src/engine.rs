@@ -6,17 +6,21 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::info;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{
         Close, CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine,
+        TableEngine, Unexpected, UnexpectedNoCause,
     },
     table::{SchemaId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::{instance::InstanceRef, space::SpaceId, table::TableImpl};
+use crate::{
+    instance::InstanceRef,
+    space::SpaceId,
+    table::{partition::PartitionTableImpl, TableImpl},
+};
 
 /// TableEngine implementation
 pub struct TableEngineImpl {
@@ -75,14 +79,30 @@ impl TableEngine for TableEngineImpl {
 
         let space_table = self.instance.create_table(space_id, request).await?;
 
-        let table_impl = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let table_impl: TableRef = match &space_table.table_data().partition_info {
+            None => Arc::new(TableImpl::new(
+                self.instance.clone(),
+                ANALYTIC_ENGINE_TYPE.to_string(),
+                space_id,
+                space_table.table_data().id,
+                space_table.table_data().clone(),
+                space_table,
+            )),
+            Some(_v) => Arc::new(
+                PartitionTableImpl::new(
+                    self.instance
+                        .remote_engine
+                        .clone()
+                        .context(UnexpectedNoCause {
+                            msg: "remote engine is empty",
+                        })?,
+                    ANALYTIC_ENGINE_TYPE.to_string(),
+                    space_table,
+                )
+                .map_err(|e| Box::new(e) as _)
+                .context(Unexpected)?,
+            ),
+        };
 
         Ok(table_impl)
     }
@@ -111,14 +131,30 @@ impl TableEngine for TableEngineImpl {
             None => return Ok(None),
         };
 
-        let table_impl = Arc::new(TableImpl::new(
-            self.instance.clone(),
-            ANALYTIC_ENGINE_TYPE.to_string(),
-            space_id,
-            space_table.table_data().id,
-            space_table.table_data().clone(),
-            space_table,
-        ));
+        let table_impl: TableRef = match &space_table.table_data().partition_info {
+            None => Arc::new(TableImpl::new(
+                self.instance.clone(),
+                ANALYTIC_ENGINE_TYPE.to_string(),
+                space_id,
+                space_table.table_data().id,
+                space_table.table_data().clone(),
+                space_table,
+            )),
+            Some(_v) => Arc::new(
+                PartitionTableImpl::new(
+                    self.instance
+                        .remote_engine
+                        .clone()
+                        .context(UnexpectedNoCause {
+                            msg: "remote engine is empty",
+                        })?,
+                    ANALYTIC_ENGINE_TYPE.to_string(),
+                    space_table,
+                )
+                .map_err(|e| Box::new(e) as _)
+                .context(Unexpected)?,
+            ),
+        };
 
         Ok(Some(table_impl))
     }

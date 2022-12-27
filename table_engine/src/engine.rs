@@ -43,6 +43,9 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display("Unexpected error, :msg{}", msg))]
+    UnexpectedNoCause { msg: String },
+
     #[snafu(display(
         "Unknown engine type, type:{}.\nBacktrace:\n{}",
         engine_type,

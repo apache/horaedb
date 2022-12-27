@@ -520,7 +520,7 @@ fn test_db_write_buffer_size_mem_wal() {
 fn test_db_write_buffer_size<T: EngineContext>(table_name: &str, engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
-    test_ctx.config.db_write_buffer_size = 1;
+    test_ctx.context.config.db_write_buffer_size = 1;
     test_write_buffer_size_overflow(table_name, env, test_ctx);
 }
 
@@ -541,7 +541,7 @@ fn test_space_write_buffer_size_mem_wal() {
 fn test_space_write_buffer_size<T: EngineContext>(table_name: &str, engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
-    test_ctx.config.space_write_buffer_size = 1;
+    test_ctx.context.config.space_write_buffer_size = 1;
     test_write_buffer_size_overflow(table_name, env, test_ctx);
 }
 

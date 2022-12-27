@@ -5,7 +5,10 @@
 use std::str::FromStr;
 
 use common_util::config::ReadableDuration;
+use serde_derive::Deserialize;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub connect_timeout: ReadableDuration,
     pub channel_pool_max_size: usize,

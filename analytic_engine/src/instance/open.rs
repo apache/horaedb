@@ -10,7 +10,7 @@ use std::{
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
 use snafu::ResultExt;
-use table_engine::engine::OpenTableRequest;
+use table_engine::{engine::OpenTableRequest, remote::RemoteEngineRef};
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
@@ -51,6 +51,7 @@ impl Instance {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
+        remote_engine_ref: Option<RemoteEngineRef>,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
@@ -84,6 +85,7 @@ impl Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
             table_opts: ctx.config.table_opts.clone(),
+
             write_group_worker_num: ctx.config.write_group_worker_num,
             write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
@@ -95,6 +97,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             iter_options,
+            remote_engine: remote_engine_ref,
         });
 
         Ok(instance)
