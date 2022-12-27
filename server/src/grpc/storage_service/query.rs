@@ -6,23 +6,33 @@ use std::time::Instant;
 
 use ceresdbproto::{
     common::ResponseHeader,
-    storage::{query_response, QueryRequest, QueryResponse},
+    storage::{
+        query_response, storage_service_client::StorageServiceClient, QueryRequest, QueryResponse,
+    },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::{avro, time::InstantExt};
+use futures::FutureExt;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::info;
+use log::{error, info, warn};
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
+use tonic::{transport::Channel, IntoRequest};
 
-use crate::grpc::storage_service::{
-    error::{ErrNoCause, ErrWithCause, Result},
-    HandlerContext,
+use crate::{
+    config::Endpoint,
+    grpc::{
+        forward::{ForwardRequest, ForwardResult},
+        storage_service::{
+            error::{ErrNoCause, ErrWithCause, Result},
+            HandlerContext,
+        },
+    },
 };
 
 /// Schema name of the record
@@ -40,10 +50,66 @@ fn empty_ok_resp() -> QueryResponse {
     }
 }
 
+async fn maybe_forward_query<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
+    req: &QueryRequest,
+) -> Option<Result<QueryResponse>> {
+    let forwarder = ctx.forwarder.as_ref()?;
+
+    if req.metrics.len() != 1 {
+        warn!(
+            "Unable to forward query without exactly one metric, req:{:?}",
+            req
+        );
+
+        return None;
+    }
+
+    let forward_req = ForwardRequest {
+        schema: ctx.schema.clone(),
+        metric: req.metrics[0].clone(),
+        req: req.clone().into_request(),
+    };
+    let do_query = |mut client: StorageServiceClient<Channel>,
+                    request: tonic::Request<QueryRequest>,
+                    _: &Endpoint| {
+        let query = async move {
+            client
+                .query(request)
+                .await
+                .map(|resp| resp.into_inner())
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "Forwarded query failed".to_string(),
+                })
+        }
+        .boxed();
+
+        Box::new(query) as _
+    };
+
+    match forwarder.forward(forward_req, do_query).await {
+        Ok(forward_res) => match forward_res {
+            ForwardResult::Forwarded(v) => Some(v),
+            ForwardResult::Original => None,
+        },
+        Err(e) => {
+            error!("Failed to forward req but the error is ignored, err:{}", e);
+            None
+        }
+    }
+}
+
 pub async fn handle_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: QueryRequest,
 ) -> Result<QueryResponse> {
+    let req = match maybe_forward_query(ctx, &req).await {
+        Some(resp) => return resp,
+        None => req,
+    };
+
     let output_result = fetch_query_output(ctx, &req).await?;
     if let Some(output) = output_result {
         convert_output(&output)
