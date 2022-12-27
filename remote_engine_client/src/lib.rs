@@ -74,33 +74,41 @@ pub mod error {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
 
-        #[snafu(display("Failed to connect, table:{:?}, msg:{}, err:{}", table, msg, source))]
+        #[snafu(display(
+            "Failed to connect, table_ident:{:?}, msg:{}, err:{}",
+            table_ident,
+            msg,
+            source
+        ))]
         Rpc {
-            table: TableIdentifier,
+            table_ident: TableIdentifier,
             msg: String,
             source: tonic::Status,
         },
 
         #[snafu(display(
-            "Failed query from table in server, table:{:?}, code:{}, msg:{}",
-            table,
+            "Failed to query from table in server, table_ident:{:?}, code:{}, msg:{}",
+            table_ident,
             code,
             msg
         ))]
         Server {
-            table: TableIdentifier,
+            table_ident: TableIdentifier,
             code: u32,
             msg: String,
         },
 
-        #[snafu(display("Failed to route table, table:{:?}, err:{}", table, source,))]
+        #[snafu(display("Failed to route table, table_ident:{:?}, err:{}", table_ident, source,))]
         RouteWithCause {
-            table: TableIdentifier,
+            table_ident: TableIdentifier,
             source: router::Error,
         },
 
-        #[snafu(display("Failed to route table, table:{:?}, msg:{}", table, msg,))]
-        RouteNoCause { table: TableIdentifier, msg: String },
+        #[snafu(display("Failed to route table, table_ident:{:?}, msg:{}", table_ident, msg,))]
+        RouteNoCause {
+            table_ident: TableIdentifier,
+            msg: String,
+        },
     }
 
     define_result!(Error);

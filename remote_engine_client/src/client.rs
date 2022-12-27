@@ -60,7 +60,7 @@ impl Client {
             .read(Request::new(request_pb))
             .await
             .context(Rpc {
-                table: table_ident.clone(),
+                table_ident: table_ident.clone(),
                 msg: format!("read from remote failed, endpoint:{}", endpoint),
             })?;
 
@@ -91,14 +91,14 @@ impl Client {
             .write(Request::new(request_pb))
             .await
             .context(Rpc {
-                table: table_ident.clone(),
+                table_ident: table_ident.clone(),
                 msg: format!("write to remote failed, endpoint:{}", endpoint),
             })?;
 
         let response = result.into_inner();
         if let Some(header) = response.header && !statuts_code::is_ok(header.code) {
             Server {
-                table: table_ident.clone(),
+                table_ident: table_ident.clone(),
                 code: header.code,
                 msg: header.error,
             }.fail()
@@ -118,12 +118,12 @@ impl Client {
                 .route(schema, route_request)
                 .await
                 .context(RouteWithCause {
-                    table: table_ident.clone(),
+                    table_ident: table_ident.clone(),
                 })?;
 
         if route_infos.is_empty() {
             return RouteNoCause {
-                table: table_ident.clone(),
+                table_ident: table_ident.clone(),
                 msg: "route infos is empty",
             }
             .fail();
@@ -136,7 +136,7 @@ impl Client {
             .endpoint
             .clone()
             .context(RouteNoCause {
-                table: table_ident.clone(),
+                table_ident: table_ident.clone(),
                 msg: "no endpoint in route info",
             })?;
 
@@ -145,7 +145,7 @@ impl Client {
 }
 
 pub struct ClientReadRecordBatchStream {
-    pub table: TableIdentifier,
+    pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub projected_schema: ProjectedSchema,
     pub projected_record_schema: RecordSchema,
@@ -153,13 +153,13 @@ pub struct ClientReadRecordBatchStream {
 
 impl ClientReadRecordBatchStream {
     pub fn new(
-        table: TableIdentifier,
+        table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         projected_schema: ProjectedSchema,
     ) -> Self {
         let projected_record_schema = projected_schema.to_record_schema();
         Self {
-            table,
+            table_ident,
             response_stream,
             projected_schema,
             projected_record_schema,
@@ -177,7 +177,7 @@ impl Stream for ClientReadRecordBatchStream {
                 // Check header
                 if let Some(header) = response.header && !statuts_code::is_ok(header.code) {
                     return Poll::Ready(Some(Server {
-                        table: this.table.clone(),
+                        table_ident: this.table_ident.clone(),
                         code: header.code,
                         msg: header.error,
                     }.fail()));
@@ -190,7 +190,7 @@ impl Stream for ClientReadRecordBatchStream {
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
-                table: this.table.clone(),
+                table_ident: this.table_ident.clone(),
                 msg: "poll read response failed",
             }))),
 

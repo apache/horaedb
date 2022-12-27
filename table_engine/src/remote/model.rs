@@ -9,7 +9,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest};
 
-const ENCODE_ROWS_WITH_AVRO: u32 = 0;
+const ENCODE_ROWS_WITH_AVRO: u32 = 1;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
