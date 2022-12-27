@@ -266,6 +266,8 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
     let mut resp = empty_ok_resp();
     let mut avro_schema_opt = None;
 
+    let total_row = records.iter().map(|v| v.num_rows()).sum();
+    resp.rows = Vec::with_capacity(total_row);
     for record_batch in records {
         if avro_schema_opt.as_ref().is_none() {
             let avro_schema = avro::to_avro_schema(RECORD_NAME, record_batch.schema());
@@ -277,13 +279,13 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
             avro_schema_opt = Some(avro_schema);
         }
 
-        let rows = avro::record_batch_to_avro_rows(record_batch)
+        let mut rows = avro::record_batch_to_avro_rows(record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to convert record batch",
             })?;
-        resp.rows = rows;
+        resp.rows.append(&mut rows);
     }
 
     Ok(resp)
