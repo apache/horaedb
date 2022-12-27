@@ -617,15 +617,13 @@ mod tests {
         },
     };
 
-    fn build_sst_meta_data(time_range: TimeRange, size: u64) -> SstMetaData {
+    fn build_sst_meta_data(time_range: TimeRange, _size: u64) -> SstMetaData {
         SstMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range,
             max_sequence: 200,
             schema: build_schema(),
-            size,
-            row_num: 2,
             storage_format_opts: Default::default(),
             bloom_filter: Default::default(),
         }
@@ -769,6 +767,8 @@ mod tests {
             .map(|size| {
                 let file_meta = FileMeta {
                     id: 1,
+                    size,
+                    row_num: 0,
                     meta: build_sst_meta_data(TimeRange::empty(), size),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());

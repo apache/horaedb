@@ -502,7 +502,7 @@ impl Instance {
                 flushed_sequence = seq;
                 sst_num += files_to_level0.len();
                 for add_file in &files_to_level0 {
-                    local_metrics.observe_sst_size(add_file.file.meta.size);
+                    local_metrics.observe_sst_size(add_file.file.size);
                 }
             }
         }
@@ -511,7 +511,7 @@ impl Instance {
                 .dump_normal_memtable(table_data, request_id, mem)
                 .await?;
             if let Some(file) = file {
-                let sst_size = file.meta.size;
+                let sst_size = file.size;
                 files_to_level0.push(AddFile { level: 0, file });
 
                 // Set flushed sequence to max of the last_sequence of memtables.
@@ -619,14 +619,12 @@ impl Instance {
             let sst_file_path = table_data.set_sst_file_path(file_id);
 
             // TODO: min_key max_key set in sst_builder build
-            let mut sst_meta = SstMetaData {
+            let sst_meta = SstMetaData {
                 min_key: min_key.clone(),
                 max_key: max_key.clone(),
                 time_range: *time_range,
                 max_sequence,
                 schema: table_data.schema(),
-                size: 0,
-                row_num: 0,
                 storage_format_opts: StorageFormatOptions::new(
                     table_data.table_options().storage_format,
                 ),
@@ -663,10 +661,7 @@ impl Instance {
                         path: sst_file_path.to_string(),
                     })?;
 
-                // update sst metadata by built info.
-                sst_meta.row_num = sst_info.row_num as u64;
-                sst_meta.size = sst_info.file_size as u64;
-                Ok(sst_meta)
+                Ok((sst_info, sst_meta))
             });
 
             batch_record_senders.push(batch_record_sender);
@@ -698,12 +693,15 @@ impl Instance {
         batch_record_senders.clear();
 
         let ret = try_join_all(sst_handlers).await;
-        for (idx, sst_meta) in ret.context(RuntimeJoin)?.into_iter().enumerate() {
+        for (idx, info_and_meta) in ret.context(RuntimeJoin)?.into_iter().enumerate() {
+            let (sst_info, sst_meta) = info_and_meta?;
             files_to_level0.push(AddFile {
                 level: 0,
                 file: FileMeta {
                     id: file_ids[idx],
-                    meta: sst_meta?,
+                    size: sst_info.file_size as u64,
+                    row_num: sst_info.row_num as u64,
+                    meta: sst_meta,
                 },
             })
         }
@@ -727,14 +725,12 @@ impl Instance {
             }
         };
         let max_sequence = memtable_state.last_sequence();
-        let mut sst_meta = SstMetaData {
+        let sst_meta = SstMetaData {
             min_key,
             max_key,
             time_range: memtable_state.time_range,
             max_sequence,
             schema: table_data.schema(),
-            size: 0,
-            row_num: 0,
             storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
             bloom_filter: Default::default(),
         };
@@ -774,11 +770,11 @@ impl Instance {
             })?;
 
         // update sst metadata by built info.
-        sst_meta.row_num = sst_info.row_num as u64;
-        sst_meta.size = sst_info.file_size as u64;
 
         Ok(Some(FileMeta {
             id: file_id,
+            row_num: sst_info.row_num as u64,
+            size: sst_info.file_size as u64,
             meta: sst_meta,
         }))
     }
@@ -953,7 +949,7 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter, &runtime)
         };
 
-        let mut sst_meta = file::merge_sst_meta(&input.files, schema);
+        let sst_meta = file::merge_sst_meta(&input.files, schema);
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
@@ -979,16 +975,12 @@ impl SpaceStore {
                 path: sst_file_path.to_string(),
             })?;
 
-        // update sst metadata by built info.
-        sst_meta.row_num = sst_info.row_num as u64;
-        sst_meta.size = sst_info.file_size as u64;
-
         table_data
             .metrics
-            .compaction_observe_output_sst_size(sst_meta.size);
+            .compaction_observe_output_sst_size(sst_info.file_size as u64);
         table_data
             .metrics
-            .compaction_observe_output_sst_row_num(sst_meta.row_num);
+            .compaction_observe_output_sst_row_num(sst_info.row_num as u64);
 
         info!(
             "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
@@ -1014,6 +1006,8 @@ impl SpaceStore {
             level: input.output_level,
             file: FileMeta {
                 id: file_id,
+                size: sst_info.file_size as u64,
+                row_num: sst_info.row_num as u64,
                 meta: sst_meta,
             },
         });
