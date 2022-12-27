@@ -161,6 +161,12 @@ impl ClientBuilder for DefaultClientBuilder {
 ///
 /// No forward happens if the router tells the target endpoint is the same as
 /// the local endpoint.
+///
+/// Assuming client wants to access some table which are located on server1 (the
+/// router can tell the location information). Then here is the diagram
+/// describing what the forwarder does:
+///  peer-to-peer procedure: client --> server1
+///  forwarding procedure:   client --> server0 (forwarding server) --> server1
 pub struct Forwarder<B> {
     config: Config,
     router: RouterRef,
