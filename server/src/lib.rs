@@ -8,7 +8,6 @@
 #[macro_use]
 extern crate common_util;
 
-mod avro_util;
 pub mod config;
 mod consts;
 mod context;

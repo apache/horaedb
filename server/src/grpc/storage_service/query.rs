@@ -11,7 +11,7 @@ use ceresdbproto::{
     },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::time::InstantExt;
+use common_util::{avro, time::InstantExt};
 use futures::FutureExt;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
@@ -25,7 +25,6 @@ use sql::{
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
-    avro_util,
     config::Endpoint,
     grpc::{
         forward::{ForwardRequest, ForwardResult},
@@ -247,7 +246,7 @@ fn convert_output(output: &Output) -> Result<QueryResponse> {
     }
 }
 
-pub fn get_record_batch(op: &Option<Output>) -> Option<&RecordBatchVec> {
+pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
     if let Some(output) = op {
         match output {
             Output::Records(records) => Some(records),
@@ -270,27 +269,23 @@ pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
     let total_row = records.iter().map(|v| v.num_rows()).sum();
     resp.rows = Vec::with_capacity(total_row);
     for record_batch in records {
-        let avro_schema = match avro_schema_opt.as_ref() {
-            Some(schema) => schema,
-            None => {
-                let avro_schema = avro_util::to_avro_schema(RECORD_NAME, record_batch.schema());
+        if avro_schema_opt.as_ref().is_none() {
+            let avro_schema = avro::to_avro_schema(RECORD_NAME, record_batch.schema());
 
-                // We only set schema_json once, so all record batches need to have same schema
-                resp.schema_type = query_response::SchemaType::Avro as i32;
-                resp.schema_content = avro_schema.canonical_form();
+            // We only set schema_json once, so all record batches need to have same schema
+            resp.schema_type = query_response::SchemaType::Avro as i32;
+            resp.schema_content = avro_schema.canonical_form();
 
-                avro_schema_opt = Some(avro_schema);
+            avro_schema_opt = Some(avro_schema);
+        }
 
-                avro_schema_opt.as_ref().unwrap()
-            }
-        };
-
-        avro_util::record_batch_to_avro(record_batch, avro_schema, &mut resp.rows)
+        let mut rows = avro::record_batch_to_avro_rows(record_batch)
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to convert record batch",
             })?;
+        resp.rows.append(&mut rows);
     }
 
     Ok(resp)

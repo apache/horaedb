@@ -13,8 +13,9 @@ use datafusion::{
     logical_plan::{Expr, Operator},
     scalar::ScalarValue,
 };
+use datafusion_proto::bytes::Serializeable;
 use log::debug;
-use snafu::Snafu;
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -22,6 +23,17 @@ pub enum Error {
     #[snafu(display("Failed ot do pruning, err:{}", source))]
     Prune {
         source: datafusion::error::DataFusionError,
+    },
+
+    #[snafu(display("Empty time range.\nBacktrace:\n{}", backtrace))]
+    EmptyTimeRange { backtrace: Backtrace },
+
+    #[snafu(display("Invalid time range.\nBacktrace:\n{}", backtrace))]
+    InvalidTimeRange { backtrace: Backtrace },
+
+    #[snafu(display("Expr decode failed., err:{}", source))]
+    DecodeExpr {
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 
@@ -66,6 +78,29 @@ impl Predicate {
             .fold(self.time_range.to_df_expr(time_column_name), |acc, expr| {
                 acc.and(expr)
             })
+    }
+}
+
+impl TryFrom<proto::remote_engine::Predicate> for Predicate {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::Predicate) -> std::result::Result<Self, Self::Error> {
+        let time_range = pb.time_range.context(EmptyTimeRange)?;
+        let mut exprs = Vec::with_capacity(pb.exprs.len());
+        for pb_expr in pb.exprs {
+            let expr = Expr::from_bytes(&pb_expr)
+                .map_err(|e| Box::new(e) as _)
+                .context(DecodeExpr)?;
+            exprs.push(expr);
+        }
+        Ok(Self {
+            exprs,
+            time_range: TimeRange::new(
+                Timestamp::new(time_range.start),
+                Timestamp::new(time_range.end),
+            )
+            .context(InvalidTimeRange)?,
+        })
     }
 }
 

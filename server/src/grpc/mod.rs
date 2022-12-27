@@ -25,6 +25,7 @@ use common_util::{
 };
 use futures::FutureExt;
 use log::{info, warn};
+use proto::remote_engine::remote_engine_service_server::RemoteEngineServiceServer;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
@@ -35,7 +36,7 @@ use crate::{
     config::Endpoint,
     grpc::{
         forward::Forwarder, meta_event_service::MetaServiceImpl,
-        storage_service::StorageServiceImpl,
+        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
     route::RouterRef,
@@ -45,6 +46,7 @@ use crate::{
 pub mod forward;
 mod meta_event_service;
 mod metrics;
+mod remote_engine_service;
 mod storage_service;
 
 #[derive(Debug, Snafu)]
@@ -146,6 +148,7 @@ pub struct RpcServices<Q: QueryExecutor + 'static> {
     serve_addr: SocketAddr,
     rpc_server: StorageServiceServer<StorageServiceImpl<Q>>,
     meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl<Q>>>,
+    remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl<Q>>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
@@ -155,6 +158,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
+        let remote_engine_server = self.remote_engine_server.clone();
         let serve_addr = self.serve_addr;
         let (stop_tx, stop_rx) = oneshot::channel();
         let join_handle = self.runtime.spawn(async move {
@@ -166,6 +170,9 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
                 info!("Grpc server serves meta rpc service");
                 router = router.add_service(s);
             };
+
+            info!("Grpc server serves remote engine rpc service");
+            router = router.add_service(remote_engine_server);
 
             let serve_res = router
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
@@ -277,6 +284,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             MetaEventServiceServer::new(meta_service)
         });
 
+        let remote_engine_server = {
+            let service = RemoteEngineServiceImpl {
+                instance: instance.clone(),
+                runtimes: runtimes.clone(),
+            };
+            RemoteEngineServiceServer::new(service)
+        };
+
         let forward_config = self.forward_config.unwrap_or_default();
         let forwarder = if forward_config.enable {
             let local_endpoint =
@@ -306,6 +321,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             serve_addr,
             rpc_server,
             meta_rpc_server,
+            remote_engine_server,
             runtime: bg_runtime,
             stop_tx: None,
             join_handle: None,
