@@ -219,7 +219,9 @@ impl From<AddTableMeta> for meta_pb::AddTableMeta {
             table_name: v.table_name,
             schema: Some(common_pb::TableSchema::from(&v.schema)),
             options: Some(analytic_common::TableOptions::from(v.opts)),
-            partition_info: v.partition_info.map(|info| info.into()),
+            partition_info: Some(meta_pb::PartitionInfo {
+                partition_info_enum: Some(v.partition_info.unwrap().into()),
+            }),
         }
     }
 }
@@ -236,7 +238,9 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
             table_name: src.table_name,
             schema: Schema::try_from(table_schema).context(ConvertSchema)?,
             opts: TableOptions::from(opts),
-            partition_info: src.partition_info.map(|v| v.into()),
+            partition_info: Some(PartitionInfo::from(
+                src.partition_info.unwrap().partition_info_enum.unwrap(),
+            )),
         })
     }
 }
