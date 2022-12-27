@@ -118,7 +118,7 @@ pub fn avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGro
     let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
     for raw_row in rows {
         let mut row = Vec::with_capacity(schema.num_columns());
-        parse_one_row(&avro_schema, raw_row, &mut row)?;
+        avro_row_to_row(&avro_schema, raw_row, &mut row)?;
         builder.push_checked_row(Row::from_datums(row));
     }
 
@@ -202,7 +202,7 @@ fn column_to_value(array: &ColumnBlock, row_idx: usize, is_nullable: bool) -> Va
 ///
 /// Some types defined by avro are not used and the conversion rule is totally
 /// based on the implementation in the server.
-fn value_to_datum(value: Value) -> Result<Datum> {
+fn avro_value_to_datum(value: Value) -> Result<Datum> {
     let datum = match value {
         Value::Null => Datum::Null,
         Value::TimestampMillis(v) => Datum::Timestamp(Timestamp::new(v)),
@@ -215,7 +215,7 @@ fn value_to_datum(value: Value) -> Result<Datum> {
         Value::Long(v) => Datum::Int64(v),
         Value::Int(v) => Datum::Int32(v),
         Value::Boolean(v) => Datum::Boolean(v),
-        Value::Union(inner_val) => value_to_datum(*inner_val)?,
+        Value::Union(inner_val) => avro_value_to_datum(*inner_val)?,
         Value::Fixed(_, _)
         | Value::Enum(_, _)
         | Value::Array(_)
@@ -242,13 +242,13 @@ fn may_union(val: Value, is_nullable: bool) -> Value {
     }
 }
 
-fn parse_one_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
+fn avro_row_to_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
     let record = avro_rs::from_avro_datum(schema, &mut raw, None)
         .map_err(|e| Box::new(e) as _)
         .context(ConvertToAvroRecord)?;
     if let Value::Record(cols) = record {
         for (_, column_value) in cols {
-            let datum = value_to_datum(column_value)?;
+            let datum = avro_value_to_datum(column_value)?;
             row.push(datum);
         }
 
