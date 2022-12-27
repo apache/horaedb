@@ -832,6 +832,7 @@ dependencies = [
  "logger",
  "meta_client",
  "query_engine",
+ "router",
  "server",
  "signal-hook",
  "sort",
@@ -1017,7 +1018,6 @@ checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
 name = "cluster"
 version = "1.0.0-alpha01"
 dependencies = [
- "analytic_engine",
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=b9c45bcdbf7d55d5889d42b4c8017282819e6049)",
  "common_types 1.0.0-alpha01",
@@ -1099,6 +1099,7 @@ name = "common_util"
 version = "1.0.0-alpha01"
 dependencies = [
  "arrow",
+ "avro-rs",
  "backtrace",
  "chrono",
  "common_types 1.0.0-alpha01",
@@ -1115,6 +1116,7 @@ dependencies = [
  "proto 1.0.0-alpha01",
  "serde",
  "serde_derive",
+ "serde_json",
  "slog",
  "slog-global",
  "snafu 0.6.10",
@@ -4814,6 +4816,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
+name = "remote_engine_client"
+version = "1.0.0-alpha01"
+dependencies = [
+ "async-trait",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=b9c45bcdbf7d55d5889d42b4c8017282819e6049)",
+ "clru",
+ "common_types 1.0.0-alpha01",
+ "common_util",
+ "futures 0.3.21",
+ "proto 1.0.0-alpha01",
+ "router",
+ "snafu 0.6.10",
+ "table_engine",
+ "tokio 1.22.0",
+ "tonic",
+]
+
+[[package]]
 name = "remove_dir_all"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4925,6 +4945,23 @@ source = "git+https://github.com/tikv/rust-rocksdb.git?rev=084102f7e4d1901cbe3f2
 dependencies = [
  "libc",
  "librocksdb_sys",
+]
+
+[[package]]
+name = "router"
+version = "1.0.0-alpha01"
+dependencies = [
+ "async-trait",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=b9c45bcdbf7d55d5889d42b4c8017282819e6049)",
+ "cluster",
+ "common_types 1.0.0-alpha01",
+ "common_util",
+ "log",
+ "meta_client",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "twox-hash",
 ]
 
 [[package]]
@@ -5264,6 +5301,7 @@ dependencies = [
  "prometheus-static-metric",
  "prost",
  "query_engine",
+ "router",
  "serde",
  "serde_derive",
  "serde_json",
@@ -5274,7 +5312,6 @@ dependencies = [
  "tokio 1.22.0",
  "tokio-stream",
  "tonic",
- "twox-hash",
  "warp",
 ]
 
@@ -5837,10 +5874,13 @@ version = "1.0.0-alpha01"
 dependencies = [
  "arrow",
  "async-trait",
+ "avro-rs",
+ "clru",
  "common_types 1.0.0-alpha01",
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
  "futures 0.3.21",
  "log",
  "parquet",
@@ -5852,6 +5892,7 @@ dependencies = [
  "smallvec 1.9.0",
  "snafu 0.6.10",
  "tokio 1.22.0",
+ "tonic",
 ]
 
 [[package]]

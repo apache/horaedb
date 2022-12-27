@@ -35,6 +35,8 @@ members = [
     "meta_client",
     "proto",
     "query_engine",
+    "remote_engine_client",
+    "router",
     "server",
     "sql",
     "system_catalog",
@@ -103,6 +105,10 @@ tonic = "0.8.1"
 tokio = { version = "1.21", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
+clru = "0.6.1"
+avro-rs = "0.13"
+router = { path = "router" }
+remote_engine_client = { path = "remote_engine_client" }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
@@ -133,6 +139,7 @@ log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
+router = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"
