@@ -9,7 +9,7 @@ use ceresdbproto::{
     storage::{query_response, QueryRequest, QueryResponse},
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::time::InstantExt;
+use common_util::{avro_util, time::InstantExt};
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
@@ -20,12 +20,9 @@ use sql::{
     provider::CatalogMetaProvider,
 };
 
-use crate::{
-    avro_util,
-    grpc::storage_service::{
-        error::{ErrNoCause, ErrWithCause, Result},
-        HandlerContext,
-    },
+use crate::grpc::storage_service::{
+    error::{ErrNoCause, ErrWithCause, Result},
+    HandlerContext,
 };
 
 /// Schema name of the record

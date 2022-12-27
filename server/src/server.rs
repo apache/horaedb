@@ -11,11 +11,12 @@ use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
 use query_engine::executor::Executor as QueryExecutor;
+use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::{Config, Endpoint},
+    config::Config,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
@@ -23,7 +24,6 @@ use crate::{
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
-    route::RouterRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
 

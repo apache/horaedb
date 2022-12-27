@@ -24,6 +24,7 @@ use common_util::{
 use futures::FutureExt;
 use log::{info, warn};
 use query_engine::executor::Executor as QueryExecutor;
+use router::RouterRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
@@ -32,7 +33,6 @@ use tonic::transport::Server;
 use crate::{
     grpc::{meta_event_service::MetaServiceImpl, storage_service::StorageServiceImpl},
     instance::InstanceRef,
-    route::RouterRef,
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 

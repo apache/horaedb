@@ -37,6 +37,7 @@ prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
 query_engine = { workspace = true }
+router = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
@@ -47,8 +48,6 @@ table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
-twox-hash = "1.6"
 warp = "0.3"
-
 [dev-dependencies]
 sql = { workspace = true, features = ["test"] }

@@ -1,5 +1,5 @@
 [package]
-name = "cluster"
+name = "router"
 
 [package.version]
 workspace = true
@@ -13,14 +13,12 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
+cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
-rust-fsm = "0.6.0"
 serde = { workspace = true }
-serde_derive = { workspace = true }
-serde_json = { workspace = true }
+serde_derive  = { workspace = true }
 snafu = { workspace = true }
-table_engine = { workspace = true }
-tokio = { workspace = true }
+twox-hash = "1.6"
