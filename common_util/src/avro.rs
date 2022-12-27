@@ -36,7 +36,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to covert to avro record, err:{}", source))]
+    #[snafu(display("Failed to convert to avro record, err:{}", source))]
     ConvertToAvroRecord {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -106,6 +106,25 @@ pub fn to_avro_schema(name: &str, schema: &RecordSchema) -> avro_rs::Schema {
     }
 }
 
+pub fn record_batch_to_avro_rows(record_batch: &RecordBatch) -> Result<Vec<ByteVec>> {
+    let mut rows = Vec::new();
+    let avro_schema = to_avro_schema(RECORD_NAME, record_batch.schema());
+    record_batch_to_avro(record_batch, &avro_schema, &mut rows)?;
+    Ok(rows)
+}
+
+pub fn avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
+    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
+    let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+    for raw_row in rows {
+        let mut row = Vec::with_capacity(schema.num_columns());
+        parse_one_row(&avro_schema, raw_row, &mut row)?;
+        builder.push_checked_row(Row::from_datums(row));
+    }
+
+    Ok(builder.build())
+}
+
 fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
     match data_type {
         DatumKind::Null => avro_rs::Schema::Null,
@@ -125,7 +144,7 @@ fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
 }
 
 /// Convert record batch to avro format
-pub fn record_batch_to_avro(
+fn record_batch_to_avro(
     record_batch: &RecordBatch,
     schema: &avro_rs::Schema,
     rows: &mut Vec<ByteVec>,
@@ -154,25 +173,6 @@ pub fn record_batch_to_avro(
     }
 
     Ok(())
-}
-
-pub fn convert_record_batch_to_avro(record_batch: RecordBatch) -> Result<Vec<ByteVec>> {
-    let mut rows = Vec::new();
-    let avro_schema = to_avro_schema(RECORD_NAME, record_batch.schema());
-    record_batch_to_avro(&record_batch, &avro_schema, &mut rows)?;
-    Ok(rows)
-}
-
-pub fn convert_avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
-    let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
-    let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
-    for raw_row in rows {
-        let mut row = Vec::with_capacity(schema.num_columns());
-        parse_one_row(&avro_schema, raw_row, &mut row)?;
-        builder.push_checked_row(Row::from_datums(row));
-    }
-
-    Ok(builder.build())
 }
 
 /// Panic if row_idx is out of bound.

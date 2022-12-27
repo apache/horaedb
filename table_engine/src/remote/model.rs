@@ -74,7 +74,7 @@ impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
             .map_err(|e| Box::new(e) as _)
             .context(ConvertTableSchema)?;
         let row_group = if row_group_pb.version == ENCODE_ROWS_WITH_AVRO {
-            avro::convert_avro_rows_to_row_group(table_schema, &row_group_pb.rows)
+            avro::avro_rows_to_row_group(table_schema, &row_group_pb.rows)
                 .map_err(|e| Box::new(e) as _)
                 .context(ConvertRowGroup)?
         } else {

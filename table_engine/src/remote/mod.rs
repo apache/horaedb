@@ -41,7 +41,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to covert row group, encode version:{}.\nBacktrace:\n{}",
+        "Failed to covert row group, encoding version:{}.\nBacktrace:\n{}",
         version,
         backtrace
     ))]

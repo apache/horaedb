@@ -59,11 +59,11 @@ message ReadResponse {
 
 message RowGroup {
   // Version of row encoding method
-  uint32 version = 1;
-  common.TableSchema table_schema = 2;
-  repeated bytes rows = 3;
-  int64 min_timestamp = 4;
-  int64 max_timestamp = 5;
+  common.TableSchema table_schema = 1;
+  int64 min_timestamp = 2;
+  int64 max_timestamp = 3;
+  uint32 version = 4;
+  repeated bytes rows = 5;
 }
 
 message WriteRequest {

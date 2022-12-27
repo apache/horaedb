@@ -61,19 +61,18 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 msg: "fail to join task",
             })??;
 
-        for mut stream in streams.streams.into_iter() {
+        for stream in streams.streams {
+            let mut stream = stream.map(|result| {
+                result.map_err(|e| Box::new(e) as _).context(ErrWithCause {
+                    code: StatusCode::Internal,
+                    msg: "record batch failed",
+                })
+            });
             let tx = tx.clone();
             let _ = self.runtimes.read_runtime.spawn(async move {
                 while let Some(batch) = stream.next().await {
-                    if tx
-                        .send(batch.map_err(|e| Box::new(e) as _).context(ErrWithCause {
-                            code: StatusCode::Internal,
-                            msg: "record batch failed",
-                        }))
-                        .await
-                        .is_err()
-                    {
-                        error!("Failed to send handler result.");
+                    if let Err(e) = tx.send(batch).await {
+                        error!("Failed to send handler result, err:{}.", e);
                         break;
                     }
                 }
@@ -137,7 +136,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
-                        let resp = match avro::convert_record_batch_to_avro(record_batch)
+                        let resp = match avro::record_batch_to_avro_rows(&record_batch)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::Internal,

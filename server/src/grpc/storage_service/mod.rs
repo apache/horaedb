@@ -349,7 +349,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                         error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
                         e
                     })?;
-            if let Some(batch) = query::get_record_batch(&output) {
+            if let Some(batch) = query::get_record_batch(output) {
                 for i in 0..batch.len() {
                     let resp = query::convert_records(&batch[i..i + 1]);
                     if tx.send(resp).await.is_err() {

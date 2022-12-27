@@ -391,29 +391,33 @@ impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
     type Error = Error;
 
     fn try_from(pb: proto::remote_engine::TableReadRequest) -> Result<Self> {
-        Ok(Self {
-            request_id: RequestId::next_id(),
-            opts: pb.opts.context(EmptyReadOptions)?.into(),
-            projected_schema: pb
-                .projected_schema
-                .context(EmptyProjectedSchema)?
+        let opts = pb.opts.context(EmptyReadOptions)?.into();
+        let projected_schema = pb
+            .projected_schema
+            .context(EmptyProjectedSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertProjectedSchema)?;
+        let predicate = Arc::new(
+            pb.predicate
+                .context(EmptyPredicate)?
                 .try_into()
                 .map_err(|e| Box::new(e) as _)
-                .context(ConvertProjectedSchema)?,
-            predicate: Arc::new(
-                pb.predicate
-                    .context(EmptyPredicate)?
-                    .try_into()
-                    .map_err(|e| Box::new(e) as _)
-                    .context(ConvertPredicate)?,
-            ),
-            order: if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {
-                ReadOrder::Asc
-            } else if pb.order == proto::remote_engine::ReadOrder::Desc as i32 {
-                ReadOrder::Desc
-            } else {
-                ReadOrder::None
-            },
+                .context(ConvertPredicate)?,
+        );
+        let order = if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {
+            ReadOrder::Asc
+        } else if pb.order == proto::remote_engine::ReadOrder::Desc as i32 {
+            ReadOrder::Desc
+        } else {
+            ReadOrder::None
+        };
+        Ok(Self {
+            request_id: RequestId::next_id(),
+            opts,
+            projected_schema,
+            predicate,
+            order,
         })
     }
 }

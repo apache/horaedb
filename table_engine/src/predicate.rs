@@ -28,8 +28,11 @@ pub enum Error {
     #[snafu(display("Empty time range.\nBacktrace:\n{}", backtrace))]
     EmptyTimeRange { backtrace: Backtrace },
 
+    #[snafu(display("Invalid time range.\nBacktrace:\n{}", backtrace))]
+    InvalidTimeRange { backtrace: Backtrace },
+
     #[snafu(display("Expr decode failed., err:{}", source))]
-    ExprDecode {
+    DecodeExpr {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
@@ -87,15 +90,16 @@ impl TryFrom<proto::remote_engine::Predicate> for Predicate {
         for pb_expr in pb.exprs {
             let expr = Expr::from_bytes(&pb_expr)
                 .map_err(|e| Box::new(e) as _)
-                .context(ExprDecode)?;
+                .context(DecodeExpr)?;
             exprs.push(expr);
         }
         Ok(Self {
             exprs,
-            time_range: TimeRange::new_unchecked(
+            time_range: TimeRange::new(
                 Timestamp::new(time_range.start),
                 Timestamp::new(time_range.end),
-            ),
+            )
+            .context(InvalidTimeRange)?,
         })
     }
 }
