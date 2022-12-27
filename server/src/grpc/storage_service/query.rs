@@ -26,6 +26,7 @@ use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
     avro_util,
+    config::Endpoint,
     grpc::{
         forward::{ForwardRequest, ForwardResult},
         storage_service::{
@@ -71,7 +72,8 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
         req: req.clone().into_request(),
     };
     let do_query = |mut client: StorageServiceClient<Channel>,
-                    request: tonic::Request<QueryRequest>| {
+                    request: tonic::Request<QueryRequest>,
+                    _: &Endpoint| {
         let query = async move {
             client
                 .query(request)

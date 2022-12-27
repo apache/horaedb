@@ -4,9 +4,10 @@
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
-    time::Duration, net::{Ipv4Addr, AddrParseError}, 
+    time::Duration, net::{Ipv4Addr}, 
 };
 
+use async_trait::async_trait;
 use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
 use log::{error, warn};
 use serde_derive::Deserialize;
@@ -26,18 +27,6 @@ pub enum Error {
     InvalidEndpoint {
         endpoint: String,
         source: tonic::transport::Error,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Invalid ip address, addr:{}, err:{}.\nBacktrace:\n{}",
-        ip_addr,
-        source,
-        backtrace
-    ))]
-    InvalidIpAddr {
-        ip_addr: String,
-        source: AddrParseError, 
         backtrace: Backtrace,
     },
 
@@ -78,7 +67,7 @@ pub enum Error {
 
 define_result!(Error);
 
-pub type ForwarderRef = Arc<Forwarder>;
+pub type ForwarderRef = Arc<Forwarder<DefaultClientBuilder>>;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -100,8 +89,7 @@ pub struct Config {
     /// default keep http2 connections alive while idle
     pub keep_alive_while_idle: bool,
     pub connect_timeout: Duration,
-    pub write_timeout: Duration,
-    pub read_timeout: Duration,
+    pub forward_timeout: Duration,
 }
 
 impl Default for Config {
@@ -117,19 +105,68 @@ impl Default for Config {
             keep_alive_timeout: Duration::from_secs(3),
             keep_alive_while_idle: true,
             connect_timeout: Duration::from_secs(3),
-            write_timeout: Duration::from_secs(5),
-            read_timeout: Duration::from_secs(60),
+            forward_timeout: Duration::from_secs(60),
         }
     }
 }
 
-pub struct Forwarder {
+#[async_trait]
+pub trait ClientBuilder {
+    async fn connect(&self, endpoint: &Endpoint) -> Result<StorageServiceClient<Channel>>;
+}
+
+pub struct DefaultClientBuilder {
+    config: Config,
+}
+
+impl DefaultClientBuilder {
+    #[inline]
+    fn make_endpoint_with_scheme(endpoint: &Endpoint) -> String {
+        format!("http://{}:{}", endpoint.addr, endpoint.port)
+    }
+}
+
+#[async_trait]
+impl ClientBuilder for DefaultClientBuilder {
+    async fn connect(&self, endpoint: &Endpoint) -> Result<StorageServiceClient<Channel>> {
+        let endpoint_with_scheme = Self::make_endpoint_with_scheme(endpoint);
+        let configured_endpoint = transport::Endpoint::from_shared(endpoint_with_scheme.clone())
+            .context(InvalidEndpoint {
+                endpoint: &endpoint_with_scheme,
+            })?;
+
+        let configured_endpoint = match self.config.keep_alive_while_idle {
+            true => configured_endpoint
+                .connect_timeout(self.config.connect_timeout)
+                .keep_alive_timeout(self.config.keep_alive_timeout)
+                .keep_alive_while_idle(true)
+                .http2_keep_alive_interval(self.config.keep_alive_interval),
+            false => configured_endpoint
+                .connect_timeout(self.config.connect_timeout)
+                .keep_alive_while_idle(false),
+        };
+        let channel = configured_endpoint.connect().await.context(Connect {
+            endpoint: &endpoint_with_scheme,
+        })?;
+
+        Ok(StorageServiceClient::new(channel))
+    }
+}
+
+/// Forwarder does request forwarding.
+/// 
+/// No forward happens if the router tells the target endpoint is the same as the local endpoint.
+pub struct Forwarder<B> {
     config: Config,
     router: RouterRef,
     local_endpoint: Endpoint,
+    client_builder: B,
     clients: RwLock<HashMap<Endpoint, StorageServiceClient<Channel>>>,
 }
 
+/// The result of forwarding.
+/// 
+/// If no forwarding happens, [`Original`] can be used.
 pub enum ForwardResult<Resp, Err> {
     Original,
     Forwarded(std::result::Result<Resp, Err>),
@@ -141,9 +178,48 @@ pub struct ForwardRequest<Req: std::fmt::Debug + Clone> {
     pub req: tonic::Request<Req>,
 }
 
-impl Forwarder {
+impl Forwarder<DefaultClientBuilder> {
     pub fn try_new(config: Config, router: RouterRef, local_endpoint: Endpoint) -> Result<Self> {
-        ensure!(!Self::is_loopback_ip(&local_endpoint.addr)?, LoopbackLocalIpAddr {
+
+        let client_builder = DefaultClientBuilder {
+            config: config.clone(),
+        };
+
+        Self::try_new_with_client_builder(config, router, local_endpoint, client_builder)
+    }
+}
+
+impl<B> Forwarder<B> {
+    #[inline]
+    fn is_loopback_ip(ip_addr: &str) -> bool {
+        ip_addr.parse::<Ipv4Addr>().map(|ip| ip.is_loopback()).unwrap_or(false)
+    }
+
+    /// Check whether the target endpoint is the same as the local endpoint.
+    fn is_local_endpoint(&self, target: &Endpoint) -> bool {
+        if &self.local_endpoint == target {
+            return true
+        }
+
+        if self.local_endpoint.port != target.port {
+            return false
+        }
+
+        // Only need to check the remote is loopback addr.
+        Self::is_loopback_ip(&target.addr)
+    }
+
+    /// Release the client for the given endpoint.
+    fn release_client(&self, endpoint: &Endpoint) -> Option<StorageServiceClient<Channel>> {
+        let mut clients = self.clients.write().unwrap();
+        clients.remove(endpoint)
+    }
+}
+
+impl<B: ClientBuilder> Forwarder<B> {
+    pub fn try_new_with_client_builder(config: Config, router: RouterRef, local_endpoint: Endpoint, client_builder: B) -> Result<Self> {
+        let loopback_local_endpoint = Self::is_loopback_ip(&local_endpoint.addr);
+        ensure!(!loopback_local_endpoint, LoopbackLocalIpAddr {
             ip_addr: &local_endpoint.addr,
         });
 
@@ -152,9 +228,14 @@ impl Forwarder {
             local_endpoint,
             router,
             clients: RwLock::new(HashMap::new()),
+            client_builder,
         })
     }
 
+    /// Forward the request according to the configured router.
+    /// 
+    /// Error will be thrown if it happens in the forwarding procedure, that is to say,
+    /// some errors like the output from the `do_rpc` will be wrapped in the [`ForwardResult::Forwarded`].
     pub async fn forward<Req, Resp, Err, F>(
         &self,
         forward_req: ForwardRequest<Req>,
@@ -164,6 +245,7 @@ impl Forwarder {
         F: FnOnce(
             StorageServiceClient<Channel>,
             tonic::Request<Req>,
+            &Endpoint,
         )
             -> Box<dyn std::future::Future<Output = std::result::Result<Resp, Err>> + Send + Unpin>,
         Req: std::fmt::Debug + Clone,
@@ -200,16 +282,19 @@ impl Forwarder {
             }
         };
 
-        // TODO: Detect the loopback forwarding to avoid endless calling.
-        if self.is_local_endpoint(&endpoint)? {
+        if self.is_local_endpoint(&endpoint) {
             return Ok(ForwardResult::Original);
         }
 
-        let client = self.get_or_create_client(&endpoint).await?;
-        let metadata = req.metadata_mut();
-        metadata.insert(TENANT_HEADER, schema.parse().context(InvalidSchema{schema})?);
+        // Update the request.
+        {
+            req.set_timeout(self.config.forward_timeout);
+            let metadata = req.metadata_mut();
+            metadata.insert(TENANT_HEADER, schema.parse().context(InvalidSchema{schema})?);
+        }
 
-        match do_rpc(client, req).await {
+        let client = self.get_or_create_client(&endpoint).await?;
+        match do_rpc(client, req, &endpoint).await {
             Err(e) => {
                 // Release the grpc client for the error doesn't belong to the normal error.
                 self.release_client(&endpoint);
@@ -217,27 +302,6 @@ impl Forwarder {
             }
             Ok(resp) => Ok(ForwardResult::Forwarded(Ok(resp))),
         }
-    }
-
-    fn is_loopback_ip(ip_addr: &str) -> Result<bool> {
-        let ip = ip_addr.parse::<Ipv4Addr>().context(InvalidIpAddr {
-            ip_addr,
-        })?;
-
-        Ok(ip.is_loopback())
-    }
-
-    fn is_local_endpoint(&self, remote: &Endpoint) -> Result<bool> {
-        if &self.local_endpoint == remote {
-            return Ok(true)
-        }
-
-        if self.local_endpoint.port != remote.port {
-            return Ok(false)
-        }
-
-        // Only need to check the remote is loopback addr.
-        Self::is_loopback_ip(&remote.addr)
     }
 
     async fn get_or_create_client(
@@ -251,7 +315,7 @@ impl Forwarder {
             }
         }
 
-        let new_client = self.build_client(endpoint).await?;
+        let new_client = self.client_builder.connect(endpoint).await?;
         {
             let mut clients = self.clients.write().unwrap();
             if let Some(v) = clients.get(endpoint) {
@@ -262,39 +326,126 @@ impl Forwarder {
 
         Ok(new_client)
     }
+}
 
-    /// Release the client for the given endpoint.
-    fn release_client(&self, endpoint: &Endpoint) -> Option<StorageServiceClient<Channel>> {
-        let mut clients = self.clients.write().unwrap();
-        clients.remove(endpoint)
+#[cfg(test)]
+mod tests {
+    use ceresdbproto::storage::{Route, QueryRequest, QueryResponse};
+    use futures::FutureExt;
+    use tonic::IntoRequest;
+
+    use crate::route::Router;
+
+    use super::*;
+
+    #[test]
+    fn test_check_loopback_endpoint() {
+        let loopback_ips = vec!["127.0.0.1", "0.0.0.0", "localhost"];
+        for loopback_ip in loopback_ips {
+            assert!(Forwarder::<DefaultClientBuilder>::is_loopback_ip(loopback_ip));
+        }
+
+        let normal_ips = vec!["10.100.10.14", "192.168.1.2"];
+        for ip in normal_ips {
+            assert!(!Forwarder::<DefaultClientBuilder>::is_loopback_ip(ip));
+        }
+
+        let invalid_addrs = vec!["hello.world.com", "test", ""];
+        for ip in invalid_addrs {
+            assert!(!Forwarder::<DefaultClientBuilder>::is_loopback_ip(ip));
+        }
     }
 
-    async fn build_client(&self, endpoint: &Endpoint) -> Result<StorageServiceClient<Channel>> {
-        let endpoint_with_scheme = Self::make_endpoint_with_scheme(endpoint);
-        let configured_endpoint = transport::Endpoint::from_shared(endpoint_with_scheme.clone())
-            .context(InvalidEndpoint {
-                endpoint: &endpoint_with_scheme,
-            })?;
+    struct MockRouter {
+        routing_tables: HashMap<String, Endpoint>,
+    }
 
-        let configured_endpoint = match self.config.keep_alive_while_idle {
-            true => configured_endpoint
-                .connect_timeout(self.config.connect_timeout)
-                .keep_alive_timeout(self.config.keep_alive_timeout)
-                .keep_alive_while_idle(true)
-                .http2_keep_alive_interval(self.config.keep_alive_interval),
-            false => configured_endpoint
-                .connect_timeout(self.config.connect_timeout)
-                .keep_alive_while_idle(false),
+    #[async_trait]
+    impl Router for MockRouter {
+        async fn route(&self, _schema: &str, req: RouteRequest) -> crate::route::Result<Vec<Route>> {
+            let endpoint = self.routing_tables.get(&req.metrics[0]);
+            match endpoint {
+                None => Ok(vec![]),
+                Some(v) => {
+                    Ok(vec![Route {
+                        metric: req.metrics[0].clone(),
+                        endpoint: Some(v.clone().into()),
+                        ext: vec![],
+                    }])
+                }
+            }
+        }
+    }
+
+    struct MockClientBuilder;
+
+    #[async_trait]
+    impl ClientBuilder for MockClientBuilder {
+        async fn connect(&self, _: &Endpoint) -> Result<StorageServiceClient<Channel>> {
+            let (channel, _) = Channel::balance_channel::<usize>(10);
+            Ok(StorageServiceClient::<Channel>::new(channel))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_normal_forward() {
+        let config = Config { enable: true, ..Default::default()};
+
+        let mut mock_router = MockRouter {
+            routing_tables: HashMap::new(),
         };
-        let channel = configured_endpoint.connect().await.context(Connect {
-            endpoint: &endpoint_with_scheme,
-        })?;
+        let test_metric0: &str = "test_metric0";
+        let test_metric1: &str = "test_metric1";
+        let test_metric2: &str = "test_metric2";
+        let test_metric3: &str = "test_metric3";
+        let test_endpoint0 = Endpoint::new("192.168.1.12".to_string(), 8831);
+        let test_endpoint1 = Endpoint::new("192.168.1.2".to_string(), 8831);
+        let test_endpoint2 = Endpoint::new("192.168.1.2".to_string(), 8832);
+        let test_endpoint3 = Endpoint::new("192.168.1.1".to_string(), 8831);
+        mock_router.routing_tables.insert(test_metric0.to_string(), test_endpoint0.clone());
+        mock_router.routing_tables.insert(test_metric1.to_string(), test_endpoint1.clone());
+        mock_router.routing_tables.insert(test_metric2.to_string(), test_endpoint2.clone());
+        mock_router.routing_tables.insert(test_metric3.to_string(), test_endpoint3.clone());
+        let mock_router = Arc::new(mock_router);
 
-        Ok(StorageServiceClient::new(channel))
-    }
+        let local_endpoint = test_endpoint3.clone();
+        let forwarder = Forwarder::try_new_with_client_builder(config, mock_router.clone() as _, local_endpoint.clone(), MockClientBuilder).unwrap();
 
-    #[inline]
-    fn make_endpoint_with_scheme(endpoint: &Endpoint) -> String {
-        format!("http://{}:{}", endpoint.addr, endpoint.port)
+        let make_forward_req = |metric: &str| {
+            let query_request = QueryRequest {
+                metrics: vec![metric.to_string()],
+                ql: "".to_string(),
+            };
+            ForwardRequest {
+                schema: "public".to_string(),
+                metric: metric.to_string(),
+                req: query_request.into_request(),
+            }
+        };
+
+        let do_rpc = |_client, req: tonic::Request<QueryRequest>, endpoint: &Endpoint| {
+            let tenant = req.metadata().get(TENANT_HEADER).unwrap().to_str().unwrap();
+            assert_eq!(tenant, "public");
+            let req = req.into_inner();
+            let expect_endpoint = mock_router.routing_tables.get(&req.metrics[0]).unwrap();
+            assert_eq!(expect_endpoint, endpoint);
+
+            let resp = QueryResponse::default();
+            Box::new(async move { Ok(resp) }.boxed()) as _
+        };
+
+        for test_metric in [test_metric0, test_metric1, test_metric2, test_metric3] {
+            let endpoint = mock_router.routing_tables.get(test_metric).unwrap();
+            let forward_req = make_forward_req(test_metric);
+            let res: Result<ForwardResult<QueryResponse, Error>> = forwarder.forward(forward_req, do_rpc).await;
+            let forward_res = res.expect("should succeed in forwarding");
+            if endpoint == &local_endpoint {
+                assert!(forwarder.is_local_endpoint(endpoint));
+                assert!(matches!(forward_res, ForwardResult::Original), "endpoint is:{:?}", endpoint);
+            } else {
+                assert!(!forwarder.is_local_endpoint(endpoint));
+                assert!(matches!(forward_res, ForwardResult::Forwarded(_)), "endpoint is:{:?}", endpoint);
+            }
+        }
     }
 }
