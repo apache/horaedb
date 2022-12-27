@@ -4,6 +4,7 @@
 
 use std::{
     net::{AddrParseError, SocketAddr},
+    str::FromStr,
     stringify,
     sync::Arc,
 };
@@ -19,6 +20,7 @@ use common_types::{
 };
 use common_util::{
     define_result,
+    error::GenericError,
     runtime::{JoinHandle, Runtime},
 };
 use futures::FutureExt;
@@ -30,12 +32,17 @@ use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    grpc::{meta_event_service::MetaServiceImpl, storage_service::StorageServiceImpl},
+    config::Endpoint,
+    grpc::{
+        forward::Forwarder, meta_event_service::MetaServiceImpl,
+        storage_service::StorageServiceImpl,
+    },
     instance::InstanceRef,
     route::RouterRef,
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 
+pub mod forward;
 mod meta_event_service;
 mod metrics;
 mod storage_service;
@@ -71,6 +78,15 @@ pub enum Error {
     #[snafu(display("Missing runtimes.\nBacktrace:\n{}", backtrace))]
     MissingRuntimes { backtrace: Backtrace },
 
+    #[snafu(display(
+        "Missing local endpoint when forwarder enabled.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MissingLocalEndpoint { backtrace: Backtrace },
+
+    #[snafu(display("Invalid local endpoint when forwarder enabled, err:{}", source,))]
+    InvalidLocalEndpoint { source: GenericError },
+
     #[snafu(display("Missing instance.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
 
@@ -92,8 +108,11 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to build table schema for metric: {}, err:{}", metric, source))]
+    #[snafu(display("Fail to build table schema for metric:{}, err:{}", metric, source))]
     BuildTableSchema { metric: String, source: SchemaError },
+
+    #[snafu(display("Fail to build forwarder, err:{}", source))]
+    BuildForwarder { source: forward::Error },
 
     #[snafu(display(
         "Fail to build column schema from column: {}, err:{}",
@@ -104,6 +123,7 @@ pub enum Error {
         column_name: String,
         source: column_schema::Error,
     },
+
     #[snafu(display("Invalid column: {} schema, err:{}", column_name, source))]
     InvalidColumnSchema {
         column_name: String,
@@ -173,27 +193,37 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 
 pub struct Builder<Q> {
     endpoint: String,
+    local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
     router: Option<RouterRef>,
     cluster: Option<ClusterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    forward_config: Option<forward::Config>,
 }
 
 impl<Q> Builder<Q> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
+            local_endpoint: None,
             runtimes: None,
             instance: None,
             router: None,
             cluster: None,
             schema_config_provider: None,
+            forward_config: None,
         }
     }
 
     pub fn endpoint(mut self, endpoint: String) -> Self {
         self.endpoint = endpoint;
+        self
+    }
+
+    pub fn local_endpoint(mut self, endpoint: String) -> Self {
+        self.local_endpoint = Some(endpoint);
+
         self
     }
 
@@ -222,6 +252,11 @@ impl<Q> Builder<Q> {
         self.schema_config_provider = Some(provider);
         self
     }
+
+    pub fn forward_config(mut self, config: forward::Config) -> Self {
+        self.forward_config = Some(config);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -242,12 +277,26 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             MetaEventServiceServer::new(meta_service)
         });
 
+        let forward_config = self.forward_config.unwrap_or_default();
+        let forwarder = if forward_config.enable {
+            let local_endpoint =
+                Endpoint::from_str(&self.local_endpoint.context(MissingLocalEndpoint)?)
+                    .context(InvalidLocalEndpoint)?;
+            let forwarder = Arc::new(
+                Forwarder::try_new(forward_config, router.clone(), local_endpoint)
+                    .context(BuildForwarder)?,
+            );
+            Some(forwarder)
+        } else {
+            None
+        };
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
             router,
             instance,
             runtimes,
             schema_config_provider,
+            forwarder,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

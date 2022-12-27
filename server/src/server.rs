@@ -319,11 +319,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
             .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
+            .local_endpoint(
+                Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
+            )
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
+            .forward_config(self.config.forward)
             .build()
             .context(BuildGrpcService)?;
 
