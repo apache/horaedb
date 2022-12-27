@@ -152,6 +152,16 @@ pub enum Error {
     ConvertPredicate {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("Failed to create partition rule, err:{}", source))]
+    CreatePartitionRule {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to locate partitions, err:{}", source))]
+    LocatePartitions {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 define_result!(Error);

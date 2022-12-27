@@ -14,9 +14,7 @@ use futures::future::try_join_all;
 use snafu::{ensure, ResultExt};
 use table_engine::{
     partition::{
-        format_sub_partition_table_name,
-        rule::{mock::MockRule, PartitionRule},
-        PartitionInfo,
+        format_sub_partition_table_name, rule::df_adapter::DfPartitionRuleAdapter, PartitionInfo,
     },
     remote::{
         model::{
@@ -26,8 +24,9 @@ use table_engine::{
     },
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
-        AlterSchemaRequest, FlushRequest, GetRequest, ReadRequest, Result, Table, TableId,
-        TableStats, UnexpectedWithMsg, UnsupportedMethod, Write, WriteRequest,
+        AlterSchemaRequest, CreatePartitionRule, FlushRequest, GetRequest, LocatePartitions,
+        ReadRequest, Result, Table, TableId, TableStats, UnexpectedWithMsg, UnsupportedMethod,
+        Write, WriteRequest,
     },
 };
 
@@ -134,18 +133,19 @@ impl Table for PartitionTableImpl {
             }
         );
 
-        // let partition_info = partition_info.unwrap();
+        let partition_info = partition_info.unwrap();
 
         // build partition rule
-        let partition_rule = MockRule { wanted: 0 };
+        let df_partition_rule =
+            DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                .map_err(|e| Box::new(e) as _)
+                .context(CreatePartitionRule)?;
         // split write request
         let mut split_rows = HashMap::new();
-        let partitions = partition_rule
+        let partitions = df_partition_rule
             .locate_partitions_for_write(&request.row_group)
             .map_err(|e| Box::new(e) as _)
-            .context(Write {
-                table: self.name().to_string(),
-            })?;
+            .context(LocatePartitions)?;
 
         let schema = request.row_group.schema().clone();
         for (located_partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
@@ -168,7 +168,7 @@ impl Table for PartitionTableImpl {
                 self.remote_engine
                     .write(RemoteWriteRequest {
                         table: self.generate_sub_table(id),
-                        table_request: WriteRequest { row_group },
+                        write_request: WriteRequest { row_group },
                     })
                     .await
             });
@@ -208,13 +208,19 @@ impl Table for PartitionTableImpl {
             }
         );
 
-        // let partition_info = partition_info.unwrap();
+        let partition_info = partition_info.unwrap();
 
         // build partition rule
-        // let partition_rule = MockRule { wanted: 0 };
+        let df_partition_rule =
+            DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                .map_err(|e| Box::new(e) as _)
+                .context(CreatePartitionRule)?;
 
         // evaluate expr and locate partition
-        let partitions = vec![0];
+        let partitions = df_partition_rule
+            .locate_partitions_for_read(request.predicate.exprs())
+            .map_err(|e| Box::new(e) as _)
+            .context(LocatePartitions)?;
 
         // client return async query streams
         let mut futures = Vec::with_capacity(partitions.len());
@@ -225,7 +231,7 @@ impl Table for PartitionTableImpl {
                 remote_engine
                     .read(RemoteReadRequest {
                         table: self.generate_sub_table(id),
-                        table_request: request_clone,
+                        read_request: request_clone,
                     })
                     .await
             })
