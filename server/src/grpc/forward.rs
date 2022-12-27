@@ -10,7 +10,7 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
-use log::{error, warn};
+use log::{debug, error, warn};
 use serde_derive::Deserialize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tonic::{
@@ -177,6 +177,7 @@ pub enum ForwardResult<Resp, Err> {
     Forwarded(std::result::Result<Resp, Err>),
 }
 
+#[derive(Debug)]
 pub struct ForwardRequest<Req> {
     pub schema: String,
     pub metric: String,
@@ -305,6 +306,7 @@ impl<B: ClientBuilder> Forwarder<B> {
 
         // Update the request.
         {
+            // TODO: we should use the timeout from the original request.
             req.set_timeout(self.config.forward_timeout);
             let metadata = req.metadata_mut();
             metadata.insert(
@@ -313,6 +315,11 @@ impl<B: ClientBuilder> Forwarder<B> {
             );
         }
 
+        // TODO: add metrics to record the forwarding.
+        debug!(
+            "Try to forward request to {:?}, request:{:?}",
+            endpoint, req,
+        );
         let client = self.get_or_create_client(&endpoint).await?;
         match do_rpc(client, req, &endpoint).await {
             Err(e) => {
