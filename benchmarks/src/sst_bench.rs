@@ -77,11 +77,18 @@ impl SstBench {
 
         let sst_factory = FactoryImpl;
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
-        let mut sst_reader = sst_factory
-            .new_sst_reader(&self.sst_reader_options, &sst_path, &store_picker)
-            .unwrap();
 
         self.runtime.block_on(async {
+            let meta = store_picker.default_store().head(&sst_path).await.unwrap();
+
+            let mut sst_reader = sst_factory
+                .new_sst_reader(
+                    &self.sst_reader_options,
+                    &sst_path,
+                    &store_picker,
+                    meta.size as u64,
+                )
+                .unwrap();
             let begin_instant = Instant::now();
             let mut sst_stream = sst_reader.read().await.unwrap();
 

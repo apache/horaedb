@@ -128,8 +128,14 @@ async fn sst_to_record_batch_stream(
 ) -> RecordBatchStream {
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
+    let meta = store_picker.default_store().head(input_path).await.unwrap();
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, input_path, &store_picker)
+        .new_sst_reader(
+            sst_reader_options,
+            input_path,
+            &store_picker,
+            meta.size as u64,
+        )
         .unwrap();
 
     let sst_stream = sst_reader.read().await.unwrap();

@@ -357,9 +357,16 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
+                let meta = store_picker
+                    .default_store()
+                    .head(&sst_file_path)
+                    .await
+                    .unwrap();
+
                 let file_reader = FileReaderOnObjectStore::new(
                     sst_file_path.clone(),
                     store_picker.default_store().clone(),
+                    meta.size as u64,
                 );
                 let mut reader = AsyncParquetReader::new(
                     &sst_file_path,
