@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto/golang v0.0.0-20221223085501-cfa70e972d3d
+	github.com/CeresDB/ceresdbproto/golang v0.0.0-20221227065032-1ea76ec99beb
 	github.com/axw/gocov v1.1.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/json-iterator/go v1.1.11

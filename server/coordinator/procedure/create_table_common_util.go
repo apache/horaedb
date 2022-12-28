@@ -56,6 +56,10 @@ func createTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventd
 }
 
 func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitioned bool) eventdispatch.CreateTableOnShardRequest {
+	var encodedPartitionInfo []byte
+	if partitioned {
+		encodedPartitionInfo = req.EncodedPartitionInfo
+	}
 	return eventdispatch.CreateTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
 			CurrShardInfo: cluster.ShardInfo{
@@ -73,9 +77,10 @@ func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *m
 			SchemaName:  req.GetSchemaName(),
 			Partitioned: partitioned,
 		},
-		EncodedSchema:    req.EncodedSchema,
-		Engine:           req.Engine,
-		CreateIfNotExist: req.CreateIfNotExist,
-		Options:          req.Options,
+		EncodedSchema:        req.EncodedSchema,
+		Engine:               req.Engine,
+		CreateIfNotExist:     req.CreateIfNotExist,
+		Options:              req.Options,
+		EncodedPartitionInfo: encodedPartitionInfo,
 	}
 }

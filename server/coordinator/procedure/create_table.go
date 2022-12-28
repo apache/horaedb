@@ -17,25 +17,7 @@ type CreateTableProcedure struct {
 }
 
 func NewCreateTableProcedure(ctx context.Context, factory *Factory, c *cluster.Cluster, sourceReq *metaservicepb.CreateTableRequest, onSucceeded func(cluster.CreateTableResult) error, onFailed func(error) error) (Procedure, error) {
-	if sourceReq.PartitionInfo != nil && len(sourceReq.PartitionInfo.GetNames()) == 0 {
-		log.Error("fail to create table", zap.Error(ErrEmptyPartitionNames))
-		return CreateTableProcedure{}, ErrEmptyPartitionNames
-	}
-
-	var realProcedure Procedure
-	if sourceReq.PartitionInfo != nil && len(sourceReq.PartitionInfo.GetNames()) != 0 {
-		p, err := factory.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
-			ClusterName: c.Name(),
-			SourceReq:   sourceReq,
-			OnSucceeded: onSucceeded,
-			OnFailed:    onFailed,
-		})
-		if err != nil {
-			log.Error("fail to create partition table", zap.Error(err))
-			return CreateTableProcedure{}, err
-		}
-		realProcedure = p
-	} else {
+	if sourceReq.PartitionTableInfo == nil {
 		p, err := factory.makeCreateNormalTableProcedure(ctx, CreateTableRequest{
 			Cluster:     c,
 			SourceReq:   sourceReq,
@@ -46,11 +28,29 @@ func NewCreateTableProcedure(ctx context.Context, factory *Factory, c *cluster.C
 			log.Error("fail to create table", zap.Error(err))
 			return CreateTableProcedure{}, err
 		}
-		realProcedure = p
+		return CreateTableProcedure{
+			realProcedure: p,
+		}, nil
+	}
+
+	if len(sourceReq.PartitionTableInfo.SubTableNames) == 0 {
+		log.Error("fail to create table", zap.Error(ErrEmptyPartitionNames))
+		return CreateTableProcedure{}, ErrEmptyPartitionNames
+	}
+
+	p, err := factory.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
+		ClusterName: c.Name(),
+		SourceReq:   sourceReq,
+		OnSucceeded: onSucceeded,
+		OnFailed:    onFailed,
+	})
+	if err != nil {
+		log.Error("fail to create partition table", zap.Error(err))
+		return CreateTableProcedure{}, err
 	}
 
 	return CreateTableProcedure{
-		realProcedure: realProcedure,
+		realProcedure: p,
 	}, nil
 }
 

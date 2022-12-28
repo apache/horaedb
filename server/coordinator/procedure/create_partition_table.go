@@ -226,7 +226,7 @@ func createDataTablesCallback(event *fsm.Event) {
 	}
 
 	for i, dataTableShard := range req.dataTablesShards {
-		createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetPartitionInfo().Names[i], dataTableShard.ShardNode.NodeName, false)
+		createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetPartitionTableInfo().SubTableNames[i], dataTableShard.ShardNode.NodeName, false)
 		if err != nil {
 			cancelEventWithLog(event, err, "create table metadata")
 			return

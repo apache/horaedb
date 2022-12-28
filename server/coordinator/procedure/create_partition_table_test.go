@@ -25,8 +25,8 @@ func TestCreatePartitionTable(t *testing.T) {
 			Node:        nodeName0,
 			ClusterName: clusterName,
 		},
-		PartitionInfo: &metaservicepb.PartitionInfo{
-			Names: []string{"p1", "p2"},
+		PartitionTableInfo: &metaservicepb.PartitionTableInfo{
+			SubTableNames: []string{"p1", "p2"},
 		},
 		SchemaName: testSchemaName,
 		Name:       testTableName0,
@@ -44,7 +44,7 @@ func TestCreatePartitionTable(t *testing.T) {
 
 	partitionTableShards, err := shardPicker.PickShards(ctx, c.Name(), partitionTableNum)
 	re.NoError(err)
-	dataTableShards, err := shardPicker.PickShards(ctx, c.Name(), len(request.PartitionInfo.Names))
+	dataTableShards, err := shardPicker.PickShards(ctx, c.Name(), len(request.GetPartitionTableInfo().SubTableNames))
 	re.NoError(err)
 
 	procedure := NewCreatePartitionTableProcedure(CreatePartitionTableProcedureRequest{

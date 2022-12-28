@@ -29,12 +29,13 @@ type UpdateShardInfo struct {
 }
 
 type CreateTableOnShardRequest struct {
-	UpdateShardInfo  UpdateShardInfo
-	TableInfo        cluster.TableInfo
-	EncodedSchema    []byte
-	Engine           string
-	CreateIfNotExist bool
-	Options          map[string]string
+	UpdateShardInfo      UpdateShardInfo
+	TableInfo            cluster.TableInfo
+	EncodedSchema        []byte
+	Engine               string
+	CreateIfNotExist     bool
+	Options              map[string]string
+	EncodedPartitionInfo []byte
 }
 
 type DropTableOnShardRequest struct {
