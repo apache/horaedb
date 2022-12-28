@@ -29,6 +29,7 @@ use http::StatusCode;
 use log::{error, warn};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
+use router::{Router, RouterRef};
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::CreateTablePlan;
 use table_engine::engine::EngineRuntimes;
@@ -44,7 +45,6 @@ use crate::{
         storage_service::error::{ErrNoCause, ErrWithCause, Result},
     },
     instance::InstanceRef,
-    route::{Router, RouterRef},
     schema_config_provider::SchemaConfigProviderRef,
 };
 

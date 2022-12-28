@@ -1,15 +1,16 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+pub mod cluster_based;
+pub mod endpoint;
+pub(crate) mod hash;
+pub mod rule_based;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
-
-pub mod cluster_based;
-pub(crate) mod hash;
-pub mod rule_based;
-
 pub use cluster_based::ClusterBasedRouter;
+use common_util::define_result;
 pub use rule_based::{RuleBasedRouter, RuleList};
 use snafu::{Backtrace, Snafu};
 

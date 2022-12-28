@@ -27,19 +27,18 @@ use futures::FutureExt;
 use log::{info, warn};
 use proto::remote_engine::remote_engine_service_server::RemoteEngineServiceServer;
 use query_engine::executor::Executor as QueryExecutor;
+use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
 use tonic::transport::Server;
 
 use crate::{
-    config::Endpoint,
     grpc::{
         forward::Forwarder, meta_event_service::MetaServiceImpl,
         remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
-    route::RouterRef,
     schema_config_provider::{self, SchemaConfigProviderRef},
 };
 

@@ -19,14 +19,14 @@ use log::info;
 use logger::RuntimeLevel;
 use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
+use router::{
+    cluster_based::ClusterBasedRouter,
+    rule_based::{ClusterView, RuleBasedRouter},
+};
 use server::{
     config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
     limiter::Limiter,
     local_tables::LocalTablesRecoverer,
-    route::{
-        cluster_based::ClusterBasedRouter,
-        rule_based::{ClusterView, RuleBasedRouter},
-    },
     schema_config_provider::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },

@@ -17,6 +17,7 @@ use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
@@ -24,14 +25,11 @@ use sql::{
 };
 use tonic::{transport::Channel, IntoRequest};
 
-use crate::{
-    config::Endpoint,
-    grpc::{
-        forward::{ForwardRequest, ForwardResult},
-        storage_service::{
-            error::{ErrNoCause, ErrWithCause, Result},
-            HandlerContext,
-        },
+use crate::grpc::{
+    forward::{ForwardRequest, ForwardResult},
+    storage_service::{
+        error::{ErrNoCause, ErrWithCause, Result},
+        HandlerContext,
     },
 };
 

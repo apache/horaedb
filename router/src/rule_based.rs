@@ -12,10 +12,7 @@ use meta_client::types::ShardId;
 use serde_derive::Deserialize;
 use snafu::{ensure, OptionExt};
 
-use crate::{
-    config::Endpoint,
-    route::{hash, Result, RouteNotFound, Router, ShardNotFound},
-};
+use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound};
 
 pub type ShardNodes = HashMap<ShardId, Endpoint>;
 

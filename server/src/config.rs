@@ -2,22 +2,20 @@
 
 //! Server configs
 
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 use analytic_engine;
-use ceresdbproto::storage;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
+use router::{
+    endpoint::Endpoint,
+    rule_based::{ClusterView, RuleList},
+};
 use serde_derive::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{
-    grpc::forward,
-    http::DEFAULT_MAX_BODY_SIZE,
-    limiter::LimiterConfig,
-    route::rule_based::{ClusterView, RuleList},
-};
+use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE, limiter::LimiterConfig};
 
 /// The deployment mode decides how to start the CeresDB.
 ///
@@ -50,65 +48,6 @@ pub struct RuntimeConfig {
 pub struct StaticRouteConfig {
     pub rules: RuleList,
     pub topology: StaticTopologyConfig,
-}
-
-#[derive(Debug, Clone, Deserialize, Eq, Hash, PartialEq)]
-pub struct Endpoint {
-    pub addr: String,
-    pub port: u16,
-}
-
-impl Endpoint {
-    pub fn new(addr: String, port: u16) -> Self {
-        Self { addr, port }
-    }
-}
-
-impl ToString for Endpoint {
-    fn to_string(&self) -> String {
-        format!("{}:{}", self.addr, self.port)
-    }
-}
-
-impl FromStr for Endpoint {
-    type Err = Box<dyn std::error::Error + Send + Sync>;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let (addr, raw_port) = match s.rsplit_once(':') {
-            Some(v) => v,
-            None => {
-                let err_msg = "Can't find ':' in the source string".to_string();
-                return Err(Self::Err::from(err_msg));
-            }
-        };
-        let port = raw_port.parse().map_err(|e| {
-            let err_msg = format!("Fail to parse port:{}, err:{}", raw_port, e);
-            Self::Err::from(err_msg)
-        })?;
-
-        Ok(Endpoint {
-            addr: addr.to_string(),
-            port,
-        })
-    }
-}
-
-impl From<Endpoint> for storage::Endpoint {
-    fn from(endpoint: Endpoint) -> Self {
-        storage::Endpoint {
-            ip: endpoint.addr,
-            port: endpoint.port as u32,
-        }
-    }
-}
-
-impl From<storage::Endpoint> for Endpoint {
-    fn from(endpoint: storage::Endpoint) -> Self {
-        Endpoint {
-            addr: endpoint.ip,
-            port: endpoint.port as u16,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

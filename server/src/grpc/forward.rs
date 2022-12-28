@@ -11,6 +11,7 @@ use std::{
 use async_trait::async_trait;
 use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
 use log::{debug, error, warn};
+use router::{endpoint::Endpoint, RouterRef};
 use serde_derive::Deserialize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tonic::{
@@ -18,7 +19,7 @@ use tonic::{
     transport::{self, Channel},
 };
 
-use crate::{config::Endpoint, consts::TENANT_HEADER, route::RouterRef};
+use crate::consts::TENANT_HEADER;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -365,10 +366,10 @@ impl<B: ClientBuilder> Forwarder<B> {
 mod tests {
     use ceresdbproto::storage::{QueryRequest, QueryResponse, Route};
     use futures::FutureExt;
+    use router::Router;
     use tonic::IntoRequest;
 
     use super::*;
-    use crate::route::Router;
 
     #[test]
     fn test_check_loopback_endpoint() {
@@ -396,11 +397,7 @@ mod tests {
 
     #[async_trait]
     impl Router for MockRouter {
-        async fn route(
-            &self,
-            _schema: &str,
-            req: RouteRequest,
-        ) -> crate::route::Result<Vec<Route>> {
+        async fn route(&self, _schema: &str, req: RouteRequest) -> router::Result<Vec<Route>> {
             let endpoint = self.routing_tables.get(&req.metrics[0]);
             match endpoint {
                 None => Ok(vec![]),

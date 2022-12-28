@@ -14,7 +14,7 @@ workspace = true
 async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
-clru = "0.6.1"
+clru = { workspace = true }
 common_util = { workspace = true }
 crc = "3.0.0"
 futures = { workspace = true }

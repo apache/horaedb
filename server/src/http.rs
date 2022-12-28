@@ -10,6 +10,7 @@ use log::error;
 use logger::RuntimeLevel;
 use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
+use router::endpoint::Endpoint;
 use serde_derive::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -23,7 +24,6 @@ use warp::{
 };
 
 use crate::{
-    config::Endpoint,
     consts,
     context::RequestContext,
     error_util,
