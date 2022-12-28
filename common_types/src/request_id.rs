@@ -8,7 +8,7 @@ use std::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct RequestId(pub u64);
+pub struct RequestId(u64);
 
 impl RequestId {
     /// Acquire next request id.
@@ -18,6 +18,11 @@ impl RequestId {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
 
         Self(id)
+    }
+
+    #[inline]
+    pub fn as_u64(&self) -> u64 {
+        self.0
     }
 }
 

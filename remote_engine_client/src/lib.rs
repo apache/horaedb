@@ -5,7 +5,7 @@
 mod channel;
 mod client;
 pub mod config;
-mod statuts_code;
+mod status_code;
 
 use std::{
     pin::Pin,
@@ -126,7 +126,6 @@ impl RemoteEngineImpl {
 
 #[async_trait]
 impl RemoteEngine for RemoteEngineImpl {
-    /// Read from the remote engine
     async fn read(&self, request: ReadRequest) -> remote::Result<SendableRecordBatchStream> {
         let client_read_stream = self
             .0
@@ -137,7 +136,6 @@ impl RemoteEngine for RemoteEngineImpl {
         Ok(Box::pin(RemoteReadRecordBatchStream(client_read_stream)))
     }
 
-    /// Write to the remote engine
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
         self.0
             .write(request)
@@ -157,7 +155,7 @@ impl Stream for RemoteReadRecordBatchStream {
         match this.0.poll_next_unpin(cx) {
             Poll::Ready(Some(result)) => {
                 let result = result.map_err(|e| Box::new(e) as _).context(ErrWithSource {
-                    msg: "polling remote read response failed",
+                    msg: "poll read response failed",
                 });
 
                 Poll::Ready(Some(result))

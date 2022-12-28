@@ -30,9 +30,9 @@ define_result!(Error);
 /// Remote table engine interface
 #[async_trait]
 pub trait RemoteEngine {
-    /// Read from the remote engine
+    /// Read from the remote engine.
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 
-    /// Write to the remote engine
+    /// Write to the remote engine.
     async fn write(&self, request: WriteRequest) -> Result<usize>;
 }

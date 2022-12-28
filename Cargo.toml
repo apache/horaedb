@@ -63,6 +63,7 @@ catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 chrono = "0.4"
 clap = "3.0"
+clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
@@ -88,6 +89,8 @@ proto = { path = "proto" }
 prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
+remote_engine_client = { path = "remote_engine_client" }
+router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_derive = "1.0"
@@ -105,10 +108,6 @@ tonic = "0.8.1"
 tokio = { version = "1.21", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
-clru = "0.6.1"
-avro-rs = "0.13"
-router = { path = "router" }
-remote_engine_client = { path = "remote_engine_client" }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"

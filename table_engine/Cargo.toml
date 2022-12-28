@@ -14,8 +14,6 @@ workspace = true
 # In alphabetical order
 arrow = { workspace = true }
 async-trait = { workspace = true }
-avro-rs = { workspace = true }
-clru = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
@@ -34,7 +32,6 @@ serde_derive = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
-tonic = { workspace = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }

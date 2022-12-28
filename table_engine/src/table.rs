@@ -415,7 +415,7 @@ impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
             })?;
 
         Ok(Self {
-            request_id: request.request_id.0,
+            request_id: request.request_id.as_u64(),
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),

@@ -13,7 +13,7 @@ use datafusion::{
     logical_plan::{Expr, Operator},
     scalar::ScalarValue,
 };
-use datafusion_proto::{self, bytes::Serializeable};
+use datafusion_proto::bytes::Serializeable;
 use log::debug;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -105,10 +105,7 @@ impl TryFrom<&Predicate> for proto::remote_engine::Predicate {
 
         Ok(Self {
             exprs,
-            time_range: Some(proto::common::TimeRange {
-                start: time_range.inclusive_start().as_i64(),
-                end: time_range.exclusive_end().as_i64(),
-            }),
+            time_range: Some(time_range.into()),
         })
     }
 }

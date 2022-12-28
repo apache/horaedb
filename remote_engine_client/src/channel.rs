@@ -5,9 +5,10 @@
 use std::num::NonZeroUsize;
 
 use clru::CLruCache;
+use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tokio::sync::Mutex;
-use tonic::transport::{Channel, Endpoint};
+use tonic::transport::{Channel, Endpoint as TonicEndpoint};
 
 use super::config::Config;
 use crate::error::*;
@@ -17,7 +18,7 @@ pub struct ChannelPool {
     /// Channels in pool
     // TODO: should be replaced with a cache(like "moka")
     // or partition the lock.
-    channels: Mutex<CLruCache<String, Channel>>,
+    channels: Mutex<CLruCache<Endpoint, Channel>>,
 
     /// Channel builder
     builder: ChannelBuilder,
@@ -33,7 +34,7 @@ impl ChannelPool {
         Self { channels, builder }
     }
 
-    pub async fn get(&self, endpoint: &str) -> Result<Channel> {
+    pub async fn get(&self, endpoint: &Endpoint) -> Result<Channel> {
         {
             let mut inner = self.channels.lock().await;
             if let Some(channel) = inner.get(endpoint) {
@@ -47,8 +48,11 @@ impl ChannelPool {
             return Ok(channel.clone());
         }
 
-        let channel = self.builder.build(endpoint).await?;
-        inner.put(endpoint.to_string(), channel.clone());
+        let channel = self
+            .builder
+            .build(endpoint.clone().to_string().as_str())
+            .await?;
+        inner.put(endpoint.clone(), channel.clone());
 
         Ok(channel)
     }
@@ -67,7 +71,7 @@ impl ChannelBuilder {
     async fn build(&self, endpoint: &str) -> Result<Channel> {
         let formatted_endpoint = make_formatted_endpoint(endpoint);
         let configured_endpoint =
-            Endpoint::from_shared(formatted_endpoint.clone()).context(BuildChannel {
+            TonicEndpoint::from_shared(formatted_endpoint.clone()).context(BuildChannel {
                 addr: formatted_endpoint.clone(),
                 msg: "invalid endpoint",
             })?;

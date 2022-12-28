@@ -9,8 +9,7 @@ use std::{
 
 use ceresdbproto::storage;
 use common_types::{
-    column::ColumnBlockBuilder, projected_schema::ProjectedSchema, record_batch::RecordBatch,
-    schema::RecordSchema,
+    projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
 };
 use common_util::avro;
 use futures::{Stream, StreamExt};
@@ -20,9 +19,7 @@ use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};
 use tonic::{transport::Channel, Request, Streaming};
 
-use super::statuts_code;
-use crate::{channel::ChannelPool, config::Config, error::*};
-// use router::
+use crate::{channel::ChannelPool, config::Config, error::*, status_code};
 
 pub struct Client {
     channel_pool: ChannelPool,
@@ -42,7 +39,6 @@ impl Client {
     pub async fn read(&self, request: ReadRequest) -> Result<ClientReadRecordBatchStream> {
         // Find the endpoint from router firstly.
         let endpoint = self.route(&request.table).await?;
-        let endpoint = endpoint.to_string();
 
         // Read from remote.
         let table_ident = request.table.clone();
@@ -61,12 +57,12 @@ impl Client {
             .await
             .context(Rpc {
                 table_ident: table_ident.clone(),
-                msg: format!("read from remote failed, endpoint:{}", endpoint),
+                msg: format!("read from remote failed, endpoint:{:?}", endpoint),
             })?;
 
         let response = result.into_inner();
         let remote_read_record_batch_stream =
-            ClientReadRecordBatchStream::new(table_ident.clone(), response, projected_schema);
+            ClientReadRecordBatchStream::new(table_ident, response, projected_schema);
 
         Ok(remote_read_record_batch_stream)
     }
@@ -74,12 +70,11 @@ impl Client {
     pub async fn write(&self, request: WriteRequest) -> Result<usize> {
         // Find the endpoint from router firstly.
         let endpoint = self.route(&request.table).await?;
-        let endpoint = endpoint.to_string();
 
         // Write to remote.
         let table_ident = request.table.clone();
 
-        let channel = self.channel_pool.get(&endpoint).await.unwrap();
+        let channel = self.channel_pool.get(&endpoint).await?;
         let request_pb = proto::remote_engine::WriteRequest::try_from(request)
             .map_err(|e| Box::new(e) as _)
             .context(ConvertWriteRequest {
@@ -92,11 +87,11 @@ impl Client {
             .await
             .context(Rpc {
                 table_ident: table_ident.clone(),
-                msg: format!("write to remote failed, endpoint:{}", endpoint),
+                msg: format!("write to remote failed, endpoint:{:?}", endpoint),
             })?;
 
         let response = result.into_inner();
-        if let Some(header) = response.header && !statuts_code::is_ok(header.code) {
+        if let Some(header) = response.header && !status_code::is_ok(header.code) {
             Server {
                 table_ident: table_ident.clone(),
                 code: header.code,
@@ -174,8 +169,8 @@ impl Stream for ClientReadRecordBatchStream {
         let this = self.get_mut();
         match this.response_stream.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(response))) => {
-                // Check header
-                if let Some(header) = response.header && !statuts_code::is_ok(header.code) {
+                // Check header.
+                if let Some(header) = response.header && !status_code::is_ok(header.code) {
                     return Poll::Ready(Some(Server {
                         table_ident: this.table_ident.clone(),
                         code: header.code,
@@ -183,10 +178,15 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                // It's ok, convert rows to record batch and return.
-                let record_batch =
-                    convert_avro_rows_to_record_batch(response.rows, &this.projected_schema)?;
-                Poll::Ready(Some(Ok(record_batch)))
+                // It's ok, try to convert rows to record batch and return.
+                let record_schema = this.projected_schema.to_record_schema();
+                let record_batch_result =
+                    avro::avro_rows_to_record_batch(response.rows, record_schema)
+                        .map_err(|e| Box::new(e) as _)
+                        .context(ConvertReadResponse {
+                            msg: "build record batch failed",
+                        });
+                Poll::Ready(Some(record_batch_result))
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
@@ -199,57 +199,4 @@ impl Stream for ClientReadRecordBatchStream {
             Poll::Pending => Poll::Pending,
         }
     }
-}
-
-fn convert_avro_rows_to_record_batch(
-    raws: Vec<Vec<u8>>,
-    projected_schema: &ProjectedSchema,
-) -> Result<RecordBatch> {
-    let schema = projected_schema.to_record_schema();
-    let avro_schema = avro::to_avro_schema("RemoteEngine", &schema);
-
-    // Collect datums and append to `ColumnBlockBuilder`s.
-    let mut row_buf = Vec::with_capacity(schema.num_columns());
-    let mut column_block_builders = schema
-        .columns()
-        .iter()
-        .map(|col_schema| ColumnBlockBuilder::new(&col_schema.data_type))
-        .collect::<Vec<_>>();
-
-    for raw in raws {
-        row_buf.clear();
-        avro::avro_row_to_row(&avro_schema, &raw, &mut row_buf)
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertReadResponse {
-                msg: format!(
-                    "parse avro raw to row failed, avro schema:{:?}, raw:{:?}",
-                    avro_schema, raw
-                ),
-            })?;
-        assert_eq!(row_buf.len(), column_block_builders.len());
-
-        for (col_idx, datum) in row_buf.iter().enumerate() {
-            let column_block_builder = column_block_builders.get_mut(col_idx).unwrap();
-            column_block_builder
-                .append(datum.clone())
-                .map_err(|e| Box::new(e) as _)
-                .context(ConvertReadResponse {
-                    msg: format!(
-                        "append datum to column block builder failed, datum:{:?}, builder:{:?}",
-                        datum, column_block_builder
-                    ),
-                })?
-        }
-    }
-
-    // Build `RecordBatch`.
-    let column_blocks = column_block_builders
-        .into_iter()
-        .map(|mut builder| builder.build())
-        .collect::<Vec<_>>();
-    RecordBatch::new(schema, column_blocks)
-        .map_err(|e| Box::new(e) as _)
-        .context(ConvertReadResponse {
-            msg: "build record batch failed",
-        })
 }

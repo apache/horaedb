@@ -11,8 +11,7 @@ use avro_rs::{
 };
 use common_types::{
     bytes::{ByteVec, Bytes},
-    column::ColumnBlock,
-    column_schema::ColumnSchema,
+    column::{ColumnBlock, ColumnBlockBuilder},
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
     row::{Row, RowGroup, RowGroupBuilder},
@@ -20,7 +19,7 @@ use common_types::{
     string::StringBytes,
     time::Timestamp,
 };
-use snafu::{Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 /// Schema name of the record
 const RECORD_NAME: &str = "Result";
@@ -49,6 +48,43 @@ pub enum Error {
     ))]
     InvalidAvroRecord { value: Value, backtrace: Backtrace },
 
+    #[snafu(display(
+        "Failed to convert avro rows to record batch, msg:{}, err:{}",
+        msg,
+        source
+    ))]
+    AvroRowsToRecordBatch {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to convert avro rows to row group, msg:{}, err:{}",
+        msg,
+        source
+    ))]
+    AvroRowsToRowGroup {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to convert row group to avro rows with no cause, msg:{}.\nBacktrace:\n{}",
+        msg,
+        backtrace
+    ))]
+    RowGroupToAvroRowsNoCause { msg: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to convert row group to avro rows with cause, msg:{}, err:{}",
+        msg,
+        source
+    ))]
+    RowGroupToAvroRowsWithCause {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     #[snafu(display("Unsupported arvo type, value:{:?}.\nBacktrace:\n{}", value, backtrace))]
     UnsupportedType { value: Value, backtrace: Backtrace },
 }
@@ -58,10 +94,6 @@ define_result!(Error);
 /// Create [avro_rs::Schema] with given `name` from [RecordSchema]
 pub fn to_avro_schema(name: &str, schema: &RecordSchema) -> avro_rs::Schema {
     let columns = schema.columns();
-    columns_to_avro_schema(name, columns)
-}
-
-pub fn columns_to_avro_schema(name: &str, columns: &[ColumnSchema]) -> avro_rs::Schema {
     let mut lookup = HashMap::with_capacity(columns.len());
     let mut avro_fields = Vec::with_capacity(columns.len());
 
@@ -118,6 +150,58 @@ pub fn record_batch_to_avro_rows(record_batch: &RecordBatch) -> Result<Vec<ByteV
     Ok(rows)
 }
 
+pub fn avro_rows_to_record_batch(
+    raws: Vec<Vec<u8>>,
+    record_schema: RecordSchema,
+) -> Result<RecordBatch> {
+    let avro_schema = to_avro_schema(RECORD_NAME, &record_schema);
+
+    // Collect datums and append to `ColumnBlockBuilder`s.
+    let mut row_buf = Vec::with_capacity(record_schema.num_columns());
+    let mut column_block_builders = record_schema
+        .columns()
+        .iter()
+        .map(|col_schema| ColumnBlockBuilder::new(&col_schema.data_type))
+        .collect::<Vec<_>>();
+
+    for raw in raws {
+        row_buf.clear();
+        avro_row_to_row(&avro_schema, &raw, &mut row_buf)
+            .map_err(|e| Box::new(e) as _)
+            .context(AvroRowsToRecordBatch {
+                msg: format!(
+                    "parse avro raw to row failed, avro schema:{:?}, raw:{:?}",
+                    avro_schema, raw
+                ),
+            })?;
+        assert_eq!(row_buf.len(), column_block_builders.len());
+
+        for (col_idx, datum) in row_buf.iter().enumerate() {
+            let column_block_builder = column_block_builders.get_mut(col_idx).unwrap();
+            column_block_builder
+                .append(datum.clone())
+                .map_err(|e| Box::new(e) as _)
+                .context(AvroRowsToRecordBatch {
+                    msg: format!(
+                        "append datum to column block builder failed, datum:{:?}, builder:{:?}",
+                        datum, column_block_builder
+                    ),
+                })?
+        }
+    }
+
+    // Build `RecordBatch`.
+    let column_blocks = column_block_builders
+        .into_iter()
+        .map(|mut builder| builder.build())
+        .collect::<Vec<_>>();
+    RecordBatch::new(record_schema, column_blocks)
+        .map_err(|e| Box::new(e) as _)
+        .context(AvroRowsToRecordBatch {
+            msg: "build record batch failed",
+        })
+}
+
 pub fn avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGroup> {
     let avro_schema = to_avro_schema(RECORD_NAME, &schema.to_record_schema());
     let mut builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
@@ -128,6 +212,43 @@ pub fn avro_rows_to_row_group(schema: Schema, rows: &[Vec<u8>]) -> Result<RowGro
     }
 
     Ok(builder.build())
+}
+
+pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
+    let record_schema = row_group.schema().to_record_schema();
+    let column_schemas = record_schema.columns();
+    let avro_schema = to_avro_schema(RECORD_NAME, &record_schema);
+
+    let mut rows = Vec::with_capacity(row_group.num_rows());
+    let row_len = row_group.num_rows();
+    for row_idx in 0..row_len {
+        // Convert `Row` to `Record` in avro.
+        let row = row_group.get_row(row_idx).unwrap();
+        let mut avro_record = Record::new(&avro_schema).context(RowGroupToAvroRowsNoCause {
+            msg: format!(
+                "new avro record with schema failed, schema:{:?}",
+                avro_schema
+            ),
+        })?;
+
+        for (col_idx, column_schema) in column_schemas.iter().enumerate() {
+            let column_value = row[col_idx].clone();
+            let avro_value = datum_to_avro_value(column_value, column_schema.is_nullable);
+            avro_record.put(&column_schema.name, avro_value);
+        }
+
+        let row_bytes = avro_rs::to_avro_datum(&avro_schema, avro_record)
+            .map_err(|e| Box::new(e) as _)
+            .context(RowGroupToAvroRowsWithCause {
+                msg: format!(
+                    "new avro record with schema failed, schema:{:?}",
+                    avro_schema
+                ),
+            })?;
+        rows.push(row_bytes);
+    }
+
+    Ok(rows)
 }
 
 fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
@@ -251,7 +372,7 @@ fn may_union(val: Value, is_nullable: bool) -> Value {
     }
 }
 
-pub fn avro_row_to_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
+fn avro_row_to_row(schema: &AvroSchema, mut raw: &[u8], row: &mut Vec<Datum>) -> Result<()> {
     let record = avro_rs::from_avro_datum(schema, &mut raw, None)
         .map_err(|e| Box::new(e) as _)
         .context(ConvertToAvroRecord)?;

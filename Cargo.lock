@@ -5874,8 +5874,6 @@ version = "1.0.0-alpha01"
 dependencies = [
  "arrow",
  "async-trait",
- "avro-rs",
- "clru",
  "common_types 1.0.0-alpha01",
  "common_util",
  "datafusion",
@@ -5895,7 +5893,6 @@ dependencies = [
  "smallvec 1.9.0",
  "snafu 0.6.10",
  "tokio 1.22.0",
- "tonic",
 ]
 
 [[package]]
