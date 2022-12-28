@@ -382,7 +382,7 @@ impl TestEnv {
     pub fn new_context<T: EngineContext>(&self, engine_context: T) -> TestContext<T> {
         TestContext {
             context: EngineBuildContextBuilder::default()
-                .config(engine_context.config().clone())
+                .config(engine_context.config())
                 .build(),
             runtimes: self.runtimes.clone(),
             builder: engine_context.engine_builder(),
