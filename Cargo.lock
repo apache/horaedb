@@ -5602,7 +5602,8 @@ dependencies = [
 [[package]]
 name = "sqlness"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/sqlness.git?rev=6c4c894b734b62db28c2b71650208ec50d9ffd30#6c4c894b734b62db28c2b71650208ec50d9ffd30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b94ee738bee88148b3226795dbd0f18076a8c48d5dd91d5dd573ebc20ed0855"
 dependencies = [
  "async-trait",
  "derive_builder",
