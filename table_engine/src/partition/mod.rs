@@ -6,10 +6,9 @@ pub mod rule;
 
 use common_types::bytes::Bytes;
 use prost::Message;
-use proto::meta_update as meta_pb;
+use proto::{meta_update as meta_pb, meta_update::partition_info::PartitionInfoEnum};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
-const DEFAULT_PARTITION_INFO_VERSION: u32 = 1;
 const DEFAULT_PARTITION_INFO_ENCODING_VERSION: u8 = 0;
 
 #[derive(Debug, Snafu)]
@@ -46,7 +45,7 @@ pub enum Error {
         buf,
         source,
     ))]
-    DecodePartitionInfoTOPb {
+    DecodePartitionInfoToPb {
         buf: Vec<u8>,
         source: prost::DecodeError,
     },
@@ -60,6 +59,9 @@ pub enum Error {
         backtrace
     ))]
     InvalidPartitionInfoEncodingVersion { version: u8, backtrace: Backtrace },
+
+    #[snafu(display("Partition info could not be empty"))]
+    EmptyPartitionInfo {},
 }
 
 define_result!(Error);
@@ -126,38 +128,99 @@ impl From<meta_pb::Definition> for Definition {
     }
 }
 
-impl From<PartitionInfo> for meta_pb::partition_info::PartitionInfoEnum {
-    fn from(partition_info: PartitionInfo) -> Self {
-        match partition_info {
-            PartitionInfo::Hash(v) => Self::Hash(meta_pb::HashPartitionInfo {
-                definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                expr: v.expr.to_vec(),
-                linear: v.linear,
-            }),
-            PartitionInfo::Key(v) => Self::KeyPartition(meta_pb::KeyPartitionInfo {
-                definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                partition_key: v.partition_key,
-                linear: v.linear,
-            }),
+impl From<meta_pb::HashPartitionInfo> for HashPartitionInfo {
+    fn from(partition_info_pb: meta_pb::HashPartitionInfo) -> Self {
+        HashPartitionInfo {
+            definitions: partition_info_pb
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            expr: Bytes::from(partition_info_pb.expr),
+            linear: partition_info_pb.linear,
         }
     }
 }
 
-impl From<meta_pb::partition_info::PartitionInfoEnum> for PartitionInfo {
-    fn from(pb: meta_pb::partition_info::PartitionInfoEnum) -> Self {
-        match pb {
-            meta_pb::partition_info::PartitionInfoEnum::Hash(v) => Self::Hash(HashPartitionInfo {
-                definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                expr: Bytes::from(v.expr),
-                linear: v.linear,
-            }),
-            meta_pb::partition_info::PartitionInfoEnum::KeyPartition(v) => {
-                Self::Key(KeyPartitionInfo {
-                    definitions: v.definitions.into_iter().map(|v| v.into()).collect(),
-                    partition_key: v.partition_key,
-                    linear: v.linear,
-                })
+impl From<HashPartitionInfo> for meta_pb::HashPartitionInfo {
+    fn from(partition_info: HashPartitionInfo) -> Self {
+        meta_pb::HashPartitionInfo {
+            definitions: partition_info
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            expr: Bytes::into(partition_info.expr),
+            linear: partition_info.linear,
+        }
+    }
+}
+
+impl From<meta_pb::KeyPartitionInfo> for KeyPartitionInfo {
+    fn from(partition_info_pb: meta_pb::KeyPartitionInfo) -> Self {
+        KeyPartitionInfo {
+            definitions: partition_info_pb
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            partition_key: partition_info_pb.partition_key,
+            linear: partition_info_pb.linear,
+        }
+    }
+}
+
+impl From<KeyPartitionInfo> for meta_pb::KeyPartitionInfo {
+    fn from(partition_info: KeyPartitionInfo) -> Self {
+        meta_pb::KeyPartitionInfo {
+            definitions: partition_info
+                .definitions
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            partition_key: partition_info.partition_key,
+            linear: partition_info.linear,
+        }
+    }
+}
+
+impl From<PartitionInfo> for meta_pb::PartitionInfo {
+    fn from(partition_info: PartitionInfo) -> Self {
+        match partition_info {
+            PartitionInfo::Hash(v) => {
+                let hash_partition_info = meta_pb::HashPartitionInfo::from(v);
+                meta_pb::PartitionInfo {
+                    partition_info_enum: Some(PartitionInfoEnum::Hash(hash_partition_info)),
+                }
             }
+            PartitionInfo::Key(v) => {
+                let key_partition_info = meta_pb::KeyPartitionInfo::from(v);
+                meta_pb::PartitionInfo {
+                    partition_info_enum: Some(PartitionInfoEnum::Key(key_partition_info)),
+                }
+            }
+        }
+    }
+}
+
+impl TryFrom<meta_pb::PartitionInfo> for PartitionInfo {
+    type Error = Error;
+
+    fn try_from(
+        partition_info_pb: meta_pb::PartitionInfo,
+    ) -> std::result::Result<Self, Self::Error> {
+        match partition_info_pb.partition_info_enum {
+            Some(partition_info_enum) => match partition_info_enum {
+                PartitionInfoEnum::Hash(v) => {
+                    let hash_partition_info = HashPartitionInfo::from(v);
+                    Ok(Self::Hash(hash_partition_info))
+                }
+                PartitionInfoEnum::Key(v) => {
+                    let key_partition_info = KeyPartitionInfo::from(v);
+                    Ok(Self::Key(key_partition_info))
+                }
+            },
+            None => Err(Error::EmptyPartitionInfo {}),
         }
     }
 }
@@ -183,11 +246,7 @@ impl PartitionInfoEncoder {
     }
 
     pub fn encode(&self, partition_info: PartitionInfo) -> Result<Vec<u8>> {
-        let pb_partition_info = meta_pb::PartitionInfo {
-            partition_info_enum: Some(meta_pb::partition_info::PartitionInfoEnum::from(
-                partition_info,
-            )),
-        };
+        let pb_partition_info = meta_pb::PartitionInfo::from(partition_info);
         let mut buf = Vec::with_capacity(1 + pb_partition_info.encoded_len() as usize);
         buf.push(self.version);
 
@@ -198,17 +257,17 @@ impl PartitionInfoEncoder {
         Ok(buf)
     }
 
-    pub fn decode(&self, buf: &[u8]) -> Result<PartitionInfo> {
-        ensure!(!buf.is_empty(), EmptyEncodedPartitionInfo);
+    pub fn decode(&self, buf: &[u8]) -> Result<Option<PartitionInfo>> {
+        if buf.is_empty() {
+            return Ok(None);
+        }
 
         self.ensure_version(buf[0])?;
 
         let pb_partition_info =
-            meta_pb::PartitionInfo::decode(buf).context(DecodePartitionInfoTOPb { buf })?;
+            meta_pb::PartitionInfo::decode(buf).context(DecodePartitionInfoToPb { buf })?;
 
-        return Ok(PartitionInfo::from(
-            pb_partition_info.partition_info_enum.unwrap(),
-        ));
+        Ok(Some(PartitionInfo::try_from(pb_partition_info)?))
     }
 
     fn ensure_version(&self, version: u8) -> Result<()> {

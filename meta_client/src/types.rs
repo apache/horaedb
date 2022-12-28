@@ -307,6 +307,11 @@ impl From<meta_service_pb::AllocSchemaIdResponse> for AllocSchemaIdResponse {
 
 impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
     fn from(req: CreateTableRequest) -> Self {
+        let partition_table_info =
+            req.partition_table_info
+                .map(|v| meta_service_pb::PartitionTableInfo {
+                    sub_table_names: v.sub_table_names,
+                });
         Self {
             header: None,
             schema_name: req.schema_name,
@@ -315,12 +320,8 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
             engine: req.engine,
             create_if_not_exist: req.create_if_not_exist,
             options: req.options,
-            encoded_partition_info: vec![],
-            partition_table_info: req.partition_table_info.map(|v| {
-                meta_service_pb::PartitionTableInfo {
-                    sub_table_names: v.sub_table_names,
-                }
-            }),
+            encoded_partition_info: req.encoded_partition_info,
+            partition_table_info,
         }
     }
 }

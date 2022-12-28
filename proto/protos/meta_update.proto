@@ -44,10 +44,10 @@ message AddTableMeta {
   PartitionInfo partition_info = 6;
 }
 
-message PartitionInfo{
-  oneof partition_info_enum{
+message PartitionInfo {
+  oneof partition_info_enum {
     HashPartitionInfo hash  = 1;
-    KeyPartitionInfo key_partition = 2;
+    KeyPartitionInfo key = 2;
   }
 }
 
