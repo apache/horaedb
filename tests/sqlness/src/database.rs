@@ -35,7 +35,7 @@ impl Database for CeresDB {
 }
 
 impl CeresDB {
-    pub fn try_new(_config: Option<String>) -> Self {
+    pub fn new(_config: Option<String>) -> Self {
         // TODO: replace those environments with config file
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
         let config = env::var(CONFIG_PATH_ENV).expect("Cannot parse config path env");

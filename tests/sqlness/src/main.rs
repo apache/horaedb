@@ -18,7 +18,7 @@ impl EnvController for CeresDBController {
     type DB = CeresDB;
 
     async fn start(&self, _mode: &str, config: Option<String>) -> Self::DB {
-        CeresDB::try_new(config)
+        CeresDB::new(config)
     }
 
     /// Stop one [`Database`].
