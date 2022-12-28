@@ -35,6 +35,8 @@ members = [
     "meta_client",
     "proto",
     "query_engine",
+    "remote_engine_client",
+    "router",
     "server",
     "sql",
     "system_catalog",
@@ -61,6 +63,7 @@ catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
 chrono = "0.4"
 clap = "3.0"
+clru = "0.6.1"
 cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
@@ -86,6 +89,8 @@ proto = { path = "proto" }
 prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
+remote_engine_client = { path = "remote_engine_client" }
+router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
 serde_derive = "1.0"
@@ -133,6 +138,7 @@ log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
+router = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"

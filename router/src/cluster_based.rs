@@ -11,8 +11,7 @@ use meta_client::types::{NodeShard, RouteTablesRequest, RouteTablesResponse};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
-    config::Endpoint,
-    route::{hash, OtherNoCause, OtherWithCause, ParseEndpoint, Result, Router},
+    endpoint::Endpoint, hash, OtherNoCause, OtherWithCause, ParseEndpoint, Result, Router,
 };
 
 pub struct ClusterBasedRouter {

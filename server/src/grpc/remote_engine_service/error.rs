@@ -1,10 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Error definitions for storage service.
+//! Error definitions for meta event service.
 
-use ceresdbproto::common::ResponseHeader;
 use common_util::define_result;
-use http::StatusCode;
+use proto::remote_engine::ResponseHeader;
 use snafu::Snafu;
 
 use crate::error_util;
@@ -14,10 +13,10 @@ define_result!(Error);
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Rpc error, code:{:?}, message:{}", code, msg))]
+    #[snafu(display("Server error, code:{:?}, message:{}", code, msg))]
     ErrNoCause { code: StatusCode, msg: String },
 
-    #[snafu(display("Rpc error, code:{:?}, message:{}, cause:{}", code, msg, source))]
+    #[snafu(display("Server error, code:{:?}, message:{}, cause:{}", code, msg, source))]
     ErrWithCause {
         code: StatusCode,
         msg: String,
@@ -47,35 +46,36 @@ impl Error {
     }
 }
 
+/// A set of codes for meta event service.
+///
+/// Note that such a set of codes is different with the codes (alias to http
+/// status code) used by storage service.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StatusCode {
+    #[default]
+    Ok = 0,
+    BadRequest = 401,
+    NotFound = 404,
+    Internal = 500,
+}
+
+impl StatusCode {
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
+}
+
 pub fn build_err_header(err: Error) -> ResponseHeader {
     ResponseHeader {
-        code: err.code().as_u16() as u32,
+        code: err.code().as_u32(),
         error: err.error_message(),
     }
 }
 
 pub fn build_ok_header() -> ResponseHeader {
     ResponseHeader {
-        code: StatusCode::OK.as_u16() as u32,
+        code: StatusCode::Ok.as_u32(),
         ..Default::default()
-    }
-}
-
-impl From<router::Error> for Error {
-    fn from(route_err: router::Error) -> Self {
-        match &route_err {
-            router::Error::RouteNotFound { .. } | router::Error::ShardNotFound { .. } => {
-                Error::ErrNoCause {
-                    code: StatusCode::NOT_FOUND,
-                    msg: route_err.to_string(),
-                }
-            }
-            router::Error::ParseEndpoint { .. }
-            | router::Error::OtherWithCause { .. }
-            | router::Error::OtherNoCause { .. } => Error::ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: route_err.to_string(),
-            },
-        }
     }
 }

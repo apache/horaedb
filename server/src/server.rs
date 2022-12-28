@@ -11,11 +11,12 @@ use interpreters::table_manipulator::TableManipulatorRef;
 use log::{info, warn};
 use logger::RuntimeLevel;
 use query_engine::executor::Executor as QueryExecutor;
+use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::{Config, Endpoint},
+    config::Config,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
@@ -23,7 +24,6 @@ use crate::{
     local_tables::{self, LocalTablesRecoverer},
     mysql,
     mysql::error::Error as MysqlError,
-    route::RouterRef,
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -319,11 +319,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
             .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
+            .local_endpoint(
+                Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
+            )
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
+            .forward_config(self.config.forward)
             .build()
             .context(BuildGrpcService)?;
 
