@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::env;
+use std::{env, path::Path};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -17,12 +17,11 @@ pub struct CeresDBController;
 impl EnvController for CeresDBController {
     type DB = CeresDB;
 
-    async fn start(&self, _mode: &str, config: Option<String>) -> Self::DB {
+    async fn start(&self, _env: &str, config: Option<&Path>) -> Self::DB {
         CeresDB::new(config)
     }
 
-    /// Stop one [`Database`].
-    async fn stop(&self, _mode: &str, database: Self::DB) {
+    async fn stop(&self, _env: &str, database: Self::DB) {
         database.stop();
     }
 }

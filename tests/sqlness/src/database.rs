@@ -4,6 +4,7 @@ use std::{
     env,
     fmt::Display,
     fs::File,
+    path::Path,
     process::{Child, Command},
     sync::Arc,
 };
@@ -17,7 +18,6 @@ use ceresdb_client_rs::{
 use sqlness::Database;
 
 const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
-const CONFIG_PATH_ENV: &str = "CERESDB_CONFIG_PATH";
 const SERVER_ENDPOINT_ENV: &str = "CERESDB_SERVER_ENDPOINT";
 const CERESDB_STDOUT_FILE: &str = "CERESDB_STDOUT_FILE";
 const CERESDB_STDERR_FILE: &str = "CERESDB_STDERR_FILE";
@@ -35,15 +35,16 @@ impl Database for CeresDB {
 }
 
 impl CeresDB {
-    pub fn new(_config: Option<String>) -> Self {
-        // TODO: replace those environments with config file
+    pub fn new(config: Option<&Path>) -> Self {
+        let config = config.unwrap().to_string_lossy();
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
-        let config = env::var(CONFIG_PATH_ENV).expect("Cannot parse config path env");
         let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
         let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-
         let stdout = File::create(stdout).expect("Cannot create stdout");
         let stderr = File::create(stderr).expect("Cannot create stderr");
+
+        println!("Start {} with {}...", bin, config);
+
         let server_process = Command::new(&bin)
             .args(["--config", &config])
             .stdout(stdout)
