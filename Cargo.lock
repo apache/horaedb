@@ -5602,7 +5602,7 @@ dependencies = [
 [[package]]
 name = "sqlness"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/sqlness.git?rev=c077b17d73ab25460c152dc34e8f80f904522a57#c077b17d73ab25460c152dc34e8f80f904522a57"
+source = "git+https://github.com/CeresDB/sqlness.git?rev=0f0143a8df319e19be8411e6bd54330985a684d6#0f0143a8df319e19be8411e6bd54330985a684d6"
 dependencies = [
  "async-trait",
  "derive_builder",
