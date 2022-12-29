@@ -10,7 +10,7 @@ use std::{
 use common_types::schema::IndexInWriterSchema;
 use log::{debug, error, info, trace, warn};
 use snafu::ResultExt;
-use table_engine::engine::OpenTableRequest;
+use table_engine::{engine::OpenTableRequest, remote::RemoteEngineRef};
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
@@ -34,7 +34,7 @@ use crate::{
     meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceId, SpaceRef},
+    space::{Space, SpaceContext, SpaceId, SpaceRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
         file::FilePurger,
@@ -51,6 +51,7 @@ impl Instance {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
+        remote_engine_ref: Option<RemoteEngineRef>,
     ) -> Result<Arc<Self>> {
         let space_store = Arc::new(SpaceStore {
             spaces: RwLock::new(Spaces::default()),
@@ -84,6 +85,7 @@ impl Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
             table_opts: ctx.config.table_opts.clone(),
+
             write_group_worker_num: ctx.config.write_group_worker_num,
             write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
@@ -95,13 +97,18 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             iter_options,
+            remote_engine: remote_engine_ref,
         });
 
         Ok(instance)
     }
 
     /// Open the space if it is not opened before.
-    async fn open_space(self: &Arc<Self>, space_id: SpaceId) -> Result<SpaceRef> {
+    async fn open_space(
+        self: &Arc<Self>,
+        space_id: SpaceId,
+        context: SpaceContext,
+    ) -> Result<SpaceRef> {
         {
             let spaces = self.space_store.spaces.read().unwrap();
 
@@ -123,6 +130,7 @@ impl Instance {
         // Add this space to instance.
         let space = Arc::new(Space::new(
             space_id,
+            context,
             self.space_write_buffer_size,
             write_group,
             self.mem_usage_collector.clone(),
@@ -245,7 +253,11 @@ impl Instance {
             version_meta,
         } = manifest_data;
 
-        let space = self.open_space(table_meta.space_id).await?;
+        let context = SpaceContext {
+            catalog_name: request.catalog_name.clone(),
+            schema_name: request.schema_name.clone(),
+        };
+        let space = self.open_space(table_meta.space_id, context).await?;
 
         let (table_id, table_name) = (table_meta.table_id, table_meta.table_name.clone());
         // Choose write worker for this table

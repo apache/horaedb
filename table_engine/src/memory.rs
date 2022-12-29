@@ -121,7 +121,6 @@ impl Table for MemoryTable {
     }
 
     async fn get(&self, _request: GetRequest) -> Result<Option<Row>> {
-        // Alter schema is not supported now.
         UnsupportedMethod {
             table: &self.name,
             method: "get",

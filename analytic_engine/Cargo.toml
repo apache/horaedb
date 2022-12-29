@@ -36,6 +36,8 @@ parquet_ext = { workspace = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
 proto = { workspace = true }
+remote_engine_client = { workspace = true }
+router = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }

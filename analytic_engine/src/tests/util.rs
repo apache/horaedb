@@ -30,7 +30,10 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{EngineBuilder, MemWalEngineBuilder, RocksDBWalEngineBuilder},
+    setup::{
+        EngineBuildContext, EngineBuildContextBuilder, EngineBuilder, MemWalEngineBuilder,
+        RocksDBWalEngineBuilder,
+    },
     storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, ObkvWalConfig, WalStorageConfig,
@@ -106,7 +109,7 @@ pub async fn check_get<T: EngineContext>(
 }
 
 pub struct TestContext<T: EngineContext> {
-    pub config: Config,
+    pub context: EngineBuildContext,
     runtimes: Arc<EngineRuntimes>,
     builder: T::EngineBuilder,
     pub engine: Option<TableEngineRef>,
@@ -120,7 +123,7 @@ impl<T: EngineContext> TestContext<T> {
     pub async fn open(&mut self) {
         let engine = self
             .builder
-            .build(self.config.clone(), self.runtimes.clone())
+            .build(self.context.clone(), self.runtimes.clone())
             .await
             .unwrap();
         self.engine = Some(engine);
@@ -378,7 +381,9 @@ impl TestEnv {
 
     pub fn new_context<T: EngineContext>(&self, engine_context: T) -> TestContext<T> {
         TestContext {
-            config: engine_context.config(),
+            context: EngineBuildContextBuilder::default()
+                .config(engine_context.config())
+                .build(),
             runtimes: self.runtimes.clone(),
             builder: engine_context.engine_builder(),
             engine: None,

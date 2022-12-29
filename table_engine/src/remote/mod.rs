@@ -4,6 +4,8 @@
 
 pub mod model;
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use common_util::define_result;
 use model::{ReadRequest, WriteRequest};
@@ -29,10 +31,13 @@ define_result!(Error);
 
 /// Remote table engine interface
 #[async_trait]
-pub trait RemoteEngine {
+pub trait RemoteEngine: Send + Sync {
     /// Read from the remote engine.
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 
     /// Write to the remote engine.
     async fn write(&self, request: WriteRequest) -> Result<usize>;
 }
+
+/// Remote engine reference
+pub type RemoteEngineRef = Arc<dyn RemoteEngine>;

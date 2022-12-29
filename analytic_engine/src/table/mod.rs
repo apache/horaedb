@@ -32,6 +32,7 @@ use crate::{
 
 pub mod data;
 pub mod metrics;
+pub mod partition;
 pub mod sst_util;
 pub mod version;
 pub mod version_edit;

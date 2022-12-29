@@ -77,6 +77,9 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display("Unexpected error, msg:{}", msg))]
+    UnexpectedWithMsg { msg: String },
+
     #[snafu(display("Invalid arguments, err:{}", source))]
     InvalidArguments {
         table: String,
@@ -147,6 +150,16 @@ pub enum Error {
 
     #[snafu(display("Failed to covert predicate, err:{}", source))]
     ConvertPredicate {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to create partition rule, err:{}", source))]
+    CreatePartitionRule {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to locate partitions, err:{}", source))]
+    LocatePartitions {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
@@ -299,7 +312,7 @@ pub struct WriteRequest {
     pub row_group: RowGroup,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ReadOptions {
     pub batch_size: usize,
     /// Suggested read parallelism, the actual returned stream should equal to
@@ -383,7 +396,7 @@ impl ReadOrder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
     pub request_id: RequestId,

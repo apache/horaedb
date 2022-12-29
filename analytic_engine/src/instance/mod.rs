@@ -26,7 +26,7 @@ use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, remote::RemoteEngineRef};
 use wal::manager::WalManagerRef;
 
 use crate::{
@@ -178,6 +178,7 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Options for scanning sst
     pub(crate) iter_options: IterOptions,
+    pub(crate) remote_engine: Option<RemoteEngineRef>,
 }
 
 impl Instance {

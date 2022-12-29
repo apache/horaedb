@@ -72,10 +72,20 @@ impl fmt::Debug for SpaceAndTable {
 // TODO(yingwen): Or just use something like uuid as space id?
 pub type SpaceId = u32;
 
+pub struct SpaceContext {
+    /// Catalog name
+    pub catalog_name: String,
+    /// Schema name
+    pub schema_name: String,
+}
+
 /// A space can hold multiple tables
 pub struct Space {
     /// Space id
     pub id: SpaceId,
+    /// Space context
+    pub context: SpaceContext,
+
     /// Data of tables in this space
     ///
     /// Adding table into it should acquire the space lock first, then the write
@@ -93,12 +103,14 @@ pub struct Space {
 impl Space {
     pub fn new(
         id: SpaceId,
+        context: SpaceContext,
         write_buffer_size: usize,
         write_group: WriteGroup,
         engine_mem_collector: CollectorRef,
     ) -> Self {
         Self {
             id,
+            context,
             table_datas: RwLock::new(TableDataSet::new()),
             write_group,
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),

@@ -16,8 +16,13 @@ use object_store::{
     prefix::StoreWithPrefix,
     LocalFileSystem, ObjectStoreRef,
 };
+use remote_engine_client::RemoteEngineImpl;
+use router::RouterRef;
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::engine::{EngineRuntimes, TableEngineRef};
+use table_engine::{
+    engine::{EngineRuntimes, TableEngineRef},
+    remote::RemoteEngineRef,
+};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
     manager::{self, WalManagerRef},
@@ -100,25 +105,57 @@ const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
+#[derive(Default)]
+pub struct EngineBuildContextBuilder {
+    config: Config,
+    router: Option<RouterRef>,
+}
+
+impl EngineBuildContextBuilder {
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    pub fn build(self) -> EngineBuildContext {
+        EngineBuildContext {
+            config: self.config,
+            router: self.router,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct EngineBuildContext {
+    pub config: Config,
+    pub router: Option<RouterRef>,
+}
+
 /// Analytic engine builder.
 #[async_trait]
 pub trait EngineBuilder: Send + Sync + Default {
     /// Build the analytic engine from `config` and `engine_runtimes`.
     async fn build(
         &self,
-        config: Config,
+        context: EngineBuildContext,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<TableEngineRef> {
         let (wal, manifest) = self
-            .open_wal_and_manifest(config.clone(), engine_runtimes.clone())
+            .open_wal_and_manifest(context.config.clone(), engine_runtimes.clone())
             .await?;
-        let opened_storages = open_storage(config.storage.clone()).await?;
+        let opened_storages = open_storage(context.config.storage.clone()).await?;
         let instance = open_instance(
-            config.clone(),
+            context.config.clone(),
             engine_runtimes,
             wal,
             manifest,
             Arc::new(opened_storages),
+            context.router,
         )
         .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
@@ -351,7 +388,17 @@ async fn open_instance(
     wal_manager: WalManagerRef,
     manifest: ManifestRef,
     store_picker: ObjectStorePickerRef,
+    router: Option<RouterRef>,
 ) -> Result<InstanceRef> {
+    let remote_engine_ref: Option<RemoteEngineRef> = if let Some(v) = router {
+        Some(Arc::new(RemoteEngineImpl::new(
+            config.remote_engine_client.clone(),
+            v,
+        )))
+    } else {
+        None
+    };
+
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
@@ -368,6 +415,7 @@ async fn open_instance(
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl::default()),
+        remote_engine_ref,
     )
     .await
     .context(OpenInstance)?;
