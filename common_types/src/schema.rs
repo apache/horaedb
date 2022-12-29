@@ -416,6 +416,11 @@ impl RecordSchema {
         self.column_schemas.column(i)
     }
 
+    pub fn column_by_name(&self, name: &str) -> Option<&ColumnSchema> {
+        let index = self.column_schemas.index_of(name)?;
+        Some(self.column_schemas.column(index))
+    }
+
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
         self.arrow_schema.clone()
     }
