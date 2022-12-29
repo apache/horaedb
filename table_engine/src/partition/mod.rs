@@ -265,7 +265,7 @@ impl PartitionInfoEncoder {
         self.ensure_version(buf[0])?;
 
         let pb_partition_info =
-            meta_pb::PartitionInfo::decode(buf).context(DecodePartitionInfoToPb { buf })?;
+            meta_pb::PartitionInfo::decode(buf[1..]).context(DecodePartitionInfoToPb { buf })?;
 
         Ok(Some(PartitionInfo::try_from(pb_partition_info)?))
     }
