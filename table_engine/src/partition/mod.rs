@@ -265,7 +265,7 @@ impl PartitionInfoEncoder {
         self.ensure_version(buf[0])?;
 
         let pb_partition_info =
-            meta_pb::PartitionInfo::decode(buf[1..]).context(DecodePartitionInfoToPb { buf })?;
+            meta_pb::PartitionInfo::decode(&buf[1..]).context(DecodePartitionInfoToPb { buf })?;
 
         Ok(Some(PartitionInfo::try_from(pb_partition_info)?))
     }
@@ -277,4 +277,32 @@ impl PartitionInfoEncoder {
         );
         Ok(())
     }
+}
+
+#[test]
+fn test_partition_info_encoder() {
+    let partition_info = PartitionInfo::Key(KeyPartitionInfo {
+        definitions: vec![
+            Definition {
+                name: "table1".to_string(),
+                origin_name: None,
+            },
+            Definition {
+                name: "table2".to_string(),
+                origin_name: None,
+            },
+        ],
+        partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
+        linear: false,
+    });
+    let partition_info_encoder = PartitionInfoEncoder::default();
+    let encode_partition_info = partition_info_encoder
+        .encode(partition_info.clone())
+        .unwrap();
+    let decode_partition_info = partition_info_encoder
+        .decode(&encode_partition_info)
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(decode_partition_info, partition_info);
 }
