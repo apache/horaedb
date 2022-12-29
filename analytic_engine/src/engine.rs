@@ -94,7 +94,7 @@ impl TableEngine for TableEngineImpl {
                         .remote_engine
                         .clone()
                         .context(UnexpectedNoCause {
-                            msg: "remote engine is empty",
+                            msg: "remote engine not found",
                         })?,
                     ANALYTIC_ENGINE_TYPE.to_string(),
                     space_table,

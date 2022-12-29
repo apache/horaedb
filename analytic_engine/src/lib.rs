@@ -89,7 +89,7 @@ pub struct Config {
     /// + Kafka
     pub wal_storage: WalStorageConfig,
 
-    pub remote_engine_client_config: remote_engine_client::config::Config,
+    pub remote_engine_client: remote_engine_client::config::Config,
 }
 
 impl Default for Config {
@@ -115,7 +115,7 @@ impl Default for Config {
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
             wal_storage: WalStorageConfig::RocksDB,
-            remote_engine_client_config: remote_engine_client::config::Config::default(),
+            remote_engine_client: remote_engine_client::config::Config::default(),
         }
     }
 }

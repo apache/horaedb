@@ -392,7 +392,7 @@ async fn open_instance(
 ) -> Result<InstanceRef> {
     let remote_engine_ref: Option<RemoteEngineRef> = if let Some(v) = router {
         Some(Arc::new(RemoteEngineImpl::new(
-            config.remote_engine_client_config.clone(),
+            config.remote_engine_client.clone(),
             v,
         )))
     } else {

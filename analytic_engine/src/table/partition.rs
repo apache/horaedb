@@ -25,8 +25,8 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterSchemaRequest, CreatePartitionRule, FlushRequest, GetRequest, LocatePartitions,
-        ReadRequest, Result, Table, TableId, TableStats, UnexpectedWithMsg, UnsupportedMethod,
-        Write, WriteRequest,
+        ReadRequest, Result, Scan, Table, TableId, TableStats, UnexpectedWithMsg,
+        UnsupportedMethod, Write, WriteRequest,
     },
 };
 
@@ -34,8 +34,9 @@ use crate::space::SpaceAndTable;
 
 /// Table trait implementation
 pub struct PartitionTableImpl {
+    /// Space table
     space_table: SpaceAndTable,
-    /// Instance
+    /// Remote engine
     remote_engine: RemoteEngineRef,
     /// Engine type
     engine_type: String,
@@ -60,7 +61,7 @@ impl PartitionTableImpl {
         })
     }
 
-    fn generate_sub_table(&self, id: usize) -> TableIdentifier {
+    fn get_sub_table_ident(&self, id: usize) -> TableIdentifier {
         let partition_name = self
             .space_table
             .table_data()
@@ -125,21 +126,18 @@ impl Table for PartitionTableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
-        let partition_info = self.partition_info();
-        ensure!(
-            partition_info.is_some(),
-            UnexpectedWithMsg {
-                msg: "partition table partition info can't be empty"
-            }
-        );
-
-        let partition_info = partition_info.unwrap();
-
         // Build partition rule.
-        let df_partition_rule =
-            DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
-                .map_err(|e| Box::new(e) as _)
-                .context(CreatePartitionRule)?;
+        let df_partition_rule = match self.partition_info() {
+            None => UnexpectedWithMsg {
+                msg: "partition table partition info can't be empty",
+            }
+            .fail()?,
+            Some(partition_info) => {
+                DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                    .map_err(|e| Box::new(e) as _)
+                    .context(CreatePartitionRule)?
+            }
+        };
 
         // Split write request.
         let mut split_rows = HashMap::new();
@@ -149,26 +147,26 @@ impl Table for PartitionTableImpl {
             .context(LocatePartitions)?;
 
         let schema = request.row_group.schema().clone();
-        for (located_partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
+        for (partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
             split_rows
-                .entry(located_partition)
+                .entry(partition)
                 .or_insert_with(Vec::new)
                 .push(row);
         }
 
         // Insert split write request through remote engine.
         let mut futures = Vec::with_capacity(split_rows.len());
-        for (id, rows) in split_rows {
+        for (partition, rows) in split_rows {
             let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
                 .map_err(|e| Box::new(e) as _)
                 .context(Write {
-                    table: self.generate_sub_table(id).table,
+                    table: self.get_sub_table_ident(partition).table,
                 })?
                 .build();
             futures.push(async move {
                 self.remote_engine
                     .write(RemoteWriteRequest {
-                        table: self.generate_sub_table(id),
+                        table: self.get_sub_table_ident(partition),
                         write_request: WriteRequest { row_group },
                     })
                     .await
@@ -202,21 +200,18 @@ impl Table for PartitionTableImpl {
     }
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
-        let partition_info = self.partition_info();
-        ensure!(
-            partition_info.is_some(),
-            UnexpectedWithMsg {
-                msg: "partition table partition info can't be empty"
-            }
-        );
-
-        let partition_info = partition_info.unwrap();
-
         // Build partition rule.
-        let df_partition_rule =
-            DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
-                .map_err(|e| Box::new(e) as _)
-                .context(CreatePartitionRule)?;
+        let df_partition_rule = match self.partition_info() {
+            None => UnexpectedWithMsg {
+                msg: "partition table partition info can't be empty",
+            }
+            .fail()?,
+            Some(partition_info) => {
+                DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
+                    .map_err(|e| Box::new(e) as _)
+                    .context(CreatePartitionRule)?
+            }
+        };
 
         // Evaluate expr and locate partition.
         let partitions = df_partition_rule
@@ -226,13 +221,13 @@ impl Table for PartitionTableImpl {
 
         // Query streams through remote engine.
         let mut futures = Vec::with_capacity(partitions.len());
-        for id in partitions {
+        for partition in partitions {
             let remote_engine = self.remote_engine.clone();
             let request_clone = request.clone();
             futures.push(async move {
                 remote_engine
                     .read(RemoteReadRequest {
-                        table: self.generate_sub_table(id),
+                        table: self.get_sub_table_ident(partition),
                         read_request: request_clone,
                     })
                     .await
@@ -242,7 +237,7 @@ impl Table for PartitionTableImpl {
         let streams = try_join_all(futures)
             .await
             .map_err(|e| Box::new(e) as _)
-            .context(Write {
+            .context(Scan {
                 table: self.name().to_string(),
             })?;
         Ok(PartitionedStreams { streams })
