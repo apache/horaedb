@@ -33,8 +33,8 @@ pub struct AllocSchemaIdResponse {
 }
 
 #[derive(Clone, Debug)]
-pub struct PartitionInfo {
-    pub names: Vec<String>,
+pub struct PartitionTableInfo {
+    pub sub_table_names: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -45,7 +45,8 @@ pub struct CreateTableRequest {
     pub engine: String,
     pub create_if_not_exist: bool,
     pub options: HashMap<String, String>,
-    pub partition_info: Option<PartitionInfo>,
+    pub partition_table_info: Option<PartitionTableInfo>,
+    pub encoded_partition_info: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -306,6 +307,11 @@ impl From<meta_service_pb::AllocSchemaIdResponse> for AllocSchemaIdResponse {
 
 impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
     fn from(req: CreateTableRequest) -> Self {
+        let partition_table_info =
+            req.partition_table_info
+                .map(|v| meta_service_pb::PartitionTableInfo {
+                    sub_table_names: v.sub_table_names,
+                });
         Self {
             header: None,
             schema_name: req.schema_name,
@@ -314,9 +320,8 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
             engine: req.engine,
             create_if_not_exist: req.create_if_not_exist,
             options: req.options,
-            partition_info: req
-                .partition_info
-                .map(|v| meta_service_pb::PartitionInfo { names: v.names }),
+            encoded_partition_info: req.encoded_partition_info,
+            partition_table_info,
         }
     }
 }
