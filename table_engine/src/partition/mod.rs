@@ -284,11 +284,11 @@ fn test_partition_info_encoder() {
     let partition_info = PartitionInfo::Key(KeyPartitionInfo {
         definitions: vec![
             Definition {
-                name: "table1".to_string(),
-                origin_name: None,
+                name: "p0".to_string(),
+                origin_name: Some("partition_0".to_string()),
             },
             Definition {
-                name: "table2".to_string(),
+                name: "p1".to_string(),
                 origin_name: None,
             },
         ],
