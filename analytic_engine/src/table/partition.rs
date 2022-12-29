@@ -5,7 +5,6 @@
 use std::{collections::HashMap, fmt};
 
 use async_trait::async_trait;
-use catalog::consts::DEFAULT_CATALOG;
 use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
@@ -70,8 +69,8 @@ impl PartitionTableImpl {
             .map(|v| v.get_definitions()[id].name.clone())
             .unwrap();
         TableIdentifier {
-            catalog: DEFAULT_CATALOG.to_string(),
-            schema: self.space_table.space().schema_name.clone(),
+            catalog: self.space_table.space().context.catalog_name.clone(),
+            schema: self.space_table.space().context.schema_name.clone(),
             table: format_sub_partition_table_name(
                 &self.space_table.table_data().name,
                 &partition_name,

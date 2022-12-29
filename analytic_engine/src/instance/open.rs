@@ -34,7 +34,7 @@ use crate::{
     meta::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
-    space::{Space, SpaceId, SpaceRef},
+    space::{Space, SpaceContext, SpaceId, SpaceRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
         file::FilePurger,
@@ -107,7 +107,7 @@ impl Instance {
     async fn open_space(
         self: &Arc<Self>,
         space_id: SpaceId,
-        schema_name: String,
+        context: SpaceContext,
     ) -> Result<SpaceRef> {
         {
             let spaces = self.space_store.spaces.read().unwrap();
@@ -130,7 +130,7 @@ impl Instance {
         // Add this space to instance.
         let space = Arc::new(Space::new(
             space_id,
-            schema_name,
+            context,
             self.space_write_buffer_size,
             write_group,
             self.mem_usage_collector.clone(),
@@ -253,9 +253,11 @@ impl Instance {
             version_meta,
         } = manifest_data;
 
-        let space = self
-            .open_space(table_meta.space_id, request.schema_name.clone())
-            .await?;
+        let context = SpaceContext {
+            catalog_name: request.catalog_name.clone(),
+            schema_name: request.schema_name.clone(),
+        };
+        let space = self.open_space(table_meta.space_id, context).await?;
 
         let (table_id, table_name) = (table_meta.table_id, table_meta.table_name.clone());
         // Choose write worker for this table
