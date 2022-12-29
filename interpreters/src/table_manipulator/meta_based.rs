@@ -4,12 +4,15 @@ use async_trait::async_trait;
 use common_types::schema::SchemaEncoder;
 use log::info;
 use meta_client::{
-    types::{CreateTableRequest, DropTableRequest, PartitionInfo},
+    types::{CreateTableRequest, DropTableRequest, PartitionTableInfo},
     MetaClientRef,
 };
 use snafu::ResultExt;
 use sql::plan::{CreateTablePlan, DropTablePlan};
-use table_engine::{engine::TableEngineRef, partition::format_sub_partition_table_name};
+use table_engine::{
+    engine::TableEngineRef,
+    partition::{format_sub_partition_table_name, PartitionInfoEncoder},
+};
 
 use crate::{
     context::Context,
@@ -45,13 +48,29 @@ impl TableManipulator for TableManipulatorImpl {
                 ),
             })?;
 
-        let partition_info = plan.partition_info.map(|v| {
+        let sub_table_names = plan.partition_info.clone().map(|v| {
             v.get_definitions()
                 .iter()
                 .map(|def| format_sub_partition_table_name(&plan.table, &def.name))
                 .collect::<Vec<String>>()
         });
+        let partition_table_info =
+            sub_table_names.map(|v| PartitionTableInfo { sub_table_names: v });
 
+        let encoder = PartitionInfoEncoder::default();
+
+        let encoded_partition_info = match plan.partition_info.clone() {
+            None => Vec::new(),
+            Some(v) => encoder
+                .encode(v)
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| CreateWithCause {
+                    msg: format!(
+                        "fail to encode partition info, ctx:{:?}, plan:{:?}",
+                        ctx, plan
+                    ),
+                })?,
+        };
         let req = CreateTableRequest {
             schema_name: ctx.default_schema().to_string(),
             name: plan.table,
@@ -59,7 +78,8 @@ impl TableManipulator for TableManipulatorImpl {
             engine: plan.engine,
             create_if_not_exist: plan.if_not_exists,
             options: plan.options,
-            partition_info: partition_info.map(|v| PartitionInfo { names: v }),
+            partition_table_info,
+            encoded_partition_info,
         };
 
         let resp = self

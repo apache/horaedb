@@ -36,6 +36,11 @@ pub enum Error {
     #[snafu(display("Failed to convert schema, err:{}", source))]
     ConvertSchema { source: common_types::schema::Error },
 
+    #[snafu(display("Failed to convert partition info, err:{}", source))]
+    ConvertPartitionInfo {
+        source: table_engine::partition::Error,
+    },
+
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
     EmptyTableSchema { backtrace: Backtrace },
 
@@ -213,13 +218,14 @@ pub struct AddTableMeta {
 
 impl From<AddTableMeta> for meta_pb::AddTableMeta {
     fn from(v: AddTableMeta) -> Self {
+        let partition_info = v.partition_info.map(|v| v.into());
         meta_pb::AddTableMeta {
             space_id: v.space_id,
             table_id: v.table_id.as_u64(),
             table_name: v.table_name,
             schema: Some(common_pb::TableSchema::from(&v.schema)),
             options: Some(analytic_common::TableOptions::from(v.opts)),
-            partition_info: v.partition_info.map(|info| info.into()),
+            partition_info,
         }
     }
 }
@@ -230,13 +236,20 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
     fn try_from(src: meta_pb::AddTableMeta) -> Result<Self> {
         let table_schema = src.schema.context(EmptyTableSchema)?;
         let opts = src.options.context(EmptyTableOptions)?;
+        let partition_info = match src.partition_info {
+            Some(partition_info) => {
+                Some(PartitionInfo::try_from(partition_info).context(ConvertPartitionInfo)?)
+            }
+            None => None,
+        };
+
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
             table_name: src.table_name,
             schema: Schema::try_from(table_schema).context(ConvertSchema)?,
             opts: TableOptions::from(opts),
-            partition_info: src.partition_info.map(|v| v.into()),
+            partition_info,
         })
     }
 }
