@@ -135,12 +135,13 @@ impl Table for PartitionTableImpl {
 
         let partition_info = partition_info.unwrap();
 
-        // build partition rule
+        // Build partition rule.
         let df_partition_rule =
             DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
                 .map_err(|e| Box::new(e) as _)
                 .context(CreatePartitionRule)?;
-        // split write request
+
+        // Split write request.
         let mut split_rows = HashMap::new();
         let partitions = df_partition_rule
             .locate_partitions_for_write(&request.row_group)
@@ -155,6 +156,7 @@ impl Table for PartitionTableImpl {
                 .push(row);
         }
 
+        // Insert split write request through remote engine.
         let mut futures = Vec::with_capacity(split_rows.len());
         for (id, rows) in split_rows {
             let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
@@ -163,7 +165,6 @@ impl Table for PartitionTableImpl {
                     table: self.generate_sub_table(id).table,
                 })?
                 .build();
-            // client insert split write request
             futures.push(async move {
                 self.remote_engine
                     .write(RemoteWriteRequest {
@@ -173,6 +174,7 @@ impl Table for PartitionTableImpl {
                     .await
             });
         }
+
         let result = try_join_all(futures)
             .await
             .map_err(|e| Box::new(e) as _)
@@ -210,19 +212,19 @@ impl Table for PartitionTableImpl {
 
         let partition_info = partition_info.unwrap();
 
-        // build partition rule
+        // Build partition rule.
         let df_partition_rule =
             DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
                 .map_err(|e| Box::new(e) as _)
                 .context(CreatePartitionRule)?;
 
-        // evaluate expr and locate partition
+        // Evaluate expr and locate partition.
         let partitions = df_partition_rule
             .locate_partitions_for_read(request.predicate.exprs())
             .map_err(|e| Box::new(e) as _)
             .context(LocatePartitions)?;
 
-        // client return async query streams
+        // Query streams through remote engine.
         let mut futures = Vec::with_capacity(partitions.len());
         for id in partitions {
             let remote_engine = self.remote_engine.clone();
