@@ -4820,7 +4820,7 @@ name = "remote_engine_client"
 version = "1.0.0-alpha01"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=b9c45bcdbf7d55d5889d42b4c8017282819e6049)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
  "clru",
  "common_types 1.0.0-alpha01",
  "common_util",
@@ -4952,7 +4952,7 @@ name = "router"
 version = "1.0.0-alpha01"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=b9c45bcdbf7d55d5889d42b4c8017282819e6049)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
  "cluster",
  "common_types 1.0.0-alpha01",
  "common_util",
