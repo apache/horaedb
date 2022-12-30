@@ -9,5 +9,5 @@ workspace = true
 anyhow = "1.0.58"
 async-trait = "0.1"
 ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a9d9190f4f7b55171ea2ad142fb41dc9909c19c5" }
-sqlness = "0.1"
+sqlness = "0.1.1"
 tokio = { workspace = true }

@@ -32,6 +32,7 @@ members = [
     "components/tracing_util",
     "df_operator",
     "interpreters",
+    "integration_tests",
     "meta_client",
     "proto",
     "query_engine",
@@ -41,7 +42,6 @@ members = [
     "sql",
     "system_catalog",
     "table_engine",
-    "tests/sqlness",
     "tools",
     "wal",
 ]
