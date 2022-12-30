@@ -206,7 +206,7 @@ pub enum CompatError {
 /// Meta data of the arrow schema
 #[derive(Default)]
 pub struct ArrowSchemaMeta {
-    num_key_columns: usize,
+    primary_key_indexes: Vec<usize>,
     timestamp_index: usize,
     version: u32,
 }
@@ -235,9 +235,9 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
 
     fn try_from(meta: &HashMap<String, String>) -> Result<Self> {
         Ok(ArrowSchemaMeta {
-            num_key_columns: Self::parse_arrow_schema_meta_value(
+            primary_key_indexes: Self::parse_arrow_schema_meta_value(
                 meta,
-                ArrowSchemaMetaKey::NumKeyColumns,
+                ArrowSchemaMetaKey::PrimaryKeyIndexes,
             )?,
             timestamp_index: Self::parse_arrow_schema_meta_value(
                 meta,
@@ -250,7 +250,7 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
 
 #[derive(Copy, Clone, Debug)]
 pub enum ArrowSchemaMetaKey {
-    NumKeyColumns,
+    PrimaryKeyIndexes,
     TimestampIndex,
     Version,
 }
@@ -258,7 +258,7 @@ pub enum ArrowSchemaMetaKey {
 impl ArrowSchemaMetaKey {
     fn as_str(&self) -> &str {
         match self {
-            Self::NumKeyColumns => "schema:num_key_columns",
+            Self::PrimaryKeyIndexes => "schema:primary_key_indexes",
             Self::TimestampIndex => "schema::timestamp_index",
             Self::Version => "schema::version",
         }
@@ -1067,7 +1067,7 @@ impl Builder {
         }
 
         let ArrowSchemaMeta {
-            num_key_columns,
+            primary_key_indexes,
             timestamp_index,
             version,
         } = Self::parse_arrow_schema_meta_or_default(arrow_schema.metadata())?;
@@ -1075,10 +1075,6 @@ impl Builder {
 
         let column_schemas = Arc::new(ColumnSchemas::new(columns));
 
-        let mut primary_key_indexes = Vec::new();
-        for i in 0..num_key_columns {
-            primary_key_indexes.push(i);
-        }
         Ok(Schema {
             arrow_schema,
             primary_key_indexes,
