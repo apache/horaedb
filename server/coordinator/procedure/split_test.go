@@ -22,15 +22,18 @@ func TestSplit(t *testing.T) {
 	re.NoError(err)
 
 	// Randomly select a shardNode to split.
-	targetShardNode := getNodeShardsResult.NodeShards[0].ShardNode
+	createTableNodeShard := getNodeShardsResult.NodeShards[0].ShardNode
 
 	// Create some tables in this shard.
-	_, err = c.CreateTable(ctx, targetShardNode.NodeName, testSchemaName, testTableName0, false)
+	createTableResult, err := c.CreateTable(ctx, createTableNodeShard.NodeName, testSchemaName, testTableName0, false)
 	re.NoError(err)
-	_, err = c.CreateTable(ctx, targetShardNode.NodeName, testSchemaName, testTableName1, false)
+	_, err = c.CreateTable(ctx, createTableNodeShard.NodeName, testSchemaName, testTableName1, false)
 	re.NoError(err)
 
 	// Split one table from this shard.
+	getNodeShardResult, err := c.GetShardNodeByTableIDs([]storage.TableID{createTableResult.Table.ID})
+	targetShardNode := getNodeShardResult.ShardNodes[createTableResult.Table.ID][0]
+	re.NoError(err)
 	newShardID, err := c.AllocShardID(ctx)
 	re.NoError(err)
 	procedure := NewSplitProcedure(1, dispatch, s, c, testSchemaName, targetShardNode.ID, storage.ShardID(newShardID), []string{testTableName0}, targetShardNode.NodeName)

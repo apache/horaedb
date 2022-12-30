@@ -42,9 +42,9 @@ func TestCreatePartitionTable(t *testing.T) {
 
 	partitionTableNum := Max(1, int(float32(len(nodeNames))*defaultPartitionTableProportionOfNodes))
 
-	partitionTableShards, err := shardPicker.PickShards(ctx, c.Name(), partitionTableNum)
+	partitionTableShards, err := shardPicker.PickShards(ctx, c.Name(), partitionTableNum, false)
 	re.NoError(err)
-	dataTableShards, err := shardPicker.PickShards(ctx, c.Name(), len(request.GetPartitionTableInfo().SubTableNames))
+	dataTableShards, err := shardPicker.PickShards(ctx, c.Name(), len(request.GetPartitionTableInfo().SubTableNames), true)
 	re.NoError(err)
 
 	procedure := NewCreatePartitionTableProcedure(CreatePartitionTableProcedureRequest{

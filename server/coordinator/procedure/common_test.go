@@ -27,7 +27,7 @@ const (
 	defaultNodeCount                       = 2
 	defaultReplicationFactor               = 1
 	defaultPartitionTableProportionOfNodes = 0.5
-	defaultShardTotal                      = 2
+	defaultShardTotal                      = 4
 )
 
 type MockDispatch struct{}

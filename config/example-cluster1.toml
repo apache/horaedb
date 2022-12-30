@@ -1,5 +1,5 @@
 etcd-start-timeout-ms = 30000
-peer-urls = "http://{HostIP1}:2380"
+peer-urls = "http://{HostIP1}:12380"
 advertise-client-urls = "http://{HostIP1}:12379"
 advertise-peer-urls = "http://{HostIP1}:12380"
 client-urls = "http://{HostIP1}:12379"

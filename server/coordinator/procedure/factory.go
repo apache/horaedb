@@ -139,12 +139,12 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 
 	partitionTableNum := Max(1, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
 
-	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, partitionTableNum)
+	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, partitionTableNum, false)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick partition table shards")
 	}
 
-	dataTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, len(request.SourceReq.PartitionTableInfo.SubTableNames))
+	dataTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick data table shards")
 	}

@@ -13,8 +13,12 @@ import (
 )
 
 // ShardPicker is used to pick up the shards suitable for scheduling in the cluster.
+// If expectShardNum bigger than cluster node number, the result depends on enableDuplicateNode:
+// If enableDuplicateNode is false, pick shards will be failed and return error.
+// If enableDuplicateNode is true, pick shard will return shards on the same node.
+// TODO: Consider refactor this interface, abstracts the parameters of PickShards as PickStrategy.
 type ShardPicker interface {
-	PickShards(ctx context.Context, clusterName string, expectShardNum int) ([]cluster.ShardNodeWithVersion, error)
+	PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]cluster.ShardNodeWithVersion, error)
 }
 
 // RandomShardPicker randomly pick up shards that are not on the same node in the current cluster.
@@ -29,46 +33,63 @@ func NewRandomShardPicker(manager cluster.Manager) ShardPicker {
 }
 
 // PickShards will pick a specified number of shards as expectShardNum.
-func (p *RandomShardPicker) PickShards(ctx context.Context, clusterName string, expectShardNum int) ([]cluster.ShardNodeWithVersion, error) {
+func (p *RandomShardPicker) PickShards(ctx context.Context, clusterName string, expectShardNum int, enableDuplicateNode bool) ([]cluster.ShardNodeWithVersion, error) {
 	getNodeShardResult, err := p.clusterManager.GetNodeShards(ctx, clusterName)
 	if err != nil {
 		return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "get node shards")
 	}
+
+	if expectShardNum > len(getNodeShardResult.NodeShards) {
+		return []cluster.ShardNodeWithVersion{}, errors.WithMessage(ErrShardNumberNotEnough, fmt.Sprintf("number of shards is:%d, expecet number of shards is:%d", len(getNodeShardResult.NodeShards), expectShardNum))
+	}
+
 	nodeShardsMapping := make(map[string][]cluster.ShardNodeWithVersion, 0)
-	var nodeNames []string
 	for _, nodeShard := range getNodeShardResult.NodeShards {
 		_, exists := nodeShardsMapping[nodeShard.ShardNode.NodeName]
 		if !exists {
 			nodeShards := []cluster.ShardNodeWithVersion{}
-			nodeNames = append(nodeNames, nodeShard.ShardNode.NodeName)
 			nodeShardsMapping[nodeShard.ShardNode.NodeName] = nodeShards
 		}
 		nodeShardsMapping[nodeShard.ShardNode.NodeName] = append(nodeShardsMapping[nodeShard.ShardNode.NodeName], nodeShard)
 	}
-	if len(nodeShardsMapping) < expectShardNum {
-		return []cluster.ShardNodeWithVersion{}, errors.WithMessage(ErrNodeNumberNotEnough, fmt.Sprintf("number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum))
-	}
 
-	var selectNodeNames []string
-	for i := 0; i < expectShardNum; i++ {
-		selectNodeIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeNames))))
-		if err != nil {
-			return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "generate random node index")
+	if !enableDuplicateNode {
+		if len(nodeShardsMapping) < expectShardNum {
+			return []cluster.ShardNodeWithVersion{}, errors.WithMessage(ErrNodeNumberNotEnough, fmt.Sprintf("number of nodes is:%d, expecet number of shards is:%d", len(nodeShardsMapping), expectShardNum))
 		}
-		selectNodeNames = append(selectNodeNames, nodeNames[selectNodeIndex.Int64()])
-		nodeNames[selectNodeIndex.Int64()] = nodeNames[len(nodeNames)-1]
-		nodeNames = nodeNames[:len(nodeNames)-1]
 	}
 
+	// Try to make shards on different nodes.
 	result := []cluster.ShardNodeWithVersion{}
-	for _, nodeName := range selectNodeNames {
-		nodeShards := nodeShardsMapping[nodeName]
-		selectShardIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeShards))))
-		if err != nil {
-			return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "generate random node index")
+	for {
+		nodeNames := []string{}
+		for nodeName := range nodeShardsMapping {
+			nodeNames = append(nodeNames, nodeName)
 		}
-		result = append(result, nodeShards[selectShardIndex.Int64()])
-	}
 
-	return result, nil
+		for len(nodeNames) > 0 {
+			if len(result) >= expectShardNum {
+				return result, nil
+			}
+
+			selectNodeIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeNames))))
+			if err != nil {
+				return []cluster.ShardNodeWithVersion{}, errors.WithMessage(err, "generate random node index")
+			}
+
+			nodeShards := nodeShardsMapping[nodeNames[selectNodeIndex.Int64()]]
+
+			if len(nodeShards) > 0 {
+				result = append(result, nodeShards[0])
+
+				// Remove select shard.
+				nodeShards[0] = nodeShards[len(nodeShards)-1]
+				nodeShardsMapping[nodeNames[selectNodeIndex.Int64()]] = nodeShards[:len(nodeShards)-1]
+			}
+
+			// Remove select node.
+			nodeNames[selectNodeIndex.Int64()] = nodeNames[len(nodeNames)-1]
+			nodeNames = nodeNames[:len(nodeNames)-1]
+		}
+	}
 }
