@@ -195,5 +195,9 @@ FROM
 ORDER BY
     `c1` ASC;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to convert output, query: SELECT \n     * \n FROM \n     `03_dml_insert_mode_table4` \n ORDER BY \n     `c1` ASC;. Caused by: Rpc error, code:500, message:failed to convert record batch, cause:Failed to write avro record, err:Value does not match schema." })
+tsid,timestamp,c1,c2,c3,c4,c5,
+Int64(0),Timestamp(Timestamp(1)),Int64(10),String(StringBytes(b"123")),Int64(11),Int64(12),Int64(3),
+Int64(0),Timestamp(Timestamp(2)),Int64(20),String(StringBytes(b"123")),Int64(21),Int64(22),Int64(4),
+Int64(0),Timestamp(Timestamp(3)),Int64(30),String(StringBytes(b"123")),Int64(31),Int64(32),Int64(5),
+
 
