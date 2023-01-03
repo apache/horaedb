@@ -109,8 +109,14 @@ pub async fn load_sst_to_memtable(
     };
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
+    let meta = store_picker.default_store().head(sst_path).await.unwrap();
     let mut sst_reader = sst_factory
-        .new_sst_reader(&sst_reader_options, sst_path, &store_picker)
+        .new_sst_reader(
+            &sst_reader_options,
+            sst_path,
+            &store_picker,
+            meta.size as u64,
+        )
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();
@@ -150,6 +156,8 @@ pub async fn file_handles_from_ssts(
         let sst_meta = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
+            size: 0,
+            row_num: 0,
             meta: sst_meta,
         };
 

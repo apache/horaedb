@@ -86,8 +86,14 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         num_rows_per_row_group: 8192,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
+    let meta = store_picker
+        .default_store()
+        .head(&input_path)
+        .await
+        .unwrap();
+
     let mut reader = factory
-        .new_sst_reader(&reader_opts, &input_path, &store_picker)
+        .new_sst_reader(&reader_opts, &input_path, &store_picker, meta.size as u64)
         .expect("no sst reader found");
 
     let builder_opts = SstBuilderOptions {

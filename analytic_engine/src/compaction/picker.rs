@@ -617,15 +617,13 @@ mod tests {
         },
     };
 
-    fn build_sst_meta_data(time_range: TimeRange, size: u64) -> SstMetaData {
+    fn build_sst_meta_data(time_range: TimeRange) -> SstMetaData {
         SstMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range,
             max_sequence: 200,
             schema: build_schema(),
-            size,
-            row_num: 2,
             storage_format_opts: Default::default(),
             bloom_filter: Default::default(),
         }
@@ -635,22 +633,22 @@ mod tests {
     fn build_old_bucket_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(200)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(100),
+                Timestamp::new(200),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -660,30 +658,30 @@ mod tests {
     fn build_newest_bucket_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -693,22 +691,22 @@ mod tests {
     fn build_newest_bucket_no_match_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -769,7 +767,9 @@ mod tests {
             .map(|size| {
                 let file_meta = FileMeta {
                     id: 1,
-                    meta: build_sst_meta_data(TimeRange::empty(), size),
+                    size,
+                    row_num: 0,
+                    meta: build_sst_meta_data(TimeRange::empty()),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)

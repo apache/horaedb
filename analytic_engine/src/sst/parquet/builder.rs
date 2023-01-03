@@ -311,8 +311,6 @@ mod tests {
                 time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
                 max_sequence: 200,
                 schema: schema.clone(),
-                size: 10,
-                row_num: 2,
                 storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
             };
@@ -359,22 +357,23 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
+                let meta = store_picker
+                    .default_store()
+                    .head(&sst_file_path)
+                    .await
+                    .unwrap();
+
                 let file_reader = FileReaderOnObjectStore::new(
                     sst_file_path.clone(),
                     store_picker.default_store().clone(),
+                    meta.size as u64,
                 );
                 let mut reader = AsyncParquetReader::new(
                     &sst_file_path,
                     Arc::new(file_reader),
                     &sst_reader_options,
                 );
-                let mut sst_meta_readback = {
-                    // FIXME: size of SstMetaData is not what this file's size, so overwrite it
-                    // https://github.com/CeresDB/ceresdb/issues/321
-                    let mut meta = reader.meta_data().await.unwrap().clone();
-                    meta.size = sst_meta.size;
-                    meta
-                };
+                let mut sst_meta_readback = { reader.meta_data().await.unwrap().clone() };
                 // bloom filter is built insider sst writer, so overwrite to default for
                 // comparsion
                 sst_meta_readback.bloom_filter = Default::default();
@@ -461,8 +460,6 @@ mod tests {
                 time_range: Default::default(),
                 max_sequence: 1,
                 schema,
-                size: 0,
-                row_num: 0,
                 storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
             },

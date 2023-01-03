@@ -331,8 +331,7 @@ impl<'a> Reader<'a> {
             let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
-            let file_size = self.file_reader.file_size().await.context(DecodeSstMeta)?;
-            MetaData::try_new(&parquet_meta_data, file_size, ignore_bloom_filter)
+            MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };
