@@ -62,8 +62,8 @@ impl From<AddFile> for meta_pb::AddFileMeta {
             time_range: Some(v.file.meta.time_range.into()),
             max_seq: v.file.meta.max_sequence,
             schema: Some(common_pb::TableSchema::from(&v.file.meta.schema)),
-            size: v.file.meta.size,
-            row_num: v.file.meta.row_num,
+            size: v.file.size,
+            row_num: v.file.row_num,
             storage_format: analytic_common_pb::StorageFormat::from(v.file.meta.storage_format())
                 as i32,
         }
@@ -91,14 +91,14 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                 .context(InvalidLevel { level: src.level })?,
             file: FileMeta {
                 id: src.file_id,
+                size: src.size,
+                row_num: src.row_num,
                 meta: SstMetaData {
                     min_key: Bytes::from(src.min_key),
                     max_key: Bytes::from(src.max_key),
                     time_range,
                     max_sequence: src.max_seq,
                     schema,
-                    size: src.size,
-                    row_num: src.row_num,
                     storage_format_opts: StorageFormatOptions::new(storage_format.into()),
                     bloom_filter: Default::default(),
                 },
@@ -186,6 +186,8 @@ pub mod tests {
                 level: 0,
                 file: FileMeta {
                     id: self.file_id,
+                    size: 0,
+                    row_num: 0,
                     meta: self.sst_meta.clone(),
                 },
             }

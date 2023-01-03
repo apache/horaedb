@@ -312,6 +312,7 @@ pub async fn stream_from_sst_file(
 ) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
+
     let mut sst_reader = sst_factory
         .new_sst_reader(sst_reader_options, &path, store_picker)
         .with_context(|| SstReaderNotFound {

@@ -48,11 +48,7 @@ impl MetaData {
     ///
     /// After the building, a new parquet meta data will be generated which
     /// contains no extended custom information.
-    pub fn try_new(
-        parquet_meta_data: &ParquetMetaData,
-        sst_size: usize,
-        ignore_bloom_filter: bool,
-    ) -> Result<Self> {
+    pub fn try_new(parquet_meta_data: &ParquetMetaData, ignore_bloom_filter: bool) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
         let kv_metas = file_meta_data
             .key_value_metadata()
@@ -65,11 +61,6 @@ impl MetaData {
             if ignore_bloom_filter {
                 sst_meta.bloom_filter = None;
             }
-
-            // FIXME: After the issue fixed, let's remove the `sst_size` parameter.
-            // The size in sst_meta is always 0, so overwrite it here.
-            // Refer to https://github.com/CeresDB/ceresdb/issues/321
-            sst_meta.size = sst_size as u64;
 
             Arc::new(sst_meta)
         };
