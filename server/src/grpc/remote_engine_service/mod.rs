@@ -101,8 +101,9 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 
         let mut resp = WriteResponse::default();
         match res {
-            Ok(Ok(_)) => {
+            Ok(Ok(v)) => {
                 resp.header = Some(error::build_ok_header());
+                resp.affected_rows = v.affected_rows;
             }
             Ok(Err(e)) | Err(e) => {
                 resp.header = Some(error::build_err_header(e));

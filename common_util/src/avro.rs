@@ -339,7 +339,7 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         Datum::String(v) => may_union(Value::String(v.to_string()), is_nullable),
         Datum::UInt64(v) => may_union(Value::Long(v as i64), is_nullable),
         Datum::Int64(v) => may_union(Value::Long(v), is_nullable),
-        Datum::UInt32(v) => may_union(Value::Int(v as i32), is_nullable),
+        Datum::UInt32(v) => may_union(Value::Long(v as i64), is_nullable),
         Datum::UInt16(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::UInt8(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Int32(v) => may_union(Value::Int(v), is_nullable),
@@ -364,12 +364,12 @@ fn avro_value_to_datum(value: Value, datum_type: DatumKind) -> Result<Datum> {
         (Value::Boolean(v), DatumKind::Boolean) => Datum::Boolean(v),
         (Value::Long(v), DatumKind::Int64) => Datum::Int64(v),
         (Value::Long(v), DatumKind::UInt64) => Datum::UInt64(v as u64),
+        (Value::Long(v), DatumKind::UInt32) => Datum::UInt32(v as u32),
         (Value::Int(v), DatumKind::Int8) => Datum::Int8(v as i8),
         (Value::Int(v), DatumKind::UInt8) => Datum::UInt8(v as u8),
         (Value::Int(v), DatumKind::Int16) => Datum::Int16(v as i16),
         (Value::Int(v), DatumKind::UInt16) => Datum::UInt16(v as u16),
         (Value::Int(v), DatumKind::Int32) => Datum::Int32(v),
-        (Value::Int(v), DatumKind::UInt32) => Datum::UInt32(v as u32),
         (Value::Union(inner_val), _) => avro_value_to_datum(*inner_val, datum_type)?,
         (other_value, _) => {
             return UnsupportedConversion {
