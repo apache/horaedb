@@ -150,6 +150,8 @@ pub async fn file_handles_from_ssts(
         let sst_meta = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
+            size: 0,
+            row_num: 0,
             meta: sst_meta,
         };
 

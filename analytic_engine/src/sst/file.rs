@@ -185,7 +185,7 @@ impl FileHandle {
 
     #[inline]
     pub fn row_num(&self) -> u64 {
-        self.inner.meta.meta.row_num
+        self.inner.meta.row_num
     }
 
     #[inline]
@@ -235,7 +235,7 @@ impl FileHandle {
 
     #[inline]
     pub fn size(&self) -> u64 {
-        self.inner.meta.meta.size
+        self.inner.meta.size
     }
 
     #[inline]
@@ -424,6 +424,10 @@ impl FileHandleSet {
 pub struct FileMeta {
     /// Id of the sst file
     pub id: FileId,
+    /// File size in bytes
+    pub size: u64,
+    /// Total row number
+    pub row_num: u64,
     pub meta: SstMetaData,
 }
 
@@ -508,10 +512,6 @@ pub struct SstMetaData {
     /// Max sequence number in the sst
     pub max_sequence: SequenceNumber,
     pub schema: Schema,
-    /// file size in bytes
-    pub size: u64,
-    // total row number
-    pub row_num: u64,
     pub storage_format_opts: StorageFormatOptions,
     pub bloom_filter: Option<BloomFilter>,
 }
@@ -532,8 +532,6 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             max_sequence: src.max_sequence,
             time_range: Some(src.time_range.into()),
             schema: Some(common_pb::TableSchema::from(&src.schema)),
-            size: src.size,
-            row_num: src.row_num,
             storage_format_opts: Some(src.storage_format_opts.into()),
             bloom_filter: src.bloom_filter.map(|v| v.into()),
         }
@@ -564,8 +562,6 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             time_range,
             max_sequence: src.max_sequence,
             schema,
-            size: src.size,
-            row_num: src.row_num,
             storage_format_opts,
             bloom_filter,
         })
@@ -726,9 +722,6 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
     let mut time_range_start = files[0].time_range().inclusive_start();
     let mut time_range_end = files[0].time_range().exclusive_end();
     let mut max_sequence = files[0].max_sequence();
-    // TODO(jiacai2050): what if format of different file is different?
-    // pick first now
-    let storage_format = files[0].storage_format();
 
     if files.len() > 1 {
         for file in &files[1..] {
@@ -746,11 +739,8 @@ pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
         time_range: TimeRange::new(time_range_start, time_range_end).unwrap(),
         max_sequence,
         schema,
-        // we don't know file size and total row number yet
-        size: 0,
-        row_num: 0,
-        storage_format_opts: StorageFormatOptions::new(storage_format),
-        // bloom filter is rebuilt when write sst, so use default here
+        // we don't know those info yet
+        storage_format_opts: Default::default(),
         bloom_filter: Default::default(),
     }
 }
@@ -805,8 +795,6 @@ pub mod tests {
                 time_range: self.time_range,
                 max_sequence: self.max_sequence,
                 schema: self.schema.clone(),
-                row_num: 0,
-                size: 0,
                 storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
             }
