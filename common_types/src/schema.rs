@@ -7,6 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt,
+    num::ParseIntError,
     str::FromStr,
     sync::Arc,
 };
@@ -206,9 +207,39 @@ pub enum CompatError {
 /// Meta data of the arrow schema
 #[derive(Default)]
 pub struct ArrowSchemaMeta {
-    primary_key_indexes: Vec<usize>,
+    primary_key_indexes: Indexes,
     timestamp_index: usize,
     version: u32,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Indexes {
+    pub indexes: Vec<usize>,
+}
+
+impl ToString for Indexes {
+    fn to_string(&self) -> String {
+        self.indexes
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
+impl FromStr for Indexes {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> std::result::Result<Indexes, ParseIntError> {
+        let list = s
+            .split("','")
+            .filter_map(|n| match n.parse::<usize>() {
+                Ok(num) => Some(num),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        Ok(Indexes { indexes: list })
+    }
 }
 
 impl ArrowSchemaMeta {
@@ -1077,7 +1108,7 @@ impl Builder {
 
         Ok(Schema {
             arrow_schema,
-            primary_key_indexes,
+            primary_key_indexes: primary_key_indexes.indexes,
             timestamp_index,
             tsid_index,
             column_schemas,
@@ -1102,7 +1133,7 @@ impl Builder {
     fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
         [
             (
-                ArrowSchemaMetaKey::NumKeyColumns.to_string(),
+                ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
                 self.primary_key_indexes.len().to_string(),
             ),
             (
