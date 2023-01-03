@@ -232,7 +232,7 @@ impl FromStr for Indexes {
 
     fn from_str(s: &str) -> std::result::Result<Indexes, ParseIntError> {
         let list = s
-            .split("','")
+            .split(',')
             .filter_map(|n| match n.parse::<usize>() {
                 Ok(num) => Some(num),
                 _ => None,
@@ -1134,7 +1134,11 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
-                self.primary_key_indexes.len().to_string(),
+                self.primary_key_indexes
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
