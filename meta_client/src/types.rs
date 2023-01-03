@@ -59,6 +59,7 @@ pub struct CreateTableResponse {
 pub struct DropTableRequest {
     pub schema_name: String,
     pub name: String,
+    pub partition_table_info: Option<PartitionTableInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -346,10 +347,16 @@ impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
 
 impl From<DropTableRequest> for meta_service_pb::DropTableRequest {
     fn from(req: DropTableRequest) -> Self {
+        let partition_table_info =
+            req.partition_table_info
+                .map(|v| meta_service_pb::PartitionTableInfo {
+                    sub_table_names: v.sub_table_names,
+                });
         Self {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
+            partition_table_info,
         }
     }
 }

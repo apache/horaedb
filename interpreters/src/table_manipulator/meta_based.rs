@@ -105,9 +105,19 @@ impl TableManipulator for TableManipulatorImpl {
         plan: DropTablePlan,
         _table_engine: TableEngineRef,
     ) -> Result<Output> {
+        let sub_table_names = plan.partition_info.clone().map(|v| {
+            v.get_definitions()
+                .iter()
+                .map(|def| format_sub_partition_table_name(&plan.table, &def.name))
+                .collect::<Vec<String>>()
+        });
+        let partition_table_info =
+            sub_table_names.map(|v| PartitionTableInfo { sub_table_names: v });
+
         let req = DropTableRequest {
             schema_name: ctx.default_schema().to_string(),
             name: plan.table,
+            partition_table_info,
         };
 
         let resp = self

@@ -564,16 +564,26 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
-        let table = if stmt.if_exists {
-            stmt.table_name.to_string()
-        } else {
-            self.find_table(stmt.table_name)?.name().to_string()
-        };
+        let (table_name, partition_info) =
+            if let Some(table) = self.find_option_table(stmt.table_name.clone())? {
+                let table_name = table.name().to_string();
+                let partition_info = table.partition_info();
+                (table_name, partition_info)
+            } else if stmt.if_exists {
+                let table_name = stmt.table_name.to_string();
+                (table_name, None)
+            } else {
+                return TableNotFound {
+                    name: stmt.table_name.to_string(),
+                }
+                .fail();
+            };
 
         Ok(Plan::Drop(DropTablePlan {
             engine: stmt.engine,
             if_exists: stmt.if_exists,
-            table,
+            table: table_name,
+            partition_info,
         }))
     }
 
@@ -734,6 +744,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
             .table(table_ref)
             .context(MetaProviderFindTable)?
             .with_context(|| TableNotFound { name: table_name })
+    }
+
+    fn find_option_table(&self, table_name: TableName) -> Result<Option<TableRef>> {
+        let table_name = table_name.to_string();
+        let table_ref = TableReference::from(table_name.as_str());
+
+        self.meta_provider
+            .table(table_ref)
+            .context(MetaProviderFindTable)
     }
 }
 
