@@ -871,8 +871,6 @@ mod tests {
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            size: 10,
-            row_num: 4,
             storage_format_opts,
             bloom_filter: Default::default(),
         };
@@ -1006,8 +1004,6 @@ mod tests {
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            size: 10,
-            row_num: 4,
             storage_format_opts,
             bloom_filter: Default::default(),
         };
