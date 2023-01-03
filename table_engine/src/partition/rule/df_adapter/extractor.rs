@@ -63,10 +63,39 @@ impl FilterExtractor for KeyExtractor {
                     (Expr::Column(col), Operator::Eq, Expr::Literal(val))
                     | (Expr::Literal(val), Operator::Eq, Expr::Column(col)) => {
                         let datum_opt = Datum::from_scalar_value(&val);
-                        datum_opt.map(|d| PartitionFilter::new(col.name, PartitionCondition::Eq(d)))
+                        datum_opt.map(|datum| {
+                            PartitionFilter::new(col.name, PartitionCondition::Eq(datum))
+                        })
                     }
                     _ => None,
                 },
+                Expr::InList {
+                    expr,
+                    list,
+                    negated,
+                } => {
+                    if let (Expr::Column(col), list, false) = (*expr, list, negated) {
+                        let mut datums = Vec::with_capacity(list.len());
+                        for entry in list {
+                            if let Expr::Literal(val) = entry {
+                                let datum_opt = Datum::from_scalar_value(&val);
+                                if let Some(datum) = datum_opt {
+                                    datums.push(datum)
+                                }
+                            }
+                        }
+                        if datums.is_empty() {
+                            None
+                        } else {
+                            Some(PartitionFilter::new(
+                                col.name,
+                                PartitionCondition::In(datums),
+                            ))
+                        }
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             };
 
@@ -84,7 +113,7 @@ pub type FilterExtractorRef = Box<dyn FilterExtractor>;
 #[cfg(test)]
 mod tests {
     use datafusion::scalar::ScalarValue;
-    use datafusion_expr::col;
+    use datafusion_expr::{col, Expr::Literal};
 
     use super::{FilterExtractor, *};
 
@@ -106,5 +135,41 @@ mod tests {
         let rejected_expr = col("col1").gt(Expr::Literal(ScalarValue::Int32(Some(42))));
         let partition_filter = extractor.extract(&[rejected_expr], &columns);
         assert!(partition_filter.is_empty());
+    }
+
+    #[test]
+    fn test_key_extractor_in_list_filter() {
+        let extractor = KeyExtractor;
+
+        let columns = vec!["col1".to_string()];
+        let accepted_expr = col("col1").in_list(
+            vec![
+                Literal(ScalarValue::Int32(Some(42))),
+                Literal(ScalarValue::Int32(Some(38))),
+            ],
+            false,
+        );
+        let partition_filter = extractor.extract(&[accepted_expr], &columns);
+        let expected = PartitionFilter {
+            column: "col1".to_string(),
+            condition: PartitionCondition::In(vec![Datum::Int32(42), Datum::Int32(38)]),
+        };
+        assert_eq!(partition_filter.get(0).unwrap(), &expected);
+    }
+
+    #[test]
+    fn test_key_extractor_in_list_filter_with_negated() {
+        let extractor = KeyExtractor;
+
+        let columns = vec!["col1".to_string()];
+        let accepted_expr = col("col1").in_list(
+            vec![
+                Literal(ScalarValue::Int32(Some(42))),
+                Literal(ScalarValue::Int32(Some(38))),
+            ],
+            true,
+        );
+        let partition_filter = extractor.extract(&[accepted_expr], &columns);
+        assert!(partition_filter.is_empty())
     }
 }
