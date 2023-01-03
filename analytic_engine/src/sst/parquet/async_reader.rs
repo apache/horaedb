@@ -284,7 +284,7 @@ impl<'a> Reader<'a> {
             let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, object_meta.size, ignore_bloom_filter)
+            MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };

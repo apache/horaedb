@@ -149,6 +149,8 @@ pub mod tests {
                     0,
                     FileMeta {
                         id: id as FileId,
+                        size: 0,
+                        row_num: 0,
                         meta: sst_meta,
                     },
                 );

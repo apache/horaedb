@@ -317,8 +317,6 @@ mod tests {
                 time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
                 max_sequence: 200,
                 schema: schema.clone(),
-                size: 10,
-                row_num: 2,
                 storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
             };
@@ -367,15 +365,9 @@ mod tests {
             let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader =
                     AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
-                let mut sst_meta_readback = {
-                    // FIXME: size of SstMetaData is not what this file's size, so overwrite it
-                    // https://github.com/CeresDB/ceresdb/issues/321
-                    let mut meta = reader.meta_data().await.unwrap().clone();
-                    meta.size = sst_meta.size;
-                    meta
-                };
+                let mut sst_meta_readback = reader.meta_data().await.unwrap().clone();
                 // bloom filter is built insider sst writer, so overwrite to default for
-                // comparsion
+                // comparison.
                 sst_meta_readback.bloom_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
@@ -460,8 +452,6 @@ mod tests {
                 time_range: Default::default(),
                 max_sequence: 1,
                 schema,
-                size: 0,
-                row_num: 0,
                 storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
             },
