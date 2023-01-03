@@ -692,8 +692,8 @@ impl Instance {
         }
         batch_record_senders.clear();
 
-        let ret = try_join_all(sst_handlers).await;
-        for (idx, info_and_meta) in ret.context(RuntimeJoin)?.into_iter().enumerate() {
+        let info_and_metas = try_join_all(sst_handlers).await.context(RuntimeJoin)?;
+        for (idx, info_and_meta) in info_and_metas.into_iter().enumerate() {
             let (sst_info, sst_meta) = info_and_meta?;
             files_to_level0.push(AddFile {
                 level: 0,
@@ -975,12 +975,14 @@ impl SpaceStore {
                 path: sst_file_path.to_string(),
             })?;
 
+        let sst_file_size = sst_info.file_size as u64;
+        let sst_row_num = sst_info.row_num as u64;
         table_data
             .metrics
-            .compaction_observe_output_sst_size(sst_info.file_size as u64);
+            .compaction_observe_output_sst_size(sst_file_size);
         table_data
             .metrics
-            .compaction_observe_output_sst_row_num(sst_info.row_num as u64);
+            .compaction_observe_output_sst_row_num(sst_row_num);
 
         info!(
             "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
@@ -1006,8 +1008,8 @@ impl SpaceStore {
             level: input.output_level,
             file: FileMeta {
                 id: file_id,
-                size: sst_info.file_size as u64,
-                row_num: sst_info.row_num as u64,
+                size: sst_file_size,
+                row_num: sst_row_num,
                 meta: sst_meta,
             },
         });

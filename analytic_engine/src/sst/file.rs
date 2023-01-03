@@ -424,9 +424,9 @@ impl FileHandleSet {
 pub struct FileMeta {
     /// Id of the sst file
     pub id: FileId,
-    /// file size in bytes
+    /// File size in bytes
     pub size: u64,
-    // total row number
+    /// Total row number
     pub row_num: u64,
     pub meta: SstMetaData,
 }
