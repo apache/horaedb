@@ -241,6 +241,10 @@ impl FromStr for Indexes {
     type Err = Error;
 
     fn from_str(encoded_index: &str) -> Result<Self> {
+        if encoded_index.is_empty() {
+            return Ok(Indexes(Vec::new()));
+        }
+
         let parsed_indexes = encoded_index
             .split(',')
             .map(|s| {
@@ -1712,5 +1716,16 @@ mod tests {
             .expect("should succeed to build new schema");
 
         assert_eq!(schema, new_schema);
+    }
+
+    #[test]
+    fn test_indexes_encode_and_decode() {
+        let idx = Indexes(vec![1, 2, 3]);
+        assert_eq!("1,2,3", idx.to_string());
+        assert_eq!(idx, Indexes::from_str("1,2,3").unwrap());
+
+        let idx = Indexes(vec![]);
+        assert_eq!("", idx.to_string());
+        assert_eq!(idx, Indexes::from_str("").unwrap());
     }
 }
