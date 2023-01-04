@@ -44,14 +44,15 @@ use crate::{
     sst::{
         builder::RecordBatchStream,
         factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
-        file::{self, FileMeta, SstMetaData},
+        file::{FileMeta, SstMetaData},
+        util::{self, SstMetaReader},
     },
     table::{
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
-    table_options::{StorageFormat, StorageFormatOptions},
+    table_options::StorageFormatOptions,
 };
 
 const DEFAULT_CHANNEL_SIZE: usize = 5;
@@ -126,6 +127,9 @@ pub enum Error {
     SplitRecordBatch {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("Failed to read sst meta, source:{}", source))]
+    ReadSstMeta { source: crate::sst::reader::Error },
 
     #[snafu(display("Failed to send to channel, source:{}", source))]
     ChannelSend { source: mpsc::SendError },
@@ -903,24 +907,23 @@ impl SpaceStore {
         // the acquired schema as the compacted sst meta.
         let schema = table_data.schema();
         let table_options = table_data.table_options();
-
+        let projected_schema = ProjectedSchema::no_projection(schema.clone());
+        let sst_reader_options = SstReaderOptions {
+            read_batch_row_num: table_options.num_rows_per_row_group,
+            reverse: false,
+            frequency: ReadFrequency::Once,
+            projected_schema: projected_schema.clone(),
+            predicate: Arc::new(Predicate::empty()),
+            meta_cache: self.meta_cache.clone(),
+            runtime: runtime.clone(),
+            background_read_parallelism: 1,
+            num_rows_per_row_group: table_options.num_rows_per_row_group,
+        };
         let iter_options = IterOptions::default();
         let merge_iter = {
             let space_id = table_data.space_id;
             let table_id = table_data.id;
             let sequence = table_data.last_sequence();
-            let projected_schema = ProjectedSchema::no_projection(schema.clone());
-            let sst_reader_options = SstReaderOptions {
-                read_batch_row_num: table_options.num_rows_per_row_group,
-                reverse: false,
-                frequency: ReadFrequency::Once,
-                projected_schema: projected_schema.clone(),
-                predicate: Arc::new(Predicate::empty()),
-                meta_cache: self.meta_cache.clone(),
-                runtime: runtime.clone(),
-                background_read_parallelism: 1,
-                num_rows_per_row_group: table_options.num_rows_per_row_group,
-            };
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
                 space_id,
@@ -929,7 +932,7 @@ impl SpaceStore {
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 sst_factory: &self.sst_factory,
-                sst_reader_options,
+                sst_reader_options: sst_reader_options.clone(),
                 store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -953,7 +956,20 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter, &runtime)
         };
 
-        let (merged_time_range, merged_max_seq) = file::merge_sst_meta(&input.files, schema);
+        let sst_meta = {
+            let meta_reader = SstMetaReader {
+                space_id: table_data.space_id,
+                table_id: table_data.id,
+                factory: self.sst_factory.clone(),
+                read_opts: sst_reader_options,
+                store_picker: self.store_picker.clone(),
+            };
+            let sst_metas = meta_reader
+                .fetch_metas(&input.files)
+                .await
+                .context(ReadSstMeta)?;
+            util::merge_sst_meta(&sst_metas, schema)
+        };
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
@@ -989,14 +1005,13 @@ impl SpaceStore {
             .compaction_observe_output_sst_row_num(sst_row_num);
 
         info!(
-            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, merged_time_range:{:?}, merged_max_seq:{:?}",
+            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
             table_data.name,
             table_data.id,
             request_id,
             sst_file_path.to_string(),
             input.files,
-            merged_time_range,
-            merged_max_seq,
+            sst_meta,
         );
 
         // Store updates to edit_meta.
@@ -1015,10 +1030,10 @@ impl SpaceStore {
                 id: file_id,
                 size: sst_file_size,
                 row_num: sst_row_num,
-                max_seq: merged_max_seq,
-                time_range: merged_time_range,
+                max_seq: sst_meta.max_sequence,
+                time_range: sst_meta.time_range,
                 // FIXME: this should be told by the sst factory.
-                storage_format_opts: StorageFormatOptions::new(StorageFormat::Columnar),
+                storage_format_opts: sst_meta.storage_format_opts,
             },
         });
 

@@ -40,7 +40,7 @@ pub enum Error {
 define_result!(Error);
 
 /// Meta data of a new file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddFile {
     /// The level of the file intended to add.
     pub level: u16,
@@ -150,19 +150,26 @@ pub mod tests {
     #[must_use]
     pub struct AddFileMocker {
         file_id: FileId,
-        sst_meta: SstMetaData,
+        time_range: TimeRange,
+        max_seq: SequenceNumber,
     }
 
     impl AddFileMocker {
-        pub fn new(sst_meta: SstMetaData) -> Self {
+        pub fn new(file_id: FileId) -> Self {
             Self {
-                file_id: 1,
-                sst_meta,
+                file_id,
+                time_range: TimeRange::empty(),
+                max_seq: 0,
             }
         }
 
-        pub fn file_id(mut self, file_id: FileId) -> Self {
-            self.file_id = file_id;
+        pub fn time_range(mut self, time_range: TimeRange) -> Self {
+            self.time_range = time_range;
+            self
+        }
+
+        pub fn max_seq(mut self, max_seq: SequenceNumber) -> Self {
+            self.max_seq = max_seq;
             self
         }
 
@@ -173,7 +180,9 @@ pub mod tests {
                     id: self.file_id,
                     size: 0,
                     row_num: 0,
-                    meta: self.sst_meta.clone(),
+                    time_range: self.time_range,
+                    max_seq: self.max_seq,
+                    storage_format_opts: StorageFormatOptions::default(),
                 },
             }
         }

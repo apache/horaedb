@@ -4,7 +4,6 @@
 
 use std::{
     borrow::Borrow,
-    cmp,
     collections::{BTreeMap, HashSet},
     convert::TryFrom,
     fmt,
@@ -410,7 +409,7 @@ impl FileHandleSet {
 }
 
 /// Meta of a sst file, immutable once created
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileMeta {
     /// Id of the sst file
     pub id: FileId,

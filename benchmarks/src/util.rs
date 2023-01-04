@@ -158,7 +158,9 @@ pub async fn file_handles_from_ssts(
             id: *file_id,
             size: 0,
             row_num: 0,
-            meta: sst_meta,
+            time_range: sst_meta.time_range,
+            max_seq: sst_meta.max_sequence,
+            storage_format_opts: sst_meta.storage_format_opts,
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());
