@@ -73,7 +73,7 @@ where
             .build();
 
         let factory = self.build_factory().await;
-        let interpreter = factory.create(ctx, plan);
+        let interpreter = factory.create(ctx, plan).unwrap();
         interpreter.execute().await
     }
 
@@ -143,7 +143,7 @@ where
         let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2, field4) VALUES('tagk', 1638428434000, 1), ('tagk2', 1638428434000, 10);";
 
         let plan = sql_to_plan(&self.meta_provider, insert_sql);
-        let interpreter = insert_factory.create(ctx, plan);
+        let interpreter = insert_factory.create(ctx, plan).unwrap();
         let output = interpreter.execute().await.unwrap();
         assert!(
             matches!(output, Output::AffectedRows(v) if v == 2),
@@ -163,7 +163,7 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         let plan = sql_to_plan(&self.meta_provider, select_sql);
-        let interpreter = select_factory.create(ctx, plan);
+        let interpreter = select_factory.create(ctx, plan).unwrap();
         let output = interpreter.execute().await.unwrap();
         let records = output.try_into().unwrap();
 

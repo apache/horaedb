@@ -34,6 +34,8 @@ pub struct RequestContext {
     pub tenant: String,
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
+    /// Admin flag, some operation only can be done by admin
+    pub is_admin: bool,
 }
 
 impl RequestContext {
@@ -47,6 +49,7 @@ pub struct Builder {
     catalog: String,
     tenant: String,
     runtime: Option<Arc<Runtime>>,
+    is_admin: bool,
 }
 
 impl Builder {
@@ -65,6 +68,11 @@ impl Builder {
         self
     }
 
+    pub fn is_admin(mut self, is_admin: bool) -> Self {
+        self.is_admin = is_admin;
+        self
+    }
+
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         // We use tenant as schema, so we use default schema if tenant is not specific
@@ -76,6 +84,7 @@ impl Builder {
             catalog: self.catalog,
             tenant: self.tenant,
             runtime,
+            is_admin: self.is_admin,
         })
     }
 }

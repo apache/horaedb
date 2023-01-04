@@ -287,6 +287,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                         .catalog(catalog.unwrap_or(default_catalog))
                         .tenant(tenant.unwrap_or(default_schema))
                         .runtime(runtime)
+                        .is_admin(true)
                         .build()
                         .context(CreateContext)
                         .map_err(reject::custom)

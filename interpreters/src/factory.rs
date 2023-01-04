@@ -8,10 +8,18 @@ use sql::plan::Plan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{
-    alter_table::AlterTableInterpreter, context::Context, create::CreateInterpreter,
-    describe::DescribeInterpreter, drop::DropInterpreter, exists::ExistsInterpreter,
-    insert::InsertInterpreter, interpreter::InterpreterPtr, select::SelectInterpreter,
-    show::ShowInterpreter, table_manipulator::TableManipulatorRef,
+    alter_table::AlterTableInterpreter,
+    context::Context,
+    create::CreateInterpreter,
+    describe::DescribeInterpreter,
+    drop::DropInterpreter,
+    exists::ExistsInterpreter,
+    insert::InsertInterpreter,
+    interpreter::{InterpreterPtr, Result},
+    select::SelectInterpreter,
+    show::ShowInterpreter,
+    table_manipulator::TableManipulatorRef,
+    validator::Validator,
 };
 
 /// A factory to create interpreters
@@ -37,8 +45,12 @@ impl<Q: Executor + 'static> Factory<Q> {
         }
     }
 
-    pub fn create(self, ctx: Context, plan: Plan) -> InterpreterPtr {
-        match plan {
+    pub fn create(self, ctx: Context, plan: Plan) -> Result<InterpreterPtr> {
+        let validate_ctx = ctx.validate_ctx();
+        let validator = Validator::new(validate_ctx);
+        validator.validate(&plan)?;
+
+        let interpreter = match plan {
             Plan::Query(p) => SelectInterpreter::create(ctx, p, self.query_executor),
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
             Plan::Create(p) => {
@@ -51,6 +63,8 @@ impl<Q: Executor + 'static> Factory<Q> {
             Plan::AlterTable(p) => AlterTableInterpreter::create(p),
             Plan::Show(p) => ShowInterpreter::create(ctx, p, self.catalog_manager),
             Plan::Exists(p) => ExistsInterpreter::create(p),
-        }
+        };
+
+        Ok(interpreter)
     }
 }

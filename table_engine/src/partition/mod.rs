@@ -235,6 +235,10 @@ pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -
     format!("____{}_{}", table_name, partition_name)
 }
 
+pub fn is_sub_partition_table(table_name: &str) -> bool {
+    table_name.starts_with("____")
+}
+
 /// Encoder for partition info with version control.
 pub struct PartitionInfoEncoder {
     version: u8,
