@@ -263,8 +263,7 @@ mod tests {
         row_iter::tests::build_record_batch_with_key,
         sst::{
             factory::{
-                Factory, FactoryImpl, FileReaderOnObjectStore, ReadFrequency, SstBuilderOptions,
-                SstReaderOptions, SstType,
+                Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
             },
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
@@ -359,15 +358,8 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let file_reader = FileReaderOnObjectStore::new(
-                    sst_file_path.clone(),
-                    store_picker.default_store().clone(),
-                );
-                let mut reader = AsyncParquetReader::new(
-                    &sst_file_path,
-                    Arc::new(file_reader),
-                    &sst_reader_options,
-                );
+                let mut reader =
+                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
                 let mut sst_meta_readback = {
                     // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                     // https://github.com/CeresDB/ceresdb/issues/321
