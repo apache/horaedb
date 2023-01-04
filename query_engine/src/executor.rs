@@ -2,7 +2,10 @@
 
 //! Query executor
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
@@ -13,6 +16,7 @@ use log::{debug, info};
 use snafu::{ResultExt, Snafu};
 use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
+use tokio::time;
 
 use crate::{
     config::Config,
@@ -39,6 +43,12 @@ pub enum Error {
 
     #[snafu(display("Failed to collect record batch stream, err:{}", source,))]
     Collect { source: table_engine::stream::Error },
+
+    #[snafu(display("Timeout when execute, err:{}", source,))]
+    Timeout { source: tokio::time::error::Elapsed },
+
+    #[snafu(display("Timeout for unknown reason, stage:{}", stage,))]
+    TimeoutNoReason { stage: String },
 }
 
 define_result!(Error);
@@ -109,7 +119,19 @@ impl Executor for ExecutorImpl {
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation
-        let record_batches = collect(stream).await?;
+        let left_timeout = match ctx
+            .timeout
+            .checked_sub(Instant::now().duration_since(begin_instant))
+        {
+            None => {
+                return TimeoutNoReason {
+                    stage: "After execute plan",
+                }
+                .fail()
+            }
+            Some(v) => v,
+        };
+        let record_batches = collect(left_timeout, stream).await?;
 
         info!(
             "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
@@ -136,12 +158,15 @@ async fn optimize_plan(
     );
 
     let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
-    physical_optimizer
-        .optimize(plan)
+    time::timeout(ctx.timeout, physical_optimizer.optimize(plan))
         .await
-        .context(PhysicalOptimize)
+        .context(Timeout)
+        .and_then(|ret| ret.context(PhysicalOptimize))
 }
 
-async fn collect(stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    stream.try_collect().await.context(Collect)
+async fn collect(timeout: Duration, stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
+    time::timeout(timeout, stream.try_collect())
+        .await
+        .context(Timeout)
+        .and_then(|ret| ret.context(Collect))
 }

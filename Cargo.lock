@@ -4469,6 +4469,7 @@ dependencies = [
  "snafu 0.6.10",
  "sql",
  "table_engine",
+ "tokio 1.22.0",
 ]
 
 [[package]]

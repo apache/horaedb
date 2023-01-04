@@ -2,7 +2,7 @@
 
 //! Query handler
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ceresdbproto::{
     common::ResponseHeader,
@@ -127,6 +127,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 ) -> Result<Option<Output>> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
+    let timeout = Duration::from_secs(60); // TODO: change to config
 
     info!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -198,8 +199,19 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             msg: "Query is blocked",
         })?;
 
+    let left_timeout = match timeout.checked_sub(Instant::now().duration_since(begin_instant)) {
+        None => {
+            return ErrNoCause {
+                code: StatusCode::REQUEST_TIMEOUT,
+                msg: "Query timeout",
+            }
+            .fail()
+        }
+        Some(v) => v,
+    };
+
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, left_timeout)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
         .build();
