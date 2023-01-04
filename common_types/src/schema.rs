@@ -176,6 +176,18 @@ pub enum Error {
         buf: Vec<u8>,
         source: prost::DecodeError,
     },
+
+    #[snafu(display(
+        "Failed to decode index, input:{}, err:{}\nBacktrace:\n{}",
+        input,
+        source,
+        backtrace
+    ))]
+    DecodeIndex {
+        input: String,
+        source: ParseIntError,
+        backtrace: Backtrace,
+    },
 }
 
 pub type CatalogName = String;
@@ -226,21 +238,19 @@ impl ToString for Indexes {
 }
 
 impl FromStr for Indexes {
-    type Err = ParseIntError;
+    type Err = Error;
 
-    fn from_str(s: &str) -> std::result::Result<Indexes, ParseIntError> {
-        let result: std::result::Result<Vec<_>, ParseIntError> = s
+    fn from_str(encoded_index: &str) -> Result<Self> {
+        let parsed_indexes = encoded_index
             .split(',')
-            .map(|s| s.trim().parse::<usize>())
-            .collect::<Vec<_>>()
-            .iter()
-            .cloned()
-            .collect();
+            .map(|s| {
+                s.parse::<usize>().with_context(|| DecodeIndex {
+                    input: encoded_index.to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
 
-        match result {
-            Err(e) => Err(e),
-            Ok(indexes) => Ok(Indexes(indexes)),
-        }
+        Ok(Indexes(parsed_indexes))
     }
 }
 
@@ -1136,6 +1146,7 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
+                // TODO: change primary_key_indexes to `Indexes` type
                 Indexes(self.primary_key_indexes.clone()).to_string(),
             ),
             (
