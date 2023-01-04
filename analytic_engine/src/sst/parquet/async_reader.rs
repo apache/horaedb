@@ -3,7 +3,6 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
-    fmt,
     ops::Range,
     pin::Pin,
     sync::Arc,
@@ -341,7 +340,7 @@ impl ParallelismOptions {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ReaderMetrics {
     bytes_scanned: usize,
     sst_get_range_length_histogram: LocalHistogram,

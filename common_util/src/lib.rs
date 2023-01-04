@@ -12,6 +12,7 @@ pub mod alloc_tracker;
 pub mod avro;
 pub mod codec;
 pub mod config;
+pub mod error;
 pub mod metric;
 pub mod panic;
 pub mod record_batch;
