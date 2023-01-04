@@ -219,11 +219,7 @@ struct Indexes {
 
 impl ToString for Indexes {
     fn to_string(&self) -> String {
-        self.indexes
-            .iter()
-            .map(|n| n.to_string())
-            .collect::<Vec<_>>()
-            .join(",")
+        format!("{:?}", self.indexes)
     }
 }
 
@@ -232,13 +228,24 @@ impl FromStr for Indexes {
 
     fn from_str(s: &str) -> std::result::Result<Indexes, ParseIntError> {
         let list = s
-            .split(',')
-            .filter_map(|n| match n.parse::<usize>() {
-                Ok(num) => Some(num),
-                _ => None,
-            })
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .map(|s| s.split(','))
+            .unwrap()
             .collect::<Vec<_>>();
-        Ok(Indexes { indexes: list })
+
+        let result: std::result::Result<Vec<_>, ParseIntError> = list
+            .iter()
+            .map(|s| s.trim().parse::<usize>())
+            .collect::<Vec<_>>()
+            .iter()
+            .cloned()
+            .collect();
+
+        match result {
+            Err(e) => Err(e),
+            Ok(indexes) => Ok(Indexes { indexes }),
+        }
     }
 }
 
@@ -289,7 +296,7 @@ pub enum ArrowSchemaMetaKey {
 impl ArrowSchemaMetaKey {
     fn as_str(&self) -> &str {
         match self {
-            Self::PrimaryKeyIndexes => "schema:primary_key_indexes",
+            Self::PrimaryKeyIndexes => "schema::primary_key_indexes",
             Self::TimestampIndex => "schema::timestamp_index",
             Self::Version => "schema::version",
         }
@@ -1134,11 +1141,7 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
-                self.primary_key_indexes
-                    .iter()
-                    .map(|n| n.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
+                format!("{:?}", self.primary_key_indexes),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
