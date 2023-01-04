@@ -1443,6 +1443,7 @@ mod tests {
         engine: "Analytic",
         if_exists: false,
         table: "test_table",
+        partition_info: None,
     },
 )"#,
         )
@@ -1459,6 +1460,7 @@ mod tests {
         engine: "Analytic",
         if_exists: true,
         table: "test_tablex",
+        partition_info: None,
     },
 )"#,
         )
