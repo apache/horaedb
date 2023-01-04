@@ -204,28 +204,18 @@ impl FileHandle {
     }
 
     #[inline]
-    pub fn min_key(&self) -> Bytes {
-        self.inner.meta.meta.min_key.clone()
-    }
-
-    #[inline]
-    pub fn max_key(&self) -> Bytes {
-        self.inner.meta.meta.max_key.clone()
-    }
-
-    #[inline]
     pub fn time_range(&self) -> TimeRange {
-        self.inner.meta.meta.time_range
+        self.inner.meta.time_range
     }
 
     #[inline]
     pub fn time_range_ref(&self) -> &TimeRange {
-        &self.inner.meta.meta.time_range
+        &self.inner.meta.time_range
     }
 
     #[inline]
     pub fn max_sequence(&self) -> SequenceNumber {
-        self.inner.meta.meta.max_sequence
+        self.inner.meta.max_seq
     }
 
     #[inline]
@@ -245,7 +235,7 @@ impl FileHandle {
 
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
-        self.inner.meta.meta.storage_format_opts.format
+        self.inner.meta.storage_format_opts.format
     }
 }
 
@@ -428,12 +418,17 @@ pub struct FileMeta {
     pub size: u64,
     /// Total row number
     pub row_num: u64,
-    pub meta: SstMetaData,
+    /// The time range of the file.
+    pub time_range: TimeRange,
+    /// The max sequence number of the file.
+    pub max_seq: u64,
+    /// The format of the file.
+    pub storage_format_opts: StorageFormatOptions,
 }
 
 impl FileMeta {
     pub fn intersect_with_time_range(&self, time_range: TimeRange) -> bool {
-        self.meta.time_range.intersect_with(time_range)
+        self.time_range.intersect_with(time_range)
     }
 }
 
@@ -716,33 +711,23 @@ impl FilePurger {
 /// Merge sst meta of given `files`, panic if `files` is empty.
 ///
 /// The size and row_num of the merged meta is initialized to 0.
-pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
-    let mut min_key = files[0].min_key();
-    let mut max_key = files[0].max_key();
+pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> (TimeRange, SequenceNumber) {
     let mut time_range_start = files[0].time_range().inclusive_start();
     let mut time_range_end = files[0].time_range().exclusive_end();
-    let mut max_sequence = files[0].max_sequence();
+    let mut max_seq = files[0].max_sequence();
 
     if files.len() > 1 {
         for file in &files[1..] {
-            min_key = cmp::min(file.min_key(), min_key);
-            max_key = cmp::max(file.max_key(), max_key);
             time_range_start = cmp::min(file.time_range().inclusive_start(), time_range_start);
             time_range_end = cmp::max(file.time_range().exclusive_end(), time_range_end);
-            max_sequence = cmp::max(file.max_sequence(), max_sequence);
+            max_seq = file.max_sequence().max(max_seq);
         }
     }
 
-    SstMetaData {
-        min_key,
-        max_key,
-        time_range: TimeRange::new(time_range_start, time_range_end).unwrap(),
-        max_sequence,
-        schema,
-        // we don't know those info yet
-        storage_format_opts: Default::default(),
-        bloom_filter: Default::default(),
-    }
+    (
+        TimeRange::new(time_range_start, time_range_end).unwrap(),
+        max_seq,
+    )
 }
 
 #[cfg(test)]

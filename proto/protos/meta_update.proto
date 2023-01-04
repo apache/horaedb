@@ -64,14 +64,11 @@ message AddFileMeta {
   uint32 level = 1;
   // Id of the file
   uint64 file_id = 2;
-  bytes min_key = 3;
-  bytes max_key = 4;
-  uint64 max_seq = 5;
-  common.TimeRange time_range = 6;
-  common.TableSchema schema = 7;
-  uint64 size = 8;
-  uint64 row_num = 9;
-  analytic_common.StorageFormat storage_format = 10;
+  uint64 max_seq = 3;
+  common.TimeRange time_range = 4;
+  uint64 size = 5;
+  uint64 row_num = 6;
+  analytic_common.StorageFormat storage_format = 7;
 }
 
 // Meta data of the file to delete

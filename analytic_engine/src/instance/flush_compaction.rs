@@ -51,7 +51,7 @@ use crate::{
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
-    table_options::StorageFormatOptions,
+    table_options::{StorageFormat, StorageFormatOptions},
 };
 
 const DEFAULT_CHANNEL_SIZE: usize = 5;
@@ -701,7 +701,9 @@ impl Instance {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
-                    meta: sst_meta,
+                    time_range: sst_meta.time_range,
+                    max_seq: sst_meta.max_sequence,
+                    storage_format_opts: sst_meta.storage_format_opts.clone(),
                 },
             })
         }
@@ -775,7 +777,9 @@ impl Instance {
             id: file_id,
             row_num: sst_info.row_num as u64,
             size: sst_info.file_size as u64,
-            meta: sst_meta,
+            time_range: memtable_state.time_range,
+            max_seq: memtable_state.last_sequence(),
+            storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
         }))
     }
 
@@ -949,7 +953,7 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter, &runtime)
         };
 
-        let sst_meta = file::merge_sst_meta(&input.files, schema);
+        let (merged_time_range, merged_max_seq) = file::merge_sst_meta(&input.files, schema);
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
@@ -985,13 +989,14 @@ impl SpaceStore {
             .compaction_observe_output_sst_row_num(sst_row_num);
 
         info!(
-            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
+            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, merged_time_range:{:?}, merged_max_seq:{:?}",
             table_data.name,
             table_data.id,
             request_id,
             sst_file_path.to_string(),
             input.files,
-            sst_meta
+            merged_time_range,
+            merged_max_seq,
         );
 
         // Store updates to edit_meta.
@@ -1010,7 +1015,10 @@ impl SpaceStore {
                 id: file_id,
                 size: sst_file_size,
                 row_num: sst_row_num,
-                meta: sst_meta,
+                max_seq: merged_max_seq,
+                time_range: merged_time_range,
+                // FIXME: this should be told by the sst factory.
+                storage_format_opts: StorageFormatOptions::new(StorageFormat::Columnar),
             },
         });
 
