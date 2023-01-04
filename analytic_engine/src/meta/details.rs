@@ -1188,8 +1188,9 @@ mod tests {
 
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
+            let default_version = 0;
             let partition_info = Some(PartitionInfo::Hash(HashPartitionInfo {
-                version: 0,
+                version: default_version,
                 partition_definitions: vec![PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: Some("region0".to_string()),
