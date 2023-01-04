@@ -708,28 +708,6 @@ impl FilePurger {
     }
 }
 
-/// Merge sst meta of given `files`, panic if `files` is empty.
-///
-/// The size and row_num of the merged meta is initialized to 0.
-pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> (TimeRange, SequenceNumber) {
-    let mut time_range_start = files[0].time_range().inclusive_start();
-    let mut time_range_end = files[0].time_range().exclusive_end();
-    let mut max_seq = files[0].max_sequence();
-
-    if files.len() > 1 {
-        for file in &files[1..] {
-            time_range_start = cmp::min(file.time_range().inclusive_start(), time_range_start);
-            time_range_end = cmp::max(file.time_range().exclusive_end(), time_range_end);
-            max_seq = file.max_sequence().max(max_seq);
-        }
-    }
-
-    (
-        TimeRange::new(time_range_start, time_range_end).unwrap(),
-        max_seq,
-    )
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
