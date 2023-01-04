@@ -213,13 +213,15 @@ pub struct ArrowSchemaMeta {
 }
 
 #[derive(Debug, Default, PartialEq)]
-struct Indexes {
-    pub indexes: Vec<usize>,
-}
+struct Indexes(Vec<usize>);
 
 impl ToString for Indexes {
     fn to_string(&self) -> String {
-        format!("{:?}", self.indexes)
+        self.0
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     }
 }
 
@@ -227,15 +229,8 @@ impl FromStr for Indexes {
     type Err = ParseIntError;
 
     fn from_str(s: &str) -> std::result::Result<Indexes, ParseIntError> {
-        let list = s
-            .strip_prefix('[')
-            .and_then(|s| s.strip_suffix(']'))
-            .map(|s| s.split(','))
-            .unwrap()
-            .collect::<Vec<_>>();
-
-        let result: std::result::Result<Vec<_>, ParseIntError> = list
-            .iter()
+        let result: std::result::Result<Vec<_>, ParseIntError> = s
+            .split(',')
             .map(|s| s.trim().parse::<usize>())
             .collect::<Vec<_>>()
             .iter()
@@ -244,7 +239,7 @@ impl FromStr for Indexes {
 
         match result {
             Err(e) => Err(e),
-            Ok(indexes) => Ok(Indexes { indexes }),
+            Ok(indexes) => Ok(Indexes(indexes)),
         }
     }
 }
@@ -1115,7 +1110,7 @@ impl Builder {
 
         Ok(Schema {
             arrow_schema,
-            primary_key_indexes: primary_key_indexes.indexes,
+            primary_key_indexes: primary_key_indexes.0,
             timestamp_index,
             tsid_index,
             column_schemas,
@@ -1141,7 +1136,11 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
-                format!("{:?}", self.primary_key_indexes),
+                self.primary_key_indexes
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
