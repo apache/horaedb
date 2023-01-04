@@ -774,7 +774,7 @@ mod tests {
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
     use table_engine::{
-        partition::{Definition, HashPartitionInfo, PartitionInfo},
+        partition::{HashPartitionInfo, PartitionDefinition, PartitionInfo},
         table::{SchemaId, TableId, TableSeqGenerator},
     };
     use wal::rocks_impl::manager::Builder as WalBuilder;
@@ -1189,7 +1189,8 @@ mod tests {
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
             let partition_info = Some(PartitionInfo::Hash(HashPartitionInfo {
-                definitions: vec![Definition {
+                version: 0,
+                partition_definitions: vec![PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: Some("region0".to_string()),
                 }],

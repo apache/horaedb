@@ -7,12 +7,16 @@ use datafusion_expr::Expr;
 use datafusion_proto::bytes::Serializeable;
 use snafu::ResultExt;
 use sqlparser::ast::Expr as SqlExpr;
-use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
+use table_engine::partition::{
+    HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
+};
 
 use crate::{
     ast::{HashPartition, KeyPartition, Partition},
     planner::{ParsePartitionWithCause, Result, UnsupportedPartition},
 };
+
+const DEFAULT_PARTITION_VERSION: i32 = 0;
 
 pub struct PartitionParser;
 
@@ -43,7 +47,8 @@ impl PartitionParser {
                     })?;
 
             Ok(HashPartitionInfo {
-                definitions,
+                version: DEFAULT_PARTITION_VERSION,
+                partition_definitions: definitions,
                 expr,
                 linear,
             })
@@ -65,17 +70,18 @@ impl PartitionParser {
         let definitions = make_partition_definitions(partition_num);
 
         Ok(KeyPartitionInfo {
-            definitions,
+            version: DEFAULT_PARTITION_VERSION,
+            partition_definitions: definitions,
             partition_key,
             linear,
         })
     }
 }
 
-fn make_partition_definitions(partition_num: u64) -> Vec<Definition> {
+fn make_partition_definitions(partition_num: u64) -> Vec<PartitionDefinition> {
     (0..partition_num)
         .into_iter()
-        .map(|p| Definition {
+        .map(|p| PartitionDefinition {
             name: p.to_string(),
             origin_name: None,
         })

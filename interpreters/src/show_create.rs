@@ -127,14 +127,14 @@ impl ShowCreateInterpreter {
                     res += format!(
                         " PARTITION BY LINEAR HASH({}) PARTITIONS {}",
                         expr,
-                        v.definitions.len()
+                        v.partition_definitions.len()
                     )
                     .as_str()
                 } else {
                     res += format!(
                         " PARTITION BY HASH({}) PARTITIONS {}",
                         expr,
-                        v.definitions.len()
+                        v.partition_definitions.len()
                     )
                     .as_str()
                 }
@@ -145,14 +145,14 @@ impl ShowCreateInterpreter {
                     res += format!(
                         " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
                         rendered_partition_key,
-                        v.definitions.len()
+                        v.partition_definitions.len()
                     )
                     .as_str()
                 } else {
                     res += format!(
                         " PARTITION BY KEY({}) PARTITIONS {}",
                         rendered_partition_key,
-                        v.definitions.len()
+                        v.partition_definitions.len()
                     )
                     .as_str()
                 }
@@ -186,7 +186,9 @@ mod test {
 
     use datafusion_expr::col;
     use datafusion_proto::bytes::Serializeable;
-    use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
+    use table_engine::partition::{
+        HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
+    };
 
     use super::ShowCreateInterpreter;
 
@@ -194,12 +196,13 @@ mod test {
     fn test_render_hash_partition_info() {
         let expr = col("col1").add(col("col2"));
         let partition_info = PartitionInfo::Hash(HashPartitionInfo {
-            definitions: vec![
-                Definition {
+            version: 0,
+            partition_definitions: vec![
+                PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: None,
                 },
-                Definition {
+                PartitionDefinition {
                     name: "p1".to_string(),
                     origin_name: None,
                 },
@@ -219,12 +222,13 @@ mod test {
     fn test_render_key_partition_info() {
         let partition_key_col_name = "col1";
         let partition_info = PartitionInfo::Key(KeyPartitionInfo {
-            definitions: vec![
-                Definition {
+            version: 0,
+            partition_definitions: vec![
+                PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: None,
                 },
-                Definition {
+                PartitionDefinition {
                     name: "p1".to_string(),
                     origin_name: None,
                 },
