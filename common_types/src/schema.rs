@@ -1136,11 +1136,7 @@ impl Builder {
         [
             (
                 ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
-                self.primary_key_indexes
-                    .iter()
-                    .map(|n| n.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
+                Indexes(self.primary_key_indexes.clone()).to_string(),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
