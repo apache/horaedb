@@ -48,8 +48,7 @@ impl TableManipulator for TableManipulatorImpl {
                 ),
             })?;
 
-        let partition_table_info =
-            convert_to_partition_table_info(&plan.table, &plan.partition_info);
+        let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
 
         let encoder = PartitionInfoEncoder::default();
 
@@ -101,8 +100,7 @@ impl TableManipulator for TableManipulatorImpl {
         plan: DropTablePlan,
         _table_engine: TableEngineRef,
     ) -> Result<Output> {
-        let partition_table_info =
-            convert_to_partition_table_info(&plan.table, &plan.partition_info);
+        let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
 
         let req = DropTableRequest {
             schema_name: ctx.default_schema().to_string(),
@@ -128,7 +126,7 @@ impl TableManipulator for TableManipulatorImpl {
     }
 }
 
-fn convert_to_partition_table_info(
+fn create_partition_table_info(
     table_name: &str,
     partition_info: &Option<PartitionInfo>,
 ) -> Option<PartitionTableInfo> {
