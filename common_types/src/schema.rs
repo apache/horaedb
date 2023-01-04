@@ -7,6 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
     fmt,
+    num::ParseIntError,
     str::FromStr,
     sync::Arc,
 };
@@ -175,6 +176,18 @@ pub enum Error {
         buf: Vec<u8>,
         source: prost::DecodeError,
     },
+
+    #[snafu(display(
+        "Failed to decode index, input:{}, err:{}\nBacktrace:\n{}",
+        input,
+        source,
+        backtrace
+    ))]
+    DecodeIndex {
+        input: String,
+        source: ParseIntError,
+        backtrace: Backtrace,
+    },
 }
 
 pub type CatalogName = String;
@@ -206,9 +219,43 @@ pub enum CompatError {
 /// Meta data of the arrow schema
 #[derive(Default)]
 pub struct ArrowSchemaMeta {
-    num_key_columns: usize,
+    primary_key_indexes: Indexes,
     timestamp_index: usize,
     version: u32,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Indexes(Vec<usize>);
+
+impl ToString for Indexes {
+    fn to_string(&self) -> String {
+        self.0
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
+impl FromStr for Indexes {
+    type Err = Error;
+
+    fn from_str(encoded_index: &str) -> Result<Self> {
+        if encoded_index.is_empty() {
+            return Ok(Indexes(Vec::new()));
+        }
+
+        let parsed_indexes = encoded_index
+            .split(',')
+            .map(|s| {
+                s.parse::<usize>().with_context(|| DecodeIndex {
+                    input: encoded_index.to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Indexes(parsed_indexes))
+    }
 }
 
 impl ArrowSchemaMeta {
@@ -235,9 +282,9 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
 
     fn try_from(meta: &HashMap<String, String>) -> Result<Self> {
         Ok(ArrowSchemaMeta {
-            num_key_columns: Self::parse_arrow_schema_meta_value(
+            primary_key_indexes: Self::parse_arrow_schema_meta_value(
                 meta,
-                ArrowSchemaMetaKey::NumKeyColumns,
+                ArrowSchemaMetaKey::PrimaryKeyIndexes,
             )?,
             timestamp_index: Self::parse_arrow_schema_meta_value(
                 meta,
@@ -250,7 +297,7 @@ impl TryFrom<&HashMap<String, String>> for ArrowSchemaMeta {
 
 #[derive(Copy, Clone, Debug)]
 pub enum ArrowSchemaMetaKey {
-    NumKeyColumns,
+    PrimaryKeyIndexes,
     TimestampIndex,
     Version,
 }
@@ -258,7 +305,7 @@ pub enum ArrowSchemaMetaKey {
 impl ArrowSchemaMetaKey {
     fn as_str(&self) -> &str {
         match self {
-            Self::NumKeyColumns => "schema:num_key_columns",
+            Self::PrimaryKeyIndexes => "schema::primary_key_indexes",
             Self::TimestampIndex => "schema::timestamp_index",
             Self::Version => "schema::version",
         }
@@ -1067,7 +1114,7 @@ impl Builder {
         }
 
         let ArrowSchemaMeta {
-            num_key_columns,
+            primary_key_indexes,
             timestamp_index,
             version,
         } = Self::parse_arrow_schema_meta_or_default(arrow_schema.metadata())?;
@@ -1075,13 +1122,9 @@ impl Builder {
 
         let column_schemas = Arc::new(ColumnSchemas::new(columns));
 
-        let mut primary_key_indexes = Vec::new();
-        for i in 0..num_key_columns {
-            primary_key_indexes.push(i);
-        }
         Ok(Schema {
             arrow_schema,
-            primary_key_indexes,
+            primary_key_indexes: primary_key_indexes.0,
             timestamp_index,
             tsid_index,
             column_schemas,
@@ -1106,8 +1149,9 @@ impl Builder {
     fn build_arrow_schema_meta(&self) -> HashMap<String, String> {
         [
             (
-                ArrowSchemaMetaKey::NumKeyColumns.to_string(),
-                self.primary_key_indexes.len().to_string(),
+                ArrowSchemaMetaKey::PrimaryKeyIndexes.to_string(),
+                // TODO: change primary_key_indexes to `Indexes` type
+                Indexes(self.primary_key_indexes.clone()).to_string(),
             ),
             (
                 ArrowSchemaMetaKey::TimestampIndex.to_string(),
@@ -1672,5 +1716,16 @@ mod tests {
             .expect("should succeed to build new schema");
 
         assert_eq!(schema, new_schema);
+    }
+
+    #[test]
+    fn test_indexes_encode_and_decode() {
+        let idx = Indexes(vec![1, 2, 3]);
+        assert_eq!("1,2,3", idx.to_string());
+        assert_eq!(idx, Indexes::from_str("1,2,3").unwrap());
+
+        let idx = Indexes(vec![]);
+        assert_eq!("", idx.to_string());
+        assert_eq!(idx, Indexes::from_str("").unwrap());
     }
 }
