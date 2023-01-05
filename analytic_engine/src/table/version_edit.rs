@@ -4,16 +4,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use common_types::{bytes::Bytes, schema::Schema, time::TimeRange, SequenceNumber};
+use common_types::{time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::{analytic_common as analytic_common_pb, common as common_pb, meta_update as meta_pb};
+use proto::{analytic_common as analytic_common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    sst::{
-        file::{FileMeta, SstMetaData},
-        manager::FileId,
-    },
+    sst::{file::FileMeta, manager::FileId},
     table::data::MemTableId,
     table_options::StorageFormatOptions,
 };
@@ -43,7 +40,7 @@ pub enum Error {
 define_result!(Error);
 
 /// Meta data of a new file.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddFile {
     /// The level of the file intended to add.
     pub level: u16,
@@ -57,15 +54,13 @@ impl From<AddFile> for meta_pb::AddFileMeta {
         meta_pb::AddFileMeta {
             level: v.level as u32,
             file_id: v.file.id,
-            min_key: v.file.meta.min_key.to_vec(),
-            max_key: v.file.meta.max_key.to_vec(),
-            time_range: Some(v.file.meta.time_range.into()),
-            max_seq: v.file.meta.max_sequence,
-            schema: Some(common_pb::TableSchema::from(&v.file.meta.schema)),
+            time_range: Some(v.file.time_range.into()),
+            max_seq: v.file.max_seq,
             size: v.file.size,
             row_num: v.file.row_num,
-            storage_format: analytic_common_pb::StorageFormat::from(v.file.meta.storage_format())
-                as i32,
+            storage_format: analytic_common_pb::StorageFormat::from(
+                v.file.storage_format_opts.format,
+            ) as i32,
         }
     }
 }
@@ -79,10 +74,6 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
             let time_range = src.time_range.context(TimeRangeNotFound)?;
             TimeRange::try_from(time_range).context(ConvertTimeRange)?
         };
-        let schema = {
-            let schema = src.schema.context(TableSchemaNotFound)?;
-            Schema::try_from(schema).context(ConvertTableSchema)?
-        };
 
         let target = Self {
             level: src
@@ -93,15 +84,9 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                 id: src.file_id,
                 size: src.size,
                 row_num: src.row_num,
-                meta: SstMetaData {
-                    min_key: Bytes::from(src.min_key),
-                    max_key: Bytes::from(src.max_key),
-                    time_range,
-                    max_sequence: src.max_seq,
-                    schema,
-                    storage_format_opts: StorageFormatOptions::new(storage_format.into()),
-                    bloom_filter: Default::default(),
-                },
+                time_range,
+                max_seq: src.max_seq,
+                storage_format_opts: StorageFormatOptions::new(storage_format.into()),
             },
         };
 
@@ -165,19 +150,26 @@ pub mod tests {
     #[must_use]
     pub struct AddFileMocker {
         file_id: FileId,
-        sst_meta: SstMetaData,
+        time_range: TimeRange,
+        max_seq: SequenceNumber,
     }
 
     impl AddFileMocker {
-        pub fn new(sst_meta: SstMetaData) -> Self {
+        pub fn new(file_id: FileId) -> Self {
             Self {
-                file_id: 1,
-                sst_meta,
+                file_id,
+                time_range: TimeRange::empty(),
+                max_seq: 0,
             }
         }
 
-        pub fn file_id(mut self, file_id: FileId) -> Self {
-            self.file_id = file_id;
+        pub fn time_range(mut self, time_range: TimeRange) -> Self {
+            self.time_range = time_range;
+            self
+        }
+
+        pub fn max_seq(mut self, max_seq: SequenceNumber) -> Self {
+            self.max_seq = max_seq;
             self
         }
 
@@ -188,7 +180,9 @@ pub mod tests {
                     id: self.file_id,
                     size: 0,
                     row_num: 0,
-                    meta: self.sst_meta.clone(),
+                    time_range: self.time_range,
+                    max_seq: self.max_seq,
+                    storage_format_opts: StorageFormatOptions::default(),
                 },
             }
         }
