@@ -1,15 +1,19 @@
 [package]
 name = "catalog"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
 # Workspace dependencies, in alphabetical order
 async-trait = { workspace = true }
-snafu = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
+snafu = { workspace = true }
 table_engine = { workspace = true }

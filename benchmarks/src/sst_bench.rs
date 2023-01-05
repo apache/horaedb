@@ -5,7 +5,7 @@
 use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::sst::{
-    factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
+    factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
     meta_cache::{MetaCache, MetaCacheRef},
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
@@ -38,13 +38,15 @@ impl SstBench {
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_reader_options = SstReaderOptions {
-            sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
+            frequency: ReadFrequency::Frequent,
             projected_schema,
             predicate,
             meta_cache,
             runtime: runtime.clone(),
+            background_read_parallelism: 1,
+            num_rows_per_row_group: config.read_batch_row_num,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 
@@ -74,8 +76,9 @@ impl SstBench {
         let sst_path = Path::from(self.sst_file_name.clone());
 
         let sst_factory = FactoryImpl;
+        let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut sst_reader = sst_factory
-            .new_sst_reader(&self.sst_reader_options, &sst_path, &self.store)
+            .new_sst_reader(&self.sst_reader_options, &sst_path, &store_picker)
             .unwrap();
 
         self.runtime.block_on(async {

@@ -1,12 +1,17 @@
 [package]
 name = "interpreters"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [dependencies]
+arrow = { workspace = true }
 # In alphabetical order
 async-trait = { workspace = true }
 catalog = { workspace = true }
@@ -14,15 +19,15 @@ common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
+datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
+query_engine = { workspace = true }
+regex = "1"
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
-query_engine = { workspace = true }
-arrow = { workspace = true }
-regex = "1"
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }
 catalog_impls = { workspace = true }

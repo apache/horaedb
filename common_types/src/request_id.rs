@@ -19,6 +19,11 @@ impl RequestId {
 
         Self(id)
     }
+
+    #[inline]
+    pub fn as_u64(&self) -> u64 {
+        self.0
+    }
 }
 
 impl fmt::Display for RequestId {

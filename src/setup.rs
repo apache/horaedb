@@ -6,10 +6,13 @@ use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder},
+    setup::{
+        EngineBuildContext, EngineBuildContextBuilder, EngineBuilder, KafkaWalEngineBuilder,
+        ObkvWalEngineBuilder, RocksDBWalEngineBuilder,
+    },
     WalStorageConfig,
 };
-use catalog::manager::ManagerRef;
+use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, shard_tables_cache::ShardTablesCache};
 use common_util::runtime;
@@ -19,20 +22,18 @@ use log::info;
 use logger::RuntimeLevel;
 use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
+use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
     limiter::Limiter,
-    route::{
-        cluster_based::ClusterBasedRouter,
-        rule_based::{ClusterView, RuleBasedRouter},
-    },
+    local_tables::LocalTablesRecoverer,
     schema_config_provider::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
     server::Builder,
     table_engine::{MemoryTableEngine, TableEngineProxy},
 };
-use table_engine::engine::{EngineRuntimes, TableEngineRef};
+use table_engine::engine::EngineRuntimes;
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
@@ -120,23 +121,6 @@ async fn run_server_with_runtimes<T>(
 ) where
     T: EngineBuilder,
 {
-    // Build all table engine
-    // Create memory engine
-    let memory = MemoryTableEngine;
-    // Create analytic engine
-    let analytic_config = config.analytic.clone();
-    let analytic_engine_builder = T::default();
-    let analytic = analytic_engine_builder
-        .build(analytic_config, runtimes.clone())
-        .await
-        .expect("Failed to setup analytic engine");
-
-    // Create table engine proxy
-    let engine_proxy = Arc::new(TableEngineProxy {
-        memory,
-        analytic: analytic.clone(),
-    });
-
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
     function_registry
@@ -154,15 +138,17 @@ async fn run_server_with_runtimes<T>(
         .engine_runtimes(runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
-        .table_engine(engine_proxy.clone())
         .function_registry(function_registry)
         .limiter(limiter);
 
+    let engine_builder = T::default();
     let builder = match config.deploy_mode {
         DeployMode::Standalone => {
-            build_in_standalone_mode(&config, builder, analytic, engine_proxy).await
+            build_in_standalone_mode(&config, builder, runtimes.clone(), engine_builder).await
         }
-        DeployMode::Cluster => build_in_cluster_mode(&config, builder, &runtimes).await,
+        DeployMode::Cluster => {
+            build_in_cluster_mode(&config, builder, runtimes.clone(), engine_builder).await
+        }
     };
 
     // Build and start server
@@ -176,11 +162,34 @@ async fn run_server_with_runtimes<T>(
     server.stop().await;
 }
 
-async fn build_in_cluster_mode<Q: Executor + 'static>(
+async fn build_table_engine<T: EngineBuilder>(
+    context: EngineBuildContext,
+    runtimes: Arc<EngineRuntimes>,
+    engine_builder: T,
+) -> Arc<TableEngineProxy> {
+    // Build all table engine
+    // Create memory engine
+    let memory = MemoryTableEngine;
+    // Create analytic engine
+    let analytic = engine_builder
+        .build(context, runtimes.clone())
+        .await
+        .expect("Failed to setup analytic engine");
+
+    // Create table engine proxy
+    Arc::new(TableEngineProxy {
+        memory,
+        analytic: analytic.clone(),
+    })
+}
+
+async fn build_in_cluster_mode<Q: Executor + 'static, T: EngineBuilder>(
     config: &Config,
     builder: Builder<Q>,
-    runtimes: &EngineRuntimes,
+    runtimes: Arc<EngineRuntimes>,
+    engine_builder: T,
 ) -> Builder<Q> {
+    // Build meta related modules.
     let meta_client = meta_impl::build_meta_client(
         config.cluster.meta_client.clone(),
         config.cluster.node.clone(),
@@ -199,15 +208,26 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         .unwrap();
         Arc::new(cluster_impl)
     };
+    let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
 
+    // Build table engine.
+    let build_context_builder = EngineBuildContextBuilder::default();
+    let build_context = build_context_builder
+        .config(config.analytic.clone())
+        .router(router.clone())
+        .build();
+    let engine_proxy = build_table_engine(build_context, runtimes.clone(), engine_builder).await;
+
+    // Build catalog manager.
     let catalog_manager = Arc::new(volatile::ManagerImpl::new(
         shard_tables_cache,
         meta_client.clone(),
     ));
     let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
-    let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
+
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
     builder
+        .table_engine(engine_proxy)
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .cluster(cluster)
@@ -215,21 +235,44 @@ async fn build_in_cluster_mode<Q: Executor + 'static>(
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_in_standalone_mode<Q: Executor + 'static>(
+async fn build_in_standalone_mode<Q: Executor + 'static, T: EngineBuilder>(
     config: &Config,
     builder: Builder<Q>,
-    table_engine: TableEngineRef,
-    engine_proxy: TableEngineRef,
+    runtimes: Arc<EngineRuntimes>,
+    engine_builder: T,
 ) -> Builder<Q> {
-    let table_based_manager = TableBasedManager::new(table_engine, engine_proxy.clone())
+    // Build table engine.
+    let build_context_builder = EngineBuildContextBuilder::default();
+    let build_context = build_context_builder
+        .config(config.analytic.clone())
+        .build();
+    let engine_proxy = build_table_engine(build_context, runtimes.clone(), engine_builder).await;
+
+    // Create catalog manager, use analytic engine as backend.
+    let analytic = engine_proxy.analytic.clone();
+    let mut table_based_manager = TableBasedManager::new(analytic)
         .await
         .expect("Failed to create catalog manager");
 
-    // Create catalog manager, use analytic table as backend
+    // Get collected table infos.
+    let table_infos = table_based_manager
+        .fetch_table_infos()
+        .await
+        .expect("Failed to fetch table infos for opening");
+
     let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
     let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
         catalog_manager.clone(),
     ));
+
+    // Iterate the table infos to recover.
+    let default_catalog = default_catalog(catalog_manager.clone());
+    let open_opts = OpenOptions {
+        table_engine: engine_proxy.clone(),
+    };
+
+    // Create local tables recoverer.
+    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, default_catalog, open_opts);
 
     // Create schema in default catalog.
     create_static_topology_schema(
@@ -248,10 +291,12 @@ async fn build_in_standalone_mode<Q: Executor + 'static>(
     let schema_config_provider = Arc::new(ConfigBasedProvider::new(schema_configs));
 
     builder
+        .table_engine(engine_proxy)
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .router(router)
         .schema_config_provider(schema_config_provider)
+        .local_tables_recoverer(local_tables_recoverer)
 }
 
 async fn create_static_topology_schema(
@@ -273,4 +318,12 @@ async fn create_static_topology_schema(
             &schema_shard_view.schema
         );
     }
+}
+
+fn default_catalog(catalog_manager: ManagerRef) -> CatalogRef {
+    let default_catalog_name = catalog_manager.default_catalog_name();
+    catalog_manager
+        .catalog_by_name(default_catalog_name)
+        .expect("fail to get default catalog")
+        .expect("default catalog is not found")
 }

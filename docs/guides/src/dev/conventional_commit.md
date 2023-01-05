@@ -21,7 +21,7 @@ Here we list some common `type`s and their meanings.
 - `build`: Change the build script or configuration.
 - `style`: Style change (only). No logic involved.
 - `refactor`: Refactor an existing module for performance, structure, or other reasons.
-- `test`: Enhance test coverage or harness.
+- `test`: Enhance test coverage or sqlness.
 - `chore`: None of the above.
 
 # Scope

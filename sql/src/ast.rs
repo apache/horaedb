@@ -13,7 +13,7 @@ pub enum Statement {
     Standard(Box<SqlStatement>),
     // Other extensions
     /// CREATE TABLE
-    Create(CreateTable),
+    Create(Box<CreateTable>),
     /// Drop TABLE
     Drop(DropTable),
     Describe(DescribeTable),
@@ -69,6 +69,31 @@ pub struct CreateTable {
     pub constraints: Vec<TableConstraint>,
     /// Table options in `WITH`.
     pub options: Vec<SqlOption>,
+    pub partition: Option<Partition>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Partition {
+    Hash(HashPartition),
+    Key(KeyPartition),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct HashPartition {
+    /// Decide to use which hash algorithm
+    ///
+    /// You can see: https://dev.mysql.com/doc/refman/8.0/en/partitioning-hash.html
+    pub linear: bool,
+    pub partition_num: u64,
+    pub expr: sqlparser::ast::Expr,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct KeyPartition {
+    /// Key partition description: https://dev.mysql.com/doc/refman/5.7/en/partitioning-key.html
+    pub linear: bool,
+    pub partition_num: u64,
+    pub partition_key: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

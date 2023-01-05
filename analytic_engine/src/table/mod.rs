@@ -10,6 +10,7 @@ use datafusion::logical_plan::{Column, Expr};
 use futures::TryStreamExt;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
+    partition::PartitionInfo,
     predicate::PredicateBuilder,
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
@@ -31,6 +32,7 @@ use crate::{
 
 pub mod data;
 pub mod metrics;
+pub mod partition;
 pub mod sst_util;
 pub mod version;
 pub mod version_edit;
@@ -96,6 +98,10 @@ impl Table for TableImpl {
 
     fn options(&self) -> HashMap<String, String> {
         self.table_data.table_options().to_raw_map()
+    }
+
+    fn partition_info(&self) -> Option<PartitionInfo> {
+        self.table_data.partition_info.clone()
     }
 
     fn engine_type(&self) -> &str {

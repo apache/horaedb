@@ -16,14 +16,11 @@ use log::debug;
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 
-use crate::{
-    sst::{
-        builder::{RecordBatchStream, SstBuilder, *},
-        factory::SstBuilderOptions,
-        file::{BloomFilter, SstMetaData},
-        parquet::encoding::ParquetEncoder,
-    },
-    table_options::StorageFormat,
+use crate::sst::{
+    builder::{RecordBatchStream, SstBuilder, *},
+    factory::{ObjectStorePickerRef, SstBuilderOptions},
+    file::{BloomFilter, SstMetaData},
+    parquet::encoding::ParquetEncoder,
 };
 
 /// The implementation of sst based on parquet and object storage.
@@ -32,17 +29,22 @@ pub struct ParquetSstBuilder<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    storage: &'a ObjectStoreRef,
+    store: &'a ObjectStoreRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
     compression: Compression,
 }
 
 impl<'a> ParquetSstBuilder<'a> {
-    pub fn new(path: &'a Path, storage: &'a ObjectStoreRef, options: &SstBuilderOptions) -> Self {
+    pub fn new(
+        path: &'a Path,
+        store_picker: &'a ObjectStorePickerRef,
+        options: &SstBuilderOptions,
+    ) -> Self {
+        let store = store_picker.default_store();
         Self {
             path,
-            storage,
+            store,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
         }
@@ -136,10 +138,6 @@ impl RecordBytesReader {
     }
 
     fn build_bloom_filter(&self) -> BloomFilter {
-        // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
-        if self.meta_data.storage_format_opts.format == StorageFormat::Hybrid {
-            return BloomFilter::default();
-        }
         let filters = self
             .partitioned_record_batch
             .iter()
@@ -166,8 +164,8 @@ impl RecordBytesReader {
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
         self.partition_record_batch().await?;
-        let filters = self.build_bloom_filter();
-        self.meta_data.bloom_filter = filters;
+        let filter = self.build_bloom_filter();
+        self.meta_data.bloom_filter = Some(filter);
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             self.num_rows_per_row_group,
@@ -226,12 +224,12 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
-        self.storage
+        self.store
             .put(self.path, bytes.into())
             .await
             .context(Storage)?;
 
-        let file_head = self.storage.head(self.path).await.context(Storage)?;
+        let file_head = self.store.head(self.path).await.context(Storage)?;
 
         Ok(SstInfo {
             file_size: file_head.size,
@@ -264,8 +262,10 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, SstBuilderOptions, SstReaderOptions, SstType},
-            parquet::{reader::ParquetSstReader, AsyncParquetReader},
+            factory::{
+                Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
+            },
+            parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
         table_options,
@@ -288,26 +288,6 @@ mod tests {
         num_rows_per_row_group: usize,
         expected_num_rows: Vec<i64>,
     ) {
-        parquet_write_and_then_read_back_inner(
-            runtime.clone(),
-            num_rows_per_row_group,
-            expected_num_rows.clone(),
-            false,
-        );
-        parquet_write_and_then_read_back_inner(
-            runtime,
-            num_rows_per_row_group,
-            expected_num_rows,
-            true,
-        );
-    }
-
-    fn parquet_write_and_then_read_back_inner(
-        runtime: Arc<Runtime>,
-        num_rows_per_row_group: usize,
-        expected_num_rows: Vec<i64>,
-        async_reader: bool,
-    ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
             let sst_builder_options = SstBuilderOptions {
@@ -318,7 +298,8 @@ mod tests {
 
             let dir = tempdir().unwrap();
             let root = dir.path();
-            let store = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap()) as _;
+            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 
             let schema = build_schema();
@@ -354,7 +335,7 @@ mod tests {
             }));
 
             let mut builder = sst_factory
-                .new_sst_builder(&sst_builder_options, &sst_file_path, &store)
+                .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
                 .unwrap();
             let sst_info = builder
                 .build(RequestId::next_id(), &sst_meta, record_batch_stream)
@@ -365,18 +346,20 @@ mod tests {
 
             // read sst back to test
             let sst_reader_options = SstReaderOptions {
-                sst_type: SstType::Parquet,
                 read_batch_row_num: 5,
                 reverse: false,
+                frequency: ReadFrequency::Frequent,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 runtime: runtime.clone(),
+                num_rows_per_row_group: 5,
+                background_read_parallelism: 1,
             };
 
-            let mut reader: Box<dyn SstReader + Send> = if async_reader {
+            let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader =
-                    AsyncParquetReader::new(&sst_file_path, &store, &sst_reader_options);
+                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
                 let mut sst_meta_readback = {
                     // FIXME: size of SstMetaData is not what this file's size, so overwrite it
                     // https://github.com/CeresDB/ceresdb/issues/321
@@ -387,28 +370,6 @@ mod tests {
                 // bloom filter is built insider sst writer, so overwrite to default for
                 // comparsion
                 sst_meta_readback.bloom_filter = Default::default();
-                assert_eq!(&sst_meta_readback, &sst_meta);
-                assert_eq!(
-                    expected_num_rows,
-                    reader
-                        .row_groups()
-                        .await
-                        .iter()
-                        .map(|g| g.num_rows())
-                        .collect::<Vec<_>>()
-                );
-
-                Box::new(reader)
-            } else {
-                let mut reader = ParquetSstReader::new(&sst_file_path, &store, &sst_reader_options);
-                let sst_meta_readback = {
-                    let mut meta = reader.meta_data().await.unwrap().clone();
-                    // bloom filter is built insider sst writer, so overwrite to default for
-                    // comparsion
-                    meta.bloom_filter = Default::default();
-                    meta
-                };
-
                 assert_eq!(&sst_meta_readback, &sst_meta);
                 assert_eq!(
                     expected_num_rows,

@@ -18,14 +18,14 @@ use serde::{
     ser::{SerializeMap, SerializeSeq},
     Serialize,
 };
-use snafu::ensure;
+use snafu::{ensure, ResultExt};
 use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, Error::QueryBlock, InterpreterExec, ParseSql, TooMuchStmt},
+    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, TooMuchStmt},
     prelude::*,
 };
 
@@ -157,11 +157,9 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
             query: &request.query,
         })?;
 
-    if instance.limiter.should_limit(&plan) {
-        return Err(QueryBlock {
-            query: request.query.to_owned(),
-        });
-    }
+    instance.limiter.try_limit(&plan).context(QueryBlock {
+        query: &request.query,
+    })?;
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id)
@@ -210,32 +208,33 @@ fn convert_records(records: RecordBatchVec) -> ArrowResult<Response> {
         }));
     }
 
-    let record_batch = &records[0];
-    let num_cols = record_batch.num_columns();
-    let num_rows = record_batch.num_rows();
-    let schema = record_batch.schema();
+    let mut column_names = vec![];
+    let mut column_data = vec![];
 
-    let mut column_names = Vec::with_capacity(num_cols);
-    let mut column_data = Vec::with_capacity(num_rows);
+    for record_batch in records {
+        let num_cols = record_batch.num_columns();
+        let num_rows = record_batch.num_rows();
+        let schema = record_batch.schema();
 
-    for col_idx in 0..num_cols {
-        let column_schema = schema.column(col_idx).clone();
-        column_names.push(ResponseColumn {
-            name: column_schema.name,
-            data_type: column_schema.data_type,
-        });
-    }
-
-    for row_idx in 0..num_rows {
-        let mut row_data = Vec::with_capacity(num_cols);
         for col_idx in 0..num_cols {
-            let column = record_batch.column(col_idx);
-            let column = column.datum(row_idx);
-
-            row_data.push(column);
+            let column_schema = schema.column(col_idx).clone();
+            column_names.push(ResponseColumn {
+                name: column_schema.name,
+                data_type: column_schema.data_type,
+            });
         }
 
-        column_data.push(row_data);
+        for row_idx in 0..num_rows {
+            let mut row_data = Vec::with_capacity(num_cols);
+            for col_idx in 0..num_cols {
+                let column = record_batch.column(col_idx);
+                let column = column.datum(row_idx);
+
+                row_data.push(column);
+            }
+
+            column_data.push(row_data);
+        }
     }
 
     Ok(Response::Rows(ResponseRows {

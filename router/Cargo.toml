@@ -1,0 +1,24 @@
+[package]
+name = "router"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+ceresdbproto = { workspace = true }
+cluster = { workspace = true }
+common_types = { workspace = true }
+common_util = { workspace = true }
+log = { workspace = true }
+meta_client = { workspace = true }
+serde = { workspace = true }
+serde_derive  = { workspace = true }
+snafu = { workspace = true }
+twox-hash = "1.6"

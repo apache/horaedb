@@ -5,92 +5,144 @@
 //! 2. Builtin Partition to reduce lock contention
 
 use std::{
-    collections::hash_map::DefaultHasher,
-    fmt::Display,
+    collections::hash_map::{DefaultHasher, RandomState},
+    fmt::{self, Display},
     hash::{Hash, Hasher},
+    num::NonZeroUsize,
     ops::Range,
     sync::Arc,
 };
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use clru::{CLruCache, CLruCacheConfig, WeightScale};
 use futures::stream::BoxStream;
-use lru_weighted_cache::{LruWeightedCache, Weighted};
+use snafu::{OptionExt, Snafu};
 use tokio::{io::AsyncWrite, sync::Mutex};
 use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
 
-struct CachedBytes(Bytes);
+use crate::ObjectStoreRef;
 
-impl Weighted for CachedBytes {
-    fn weight(&self) -> usize {
-        self.0.len()
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("mem cache cap must large than 0",))]
+    InvalidCapacity,
+}
+
+struct CustomScale;
+
+impl WeightScale<String, Bytes> for CustomScale {
+    fn weight(&self, _key: &String, value: &Bytes) -> usize {
+        value.len()
     }
 }
 
-#[derive(Debug)]
 struct Partition {
-    inner: Mutex<LruWeightedCache<String, CachedBytes>>,
+    inner: Mutex<CLruCache<String, Bytes, RandomState, CustomScale>>,
 }
 
 impl Partition {
-    fn new(mem_cap: usize) -> Self {
+    fn new(mem_cap: NonZeroUsize) -> Self {
+        let cache = CLruCache::with_config(CLruCacheConfig::new(mem_cap).with_scale(CustomScale));
+
         Self {
-            inner: Mutex::new(LruWeightedCache::new(1, mem_cap).expect("invalid params")),
+            inner: Mutex::new(cache),
         }
     }
 }
+
 impl Partition {
-    // TODO(chenxiang): also support `&str`, this need to changes to
-    // lru_weighted_cache
-    async fn get(&self, key: &String) -> Option<Bytes> {
+    async fn get(&self, key: &str) -> Option<Bytes> {
         let mut guard = self.inner.lock().await;
-        guard.get(key).map(|v| v.0.clone())
+        guard.get(key).cloned()
+    }
+
+    async fn peek(&self, key: &str) -> Option<Bytes> {
+        // FIXME: actually, here write lock is not necessary.
+        let guard = self.inner.lock().await;
+        guard.peek(key).cloned()
     }
 
     async fn insert(&self, key: String, value: Bytes) {
         let mut guard = self.inner.lock().await;
         // don't care error now.
-        _ = guard.insert(key, CachedBytes(value));
+        _ = guard.put_with_weight(key, value);
+    }
+
+    #[cfg(test)]
+    async fn keys(&self) -> Vec<String> {
+        let guard = self.inner.lock().await;
+        guard
+            .iter()
+            .map(|(key, _)| key)
+            .cloned()
+            .collect::<Vec<_>>()
     }
 }
 
-#[derive(Debug)]
-struct MemCache {
+pub struct MemCache {
     /// Max memory this store can use
-    mem_cap: usize,
+    mem_cap: NonZeroUsize,
     partitions: Vec<Arc<Partition>>,
     partition_mask: usize,
 }
 
+pub type MemCacheRef = Arc<MemCache>;
+
 impl MemCache {
-    fn new(partition_bits: usize, mem_cap: usize) -> Self {
+    pub fn try_new(
+        partition_bits: usize,
+        mem_cap: NonZeroUsize,
+    ) -> std::result::Result<Self, Error> {
         let partition_num = 1 << partition_bits;
-        let cap_per_part = mem_cap / partition_num;
+        let cap_per_part = mem_cap
+            .checked_mul(NonZeroUsize::new(partition_num).unwrap())
+            .context(InvalidCapacity)?;
         let partitions = (0..partition_num)
             .map(|_| Arc::new(Partition::new(cap_per_part)))
             .collect::<Vec<_>>();
 
-        Self {
+        Ok(Self {
             mem_cap,
             partitions,
             partition_mask: partition_num - 1,
-        }
+        })
     }
 
-    fn locate_partition(&self, key: &String) -> Arc<Partition> {
+    fn locate_partition(&self, key: &str) -> Arc<Partition> {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         self.partitions[hasher.finish() as usize & self.partition_mask].clone()
     }
 
-    async fn get(&self, key: &String) -> Option<Bytes> {
+    async fn get(&self, key: &str) -> Option<Bytes> {
         let partition = self.locate_partition(key);
         partition.get(key).await
+    }
+
+    async fn peek(&self, key: &str) -> Option<Bytes> {
+        let partition = self.locate_partition(key);
+        partition.peek(key).await
     }
 
     async fn insert(&self, key: String, value: Bytes) {
         let partition = self.locate_partition(&key);
         partition.insert(key, value).await;
+    }
+
+    #[cfg(test)]
+    async fn to_string(&self) -> String {
+        futures::future::join_all(
+            self.partitions
+                .iter()
+                .map(|part| async { part.keys().await.join(",") }),
+        )
+        .await
+        .into_iter()
+        .enumerate()
+        .map(|(part_no, keys)| format!("{}: [{}]", part_no, keys))
+        .collect::<Vec<_>>()
+        .join("\n")
     }
 }
 
@@ -99,40 +151,83 @@ impl Display for MemCache {
         f.debug_struct("MemCache")
             .field("mem_cap", &self.mem_cap)
             .field("mask", &self.partition_mask)
-            .field("partitons", &self.partitions)
+            .field("partitions", &self.partitions.len())
             .finish()
     }
 }
 
-#[derive(Debug)]
+/// Assembled with [`MemCache`], the [`MemCacheStore`] can cache the loaded data
+/// from the `underlying_store` to avoid unnecessary data loading.
+///
+/// With the `read_only_cache` field, caller can control whether to do caching
+/// for the loaded data. BTW, all the accesses are forced to the order:
+/// `cache` -> `underlying_store`.
 pub struct MemCacheStore {
-    cache: MemCache,
-    underlying_store: Arc<dyn ObjectStore>,
+    cache: MemCacheRef,
+    underlying_store: ObjectStoreRef,
+    readonly_cache: bool,
 }
 
 impl MemCacheStore {
-    // Note: mem_cap must be larger than 0
-    pub fn new(
-        partition_bits: usize,
-        mem_cap: usize,
-        underlying_store: Arc<dyn ObjectStore>,
-    ) -> Self {
-        assert!(mem_cap > 0);
-
+    /// Create a default [`MemCacheStore`].
+    pub fn new(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
         Self {
-            cache: MemCache::new(partition_bits, mem_cap),
+            cache,
             underlying_store,
+            readonly_cache: false,
+        }
+    }
+
+    /// Create a [`MemCacheStore`] with a readonly cache.
+    pub fn new_with_readonly_cache(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+        Self {
+            cache,
+            underlying_store,
+            readonly_cache: true,
         }
     }
 
     fn cache_key(location: &Path, range: &Range<usize>) -> String {
         format!("{}-{}-{}", location, range.start, range.end)
     }
+
+    async fn get_range_with_rw_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        // TODO(chenxiang): What if there are some overlapping range in cache?
+        // A request with range [5, 10) can also use [0, 20) cache
+        let cache_key = Self::cache_key(location, &range);
+        if let Some(bytes) = self.cache.get(&cache_key).await {
+            return Ok(bytes);
+        }
+
+        // TODO(chenxiang): What if two threads reach here? It's better to
+        // pend one thread, and only let one to fetch data from underlying store.
+        let bytes = self.underlying_store.get_range(location, range).await?;
+        self.cache.insert(cache_key, bytes.clone()).await;
+
+        Ok(bytes)
+    }
+
+    async fn get_range_with_ro_cache(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
+        let cache_key = Self::cache_key(location, &range);
+        if let Some(bytes) = self.cache.peek(&cache_key).await {
+            return Ok(bytes);
+        }
+
+        // TODO(chenxiang): What if two threads reach here? It's better to
+        // pend one thread, and only let one to fetch data from underlying store.
+        self.underlying_store.get_range(location, range).await
+    }
 }
 
 impl Display for MemCacheStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.cache.fmt(f)
+    }
+}
+
+impl fmt::Debug for MemCacheStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MemCacheStore").finish()
     }
 }
 
@@ -163,21 +258,11 @@ impl ObjectStore for MemCacheStore {
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
-        // TODO(chenxiang): What if there are some overlapping range in cache?
-        // A request with range [5, 10) can also use [0, 20) cache
-        let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.get(&cache_key).await {
-            return Ok(bytes);
+        if self.readonly_cache {
+            self.get_range_with_ro_cache(location, range).await
+        } else {
+            self.get_range_with_rw_cache(location, range).await
         }
-
-        // TODO(chenxiang): What if two threads reach here? It's better to
-        // pend one thread, and only let one to fetch data from underlying store.
-        let bytes = self.underlying_store.get_range(location, range).await;
-        if let Ok(bytes) = &bytes {
-            self.cache.insert(cache_key, bytes.clone()).await;
-        }
-
-        bytes
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
@@ -216,7 +301,9 @@ mod test {
         let local_path = tempdir().unwrap();
         let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
 
-        MemCacheStore::new(bits, mem_cap, local_store)
+        let mem_cache =
+            Arc::new(MemCache::try_new(bits, NonZeroUsize::new(mem_cap).unwrap()).unwrap());
+        MemCacheStore::new(mem_cache, local_store)
     }
 
     #[tokio::test]
@@ -239,10 +326,6 @@ mod test {
             .get(&MemCacheStore::cache_key(&location, &range0_5))
             .await
             .is_some());
-        assert_eq!(
-            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 5 } } }] }"#,
-            format!("{}", store)
-        );
 
         // get bytes from [5, 10), insert to cache
         let range5_10 = 5..10;
@@ -257,18 +340,19 @@ mod test {
             .get(&MemCacheStore::cache_key(&location, &range5_10))
             .await
             .is_some());
-        assert_eq!(
-            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 10 } } }] }"#,
-            format!("{}", store)
-        );
 
-        // get bytes from [5, 10), insert to cache
+        // get bytes from [10, 15), insert to cache
         // cache is full, evict [0, 5)
-        let range10_15 = 5..10;
+        let range10_15 = 10..15;
         _ = store
             .get_range(&location, range10_15.clone())
             .await
             .unwrap();
+        assert!(store
+            .cache
+            .get(&MemCacheStore::cache_key(&location, &range0_5))
+            .await
+            .is_none());
         assert!(store
             .cache
             .get(&MemCacheStore::cache_key(&location, &range5_10))
@@ -279,20 +363,6 @@ mod test {
             .get(&MemCacheStore::cache_key(&location, &range10_15))
             .await
             .is_some());
-        assert_eq!(
-            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 10 } } }] }"#,
-            format!("{}", store)
-        );
-
-        let range10_13 = 10..13;
-        _ = store
-            .get_range(&location, range10_13.clone())
-            .await
-            .unwrap();
-        assert_eq!(
-            r#"MemCache { mem_cap: 13, mask: 0, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 13, max_total_weight: 13, current_weight: 13 } } }] }"#,
-            format!("{}", store)
-        );
     }
 
     #[tokio::test]
@@ -314,8 +384,11 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            r#"MemCache { mem_cap: 100, mask: 3, partitons: [Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 0 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 5 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 0 } } }, Partition { inner: Mutex { data: LruWeightedCache { max_item_weight: 25, max_total_weight: 25, current_weight: 5 } } }] }"#,
-            format!("{}", store)
+            r#"0: []
+1: [partition.sst-100-105]
+2: []
+3: [partition.sst-0-5]"#,
+            store.cache.as_ref().to_string().await
         );
 
         assert!(store

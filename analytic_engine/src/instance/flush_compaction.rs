@@ -18,7 +18,7 @@ use futures::{
     future::try_join_all,
     stream, SinkExt, TryStreamExt,
 };
-use log::{error, info};
+use log::{debug, error, info};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
@@ -43,7 +43,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{SstBuilderOptions, SstReaderOptions, SstType},
+        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
         file::{self, FileMeta, SstMetaData},
     },
     table::{
@@ -57,6 +57,7 @@ use crate::{
 const DEFAULT_CHANNEL_SIZE: usize = 5;
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
     StoreVersionEdit {
@@ -132,7 +133,10 @@ pub enum Error {
     #[snafu(display("Runtime join error, source:{}", source))]
     RuntimeJoin { source: common_util::runtime::Error },
 
-    #[snafu(display("Unknown flush policy"))]
+    #[snafu(display("Other failure, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
+    Other { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Unknown flush policy.\nBacktrace:\n{:?}", backtrace))]
     UnknownPolicy { backtrace: Backtrace },
 }
 
@@ -341,7 +345,7 @@ impl Instance {
 
         let compact_req = TableCompactionRequest::no_waiter(
             table_data.clone(),
-            worker_local.compaction_notifier(),
+            Some(worker_local.compaction_notifier()),
         );
         let instance = self.clone();
 
@@ -640,7 +644,7 @@ impl Instance {
                     .new_sst_builder(
                         &sst_builder_options_clone,
                         &sst_file_path,
-                        store.store_ref(),
+                        store.store_picker(),
                     )
                     .context(InvalidSstType { sst_type })?;
 
@@ -750,7 +754,7 @@ impl Instance {
             .new_sst_builder(
                 &sst_builder_options,
                 &sst_file_path,
-                self.space_store.store_ref(),
+                self.space_store.store_picker(),
             )
             .context(InvalidSstType {
                 sst_type: table_data.sst_type,
@@ -796,6 +800,10 @@ impl SpaceStore {
         request_id: RequestId,
         task: &CompactionTask,
     ) -> Result<()> {
+        debug!(
+            "Begin compact table, table_name:{}, id:{}, task:{:?}",
+            table_data.name, table_data.id, task
+        );
         let mut edit_meta = VersionEditMeta {
             space_id: table_data.space_id,
             table_id: table_data.id,
@@ -813,6 +821,14 @@ impl SpaceStore {
         for files in &task.expired {
             self.delete_expired_files(table_data, request_id, files, &mut edit_meta);
         }
+
+        info!(
+            "try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
+            table_data.name,
+            table_data.id,
+            task.estimated_total_input_file_size(),
+            task.num_input_files(),
+        );
 
         for input in &task.compaction_inputs {
             self.compact_input_files(
@@ -849,6 +865,10 @@ impl SpaceStore {
         input: &CompactionInputFiles,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
+        debug!(
+            "Compact input files, table_name:{}, id:{}, input::{:?}, edit_meta:{:?}",
+            table_data.name, table_data.id, input, edit_meta
+        );
         if input.files.is_empty() {
             return Ok(());
         }
@@ -891,13 +911,15 @@ impl SpaceStore {
             let sequence = table_data.last_sequence();
             let projected_schema = ProjectedSchema::no_projection(schema.clone());
             let sst_reader_options = SstReaderOptions {
-                sst_type: table_data.sst_type,
                 read_batch_row_num: table_options.num_rows_per_row_group,
                 reverse: false,
+                frequency: ReadFrequency::Once,
                 projected_schema: projected_schema.clone(),
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),
                 runtime: runtime.clone(),
+                background_read_parallelism: 1,
+                num_rows_per_row_group: table_options.num_rows_per_row_group,
             };
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
@@ -908,7 +930,7 @@ impl SpaceStore {
                 predicate: Arc::new(Predicate::empty()),
                 sst_factory: &self.sst_factory,
                 sst_reader_options,
-                store: self.store_ref(),
+                store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
                 reverse: false,
@@ -944,7 +966,7 @@ impl SpaceStore {
         };
         let mut sst_builder = self
             .sst_factory
-            .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_ref())
+            .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
             .context(InvalidSstType {
                 sst_type: table_data.sst_type,
             })?;

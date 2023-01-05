@@ -65,6 +65,10 @@ jobs:
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
       - name: Backup Lock File
         run: |
           cp ${LOCK_FILE} ${LOCK_FILE}.bak
@@ -72,11 +76,13 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
+          cargo install cargo-sort
       - name: Run Style Check
         run: |
           make check-license
           make clippy
           make fmt
+          make check-cargo-toml
       - name: Run Unit Tests
         run: |
           make test-ut
@@ -84,9 +90,9 @@ jobs:
       - name: Check Lock File
         run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-      - name: Run Harness
+      - name: Run Sqlness
+        working-directory: integration_tests
         run: |
-          cd tests
           make run
         env:
           RUST_BACKTRACE: "1"

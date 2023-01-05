@@ -85,18 +85,19 @@ where
             };
             Error::ErrWithCause {
                 code,
-                msg: "failed to create plan".to_string(),
+                msg: "Failed to create plan".to_string(),
                 source: Box::new(e),
             }
         })?;
 
-    if ctx.instance.limiter.should_limit(&plan) {
-        ErrNoCause {
-            code: StatusCode::TOO_MANY_REQUESTS,
-            msg: "query limited by reject list",
-        }
-        .fail()?;
-    }
+    ctx.instance
+        .limiter
+        .try_limit(&plan)
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::FORBIDDEN,
+            msg: "Query is blocked",
+        })?;
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id)
@@ -117,7 +118,7 @@ where
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
+            msg: "Failed to execute interpreter",
         })?;
 
     let resp = convert_output(output, column_name)

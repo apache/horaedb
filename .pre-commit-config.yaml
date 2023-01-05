@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.3.1
+    hooks:
+      - id: insert-license
+        files: \.rs$
+        args:
+          - --license-filepath
+          - scripts/license-header.txt
+          - --comment-style
+          - //
+  - repo: local
+    hooks:
+      - id: cargo-sort
+        name: Check Cargo.toml is sorted
+        entry: cargo-sort
+        language: rust
+        types: [file, toml]
+        files: Cargo\.toml

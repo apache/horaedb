@@ -22,10 +22,11 @@ use common_types::{
 };
 use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
-use snafu::{Backtrace, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
     engine::TableState,
+    partition::PartitionInfo,
     predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
@@ -76,6 +77,9 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    #[snafu(display("Unexpected error, msg:{}", msg))]
+    UnexpectedWithMsg { msg: String },
+
     #[snafu(display("Invalid arguments, err:{}", source))]
     InvalidArguments {
         table: String,
@@ -121,6 +125,41 @@ pub enum Error {
     #[snafu(display("Failed to compact table, table:{}, err:{}", table, source))]
     Compact {
         table: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to convert read request to pb, msg:{}, err:{}", msg, source))]
+    ReadRequestToPb {
+        msg: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Empty read options.\nBacktrace:\n{}", backtrace))]
+    EmptyReadOptions { backtrace: Backtrace },
+
+    #[snafu(display("Empty projected schema.\nBacktrace:\n{}", backtrace))]
+    EmptyProjectedSchema { backtrace: Backtrace },
+
+    #[snafu(display("Empty predicate.\nBacktrace:\n{}", backtrace))]
+    EmptyPredicate { backtrace: Backtrace },
+
+    #[snafu(display("Failed to covert projected schema, err:{}", source))]
+    ConvertProjectedSchema {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to covert predicate, err:{}", source))]
+    ConvertPredicate {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to create partition rule, err:{}", source))]
+    CreatePartitionRule {
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display("Failed to locate partitions, err:{}", source))]
+    LocatePartitions {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 }
@@ -273,7 +312,7 @@ pub struct WriteRequest {
     pub row_group: RowGroup,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ReadOptions {
     pub batch_size: usize,
     /// Suggested read parallelism, the actual returned stream should equal to
@@ -286,6 +325,24 @@ impl Default for ReadOptions {
         Self {
             batch_size: 10000,
             read_parallelism: DEFAULT_READ_PARALLELISM,
+        }
+    }
+}
+
+impl From<proto::remote_engine::ReadOptions> for ReadOptions {
+    fn from(pb: proto::remote_engine::ReadOptions) -> Self {
+        Self {
+            batch_size: pb.batch_size as usize,
+            read_parallelism: pb.read_parallelism as usize,
+        }
+    }
+}
+
+impl From<ReadOptions> for proto::remote_engine::ReadOptions {
+    fn from(opts: ReadOptions) -> Self {
+        Self {
+            batch_size: opts.batch_size as u64,
+            read_parallelism: opts.read_parallelism as u64,
         }
     }
 }
@@ -304,7 +361,7 @@ pub struct GetRequest {
 #[derive(Copy, Clone, Debug)]
 pub enum ReadOrder {
     /// No order requirements from the read request.
-    None,
+    None = 0,
     Asc,
     Desc,
 }
@@ -332,9 +389,14 @@ impl ReadOrder {
     pub fn is_in_desc_order(&self) -> bool {
         matches!(self, ReadOrder::Desc)
     }
+
+    #[inline]
+    pub fn into_i32(self) -> i32 {
+        self as i32
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
     pub request_id: RequestId,
@@ -347,6 +409,67 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Read the rows in reverse order.
     pub order: ReadOrder,
+}
+
+impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
+    type Error = Error;
+
+    fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
+        let predicate_pb = request
+            .predicate
+            .as_ref()
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ReadRequestToPb {
+                msg: format!(
+                    "convert predicate failed, predicate:{:?}",
+                    request.predicate
+                ),
+            })?;
+
+        Ok(Self {
+            request_id: request.request_id.as_u64(),
+            opts: Some(request.opts.into()),
+            projected_schema: Some(request.projected_schema.into()),
+            predicate: Some(predicate_pb),
+            order: request.order.into_i32(),
+        })
+    }
+}
+
+impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
+    type Error = Error;
+
+    fn try_from(pb: proto::remote_engine::TableReadRequest) -> Result<Self> {
+        let opts = pb.opts.context(EmptyReadOptions)?.into();
+        let projected_schema = pb
+            .projected_schema
+            .context(EmptyProjectedSchema)?
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertProjectedSchema)?;
+        let predicate = Arc::new(
+            pb.predicate
+                .context(EmptyPredicate)?
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertPredicate)?,
+        );
+        let order = if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {
+            ReadOrder::Asc
+        } else if pb.order == proto::remote_engine::ReadOrder::Desc as i32 {
+            ReadOrder::Desc
+        } else {
+            ReadOrder::None
+        };
+        Ok(Self {
+            request_id: RequestId::next_id(),
+            opts,
+            projected_schema,
+            predicate,
+            order,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -392,6 +515,10 @@ pub trait Table: std::fmt::Debug {
 
     /// Options of this table.
     fn options(&self) -> HashMap<String, String>;
+
+    fn partition_info(&self) -> Option<PartitionInfo> {
+        None
+    }
 
     /// Engine type of this table.
     fn engine_type(&self) -> &str;

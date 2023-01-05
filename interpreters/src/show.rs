@@ -53,7 +53,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to fetch tables, err:{}", source))]
-    FetchTables { source: catalog::schema::Error },
+    FetchTables { source: Box<catalog::schema::Error> },
 
     #[snafu(display("Failed to fetch databases, err:{}", source))]
     FetchDatabases { source: catalog::Error },
@@ -112,6 +112,7 @@ impl ShowInterpreter {
                 let pattern_re = to_pattern_re(&pattern)?;
                 schema
                     .all_tables()
+                    .map_err(Box::new)
                     .context(FetchTables)?
                     .iter()
                     .map(|t| t.name().to_string())
@@ -120,6 +121,7 @@ impl ShowInterpreter {
             }
             None => schema
                 .all_tables()
+                .map_err(Box::new)
                 .context(FetchTables)?
                 .iter()
                 .map(|t| t.name().to_string())

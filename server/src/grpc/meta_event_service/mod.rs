@@ -28,6 +28,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{CloseTableRequest, TableEngineRef, TableState},
+    partition::PartitionInfoEncoder,
     table::{SchemaId, TableId},
     ANALYTIC_ENGINE_TYPE,
 };
@@ -333,6 +334,20 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
+    let partition_info = match request.encoded_partition_info.is_empty() {
+        true => None,
+        false => PartitionInfoEncoder::default()
+            .decode(&request.encoded_partition_info)
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BadRequest,
+                msg: format!(
+                    "fail to decode encoded partition info bytes, raw_bytes:{:?}",
+                    request.encoded_partition_info
+                ),
+            })?,
+    };
+
     let create_table_request = CreateTableRequest {
         catalog_name: ctx.catalog_manager.default_catalog_name().to_string(),
         schema_name: table.schema_name,
@@ -344,6 +359,7 @@ async fn handle_create_table_on_shard(
         state: TableState::Stable,
         shard_id: shard_info.id,
         cluster_version: topology.cluster_topology_version,
+        partition_info,
     };
     let create_opts = CreateOptions {
         table_engine: ctx.table_engine,

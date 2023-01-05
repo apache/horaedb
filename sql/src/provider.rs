@@ -40,7 +40,7 @@ pub enum Error {
     #[snafu(display("Failed to find table, name:{}, err:{}", name, source))]
     FindTable {
         name: String,
-        source: catalog::schema::Error,
+        source: Box<catalog::schema::Error>,
     },
 
     #[snafu(display("Failed to find udf, err:{}", source))]
@@ -122,9 +122,12 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
             }
         };
 
-        schema.table_by_name(resolved.table).context(FindTable {
-            name: resolved.table,
-        })
+        schema
+            .table_by_name(resolved.table)
+            .map_err(Box::new)
+            .context(FindTable {
+                name: resolved.table,
+            })
     }
 
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>> {

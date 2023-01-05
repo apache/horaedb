@@ -34,7 +34,7 @@ use crate::{
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceAndTable,
-    sst::factory::SstReaderOptions,
+    sst::factory::{ReadFrequency, SstReaderOptions},
     table::{
         data::TableData,
         version::{ReadView, TableVersion},
@@ -94,7 +94,7 @@ impl Instance {
         // Collect metrics.
         table_data.metrics.on_read_request_begin();
 
-        let iter_options = IterOptions::new(self.scan_batch_size);
+        let iter_options = self.iter_options.clone();
         let table_options = table_data.table_options();
 
         if need_merge_sort_streams(&table_data.table_options(), &request) {
@@ -104,7 +104,7 @@ impl Instance {
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, &table_options)
+                .build_chain_iters(table_data, &request, iter_options, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -153,13 +153,15 @@ impl Instance {
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_reader_options = SstReaderOptions {
-            sst_type: table_data.sst_type,
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
+            frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
+            num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
 
         let time_range = request.predicate.time_range();
@@ -177,7 +179,7 @@ impl Instance {
                 predicate: request.predicate.clone(),
                 sst_factory: &self.space_store.sst_factory,
                 sst_reader_options: sst_reader_options.clone(),
-                store: self.space_store.store_ref(),
+                store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
                 reverse: request.order.is_in_desc_order(),
@@ -205,6 +207,7 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
+        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
@@ -212,14 +215,16 @@ impl Instance {
         assert!(request.order.is_out_of_order());
 
         let sst_reader_options = SstReaderOptions {
-            sst_type: table_data.sst_type,
             read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
+            frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
+            num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
 
         let time_range = request.predicate.time_range();
@@ -236,7 +241,7 @@ impl Instance {
                 predicate: request.predicate.clone(),
                 sst_reader_options: sst_reader_options.clone(),
                 sst_factory: &self.space_store.sst_factory,
-                store: self.space_store.store_ref(),
+                store_picker: self.space_store.store_picker(),
             };
             let builder = chain::Builder::new(chain_config);
             let chain_iter = builder

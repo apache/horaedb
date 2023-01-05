@@ -83,14 +83,15 @@ impl TableProviderAdapter {
         );
 
         // Forbid the parallel reading if the data order is required.
-        let read_parallelism = if read_order.is_in_order() {
+        let read_parallelism = if read_order.is_in_order() && self.table.partition_info().is_none()
+        {
             1
         } else {
             self.read_parallelism
         };
 
         let predicate = self.predicate_from_filters(filters);
-        let scan_table = Arc::new(ScanTable {
+        let mut scan_table = ScanTable {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.clone())
                 .map_err(|e| {
                     DataFusionError::Internal(format!(
@@ -104,10 +105,10 @@ impl TableProviderAdapter {
             read_parallelism,
             predicate,
             stream_state: Mutex::new(ScanStreamState::default()),
-        });
+        };
         scan_table.maybe_init_stream(state).await?;
 
-        Ok(scan_table)
+        Ok(Arc::new(scan_table))
     }
 
     fn predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
@@ -211,7 +212,7 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&self, state: &SessionState) -> Result<()> {
+    async fn maybe_init_stream(&mut self, state: &SessionState) -> Result<()> {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
@@ -232,7 +233,7 @@ impl ScanTable {
 
         match read_res {
             Ok(partitioned_streams) => {
-                assert_eq!(self.read_parallelism, partitioned_streams.streams.len());
+                self.read_parallelism = partitioned_streams.streams.len();
                 stream_state.streams = partitioned_streams.streams.into_iter().map(Some).collect();
             }
             Err(e) => {

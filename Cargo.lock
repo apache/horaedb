@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "analytic_engine"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arc-swap 1.5.1",
  "arena",
@@ -90,7 +90,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bytes 1.2.1",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "env_logger",
@@ -100,12 +100,15 @@ dependencies = [
  "log",
  "lru",
  "message_queue",
- "object_store 1.0.0-alpha01",
+ "object_store 1.0.0-alpha02",
  "parquet",
  "parquet_ext",
  "prometheus 0.12.0",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
+ "rand 0.7.3",
+ "remote_engine_client",
+ "router",
  "serde",
  "serde_derive",
  "skiplist",
@@ -114,7 +117,7 @@ dependencies = [
  "table_engine",
  "table_kv",
  "tempfile",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "wal",
 ]
 
@@ -150,7 +153,7 @@ checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
 name = "arena"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "parking_lot 0.11.2",
 ]
@@ -265,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "uncover",
@@ -373,7 +376,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "sync_wrapper",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tower",
  "tower-http",
  "tower-layer",
@@ -428,7 +431,7 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "benchmarks"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -436,13 +439,13 @@ dependencies = [
  "arrow2",
  "base64 0.13.0",
  "clap 3.2.23",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "criterion",
  "env_logger",
  "futures 0.3.21",
  "log",
- "object_store 1.0.0-alpha01",
+ "object_store 1.0.0-alpha02",
  "parquet",
  "parquet_ext",
  "pprof",
@@ -452,7 +455,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_engine",
  "table_kv",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "wal",
 ]
 
@@ -753,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "bytes_ext"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "bytes 1.2.1",
  "snafu 0.6.10",
@@ -778,10 +781,10 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "snafu 0.6.10",
  "table_engine",
@@ -789,13 +792,13 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "async-trait",
  "catalog",
  "cluster",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "log",
  "meta_client",
@@ -803,7 +806,7 @@ dependencies = [
  "snafu 0.6.10",
  "system_catalog",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -817,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -831,8 +834,10 @@ dependencies = [
  "logger",
  "meta_client",
  "query_engine",
+ "router",
  "server",
  "signal-hook",
+ "sort",
  "table_engine",
  "tracing_util",
  "vergen",
@@ -845,11 +850,11 @@ source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=a9d9190f4f7b5
 dependencies = [
  "async-trait",
  "avro-rs",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=12024e7f5c18cca7e40461f51b275c824dd37851)",
  "common_types 0.4.0",
  "dashmap 5.4.0",
  "futures 0.3.21",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tonic",
 ]
 
@@ -858,16 +863,27 @@ name = "ceresdb-test"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "ceresdb-client-rs",
- "prettydiff",
- "tokio 1.20.1",
- "walkdir",
+ "sqlness",
+ "tokio 1.22.0",
 ]
 
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
 source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=12024e7f5c18cca7e40461f51b275c824dd37851#12024e7f5c18cca7e40461f51b275c824dd37851"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2#1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -995,13 +1011,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "clru"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
+
+[[package]]
 name = "cluster"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
- "analytic_engine",
  "async-trait",
- "ceresdbproto",
- "common_types 1.0.0-alpha01",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "log",
  "meta_client",
@@ -1011,7 +1032,7 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -1056,18 +1077,18 @@ dependencies = [
 
 [[package]]
 name = "common_types"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
- "arrow_ext 1.0.0-alpha01",
+ "arrow_ext 1.0.0-alpha02",
  "byteorder",
- "bytes_ext 1.0.0-alpha01",
+ "bytes_ext 1.0.0-alpha02",
  "chrono",
  "datafusion",
  "murmur3",
  "paste 1.0.8",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1077,12 +1098,13 @@ dependencies = [
 
 [[package]]
 name = "common_util"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
+ "avro-rs",
  "backtrace",
  "chrono",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "crossbeam-utils 0.8.11",
  "env_logger",
  "gag",
@@ -1093,15 +1115,16 @@ dependencies = [
  "nix 0.22.3",
  "pin-project-lite",
  "prometheus 0.12.0",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "serde",
  "serde_derive",
+ "serde_json",
  "slog",
  "slog-global",
  "snafu 0.6.10",
  "tempfile",
  "time 0.1.44",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-test",
  "toml",
 ]
@@ -1427,6 +1450,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0dd3cd20dc6b5a876612a6e5accfe7f3dd883db6d07acfbf14c128f61550dfa"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a784d2ccaf7c98501746bf0be29b2022ba41fd62a2e622af997a03e9f972859f"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim 0.10.0",
+ "syn",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7618812407e9402654622dd402b0a89dff9ba93badd6540781526117b92aab7e"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "dashmap"
 version = "3.11.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1483,7 +1541,7 @@ dependencies = [
  "smallvec 1.9.0",
  "sqlparser",
  "tempfile",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-stream",
  "url 2.2.2",
  "uuid 1.1.2",
@@ -1553,6 +1611,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "datafusion-proto"
+version = "12.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=d84ea9c79c9e83ff0b4dadf8880a4983af59ef48#d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
+dependencies = [
+ "arrow",
+ "datafusion",
+ "datafusion-common",
+ "datafusion-expr",
+ "prost",
+ "prost-build",
+]
+
+[[package]]
 name = "datafusion-row"
 version = "12.0.0"
 source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=d84ea9c79c9e83ff0b4dadf8880a4983af59ef48#d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
@@ -1574,7 +1645,7 @@ dependencies = [
  "datafusion-expr",
  "hashbrown",
  "sqlparser",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -1584,6 +1655,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "uuid 1.1.2",
+]
+
+[[package]]
+name = "derive_builder"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d07adf7be193b71cc36b193d0f5fe60b918a3a9db4dad0449f57bcfd519704a3"
+dependencies = [
+ "derive_builder_macro",
+]
+
+[[package]]
+name = "derive_builder_core"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f91d4cfa921f1c05904dc3c57b4a32c38aed3340cce209f3a6fd1478babafc4"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "derive_builder_macro"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f0314b72bed045f3a68671b3c86328386762c93f82d98c65c3cb5e5f573dd68"
+dependencies = [
+ "derive_builder_core",
+ "syn",
 ]
 
 [[package]]
@@ -1601,13 +1703,13 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "base64 0.13.0",
  "bincode",
  "chrono",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "datafusion-expr",
@@ -2233,7 +2335,7 @@ dependencies = [
  "http 0.2.8",
  "indexmap",
  "slab",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-util 0.7.3",
  "tracing",
 ]
@@ -2447,7 +2549,7 @@ dependencies = [
  "itoa 1.0.3",
  "pin-project-lite",
  "socket2",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tower-service",
  "tracing",
  "want 0.3.0",
@@ -2461,7 +2563,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper 0.14.20",
  "pin-project-lite",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-io-timeout",
 ]
 
@@ -2487,7 +2589,7 @@ dependencies = [
  "bytes 1.2.1",
  "hyper 0.14.20",
  "native-tls",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-native-tls",
 ]
 
@@ -2501,6 +2603,12 @@ dependencies = [
  "serde",
  "siphasher",
 ]
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idna"
@@ -2597,17 +2705,18 @@ dependencies = [
 
 [[package]]
 name = "interpreters"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "arrow",
  "async-trait",
  "catalog",
  "catalog_impls",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
  "df_operator",
  "log",
  "meta_client",
@@ -2616,7 +2725,7 @@ dependencies = [
  "snafu 0.6.10",
  "sql",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -2636,9 +2745,9 @@ checksum = "879d54834c8c76457ef4293a689b2a8c59b076067ad77b15efafbb05f92a592b"
 
 [[package]]
 name = "itertools"
-version = "0.10.3"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
 dependencies = [
  "either",
 ]
@@ -2952,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "chrono",
  "log",
@@ -2971,11 +3080,6 @@ checksum = "e999beba7b6e8345721bd280141ed958096a2e4abdf74f67ff4ce49b4b54e47a"
 dependencies = [
  "hashbrown",
 ]
-
-[[package]]
-name = "lru-weighted-cache"
-version = "0.1.2"
-source = "git+https://github.com/jiacai2050/lru-weighted-cache.git?rev=1cf61aaf88469387e610dc7154fa318843491428#1cf61aaf88469387e610dc7154fa318843491428"
 
 [[package]]
 name = "lz4"
@@ -3079,17 +3183,17 @@ dependencies = [
  "serde",
  "serde_derive",
  "snafu 0.6.10",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "uuid 1.1.2",
 ]
 
 [[package]]
 name = "meta_client"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto",
- "common_types 1.0.0-alpha01",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "futures 0.3.21",
  "log",
@@ -3100,7 +3204,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "snafu 0.6.10",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tonic",
  "url 2.2.2",
 ]
@@ -3570,7 +3674,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "percent-encoding 2.1.0",
  "snafu 0.7.1",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tracing",
  "url 2.2.2",
  "walkdir",
@@ -3578,27 +3682,30 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
  "bytes 1.2.1",
  "chrono",
+ "clru",
  "common_util",
  "crc",
  "futures 0.3.21",
+ "lazy_static",
  "log",
  "lru",
- "lru-weighted-cache",
  "object_store 0.5.1",
  "oss-rust-sdk",
+ "prometheus 0.12.0",
+ "prometheus-static-metric",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "serde",
  "serde_derive",
  "serde_json",
  "snafu 0.6.10",
  "tempfile",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -3669,7 +3776,7 @@ dependencies = [
  "chrono",
  "mysql_common 0.29.1",
  "nom 7.1.1",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -3743,8 +3850,9 @@ checksum = "3baf96e39c5359d2eb0dd6ccb42c62b91d9678aa68160d261b9e0ccbf9e9dea9"
 
 [[package]]
 name = "oss-rust-sdk"
-version = "0.5.0"
-source = "git+https://github.com/jiacai2050/oss-rust-sdk.git?rev=a6c54471d0b187667395d6cac931bd4e01a9f4e4#a6c54471d0b187667395d6cac931bd4e01a9f4e4"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24b457bcf7bb4b31a098c70f2ea83aace64937181ba6e88f9564bc4d05b655d5"
 dependencies = [
  "async-trait",
  "base64 0.13.0",
@@ -3855,7 +3963,7 @@ dependencies = [
  "seq-macro",
  "snap",
  "thrift 0.16.0",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "zstd",
 ]
 
@@ -3894,10 +4002,10 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
- "arrow_ext 1.0.0-alpha01",
+ "arrow_ext 1.0.0-alpha02",
  "bytes 1.2.1",
  "datafusion",
  "datafusion-expr",
@@ -4140,7 +4248,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -4269,10 +4377,11 @@ dependencies = [
 
 [[package]]
 name = "proto"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
+ "tonic",
  "tonic-build",
 ]
 
@@ -4344,11 +4453,11 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "async-trait",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "datafusion-expr",
@@ -4709,6 +4818,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 
 [[package]]
+name = "remote_engine_client"
+version = "1.0.0-alpha02"
+dependencies = [
+ "async-trait",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
+ "clru",
+ "common_types 1.0.0-alpha02",
+ "common_util",
+ "futures 0.3.21",
+ "proto 1.0.0-alpha02",
+ "router",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "table_engine",
+ "tokio 1.22.0",
+ "tonic",
+]
+
+[[package]]
 name = "remove_dir_all"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4778,7 +4907,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.7.1",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-native-tls",
  "tower-service",
  "url 2.2.2",
@@ -4823,6 +4952,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "router"
+version = "1.0.0-alpha02"
+dependencies = [
+ "async-trait",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
+ "cluster",
+ "common_types 1.0.0-alpha02",
+ "common_util",
+ "log",
+ "meta_client",
+ "serde",
+ "serde_derive",
+ "snafu 0.6.10",
+ "twox-hash",
+]
+
+[[package]]
 name = "rskafka"
 version = "0.3.0"
 source = "git+https://github.com/influxdata/rskafka.git?rev=00988a564b1db0249d858065fc110476c075efad#00988a564b1db0249d858065fc110476c075efad"
@@ -4840,7 +4986,7 @@ dependencies = [
  "rand 0.8.5",
  "snap",
  "thiserror",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tracing",
 ]
 
@@ -5131,17 +5277,16 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "arrow",
  "async-trait",
- "avro-rs",
  "bytes 1.2.1",
  "catalog",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
  "cluster",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "df_operator",
@@ -5158,7 +5303,9 @@ dependencies = [
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
+ "proto 1.0.0-alpha02",
  "query_engine",
+ "router",
  "serde",
  "serde_derive",
  "serde_json",
@@ -5166,10 +5313,9 @@ dependencies = [
  "sql",
  "system_catalog",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-stream",
  "tonic",
- "twox-hash",
  "warp",
 ]
 
@@ -5303,7 +5449,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arena",
  "bytes 1.2.1",
@@ -5460,6 +5606,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sort"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79b736394cbcbad245669dc12a0caff9b2570e9ad81ce9906f5d7831551cb0c5"
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5467,15 +5619,16 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "sql"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "catalog",
- "ceresdbproto",
- "common_types 1.0.0-alpha01",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=1ea76ec99bebee298dfb27b6a15feeb4f42c3aa2)",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
  "df_operator",
  "hashbrown",
  "log",
@@ -5484,7 +5637,23 @@ dependencies = [
  "snafu 0.6.10",
  "sqlparser",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
+]
+
+[[package]]
+name = "sqlness"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ffa69a2ae10018ec72a3cb7574e3a33a3fc322ed03740f6e435fd7f0c1db4a7"
+dependencies = [
+ "async-trait",
+ "derive_builder",
+ "prettydiff",
+ "serde",
+ "thiserror",
+ "tokio 1.22.0",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]
@@ -5688,48 +5857,52 @@ dependencies = [
 
 [[package]]
 name = "system_catalog"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "async-trait",
  "catalog",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "futures 0.3.21",
  "log",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
 name = "table_engine"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "async-trait",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "datafusion",
  "datafusion-expr",
+ "datafusion-proto",
+ "df_operator",
+ "env_logger",
  "futures 0.3.21",
+ "itertools",
  "log",
  "parquet",
  "parquet_ext",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "serde",
  "serde_derive",
  "smallvec 1.9.0",
  "snafu 0.6.10",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
 name = "table_kv"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "common_util",
  "log",
@@ -5958,9 +6131,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.20.1"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a8325f63a7d4774dd041e363b2409ed1c5cbbd0f867795e661df066b2b0a581"
+checksum = "d76ce4a75fb488c605c54bf610f221cea8b0dafb53333c1a67e8ee199dcd2ae3"
 dependencies = [
  "autocfg 1.1.0",
  "bytes 1.2.1",
@@ -5968,7 +6141,6 @@ dependencies = [
  "memchr",
  "mio 0.8.4",
  "num_cpus",
- "once_cell",
  "parking_lot 0.12.1",
  "pin-project-lite",
  "signal-hook-registry",
@@ -6037,7 +6209,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
 dependencies = [
  "pin-project-lite",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -6058,7 +6230,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -6088,7 +6260,7 @@ checksum = "df54d54117d6fdc4e4fea40fe1e4e566b3505700e148a6827e59b34b0d2600d9"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -6124,7 +6296,7 @@ dependencies = [
  "async-stream",
  "bytes 1.2.1",
  "futures-core",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-stream",
 ]
 
@@ -6166,7 +6338,7 @@ dependencies = [
  "futures-util",
  "log",
  "pin-project",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tungstenite",
 ]
 
@@ -6181,7 +6353,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -6194,7 +6366,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tracing",
 ]
 
@@ -6229,7 +6401,7 @@ dependencies = [
  "pin-project",
  "prost",
  "prost-derive",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-stream",
  "tokio-util 0.7.3",
  "tower",
@@ -6254,20 +6426,20 @@ dependencies = [
 
 [[package]]
 name = "tools"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "anyhow",
  "clap 3.2.23",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "env_logger",
  "futures 0.3.21",
- "object_store 1.0.0-alpha01",
+ "object_store 1.0.0-alpha02",
  "parquet",
  "parquet_ext",
  "table_engine",
- "tokio 1.20.1",
+ "tokio 1.22.0",
 ]
 
 [[package]]
@@ -6283,7 +6455,7 @@ dependencies = [
  "pin-project-lite",
  "rand 0.8.5",
  "slab",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-util 0.7.3",
  "tower-layer",
  "tower-service",
@@ -6421,7 +6593,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "lazy_static",
  "tracing",
@@ -6661,18 +6833,18 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "wal"
-version = "1.0.0-alpha01"
+version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
  "chrono",
- "common_types 1.0.0-alpha01",
+ "common_types 1.0.0-alpha02",
  "common_util",
  "env_logger",
  "futures 0.3.21",
  "log",
  "message_queue",
  "prost",
- "proto 1.0.0-alpha01",
+ "proto 1.0.0-alpha02",
  "rand 0.8.5",
  "rocksdb",
  "serde",
@@ -6682,7 +6854,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_kv",
  "tempfile",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "uuid 1.1.2",
 ]
 
@@ -6740,7 +6912,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.7.1",
- "tokio 1.20.1",
+ "tokio 1.22.0",
  "tokio-stream",
  "tokio-tungstenite",
  "tokio-util 0.6.10",

@@ -8,7 +8,6 @@
 #[macro_use]
 extern crate common_util;
 
-mod avro_util;
 pub mod config;
 mod consts;
 mod context;
@@ -18,10 +17,10 @@ mod handlers;
 mod http;
 mod instance;
 pub mod limiter;
+pub mod local_tables;
 pub mod logger;
 mod metrics;
 mod mysql;
-pub mod route;
 pub mod schema_config_provider;
 pub mod server;
 pub mod table_engine;

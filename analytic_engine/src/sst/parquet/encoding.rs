@@ -1,10 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    convert::TryFrom,
-    io::Write,
-    sync::{Arc, Mutex},
-};
+use std::{convert::TryFrom, sync::Arc};
 
 use arrow::{
     array::{Array, ArrayData, ArrayRef},
@@ -227,37 +223,9 @@ trait RecordEncoder {
     fn close(&mut self) -> Result<Vec<u8>>;
 }
 
-/// EncodingWriter implements `Write` trait, useful when Writer need shared
-/// ownership.
-///
-/// TODO: This is a temp workaround for [ArrowWriter](https://docs.rs/parquet/20.0.0/parquet/arrow/arrow_writer/struct.ArrowWriter.html), since it has no method to get underlying Writer
-/// We can fix this by add `into_inner` method to it, or just replace it with
-/// parquet2, which already have this method
-/// https://github.com/CeresDB/ceresdb/issues/53
-#[derive(Clone)]
-struct EncodingWriter(Arc<Mutex<Vec<u8>>>);
-
-impl EncodingWriter {
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.lock().unwrap().clone()
-    }
-}
-
-impl Write for EncodingWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut inner = self.0.lock().unwrap();
-        inner.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 struct ColumnarRecordEncoder {
-    buf: EncodingWriter,
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
     arrow_schema: ArrowSchemaRef,
 }
 
@@ -275,14 +243,12 @@ impl ColumnarRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
-            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
 
         Ok(Self {
-            buf,
             arrow_writer: Some(arrow_writer),
             arrow_schema,
         })
@@ -311,19 +277,18 @@ impl RecordEncoder for ColumnarRecordEncoder {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        arrow_writer
-            .close()
+        let bytes = arrow_writer
+            .into_inner()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
-        Ok(self.buf.clone().into_bytes())
+        Ok(bytes)
     }
 }
 
 struct HybridRecordEncoder {
-    buf: EncodingWriter,
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<EncodingWriter>>,
+    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
@@ -384,13 +349,11 @@ impl HybridRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let buf = EncodingWriter(Arc::new(Mutex::new(Vec::new())));
         let arrow_writer =
-            ArrowWriter::try_new(buf.clone(), arrow_schema.clone(), Some(write_props))
+            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
                 .map_err(|e| Box::new(e) as _)
                 .context(EncodeRecordBatch)?;
         Ok(Self {
-            buf,
             arrow_writer: Some(arrow_writer),
             arrow_schema,
             tsid_type,
@@ -421,6 +384,16 @@ impl RecordEncoder for HybridRecordEncoder {
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
 
+        // The num in row group will always be less than `num_rows_per_row_group`,
+        // so we need to flush manually here.
+        // TODO: maybe we should merge multiple hybrid record batch to one row group.
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .flush()
+            .map_err(|e| Box::new(e) as _)
+            .context(EncodeRecordBatch)?;
+
         Ok(record_batch.num_rows())
     }
 
@@ -428,11 +401,11 @@ impl RecordEncoder for HybridRecordEncoder {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        arrow_writer
-            .close()
+        let bytes = arrow_writer
+            .into_inner()
             .map_err(|e| Box::new(e) as _)
             .context(EncodeRecordBatch)?;
-        Ok(self.buf.clone().into_bytes())
+        Ok(bytes)
     }
 }
 
@@ -733,7 +706,6 @@ impl ParquetDecoder {
 
 #[cfg(test)]
 mod tests {
-
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
@@ -741,7 +713,7 @@ mod tests {
         schema::{Builder, Schema, TSID_COLUMN},
         time::{TimeRange, Timestamp},
     };
-    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use parquet::{arrow::arrow_reader::ParquetRecordBatchReaderBuilder, file::footer};
 
     use super::*;
     use crate::table_options::StorageFormatOptions;
@@ -889,7 +861,7 @@ mod tests {
     }
 
     #[test]
-    fn hybrid_record_encode_and_decode() {
+    fn test_hybrid_record_encode_and_decode() {
         let schema = build_schema();
         let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
 
@@ -1021,5 +993,125 @@ mod tests {
             decoded_record_batch.columns(),
             expect_record_batch.columns()
         );
+    }
+
+    #[test]
+    fn test_hybrid_flush() {
+        let schema = build_schema();
+        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
+
+        let meta_data = SstMetaData {
+            min_key: Bytes::from_static(b"100"),
+            max_key: Bytes::from_static(b"200"),
+            time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
+            max_sequence: 200,
+            schema: schema.clone(),
+            size: 10,
+            row_num: 4,
+            storage_format_opts,
+            bloom_filter: Default::default(),
+        };
+        let mut encoder = HybridRecordEncoder::try_new(10, Compression::ZSTD, meta_data).unwrap();
+
+        let columns = vec![
+            Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100]),
+            string_array(vec![Some("host1"), Some("host1"), Some("host2")]),
+            string_array(vec![Some("region1"), Some("region1"), Some("region2")]),
+            int32_array(vec![Some(1), Some(2), Some(11)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+            ]),
+        ];
+
+        let columns2 = vec![
+            Arc::new(UInt64Array::from(vec![1, 2, 1, 2])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 101]),
+            string_array(vec![
+                Some("host1"),
+                Some("host2"),
+                Some("host1"),
+                Some("host2"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region2"),
+                Some("region1"),
+                Some("region2"),
+            ]),
+            int32_array(vec![Some(1), Some(2), Some(11), Some(12)]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
+        ];
+
+        let columns3 = vec![
+            Arc::new(UInt64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])) as ArrayRef,
+            timestamp_array(vec![100, 101, 100, 100, 101, 100, 102, 103]),
+            string_array(vec![
+                Some("host1"),
+                Some("host1"),
+                Some("host2"),
+                Some("host3"),
+                Some("host4"),
+                Some("host2"),
+                Some("host3"),
+                Some("host4"),
+            ]),
+            string_array(vec![
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region3"),
+                Some("region1"),
+                Some("region1"),
+                Some("region2"),
+                Some("region3"),
+            ]),
+            int32_array(vec![
+                Some(1),
+                Some(2),
+                Some(11),
+                Some(12),
+                Some(1),
+                Some(2),
+                Some(11),
+                Some(12),
+            ]),
+            string_array(vec![
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+                Some("string_value1"),
+                Some("string_value2"),
+                Some("string_value3"),
+                Some("string_value4"),
+            ]),
+        ];
+
+        let input_record_batch =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns).unwrap();
+        let input_record_batch2 =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
+        let row_nums = encoder
+            .encode(vec![input_record_batch, input_record_batch2])
+            .unwrap();
+        assert_eq!(2, row_nums);
+
+        let input_record_batch3 =
+            ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns3).unwrap();
+        let row_nums2 = encoder.encode(vec![input_record_batch3]).unwrap();
+        assert_eq!(8, row_nums2);
+
+        let sst = encoder.close().unwrap();
+        let bytes = Bytes::from(sst);
+        let parquet_metadata = footer::parse_metadata(&bytes).unwrap();
+        assert_eq!(2, parquet_metadata.num_row_groups());
     }
 }

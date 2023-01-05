@@ -10,6 +10,7 @@ use log::error;
 use logger::RuntimeLevel;
 use profile::Profiler;
 use query_engine::executor::Executor as QueryExecutor;
+use router::endpoint::Endpoint;
 use serde_derive::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -23,7 +24,6 @@ use warp::{
 };
 
 use crate::{
-    config::Endpoint,
     consts,
     context::RequestContext,
     error_util,
@@ -252,7 +252,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                         .set_level_by_str(log_level.as_str())
                         .map_err(|e| Error::HandleUpdateLogLevel { msg: e });
                     match result {
-                        Ok(()) => Ok(reply::reply()),
+                        Ok(()) => Ok(reply::json(&log_level)),
                         Err(e) => Err(reject::custom(e)),
                     }
                 },

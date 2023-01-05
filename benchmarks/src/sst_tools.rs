@@ -15,8 +15,8 @@ use analytic_engine::{
     sst::{
         builder::RecordBatchStream,
         factory::{
-            Factory, FactoryImpl, FactoryRef as SstFactoryRef, SstBuilderOptions, SstReaderOptions,
-            SstType,
+            Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
+            SstBuilderOptions, SstReaderOptions, SstType,
         },
         file::{self, FilePurgeQueue, SstMetaData},
         manager::FileId,
@@ -57,11 +57,13 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         config, sst_builder_options
     );
 
-    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
+    let store: ObjectStoreRef =
+        Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap());
+    let store_picker: ObjectStorePickerRef = Arc::new(store);
     let sst_file_path = Path::from(config.sst_file_name);
 
     let mut builder = sst_factory
-        .new_sst_builder(&sst_builder_options, &sst_file_path, &store)
+        .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
         .unwrap();
     builder
         .build(RequestId::next_id(), &config.sst_meta, record_batch_stream)
@@ -92,13 +94,15 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let sst_reader_options = SstReaderOptions {
-        sst_type: SstType::Parquet,
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
+        frequency: ReadFrequency::Once,
         projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         runtime,
+        background_read_parallelism: 1,
+        num_rows_per_row_group: config.read_batch_row_num,
     };
 
     let record_batch_stream =
@@ -123,8 +127,9 @@ async fn sst_to_record_batch_stream(
     store: &ObjectStoreRef,
 ) -> RecordBatchStream {
     let sst_factory = FactoryImpl;
+    let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, input_path, store)
+        .new_sst_reader(sst_reader_options, input_path, &store_picker)
         .unwrap();
 
     let sst_stream = sst_reader.read().await.unwrap();
@@ -182,6 +187,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let schema = util::schema_from_sst(&store, &first_sst_path, &None).await;
     let iter_options = IterOptions {
         batch_size: config.read_batch_row_num,
+        sst_background_read_parallelism: 1,
     };
 
     let request_id = RequestId::next_id();
@@ -191,16 +197,19 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         let sequence = max_sequence + 1;
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_reader_options = SstReaderOptions {
-            sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
+            frequency: ReadFrequency::Once,
             projected_schema: projected_schema.clone(),
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
             runtime: runtime.clone(),
+            background_read_parallelism: iter_options.sst_background_read_parallelism,
+            num_rows_per_row_group: config.read_batch_row_num,
         };
 
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
+        let store_picker: ObjectStorePickerRef = Arc::new(store);
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
             space_id,
@@ -210,7 +219,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
             sst_reader_options,
-            store: &store,
+            store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
             reverse: false,

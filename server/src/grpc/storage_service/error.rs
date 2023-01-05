@@ -7,7 +7,7 @@ use common_util::define_result;
 use http::StatusCode;
 use snafu::Snafu;
 
-use crate::{error_util, route};
+use crate::error_util;
 
 define_result!(Error);
 
@@ -61,18 +61,18 @@ pub fn build_ok_header() -> ResponseHeader {
     }
 }
 
-impl From<route::Error> for Error {
-    fn from(route_err: route::Error) -> Self {
+impl From<router::Error> for Error {
+    fn from(route_err: router::Error) -> Self {
         match &route_err {
-            route::Error::RouteNotFound { .. } | route::Error::ShardNotFound { .. } => {
+            router::Error::RouteNotFound { .. } | router::Error::ShardNotFound { .. } => {
                 Error::ErrNoCause {
                     code: StatusCode::NOT_FOUND,
                     msg: route_err.to_string(),
                 }
             }
-            route::Error::ParseEndpoint { .. }
-            | route::Error::OtherWithCause { .. }
-            | route::Error::OtherNoCause { .. } => Error::ErrNoCause {
+            router::Error::ParseEndpoint { .. }
+            | router::Error::OtherWithCause { .. }
+            | router::Error::OtherNoCause { .. } => Error::ErrNoCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: route_err.to_string(),
             },

@@ -1,10 +1,14 @@
 [package]
 name = "analytic_engine"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
 
 [features]
 test = ["tempfile"]
@@ -25,12 +29,15 @@ futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
+message_queue = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prometheus = { workspace = true }
-proto = { workspace = true }
 prost = { workspace = true }
+proto = { workspace = true }
+remote_engine_client = { workspace = true }
+router = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }
@@ -41,10 +48,10 @@ table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 wal = { workspace = true }
-message_queue = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }
 common_util = { workspace = true, features = ["test"] }
 env_logger = { workspace = true }
+rand = { workspace = true }
 wal = { workspace = true, features = ["test"] }

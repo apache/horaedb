@@ -25,16 +25,20 @@ use std::{
 use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
-use object_store::ObjectStoreRef;
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, remote::RemoteEngineRef};
 use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     meta::ManifestRef,
+    row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
-    sst::{factory::FactoryRef as SstFactoryRef, file::FilePurger, meta_cache::MetaCacheRef},
+    sst::{
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        file::FilePurger,
+        meta_cache::MetaCacheRef,
+    },
     table::data::TableDataRef,
     wal_synchronizer::WalSynchronizer,
     TableOptions,
@@ -98,8 +102,8 @@ pub struct SpaceStore {
     manifest: ManifestRef,
     /// Wal of all tables
     wal_manager: WalManagerRef,
-    /// Sst storage.
-    store: ObjectStoreRef,
+    /// Object store picker for persisting data.
+    store_picker: ObjectStorePickerRef,
     /// Sst factory.
     sst_factory: SstFactoryRef,
 
@@ -125,8 +129,8 @@ impl SpaceStore {
 }
 
 impl SpaceStore {
-    fn store_ref(&self) -> &ObjectStoreRef {
-        &self.store
+    fn store_picker(&self) -> &ObjectStorePickerRef {
+        &self.store_picker
     }
 
     /// List all tables of all spaces
@@ -170,10 +174,11 @@ pub struct Instance {
     pub(crate) db_write_buffer_size: usize,
     /// Space write buffer size
     pub(crate) space_write_buffer_size: usize,
-    /// replay wal batch size
+    /// Replay wal batch size
     pub(crate) replay_batch_size: usize,
-    /// batch size for scan sst
-    pub(crate) scan_batch_size: usize,
+    /// Options for scanning sst
+    pub(crate) iter_options: IterOptions,
+    pub(crate) remote_engine: Option<RemoteEngineRef>,
 }
 
 impl Instance {

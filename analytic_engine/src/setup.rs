@@ -2,18 +2,27 @@
 
 //! Setup the analytic engine
 
-use std::{path::Path, pin::Pin, sync::Arc};
+use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use async_trait::async_trait;
 use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS, disk_cache::DiskCacheStore, mem_cache::MemCacheStore,
-    prefix::StoreWithPrefix, LocalFileSystem, ObjectStoreRef,
+    aliyun::AliyunOSS,
+    disk_cache::DiskCacheStore,
+    mem_cache::{MemCache, MemCacheStore},
+    metrics::StoreWithMetrics,
+    prefix::StoreWithPrefix,
+    LocalFileSystem, ObjectStoreRef,
 };
+use remote_engine_client::RemoteEngineImpl;
+use router::RouterRef;
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::engine::{EngineRuntimes, TableEngineRef};
+use table_engine::{
+    engine::{EngineRuntimes, TableEngineRef},
+    remote::RemoteEngineRef,
+};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
 use wal::{
     manager::{self, WalManagerRef},
@@ -31,7 +40,7 @@ use crate::{
         ManifestRef,
     },
     sst::{
-        factory::FactoryImpl,
+        factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_cache::{MetaCache, MetaCacheRef},
     },
     storage_options::{ObjectStoreOptions, StorageOptions},
@@ -82,6 +91,11 @@ pub enum Error {
     OpenKafka {
         source: message_queue::kafka::kafka_impl::Error,
     },
+
+    #[snafu(display("Failed to create mem cache, err:{}", source))]
+    OpenMemCache {
+        source: object_store::mem_cache::Error,
+    },
 }
 
 define_result!(Error);
@@ -91,20 +105,59 @@ const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
+#[derive(Default)]
+pub struct EngineBuildContextBuilder {
+    config: Config,
+    router: Option<RouterRef>,
+}
+
+impl EngineBuildContextBuilder {
+    pub fn config(mut self, config: Config) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn router(mut self, router: RouterRef) -> Self {
+        self.router = Some(router);
+        self
+    }
+
+    pub fn build(self) -> EngineBuildContext {
+        EngineBuildContext {
+            config: self.config,
+            router: self.router,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct EngineBuildContext {
+    pub config: Config,
+    pub router: Option<RouterRef>,
+}
+
 /// Analytic engine builder.
 #[async_trait]
 pub trait EngineBuilder: Send + Sync + Default {
     /// Build the analytic engine from `config` and `engine_runtimes`.
     async fn build(
         &self,
-        config: Config,
+        context: EngineBuildContext,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<TableEngineRef> {
         let (wal, manifest) = self
-            .open_wal_and_manifest(config.clone(), engine_runtimes.clone())
+            .open_wal_and_manifest(context.config.clone(), engine_runtimes.clone())
             .await?;
-        let store = open_storage(config.storage.clone()).await?;
-        let instance = open_instance(config.clone(), engine_runtimes, wal, manifest, store).await?;
+        let opened_storages = open_storage(context.config.storage.clone()).await?;
+        let instance = open_instance(
+            context.config.clone(),
+            engine_runtimes,
+            wal,
+            manifest,
+            Arc::new(opened_storages),
+            context.router,
+        )
+        .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 
@@ -334,8 +387,18 @@ async fn open_instance(
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
     manifest: ManifestRef,
-    store: ObjectStoreRef,
+    store_picker: ObjectStorePickerRef,
+    router: Option<RouterRef>,
 ) -> Result<InstanceRef> {
+    let remote_engine_ref: Option<RemoteEngineRef> = if let Some(v) = router {
+        Some(Arc::new(RemoteEngineImpl::new(
+            config.remote_engine_client.clone(),
+            v,
+        )))
+    } else {
+        None
+    };
+
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
@@ -350,17 +413,37 @@ async fn open_instance(
         open_ctx,
         manifest,
         wal_manager,
-        store,
+        store_picker,
         Arc::new(FactoryImpl::default()),
+        remote_engine_ref,
     )
     .await
     .context(OpenInstance)?;
     Ok(instance)
 }
 
+#[derive(Debug)]
+struct OpenedStorages {
+    default_store: ObjectStoreRef,
+    store_with_readonly_cache: ObjectStoreRef,
+}
+
+impl ObjectStorePicker for OpenedStorages {
+    fn default_store(&self) -> &ObjectStoreRef {
+        &self.default_store
+    }
+
+    fn pick_by_freq(&self, freq: ReadFrequency) -> &ObjectStoreRef {
+        match freq {
+            ReadFrequency::Once => &self.store_with_readonly_cache,
+            ReadFrequency::Frequent => &self.default_store,
+        }
+    }
+}
+
 // Build store in multiple layer, access speed decrease in turn.
-// MemCacheStore -> DiskCacheStore -> real ObjectStore(OSS/S3...)
-//
+// MemCacheStore           → DiskCacheStore → real ObjectStore(OSS/S3...)
+// MemCacheStore(ReadOnly) ↑
 // ```plaintext
 // +-------------------------------+
 // |    MemCacheStore              |
@@ -373,7 +456,7 @@ async fn open_instance(
 // ```
 fn open_storage(
     opts: StorageOptions,
-) -> Pin<Box<dyn Future<Output = Result<ObjectStoreRef>> + Send>> {
+) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
@@ -393,9 +476,14 @@ fn open_storage(
                     aliyun_opts.key_secret,
                     aliyun_opts.endpoint,
                     aliyun_opts.bucket,
+                    aliyun_opts.pool_max_idle_per_host,
+                    aliyun_opts.timeout,
                 ));
-                Arc::new(StoreWithPrefix::new(aliyun_opts.prefix, oss).context(OpenObjectStore)?)
-                    as _
+                let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
+                Arc::new(
+                    StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)
+                        .context(OpenObjectStore)?,
+                ) as _
             }
         };
 
@@ -418,13 +506,26 @@ fn open_storage(
         }
 
         if opts.mem_cache_capacity.as_bytes() > 0 {
-            store = Arc::new(MemCacheStore::new(
-                opts.mem_cache_partition_bits,
-                opts.mem_cache_capacity.as_bytes() as usize,
-                store,
-            )) as _;
+            let mem_cache = Arc::new(
+                MemCache::try_new(
+                    opts.mem_cache_partition_bits,
+                    NonZeroUsize::new(opts.mem_cache_capacity.as_bytes() as usize).unwrap(),
+                )
+                .context(OpenMemCache)?,
+            );
+            let default_store = Arc::new(MemCacheStore::new(mem_cache.clone(), store.clone())) as _;
+            let store_with_readonly_cache =
+                Arc::new(MemCacheStore::new_with_readonly_cache(mem_cache, store)) as _;
+            Ok(OpenedStorages {
+                default_store,
+                store_with_readonly_cache,
+            })
+        } else {
+            let store_with_readonly_cache = store.clone();
+            Ok(OpenedStorages {
+                default_store: store,
+                store_with_readonly_cache,
+            })
         }
-
-        Ok(store)
     })
 }

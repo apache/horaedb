@@ -21,7 +21,6 @@ use datafusion::{
     physical_plan::PhysicalExpr,
 };
 use futures::stream::{self, Stream, StreamExt};
-use object_store::ObjectStoreRef;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
 
@@ -29,7 +28,7 @@ use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
     },
     table::sst_util,
@@ -258,7 +257,7 @@ pub async fn filtered_stream_from_sst_file(
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
-    store: &ObjectStoreRef,
+    store_picker: &ObjectStorePickerRef,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_sst_file(
         space_id,
@@ -266,7 +265,7 @@ pub async fn filtered_stream_from_sst_file(
         sst_file,
         sst_factory,
         sst_reader_options,
-        store,
+        store_picker,
     )
     .await
     .and_then(|origin_stream| {
@@ -288,12 +287,12 @@ pub async fn stream_from_sst_file(
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
     sst_reader_options: &SstReaderOptions,
-    store: &ObjectStoreRef,
+    store_picker: &ObjectStorePickerRef,
 ) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, &path, store)
+        .new_sst_reader(sst_reader_options, &path, store_picker)
         .with_context(|| SstReaderNotFound {
             options: sst_reader_options.clone(),
         })?;

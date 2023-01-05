@@ -26,7 +26,7 @@ use common_util::define_result;
 use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use table_engine::{engine::CreateTableRequest, table::TableId};
+use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
 use wal::manager::{RegionId, WalLocation};
 
 use crate::{
@@ -153,6 +153,9 @@ pub struct TableData {
 
     /// Shard id
     pub shard_info: TableShardInfo,
+
+    /// Partition info
+    pub partition_info: Option<PartitionInfo>,
 }
 
 impl fmt::Debug for TableData {
@@ -211,7 +214,7 @@ impl TableData {
             schema: Mutex::new(request.table_schema),
             space_id,
             // TODO(xikai): sst type should be decided by the `request`.
-            sst_type: SstType::Parquet,
+            sst_type: SstType::Auto,
             mutable_limit: AtomicU32::new(get_mutable_limit(&table_opts)),
             opts: ArcSwap::new(Arc::new(table_opts)),
             memtable_factory,
@@ -225,6 +228,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(request.shard_id, request.cluster_version),
+            partition_info: request.partition_info,
         })
     }
 
@@ -264,6 +268,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id, cluster_version),
+            partition_info: add_meta.partition_info,
         })
     }
 
@@ -696,12 +701,12 @@ pub mod tests {
                 table_id: self.table_id,
                 table_name: self.table_name,
                 table_schema,
-                partition_info: None,
                 engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
                 options: HashMap::new(),
                 state: TableState::Stable,
                 shard_id: self.shard_id,
                 cluster_version: self.cluster_version,
+                partition_info: None,
             };
 
             let write_handle = self.write_handle.unwrap_or_else(|| {

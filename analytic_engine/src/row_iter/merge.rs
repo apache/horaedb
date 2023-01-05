@@ -19,9 +19,8 @@ use common_types::{
     SequenceNumber,
 };
 use common_util::define_result;
-use futures::StreamExt;
+use futures::{future::try_join_all, StreamExt};
 use log::{debug, info, trace};
-use object_store::ObjectStoreRef;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
 
@@ -33,7 +32,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
         manager::{FileId, MAX_LEVEL},
     },
@@ -98,8 +97,8 @@ pub struct MergeConfig<'a> {
     pub sst_reader_options: SstReaderOptions,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
-    /// Sst storage
-    pub store: &'a ObjectStoreRef,
+    /// Store picker for persisting sst.
+    pub store_picker: &'a ObjectStorePickerRef,
 
     pub merge_iter_options: IterOptions,
 
@@ -208,7 +207,7 @@ impl<'a> MergeBuilder<'a> {
                     f,
                     self.config.sst_factory,
                     &self.config.sst_reader_options,
-                    self.config.store,
+                    self.config.store_picker,
                 )
                 .await
                 .context(BuildStreamFromSst)?;
@@ -342,14 +341,8 @@ impl BufferedStream {
     async fn build(
         schema: RecordSchemaWithKey,
         mut stream: SequencedRecordBatchStream,
-        metrics: &mut Metrics,
     ) -> Result<Self> {
-        // TODO(xikai): do the metrics collection in the `pull_next_non_empty_batch`.
-        let pull_start = Instant::now();
         let buffered_record_batch = Self::pull_next_non_empty_batch(&mut stream).await?;
-        metrics.scan_duration += pull_start.elapsed();
-        metrics.scan_count += 1;
-
         let state = buffered_record_batch.map(|v| BufferedStreamState {
             buffered_record_batch: v,
             cursor: 0,
@@ -676,10 +669,22 @@ impl MergeIterator {
         );
         let init_start = Instant::now();
 
+        // Initialize buffered streams concurrently.
+        let mut init_buffered_streams = Vec::with_capacity(self.origin_streams.len());
+        for origin_stream in mem::take(&mut self.origin_streams) {
+            let schema = self.schema.clone();
+            init_buffered_streams
+                .push(async move { BufferedStream::build(schema, origin_stream).await });
+        }
+
+        let pull_start = Instant::now();
+        let buffered_streams = try_join_all(init_buffered_streams).await?;
+        self.metrics.scan_duration += pull_start.elapsed();
+        self.metrics.scan_count += buffered_streams.len();
+
+        // Push streams to heap.
         let current_schema = &self.schema;
-        for stream in mem::take(&mut self.origin_streams) {
-            let buffered_stream =
-                BufferedStream::build(self.schema.clone(), stream, &mut self.metrics).await?;
+        for buffered_stream in buffered_streams {
             let stream_schema = buffered_stream.schema();
             ensure!(
                 current_schema == stream_schema,
@@ -693,11 +698,11 @@ impl MergeIterator {
                 self.cold.push(buffered_stream.into_heaped(self.reverse));
             }
         }
-
         self.refill_hot();
 
         self.inited = true;
         self.metrics.init_duration = init_start.elapsed();
+
         Ok(())
     }
 

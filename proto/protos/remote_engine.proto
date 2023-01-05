@@ -1,0 +1,77 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+syntax = "proto3";
+package remote_engine;
+
+import "common.proto";
+
+message ResponseHeader {
+  uint32 code = 1;
+  string error = 2;
+}
+
+service RemoteEngineService {
+  rpc Read(ReadRequest) returns (stream ReadResponse) {}
+  rpc Write(WriteRequest) returns (WriteResponse) {}
+}
+
+message TableIdentifier {
+  string catalog = 1;
+  string schema = 2;
+  string table = 3;
+}
+
+message ReadOptions {
+  uint64 batch_size = 1;
+  uint64 read_parallelism = 2;
+}
+
+message Predicate {
+  repeated bytes exprs = 1;
+  common.TimeRange time_range = 2;
+}
+
+enum ReadOrder {
+  None = 0;
+  Asc = 1;
+  Desc = 2;
+}
+
+message TableReadRequest {
+  uint64 request_id = 1;
+  ReadOptions opts = 2;
+  common.ProjectedSchema projected_schema = 3;
+  Predicate predicate = 4;
+  ReadOrder order = 5;
+}
+
+message ReadRequest {
+  TableIdentifier table = 1;
+  TableReadRequest read_request = 2;
+}
+
+message ReadResponse {
+  ResponseHeader header = 1;
+  // Version of row encoding method
+  uint32 version = 2;
+  repeated bytes rows = 3;
+}
+
+message RowGroup {
+  // Version of row encoding method
+  common.TableSchema table_schema = 1;
+  int64 min_timestamp = 2;
+  int64 max_timestamp = 3;
+  uint32 version = 4;
+  repeated bytes rows = 5;
+}
+
+message WriteRequest {
+  TableIdentifier table = 1;
+  RowGroup row_group = 2;
+}
+
+message WriteResponse {
+  ResponseHeader header = 1;
+  uint64 affected_rows = 2;
+}

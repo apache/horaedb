@@ -8,11 +8,11 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
-        factory::{Factory, FactoryImpl, SstReaderOptions, SstType},
+        factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
         file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
         manager::FileId,
         meta_cache::MetaCacheRef,
-        parquet::reader,
+        parquet::encoding,
     },
     table::sst_util,
 };
@@ -57,11 +57,12 @@ pub async fn meta_from_sst(
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
 ) -> SstMetaData {
-    let chunk_reader = reader::make_sst_chunk_reader(store, sst_path)
-        .await
-        .unwrap();
+    let get_result = store.get(sst_path).await.unwrap();
+    let chunk_reader = get_result.bytes().await.unwrap();
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
-    reader::read_sst_meta(&metadata).unwrap()
+    let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
+
+    encoding::decode_sst_meta_data(&kv_metas[0]).unwrap()
 }
 
 pub async fn schema_from_sst(
@@ -96,17 +97,20 @@ pub async fn load_sst_to_memtable(
     runtime: Arc<Runtime>,
 ) {
     let sst_reader_options = SstReaderOptions {
-        sst_type: SstType::Parquet,
         read_batch_row_num: 500,
         reverse: false,
+        frequency: ReadFrequency::Frequent,
         projected_schema: ProjectedSchema::no_projection(schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        background_read_parallelism: 1,
+        num_rows_per_row_group: 500,
     };
     let sst_factory = FactoryImpl;
+    let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(&sst_reader_options, sst_path, store)
+        .new_sst_reader(&sst_reader_options, sst_path, &store_picker)
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();

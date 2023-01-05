@@ -14,7 +14,7 @@ use common_util::define_result;
 use datafusion::logical_plan::LogicalPlan as DataFusionLogicalPlan;
 use datafusion_expr::expr::Expr as DfLogicalExpr;
 use snafu::Snafu;
-use table_engine::table::TableRef;
+use table_engine::{partition::PartitionInfo, table::TableRef};
 
 use crate::{ast::ShowCreateObject, container::TableContainer};
 
@@ -84,6 +84,8 @@ pub struct CreateTablePlan {
     pub table_schema: Schema,
     /// Table options
     pub options: HashMap<String, String>,
+    /// Table partition rule
+    pub partition_info: Option<PartitionInfo>,
 }
 
 impl Debug for CreateTablePlan {

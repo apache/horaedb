@@ -7,10 +7,13 @@ use arrow::{
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
 };
+use datafusion_expr::Expr;
+use datafusion_proto::bytes::Serializeable;
+use log::error;
 use query_engine::executor::RecordBatchVec;
 use snafu::ensure;
 use sql::{ast::ShowCreateObject, plan::ShowCreatePlan};
-use table_engine::table::TableRef;
+use table_engine::{partition::PartitionInfo, table::TableRef};
 
 use crate::{
     interpreter::Output,
@@ -63,9 +66,10 @@ impl ShowCreateInterpreter {
     fn render_table_sql(table_ref: TableRef) -> String {
         //TODO(boyan) pretty output
         format!(
-            "CREATE TABLE `{}` ({}) ENGINE={}{}",
+            "CREATE TABLE `{}` ({}){} ENGINE={}{}",
             table_ref.name(),
             Self::render_columns_and_constrains(&table_ref),
+            Self::render_partition_info(table_ref.partition_info()),
             table_ref.engine_type(),
             Self::render_options(table_ref.options())
         )
@@ -102,6 +106,65 @@ impl ShowCreateInterpreter {
         res
     }
 
+    fn render_partition_info(partition_info: Option<PartitionInfo>) -> String {
+        let mut res = String::new();
+        if partition_info.is_none() {
+            return res;
+        }
+
+        let partition_info = partition_info.unwrap();
+        match partition_info {
+            PartitionInfo::Hash(v) => {
+                let expr = match Expr::from_bytes(&v.expr) {
+                    Ok(expr) => expr,
+                    Err(e) => {
+                        error!("show create table parse partition info failed, err:{}", e);
+                        return res;
+                    }
+                };
+
+                if v.linear {
+                    res += format!(
+                        " PARTITION BY LINEAR HASH({}) PARTITIONS {}",
+                        expr,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                } else {
+                    res += format!(
+                        " PARTITION BY HASH({}) PARTITIONS {}",
+                        expr,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                }
+            }
+            PartitionInfo::Key(v) => {
+                let rendered_partition_key = v.partition_key.join(",");
+                if v.linear {
+                    res += format!(
+                        " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
+                        rendered_partition_key,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                } else {
+                    res += format!(
+                        " PARTITION BY KEY({}) PARTITIONS {}",
+                        rendered_partition_key,
+                        v.definitions.len()
+                    )
+                    .as_str()
+                }
+            }
+        }
+
+        // TODO: update datafusion to remove `#`.
+        // Refer to https://github.com/apache/arrow-datafusion/commit/d72eb9a1c4c18bcabbf941541a9c1defa83a592c.
+        res.remove_matches("#");
+        res
+    }
+
     fn render_options(opts: HashMap<String, String>) -> String {
         if !opts.is_empty() {
             let mut v: Vec<String> = opts
@@ -114,5 +177,66 @@ impl ShowCreateInterpreter {
         } else {
             "".to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::ops::Add;
+
+    use datafusion_expr::col;
+    use datafusion_proto::bytes::Serializeable;
+    use table_engine::partition::{Definition, HashPartitionInfo, KeyPartitionInfo, PartitionInfo};
+
+    use super::ShowCreateInterpreter;
+
+    #[test]
+    fn test_render_hash_partition_info() {
+        let expr = col("col1").add(col("col2"));
+        let partition_info = PartitionInfo::Hash(HashPartitionInfo {
+            definitions: vec![
+                Definition {
+                    name: "p0".to_string(),
+                    origin_name: None,
+                },
+                Definition {
+                    name: "p1".to_string(),
+                    origin_name: None,
+                },
+            ],
+            expr: expr.to_bytes().unwrap(),
+            linear: false,
+        });
+
+        let expected = " PARTITION BY HASH(col1 + col2) PARTITIONS 2".to_string();
+        assert_eq!(
+            expected,
+            ShowCreateInterpreter::render_partition_info(Some(partition_info))
+        );
+    }
+
+    #[test]
+    fn test_render_key_partition_info() {
+        let partition_key_col_name = "col1";
+        let partition_info = PartitionInfo::Key(KeyPartitionInfo {
+            definitions: vec![
+                Definition {
+                    name: "p0".to_string(),
+                    origin_name: None,
+                },
+                Definition {
+                    name: "p1".to_string(),
+                    origin_name: None,
+                },
+            ],
+            partition_key: vec![partition_key_col_name.to_string()],
+            linear: false,
+        });
+
+        let expected = " PARTITION BY KEY(col1) PARTITIONS 2".to_string();
+        assert_eq!(
+            expected,
+            ShowCreateInterpreter::render_partition_info(Some(partition_info))
+        );
     }
 }

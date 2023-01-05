@@ -14,7 +14,10 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryImpl, FactoryRef as SstFactoryRef, SstReaderOptions, SstType},
+        factory::{
+            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
+            SstReaderOptions,
+        },
         file::{FileHandle, FilePurgeQueue, Request},
         meta_cache::MetaCacheRef,
     },
@@ -59,13 +62,15 @@ impl MergeSstBench {
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let sst_reader_options = SstReaderOptions {
-            sst_type: SstType::Parquet,
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
+            frequency: ReadFrequency::Frequent,
             projected_schema,
             predicate,
             meta_cache: meta_cache.clone(),
             runtime: runtime.clone(),
+            background_read_parallelism: 1,
+            num_rows_per_row_group: config.read_batch_row_num,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 
@@ -117,6 +122,7 @@ impl MergeSstBench {
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
+        let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
             space_id,
@@ -126,7 +132,7 @@ impl MergeSstBench {
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
-            store: &self.store,
+            store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
             reverse: false,
@@ -166,6 +172,7 @@ impl MergeSstBench {
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
+        let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let builder = chain::Builder::new(ChainConfig {
             request_id,
             space_id,
@@ -174,7 +181,7 @@ impl MergeSstBench {
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
             sst_reader_options: self.sst_reader_options.clone(),
-            store: &self.store,
+            store_picker: &store_picker,
         })
         .ssts(vec![self.file_handles.clone()]);
 
