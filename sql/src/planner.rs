@@ -606,13 +606,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 source,
                 ..
             } => {
-                let table_name_string = TableName::from(table_name).to_string();
+                let table_name = TableName::from(table_name).to_string();
 
                 let table = self
-                    .find_table(&table_name_string)?
-                    .context(TableNotFound {
-                        name: table_name_string,
-                    })?;
+                    .find_table(&table_name)?
+                    .context(TableNotFound { name: table_name })?;
 
                 let schema = table.schema();
                 // Column name and its index in insert stmt: {column name} => index
@@ -716,7 +714,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn alter_add_column_to_plan(&self, stmt: AlterAddColumn) -> Result<Plan> {
         let table_name = stmt.table_name.to_string();
         let table = self
-            .find_table(table_name.as_str())?
+            .find_table(&table_name)?
             .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
