@@ -76,7 +76,10 @@ mod tests {
     use datafusion_expr::{col, lit};
 
     use super::*;
-    use crate::partition::{rule::key::compute_partition, Definition, KeyPartitionInfo};
+    use crate::partition::{
+        rule::key::{compute_partition, DEFAULT_PARTITION_VERSION},
+        KeyPartitionInfo, PartitionDefinition,
+    };
 
     // TODO: this test maybe not reasonable to place here.
     #[test]
@@ -90,7 +93,8 @@ mod tests {
         let valid_filters_1 = vec![filter1.clone(), filter2.clone(), filter3.clone()];
         let valid_filters_2 = vec![filter1, filter2, filter3, filter4];
         let ket_partition = KeyPartitionInfo {
-            definitions: vec![Definition::default(); partition_num],
+            version: DEFAULT_PARTITION_VERSION,
+            partition_definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -134,7 +138,8 @@ mod tests {
         let invalid_filters_1 = vec![filter1.clone(), filter2.clone(), filter3];
         let invalid_filters_2 = vec![filter1, filter2, filter4];
         let ket_partition = KeyPartitionInfo {
-            definitions: vec![Definition::default(); partition_num],
+            version: DEFAULT_PARTITION_VERSION,
+            partition_definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -164,7 +169,8 @@ mod tests {
         let schema = build_schema();
         let partition_num = 16;
         let ket_partition = KeyPartitionInfo {
-            definitions: vec![Definition::default(); partition_num],
+            version: DEFAULT_PARTITION_VERSION,
+            partition_definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };

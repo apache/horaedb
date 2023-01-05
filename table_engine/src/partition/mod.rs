@@ -74,51 +74,53 @@ pub enum PartitionInfo {
 }
 
 impl PartitionInfo {
-    pub fn get_definitions(&self) -> Vec<Definition> {
+    pub fn get_definitions(&self) -> Vec<PartitionDefinition> {
         match self {
-            Self::Hash(v) => v.definitions.clone(),
-            Self::Key(v) => v.definitions.clone(),
+            Self::Hash(v) => v.partition_definitions.clone(),
+            Self::Key(v) => v.partition_definitions.clone(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Definition {
+pub struct PartitionDefinition {
     pub name: String,
     pub origin_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashPartitionInfo {
-    pub definitions: Vec<Definition>,
+    pub version: i32,
+    pub partition_definitions: Vec<PartitionDefinition>,
     pub expr: Bytes,
     pub linear: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyPartitionInfo {
-    pub definitions: Vec<Definition>,
+    pub version: i32,
+    pub partition_definitions: Vec<PartitionDefinition>,
     pub partition_key: Vec<String>,
     pub linear: bool,
 }
 
-impl From<Definition> for meta_pb::Definition {
-    fn from(definition: Definition) -> Self {
+impl From<PartitionDefinition> for meta_pb::PartitionDefinition {
+    fn from(definition: PartitionDefinition) -> Self {
         Self {
             name: definition.name,
             origin_name: definition
                 .origin_name
-                .map(meta_pb::definition::OriginName::Origin),
+                .map(meta_pb::partition_definition::OriginName::Origin),
         }
     }
 }
 
-impl From<meta_pb::Definition> for Definition {
-    fn from(pb: meta_pb::Definition) -> Self {
+impl From<meta_pb::PartitionDefinition> for PartitionDefinition {
+    fn from(pb: meta_pb::PartitionDefinition) -> Self {
         let mut origin_name = None;
         if let Some(v) = pb.origin_name {
             match v {
-                meta_pb::definition::OriginName::Origin(name) => origin_name = Some(name),
+                meta_pb::partition_definition::OriginName::Origin(name) => origin_name = Some(name),
             }
         }
         Self {
@@ -131,8 +133,9 @@ impl From<meta_pb::Definition> for Definition {
 impl From<meta_pb::HashPartitionInfo> for HashPartitionInfo {
     fn from(partition_info_pb: meta_pb::HashPartitionInfo) -> Self {
         HashPartitionInfo {
-            definitions: partition_info_pb
-                .definitions
+            version: partition_info_pb.version,
+            partition_definitions: partition_info_pb
+                .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -145,8 +148,9 @@ impl From<meta_pb::HashPartitionInfo> for HashPartitionInfo {
 impl From<HashPartitionInfo> for meta_pb::HashPartitionInfo {
     fn from(partition_info: HashPartitionInfo) -> Self {
         meta_pb::HashPartitionInfo {
-            definitions: partition_info
-                .definitions
+            version: partition_info.version,
+            partition_definitions: partition_info
+                .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -159,8 +163,9 @@ impl From<HashPartitionInfo> for meta_pb::HashPartitionInfo {
 impl From<meta_pb::KeyPartitionInfo> for KeyPartitionInfo {
     fn from(partition_info_pb: meta_pb::KeyPartitionInfo) -> Self {
         KeyPartitionInfo {
-            definitions: partition_info_pb
-                .definitions
+            version: partition_info_pb.version,
+            partition_definitions: partition_info_pb
+                .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -173,8 +178,9 @@ impl From<meta_pb::KeyPartitionInfo> for KeyPartitionInfo {
 impl From<KeyPartitionInfo> for meta_pb::KeyPartitionInfo {
     fn from(partition_info: KeyPartitionInfo) -> Self {
         meta_pb::KeyPartitionInfo {
-            definitions: partition_info
-                .definitions
+            version: partition_info.version,
+            partition_definitions: partition_info
+                .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -279,30 +285,39 @@ impl PartitionInfoEncoder {
     }
 }
 
-#[test]
-fn test_partition_info_encoder() {
-    let partition_info = PartitionInfo::Key(KeyPartitionInfo {
-        definitions: vec![
-            Definition {
-                name: "p0".to_string(),
-                origin_name: Some("partition_0".to_string()),
-            },
-            Definition {
-                name: "p1".to_string(),
-                origin_name: None,
-            },
-        ],
-        partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
-        linear: false,
-    });
-    let partition_info_encoder = PartitionInfoEncoder::default();
-    let encode_partition_info = partition_info_encoder
-        .encode(partition_info.clone())
-        .unwrap();
-    let decode_partition_info = partition_info_encoder
-        .decode(&encode_partition_info)
-        .unwrap()
-        .unwrap();
+#[cfg(test)]
+mod test {
+    use crate::partition::{
+        rule::key::DEFAULT_PARTITION_VERSION, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
+        PartitionInfoEncoder,
+    };
 
-    assert_eq!(decode_partition_info, partition_info);
+    #[test]
+    fn test_partition_info_encoder() {
+        let partition_info = PartitionInfo::Key(KeyPartitionInfo {
+            version: DEFAULT_PARTITION_VERSION,
+            partition_definitions: vec![
+                PartitionDefinition {
+                    name: "p0".to_string(),
+                    origin_name: Some("partition_0".to_string()),
+                },
+                PartitionDefinition {
+                    name: "p1".to_string(),
+                    origin_name: None,
+                },
+            ],
+            partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
+            linear: false,
+        });
+        let partition_info_encoder = PartitionInfoEncoder::default();
+        let encode_partition_info = partition_info_encoder
+            .encode(partition_info.clone())
+            .unwrap();
+        let decode_partition_info = partition_info_encoder
+            .decode(&encode_partition_info)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(decode_partition_info, partition_info);
+    }
 }

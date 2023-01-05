@@ -19,6 +19,8 @@ use crate::partition::{
     Internal, LocateWritePartition, Result,
 };
 
+pub const DEFAULT_PARTITION_VERSION: i32 = 0;
+
 pub struct KeyRule {
     pub typed_key_columns: Vec<ColumnWithType>,
     pub partition_num: u64,
