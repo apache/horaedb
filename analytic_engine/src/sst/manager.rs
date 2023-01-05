@@ -151,7 +151,9 @@ pub mod tests {
                         id: id as FileId,
                         size: 0,
                         row_num: 0,
-                        meta: sst_meta,
+                        time_range: sst_meta.time_range,
+                        max_seq: sst_meta.max_sequence,
+                        storage_format_opts: sst_meta.storage_format_opts,
                     },
                 );
             }

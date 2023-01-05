@@ -615,6 +615,7 @@ mod tests {
             file::{FileMeta, FilePurgeQueue, SstMetaData},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
         },
+        table_options::StorageFormatOptions,
     };
 
     fn build_sst_meta_data(time_range: TimeRange) -> SstMetaData {
@@ -769,7 +770,9 @@ mod tests {
                     id: 1,
                     size,
                     row_num: 0,
-                    meta: build_sst_meta_data(TimeRange::empty()),
+                    time_range: TimeRange::empty(),
+                    max_seq: 0,
+                    storage_format_opts: StorageFormatOptions::default(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)
