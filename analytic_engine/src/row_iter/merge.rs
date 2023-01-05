@@ -85,6 +85,7 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
+    pub deadline: Instant,
     pub space_id: SpaceId,
     pub table_id: TableId,
     /// Max visible sequence (inclusive)

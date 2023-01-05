@@ -6,6 +6,7 @@ use std::{
     any::Any,
     fmt,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 use arrow::datatypes::SchemaRef;
@@ -45,10 +46,16 @@ pub struct TableProviderAdapter {
     read_schema: Schema,
     request_id: RequestId,
     read_parallelism: usize,
+    deadline: Instant,
 }
 
 impl TableProviderAdapter {
-    pub fn new(table: TableRef, request_id: RequestId, read_parallelism: usize) -> Self {
+    pub fn new(
+        table: TableRef,
+        request_id: RequestId,
+        read_parallelism: usize,
+        deadline: Instant,
+    ) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
@@ -57,6 +64,7 @@ impl TableProviderAdapter {
             read_schema,
             request_id,
             read_parallelism,
+            deadline,
         }
     }
 
@@ -104,6 +112,7 @@ impl TableProviderAdapter {
             read_order,
             read_parallelism,
             predicate,
+            deadline: self.deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
         };
         scan_table.maybe_init_stream(state).await?;
@@ -207,6 +216,7 @@ struct ScanTable {
     read_order: ReadOrder,
     read_parallelism: usize,
     predicate: PredicateRef,
+    deadline: Instant,
 
     stream_state: Mutex<ScanStreamState>,
 }
@@ -218,6 +228,7 @@ impl ScanTable {
             opts: ReadOptions {
                 batch_size: state.config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
                 read_parallelism: self.read_parallelism,
+                deadline: self.deadline,
             },
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),

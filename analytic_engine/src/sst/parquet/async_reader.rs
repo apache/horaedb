@@ -57,6 +57,7 @@ pub struct Reader<'a> {
     /// Current frequency decides the cache policy.
     frequency: ReadFrequency,
     batch_size: usize,
+    deadline: Instant,
 
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
@@ -85,6 +86,7 @@ impl<'a> Reader<'a> {
             predicate: options.predicate.clone(),
             frequency: options.frequency,
             batch_size,
+            deadline: options.deadline,
             meta_data: None,
             row_projector: None,
             parallelism_options,
@@ -204,8 +206,12 @@ impl<'a> Reader<'a> {
 
         let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
         for chunk in filtered_row_group_chunks {
-            let object_store_reader =
-                ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
+            let object_store_reader = ObjectStoreReader::new(
+                self.store.clone(),
+                self.path.clone(),
+                meta_data.clone(),
+                self.deadline,
+            );
             let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
@@ -352,10 +358,11 @@ struct ObjectStoreReader {
     path: Path,
     meta_data: MetaData,
     metrics: ReaderMetrics,
+    deadline: Instant,
 }
 
 impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
+    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData, deadline: Instant) -> Self {
         Self {
             storage,
             path,
@@ -364,6 +371,7 @@ impl ObjectStoreReader {
                 bytes_scanned: 0,
                 sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
             },
+            deadline,
         }
     }
 }
@@ -380,15 +388,18 @@ impl AsyncFileReader for ObjectStoreReader {
         self.metrics
             .sst_get_range_length_histogram
             .observe((range.end - range.start) as f64);
-        self.storage
-            .get_range(&self.path, range)
-            .map_err(|e| {
-                parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch range from object store, err:{}",
-                    e
-                ))
-            })
-            .boxed()
+
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(self.deadline),
+            self.storage.get_range(&self.path, range),
+        )
+        .map_err(|e| {
+            parquet::errors::ParquetError::General(format!(
+                "Failed to fetch range from object store, err:{}",
+                e
+            ))
+        })
+        .boxed()
     }
 
     fn get_byte_ranges(

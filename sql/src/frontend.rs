@@ -2,7 +2,7 @@
 
 //! Frontend
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use ceresdbproto::prometheus::PrometheusQueryRequest;
 use common_types::request_id::RequestId;
@@ -51,12 +51,15 @@ pub struct Context {
     pub request_id: RequestId,
     /// Parallelism to read table.
     pub read_parallelism: usize,
+    /// Deadline of this request
+    pub deadline: Instant,
 }
 
 impl Context {
-    pub fn new(request_id: RequestId) -> Self {
+    pub fn new(request_id: RequestId, deadline: Instant) -> Self {
         Self {
             request_id,
+            deadline,
             read_parallelism: table::DEFAULT_READ_PARALLELISM,
         }
     }
@@ -91,7 +94,12 @@ impl<P> Frontend<P> {
 impl<P: MetaProvider> Frontend<P> {
     /// Create logical plan for the statement
     pub fn statement_to_plan(&self, ctx: &mut Context, stmt: Statement) -> Result<Plan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            ctx.deadline,
+        );
 
         planner.statement_to_plan(stmt).context(CreatePlan)
     }
@@ -101,7 +109,12 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &mut Context,
         expr: Expr,
     ) -> Result<(Plan, Arc<ColumnNames>)> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id,
+            ctx.read_parallelism,
+            ctx.deadline,
+        );
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)
     }

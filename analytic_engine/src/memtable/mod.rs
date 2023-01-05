@@ -6,7 +6,11 @@ pub mod factory;
 pub mod key;
 pub mod skiplist;
 
-use std::{ops::Bound, sync::Arc};
+use std::{
+    ops::Bound,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use common_types::{
     bytes::{ByteVec, Bytes},
@@ -73,6 +77,9 @@ pub enum Error {
     IterReverse {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+
+    #[snafu(display("Timeout when iter memtable"))]
+    IterTimeout {},
 }
 
 define_result!(Error);
@@ -102,12 +109,14 @@ impl PutContext {
 pub struct ScanContext {
     /// Suggested row number per batch
     pub batch_size: usize,
+    pub deadline: Instant,
 }
 
 impl Default for ScanContext {
     fn default() -> Self {
         Self {
             batch_size: DEFAULT_SCAN_BATCH_SIZE,
+            deadline: Instant::now() + Duration::from_secs(60),
         }
     }
 }

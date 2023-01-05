@@ -2,7 +2,7 @@
 
 //! Adapter to providers in datafusion
 
-use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
+use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc, time::Instant};
 
 use catalog::manager::ManagerRef;
 use common_types::request_id::RequestId;
@@ -150,11 +150,17 @@ pub struct ContextProviderAdapter<'a, P> {
     request_id: RequestId,
     /// Read parallelism for each table.
     read_parallelism: usize,
+    deadline: Instant,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Create a adapter from meta provider
-    pub fn new(meta_provider: &'a P, request_id: RequestId, read_parallelism: usize) -> Self {
+    pub fn new(
+        meta_provider: &'a P,
+        request_id: RequestId,
+        read_parallelism: usize,
+        deadline: Instant,
+    ) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
 
@@ -164,6 +170,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             meta_provider,
             request_id,
             read_parallelism,
+            deadline,
         }
     }
 
@@ -187,6 +194,19 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         if self.err.borrow().is_none() {
             *self.err.borrow_mut() = Some(err);
         }
+    }
+
+    fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
+        let table_adapter = Arc::new(TableProviderAdapter::new(
+            table_ref,
+            self.request_id,
+            self.read_parallelism,
+            self.deadline,
+        ));
+
+        Arc::new(DefaultTableSource {
+            table_provider: table_adapter,
+        })
     }
 }
 
@@ -218,27 +238,15 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(p) = self.table_cache.borrow().get(name) {
-            return Ok(p);
+        if let Some(table_ref) = self.table_cache.borrow().get(name) {
+            return Ok(self.table_source(table_ref));
         }
 
         // Find in meta provider
         match self.meta_provider.table(name) {
             Ok(Some(table)) => {
-                let table_adapter = Arc::new(TableProviderAdapter::new(
-                    table,
-                    self.request_id,
-                    self.read_parallelism,
-                ));
-                let table_source = Arc::new(DefaultTableSource {
-                    table_provider: table_adapter,
-                });
-                // Put into cache
-                self.table_cache
-                    .borrow_mut()
-                    .insert(name, table_source.clone());
-
-                Ok(table_source)
+                self.table_cache.borrow_mut().insert(name, table.clone());
+                Ok(self.table_source(table))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -306,12 +314,7 @@ impl SchemaProvider for SchemaProviderAdapter {
         let mut names = Vec::new();
         let _ = self.tables.visit::<_, ()>(|name, table| {
             if name.catalog == self.catalog && name.schema == self.schema {
-                let provider = table
-                    .table_provider
-                    .as_any()
-                    .downcast_ref::<Arc<TableProviderAdapter>>()
-                    .unwrap();
-                names.push(provider.as_table_ref().name().to_string());
+                names.push(table.name().to_string());
             }
             Ok(())
         });
@@ -324,12 +327,14 @@ impl SchemaProvider for SchemaProviderAdapter {
             schema: &self.schema,
             table: name,
         };
-        self.tables.get(name_ref).map(|v| {
-            v.as_any()
-                .downcast_ref::<Arc<TableProviderAdapter>>()
-                .unwrap()
-                .clone() as _
-        })
+
+        todo!("Fixme")
+        // self.tables.get(name_ref).map(|v| {
+        //     v.as_any()
+        //         .downcast_ref::<Arc<TableProviderAdapter>>()
+        //         .unwrap()
+        //         .clone() as _
+        // })
     }
 
     fn table_exist(&self, name: &str) -> bool {

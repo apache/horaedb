@@ -45,6 +45,9 @@ where
     Q: QueryExecutor + 'static,
 {
     let request_id = RequestId::next_id();
+    let begin_instant = Instant::now();
+    // TODO: read timeout from config
+    let deadline = begin_instant + Duration::from_secs(60);
 
     debug!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -66,7 +69,7 @@ where
     };
     let frontend = Frontend::new(provider);
 
-    let mut sql_ctx = SqlContext::new(request_id);
+    let mut sql_ctx = SqlContext::new(request_id, deadline);
     let expr = frontend
         .parse_promql(&mut sql_ctx, req)
         .map_err(|e| Box::new(e) as _)

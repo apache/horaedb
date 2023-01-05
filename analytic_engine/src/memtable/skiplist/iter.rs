@@ -2,7 +2,7 @@
 
 //! Skiplist memtable iterator
 
-use std::{cmp::Ordering, iter::Rev, ops::Bound};
+use std::{cmp::Ordering, iter::Rev, ops::Bound, time::Instant};
 
 use arena::{Arena, BasicStats};
 use common_types::{
@@ -21,8 +21,8 @@ use snafu::ResultExt;
 use crate::memtable::{
     key::{self, KeySequence},
     skiplist::{BytewiseComparator, SkiplistMemTable},
-    AppendRow, BuildRecordBatch, DecodeInternalKey, EncodeInternalKey, IterReverse, ProjectSchema,
-    Result, ScanContext, ScanRequest,
+    AppendRow, BuildRecordBatch, DecodeInternalKey, EncodeInternalKey, IterReverse, IterTimeout,
+    ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state
@@ -50,6 +50,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 
     // Options related:
     batch_size: usize,
+    deadline: Instant,
 
     start_user_key: Bound<Bytes>,
     end_user_key: Bound<Bytes>,
@@ -85,6 +86,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             projected_schema: request.projected_schema,
             projector,
             batch_size: ctx.batch_size,
+            deadline: ctx.deadline,
             start_user_key: request.start_user_key,
             end_user_key: request.end_user_key,
             sequence: request.sequence,
@@ -162,6 +164,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         }
 
         if num_rows > 0 {
+            if self.deadline >= Instant::now() {
+                return IterTimeout {}.fail();
+            }
+
             let batch = builder.build().context(BuildRecordBatch)?;
             trace!("column iterator send one batch:{:?}", batch);
 

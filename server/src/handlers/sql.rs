@@ -112,6 +112,9 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
+    // TODO: read timeout from config
+    let deadline = begin_instant + Duration::from_secs(60);
+
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
         request_id, request
@@ -128,7 +131,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     };
     let frontend = Frontend::new(provider);
 
-    let mut sql_ctx = SqlContext::new(request_id);
+    let mut sql_ctx = SqlContext::new(request_id, deadline);
     // Parse sql, frontend error of invalid sql already contains sql
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend

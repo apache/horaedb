@@ -3,6 +3,7 @@
 use std::{
     ops::{Bound, Not},
     sync::Arc,
+    time::Instant,
 };
 
 use arrow::{
@@ -100,6 +101,9 @@ pub enum Error {
     SelectBatchData {
         source: common_types::record_batch::Error,
     },
+
+    #[snafu(display("Timeout when read record batch"))]
+    Timeout {},
 }
 
 define_result!(Error);
@@ -205,18 +209,24 @@ pub fn filtered_stream_from_memtable(
     memtable: &MemTableRef,
     reverse: bool,
     predicate: &Predicate,
+    deadline: Instant,
 ) -> Result<SequencedRecordBatchStream> {
-    stream_from_memtable(projected_schema.clone(), need_dedup, memtable, reverse).and_then(
-        |origin_stream| {
-            filter_stream(
-                origin_stream,
-                projected_schema
-                    .as_record_schema_with_key()
-                    .to_arrow_schema_ref(),
-                predicate,
-            )
-        },
+    stream_from_memtable(
+        projected_schema.clone(),
+        need_dedup,
+        memtable,
+        reverse,
+        deadline,
     )
+    .and_then(|origin_stream| {
+        filter_stream(
+            origin_stream,
+            projected_schema
+                .as_record_schema_with_key()
+                .to_arrow_schema_ref(),
+            predicate,
+        )
+    })
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
@@ -225,8 +235,10 @@ pub fn stream_from_memtable(
     need_dedup: bool,
     memtable: &MemTableRef,
     reverse: bool,
+    deadline: Instant,
 ) -> Result<SequencedRecordBatchStream> {
-    let scan_ctx = ScanContext::default();
+    let mut scan_ctx = ScanContext::default();
+    scan_ctx.deadline = deadline;
     let max_seq = memtable.last_sequence();
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
@@ -298,7 +310,13 @@ pub async fn stream_from_sst_file(
         })?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
     let max_seq = meta.max_sequence;
-    let sst_stream = sst_reader.read().await.context(ReadSstData)?;
+    let sst_stream = tokio::time::timeout_at(
+        tokio::time::Instant::from_std(sst_reader_options.deadline),
+        sst_reader.read(),
+    )
+    .await
+    .context(Timeout)
+    .and_then(|v| v.context(ReadSstData))?;
 
     let stream = Box::new(sst_stream.map(move |v| {
         v.map(|record_batch| SequencedRecordBatch {

@@ -30,12 +30,12 @@ pub type ContextRef = Arc<Context>;
 /// Query context
 pub struct Context {
     pub request_id: RequestId,
-    pub timeout: Duration,
+    pub deadline: Instant,
     pub default_catalog: String,
     pub default_schema: String,
 }
 
-pub const CERESDB_QUERY_TIMEOUT: &str = "ceresdb_query_timeout";
+pub const CERESDB_QUERY_DEADLINE: &str = "ceresdb_query_deadline";
 
 impl Context {
     pub fn build_df_session_ctx(&self, config: &Config) -> SessionContext {
@@ -44,7 +44,6 @@ impl Context {
                 self.default_catalog.clone(),
                 self.default_schema.clone(),
             )
-            .set_u64(CERESDB_QUERY_TIMEOUT, self.timeout.as_millis() as u64)
             .with_target_partitions(config.read_parallelism);
 
         let logical_optimize_rules = Self::logical_optimize_rules();

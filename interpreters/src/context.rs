@@ -2,7 +2,10 @@
 
 //! Interpreter context
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use common_types::request_id::RequestId;
 use query_engine::context::{Context as QueryContext, ContextRef as QueryContextRef};
@@ -19,16 +22,16 @@ define_result!(Error);
 #[derive(Debug, Clone)]
 pub struct Context {
     request_id: RequestId,
-    timeout: Duration,
+    deadline: Instant,
     default_catalog: String,
     default_schema: String,
 }
 
 impl Context {
-    pub fn builder(request_id: RequestId, timeout: Duration) -> Builder {
+    pub fn builder(request_id: RequestId, deadline: Instant) -> Builder {
         Builder {
             request_id,
-            timeout,
+            deadline,
             default_catalog: String::new(),
             default_schema: String::new(),
         }
@@ -38,7 +41,7 @@ impl Context {
     pub fn new_query_context(&self) -> Result<QueryContextRef> {
         let ctx = QueryContext {
             request_id: self.request_id,
-            timeout: self.timeout,
+            deadline: self.deadline,
             default_catalog: self.default_catalog.clone(),
             default_schema: self.default_schema.clone(),
         };
@@ -64,7 +67,7 @@ impl Context {
 #[must_use]
 pub struct Builder {
     request_id: RequestId,
-    timeout: Duration,
+    deadline: Instant,
     default_catalog: String,
     default_schema: String,
 }
@@ -79,7 +82,7 @@ impl Builder {
     pub fn build(self) -> Context {
         Context {
             request_id: self.request_id,
-            timeout: self.timeout,
+            deadline: self.deadline,
             default_catalog: self.default_catalog,
             default_schema: self.default_schema,
         }

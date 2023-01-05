@@ -119,19 +119,7 @@ impl Executor for ExecutorImpl {
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation
-        let left_timeout = match ctx
-            .timeout
-            .checked_sub(Instant::now().duration_since(begin_instant))
-        {
-            None => {
-                return TimeoutNoReason {
-                    stage: "After execute plan",
-                }
-                .fail()
-            }
-            Some(v) => v,
-        };
-        let record_batches = collect(left_timeout, stream).await?;
+        let record_batches = collect(ctx.deadline, stream).await?;
 
         info!(
             "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
@@ -158,15 +146,21 @@ async fn optimize_plan(
     );
 
     let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
-    time::timeout(ctx.timeout, physical_optimizer.optimize(plan))
-        .await
-        .context(Timeout)
-        .and_then(|ret| ret.context(PhysicalOptimize))
+    time::timeout_at(
+        tokio::time::Instant::from_std(ctx.deadline),
+        physical_optimizer.optimize(plan),
+    )
+    .await
+    .context(Timeout)
+    .and_then(|ret| ret.context(PhysicalOptimize))
 }
 
-async fn collect(timeout: Duration, stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    time::timeout(timeout, stream.try_collect())
-        .await
-        .context(Timeout)
-        .and_then(|ret| ret.context(Collect))
+async fn collect(deadline: Instant, stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
+    time::timeout_at(
+        tokio::time::Instant::from_std(deadline),
+        stream.try_collect(),
+    )
+    .await
+    .context(Timeout)
+    .and_then(|ret| ret.context(Collect))
 }

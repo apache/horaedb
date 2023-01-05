@@ -160,6 +160,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            deadline: request.deadline,
             background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
@@ -172,6 +173,7 @@ impl Instance {
         for read_view in read_views {
             let merge_config = MergeConfig {
                 request_id: request.request_id,
+                deadline: request.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 sequence,
@@ -223,6 +225,7 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
+            deadline: request.deadline,
             background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
