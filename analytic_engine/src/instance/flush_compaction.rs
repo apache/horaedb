@@ -44,8 +44,7 @@ use crate::{
     sst::{
         builder::RecordBatchStream,
         factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
-        file::{FileMeta, SstMetaData},
-        util::{self, SstMetaReader},
+        file::{self, FileMeta, SstMetaData, SstMetaReader},
     },
     table::{
         data::{TableData, TableDataRef},
@@ -968,7 +967,7 @@ impl SpaceStore {
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
-            util::merge_sst_meta(&sst_metas, schema)
+            file::merge_sst_meta(&sst_metas, schema)
         };
 
         // Alloc file id for the merged sst.
