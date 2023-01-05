@@ -761,7 +761,7 @@ impl TableVersion {
 /// During recovery, we apply all version edit to [TableVersionMeta] first, then
 /// apply the version meta to the table, so we can avoid adding removed ssts to
 /// the version.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TableVersionMeta {
     pub flushed_sequence: SequenceNumber,
     files: HashMap<FileId, AddFile>,
@@ -801,7 +801,7 @@ mod tests {
     use super::*;
     use crate::{
         instance::write_worker::tests::WriteHandleMocker,
-        sst::file::tests::{FilePurgerMocker, SstMetaDataMocker},
+        sst::file::tests::FilePurgerMocker,
         table::{data::tests::MemTableMocker, version_edit::tests::AddFileMocker},
         table_options,
         tests::table,
@@ -1046,7 +1046,6 @@ mod tests {
         let version = new_table_version();
 
         let memtable = MemTableMocker::default().build();
-        let schema = memtable.schema().clone();
 
         let memtable_id1 = 1;
         let sampling_mem = SamplingMemTable::new(memtable, memtable_id1);
@@ -1077,12 +1076,10 @@ mod tests {
 
         let max_sequence = 120;
         let file_id = 13;
-        // TO simplify test, we only create one sst.
-        let sst_meta = SstMetaDataMocker::new(schema)
+        let add_file = AddFileMocker::new(file_id)
             .time_range(time_range)
-            .max_sequence(max_sequence)
+            .max_seq(max_sequence)
             .build();
-        let add_file = AddFileMocker::new(sst_meta).file_id(file_id).build();
         let edit = VersionEdit {
             flushed_sequence: max_sequence,
             mems_to_remove: vec![memtable_id1, memtable_id2],
