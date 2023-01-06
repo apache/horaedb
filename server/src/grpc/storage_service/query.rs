@@ -2,7 +2,7 @@
 
 //! Query handler
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ceresdbproto::{
     common::ResponseHeader,
@@ -127,8 +127,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 ) -> Result<Option<Output>> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    // TODO: read timeout from config
-    let deadline = begin_instant + Duration::from_secs(60);
+    let deadline = begin_instant + ctx.timeout;
 
     info!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",

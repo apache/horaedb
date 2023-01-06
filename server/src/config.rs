@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use analytic_engine;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
+use common_util::config::ReadableDuration;
 use meta_client::types::ShardId;
 use router::{
     endpoint::Endpoint,
@@ -129,6 +130,7 @@ pub struct Config {
     pub http_max_body_size: u64,
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
+    pub timeout: ReadableDuration,
 
     /// Engine related configs:
     pub runtime: RuntimeConfig,
@@ -184,6 +186,7 @@ impl Default for Config {
             mysql_port: 3307,
             grpc_port,
             grpc_server_cq_count: 20,
+            timeout: ReadableDuration::secs(90),
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,

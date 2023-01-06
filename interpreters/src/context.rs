@@ -2,10 +2,7 @@
 
 //! Interpreter context
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
 use query_engine::context::{Context as QueryContext, ContextRef as QueryContextRef};

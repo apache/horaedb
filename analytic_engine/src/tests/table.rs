@@ -2,7 +2,11 @@
 
 //! Utils to create table.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use common_types::{
     column_schema,
@@ -149,23 +153,28 @@ impl FixedSchemaTable {
 }
 
 pub fn read_opts_list() -> Vec<ReadOptions> {
+    let deadline = Instant::now() + Duration::from_secs(60);
     vec![
         ReadOptions::default(),
         ReadOptions {
             batch_size: 1,
             read_parallelism: 1,
+            deadline,
         },
         ReadOptions {
             batch_size: 1,
             read_parallelism: 4,
+            deadline,
         },
         ReadOptions {
             batch_size: 100,
             read_parallelism: 1,
+            deadline,
         },
         ReadOptions {
             batch_size: 100,
             read_parallelism: 4,
+            deadline,
         },
     ]
 }

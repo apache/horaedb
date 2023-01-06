@@ -142,6 +142,7 @@ impl MergeMemTableBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            deadline: None,
             space_id,
             table_id,
             sequence,
@@ -201,6 +202,7 @@ fn mock_sst_reader_options(
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
+        deadline: None,
         background_read_parallelism: 1,
         num_rows_per_row_group: 500,
     }

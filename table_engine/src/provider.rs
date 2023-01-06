@@ -6,7 +6,7 @@ use std::{
     any::Any,
     fmt,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use arrow::datatypes::SchemaRef;
@@ -33,6 +33,10 @@ use crate::{
     table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
 
+// Config keys set in Datafusion's SessionConfig
+pub const CERESDB_REQUEST_TIMEOUT: &str = "ceresdb_request_timeout";
+pub const CERESDB_REQUEST_ID: &str = "ceresdb_request_id";
+
 /// An adapter to [TableProvider] with schema snapshot.
 ///
 /// This adapter holds a schema snapshot of the table and always returns that
@@ -44,27 +48,18 @@ pub struct TableProviderAdapter {
     /// snapshot for read to avoid the reader sees different schema during
     /// query
     read_schema: Schema,
-    request_id: RequestId,
     read_parallelism: usize,
-    deadline: Instant,
 }
 
 impl TableProviderAdapter {
-    pub fn new(
-        table: TableRef,
-        request_id: RequestId,
-        read_parallelism: usize,
-        deadline: Instant,
-    ) -> Self {
+    pub fn new(table: TableRef, read_parallelism: usize) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
         Self {
             table,
             read_schema,
-            request_id,
             read_parallelism,
-            deadline,
         }
     }
 
@@ -80,14 +75,21 @@ impl TableProviderAdapter {
         limit: Option<usize>,
         read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
+        let request_id = RequestId::from(state.config.config_options().get_u64(CERESDB_REQUEST_ID));
+        let timeout = state
+            .config
+            .config_options()
+            .get_u64(CERESDB_REQUEST_TIMEOUT);
+        let deadline = Instant::now() + Duration::from_millis(timeout);
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}",
+            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, timeout:{}",
             self.table.name(),
-            self.request_id,
+            request_id,
             projection,
             filters,
             limit,
             read_order,
+            timeout
         );
 
         // Forbid the parallel reading if the data order is required.
@@ -108,11 +110,11 @@ impl TableProviderAdapter {
                     ))
                 })?,
             table: self.table.clone(),
-            request_id: self.request_id,
+            request_id,
             read_order,
             read_parallelism,
             predicate,
-            deadline: self.deadline,
+            deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
         };
         scan_table.maybe_init_stream(state).await?;

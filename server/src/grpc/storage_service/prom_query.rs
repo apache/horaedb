@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+    time::Instant,
 };
 
 use ceresdbproto::{
@@ -46,8 +47,7 @@ where
 {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    // TODO: read timeout from config
-    let deadline = begin_instant + Duration::from_secs(60);
+    let deadline = begin_instant + ctx.timeout;
 
     debug!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -103,7 +103,7 @@ where
         })?;
 
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
         .build();

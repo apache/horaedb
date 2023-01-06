@@ -6,11 +6,7 @@ pub mod factory;
 pub mod key;
 pub mod skiplist;
 
-use std::{
-    ops::Bound,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{ops::Bound, sync::Arc, time::Instant};
 
 use common_types::{
     bytes::{ByteVec, Bytes},
@@ -78,8 +74,8 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    #[snafu(display("Timeout when iter memtable"))]
-    IterTimeout {},
+    #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
+    IterTimeout { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -109,14 +105,14 @@ impl PutContext {
 pub struct ScanContext {
     /// Suggested row number per batch
     pub batch_size: usize,
-    pub deadline: Instant,
+    pub deadline: Option<Instant>,
 }
 
 impl Default for ScanContext {
     fn default() -> Self {
         Self {
             batch_size: DEFAULT_SCAN_BATCH_SIZE,
-            deadline: Instant::now() + Duration::from_secs(60),
+            deadline: None,
         }
     }
 }

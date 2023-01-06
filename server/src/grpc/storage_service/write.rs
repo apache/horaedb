@@ -2,7 +2,10 @@
 
 //! Write handler
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Instant,
+};
 
 use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
 use common_types::{
@@ -32,6 +35,8 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     req: WriteRequest,
 ) -> Result<WriteResponse> {
     let request_id = RequestId::next_id();
+    let begin_instant = Instant::now();
+    let deadline = begin_instant + ctx.timeout;
 
     debug!(
         "Grpc handle write begin, catalog:{}, tenant:{}, request_id:{}, first_table:{:?}, num_tables:{}",
@@ -45,7 +50,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     );
 
     let instance = &ctx.instance;
-    let plan_vec = write_request_to_insert_plan(ctx, req, request_id).await?;
+    let plan_vec = write_request_to_insert_plan(ctx, req, request_id, deadline).await?;
 
     let mut success = 0;
     for insert_plan in plan_vec {
@@ -65,7 +70,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
                 msg: "Insert is blocked",
             })?;
 
-        let interpreter_ctx = InterpreterContext::builder(request_id)
+        let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
             // Use current ctx's catalog and tenant as default catalog and tenant
             .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
             .build();
@@ -112,6 +117,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     write_request: WriteRequest,
     request_id: RequestId,
+    deadline: Instant,
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
 
@@ -122,7 +128,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         if table.is_none() {
             if let Some(config) = ctx.schema_config {
                 if config.auto_create_tables {
-                    create_table(ctx, &write_metric, request_id).await?;
+                    create_table(ctx, &write_metric, request_id, deadline).await?;
                     // try to get table again
                     table = try_get_table(ctx, table_name)?;
                 }
@@ -189,6 +195,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     write_metric: &WriteMetric,
     request_id: RequestId,
+    deadline: Instant,
 ) -> Result<()> {
     let create_table_plan = storage_service::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)
@@ -217,7 +224,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
             msg: "Create table is blocked",
         })?;
 
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
         .build();

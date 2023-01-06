@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use common_util::runtime::JoinHandle;
 use log::{error, info};
@@ -24,6 +24,7 @@ pub struct MysqlService<Q> {
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
+    timeout: Duration,
 }
 
 impl<Q> MysqlService<Q> {
@@ -31,6 +32,7 @@ impl<Q> MysqlService<Q> {
         instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
+        timeout: Duration,
     ) -> MysqlService<Q> {
         Self {
             instance,
@@ -38,6 +40,7 @@ impl<Q> MysqlService<Q> {
             socket_addr,
             join_handler: None,
             tx: None,
+            timeout,
         }
     }
 }
@@ -52,6 +55,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
             self.instance.clone(),
             self.runtimes.clone(),
             self.socket_addr,
+            self.timeout,
             rx,
         )));
         info!("Mysql service listens on {}", self.socket_addr);
@@ -68,6 +72,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         instance: InstanceRef<Q>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
+        timeout: Duration,
         mut rx: Receiver<()>,
     ) {
         let listener = match tokio::net::TcpListener::bind(socket_addr)
@@ -95,7 +100,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, runtimes),
+                        MysqlWorker::new(instance, runtimes,timeout),
                         stream,
                     ));
                 },

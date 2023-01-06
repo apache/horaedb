@@ -50,7 +50,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 
     // Options related:
     batch_size: usize,
-    deadline: Instant,
+    deadline: Option<Instant>,
 
     start_user_key: Bound<Bytes>,
     end_user_key: Bound<Bytes>,
@@ -164,8 +164,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         }
 
         if num_rows > 0 {
-            if self.deadline >= Instant::now() {
-                return IterTimeout {}.fail();
+            if let Some(deadline) = self.deadline {
+                if Instant::now() >= deadline {
+                    return IterTimeout {}.fail();
+                }
             }
 
             let batch = builder.build().context(BuildRecordBatch)?;

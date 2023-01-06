@@ -918,11 +918,15 @@ impl SpaceStore {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: self.meta_cache.clone(),
                 runtime: runtime.clone(),
+                // no need to set deadline for compaction
+                deadline: None,
                 background_read_parallelism: 1,
                 num_rows_per_row_group: table_options.num_rows_per_row_group,
             };
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
+                // no need to set deadline for compaction
+                deadline: None,
                 space_id,
                 table_id,
                 sequence,

@@ -7,6 +7,7 @@ use std::{
     str::FromStr,
     stringify,
     sync::Arc,
+    time::Duration,
 };
 
 use ceresdbproto::{
@@ -96,6 +97,9 @@ pub enum Error {
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
+
+    #[snafu(display("Missing timeout.\nBacktrace:\n{}", backtrace))]
+    MissingTimeout { backtrace: Backtrace },
 
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
@@ -199,6 +203,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 
 pub struct Builder<Q> {
     endpoint: String,
+    timeout: Option<Duration>,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -212,6 +217,7 @@ impl<Q> Builder<Q> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
+            timeout: None,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -263,6 +269,11 @@ impl<Q> Builder<Q> {
         self.forward_config = Some(config);
         self
     }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -304,6 +315,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         } else {
             None
         };
+        let timeout = self.timeout.context(MissingTimeout)?;
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
             router,
@@ -311,6 +323,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             runtimes,
             schema_config_provider,
             forwarder,
+            timeout,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

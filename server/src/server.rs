@@ -290,6 +290,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let http_config = HttpConfig {
             endpoint,
             max_body_size: self.config.http_max_body_size,
+            timeout: self.config.timeout.0,
         };
 
         // Start http service
@@ -305,6 +306,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let mysql_config = mysql::MysqlConfig {
             ip: self.config.bind_addr.clone(),
             port: self.config.mysql_port,
+            timeout: self.config.timeout.0,
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
@@ -328,6 +330,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
+            .timeout(self.config.timeout.0)
             .build()
             .context(BuildGrpcService)?;
 

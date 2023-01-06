@@ -7,7 +7,6 @@ use std::{
     convert::TryFrom,
     mem,
     sync::Arc,
-    time::Instant,
 };
 
 use arrow::{
@@ -29,7 +28,7 @@ use datafusion::{
     sql::planner::SqlToRel,
 };
 use hashbrown::HashMap as NoStdHashMap;
-use log::debug;
+use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
     ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
@@ -257,22 +256,15 @@ pub struct Planner<'a, P: MetaProvider> {
     provider: &'a P,
     request_id: RequestId,
     read_parallelism: usize,
-    deadline: Instant,
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Create a new logical planner
-    pub fn new(
-        provider: &'a P,
-        request_id: RequestId,
-        read_parallelism: usize,
-        deadline: Instant,
-    ) -> Self {
+    pub fn new(provider: &'a P, request_id: RequestId, read_parallelism: usize) -> Self {
         Self {
             provider,
             request_id,
             read_parallelism,
-            deadline,
         }
     }
 
@@ -281,12 +273,13 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Takes the ownership of statement because some statements like INSERT
     /// statements contains lots of data
     pub fn statement_to_plan(&self, statement: Statement) -> Result<Plan> {
-        let adapter = ContextProviderAdapter::new(
-            self.provider,
+        trace!(
+            "Statement to plan, request_id:{}, statement:{:?}",
             self.request_id,
-            self.read_parallelism,
-            self.deadline,
+            statement
         );
+
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -308,12 +301,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn promql_expr_to_plan(&self, expr: PromExpr) -> Result<(Plan, Arc<ColumnNames>)> {
-        let adapter = ContextProviderAdapter::new(
-            self.provider,
-            self.request_id,
-            self.read_parallelism,
-            self.deadline,
-        );
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -1052,7 +1040,6 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
 
     use sqlparser::ast::{Ident, Value};
 
@@ -1074,12 +1061,7 @@ mod tests {
     }
 
     fn build_planner(provider: &MockMetaProvider) -> Planner<MockMetaProvider> {
-        Planner::new(
-            provider,
-            RequestId::next_id(),
-            1,
-            Instant::now() + Duration::from_secs(60),
-        )
+        Planner::new(provider, RequestId::next_id(), 1)
     }
 
     #[test]

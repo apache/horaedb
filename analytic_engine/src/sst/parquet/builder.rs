@@ -353,6 +353,7 @@ mod tests {
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 runtime: runtime.clone(),
+                deadline: None,
                 num_rows_per_row_group: 5,
                 background_read_parallelism: 1,
             };

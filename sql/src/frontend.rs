@@ -94,12 +94,7 @@ impl<P> Frontend<P> {
 impl<P: MetaProvider> Frontend<P> {
     /// Create logical plan for the statement
     pub fn statement_to_plan(&self, ctx: &mut Context, stmt: Statement) -> Result<Plan> {
-        let planner = Planner::new(
-            &self.provider,
-            ctx.request_id,
-            ctx.read_parallelism,
-            ctx.deadline,
-        );
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
         planner.statement_to_plan(stmt).context(CreatePlan)
     }
@@ -109,12 +104,7 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &mut Context,
         expr: Expr,
     ) -> Result<(Plan, Arc<ColumnNames>)> {
-        let planner = Planner::new(
-            &self.provider,
-            ctx.request_id,
-            ctx.read_parallelism,
-            ctx.deadline,
-        );
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)
     }

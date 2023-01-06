@@ -2,10 +2,9 @@
 
 //! Adapter to providers in datafusion
 
-use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc, time::Instant};
+use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
 use catalog::manager::ManagerRef;
-use common_types::request_id::RequestId;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
@@ -147,20 +146,13 @@ pub struct ContextProviderAdapter<'a, P> {
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
-    request_id: RequestId,
     /// Read parallelism for each table.
     read_parallelism: usize,
-    deadline: Instant,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Create a adapter from meta provider
-    pub fn new(
-        meta_provider: &'a P,
-        request_id: RequestId,
-        read_parallelism: usize,
-        deadline: Instant,
-    ) -> Self {
+    pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
 
@@ -168,9 +160,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
-            request_id,
             read_parallelism,
-            deadline,
         }
     }
 
@@ -197,12 +187,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(
-            table_ref,
-            self.request_id,
-            self.read_parallelism,
-            self.deadline,
-        ));
+        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism));
 
         Arc::new(DefaultTableSource {
             table_provider: table_adapter,
@@ -303,6 +288,7 @@ struct SchemaProviderAdapter {
     catalog: String,
     schema: String,
     tables: Arc<TableContainer>,
+    read_parallelism: usize,
 }
 
 impl SchemaProvider for SchemaProviderAdapter {
@@ -328,13 +314,9 @@ impl SchemaProvider for SchemaProviderAdapter {
             table: name,
         };
 
-        todo!("Fixme")
-        // self.tables.get(name_ref).map(|v| {
-        //     v.as_any()
-        //         .downcast_ref::<Arc<TableProviderAdapter>>()
-        //         .unwrap()
-        //         .clone() as _
-        // })
+        self.tables.get(name_ref).map(|table_ref| {
+            Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism)) as _
+        })
     }
 
     fn table_exist(&self, name: &str) -> bool {
@@ -348,7 +330,10 @@ pub struct CatalogProviderAdapter {
 }
 
 impl CatalogProviderAdapter {
-    pub fn new_adapters(tables: Arc<TableContainer>) -> HashMap<String, CatalogProviderAdapter> {
+    pub fn new_adapters(
+        tables: Arc<TableContainer>,
+        read_parallelism: usize,
+    ) -> HashMap<String, CatalogProviderAdapter> {
         let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
         let _ = tables.visit::<_, ()>(|name, _| {
             // Get or create catalog
@@ -366,6 +351,7 @@ impl CatalogProviderAdapter {
                         catalog: name.catalog.to_string(),
                         schema: name.schema.to_string(),
                         tables: tables.clone(),
+                        read_parallelism,
                     }),
                 );
             }

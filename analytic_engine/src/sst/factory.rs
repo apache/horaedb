@@ -81,7 +81,7 @@ pub struct SstReaderOptions {
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
-    pub deadline: Instant,
+    pub deadline: Option<Instant>,
 
     /// The max number of rows in one row group
     pub num_rows_per_row_group: usize,

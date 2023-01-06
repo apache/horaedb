@@ -2,7 +2,7 @@
 
 //! Query context
 
-use std::{sync::Arc, time::Duration};
+use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
 use datafusion::{
@@ -15,6 +15,7 @@ use datafusion::{
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
+use table_engine::provider::{CERESDB_REQUEST_ID, CERESDB_REQUEST_TIMEOUT};
 
 use crate::{
     config::Config,
@@ -35,14 +36,22 @@ pub struct Context {
     pub default_schema: String,
 }
 
-pub const CERESDB_QUERY_DEADLINE: &str = "ceresdb_query_deadline";
-
 impl Context {
-    pub fn build_df_session_ctx(&self, config: &Config) -> SessionContext {
+    pub fn build_df_session_ctx(
+        &self,
+        config: &Config,
+        request_id: RequestId,
+        deadline: Instant,
+    ) -> SessionContext {
         let df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(
                 self.default_catalog.clone(),
                 self.default_schema.clone(),
+            )
+            .set_u64(CERESDB_REQUEST_ID, request_id.as_u64())
+            .set_u64(
+                CERESDB_REQUEST_TIMEOUT,
+                deadline.duration_since(Instant::now()).as_millis() as u64,
             )
             .with_target_partitions(config.read_parallelism);
 

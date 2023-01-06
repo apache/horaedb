@@ -2,10 +2,7 @@
 
 //! Query executor
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use common_types::record_batch::RecordBatch;
@@ -13,7 +10,7 @@ use common_util::time::InstantExt;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
 use tokio::time;
@@ -44,11 +41,11 @@ pub enum Error {
     #[snafu(display("Failed to collect record batch stream, err:{}", source,))]
     Collect { source: table_engine::stream::Error },
 
-    #[snafu(display("Timeout when execute, err:{}", source,))]
-    Timeout { source: tokio::time::error::Elapsed },
-
-    #[snafu(display("Timeout for unknown reason, stage:{}", stage,))]
-    TimeoutNoReason { stage: String },
+    #[snafu(display("Timeout when execute, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    Timeout {
+        source: tokio::time::error::Elapsed,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -101,8 +98,9 @@ impl Executor for ExecutorImpl {
         let plan = query.plan;
 
         // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
-        let df_ctx = ctx.build_df_session_ctx(&self.config);
+        let catalogs =
+            CatalogProviderAdapter::new_adapters(plan.tables.clone(), self.config.read_parallelism);
+        let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
@@ -146,6 +144,8 @@ async fn optimize_plan(
     );
 
     let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
+    // TODO: optimize plan have IO operations now, we can remove this timeout detect
+    // when we fix https://github.com/CeresDB/ceresdb/issues/520
     time::timeout_at(
         tokio::time::Instant::from_std(ctx.deadline),
         physical_optimizer.optimize(plan),

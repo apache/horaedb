@@ -112,8 +112,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    // TODO: read timeout from config
-    let deadline = begin_instant + Duration::from_secs(60);
+    let deadline = begin_instant + ctx.timeout;
 
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
@@ -165,7 +164,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     })?;
 
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog, ctx.tenant)
         .build();

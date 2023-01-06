@@ -69,6 +69,7 @@ impl MergeSstBench {
             predicate,
             meta_cache: meta_cache.clone(),
             runtime: runtime.clone(),
+            deadline: None,
             background_read_parallelism: 1,
             num_rows_per_row_group: config.read_batch_row_num,
         };
@@ -125,6 +126,7 @@ impl MergeSstBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            deadline: None,
             space_id,
             table_id,
             sequence,
@@ -175,6 +177,7 @@ impl MergeSstBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let builder = chain::Builder::new(ChainConfig {
             request_id,
+            deadline: None,
             space_id,
             table_id,
             projected_schema,
