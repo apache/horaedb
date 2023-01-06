@@ -31,8 +31,8 @@ use hashbrown::HashMap as NoStdHashMap;
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    ColumnDef, ColumnOption, Expr, Ident, ObjectName, Query, SetExpr, SqlOption,
-    Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
+    ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
+    TableConstraint, UnaryOperator, Value, Values,
 };
 use table_engine::table::TableRef;
 
@@ -564,21 +564,35 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
-        let table = if stmt.if_exists {
-            stmt.table_name.to_string()
-        } else {
-            self.find_table(stmt.table_name)?.name().to_string()
-        };
+        let (table_name, partition_info) =
+            if let Some(table) = self.find_table(&stmt.table_name.to_string())? {
+                let table_name = table.name().to_string();
+                let partition_info = table.partition_info();
+                (table_name, partition_info)
+            } else if stmt.if_exists {
+                let table_name = stmt.table_name.to_string();
+                (table_name, None)
+            } else {
+                return TableNotFound {
+                    name: stmt.table_name.to_string(),
+                }
+                .fail();
+            };
 
         Ok(Plan::Drop(DropTablePlan {
             engine: stmt.engine,
             if_exists: stmt.if_exists,
-            table,
+            table: table_name,
+            partition_info,
         }))
     }
 
     fn describe_table_to_plan(&self, stmt: DescribeTable) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
 
         Ok(Plan::Describe(DescribeTablePlan { table }))
     }
@@ -592,7 +606,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 source,
                 ..
             } => {
-                let table = self.find_table(ObjectName(table_name.0).into())?;
+                let table_name = TableName::from(table_name).to_string();
+
+                let table = self
+                    .find_table(&table_name)?
+                    .context(TableNotFound { name: table_name })?;
 
                 let schema = table.schema();
                 // Column name and its index in insert stmt: {column name} => index
@@ -681,7 +699,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn alter_modify_setting_to_plan(&self, stmt: AlterModifySetting) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
             operations: AlterTableOperation::ModifySetting(parse_options(stmt.options)?),
@@ -690,7 +712,10 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn alter_add_column_to_plan(&self, stmt: AlterAddColumn) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
             operations: AlterTableOperation::AddColumn(parse_columns(stmt.columns)?),
@@ -699,15 +724,18 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn exists_table_to_plan(&self, stmt: ExistsTable) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name);
+        let table = self.find_table(&stmt.table_name.to_string())?;
         match table {
-            Ok(_) => Ok(Plan::Exists(ExistsTablePlan { exists: true })),
-            Err(_) => Ok(Plan::Exists(ExistsTablePlan { exists: false })),
+            Some(_) => Ok(Plan::Exists(ExistsTablePlan { exists: true })),
+            None => Ok(Plan::Exists(ExistsTablePlan { exists: false })),
         }
     }
 
     fn show_create_to_plan(&self, show_create: ShowCreate) -> Result<Plan> {
-        let table = self.find_table(show_create.table_name)?;
+        let table_name = show_create.table_name.to_string();
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = ShowCreatePlan {
             table,
             obj_type: show_create.obj_type,
@@ -726,14 +754,12 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
-    fn find_table(&self, table_name: TableName) -> Result<TableRef> {
-        let table_name = table_name.to_string();
-        let table_ref = TableReference::from(table_name.as_str());
+    fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
+        let table_ref = TableReference::from(table_name);
 
         self.meta_provider
             .table(table_ref)
-            .context(MetaProviderFindTable)?
-            .with_context(|| TableNotFound { name: table_name })
+            .context(MetaProviderFindTable)
     }
 }
 
@@ -1424,6 +1450,7 @@ mod tests {
         engine: "Analytic",
         if_exists: false,
         table: "test_table",
+        partition_info: None,
     },
 )"#,
         )
@@ -1440,6 +1467,7 @@ mod tests {
         engine: "Analytic",
         if_exists: true,
         table: "test_tablex",
+        partition_info: None,
     },
 )"#,
         )
