@@ -729,7 +729,7 @@ impl SstMetaReader {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
             let mut reader = self
                 .factory
-                .new_sst_reader(&self.read_opts, &path, &self.store_picker, f.size())
+                .new_sst_reader(&self.read_opts, &path, &self.store_picker)
                 .context(reader::OtherNoCause {
                     msg: format!("no sst reader found for the file:{:?}", path),
                 })?;
