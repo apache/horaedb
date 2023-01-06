@@ -77,7 +77,7 @@ addr = '127.0.0.1'
 port = 8831
 
 [[static_route.topology.schema_shards]]
-schema = 'public_0'
+schema = 'public_1'
 [[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
 [static_route.topology.schema_shards.shard_views.endpoint]
@@ -141,7 +141,7 @@ addr = '127.0.0.1'
 port = 8831
 
 [[static_route.topology.schema_shards]]
-schema = 'public_0'
+schema = 'public_1'
 [[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
 [static_route.topology.schema_shards.shard_views.endpoint]
@@ -191,7 +191,7 @@ addr = '127.0.0.1'
 port = 8831
 
 [[static_route.topology.schema_shards]]
-schema = 'public_0'
+schema = 'public_1'
 [[static_route.topology.schema_shards.shard_views]]
 shard_id = 0
 [static_route.topology.schema_shards.shard_views.endpoint]
