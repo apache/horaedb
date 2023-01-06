@@ -19,7 +19,7 @@ use crate::{
     select::SelectInterpreter,
     show::ShowInterpreter,
     table_manipulator::TableManipulatorRef,
-    validator::Validator,
+    validator::{ValidateContext, Validator},
 };
 
 /// A factory to create interpreters
@@ -46,7 +46,7 @@ impl<Q: Executor + 'static> Factory<Q> {
     }
 
     pub fn create(self, ctx: Context, plan: Plan) -> Result<InterpreterPtr> {
-        let validate_ctx = ctx.validate_ctx();
+        let validate_ctx = ValidateContext { admin: ctx.admin() };
         let validator = Validator::new(validate_ctx);
         validator.validate(&plan)?;
 

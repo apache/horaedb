@@ -8,8 +8,6 @@ use common_types::request_id::RequestId;
 use query_engine::context::{Context as QueryContext, ContextRef as QueryContextRef};
 use snafu::Snafu;
 
-use crate::validator::ValidateContext;
-
 #[derive(Debug, Snafu)]
 pub enum Error {}
 
@@ -23,7 +21,7 @@ pub struct Context {
     request_id: RequestId,
     default_catalog: String,
     default_schema: String,
-    validate_ctx: ValidateContext,
+    admin: bool,
 }
 
 impl Context {
@@ -32,7 +30,7 @@ impl Context {
             request_id,
             default_catalog: String::new(),
             default_schema: String::new(),
-            validate_ctx: ValidateContext::default(),
+            admin: false,
         }
     }
 
@@ -62,8 +60,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn validate_ctx(&self) -> ValidateContext {
-        self.validate_ctx.clone()
+    pub fn admin(&self) -> bool {
+        self.admin
     }
 }
 
@@ -72,7 +70,7 @@ pub struct Builder {
     request_id: RequestId,
     default_catalog: String,
     default_schema: String,
-    validate_ctx: ValidateContext,
+    admin: bool,
 }
 
 impl Builder {
@@ -82,8 +80,8 @@ impl Builder {
         self
     }
 
-    pub fn validate_ctx(mut self, validate_ctx: ValidateContext) -> Self {
-        self.validate_ctx = validate_ctx;
+    pub fn admin(mut self, admin: bool) -> Self {
+        self.admin = admin;
         self
     }
 
@@ -92,7 +90,7 @@ impl Builder {
             request_id: self.request_id,
             default_catalog: self.default_catalog,
             default_schema: self.default_schema,
-            validate_ctx: self.validate_ctx,
+            admin: self.admin,
         }
     }
 }

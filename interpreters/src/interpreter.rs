@@ -43,7 +43,7 @@ pub enum Error {
     #[snafu(display("Failed to transfer ouput to records"))]
     TryIntoRecords,
 
-    #[snafu(display("Failed to transfer ouput to records, msg:{}", msg))]
+    #[snafu(display("Failed to check permission, msg:{}", msg))]
     PermissionDenied { msg: String },
 }
 

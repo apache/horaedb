@@ -35,7 +35,7 @@ pub struct RequestContext {
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
     /// Admin flag, some operation only can be done by admin
-    pub is_admin: bool,
+    pub admin: bool,
 }
 
 impl RequestContext {
@@ -49,7 +49,7 @@ pub struct Builder {
     catalog: String,
     tenant: String,
     runtime: Option<Arc<Runtime>>,
-    is_admin: bool,
+    admin: bool,
 }
 
 impl Builder {
@@ -68,8 +68,8 @@ impl Builder {
         self
     }
 
-    pub fn is_admin(mut self, is_admin: bool) -> Self {
-        self.is_admin = is_admin;
+    pub fn admin(mut self, admin: bool) -> Self {
+        self.admin = admin;
         self
     }
 
@@ -84,7 +84,7 @@ impl Builder {
             catalog: self.catalog,
             tenant: self.tenant,
             runtime,
-            is_admin: self.is_admin,
+            admin: self.admin,
         })
     }
 }

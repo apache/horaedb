@@ -130,12 +130,12 @@ where
             .default_schema_name()
             .to_string();
         let runtime = self.runtimes.bg_runtime.clone();
-        
+
         RequestContext::builder()
             .catalog(default_catalog)
             .tenant(default_schema)
             .runtime(runtime)
-            .is_admin(false)
+            .admin(false)
             .build()
             .context(CreateContext)
     }

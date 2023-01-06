@@ -24,14 +24,14 @@ impl Validator {
     }
 
     pub fn validate(&self, plan: &Plan) -> Result<()> {
-        self.validate_admin_permission(&plan)?;
+        self.validate_admin_permission(plan)?;
 
         Ok(())
     }
 
     fn validate_admin_permission(&self, plan: &Plan) -> Result<()> {
         // Only admin can operate the sub tables(table partition) directly.
-        if Validator::contains_sub_tables(plan) && !self.ctx.is_admin {
+        if Validator::contains_sub_tables(plan) && !self.ctx.admin {
             PermissionDenied {
                 msg: "only admin can process sub tables in table partition directly",
             }
@@ -57,7 +57,7 @@ impl Validator {
             }
 
             Plan::Create(plan) => {
-                dbg!(is_sub_table!(&plan.table))
+                is_sub_table!(&plan.table)
             }
 
             Plan::Drop(plan) => {
@@ -91,5 +91,5 @@ impl Validator {
 
 #[derive(Debug, Default, Clone)]
 pub struct ValidateContext {
-    pub is_admin: bool,
+    pub admin: bool,
 }

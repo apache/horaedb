@@ -3,7 +3,10 @@
 use std::sync::Arc;
 
 use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
-use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
+use catalog::{
+    consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
+    manager::ManagerRef,
+};
 use catalog_impls::table_based::TableBasedManager;
 use common_types::request_id::RequestId;
 use query_engine::{executor::ExecutorImpl, Config as QueryConfig};
@@ -16,7 +19,7 @@ use crate::{
     context::Context,
     factory::Factory,
     interpreter::{Output, Result},
-    table_manipulator::catalog_based::TableManipulatorImpl,
+    table_manipulator::{catalog_based::TableManipulatorImpl, TableManipulatorRef},
 };
 
 async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
@@ -39,6 +42,8 @@ where
 {
     pub engine: TableEngineRef,
     pub meta_provider: M,
+    pub catalog_manager: ManagerRef,
+    pub table_manipulator: TableManipulatorRef,
 }
 
 impl<M> Env<M>
@@ -55,37 +60,97 @@ where
     M: MetaProvider,
 {
     async fn build_factory(&self) -> Factory<ExecutorImpl> {
-        let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
-        let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
         Factory::new(
             ExecutorImpl::new(query_engine::Config::default()),
-            catalog_manager,
+            self.catalog_manager.clone(),
             self.engine(),
-            table_manipulator,
+            self.table_manipulator.clone(),
         )
     }
 
     async fn sql_to_output(&self, sql: &str) -> Result<Output> {
-        let plan = sql_to_plan(&self.meta_provider, sql);
-
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
+        self.sql_to_output_with_context(sql, ctx).await
+    }
 
+    async fn sql_to_output_with_context(&self, sql: &str, ctx: Context) -> Result<Output> {
+        let plan = sql_to_plan(&self.meta_provider, sql);
         let factory = self.build_factory().await;
-        let interpreter = factory.create(ctx, plan).unwrap();
+        let interpreter = factory.create(ctx, plan)?;
         interpreter.execute().await
     }
 
-    async fn test_create_table(&self) {
-        let sql="CREATE TABLE IF NOT EXISTS test_table(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
-        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
+    async fn create_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+        let ctx = Context::builder(RequestId::next_id())
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .admin(admin)
+            .build();
+        let sql= format!("CREATE TABLE IF NOT EXISTS {}(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
+        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')", table_name);
 
-        let output = self.sql_to_output(sql).await.unwrap();
+        let output = self.sql_to_output_with_context(&sql, ctx).await?;
         assert!(
             matches!(output, Output::AffectedRows(v) if v == 0),
             "create table should success"
         );
+
+        Ok(())
+    }
+
+    async fn insert_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+        let ctx = Context::builder(RequestId::next_id())
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .admin(admin)
+            .build();
+        let sql = format!("INSERT INTO {}(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');", table_name);
+        let output = self.sql_to_output_with_context(&sql, ctx).await?;
+        assert!(
+            matches!(output, Output::AffectedRows(v) if v == 2),
+            "insert table should success"
+        );
+
+        Ok(())
+    }
+
+    async fn select_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+        let ctx = Context::builder(RequestId::next_id())
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .admin(admin)
+            .build();
+        let sql = format!("select * from {}", table_name);
+        let output = self.sql_to_output_with_context(&sql, ctx).await?;
+        let records = output.try_into().unwrap();
+        let expected = vec![
+            "+------------+---------------------+--------+--------+",
+            "| key1       | key2                | field1 | field2 |",
+            "+------------+---------------------+--------+--------+",
+            "| 7461676b   | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "| 7461676b32 | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "+------------+---------------------+--------+--------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
+
+        let sql = "select count(*) from test_table";
+        let output = self.sql_to_output(sql).await?;
+        let records = output.try_into().unwrap();
+        let expected = vec![
+            "+-----------------+",
+            "| COUNT(UInt8(1)) |",
+            "+-----------------+",
+            "| 2               |",
+            "+-----------------+",
+        ];
+        common_util::record_batch::assert_record_batches_eq(&expected, records);
+
+        Ok(())
+    }
+
+    async fn test_create_table(&self) {
+        self.create_table_and_check("test_table", false)
+            .await
+            .unwrap();
     }
 
     async fn test_desc_table(&self) {
@@ -120,12 +185,9 @@ where
     }
 
     async fn test_insert_table(&self) {
-        let sql = "INSERT INTO test_table(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');";
-        let output = self.sql_to_output(sql).await.unwrap();
-        assert!(
-            matches!(output, Output::AffectedRows(v) if v == 2),
-            "insert table should success"
-        );
+        self.insert_table_and_check("test_table", false)
+            .await
+            .unwrap();
     }
 
     async fn test_insert_table_with_missing_columns(&self) {
@@ -188,30 +250,9 @@ where
     }
 
     async fn test_select_table(&self) {
-        let sql = "select * from test_table";
-        let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.try_into().unwrap();
-        let expected = vec![
-            "+------------+---------------------+--------+--------+",
-            "| key1       | key2                | field1 | field2 |",
-            "+------------+---------------------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 100    | hello3 |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 100    | hello3 |",
-            "+------------+---------------------+--------+--------+",
-        ];
-        common_util::record_batch::assert_record_batches_eq(&expected, records);
-
-        let sql = "select count(*) from test_table";
-        let output = self.sql_to_output(sql).await.unwrap();
-        let records = output.try_into().unwrap();
-        let expected = vec![
-            "+-----------------+",
-            "| COUNT(UInt8(1)) |",
-            "+-----------------+",
-            "| 2               |",
-            "+-----------------+",
-        ];
-        common_util::record_batch::assert_record_batches_eq(&expected, records);
+        self.select_table_and_check("test_table", false)
+            .await
+            .unwrap();
     }
 
     async fn test_show_create_table(&self) {
@@ -252,6 +293,31 @@ where
             "alter table should success"
         );
     }
+
+    async fn test_admin_permission(&self) {
+        // Not admin, all of create, insert and select about sub table(in table
+        // partition) directly will failed.
+        let res = self.create_table_and_check("____test_table", false).await;
+        assert!(format!("{:?}", res)
+            .contains("only admin can process sub tables in table partition directly"));
+        let res1 = self.insert_table_and_check("____test_table", false).await;
+        assert!(format!("{:?}", res1)
+            .contains("only admin can process sub tables in table partition directly"));
+        let res2 = self.select_table_and_check("____test_table", false).await;
+        assert!(format!("{:?}", res2)
+            .contains("only admin can process sub tables in table partition directly"));
+
+        // Admin, operations above will success.
+        self.create_table_and_check("____test_table", true)
+            .await
+            .unwrap();
+        self.insert_table_and_check("____test_table", true)
+            .await
+            .unwrap();
+        self.select_table_and_check("____test_table", true)
+            .await
+            .unwrap();
+    }
 }
 
 #[tokio::test]
@@ -265,9 +331,15 @@ async fn test_interpreters<T: EngineContext>(engine_context: T) {
     let mut test_ctx = env.new_context(engine_context);
     test_ctx.open().await;
     let mock = MockMetaProvider::default();
+    let engine = test_ctx.clone_engine();
+    let catalog_manager = Arc::new(build_catalog_manager(engine.clone()).await);
+    let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
+
     let env = Env {
         engine: test_ctx.clone_engine(),
         meta_provider: mock,
+        catalog_manager,
+        table_manipulator,
     };
 
     env.test_create_table().await;
@@ -280,4 +352,6 @@ async fn test_interpreters<T: EngineContext>(engine_context: T) {
     env.test_drop_table().await;
 
     env.test_insert_table_with_missing_columns().await;
+
+    env.test_admin_permission().await;
 }

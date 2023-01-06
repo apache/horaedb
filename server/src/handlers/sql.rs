@@ -11,10 +11,7 @@ use common_types::{
     request_id::RequestId,
 };
 use common_util::time::InstantExt;
-use interpreters::{
-    context::Context as InterpreterContext, factory::Factory, interpreter::Output,
-    validator::ValidateContext,
-};
+use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::info;
 use query_engine::executor::RecordBatchVec;
 use serde::{
@@ -165,14 +162,10 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     })?;
 
     // Execute in interpreter
-    let validate_ctx = ValidateContext {
-        is_admin: ctx.is_admin,
-    };
-
     let interpreter_ctx = InterpreterContext::builder(request_id)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog, ctx.tenant)
-        .validate_ctx(validate_ctx)
+        .admin(ctx.admin)
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
