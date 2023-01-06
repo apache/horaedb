@@ -7,7 +7,8 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
+    CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
+    DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
 };
 use common_util::runtime::{JoinHandle, Runtime};
 use log::{error, info, warn};
@@ -272,7 +273,43 @@ impl Inner {
             msg: "current shard info is missing in UpdateShardInfo",
         })?;
         let table_info = req.table_info.clone().context(TableNotFound {
-            msg: "table info is missing in CreateTableOnShardRequest",
+            msg: "table info is missing in DropTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_remove_table_from_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
+    }
+
+    fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in OpenTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in OpenTableOnShardRequest",
+        })?;
+
+        self.shard_tables_cache.try_insert_table_to_shard(
+            update_shard_info.prev_version,
+            ShardInfo::from(curr_shard_info),
+            TableInfo::from(table_info),
+        )
+    }
+
+    fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()> {
+        let update_shard_info = req.update_shard_info.clone().context(ShardNotFound {
+            msg: "update shard info is missing in CloseTableOnShardRequest",
+        })?;
+        let curr_shard_info = update_shard_info.curr_shard_info.context(ShardNotFound {
+            msg: "current shard info is missing in UpdateShardInfo",
+        })?;
+        let table_info = req.table_info.clone().context(TableNotFound {
+            msg: "table info is missing in CloseTableOnShardRequest",
         })?;
 
         self.shard_tables_cache.try_remove_table_from_shard(
@@ -330,6 +367,14 @@ impl Cluster for ClusterImpl {
 
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()> {
         self.inner.drop_table_on_shard(req)
+    }
+
+    async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()> {
+        self.inner.open_table_on_shard(req)
+    }
+
+    async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()> {
+        self.inner.close_table_on_shard(req)
     }
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
