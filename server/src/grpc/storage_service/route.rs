@@ -13,7 +13,7 @@ pub async fn handle_route<Q>(
     ctx: &HandlerContext<'_, Q>,
     req: RouteRequest,
 ) -> Result<RouteResponse> {
-    let routes = ctx.router.route(ctx.tenant(), req).await?;
+    let routes = ctx.router.route(ctx.schema(), req).await?;
 
     let resp = RouteResponse {
         header: Some(error::build_ok_header()),

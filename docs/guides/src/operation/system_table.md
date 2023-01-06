@@ -17,7 +17,7 @@ Query table information via table_name like this:
 ```shell
 curl --location --request POST 'http://localhost:5000/sql' \
 --header 'Content-Type: application/json' \
---header 'x-ceresdb-access-tenant: my_tenant' \
+--header 'x-ceresdb-access-schema: my_schema' \
 -d '{
     "query": "select * from system.public.tables where `table_name`=\"my_table\""
 }'

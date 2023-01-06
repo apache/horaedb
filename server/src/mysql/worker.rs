@@ -139,7 +139,7 @@ where
 
         RequestContext::builder()
             .catalog(default_catalog)
-            .tenant(default_schema)
+            .schema(default_schema)
             .runtime(runtime)
             .timeout(self.timeout)
             .build()

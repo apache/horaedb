@@ -126,8 +126,18 @@ impl<'a, Q> HandlerContext<'a, Q> {
             })?
             .unwrap_or_else(|| default_catalog.to_string());
 
-        let schema = header
+        let tenant = header
             .get(consts::TENANT_HEADER)
+            .map(|v| String::from_utf8(v.to_vec()))
+            .transpose()
+            .map_err(|e| Box::new(e) as _)
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "fail to parse tenant name",
+            })?;
+
+        let schema = header
+            .get(consts::SCHEMA_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
             .map_err(|e| Box::new(e) as _)
@@ -135,6 +145,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: "fail to parse schema name",
             })?
+            .or(tenant)
             .unwrap_or_else(|| default_schema.to_string());
 
         let schema_config = schema_config_provider
@@ -163,7 +174,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
     }
 
     #[inline]
-    fn tenant(&self) -> &str {
+    fn schema(&self) -> &str {
         &self.schema
     }
 }

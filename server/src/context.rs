@@ -13,8 +13,8 @@ pub enum Error {
     #[snafu(display("Missing catalog.\nBacktrace:\n{}", backtrace))]
     MissingCatalog { backtrace: Backtrace },
 
-    #[snafu(display("Missing tenant.\nBacktrace:\n{}", backtrace))]
-    MissingTenant { backtrace: Backtrace },
+    #[snafu(display("Missing schema.\nBacktrace:\n{}", backtrace))]
+    MissingSchema { backtrace: Backtrace },
 
     #[snafu(display("Missing runtime.\nBacktrace:\n{}", backtrace))]
     MissingRuntime { backtrace: Backtrace },
@@ -30,8 +30,8 @@ define_result!(Error);
 pub struct RequestContext {
     /// Catalog of the request
     pub catalog: String,
-    /// Tenant of request
-    pub tenant: String,
+    /// Schema of request
+    pub schema: String,
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
     /// Request timeout
@@ -47,7 +47,7 @@ impl RequestContext {
 #[derive(Default)]
 pub struct Builder {
     catalog: String,
-    tenant: String,
+    schema: String,
     runtime: Option<Arc<Runtime>>,
     timeout: Option<Duration>,
 }
@@ -58,8 +58,8 @@ impl Builder {
         self
     }
 
-    pub fn tenant(mut self, tenant: String) -> Self {
-        self.tenant = tenant;
+    pub fn schema(mut self, schema: String) -> Self {
+        self.schema = schema;
         self
     }
 
@@ -75,14 +75,13 @@ impl Builder {
 
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
-        // We use tenant as schema, so we use default schema if tenant is not specific
-        ensure!(!self.tenant.is_empty(), MissingTenant);
+        ensure!(!self.schema.is_empty(), MissingSchema);
 
         let runtime = self.runtime.context(MissingRuntime)?;
 
         Ok(RequestContext {
             catalog: self.catalog,
-            tenant: self.tenant,
+            schema: self.schema,
             runtime,
             timeout: self.timeout,
         })

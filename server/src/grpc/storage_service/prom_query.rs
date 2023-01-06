@@ -50,21 +50,20 @@ where
     let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     debug!(
-        "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
+        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}, request:{:?}",
         ctx.catalog(),
-        ctx.tenant(),
+        ctx.schema(),
         request_id,
         req,
     );
 
     let instance = &ctx.instance;
-    // We use tenant as schema
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: ctx.tenant(),
+        default_schema: ctx.schema(),
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
@@ -104,8 +103,8 @@ where
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and tenant as default catalog and tenant
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),

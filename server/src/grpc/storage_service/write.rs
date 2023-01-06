@@ -39,9 +39,9 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     debug!(
-        "Grpc handle write begin, catalog:{}, tenant:{}, request_id:{}, first_table:{:?}, num_tables:{}",
+        "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
         ctx.catalog(),
-        ctx.tenant(),
+        ctx.schema(),
         request_id,
         req.metrics
             .first()
@@ -71,8 +71,8 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             })?;
 
         let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-            // Use current ctx's catalog and tenant as default catalog and tenant
-            .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
+            // Use current ctx's catalog and schema as default catalog and schema
+            .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
             .build();
         let interpreter_factory = Factory::new(
             instance.query_executor.clone(),
@@ -104,9 +104,9 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     };
 
     debug!(
-        "Grpc handle write finished, catalog:{}, tenant:{}, resp:{:?}",
+        "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
         ctx.catalog(),
-        ctx.tenant(),
+        ctx.schema(),
         resp
     );
 
@@ -144,8 +144,8 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                 return ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
                     msg: format!(
-                        "Table not found, tenant:{}, table:{}",
-                        ctx.tenant(),
+                        "Table not found, schema:{}, table:{}",
+                        ctx.schema(),
                         table_name
                     ),
                 }
@@ -173,15 +173,15 @@ fn try_get_table<Q: QueryExecutor + 'static>(
             code: StatusCode::BAD_REQUEST,
             msg: format!("Catalog not found, catalog_name:{}", ctx.catalog()),
         })?
-        .schema_by_name(ctx.tenant())
+        .schema_by_name(ctx.schema())
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find tenant, tenant_name:{}", ctx.tenant()),
+            msg: format!("Failed to find schema, schema_name:{}", ctx.schema()),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Tenant not found, tenant_name:{}", ctx.tenant()),
+            msg: format!("Schema not found, schema_name:{}", ctx.schema()),
         })?
         .table_by_name(table_name)
         .map_err(|e| Box::new(e) as _)
@@ -225,8 +225,8 @@ async fn create_table<Q: QueryExecutor + 'static>(
         })?;
 
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and tenant as default catalog and tenant
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
