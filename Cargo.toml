@@ -105,7 +105,7 @@ table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
 tracing_util = { path = "components/tracing_util" }
 tonic = "0.8.1"
-tokio = { version = "1.21", features = ["full"] }
+tokio = { version = "1.24", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
 
