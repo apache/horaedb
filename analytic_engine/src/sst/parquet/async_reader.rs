@@ -60,7 +60,6 @@ pub struct Reader<'a> {
     /// Current frequency decides the cache policy.
     frequency: ReadFrequency,
     batch_size: usize,
-    deadline: Option<Instant>,
 
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
@@ -89,7 +88,6 @@ impl<'a> Reader<'a> {
             predicate: options.predicate.clone(),
             frequency: options.frequency,
             batch_size,
-            deadline: options.deadline,
             meta_data: None,
             row_projector: None,
             parallelism_options,
@@ -209,12 +207,8 @@ impl<'a> Reader<'a> {
 
         let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
         for chunk in filtered_row_group_chunks {
-            let object_store_reader = ObjectStoreReader::new(
-                self.store.clone(),
-                self.path.clone(),
-                meta_data.clone(),
-                self.deadline,
-            );
+            let object_store_reader =
+                ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
             let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
@@ -361,16 +355,10 @@ struct ObjectStoreReader {
     path: Path,
     meta_data: MetaData,
     metrics: ReaderMetrics,
-    deadline: Option<Instant>,
 }
 
 impl ObjectStoreReader {
-    fn new(
-        storage: ObjectStoreRef,
-        path: Path,
-        meta_data: MetaData,
-        deadline: Option<Instant>,
-    ) -> Self {
+    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
         Self {
             storage,
             path,
@@ -379,7 +367,6 @@ impl ObjectStoreReader {
                 bytes_scanned: 0,
                 sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
             },
-            deadline,
         }
     }
 }
@@ -396,31 +383,6 @@ impl AsyncFileReader for ObjectStoreReader {
         self.metrics
             .sst_get_range_length_histogram
             .observe((range.end - range.start) as f64);
-
-        if let Some(deadline) = self.deadline {
-            return async move {
-                tokio::time::timeout_at(
-                    tokio::time::Instant::from_std(deadline),
-                    self.storage.get_range(&self.path, range),
-                )
-                .await
-                .map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "Timeout when fetch range from object store, err:{}",
-                        e
-                    ))
-                })
-                .and_then(|v| {
-                    v.map_err(|e| {
-                        parquet::errors::ParquetError::General(format!(
-                            "Failed to fetch range from object store, err:{}",
-                            e
-                        ))
-                    })
-                })
-            }
-            .boxed();
-        }
 
         self.storage
             .get_range(&self.path, range)
@@ -442,31 +404,6 @@ impl AsyncFileReader for ObjectStoreReader {
             self.metrics
                 .sst_get_range_length_histogram
                 .observe((range.end - range.start) as f64);
-        }
-
-        if let Some(deadline) = self.deadline {
-            return async move {
-                tokio::time::timeout_at(
-                    tokio::time::Instant::from_std(deadline),
-                    self.storage.get_ranges(&self.path, &ranges),
-                )
-                .await
-                .map_err(|e| {
-                    parquet::errors::ParquetError::General(format!(
-                        "Timeout when fetch ranges from object store, err:{}",
-                        e
-                    ))
-                })
-                .and_then(|v| {
-                    v.map_err(|e| {
-                        parquet::errors::ParquetError::General(format!(
-                            "Failed to fetch ranges from object store, err:{}",
-                            e
-                        ))
-                    })
-                })
-            }
-            .boxed();
         }
 
         async move {

@@ -319,14 +319,7 @@ pub async fn stream_from_sst_file(
         })?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
     let max_seq = meta.max_sequence;
-    let sst_stream = if let Some(deadline) = sst_reader_options.deadline {
-        tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), sst_reader.read())
-            .await
-            .context(Timeout)?
-    } else {
-        sst_reader.read().await
-    }
-    .context(ReadSstData)?;
+    let sst_stream = sst_reader.read().await.context(ReadSstData)?;
 
     let stream = Box::new(sst_stream.map(move |v| {
         v.map(|record_batch| SequencedRecordBatch {

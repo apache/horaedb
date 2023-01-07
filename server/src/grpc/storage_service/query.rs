@@ -220,14 +220,23 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
-    let output = interpreter
-        .execute()
-        .await
-        .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute interpreter, query:{}", req.ql),
-        })?;
+    let output = tokio::time::timeout_at(
+        tokio::time::Instant::from_std(deadline),
+        interpreter.execute(),
+    )
+    .await
+    .map_err(|e| Box::new(e) as _)
+    .context(ErrWithCause {
+        code: StatusCode::REQUEST_TIMEOUT,
+        msg: "Query timeout",
+    })
+    .and_then(|v| {
+        v.map_err(|e| Box::new(e) as _)
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Failed to execute interpreter, query:{}", req.ql),
+            })
+    })?;
 
     info!(
         "Grpc handle query success, catalog:{}, tenant:{}, request_id:{}, cost:{}ms, request:{:?}",

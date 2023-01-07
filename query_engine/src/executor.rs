@@ -13,7 +13,6 @@ use log::{debug, info};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
-use tokio::time;
 
 use crate::{
     config::Config,
@@ -117,7 +116,7 @@ impl Executor for ExecutorImpl {
 
         // Collect all records in the pool, as the stream may perform some costly
         // calculation
-        let record_batches = collect(ctx.deadline, stream).await?;
+        let record_batches = collect(stream).await?;
 
         info!(
             "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
@@ -144,23 +143,12 @@ async fn optimize_plan(
     );
 
     let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
-    // TODO: optimize plan have IO operations now, we can remove this timeout detect
-    // when we fix https://github.com/CeresDB/ceresdb/issues/520
-    time::timeout_at(
-        tokio::time::Instant::from_std(ctx.deadline),
-        physical_optimizer.optimize(plan),
-    )
-    .await
-    .context(Timeout)
-    .and_then(|ret| ret.context(PhysicalOptimize))
+    physical_optimizer
+        .optimize(plan)
+        .await
+        .context(PhysicalOptimize)
 }
 
-async fn collect(deadline: Instant, stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    time::timeout_at(
-        tokio::time::Instant::from_std(deadline),
-        stream.try_collect(),
-    )
-    .await
-    .context(Timeout)
-    .and_then(|ret| ret.context(Collect))
+async fn collect(stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
+    stream.try_collect().await.context(Collect)
 }
