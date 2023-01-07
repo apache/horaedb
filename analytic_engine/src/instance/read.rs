@@ -160,7 +160,6 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            deadline: Some(request.opts.deadline),
             background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
@@ -225,7 +224,6 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            deadline: Some(request.opts.deadline),
             background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
         };

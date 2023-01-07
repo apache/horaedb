@@ -2,7 +2,7 @@
 
 //! Factory for different kinds sst builder and reader.
 
-use std::{fmt::Debug, sync::Arc, time::Instant};
+use std::{fmt::Debug, sync::Arc};
 
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
@@ -81,7 +81,6 @@ pub struct SstReaderOptions {
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub runtime: Arc<Runtime>,
-    pub deadline: Option<Instant>,
 
     /// The max number of rows in one row group
     pub num_rows_per_row_group: usize,

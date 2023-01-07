@@ -101,7 +101,6 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         runtime,
-        deadline: None,
         background_read_parallelism: 1,
         num_rows_per_row_group: config.read_batch_row_num,
     };
@@ -205,7 +204,6 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             predicate: config.predicate.into_predicate(),
             meta_cache: None,
             runtime: runtime.clone(),
-            deadline: None,
             background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: config.read_batch_row_num,
         };

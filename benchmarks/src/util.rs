@@ -104,7 +104,6 @@ pub async fn load_sst_to_memtable(
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
-        deadline: None,
         background_read_parallelism: 1,
         num_rows_per_row_group: 500,
     };

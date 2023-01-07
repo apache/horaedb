@@ -45,7 +45,6 @@ impl SstBench {
             predicate,
             meta_cache,
             runtime: runtime.clone(),
-            deadline: None,
             background_read_parallelism: 1,
             num_rows_per_row_group: config.read_batch_row_num,
         };
