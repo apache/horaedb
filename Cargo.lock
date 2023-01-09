@@ -271,7 +271,7 @@ name = "arrow_ext"
 version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
- "uncover",
+ "snafu 0.6.10",
 ]
 
 [[package]]
@@ -4821,6 +4821,7 @@ checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 name = "remote_engine_client"
 version = "1.0.0-alpha02"
 dependencies = [
+ "arrow_ext 1.0.0-alpha02",
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=6e12241032e01d00e130b65118dfafc0794a3102)",
  "clru",
@@ -5281,6 +5282,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "arrow",
+ "arrow_ext 1.0.0-alpha02",
  "async-trait",
  "bytes 1.2.1",
  "catalog",

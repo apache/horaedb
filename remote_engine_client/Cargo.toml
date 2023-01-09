@@ -11,6 +11,7 @@ workspace = true
 workspace = true
 
 [dependencies]
+arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 clru = { workspace = true }

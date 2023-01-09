@@ -52,6 +52,7 @@ path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
 arrow = { version = "23.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "23.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }

@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use arrow_ext::ipc;
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use common_types::record_batch::RecordBatch;
@@ -137,22 +138,23 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
-                        let resp = match avro::record_batch_to_avro_rows(&record_batch)
-                            .map_err(|e| Box::new(e) as _)
-                            .context(ErrWithCause {
-                                code: StatusCode::Internal,
-                                msg: "fail to convert record batch to avro",
-                            }) {
-                            Err(e) => ReadResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            },
-                            Ok(rows) => ReadResponse {
-                                header: Some(build_ok_header()),
-                                version: ENCODE_ROWS_WITH_AVRO,
-                                rows,
-                            },
-                        };
+                        let resp =
+                            match ipc::encode_record_batch(&record_batch.into_arrow_record_batch())
+                                .map_err(|e| Box::new(e) as _)
+                                .context(ErrWithCause {
+                                    code: StatusCode::Internal,
+                                    msg: "fail to convert record batch to avro",
+                                }) {
+                                Err(e) => ReadResponse {
+                                    header: Some(error::build_err_header(e)),
+                                    ..Default::default()
+                                },
+                                Ok(rows) => ReadResponse {
+                                    header: Some(build_ok_header()),
+                                    version: ENCODE_ROWS_WITH_AVRO,
+                                    rows,
+                                },
+                            };
 
                         Ok(resp)
                     }

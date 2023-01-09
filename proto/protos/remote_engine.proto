@@ -54,7 +54,7 @@ message ReadResponse {
   ResponseHeader header = 1;
   // Version of row encoding method
   uint32 version = 2;
-  repeated bytes rows = 3;
+  bytes rows = 3;
 }
 
 message RowGroup {
