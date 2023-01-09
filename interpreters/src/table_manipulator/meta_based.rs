@@ -11,7 +11,7 @@ use snafu::ResultExt;
 use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::{
     engine::TableEngineRef,
-    partition::{format_sub_partition_table_name, PartitionInfoEncoder},
+    partition::{format_sub_partition_table_name, PartitionInfo, PartitionInfoEncoder},
 };
 
 use crate::{
@@ -48,28 +48,23 @@ impl TableManipulator for TableManipulatorImpl {
                 ),
             })?;
 
-        let sub_table_names = plan.partition_info.clone().map(|v| {
-            v.get_definitions()
-                .iter()
-                .map(|def| format_sub_partition_table_name(&plan.table, &def.name))
-                .collect::<Vec<String>>()
-        });
-        let partition_table_info =
-            sub_table_names.map(|v| PartitionTableInfo { sub_table_names: v });
+        let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
 
         let encoder = PartitionInfoEncoder::default();
 
         let encoded_partition_info = match plan.partition_info.clone() {
             None => Vec::new(),
-            Some(v) => encoder
-                .encode(v)
-                .map_err(|e| Box::new(e) as _)
-                .with_context(|| CreateWithCause {
-                    msg: format!(
-                        "fail to encode partition info, ctx:{:?}, plan:{:?}",
-                        ctx, plan
-                    ),
-                })?,
+            Some(v) => {
+                encoder
+                    .encode(v)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(CreateWithCause {
+                        msg: format!(
+                            "fail to encode partition info, ctx:{:?}, plan:{:?}",
+                            ctx, plan
+                        ),
+                    })?
+            }
         };
         let req = CreateTableRequest {
             schema_name: ctx.default_schema().to_string(),
@@ -105,9 +100,12 @@ impl TableManipulator for TableManipulatorImpl {
         plan: DropTablePlan,
         _table_engine: TableEngineRef,
     ) -> Result<Output> {
+        let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
+
         let req = DropTableRequest {
             schema_name: ctx.default_schema().to_string(),
             name: plan.table,
+            partition_table_info,
         };
 
         let resp = self
@@ -115,7 +113,7 @@ impl TableManipulator for TableManipulatorImpl {
             .drop_table(req.clone())
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| DropWithCause {
+            .context(DropWithCause {
                 msg: format!("failed to create table by meta client, req:{:?}", req),
             })?;
 
@@ -126,4 +124,18 @@ impl TableManipulator for TableManipulatorImpl {
 
         Ok(Output::AffectedRows(0))
     }
+}
+
+fn create_partition_table_info(
+    table_name: &str,
+    partition_info: &Option<PartitionInfo>,
+) -> Option<PartitionTableInfo> {
+    let sub_table_names = partition_info.as_ref().map(|v| {
+        v.get_definitions()
+            .iter()
+            .map(|def| format_sub_partition_table_name(table_name, &def.name))
+            .collect::<Vec<String>>()
+    });
+
+    sub_table_names.map(|v| PartitionTableInfo { sub_table_names: v })
 }

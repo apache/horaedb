@@ -3,11 +3,12 @@
 //! Partition rule factory
 
 use common_types::schema::Schema;
-use snafu::OptionExt;
+use snafu::{ensure, OptionExt};
 
 use super::{key::KeyRule, ColumnWithType};
 use crate::partition::{
-    rule::PartitionRuleRef, BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
+    rule::{key::DEFAULT_PARTITION_VERSION, PartitionRuleRef},
+    BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
 };
 
 pub struct PartitionRuleFactory;
@@ -27,6 +28,15 @@ impl PartitionRuleFactory {
     }
 
     fn create_key_rule(key_info: KeyPartitionInfo, schema: &Schema) -> Result<PartitionRuleRef> {
+        ensure!(
+            key_info.version == DEFAULT_PARTITION_VERSION,
+            BuildPartitionRule {
+                msg: format!(
+                    "only support key partition info version:{:?}, input_version:{}",
+                    DEFAULT_PARTITION_VERSION, key_info.version
+                )
+            }
+        );
         let typed_key_columns = key_info
             .partition_key
             .into_iter()
@@ -45,7 +55,7 @@ impl PartitionRuleFactory {
 
         Ok(Box::new(KeyRule {
             typed_key_columns,
-            partition_num: key_info.definitions.len() as u64,
+            partition_num: key_info.partition_definitions.len() as u64,
         }))
     }
 }

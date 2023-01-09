@@ -13,7 +13,7 @@ message AddSpaceMeta {
   string space_name = 2;
 }
 
-message Definition {
+message PartitionDefinition {
   string name = 1;
   oneof origin_name {
     string origin = 2;
@@ -21,15 +21,17 @@ message Definition {
 }
 
 message HashPartitionInfo {
-  repeated Definition definitions = 1;
-  bytes expr = 2;
-  bool linear = 3;
+  int32 version = 1;
+  repeated PartitionDefinition partition_definitions = 2;
+  bytes expr = 3;
+  bool linear = 4;
 }
 
 message KeyPartitionInfo {
-  repeated Definition definitions = 1;
-  repeated string partition_key = 2;
-  bool linear = 3;
+  int32 version = 1;
+  repeated PartitionDefinition partition_definitions = 2;
+  repeated string partition_key = 3;
+  bool linear = 4;
 }
 
 // Meta update for a new table
@@ -46,7 +48,7 @@ message AddTableMeta {
 
 message PartitionInfo {
   oneof partition_info_enum {
-    HashPartitionInfo hash  = 1;
+    HashPartitionInfo hash = 1;
     KeyPartitionInfo key = 2;
   }
 }
