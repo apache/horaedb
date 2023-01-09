@@ -1,14 +1,17 @@
 etcd-start-timeout-ms = 30000
-peer-urls = "http://{HostIP2}:22380"
-advertise-client-urls = "http://{HostIP2}:22379"
-advertise-peer-urls = "http://{HostIP2}:22380"
-client-urls = "http://{HostIP2}:22379"
+peer-urls = "http://127.0.0.1:22380"
+advertise-client-urls = "http://127.0.0.1:22379"
+advertise-peer-urls = "http://127.0.0.1:22380"
+client-urls = "http://127.0.0.1:22379"
 wal-dir = "/tmp/ceresmeta2/wal"
 data-dir = "/tmp/ceresmeta2/data"
 node-name = "meta2"
-initial-cluster = "meta0=http://{HostIP0}:2380,meta1=http://{HostIP1}:12380,meta2=http://{HostIP2}:22380"
+initial-cluster = "meta0=http://127.0.0.1:2380,meta1=http://127.0.0.1:12380,meta2=http://127.0.0.1:22380"
 default-cluster-node-count = 2
-default-http-port = 8080
+default-http-port = 8082
+
+[log]
+level = "info"
 
 [etcd-log]
 file = "/tmp/ceresmeta2/etcd.log"

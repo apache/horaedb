@@ -17,9 +17,6 @@ make build
 ### Standalone Mode
 Although CeresMeta is designed to deployed as a cluster with three or more instances, it can also be started standalone:
 ```bash
-# Set correct HostIP here.
-export HostIP0={your_ip}
-
 # ceresmeta0
 mkdir /tmp/ceresmeta0
 ./ceresmeta --config ./config/example-standalone.toml
@@ -28,11 +25,6 @@ mkdir /tmp/ceresmeta0
 ### Cluster mode
 Here is an example for starting CeresMeta in cluster mode (three instances) on single machine by using different ports:
 ```bash
-# Set correct HostIP here.
-export HostIP0={your_ip}
-export HostIP1={your_ip}
-export HostIP2={your_ip}
-
 # Create directories.
 mkdir /tmp/ceresmeta0
 mkdir /tmp/ceresmeta1
