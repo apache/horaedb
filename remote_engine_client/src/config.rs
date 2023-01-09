@@ -15,6 +15,7 @@ pub struct Config {
     pub channel_keep_alive_while_idle: bool,
     pub channel_keep_alive_timeout: ReadableDuration,
     pub channel_keep_alive_interval: ReadableDuration,
+    pub route_cache_size: usize,
 }
 
 impl Default for Config {
@@ -25,6 +26,7 @@ impl Default for Config {
             channel_keep_alive_interval: ReadableDuration::from_str("600s").unwrap(),
             channel_keep_alive_timeout: ReadableDuration::from_str("3s").unwrap(),
             channel_keep_alive_while_idle: true,
+            route_cache_size: 128,
         }
     }
 }
