@@ -437,6 +437,7 @@ dependencies = [
  "arena",
  "arrow",
  "arrow2",
+ "arrow_ext 1.0.0-alpha02",
  "base64 0.13.0",
  "clap 3.2.23",
  "common_types 1.0.0-alpha02",

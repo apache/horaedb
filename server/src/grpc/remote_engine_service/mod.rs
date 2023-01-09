@@ -8,7 +8,6 @@ use arrow_ext::ipc;
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use common_types::record_batch::RecordBatch;
-use common_util::avro;
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{

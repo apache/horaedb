@@ -36,3 +36,35 @@ pub fn decode_record_batch(bytes: Vec<u8>) -> Result<RecordBatch> {
     let mut stream_reader = StreamReader::try_new(Cursor::new(bytes), None).context(ArrowError)?;
     stream_reader.next().context(Decode)?.context(ArrowError)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow::{
+        array::{Int32Array, StringArray},
+        datatypes::{DataType, Field, Schema},
+    };
+
+    use super::*;
+
+    fn create_batch(rows: usize) -> RecordBatch {
+        let schema = Schema::new(vec![
+            Field::new("a", DataType::Int32, false),
+            Field::new("b", DataType::Utf8, false),
+        ]);
+
+        let a = Int32Array::from_iter_values(0..rows as i32);
+        let b = StringArray::from_iter_values((0..rows).map(|i| i.to_string()));
+
+        RecordBatch::try_new(Arc::new(schema), vec![Arc::new(a), Arc::new(b)]).unwrap()
+    }
+
+    #[test]
+    fn test_ipc_encode_decode() {
+        let batch = create_batch(1024);
+        let bytes = encode_record_batch(&batch).unwrap();
+
+        assert_eq!(batch, decode_record_batch(bytes).unwrap());
+    }
+}
