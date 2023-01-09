@@ -224,7 +224,7 @@ impl Instance {
                     request.cluster_version,
                     request.table_id.as_u64(),
                 ),
-                // Recover table data don't do snapshot.
+                // Avoid snapshotting when recover table data.
                 false,
             )
             .await
