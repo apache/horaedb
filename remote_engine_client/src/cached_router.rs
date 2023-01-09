@@ -19,8 +19,6 @@ pub struct CachedRouter {
     router: RouterRef,
 
     /// Cache mapping table to channel of its endpoint
-    // TODO: should be replaced with a cache(like "moka")
-    // or partition the lock.
     cache: PartitionedMutex<CLruCache<TableIdentifier, Channel>>,
 
     /// Channel pool
@@ -29,10 +27,9 @@ pub struct CachedRouter {
 
 impl CachedRouter {
     pub fn new(router: RouterRef, config: Config) -> Self {
-        assert!(config.route_cache_lock_partition_num > 0);
         let cache = PartitionedMutex::new(
-            CLruCache::new(NonZeroUsize::new(config.route_cache_max_size).unwrap()),
-            NonZeroUsize::new(config.route_cache_lock_partition_num).unwrap(),
+            CLruCache::new(NonZeroUsize::new(config.route_cache_max_size_per_partition).unwrap()),
+            NonZeroUsize::new(config.route_cache_partition_num).unwrap(),
         );
 
         Self {
@@ -53,18 +50,20 @@ impl CachedRouter {
             // If found, return it.
             channel
         } else {
-            // If not found, do real route and put it into cache, and return then.
-            let mut cache = self.cache.lock(table_ident).await;
+            // If not found, do real route work, and try to put it into cache(may have been
+            // put by other threads).
+            let channel = self.do_route(table_ident).await?;
 
-            // Double check here, it may have been put by others.
-            let channel_opt = cache.get(table_ident).cloned();
-            if let Some(channel) = channel_opt {
-                channel
-            } else {
-                let channel = self.do_route(table_ident).await?;
-                cache.put(table_ident.clone(), channel.clone());
-                channel
+            {
+                let mut cache = self.cache.lock(table_ident).await;
+                // Double check here, if still not found, we put it.
+                let channel_opt = cache.get(table_ident).cloned();
+                if channel_opt.is_none() {
+                    cache.put(table_ident.clone(), channel.clone());
+                }
             }
+
+            channel
         };
 
         Ok(channel)

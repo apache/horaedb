@@ -16,8 +16,6 @@ use crate::error::*;
 /// Pool for reusing the built channel
 pub struct ChannelPool {
     /// Channels in pool
-    // TODO: should be replaced with a cache(like "moka")
-    // or partition the lock.
     channels: PartitionedMutex<CLruCache<Endpoint, Channel>>,
 
     /// Channel builder
@@ -26,10 +24,9 @@ pub struct ChannelPool {
 
 impl ChannelPool {
     pub fn new(config: Config) -> Self {
-        assert!(config.channel_pool_lock_partition_num > 0);
         let channels = PartitionedMutex::new(
-            CLruCache::new(NonZeroUsize::new(config.channel_pool_max_size).unwrap()),
-            NonZeroUsize::new(config.channel_pool_lock_partition_num).unwrap(),
+            CLruCache::new(NonZeroUsize::new(config.channel_pool_max_size_per_partition).unwrap()),
+            NonZeroUsize::new(config.channel_pool_partition_num).unwrap(),
         );
         let builder = ChannelBuilder::new(config);
 

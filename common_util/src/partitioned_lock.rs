@@ -1,3 +1,7 @@
+// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Partitioned locks
+
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
