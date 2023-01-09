@@ -25,7 +25,9 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, TooMuchStmt},
+    error::{
+        ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
+    },
     prelude::*,
 };
 
@@ -176,8 +178,18 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
-    let output = interpreter.execute().await.context(InterpreterExec {
+    let output = tokio::time::timeout_at(
+        tokio::time::Instant::from_std(deadline),
+        interpreter.execute(),
+    )
+    .await
+    .context(QueryTimeout {
         query: &request.query,
+    })
+    .and_then(|v| {
+        v.context(InterpreterExec {
+            query: &request.query,
+        })
     })?;
 
     // Convert output to json
