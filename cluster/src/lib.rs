@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::meta_event::{
-    CloseShardRequest, CreateTableOnShardRequest, DropTableOnShardRequest, OpenShardRequest,
+    CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
+    DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
 };
 use common_types::schema::SchemaName;
 use common_util::define_result;
@@ -118,6 +119,8 @@ pub trait Cluster {
     async fn close_shard(&self, req: &CloseShardRequest) -> Result<TablesOfShard>;
     async fn create_table_on_shard(&self, req: &CreateTableOnShardRequest) -> Result<()>;
     async fn drop_table_on_shard(&self, req: &DropTableOnShardRequest) -> Result<()>;
+    async fn open_table_on_shard(&self, req: &OpenTableOnShardRequest) -> Result<()>;
+    async fn close_table_on_shard(&self, req: &CloseTableOnShardRequest) -> Result<()>;
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
 }
