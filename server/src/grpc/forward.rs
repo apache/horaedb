@@ -293,7 +293,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             Ok(mut routes) => {
                 if routes.len() != 1 || routes[0].endpoint.is_none() {
                     warn!(
-                        "Fail to forward request for multiple route results, routes result:{:?}, req:{:?}",
+                        "Fail to forward request for multiple or empty route results, routes result:{:?}, req:{:?}",
                         routes, req
                     );
                     return Ok(ForwardResult::Original);
