@@ -6,10 +6,10 @@ use std::num::NonZeroUsize;
 
 use ceresdbproto::storage;
 use clru::CLruCache;
+use common_util::partitioned_lock::PartitionedMutex;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
-use tokio::sync::Mutex;
 use tonic::transport::Channel;
 
 use crate::{channel::ChannelPool, config::Config, error::*};
@@ -21,7 +21,7 @@ pub struct CachedRouter {
     /// Cache mapping table to channel of its endpoint
     // TODO: should be replaced with a cache(like "moka")
     // or partition the lock.
-    cache: Mutex<CLruCache<TableIdentifier, Channel>>,
+    cache: PartitionedMutex<CLruCache<TableIdentifier, Channel>>,
 
     /// Channel pool
     channel_pool: ChannelPool,
@@ -29,11 +29,15 @@ pub struct CachedRouter {
 
 impl CachedRouter {
     pub fn new(router: RouterRef, config: Config) -> Self {
+        assert!(config.route_cache_lock_partition_num > 0);
+        let cache = PartitionedMutex::new(
+            CLruCache::new(NonZeroUsize::new(config.route_cache_max_size).unwrap()),
+            NonZeroUsize::new(config.route_cache_lock_partition_num).unwrap(),
+        );
+
         Self {
             router,
-            cache: Mutex::new(CLruCache::new(
-                NonZeroUsize::new(config.route_cache_size).unwrap(),
-            )),
+            cache,
             channel_pool: ChannelPool::new(config),
         }
     }
@@ -41,7 +45,7 @@ impl CachedRouter {
     pub async fn route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
         // Find in cache first.
         let channel_opt = {
-            let mut cache = self.cache.lock().await;
+            let mut cache = self.cache.lock(table_ident).await;
             cache.get(table_ident).cloned()
         };
 
@@ -50,14 +54,16 @@ impl CachedRouter {
             channel
         } else {
             // If not found, do real route and put it into cache, and return then.
-            let mut cache = self.cache.lock().await;
+            let mut cache = self.cache.lock(table_ident).await;
 
             // Double check here, it may have been put by others.
             let channel_opt = cache.get(table_ident).cloned();
             if let Some(channel) = channel_opt {
                 channel
             } else {
-                self.do_route(table_ident).await?
+                let channel = self.do_route(table_ident).await?;
+                cache.put(table_ident.clone(), channel.clone());
+                channel
             }
         };
 
@@ -65,7 +71,7 @@ impl CachedRouter {
     }
 
     pub async fn evict(&self, table_ident: &TableIdentifier) {
-        let mut cache = self.cache.lock().await;
+        let mut cache = self.cache.lock(table_ident).await;
         let _ = cache.pop(table_ident);
     }
 

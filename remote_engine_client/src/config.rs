@@ -12,10 +12,12 @@ use serde_derive::Deserialize;
 pub struct Config {
     pub connect_timeout: ReadableDuration,
     pub channel_pool_max_size: usize,
+    pub channel_pool_lock_partition_num: usize,
     pub channel_keep_alive_while_idle: bool,
     pub channel_keep_alive_timeout: ReadableDuration,
     pub channel_keep_alive_interval: ReadableDuration,
-    pub route_cache_size: usize,
+    pub route_cache_max_size: usize,
+    pub route_cache_lock_partition_num: usize,
 }
 
 impl Default for Config {
@@ -23,10 +25,12 @@ impl Default for Config {
         Self {
             connect_timeout: ReadableDuration::from_str("3s").unwrap(),
             channel_pool_max_size: 128,
+            channel_pool_lock_partition_num: 16,
             channel_keep_alive_interval: ReadableDuration::from_str("600s").unwrap(),
             channel_keep_alive_timeout: ReadableDuration::from_str("3s").unwrap(),
             channel_keep_alive_while_idle: true,
-            route_cache_size: 128,
+            route_cache_max_size: 128,
+            route_cache_lock_partition_num: 16,
         }
     }
 }

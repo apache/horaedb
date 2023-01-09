@@ -5,9 +5,9 @@
 use std::num::NonZeroUsize;
 
 use clru::CLruCache;
+use common_util::partitioned_lock::PartitionedMutex;
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::sync::Mutex;
 use tonic::transport::{Channel, Endpoint as TonicEndpoint};
 
 use super::config::Config;
@@ -18,7 +18,7 @@ pub struct ChannelPool {
     /// Channels in pool
     // TODO: should be replaced with a cache(like "moka")
     // or partition the lock.
-    channels: Mutex<CLruCache<Endpoint, Channel>>,
+    channels: PartitionedMutex<CLruCache<Endpoint, Channel>>,
 
     /// Channel builder
     builder: ChannelBuilder,
@@ -26,9 +26,11 @@ pub struct ChannelPool {
 
 impl ChannelPool {
     pub fn new(config: Config) -> Self {
-        let channels = Mutex::new(CLruCache::new(
-            NonZeroUsize::new(config.channel_pool_max_size).unwrap(),
-        ));
+        assert!(config.channel_pool_lock_partition_num > 0);
+        let channels = PartitionedMutex::new(
+            CLruCache::new(NonZeroUsize::new(config.channel_pool_max_size).unwrap()),
+            NonZeroUsize::new(config.channel_pool_lock_partition_num).unwrap(),
+        );
         let builder = ChannelBuilder::new(config);
 
         Self { channels, builder }
@@ -36,13 +38,13 @@ impl ChannelPool {
 
     pub async fn get(&self, endpoint: &Endpoint) -> Result<Channel> {
         {
-            let mut inner = self.channels.lock().await;
+            let mut inner = self.channels.lock(endpoint).await;
             if let Some(channel) = inner.get(endpoint) {
                 return Ok(channel.clone());
             }
         }
 
-        let mut inner = self.channels.lock().await;
+        let mut inner = self.channels.lock(endpoint).await;
         // Double check here.
         if let Some(channel) = inner.get(endpoint) {
             return Ok(channel.clone());
