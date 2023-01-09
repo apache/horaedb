@@ -100,7 +100,7 @@ pub struct HandlerContext<'a, Q> {
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
-    timeout: Duration,
+    timeout: Option<Duration>,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -110,7 +110,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         instance: InstanceRef<Q>,
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
-        timeout: Duration,
+        timeout: Option<Duration>,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -174,7 +174,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub runtimes: Arc<EngineRuntimes>,
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
-    pub timeout: Duration,
+    pub timeout: Option<Duration>,
 }
 
 impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {

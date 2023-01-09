@@ -416,7 +416,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 pub struct HttpConfig {
     pub endpoint: Endpoint,
     pub max_body_size: u64,
-    pub timeout: Duration,
+    pub timeout: Option<Duration>,
 }
 
 #[derive(Debug, Serialize)]

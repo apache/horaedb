@@ -24,8 +24,7 @@ message TableIdentifier {
 message ReadOptions {
   uint64 batch_size = 1;
   uint64 read_parallelism = 2;
-  // request timeout in millis seconds
-  uint64 timeout = 3;
+  common.U64Wrapper timeout_ms = 3;
 }
 
 message Predicate {

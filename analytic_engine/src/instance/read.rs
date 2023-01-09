@@ -172,7 +172,7 @@ impl Instance {
         for read_view in read_views {
             let merge_config = MergeConfig {
                 request_id: request.request_id,
-                deadline: Some(request.opts.deadline),
+                deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 sequence,
@@ -236,7 +236,7 @@ impl Instance {
         for read_view in read_views {
             let chain_config = ChainConfig {
                 request_id: request.request_id,
-                deadline: Some(request.opts.deadline),
+                deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 projected_schema: projected_schema.clone(),

@@ -1,9 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 
 use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
@@ -71,12 +68,9 @@ where
     async fn sql_to_output(&self, sql: &str) -> Result<Output> {
         let plan = sql_to_plan(&self.meta_provider, sql);
 
-        let ctx = Context::builder(
-            RequestId::next_id(),
-            Instant::now() + Duration::from_secs(10),
-        )
-        .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-        .build();
+        let ctx = Context::builder(RequestId::next_id(), None)
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .build();
 
         let factory = self.build_factory().await;
         let interpreter = factory.create(ctx, plan);
@@ -136,12 +130,9 @@ where
 
     async fn test_insert_table_with_missing_columns(&self) {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
-        let ctx = Context::builder(
-            RequestId::next_id(),
-            Instant::now() + Duration::from_secs(10),
-        )
-        .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-        .build();
+        let ctx = Context::builder(RequestId::next_id(), None)
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .build();
         let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
         let insert_factory = Factory::new(
             ExecutorImpl::new(QueryConfig::default()),
@@ -168,12 +159,9 @@ where
             self.engine(),
             table_manipulator,
         );
-        let ctx = Context::builder(
-            RequestId::next_id(),
-            Instant::now() + Duration::from_secs(10),
-        )
-        .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-        .build();
+        let ctx = Context::builder(RequestId::next_id(), None)
+            .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
+            .build();
         let plan = sql_to_plan(&self.meta_provider, select_sql);
         let interpreter = select_factory.create(ctx, plan);
         let output = interpreter.execute().await.unwrap();

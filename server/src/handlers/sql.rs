@@ -114,7 +114,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    let deadline = begin_instant + ctx.timeout;
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
@@ -177,21 +177,25 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
-
-    let output = tokio::time::timeout_at(
-        tokio::time::Instant::from_std(deadline),
-        interpreter.execute(),
-    )
-    .await
-    .context(QueryTimeout {
-        query: &request.query,
-    })
-    .and_then(|v| {
-        v.context(InterpreterExec {
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
+        .await
+        .context(QueryTimeout {
             query: &request.query,
         })
-    })?;
-
+        .and_then(|v| {
+            v.context(InterpreterExec {
+                query: &request.query,
+            })
+        })?
+    } else {
+        interpreter.execute().await.context(InterpreterExec {
+            query: &request.query,
+        })?
+    };
     // Convert output to json
     let resp = convert_output(output).context(ArrowToString {
         query: &request.query,

@@ -35,7 +35,7 @@ pub struct RequestContext {
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
     /// Request timeout
-    pub timeout: Duration,
+    pub timeout: Option<Duration>,
 }
 
 impl RequestContext {
@@ -49,7 +49,7 @@ pub struct Builder {
     catalog: String,
     tenant: String,
     runtime: Option<Arc<Runtime>>,
-    timeout: Duration,
+    timeout: Option<Duration>,
 }
 
 impl Builder {
@@ -68,7 +68,7 @@ impl Builder {
         self
     }
 
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
         self
     }

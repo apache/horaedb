@@ -130,7 +130,7 @@ pub struct Config {
     pub http_max_body_size: u64,
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
-    pub timeout: ReadableDuration,
+    pub timeout: Option<ReadableDuration>,
 
     /// Engine related configs:
     pub runtime: RuntimeConfig,
@@ -186,7 +186,7 @@ impl Default for Config {
             mysql_port: 3307,
             grpc_port,
             grpc_server_cq_count: 20,
-            timeout: ReadableDuration::secs(90),
+            timeout: None,
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,

@@ -19,13 +19,13 @@ define_result!(Error);
 #[derive(Debug, Clone)]
 pub struct Context {
     request_id: RequestId,
-    deadline: Instant,
+    deadline: Option<Instant>,
     default_catalog: String,
     default_schema: String,
 }
 
 impl Context {
-    pub fn builder(request_id: RequestId, deadline: Instant) -> Builder {
+    pub fn builder(request_id: RequestId, deadline: Option<Instant>) -> Builder {
         Builder {
             request_id,
             deadline,
@@ -64,7 +64,7 @@ impl Context {
 #[must_use]
 pub struct Builder {
     request_id: RequestId,
-    deadline: Instant,
+    deadline: Option<Instant>,
     default_catalog: String,
     default_schema: String,
 }

@@ -21,7 +21,7 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
 };
-use proto::sys_catalog as sys_catalog_pb;
+use proto::{common::U64Wrapper, sys_catalog as sys_catalog_pb};
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -320,7 +320,7 @@ pub struct ReadOptions {
     /// `read_parallelism`.
     pub read_parallelism: usize,
     /// Request deadline
-    pub deadline: Instant,
+    pub deadline: Option<Instant>,
 }
 
 impl Default for ReadOptions {
@@ -328,8 +328,7 @@ impl Default for ReadOptions {
         Self {
             batch_size: 10000,
             read_parallelism: DEFAULT_READ_PARALLELISM,
-            // TODO: read from config
-            deadline: Instant::now() + Duration::from_secs(60),
+            deadline: None,
         }
     }
 }
@@ -339,7 +338,9 @@ impl From<proto::remote_engine::ReadOptions> for ReadOptions {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
-            deadline: Instant::now() + Duration::from_millis(pb.timeout),
+            deadline: pb
+                .timeout_ms
+                .map(|t| Instant::now() + Duration::from_millis(t.value)),
         }
     }
 }
@@ -349,7 +350,9 @@ impl From<ReadOptions> for proto::remote_engine::ReadOptions {
         Self {
             batch_size: opts.batch_size as u64,
             read_parallelism: opts.read_parallelism as u64,
-            timeout: opts.deadline.elapsed().as_millis() as u64,
+            timeout_ms: opts.deadline.map(|deadline| U64Wrapper {
+                value: deadline.duration_since(Instant::now()).as_millis() as u64,
+            }),
         }
     }
 }

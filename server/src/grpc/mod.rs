@@ -270,8 +270,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = Some(timeout);
+    pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.timeout = timeout;
         self
     }
 }
@@ -315,7 +315,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         } else {
             None
         };
-        let timeout = self.timeout.context(MissingTimeout)?;
         let bg_runtime = runtimes.bg_runtime.clone();
         let storage_service = StorageServiceImpl {
             router,
@@ -323,7 +322,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             runtimes,
             schema_config_provider,
             forwarder,
-            timeout,
+            timeout: self.timeout,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

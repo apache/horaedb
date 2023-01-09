@@ -24,7 +24,7 @@ pub struct Builder<Q> {
 pub struct Config {
     pub ip: String,
     pub port: u16,
-    pub timeout: Duration,
+    pub timeout: Option<Duration>,
 }
 
 impl<Q> Builder<Q> {

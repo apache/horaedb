@@ -36,7 +36,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
 ) -> Result<WriteResponse> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    let deadline = begin_instant + ctx.timeout;
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     debug!(
         "Grpc handle write begin, catalog:{}, tenant:{}, request_id:{}, first_table:{:?}, num_tables:{}",
@@ -117,7 +117,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     write_request: WriteRequest,
     request_id: RequestId,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
 
@@ -195,7 +195,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     write_metric: &WriteMetric,
     request_id: RequestId,
-    deadline: Instant,
+    deadline: Option<Instant>,
 ) -> Result<()> {
     let create_table_plan = storage_service::write_metric_to_create_table_plan(ctx, write_metric)
         .map_err(|e| Box::new(e) as _)

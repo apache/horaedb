@@ -13,7 +13,7 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use common_util::codec::row;
+use common_util::{codec::row, time::InstantExt};
 use log::trace;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
@@ -165,7 +165,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
-                if Instant::now() >= deadline {
+                if deadline.saturating_elapsed().is_zero() {
                     return IterTimeout {}.fail();
                 }
             }

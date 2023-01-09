@@ -47,7 +47,7 @@ where
 {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    let deadline = begin_instant + ctx.timeout;
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     debug!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -115,14 +115,25 @@ where
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
-    let output = interpreter
-        .execute()
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
         .await
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
-        })?;
+        .context(ErrWithCause {
+            code: StatusCode::REQUEST_TIMEOUT,
+            msg: "Query timeout",
+        })?
+    } else {
+        interpreter.execute().await
+    }
+    .map_err(|e| Box::new(e) as _)
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: "Failed to execute interpreter".to_string(),
+    })?;
 
     let resp = convert_output(output, column_name)
         .map_err(|e| Box::new(e) as _)

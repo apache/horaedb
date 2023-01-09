@@ -24,7 +24,7 @@ pub struct MysqlService<Q> {
     socket_addr: SocketAddr,
     join_handler: Option<JoinHandle<()>>,
     tx: Option<Sender<()>>,
-    timeout: Duration,
+    timeout: Option<Duration>,
 }
 
 impl<Q> MysqlService<Q> {
@@ -32,7 +32,7 @@ impl<Q> MysqlService<Q> {
         instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
-        timeout: Duration,
+        timeout: Option<Duration>,
     ) -> MysqlService<Q> {
         Self {
             instance,
@@ -72,7 +72,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         instance: InstanceRef<Q>,
         runtimes: Arc<EngineRuntimes>,
         socket_addr: SocketAddr,
-        timeout: Duration,
+        timeout: Option<Duration>,
         mut rx: Receiver<()>,
     ) {
         let listener = match tokio::net::TcpListener::bind(socket_addr)
@@ -100,7 +100,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(instance, runtimes,timeout),
+                        MysqlWorker::new(instance, runtimes, timeout),
                         stream,
                     ));
                 },

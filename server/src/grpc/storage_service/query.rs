@@ -127,7 +127,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 ) -> Result<Option<Output>> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
-    let deadline = begin_instant + ctx.timeout;
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     info!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -199,12 +199,14 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             msg: "Query is blocked",
         })?;
 
-    if Instant::now() >= deadline {
-        return ErrNoCause {
-            code: StatusCode::REQUEST_TIMEOUT,
-            msg: "Query timeout",
+    if let Some(deadline) = deadline {
+        if deadline.saturating_elapsed().is_zero() {
+            return ErrNoCause {
+                code: StatusCode::REQUEST_TIMEOUT,
+                msg: "Query timeout",
+            }
+            .fail();
         }
-        .fail();
     }
 
     // Execute in interpreter
@@ -219,23 +221,24 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
-
-    let output = tokio::time::timeout_at(
-        tokio::time::Instant::from_std(deadline),
-        interpreter.execute(),
-    )
-    .await
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::REQUEST_TIMEOUT,
+            msg: "Query timeout",
+        })?
+    } else {
+        interpreter.execute().await
+    }
     .map_err(|e| Box::new(e) as _)
-    .context(ErrWithCause {
-        code: StatusCode::REQUEST_TIMEOUT,
-        msg: "Query timeout",
-    })
-    .and_then(|v| {
-        v.map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to execute interpreter, query:{}", req.ql),
-            })
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: format!("Failed to execute interpreter, query:{}", req.ql),
     })?;
 
     info!(

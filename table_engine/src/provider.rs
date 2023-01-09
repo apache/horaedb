@@ -23,6 +23,7 @@ use datafusion::{
         DisplayFormatType, ExecutionPlan, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
+    scalar::ScalarValue,
 };
 use datafusion_expr::{TableSource, TableType};
 use log::debug;
@@ -76,20 +77,19 @@ impl TableProviderAdapter {
         read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let request_id = RequestId::from(state.config.config_options().get_u64(CERESDB_REQUEST_ID));
-        let timeout = state
-            .config
-            .config_options()
-            .get_u64(CERESDB_REQUEST_TIMEOUT);
-        let deadline = Instant::now() + Duration::from_millis(timeout);
+        let deadline = match state.config.config_options().get(CERESDB_REQUEST_TIMEOUT) {
+            Some(ScalarValue::UInt64(Some(n))) => Some(Instant::now() + Duration::from_millis(n)),
+            _ => None,
+        };
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, timeout:{}",
+            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
             self.table.name(),
             request_id,
             projection,
             filters,
             limit,
             read_order,
-            timeout
+            deadline,
         );
 
         // Forbid the parallel reading if the data order is required.
@@ -218,7 +218,7 @@ struct ScanTable {
     read_order: ReadOrder,
     read_parallelism: usize,
     predicate: PredicateRef,
-    deadline: Instant,
+    deadline: Option<Instant>,
 
     stream_state: Mutex<ScanStreamState>,
 }

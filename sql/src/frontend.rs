@@ -52,11 +52,11 @@ pub struct Context {
     /// Parallelism to read table.
     pub read_parallelism: usize,
     /// Deadline of this request
-    pub deadline: Instant,
+    pub deadline: Option<Instant>,
 }
 
 impl Context {
-    pub fn new(request_id: RequestId, deadline: Instant) -> Self {
+    pub fn new(request_id: RequestId, deadline: Option<Instant>) -> Self {
         Self {
             request_id,
             deadline,

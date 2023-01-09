@@ -25,7 +25,7 @@ pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<Q>>,
     runtimes: Arc<EngineRuntimes>,
-    timeout: Duration,
+    timeout: Option<Duration>,
 }
 
 impl<W, Q> MysqlWorker<W, Q>
@@ -36,7 +36,7 @@ where
     pub fn new(
         instance: Arc<Instance<Q>>,
         runtimes: Arc<EngineRuntimes>,
-        timeout: Duration,
+        timeout: Option<Duration>,
     ) -> Self {
         Self {
             generic_hold: PhantomData::default(),
