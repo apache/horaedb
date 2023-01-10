@@ -19,8 +19,7 @@
         - [INSERT](sql/dml/insert.md)
         - [SELECT](sql/dml/select.md)
     - [Utility Statements](sql/utility.md)
-    - [Analytic Engine](analytic_engine/README.md)
-        - [Options](analytic_engine/options.md)
+    - [Engine Options](sql/engine_options.md)
 
 - [Deployment](deploy/README.md)
     - [Supported Platform](deploy/platform.md)
