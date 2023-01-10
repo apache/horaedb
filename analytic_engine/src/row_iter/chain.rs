@@ -50,6 +50,7 @@ define_result!(Error);
 #[derive(Clone, Debug)]
 pub struct ChainConfig<'a> {
     pub request_id: RequestId,
+    pub deadline: Option<Instant>,
     pub space_id: SpaceId,
     pub table_id: TableId,
     /// The projected schema to read.
@@ -116,6 +117,7 @@ impl<'a> Builder<'a> {
                 &v.mem,
                 false,
                 self.config.predicate.as_ref(),
+                self.config.deadline,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -130,6 +132,7 @@ impl<'a> Builder<'a> {
                 &memtable.mem,
                 false,
                 self.config.predicate.as_ref(),
+                self.config.deadline,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);

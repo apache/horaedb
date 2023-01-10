@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -24,6 +24,7 @@ pub struct Builder<Q> {
 pub struct Config {
     pub ip: String,
     pub port: u16,
+    pub timeout: Option<Duration>,
 }
 
 impl<Q> Builder<Q> {
@@ -55,7 +56,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .parse()
             .context(ParseIpAddr { ip: self.config.ip })?;
 
-        let mysql_handler = MysqlService::new(instance, runtimes, addr);
+        let mysql_handler = MysqlService::new(instance, runtimes, addr, self.config.timeout);
         Ok(mysql_handler)
     }
 }

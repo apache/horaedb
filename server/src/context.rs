@@ -2,7 +2,7 @@
 
 //! Server context
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use common_util::runtime::Runtime;
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
@@ -34,6 +34,8 @@ pub struct RequestContext {
     pub tenant: String,
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
+    /// Request timeout
+    pub timeout: Option<Duration>,
 }
 
 impl RequestContext {
@@ -47,6 +49,7 @@ pub struct Builder {
     catalog: String,
     tenant: String,
     runtime: Option<Arc<Runtime>>,
+    timeout: Option<Duration>,
 }
 
 impl Builder {
@@ -65,6 +68,11 @@ impl Builder {
         self
     }
 
+    pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         // We use tenant as schema, so we use default schema if tenant is not specific
@@ -76,6 +84,7 @@ impl Builder {
             catalog: self.catalog,
             tenant: self.tenant,
             runtime,
+            timeout: self.timeout,
         })
     }
 }

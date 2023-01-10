@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
+    time::Instant,
 };
 
 use ceresdbproto::{
@@ -45,6 +46,8 @@ where
     Q: QueryExecutor + 'static,
 {
     let request_id = RequestId::next_id();
+    let begin_instant = Instant::now();
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     debug!(
         "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
@@ -66,7 +69,7 @@ where
     };
     let frontend = Frontend::new(provider);
 
-    let mut sql_ctx = SqlContext::new(request_id);
+    let mut sql_ctx = SqlContext::new(request_id, deadline);
     let expr = frontend
         .parse_promql(&mut sql_ctx, req)
         .map_err(|e| Box::new(e) as _)
@@ -100,7 +103,7 @@ where
         })?;
 
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
         .build();
@@ -112,14 +115,25 @@ where
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
 
-    let output = interpreter
-        .execute()
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
         .await
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
-        })?;
+        .context(ErrWithCause {
+            code: StatusCode::REQUEST_TIMEOUT,
+            msg: "Query timeout",
+        })?
+    } else {
+        interpreter.execute().await
+    }
+    .map_err(|e| Box::new(e) as _)
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: "Failed to execute interpreter".to_string(),
+    })?;
 
     let resp = convert_output(output, column_name)
         .map_err(|e| Box::new(e) as _)

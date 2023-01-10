@@ -55,6 +55,18 @@ pub enum Error {
         query: String,
         source: limiter::Error,
     },
+
+    #[snafu(display(
+        "Query timeout, query:{}, err:{}\nBacktrace:\n{}",
+        query,
+        source,
+        backtrace
+    ))]
+    QueryTimeout {
+        query: String,
+        source: tokio::time::error::Elapsed,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
