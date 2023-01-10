@@ -50,5 +50,5 @@
 - [Storage](storage.md)
 - [Query](query.md)
 - [Wal](wal.md)
-- [Partitioning](partitioning.md)
+- [Table Partitioning](table_partitioning.md)
 
