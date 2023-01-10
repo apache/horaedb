@@ -11,6 +11,7 @@ use arrow_ext::ipc;
 use ceresdbproto::storage;
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
+    RemoteEngineVersion,
 };
 use futures::{Stream, StreamExt};
 use proto::remote_engine::{self, remote_engine_service_client::*};
@@ -178,19 +179,27 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                // TODO(chenxiang): read compression from config
-                let record_batch = ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(ConvertReadResponse {
-                        msg: "decode record batch failed",
-                    })
-                    .and_then(|v| {
-                        RecordBatch::try_from(v)
+                let record_batch = match RemoteEngineVersion::try_from(response.version)
+                    .context(ConvertVersion)?
+                {
+                    RemoteEngineVersion::ArrowIPCWithZstd => {
+                        ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
                             .map_err(|e| Box::new(e) as _)
                             .context(ConvertReadResponse {
-                                msg: "convert record batch failed",
+                                msg: "decode record batch failed",
+                                version: response.version,
                             })
-                    });
+                            .and_then(|v| {
+                                RecordBatch::try_from(v)
+                                    .map_err(|e| Box::new(e) as _)
+                                    .context(ConvertReadResponse {
+                                        msg: "convert record batch failed",
+                                        version: response.version,
+                                    })
+                            })
+                    }
+                };
+
                 Poll::Ready(Some(record_batch))
             }
 

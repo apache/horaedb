@@ -7,7 +7,7 @@ use std::sync::Arc;
 use arrow_ext::ipc;
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use common_types::record_batch::RecordBatch;
+use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{
@@ -34,7 +34,6 @@ use crate::{
 pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
-const ENCODE_ROWS_WITH_AVRO: u32 = 0;
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -137,7 +136,6 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
-                        // TODO(chenxiang): read compression from config
                         let resp = match ipc::encode_record_batch(
                             &record_batch.into_arrow_record_batch(),
                             ipc::Compression::Zstd,
@@ -153,7 +151,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                             },
                             Ok(rows) => ReadResponse {
                                 header: Some(build_ok_header()),
-                                version: ENCODE_ROWS_WITH_AVRO,
+                                version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
                                 rows,
                             },
                         };
