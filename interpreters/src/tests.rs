@@ -68,7 +68,7 @@ where
     async fn sql_to_output(&self, sql: &str) -> Result<Output> {
         let plan = sql_to_plan(&self.meta_provider, sql);
 
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
 
@@ -130,7 +130,7 @@ where
 
     async fn test_insert_table_with_missing_columns(&self) {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
@@ -159,7 +159,7 @@ where
             self.engine(),
             table_manipulator,
         );
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         let plan = sql_to_plan(&self.meta_provider, select_sql);
@@ -168,13 +168,13 @@ where
         let records = output.try_into().unwrap();
 
         #[rustfmt::skip]
-        // sql: CREATE TABLE `test_missing_columns_table` (`key1` varbinary NOT NULL, 
-        //                                                 `key2` timestamp NOT NULL, 
-        //                                                 `field1` bigint NOT NULL DEFAULT 10, 
-        //                                                 `field2` uint32 NOT NULL DEFAULT 20, 
-        //                                                 `field3` uint32 NOT NULL DEFAULT 1 + 2, 
-        //                                                 `field4` uint32 NOT NULL, 
-        //                                                 `field5` uint32 NOT NULL DEFAULT field4 + 2, 
+        // sql: CREATE TABLE `test_missing_columns_table` (`key1` varbinary NOT NULL,
+        //                                                 `key2` timestamp NOT NULL,
+        //                                                 `field1` bigint NOT NULL DEFAULT 10,
+        //                                                 `field2` uint32 NOT NULL DEFAULT 20,
+        //                                                 `field3` uint32 NOT NULL DEFAULT 1 + 2,
+        //                                                 `field4` uint32 NOT NULL,
+        //                                                 `field5` uint32 NOT NULL DEFAULT field4 + 2,
         //                                                 PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic
         let expected = vec![
             "+------------+---------------------+--------+--------+--------+--------+--------+",

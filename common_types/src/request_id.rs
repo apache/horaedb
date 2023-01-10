@@ -32,6 +32,12 @@ impl fmt::Display for RequestId {
     }
 }
 
+impl From<u64> for RequestId {
+    fn from(id: u64) -> Self {
+        Self(id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

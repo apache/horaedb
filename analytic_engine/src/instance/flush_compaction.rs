@@ -923,6 +923,8 @@ impl SpaceStore {
             };
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
+                // no need to set deadline for compaction
+                deadline: None,
                 space_id,
                 table_id,
                 sequence,

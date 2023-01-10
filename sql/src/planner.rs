@@ -28,7 +28,7 @@ use datafusion::{
     sql::planner::SqlToRel,
 };
 use hashbrown::HashMap as NoStdHashMap;
-use log::debug;
+use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
     ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
@@ -273,8 +273,13 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Takes the ownership of statement because some statements like INSERT
     /// statements contains lots of data
     pub fn statement_to_plan(&self, statement: Statement) -> Result<Plan> {
-        let adapter =
-            ContextProviderAdapter::new(self.provider, self.request_id, self.read_parallelism);
+        trace!(
+            "Statement to plan, request_id:{}, statement:{:?}",
+            self.request_id,
+            statement
+        );
+
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -296,8 +301,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn promql_expr_to_plan(&self, expr: PromExpr) -> Result<(Plan, Arc<ColumnNames>)> {
-        let adapter =
-            ContextProviderAdapter::new(self.provider, self.request_id, self.read_parallelism);
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -1036,6 +1040,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
 
 #[cfg(test)]
 mod tests {
+
     use sqlparser::ast::{Ident, Value};
 
     use super::*;
@@ -1114,11 +1119,11 @@ mod tests {
 
     #[test]
     fn test_create_statement_to_plan() {
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
-                                                      c3 string, 
-                                                      c4 uint32 Default 0, 
-                                                      c5 uint32 Default 1+1, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
+                                                      c3 string,
+                                                      c4 uint32 Default 0,
+                                                      c5 uint32 Default 1+1,
                                                       c6 String Default c3,
                                                       timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
@@ -1248,9 +1253,9 @@ mod tests {
         // CeresDB can reference other columns in default value expr, but it is mysql
         // style, which only allow it reference columns defined before it.
         // issue: https://github.com/CeresDB/ceresdb/issues/250
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
-                                                      c3 uint32 Default c4, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
+                                                      c3 uint32 Default c4,
                                                       c4 uint32 Default 0, timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
         assert!(quick_test(sql, "").is_err());
@@ -1259,8 +1264,8 @@ mod tests {
         // when default-value-expr is present, so planner will check if this cast is
         // allowed.
         // bool -> timestamp is not allowed in Arrow.
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
                                                       c3 timestamp Default 1 > 2,
                                                       timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";

@@ -26,3 +26,4 @@ serde_derive = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
+tokio = { workspace = true }

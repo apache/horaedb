@@ -85,6 +85,8 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
+    /// None for background jobs, such as: compaction
+    pub deadline: Option<Instant>,
     pub space_id: SpaceId,
     pub table_id: TableId,
     /// Max visible sequence (inclusive)
@@ -181,6 +183,7 @@ impl<'a> MergeBuilder<'a> {
                 &v.mem,
                 self.config.reverse,
                 self.config.predicate.as_ref(),
+                self.config.deadline,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -193,6 +196,7 @@ impl<'a> MergeBuilder<'a> {
                 &memtable.mem,
                 self.config.reverse,
                 self.config.predicate.as_ref(),
+                self.config.deadline,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);

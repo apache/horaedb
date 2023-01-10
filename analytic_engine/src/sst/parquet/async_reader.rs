@@ -17,7 +17,10 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use common_util::{runtime::Runtime, time::InstantExt};
+use common_util::{
+    runtime::{AbortOnDropMany, JoinHandle, Runtime},
+    time::InstantExt,
+};
 use datafusion::datasource::file_format;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -380,6 +383,7 @@ impl AsyncFileReader for ObjectStoreReader {
         self.metrics
             .sst_get_range_length_histogram
             .observe((range.end - range.start) as f64);
+
         self.storage
             .get_range(&self.path, range)
             .map_err(|e| {
@@ -401,6 +405,7 @@ impl AsyncFileReader for ObjectStoreReader {
                 .sst_get_range_length_histogram
                 .observe((range.end - range.start) as f64);
         }
+
         async move {
             self.storage
                 .get_ranges(&self.path, &ranges)
@@ -526,6 +531,8 @@ impl<'a> SstReader for Reader<'a> {
 struct RecordBatchReceiver {
     rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
     cur_rx_idx: usize,
+    #[allow(dead_code)]
+    drop_helper: AbortOnDropMany<()>,
 }
 
 impl Stream for RecordBatchReceiver {
@@ -602,14 +609,14 @@ impl<'a> ThreadedReader<'a> {
         &mut self,
         mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
         tx: Sender<Result<RecordBatchWithKey>>,
-    ) {
+    ) -> JoinHandle<()> {
         self.runtime.spawn(async move {
             while let Some(batch) = reader.next().await {
                 if let Err(e) = tx.send(batch).await {
                     error!("fail to send the fetched record batch result, err:{}", e);
                 }
             }
-        });
+        })
     }
 }
 
@@ -631,6 +638,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
             return Ok(Box::new(RecordBatchReceiver {
                 rx_group: Vec::new(),
                 cur_rx_idx: 0,
+                drop_helper: AbortOnDropMany(Vec::new()),
             }) as _);
         }
 
@@ -647,13 +655,15 @@ impl<'a> SstReader for ThreadedReader<'a> {
             .unzip();
 
         // Start the background readings.
+        let mut handles = Vec::with_capacity(sub_readers.len());
         for (sub_reader, tx) in sub_readers.into_iter().zip(tx_group.into_iter()) {
-            self.read_record_batches_from_sub_reader(sub_reader, tx);
+            handles.push(self.read_record_batches_from_sub_reader(sub_reader, tx));
         }
 
         Ok(Box::new(RecordBatchReceiver {
             rx_group,
             cur_rx_idx: 0,
+            drop_helper: AbortOnDropMany(handles),
         }) as _)
     }
 }

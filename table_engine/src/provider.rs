@@ -6,6 +6,7 @@ use std::{
     any::Any,
     fmt,
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
 use arrow::datatypes::SchemaRef;
@@ -22,6 +23,7 @@ use datafusion::{
         DisplayFormatType, ExecutionPlan, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
+    scalar::ScalarValue,
 };
 use datafusion_expr::{TableSource, TableType};
 use log::debug;
@@ -31,6 +33,10 @@ use crate::{
     stream::{SendableRecordBatchStream, ToDfStream},
     table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
+
+// Config keys set in Datafusion's SessionConfig
+pub const CERESDB_REQUEST_TIMEOUT: &str = "ceresdb_request_timeout";
+pub const CERESDB_REQUEST_ID: &str = "ceresdb_request_id";
 
 /// An adapter to [TableProvider] with schema snapshot.
 ///
@@ -43,19 +49,17 @@ pub struct TableProviderAdapter {
     /// snapshot for read to avoid the reader sees different schema during
     /// query
     read_schema: Schema,
-    request_id: RequestId,
     read_parallelism: usize,
 }
 
 impl TableProviderAdapter {
-    pub fn new(table: TableRef, request_id: RequestId, read_parallelism: usize) -> Self {
+    pub fn new(table: TableRef, read_parallelism: usize) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
         Self {
             table,
             read_schema,
-            request_id,
             read_parallelism,
         }
     }
@@ -72,14 +76,20 @@ impl TableProviderAdapter {
         limit: Option<usize>,
         read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
+        let request_id = RequestId::from(state.config.config_options().get_u64(CERESDB_REQUEST_ID));
+        let deadline = match state.config.config_options().get(CERESDB_REQUEST_TIMEOUT) {
+            Some(ScalarValue::UInt64(Some(n))) => Some(Instant::now() + Duration::from_millis(n)),
+            _ => None,
+        };
         debug!(
-            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}",
+            "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
             self.table.name(),
-            self.request_id,
+            request_id,
             projection,
             filters,
             limit,
             read_order,
+            deadline,
         );
 
         // Forbid the parallel reading if the data order is required.
@@ -100,10 +110,11 @@ impl TableProviderAdapter {
                     ))
                 })?,
             table: self.table.clone(),
-            request_id: self.request_id,
+            request_id,
             read_order,
             read_parallelism,
             predicate,
+            deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
         };
         scan_table.maybe_init_stream(state).await?;
@@ -207,6 +218,7 @@ struct ScanTable {
     read_order: ReadOrder,
     read_parallelism: usize,
     predicate: PredicateRef,
+    deadline: Option<Instant>,
 
     stream_state: Mutex<ScanStreamState>,
 }
@@ -218,6 +230,7 @@ impl ScanTable {
             opts: ReadOptions {
                 batch_size: state.config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
                 read_parallelism: self.read_parallelism,
+                deadline: self.deadline,
             },
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),

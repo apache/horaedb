@@ -25,7 +25,9 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, TooMuchStmt},
+    error::{
+        ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
+    },
     prelude::*,
 };
 
@@ -112,6 +114,8 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 ) -> Result<Response> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
+
     info!(
         "sql handler try to process request, request_id:{}, request:{:?}",
         request_id, request
@@ -128,7 +132,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     };
     let frontend = Frontend::new(provider);
 
-    let mut sql_ctx = SqlContext::new(request_id);
+    let mut sql_ctx = SqlContext::new(request_id, deadline);
     // Parse sql, frontend error of invalid sql already contains sql
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend
@@ -162,7 +166,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     })?;
 
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog, ctx.tenant)
         .build();
@@ -173,11 +177,25 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         instance.table_manipulator.clone(),
     );
     let interpreter = interpreter_factory.create(interpreter_ctx, plan);
-
-    let output = interpreter.execute().await.context(InterpreterExec {
-        query: &request.query,
-    })?;
-
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
+        .await
+        .context(QueryTimeout {
+            query: &request.query,
+        })
+        .and_then(|v| {
+            v.context(InterpreterExec {
+                query: &request.query,
+            })
+        })?
+    } else {
+        interpreter.execute().await.context(InterpreterExec {
+            query: &request.query,
+        })?
+    };
     // Convert output to json
     let resp = convert_output(output).context(ArrowToString {
         query: &request.query,

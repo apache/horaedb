@@ -3,6 +3,7 @@
 use std::{
     ops::{Bound, Not},
     sync::Arc,
+    time::Instant,
 };
 
 use arrow::{
@@ -99,6 +100,16 @@ pub enum Error {
     #[snafu(display("Failed to select from record batch, err:{}", source))]
     SelectBatchData {
         source: common_types::record_batch::Error,
+    },
+
+    #[snafu(display(
+        "Timeout when read record batch, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
+    ))]
+    Timeout {
+        source: tokio::time::error::Elapsed,
+        backtrace: Backtrace,
     },
 }
 
@@ -205,18 +216,24 @@ pub fn filtered_stream_from_memtable(
     memtable: &MemTableRef,
     reverse: bool,
     predicate: &Predicate,
+    deadline: Option<Instant>,
 ) -> Result<SequencedRecordBatchStream> {
-    stream_from_memtable(projected_schema.clone(), need_dedup, memtable, reverse).and_then(
-        |origin_stream| {
-            filter_stream(
-                origin_stream,
-                projected_schema
-                    .as_record_schema_with_key()
-                    .to_arrow_schema_ref(),
-                predicate,
-            )
-        },
+    stream_from_memtable(
+        projected_schema.clone(),
+        need_dedup,
+        memtable,
+        reverse,
+        deadline,
     )
+    .and_then(|origin_stream| {
+        filter_stream(
+            origin_stream,
+            projected_schema
+                .as_record_schema_with_key()
+                .to_arrow_schema_ref(),
+            predicate,
+        )
+    })
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
@@ -225,8 +242,12 @@ pub fn stream_from_memtable(
     need_dedup: bool,
     memtable: &MemTableRef,
     reverse: bool,
+    deadline: Option<Instant>,
 ) -> Result<SequencedRecordBatchStream> {
-    let scan_ctx = ScanContext::default();
+    let scan_ctx = ScanContext {
+        deadline,
+        ..Default::default()
+    };
     let max_seq = memtable.last_sequence();
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,

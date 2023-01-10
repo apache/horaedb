@@ -212,6 +212,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         let store_picker: ObjectStorePickerRef = Arc::new(store);
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            deadline: None,
             space_id,
             table_id,
             sequence,
