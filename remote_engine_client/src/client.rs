@@ -7,11 +7,12 @@ use std::{
     task::{Context, Poll},
 };
 
+use arrow_ext::ipc;
 use ceresdbproto::storage;
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
+    RemoteEngineVersion,
 };
-use common_util::avro;
 use futures::{Stream, StreamExt};
 use proto::remote_engine::{self, remote_engine_service_client::*};
 use router::{endpoint::Endpoint, RouterRef};
@@ -178,15 +179,28 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                // It's ok, try to convert rows to record batch and return.
-                let record_schema = this.projected_schema.to_record_schema();
-                let record_batch_result =
-                    avro::avro_rows_to_record_batch(response.rows, record_schema)
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ConvertReadResponse {
-                            msg: "build record batch failed",
-                        });
-                Poll::Ready(Some(record_batch_result))
+                let record_batch = match RemoteEngineVersion::try_from(response.version)
+                    .context(ConvertVersion)?
+                {
+                    RemoteEngineVersion::ArrowIPCWithZstd => {
+                        ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
+                            .map_err(|e| Box::new(e) as _)
+                            .context(ConvertReadResponse {
+                                msg: "decode record batch failed",
+                                version: response.version,
+                            })
+                            .and_then(|v| {
+                                RecordBatch::try_from(v)
+                                    .map_err(|e| Box::new(e) as _)
+                                    .context(ConvertReadResponse {
+                                        msg: "convert record batch failed",
+                                        version: response.version,
+                                    })
+                            })
+                    }
+                };
+
+                Poll::Ready(Some(record_batch))
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {

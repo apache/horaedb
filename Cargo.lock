@@ -271,7 +271,8 @@ name = "arrow_ext"
 version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
- "uncover",
+ "snafu 0.6.10",
+ "zstd 0.12.1+zstd.1.5.2",
 ]
 
 [[package]]
@@ -437,6 +438,7 @@ dependencies = [
  "arena",
  "arrow",
  "arrow2",
+ "arrow_ext 1.0.0-alpha02",
  "base64 0.13.0",
  "clap 3.2.23",
  "common_types 1.0.0-alpha02",
@@ -457,6 +459,7 @@ dependencies = [
  "table_kv",
  "tokio 1.24.1",
  "wal",
+ "zstd 0.12.1+zstd.1.5.2",
 ]
 
 [[package]]
@@ -3738,7 +3741,7 @@ dependencies = [
  "spin",
  "tokio-codec",
  "uuid 0.7.4",
- "zstd",
+ "zstd 0.11.2+zstd.1.5.2",
 ]
 
 [[package]]
@@ -3964,7 +3967,7 @@ dependencies = [
  "snap",
  "thrift 0.16.0",
  "tokio 1.24.1",
- "zstd",
+ "zstd 0.11.2+zstd.1.5.2",
 ]
 
 [[package]]
@@ -4821,6 +4824,7 @@ checksum = "a3f87b73ce11b1619a3c6332f45341e0047173771e8b8b73f87bfeefb7b56244"
 name = "remote_engine_client"
 version = "1.0.0-alpha02"
 dependencies = [
+ "arrow_ext 1.0.0-alpha02",
  "async-trait",
  "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=6cc1754ffc31ddfe0710972c94f8fe5acd61af98)",
  "clru",
@@ -5281,6 +5285,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "analytic_engine",
  "arrow",
+ "arrow_ext 1.0.0-alpha02",
  "async-trait",
  "bytes 1.2.1",
  "catalog",
@@ -7247,7 +7252,16 @@ version = "0.11.2+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20cc960326ece64f010d2d2107537f26dc589a6573a316bd5b1dba685fa5fde4"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 5.0.2+zstd.1.5.2",
+]
+
+[[package]]
+name = "zstd"
+version = "0.12.1+zstd.1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c947d2adc84ff9a59f2e3c03b81aa4128acf28d6ad7d56273f7e8af14e47bea"
+dependencies = [
+ "zstd-safe 6.0.2+zstd.1.5.2",
 ]
 
 [[package]]
@@ -7255,6 +7269,16 @@ name = "zstd-safe"
 version = "5.0.2+zstd.1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d2a5585e04f9eea4b2a3d1eca508c4dee9592a89ef6f450c11719da0726f4db"
+dependencies = [
+ "libc",
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "6.0.2+zstd.1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6cf39f730b440bab43da8fb5faf5f254574462f73f260f85f7987f32154ff17"
 dependencies = [
  "libc",
  "zstd-sys",
