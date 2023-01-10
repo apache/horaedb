@@ -123,9 +123,12 @@ pub mod tests {
     use table_engine::table::TableId;
     use tokio::sync::mpsc;
 
-    use crate::sst::{
-        file::{FileMeta, FilePurgeQueue, SstMetaData},
-        manager::{FileId, LevelsController},
+    use crate::{
+        sst::{
+            file::{FileMeta, FilePurgeQueue, SstMetaData},
+            manager::{FileId, LevelsController},
+        },
+        table_options::StorageFormat,
     };
 
     #[must_use]
@@ -153,7 +156,7 @@ pub mod tests {
                         row_num: 0,
                         time_range: sst_meta.time_range,
                         max_seq: sst_meta.max_sequence,
-                        storage_format_opts: sst_meta.storage_format_opts,
+                        storage_format: StorageFormat::Columnar,
                     },
                 );
             }

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use futures::Stream;
 
-use crate::sst::file::SstMetaData;
+use crate::{sst::file::SstMetaData, table_options::StorageFormat};
 
 pub mod error {
     use common_util::define_result;
@@ -60,6 +60,7 @@ pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send
 pub struct SstInfo {
     pub file_size: usize,
     pub row_num: usize,
+    pub storage_format: StorageFormat,
 }
 
 /// The builder for sst.

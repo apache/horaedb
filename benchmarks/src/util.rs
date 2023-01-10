@@ -15,6 +15,7 @@ use analytic_engine::{
         parquet::encoding,
     },
     table::sst_util,
+    table_options::StorageFormat,
 };
 use common_types::{
     bytes::{BufMut, SafeBufMut},
@@ -110,7 +111,12 @@ pub async fn load_sst_to_memtable(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(&sst_reader_options, sst_path, &store_picker)
+        .new_sst_reader(
+            &sst_reader_options,
+            sst_path,
+            StorageFormat::Columnar,
+            &store_picker,
+        )
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();
@@ -154,7 +160,7 @@ pub async fn file_handles_from_ssts(
             row_num: 0,
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
-            storage_format_opts: sst_meta.storage_format_opts,
+            storage_format: StorageFormat::Columnar,
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());

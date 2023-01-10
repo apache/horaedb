@@ -25,12 +25,9 @@ use prost::Message;
 use proto::sst::SstMetaData as SstMetaDataPb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::{
-    sst::{
-        file::SstMetaData,
-        parquet::hybrid::{self, IndexedType},
-    },
-    table_options::{StorageFormat, StorageFormatOptions},
+use crate::sst::{
+    file::SstMetaData,
+    parquet::hybrid::{self, IndexedType},
 };
 
 // TODO: Only support i32 offset now, consider i64 here?
@@ -292,7 +289,7 @@ struct HybridRecordEncoder {
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
-    // columns that can be collpased into list
+    // columns that can be collapsed into list
     collapsible_col_types: Vec<IndexedType>,
 }
 
@@ -322,10 +319,7 @@ impl HybridRecordEncoder {
                     idx,
                     data_type: meta_data.schema.column(idx).data_type,
                 });
-                meta_data
-                    .storage_format_opts
-                    .collapsible_cols_idx
-                    .push(idx as u32);
+                meta_data.collapsible_cols_idx.push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
@@ -415,21 +409,23 @@ pub struct ParquetEncoder {
 
 impl ParquetEncoder {
     pub fn try_new(
+        hybrid_encoding: bool,
         num_rows_per_row_group: usize,
         compression: Compression,
         meta_data: SstMetaData,
     ) -> Result<Self> {
-        let record_encoder: Box<dyn RecordEncoder + Send> = match meta_data.storage_format() {
-            StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
+        let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
+            Box::new(HybridRecordEncoder::try_new(
                 num_rows_per_row_group,
                 compression,
                 meta_data,
-            )?),
-            StorageFormat::Columnar => Box::new(ColumnarRecordEncoder::try_new(
+            )?)
+        } else {
+            Box::new(ColumnarRecordEncoder::try_new(
                 num_rows_per_row_group,
                 compression,
                 meta_data,
-            )?),
+            )?)
         };
 
         Ok(ParquetEncoder { record_encoder })
@@ -468,7 +464,7 @@ impl RecordDecoder for ColumnarRecordDecoder {
 }
 
 struct HybridRecordDecoder {
-    storage_format_opts: StorageFormatOptions,
+    collapsible_cols_idx: Vec<u32>,
 }
 
 impl HybridRecordDecoder {
@@ -636,7 +632,7 @@ impl RecordDecoder for HybridRecordDecoder {
 
         let mut value_offsets = None;
         // Find value offsets from the first col in collapsible_cols_idx.
-        if let Some(idx) = self.storage_format_opts.collapsible_cols_idx.first() {
+        if let Some(idx) = self.collapsible_cols_idx.first() {
             let offset_slices = arrays[*idx as usize].data().buffers()[0].as_slice();
             value_offsets = Some(Self::get_array_offsets(offset_slices));
         } else {
@@ -685,12 +681,13 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn new(storage_format_opts: StorageFormatOptions) -> Self {
-        let record_decoder: Box<dyn RecordDecoder> = match storage_format_opts.format {
-            StorageFormat::Hybrid => Box::new(HybridRecordDecoder {
-                storage_format_opts,
-            }),
-            StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
+    pub fn new(hybrid_encoding: bool, collapsible_cols_idx: &[u32]) -> Self {
+        let record_decoder: Box<dyn RecordDecoder> = if hybrid_encoding {
+            Box::new(HybridRecordDecoder {
+                collapsible_cols_idx: collapsible_cols_idx.to_vec(),
+            })
+        } else {
+            Box::new(ColumnarRecordDecoder {})
         };
 
         Self { record_decoder }
@@ -716,7 +713,6 @@ mod tests {
     use parquet::{arrow::arrow_reader::ParquetRecordBatchReaderBuilder, file::footer};
 
     use super::*;
-    use crate::table_options::StorageFormatOptions;
 
     fn build_schema() -> Schema {
         Builder::new()
@@ -863,7 +859,6 @@ mod tests {
     #[test]
     fn test_hybrid_record_encode_and_decode() {
         let schema = build_schema();
-        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
 
         let mut meta_data = SstMetaData {
             min_key: Bytes::from_static(b"100"),
@@ -871,8 +866,8 @@ mod tests {
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            storage_format_opts,
             bloom_filter: Default::default(),
+            collapsible_cols_idx: Vec::new(),
         };
         let mut encoder =
             HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
@@ -930,13 +925,10 @@ mod tests {
             .build()
             .unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
-        collect_collapsible_cols_idx(
-            &meta_data.schema,
-            &mut meta_data.storage_format_opts.collapsible_cols_idx,
-        );
+        collect_collapsible_cols_idx(&meta_data.schema, &mut meta_data.collapsible_cols_idx);
 
         let decoder = HybridRecordDecoder {
-            storage_format_opts: meta_data.storage_format_opts,
+            collapsible_cols_idx: meta_data.collapsible_cols_idx.clone(),
         };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 
@@ -996,7 +988,6 @@ mod tests {
     #[test]
     fn test_hybrid_flush() {
         let schema = build_schema();
-        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
 
         let meta_data = SstMetaData {
             min_key: Bytes::from_static(b"100"),
@@ -1004,8 +995,8 @@ mod tests {
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            storage_format_opts,
             bloom_filter: Default::default(),
+            collapsible_cols_idx: Vec::new(),
         };
         let mut encoder = HybridRecordEncoder::try_new(10, Compression::ZSTD, meta_data).unwrap();
 

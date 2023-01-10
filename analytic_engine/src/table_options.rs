@@ -13,7 +13,7 @@ use common_util::{
 use datafusion::parquet::basic::Compression as ParquetCompression;
 use proto::analytic_common as common_pb;
 use serde_derive::Deserialize;
-use snafu::{Backtrace, GenerateBacktrace, ResultExt, Snafu};
+use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
 
 use crate::compaction::{
@@ -37,6 +37,7 @@ const COMPRESSION_UNCOMPRESSED: &str = "UNCOMPRESSED";
 const COMPRESSION_LZ4: &str = "LZ4";
 const COMPRESSION_SNAPPY: &str = "SNAPPY";
 const COMPRESSION_ZSTD: &str = "ZSTD";
+const STORAGE_FORMAT_AUTO: &str = "AUTO";
 const STORAGE_FORMAT_COLUMNAR: &str = "COLUMNAR";
 const STORAGE_FORMAT_HYBRID: &str = "HYBRID";
 
@@ -103,6 +104,23 @@ pub enum Error {
         backtrace
     ))]
     UnknownStorageFormat { value: String, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownStorageFormatType { value: i32, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Unknown storage format hint. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownStorageFormatHint { value: String, backtrace: Backtrace },
+
+    #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
+    MissingStorageFormatHint { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -202,6 +220,16 @@ impl From<Compression> for ParquetCompression {
     }
 }
 
+/// A hint for building sst.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+pub enum StorageFormatHint {
+    /// Which storage format is chosen to encode one sst depends on the data
+    /// pattern.
+    #[default]
+    Auto,
+    Specific(StorageFormat),
+}
+
 /// StorageFormat specify how records are saved in persistent storage
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 pub enum StorageFormat {
@@ -239,6 +267,64 @@ pub enum StorageFormat {
     /// | ...       |                     |             |       |       |         |         |
     /// ```
     Hybrid,
+}
+
+impl From<StorageFormatHint> for common_pb::StorageFormatHint {
+    fn from(hint: StorageFormatHint) -> Self {
+        match hint {
+            StorageFormatHint::Auto => Self {
+                hint: Some(common_pb::storage_format_hint::Hint::Auto(0)),
+            },
+            StorageFormatHint::Specific(format) => {
+                let format = common_pb::StorageFormat::from(format);
+                Self {
+                    hint: Some(common_pb::storage_format_hint::Hint::Specific(
+                        format as i32,
+                    )),
+                }
+            }
+        }
+    }
+}
+
+impl TryFrom<common_pb::StorageFormatHint> for StorageFormatHint {
+    type Error = Error;
+
+    fn try_from(hint: common_pb::StorageFormatHint) -> Result<Self> {
+        let format_hint = match hint.hint.context(MissingStorageFormatHint)? {
+            common_pb::storage_format_hint::Hint::Auto(_) => StorageFormatHint::Auto,
+            common_pb::storage_format_hint::Hint::Specific(format) => {
+                let storage_format = common_pb::StorageFormat::from_i32(format)
+                    .context(UnknownStorageFormatType { value: format })?;
+                StorageFormatHint::Specific(storage_format.into())
+            }
+        };
+
+        Ok(format_hint)
+    }
+}
+
+impl ToString for StorageFormatHint {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Auto => STORAGE_FORMAT_AUTO.to_string(),
+            Self::Specific(format) => format.to_string(),
+        }
+    }
+}
+
+impl TryFrom<&str> for StorageFormatHint {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        let format = match value.to_uppercase().as_str() {
+            STORAGE_FORMAT_COLUMNAR => Self::Specific(StorageFormat::Columnar),
+            STORAGE_FORMAT_HYBRID => Self::Specific(StorageFormat::Hybrid),
+            STORAGE_FORMAT_AUTO => Self::Auto,
+            _ => return UnknownStorageFormatHint { value }.fail(),
+        };
+        Ok(format)
+    }
 }
 
 impl From<StorageFormat> for common_pb::StorageFormat {
@@ -288,40 +374,6 @@ impl Default for StorageFormat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct StorageFormatOptions {
-    pub format: StorageFormat,
-    pub collapsible_cols_idx: Vec<u32>,
-}
-
-impl StorageFormatOptions {
-    pub fn new(format: StorageFormat) -> Self {
-        Self {
-            format,
-            collapsible_cols_idx: Vec::new(),
-        }
-    }
-}
-
-impl From<StorageFormatOptions> for common_pb::StorageFormatOptions {
-    fn from(v: StorageFormatOptions) -> Self {
-        common_pb::StorageFormatOptions {
-            format: common_pb::StorageFormat::from(v.format) as i32,
-            collapsible_cols_idx: v.collapsible_cols_idx,
-        }
-    }
-}
-
-impl From<common_pb::StorageFormatOptions> for StorageFormatOptions {
-    fn from(v: common_pb::StorageFormatOptions) -> Self {
-        let format = v.format();
-        Self {
-            format: StorageFormat::from(format),
-            collapsible_cols_idx: v.collapsible_cols_idx,
-        }
-    }
-}
-
 /// Options for a table.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(default)]
@@ -334,8 +386,8 @@ pub struct TableOptions {
     pub segment_duration: Option<ReadableDuration>,
     /// Table update mode, now support Overwrite(Default) and Append
     pub update_mode: UpdateMode,
-    /// Column's format in underlying storage
-    pub storage_format: StorageFormat,
+    /// Hint for storage format.
+    pub storage_format_hint: StorageFormatHint,
 
     // The following options can be altered.
     /// Enable ttl
@@ -394,7 +446,10 @@ impl TableOptions {
                 format!("{}", self.num_rows_per_row_group),
             ),
             (COMPRESSION.to_string(), self.compression.to_string()),
-            (STORAGE_FORMAT.to_string(), self.storage_format.to_string()),
+            (
+                STORAGE_FORMAT.to_string(),
+                self.storage_format_hint.to_string(),
+            ),
         ]
         .into_iter()
         .collect();
@@ -532,7 +587,7 @@ impl From<TableOptions> for common_pb::TableOptions {
             write_buffer_size: opts.write_buffer_size,
             compression: common_pb::Compression::from(opts.compression) as i32,
             sampling_segment_duration,
-            storage_format: common_pb::StorageFormat::from(opts.storage_format) as i32,
+            storage_format_hint: Some(common_pb::StorageFormatHint::from(opts.storage_format_hint)),
         }
     }
 }
@@ -555,10 +610,11 @@ impl From<common_pb::UpdateMode> for UpdateMode {
     }
 }
 
-impl From<common_pb::TableOptions> for TableOptions {
-    fn from(opts: common_pb::TableOptions) -> Self {
+impl TryFrom<common_pb::TableOptions> for TableOptions {
+    type Error = Error;
+
+    fn try_from(opts: common_pb::TableOptions) -> Result<Self> {
         let compression = opts.compression();
-        let storage_format = opts.storage_format();
         let update_mode = opts.update_mode();
 
         let compaction_strategy = match opts.compaction_strategy() {
@@ -591,7 +647,8 @@ impl From<common_pb::TableOptions> for TableOptions {
             Some(Duration::from_millis(opts.segment_duration).into())
         };
 
-        Self {
+        let storage_format_hint = opts.storage_format_hint.context(MissingStorageFormatHint)?;
+        let table_opts = Self {
             segment_duration,
             enable_ttl: opts.enable_ttl,
             ttl: Duration::from_millis(opts.ttl).into(),
@@ -601,8 +658,10 @@ impl From<common_pb::TableOptions> for TableOptions {
             update_mode: UpdateMode::from(update_mode),
             write_buffer_size: opts.write_buffer_size,
             compression: Compression::from(compression),
-            storage_format: StorageFormat::from(storage_format),
-        }
+            storage_format_hint: StorageFormatHint::try_from(storage_format_hint)?,
+        };
+
+        Ok(table_opts)
     }
 }
 
@@ -618,7 +677,7 @@ impl Default for TableOptions {
             update_mode: UpdateMode::Overwrite,
             write_buffer_size: DEFAULT_WRITE_BUFFER_SIZE,
             compression: Compression::Zstd,
-            storage_format: StorageFormat::default(),
+            storage_format_hint: StorageFormatHint::default(),
         }
     }
 }
@@ -678,7 +737,7 @@ fn merge_table_options(
         table_opts.compression = Compression::parse_from(v)?;
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
-        table_opts.storage_format = v.as_str().try_into()?;
+        table_opts.storage_format_hint = v.as_str().try_into()?;
     }
     Ok(table_opts)
 }

@@ -43,7 +43,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
+        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions},
         file::{self, FileMeta, SstMetaData, SstMetaReader},
     },
     table::{
@@ -51,7 +51,7 @@ use crate::{
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
-    table_options::StorageFormatOptions,
+    table_options::StorageFormatHint,
 };
 
 const DEFAULT_CHANNEL_SIZE: usize = 5;
@@ -81,12 +81,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst type is not found, sst_type:{:?}.\nBacktrace:\n{}",
-        sst_type,
+        "Sst type is not found, storage_format_hint:{:?}.\nBacktrace:\n{}",
+        storage_format_hint,
         backtrace
     ))]
-    InvalidSstType {
-        sst_type: SstType,
+    InvalidSstStorageFormat {
+        storage_format_hint: StorageFormatHint,
         backtrace: Backtrace,
     },
 
@@ -610,7 +610,7 @@ impl Instance {
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
@@ -628,15 +628,13 @@ impl Instance {
                 time_range: *time_range,
                 max_sequence,
                 schema: table_data.schema(),
-                storage_format_opts: StorageFormatOptions::new(
-                    table_data.table_options().storage_format,
-                ),
                 bloom_filter: Default::default(),
+                collapsible_cols_idx: Vec::new(),
             };
 
             let store = self.space_store.clone();
             let sst_builder_options_clone = sst_builder_options.clone();
-            let sst_type = table_data.sst_type;
+            let storage_format_hint = table_data.table_options().storage_format_hint;
 
             // spawn build sst
             let handler = self.runtimes.bg_runtime.spawn(async move {
@@ -647,7 +645,9 @@ impl Instance {
                         &sst_file_path,
                         store.store_picker(),
                     )
-                    .context(InvalidSstType { sst_type })?;
+                    .context(InvalidSstStorageFormat {
+                        storage_format_hint,
+                    })?;
 
                 let sst_info = builder
                     .build(
@@ -706,7 +706,7 @@ impl Instance {
                     row_num: sst_info.row_num as u64,
                     time_range: sst_meta.time_range,
                     max_seq: sst_meta.max_sequence,
-                    storage_format_opts: sst_meta.storage_format_opts.clone(),
+                    storage_format: sst_info.storage_format,
                 },
             })
         }
@@ -736,16 +736,17 @@ impl Instance {
             time_range: memtable_state.time_range,
             max_sequence,
             schema: table_data.schema(),
-            storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
             bloom_filter: Default::default(),
+            collapsible_cols_idx: Vec::new(),
         };
 
         // Alloc file id for next sst file
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
+        let storage_format_hint = table_data.table_options().storage_format_hint;
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
@@ -757,8 +758,8 @@ impl Instance {
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
-            .context(InvalidSstType {
-                sst_type: table_data.sst_type,
+            .context(InvalidSstStorageFormat {
+                storage_format_hint,
             })?;
 
         let iter = build_mem_table_iter(memtable_state.mem.clone(), table_data)?;
@@ -782,7 +783,7 @@ impl Instance {
             size: sst_info.file_size as u64,
             time_range: memtable_state.time_range,
             max_seq: memtable_state.last_sequence(),
-            storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
+            storage_format: sst_info.storage_format,
         }))
     }
 
@@ -974,16 +975,17 @@ impl SpaceStore {
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
+        let storage_format_hint = table_data.table_options().storage_format_hint;
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,
         };
         let mut sst_builder = self
             .sst_factory
             .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
-            .context(InvalidSstType {
-                sst_type: table_data.sst_type,
+            .context(InvalidSstStorageFormat {
+                storage_format_hint,
             })?;
 
         let sst_info = sst_builder
@@ -1004,13 +1006,14 @@ impl SpaceStore {
             .compaction_observe_output_sst_row_num(sst_row_num);
 
         info!(
-            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
+            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}, sst_info:{:?}",
             table_data.name,
             table_data.id,
             request_id,
             sst_file_path.to_string(),
             input.files,
             sst_meta,
+            sst_info,
         );
 
         // Store updates to edit_meta.
@@ -1031,8 +1034,7 @@ impl SpaceStore {
                 row_num: sst_row_num,
                 max_seq: sst_meta.max_sequence,
                 time_range: sst_meta.time_range,
-                // FIXME: this should be told by the sst factory.
-                storage_format_opts: sst_meta.storage_format_opts,
+                storage_format: sst_info.storage_format,
             },
         });
 

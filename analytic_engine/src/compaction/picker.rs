@@ -615,7 +615,7 @@ mod tests {
             file::{FileMeta, FilePurgeQueue, SstMetaData},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
         },
-        table_options::StorageFormatOptions,
+        table_options::StorageFormat,
     };
 
     fn build_sst_meta_data(time_range: TimeRange) -> SstMetaData {
@@ -625,8 +625,8 @@ mod tests {
             time_range,
             max_sequence: 200,
             schema: build_schema(),
-            storage_format_opts: Default::default(),
             bloom_filter: Default::default(),
+            collapsible_cols_idx: Vec::new(),
         }
     }
 
@@ -772,7 +772,7 @@ mod tests {
                     row_num: 0,
                     time_range: TimeRange::empty(),
                     max_seq: 0,
-                    storage_format_opts: StorageFormatOptions::default(),
+                    storage_format: StorageFormat::default(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)

@@ -46,7 +46,7 @@ use crate::{
         reader,
     },
     table::sst_util,
-    table_options::{StorageFormat, StorageFormatOptions},
+    table_options::StorageFormat,
 };
 
 /// Error of sst file.
@@ -239,7 +239,7 @@ impl FileHandle {
 
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
-        self.inner.meta.storage_format_opts.format
+        self.inner.meta.storage_format
     }
 }
 
@@ -427,7 +427,7 @@ pub struct FileMeta {
     /// The max sequence number of the file.
     pub max_seq: u64,
     /// The format of the file.
-    pub storage_format_opts: StorageFormatOptions,
+    pub storage_format: StorageFormat,
 }
 
 impl FileMeta {
@@ -511,17 +511,11 @@ pub struct SstMetaData {
     /// Max sequence number in the sst
     pub max_sequence: SequenceNumber,
     pub schema: Schema,
-    pub storage_format_opts: StorageFormatOptions,
     pub bloom_filter: Option<BloomFilter>,
+    pub collapsible_cols_idx: Vec<u32>,
 }
 
 pub type SstMetaDataRef = Arc<SstMetaData>;
-
-impl SstMetaData {
-    pub fn storage_format(&self) -> StorageFormat {
-        self.storage_format_opts.format
-    }
-}
 
 impl From<SstMetaData> for sst_pb::SstMetaData {
     fn from(src: SstMetaData) -> Self {
@@ -531,8 +525,8 @@ impl From<SstMetaData> for sst_pb::SstMetaData {
             max_sequence: src.max_sequence,
             time_range: Some(src.time_range.into()),
             schema: Some(common_pb::TableSchema::from(&src.schema)),
-            storage_format_opts: Some(src.storage_format_opts.into()),
             bloom_filter: src.bloom_filter.map(|v| v.into()),
+            collapsible_cols_idx: src.collapsible_cols_idx,
         }
     }
 }
@@ -549,10 +543,6 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             let schema = src.schema.context(TableSchemaNotFound)?;
             Schema::try_from(schema).context(ConvertTableSchema)?
         };
-        let storage_format_opts = StorageFormatOptions::from(
-            src.storage_format_opts
-                .context(StorageFormatOptionsNotFound)?,
-        );
         let bloom_filter = src.bloom_filter.map(BloomFilter::try_from).transpose()?;
 
         Ok(Self {
@@ -561,8 +551,8 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
             time_range,
             max_sequence: src.max_sequence,
             schema,
-            storage_format_opts,
             bloom_filter,
+            collapsible_cols_idx: src.collapsible_cols_idx,
         })
     }
 }
@@ -729,7 +719,12 @@ impl SstMetaReader {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
             let mut reader = self
                 .factory
-                .new_sst_reader(&self.read_opts, &path, &self.store_picker)
+                .new_sst_reader(
+                    &self.read_opts,
+                    &path,
+                    f.storage_format(),
+                    &self.store_picker,
+                )
                 .context(reader::OtherNoCause {
                     msg: format!("no sst reader found for the file:{:?}", path),
                 })?;
@@ -750,9 +745,6 @@ pub fn merge_sst_meta(sst_metas: &[SstMetaData], schema: Schema) -> SstMetaData 
     let mut time_range_start = sst_metas[0].time_range.inclusive_start();
     let mut time_range_end = sst_metas[0].time_range.exclusive_end();
     let mut max_sequence = sst_metas[0].max_sequence;
-    // TODO(jiacai2050): what if format of different file is different?
-    // pick first now
-    let storage_format = sst_metas[0].storage_format();
 
     if sst_metas.len() > 1 {
         for file in &sst_metas[1..] {
@@ -770,9 +762,10 @@ pub fn merge_sst_meta(sst_metas: &[SstMetaData], schema: Schema) -> SstMetaData 
         time_range: TimeRange::new(time_range_start, time_range_end).unwrap(),
         max_sequence,
         schema,
-        storage_format_opts: StorageFormatOptions::new(storage_format),
-        // bloom filter is rebuilt when write sst, so use default here
+        // bloom filter will be rebuilt when write sst, so use default here.
         bloom_filter: None,
+        // collapsible cols will be rebuilt when write sst, so use empty one here.
+        collapsible_cols_idx: Vec::new(),
     }
 }
 
@@ -826,8 +819,8 @@ pub mod tests {
                 time_range: self.time_range,
                 max_sequence: self.max_sequence,
                 schema: self.schema.clone(),
-                storage_format_opts: Default::default(),
                 bloom_filter: Default::default(),
+                collapsible_cols_idx: Vec::new(),
             }
         }
     }

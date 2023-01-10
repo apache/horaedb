@@ -32,16 +32,13 @@ use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::{
-    sst::{
-        factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-        file::{BloomFilter, SstMetaData},
-        meta_cache::{MetaCacheRef, MetaData},
-        metrics,
-        parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
-        reader::{error::*, Result, SstReader},
-    },
-    table_options::StorageFormatOptions,
+use crate::sst::{
+    factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+    file::{BloomFilter, SstMetaData, SstMetaDataRef},
+    meta_cache::{MetaCacheRef, MetaData},
+    metrics,
+    parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
+    reader::{error::*, Result, SstReader},
 };
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
@@ -49,6 +46,7 @@ type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBat
 pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
+    hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
     projected_schema: ProjectedSchema,
@@ -69,6 +67,7 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
+        hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
         options: &SstReaderOptions,
     ) -> Self {
@@ -79,6 +78,7 @@ impl<'a> Reader<'a> {
 
         Self {
             path,
+            hybrid_encoding,
             store,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
@@ -111,23 +111,23 @@ impl<'a> Reader<'a> {
         let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
 
-        let storage_format_opts = self
+        let sst_meta_data = self
             .meta_data
             .as_ref()
             // metadata must be inited after `init_if_necessary`.
             .unwrap()
             .custom()
-            .storage_format_opts
             .clone();
 
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
+                    self.hybrid_encoding,
                     self.path.to_string(),
                     stream,
                     row_projector.clone(),
-                    storage_format_opts.clone(),
+                    sst_meta_data.clone(),
                 )) as _
             })
             .collect();
@@ -423,29 +423,32 @@ impl AsyncFileReader for ObjectStoreReader {
 }
 
 struct RecordBatchProjector {
+    hybrid_encoding: bool,
     path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
-    storage_format_opts: StorageFormatOptions,
 
     row_num: usize,
     start_time: Instant,
+    sst_meta: SstMetaDataRef,
 }
 
 impl RecordBatchProjector {
     fn new(
+        hybrid_encoding: bool,
         path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
-        storage_format_opts: StorageFormatOptions,
+        sst_meta: SstMetaDataRef,
     ) -> Self {
         Self {
+            hybrid_encoding,
             path,
             stream,
             row_projector,
-            storage_format_opts,
             row_num: 0,
             start_time: Instant::now(),
+            sst_meta,
         }
     }
 }
@@ -475,8 +478,10 @@ impl Stream for RecordBatchProjector {
                 {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
-                        let parquet_decoder =
-                            ParquetDecoder::new(projector.storage_format_opts.clone());
+                        let parquet_decoder = ParquetDecoder::new(
+                            projector.hybrid_encoding,
+                            &projector.sst_meta.collapsible_cols_idx,
+                        );
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
                             .map_err(|e| Box::new(e) as _)

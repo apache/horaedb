@@ -4,9 +4,12 @@
 
 use std::{cmp, sync::Arc, time::Instant};
 
-use analytic_engine::sst::{
-    factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-    meta_cache::{MetaCache, MetaCacheRef},
+use analytic_engine::{
+    sst::{
+        factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+        meta_cache::{MetaCache, MetaCacheRef},
+    },
+    table_options::StorageFormat,
 };
 use common_types::{projected_schema::ProjectedSchema, schema::Schema};
 use common_util::runtime::Runtime;
@@ -80,7 +83,12 @@ impl SstBench {
 
         self.runtime.block_on(async {
             let mut sst_reader = sst_factory
-                .new_sst_reader(&self.sst_reader_options, &sst_path, &store_picker)
+                .new_sst_reader(
+                    &self.sst_reader_options,
+                    &sst_path,
+                    StorageFormat::Columnar,
+                    &store_picker,
+                )
                 .unwrap();
             let begin_instant = Instant::now();
             let mut sst_stream = sst_reader.read().await.unwrap();

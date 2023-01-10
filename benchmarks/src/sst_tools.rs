@@ -16,13 +16,13 @@ use analytic_engine::{
         builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstBuilderOptions, SstReaderOptions, SstType,
+            SstBuilderOptions, SstReaderOptions,
         },
         file::{self, FilePurgeQueue, SstMetaData, SstMetaReader},
         manager::FileId,
     },
     table::sst_util,
-    table_options::Compression,
+    table_options::{Compression, StorageFormat, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
@@ -47,7 +47,7 @@ struct SstConfig {
 async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBatchStream) {
     let sst_factory = FactoryImpl;
     let sst_builder_options = SstBuilderOptions {
-        sst_type: SstType::Parquet,
+        storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
     };
@@ -129,7 +129,13 @@ async fn sst_to_record_batch_stream(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, input_path, &store_picker)
+        .new_sst_reader(
+            sst_reader_options,
+            input_path,
+            // FIXME: this storage format should be detected from the file itself.
+            StorageFormat::Columnar,
+            &store_picker,
+        )
         .unwrap();
 
     let sst_stream = sst_reader.read().await.unwrap();
