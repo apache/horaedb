@@ -7,6 +7,7 @@ use std::num::NonZeroUsize;
 use ceresdbproto::storage;
 use clru::CLruCache;
 use common_util::partitioned_lock::PartitionedMutex;
+use log::debug;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
@@ -48,10 +49,19 @@ impl CachedRouter {
 
         let channel = if let Some(channel) = channel_opt {
             // If found, return it.
+            debug!(
+                "CachedRouter found channel in cache, table_ident:{:?}",
+                table_ident
+            );
+
             channel
         } else {
             // If not found, do real route work, and try to put it into cache(may have been
             // put by other threads).
+            debug!(
+                "CachedRouter didn't find channel in cache, table_ident:{:?}",
+                table_ident
+            );
             let channel = self.do_route(table_ident).await?;
 
             {
@@ -59,6 +69,10 @@ impl CachedRouter {
                 // Double check here, if still not found, we put it.
                 let channel_opt = cache.get(table_ident).cloned();
                 if channel_opt.is_none() {
+                    debug!(
+                        "CachedRouter put the new channel to cache, table_ident:{:?}",
+                        table_ident
+                    );
                     cache.put(table_ident.clone(), channel.clone());
                 }
             }
