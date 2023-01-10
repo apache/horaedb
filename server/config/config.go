@@ -20,6 +20,7 @@ const (
 	defaultGrpcHandleTimeoutMs int64 = 10 * 1000
 	defaultEtcdStartTimeoutMs  int64 = 10 * 1000
 	defaultCallTimeoutMs             = 5 * 1000
+	defaultMaxTxnOps                 = 128
 	defaultEtcdLeaseTTLSec           = 10
 
 	defaultNodeNamePrefix          = "ceresmeta"
@@ -64,6 +65,7 @@ type Config struct {
 	GrpcHandleTimeoutMs int64 `toml:"grpc-handle-timeout-ms" env:"GRPC_HANDLER_TIMEOUT_MS"`
 	EtcdStartTimeoutMs  int64 `toml:"etcd-start-timeout-ms" env:"ETCD_START_TIMEOUT_MS"`
 	EtcdCallTimeoutMs   int64 `toml:"etcd-call-timeout-ms" env:"ETCD_CALL_TIMEOUT_MS"`
+	EtcdMaxTxnOps       int64 `toml:"etcd-max-txn-ops" env:"ETCD_MAX_TXN_OPS"`
 
 	LeaseTTLSec int64 `toml:"lease-sec" env:"LEASE_SEC"`
 
@@ -144,6 +146,7 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 	cfg.AutoCompactionRetention = c.AutoCompactionRetention
 	cfg.QuotaBackendBytes = c.QuotaBackendBytes
 	cfg.MaxRequestBytes = c.MaxRequestBytes
+	cfg.MaxTxnOps = uint(c.EtcdMaxTxnOps)
 
 	var err error
 	cfg.LPUrls, err = parseUrls(c.PeerUrls)
@@ -223,6 +226,7 @@ func MakeConfigParser() (*Parser, error) {
 		GrpcHandleTimeoutMs: defaultGrpcHandleTimeoutMs,
 		EtcdStartTimeoutMs:  defaultEtcdStartTimeoutMs,
 		EtcdCallTimeoutMs:   defaultCallTimeoutMs,
+		EtcdMaxTxnOps:       defaultMaxTxnOps,
 
 		LeaseTTLSec: defaultEtcdLeaseTTLSec,
 
