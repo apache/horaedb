@@ -8,7 +8,7 @@
 # User Guide
 
 - [SQL Syntax](sql/README.md)
-    - [Data Model](model/README.md)
+    - [Data Model](sql/model/README.md)
         - [Data Types](model/data_types.md)
         - [Special Columns](model/special_columns.md)
     - [Identifier](sql/identifier.md)
