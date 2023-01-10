@@ -55,12 +55,14 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to convert request or response, table, msg:{}, err:{}",
+            "Failed to convert request or response, table, msg:{}, version:{}, err:{}",
             msg,
+            version,
             source
         ))]
         ConvertReadResponse {
             msg: String,
+            version: u32,
             source: Box<dyn std::error::Error + Send + Sync>,
         },
 
@@ -108,6 +110,11 @@ pub mod error {
         RouteNoCause {
             table_ident: TableIdentifier,
             msg: String,
+        },
+
+        #[snafu(display("Failed to convert version, source:{}", source))]
+        ConvertVersion {
+            source: common_types::remote_engine::Error,
         },
     }
 

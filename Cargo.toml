@@ -52,6 +52,7 @@ path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
 arrow = { version = "23.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "23.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -108,10 +109,11 @@ tonic = "0.8.1"
 tokio = { version = "1.24", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
+zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "6e12241032e01d00e130b65118dfafc0794a3102"
+rev = "6cc1754ffc31ddfe0710972c94f8fe5acd61af98"
 
 [workspace.dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"
