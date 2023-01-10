@@ -14,8 +14,8 @@ func TestRandomShardPicker(t *testing.T) {
 	ctx := context.Background()
 	manager, _ := prepare(t)
 
-	randomShardPicker := NewRandomShardPicker(manager)
-	nodeShards, err := randomShardPicker.PickShards(ctx, clusterName, 2, false)
+	shardPicker := NewRandomBalancedShardPicker(manager)
+	nodeShards, err := shardPicker.PickShards(ctx, clusterName, 2, false)
 	re.NoError(err)
 
 	// Verify the number of shards and ensure that they are not on the same node.
@@ -23,17 +23,17 @@ func TestRandomShardPicker(t *testing.T) {
 	re.NotEqual(nodeShards[0].ShardNode.NodeName, nodeShards[1].ShardNode.NodeName)
 
 	// ExpectShardNum is bigger than node number and enableDuplicateNode is false, it should be throw error.
-	_, err = randomShardPicker.PickShards(ctx, clusterName, 3, false)
+	_, err = shardPicker.PickShards(ctx, clusterName, 3, false)
 	re.Error(err)
 
 	// ExpectShardNum is bigger than node number and enableDuplicateNode is true, it should return correct shards.
-	nodeShards, err = randomShardPicker.PickShards(ctx, clusterName, 3, true)
+	nodeShards, err = shardPicker.PickShards(ctx, clusterName, 3, true)
 	re.NoError(err)
 	re.Equal(len(nodeShards), 3)
-	nodeShards, err = randomShardPicker.PickShards(ctx, clusterName, 4, true)
+	nodeShards, err = shardPicker.PickShards(ctx, clusterName, 4, true)
 	re.NoError(err)
 	re.Equal(len(nodeShards), 4)
 	// ExpectShardNum is bigger than shard number.
-	_, err = randomShardPicker.PickShards(ctx, clusterName, 5, true)
-	re.Error(err)
+	_, err = shardPicker.PickShards(ctx, clusterName, 5, true)
+	re.NoError(err)
 }

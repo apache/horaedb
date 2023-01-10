@@ -115,8 +115,10 @@ func (m *ManagerImpl) retryAll(ctx context.Context) error {
 			continue
 		}
 		p := restoreProcedure(meta)
-		err := m.retry(ctx, p)
-		return errors.WithMessagef(err, "retry procedure failed, procedureID:%d", p.ID())
+		if p != nil {
+			err := m.retry(ctx, p)
+			return errors.WithMessagef(err, "retry procedure failed, procedureID:%d", p.ID())
+		}
 	}
 	return nil
 }
@@ -160,6 +162,7 @@ func (m *ManagerImpl) retry(ctx context.Context, procedure Procedure) error {
 }
 
 // Load meta and restore procedure.
+// TODO: Restore procedure from metadata, some types of procedures do not need to be retried.
 func restoreProcedure(meta *Meta) Procedure {
 	switch meta.Typ {
 	case Create:

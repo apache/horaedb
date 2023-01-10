@@ -76,9 +76,9 @@ func TestManagerSingleThread(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	storage, kv, closeSrv := newTestStorage(t)
+	s, kv, closeSrv := newTestStorage(t)
 	defer closeSrv()
-	manager, err := newClusterManagerWithStorage(storage, kv)
+	manager, err := newClusterManagerWithStorage(s, kv)
 	re.NoError(err)
 
 	re.NoError(manager.Start(ctx))
@@ -93,11 +93,9 @@ func TestManagerSingleThread(t *testing.T) {
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
 	testAllocSchemaID(ctx, re, manager, cluster1, defaultSchema, defaultSchemaID)
 
-	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
-	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table1, tableID1)
-	testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, table2, tableID2)
-	testCreateTable(ctx, re, manager, node2, cluster1, defaultSchema, table3, tableID3)
-	testCreateTable(ctx, re, manager, node2, cluster1, defaultSchema, table4, tableID4)
+	for i := uint64(0); i < 5; i++ {
+		testCreateTable(ctx, re, manager, node1, cluster1, defaultSchema, storage.ShardID(i), tableID1)
+	}
 
 	testRouteTables(ctx, re, manager, cluster1, defaultSchema, []string{table1, table2, table3, table4})
 
@@ -110,7 +108,7 @@ func TestManagerSingleThread(t *testing.T) {
 
 	re.NoError(manager.Stop(ctx))
 
-	manager, err = newClusterManagerWithStorage(storage, kv)
+	manager, err = newClusterManagerWithStorage(s, kv)
 	re.NoError(err)
 
 	re.NoError(manager.Start(ctx))
@@ -189,11 +187,11 @@ func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager Mana
 }
 
 func testCreateTable(ctx context.Context, re *require.Assertions, manager Manager,
-	node, clusterName, schema, tableName string, tableID uint64,
+	clusterName, schema, tableName string, shardID storage.ShardID, tableID uint64,
 ) {
 	c, err := manager.GetCluster(ctx, clusterName)
 	re.NoError(err)
-	table, err := c.CreateTable(ctx, node, schema, tableName, false)
+	table, err := c.CreateTable(ctx, shardID, schema, tableName, false)
 	re.NoError(err)
 	re.Equal(tableID, table.Table.ID)
 }
@@ -250,11 +248,11 @@ func testAllocTableIDMultiThread(ctx context.Context, re *require.Assertions, ma
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testCreateTable(ctx, re, manager, node1, clusterName, defaultSchema, table1, tableID)
+			testCreateTable(ctx, re, manager, clusterName, defaultSchema, table1, 0, tableID)
 		}()
 	}
 
-	testCreateTable(ctx, re, manager, node2, clusterName, defaultSchema, table1, tableID)
+	testCreateTable(ctx, re, manager, clusterName, defaultSchema, table1, 1, tableID)
 	wg.Wait()
 }
 

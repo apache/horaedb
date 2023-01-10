@@ -4,72 +4,201 @@ package procedure
 
 import (
 	"context"
+	"sync"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
-	"go.uber.org/zap"
+	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
+	"github.com/looplab/fsm"
+	"github.com/pkg/errors"
 )
 
-// CreateTableProcedure is a proxy procedure, it determines the actual procedure created according to the request type.
-type CreateTableProcedure struct {
-	realProcedure Procedure
-}
+const (
+	eventCreateTablePrepare = "EventCreateTablePrepare"
+	eventCreateTableFailed  = "EventCreateTableFailed"
+	eventCreateTableSuccess = "EventCreateTableSuccess"
 
-func NewCreateTableProcedure(ctx context.Context, factory *Factory, c *cluster.Cluster, sourceReq *metaservicepb.CreateTableRequest, onSucceeded func(cluster.CreateTableResult) error, onFailed func(error) error) (Procedure, error) {
-	if sourceReq.PartitionTableInfo == nil {
-		p, err := factory.makeCreateNormalTableProcedure(ctx, CreateTableRequest{
-			Cluster:     c,
-			SourceReq:   sourceReq,
-			OnSucceeded: onSucceeded,
-			OnFailed:    onFailed,
-		})
-		if err != nil {
-			log.Error("fail to create table", zap.Error(err))
-			return CreateTableProcedure{}, err
-		}
-		return CreateTableProcedure{
-			realProcedure: p,
-		}, nil
+	stateCreateTableBegin   = "StateCreateTableBegin"
+	stateCreateTableWaiting = "StateCreateTableWaiting"
+	stateCreateTableFinish  = "StateCreateTableFinish"
+	stateCreateTableFailed  = "StateCreateTableFailed"
+)
+
+var (
+	createTableEvents = fsm.Events{
+		{Name: eventCreateTablePrepare, Src: []string{stateCreateTableBegin}, Dst: stateCreateTableWaiting},
+		{Name: eventCreateTableSuccess, Src: []string{stateCreateTableWaiting}, Dst: stateCreateTableFinish},
+		{Name: eventCreateTableFailed, Src: []string{stateCreateTableWaiting}, Dst: stateCreateTableFailed},
 	}
-
-	if len(sourceReq.PartitionTableInfo.SubTableNames) == 0 {
-		log.Error("fail to create table", zap.Error(ErrEmptyPartitionNames))
-		return CreateTableProcedure{}, ErrEmptyPartitionNames
+	createTableCallbacks = fsm.Callbacks{
+		eventCreateTablePrepare: createTablePrepareCallback,
+		eventCreateTableFailed:  createTableFailedCallback,
+		eventCreateTableSuccess: createTableSuccessCallback,
 	}
+)
 
-	p, err := factory.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
-		ClusterName: c.Name(),
-		SourceReq:   sourceReq,
-		OnSucceeded: onSucceeded,
-		OnFailed:    onFailed,
-	})
+func createTablePrepareCallback(event *fsm.Event) {
+	req, err := getRequestFromEvent[*createTableCallbackRequest](event)
 	if err != nil {
-		log.Error("fail to create partition table", zap.Error(err))
-		return CreateTableProcedure{}, err
+		cancelEventWithLog(event, err, "get request from event")
+		return
 	}
 
-	return CreateTableProcedure{
-		realProcedure: p,
-	}, nil
+	createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetName(), req.shardID, false)
+	if err != nil {
+		cancelEventWithLog(event, err, "create table metadata")
+		return
+	}
+
+	if err = createTableOnShard(req.ctx, req.cluster, req.dispatch, createTableResult.ShardVersionUpdate.ShardID, buildCreateTableRequest(createTableResult, req.sourceReq, false)); err != nil {
+		cancelEventWithLog(event, err, "dispatch create table on shard")
+		return
+	}
+
+	req.createTableResult = createTableResult
 }
 
-func (p CreateTableProcedure) ID() uint64 {
-	return p.realProcedure.ID()
+func createTableSuccessCallback(event *fsm.Event) {
+	req, err := getRequestFromEvent[*createTableCallbackRequest](event)
+	if err != nil {
+		cancelEventWithLog(event, err, "get request from event")
+		return
+	}
+
+	if err := req.onSucceeded(req.createTableResult); err != nil {
+		log.Error("exec success callback failed")
+	}
 }
 
-func (p CreateTableProcedure) Typ() Typ {
-	return p.realProcedure.Typ()
+func createTableFailedCallback(event *fsm.Event) {
+	req, err := getRequestFromEvent[*createTableCallbackRequest](event)
+	if err != nil {
+		cancelEventWithLog(event, err, "get request from event")
+		return
+	}
+
+	if err := req.onFailed(event.Err); err != nil {
+		log.Error("exec failed callback failed")
+	}
 }
 
-func (p CreateTableProcedure) Start(ctx context.Context) error {
-	return p.realProcedure.Start(ctx)
+// createTableCallbackRequest is fsm callbacks param.
+type createTableCallbackRequest struct {
+	ctx      context.Context
+	cluster  *cluster.Cluster
+	dispatch eventdispatch.Dispatch
+
+	sourceReq *metaservicepb.CreateTableRequest
+	shardID   storage.ShardID
+
+	onSucceeded func(cluster.CreateTableResult) error
+	onFailed    func(error) error
+
+	createTableResult cluster.CreateTableResult
 }
 
-func (p CreateTableProcedure) Cancel(ctx context.Context) error {
-	return p.realProcedure.Cancel(ctx)
+type CreateTableProcedureRequest struct {
+	Dispatch    eventdispatch.Dispatch
+	Cluster     *cluster.Cluster
+	ID          uint64
+	ShardID     storage.ShardID
+	Req         *metaservicepb.CreateTableRequest
+	OnSucceeded func(cluster.CreateTableResult) error
+	OnFailed    func(error) error
 }
 
-func (p CreateTableProcedure) State() State {
-	return p.realProcedure.State()
+func NewCreateTableProcedure(request CreateTableProcedureRequest) Procedure {
+	fsm := fsm.NewFSM(
+		stateCreateTableBegin,
+		createTableEvents,
+		createTableCallbacks,
+	)
+	return &CreateTableProcedure{
+		id:          request.ID,
+		fsm:         fsm,
+		cluster:     request.Cluster,
+		dispatch:    request.Dispatch,
+		shardID:     request.ShardID,
+		req:         request.Req,
+		state:       StateInit,
+		onSucceeded: request.OnSucceeded,
+		onFailed:    request.OnFailed,
+	}
+}
+
+type CreateTableProcedure struct {
+	id       uint64
+	fsm      *fsm.FSM
+	cluster  *cluster.Cluster
+	dispatch eventdispatch.Dispatch
+
+	shardID storage.ShardID
+
+	req *metaservicepb.CreateTableRequest
+
+	onSucceeded func(cluster.CreateTableResult) error
+	onFailed    func(error) error
+
+	// Protect the state.
+	lock  sync.RWMutex
+	state State
+}
+
+func (p *CreateTableProcedure) ID() uint64 {
+	return p.id
+}
+
+func (p *CreateTableProcedure) Typ() Typ {
+	return CreateTable
+}
+
+func (p *CreateTableProcedure) Start(ctx context.Context) error {
+	p.updateState(StateRunning)
+
+	req := &createTableCallbackRequest{
+		cluster:     p.cluster,
+		ctx:         ctx,
+		dispatch:    p.dispatch,
+		shardID:     p.shardID,
+		sourceReq:   p.req,
+		onSucceeded: p.onSucceeded,
+		onFailed:    p.onFailed,
+	}
+
+	if err := p.fsm.Event(eventCreateTablePrepare, req); err != nil {
+		err1 := p.fsm.Event(eventCreateTableFailed, req)
+		p.updateState(StateFailed)
+		if err1 != nil {
+			err = errors.WithMessagef(err, "send eventCreateTableFailed, err:%v", err1)
+		}
+		return errors.WithMessage(err, "send eventCreateTablePrepare")
+	}
+
+	if err := p.fsm.Event(eventCreateTableSuccess, req); err != nil {
+		return errors.WithMessage(err, "send eventCreateTableSuccess")
+	}
+
+	p.updateState(StateFinished)
+	return nil
+}
+
+func (p *CreateTableProcedure) Cancel(_ context.Context) error {
+	p.updateState(StateCancelled)
+	return nil
+}
+
+func (p *CreateTableProcedure) State() State {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	return p.state
+}
+
+func (p *CreateTableProcedure) updateState(state State) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	p.state = state
 }

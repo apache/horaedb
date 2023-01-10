@@ -43,7 +43,12 @@ var (
 )
 
 func scatterPrepareCallback(event *fsm.Event) {
-	request := event.Args[0].(*ScatterCallbackRequest)
+	request, err := getRequestFromEvent[*ScatterCallbackRequest](event)
+	if err != nil {
+		cancelEventWithLog(event, err, "get request from event")
+		return
+	}
+
 	c := request.cluster
 	ctx := request.ctx
 

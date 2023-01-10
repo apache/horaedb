@@ -48,11 +48,28 @@ type CreateTableResult struct {
 }
 
 type DropTableResult struct {
-	ShardVersionUpdate ShardVersionUpdate
+	ShardVersionUpdate []ShardVersionUpdate
 }
 
-type UpdateShardTablesResult struct {
-	ShardVersionUpdate ShardVersionUpdate
+type OpenTableRequest struct {
+	SchemaName string
+	TableName  string
+	ShardID    storage.ShardID
+	NodeName   string
+}
+
+type CloseTableRequest struct {
+	SchemaName string
+	TableName  string
+	ShardID    storage.ShardID
+	NodeName   string
+}
+
+type MigrateTableRequest struct {
+	SchemaName string
+	TableNames []string
+	OldShardID storage.ShardID
+	NewShardID storage.ShardID
 }
 
 type ShardVersionUpdate struct {

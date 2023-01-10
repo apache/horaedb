@@ -18,7 +18,7 @@ func TestCreatePartitionTable(t *testing.T) {
 	manager, c := prepare(t)
 	s := NewTestStorage(t)
 
-	shardPicker := NewRandomShardPicker(manager)
+	shardPicker := NewRandomBalancedShardPicker(manager)
 
 	request := &metaservicepb.CreateTableRequest{
 		Header: &metaservicepb.RequestHeader{

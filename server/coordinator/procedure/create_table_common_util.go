@@ -4,7 +4,6 @@ package procedure
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
@@ -13,16 +12,16 @@ import (
 	"github.com/pkg/errors"
 )
 
-func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, nodeName string, partitioned bool) (cluster.CreateTableResult, error) {
+func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitioned bool) (cluster.CreateTableResult, error) {
 	_, exists, err := c.GetTable(schemaName, tableName)
 	if err != nil {
 		return cluster.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
 	}
 	if exists {
-		return cluster.CreateTableResult{}, errors.WithMessage(ErrTableAlreadyExists, fmt.Sprintf("create an existing table, schemaName:%s, tableName:%s", schemaName, tableName))
+		return cluster.CreateTableResult{}, errors.WithMessagef(ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
 	}
 
-	createTableResult, err := c.CreateTable(ctx, nodeName, schemaName, tableName, partitioned)
+	createTableResult, err := c.CreateTable(ctx, shardID, schemaName, tableName, partitioned)
 	if err != nil {
 		return cluster.CreateTableResult{}, errors.WithMessage(err, "create table")
 	}
@@ -45,7 +44,7 @@ func createTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventd
 		}
 	}
 	if !found {
-		return errors.WithMessage(ErrShardLeaderNotFound, fmt.Sprintf("shard node can't find leader, shardID:%d", shardID))
+		return errors.WithMessagef(ErrShardLeaderNotFound, "shard node can't find leader, shardID:%d", shardID)
 	}
 
 	err = dispatch.CreateTableOnShard(ctx, leader.NodeName, request)

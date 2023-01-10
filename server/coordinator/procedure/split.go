@@ -134,7 +134,7 @@ func (p *SplitProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventSplitCreateNewShardMetadata, splitCallbackRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "split procedure create new shard metadata")
+				return errors.WithMessage(err, "split procedure create new shard metadata")
 			}
 		case stateSplitCreateNewShardMetadata:
 			if err := p.persist(ctx); err != nil {
@@ -142,7 +142,7 @@ func (p *SplitProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventSplitCreateNewShardView, splitCallbackRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "split procedure create new shard view")
+				return errors.WithMessage(err, "split procedure create new shard view")
 			}
 		case stateSplitCreateNewShardView:
 			if err := p.persist(ctx); err != nil {
@@ -150,7 +150,7 @@ func (p *SplitProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventSplitUpdateShardTables, splitCallbackRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "split procedure create new shard")
+				return errors.WithMessage(err, "split procedure create new shard")
 			}
 		case stateSplitUpdateShardTables:
 			if err := p.persist(ctx); err != nil {
@@ -158,7 +158,7 @@ func (p *SplitProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventSplitOpenNewShard, splitCallbackRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "split procedure create shard tables")
+				return errors.WithMessage(err, "split procedure create shard tables")
 			}
 		case stateSplitOpenNewShard:
 			if err := p.persist(ctx); err != nil {
@@ -166,13 +166,14 @@ func (p *SplitProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventSplitFinish, splitCallbackRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "split procedure delete shard tables")
+				return errors.WithMessage(err, "split procedure delete shard tables")
 			}
 		case stateSplitFinish:
+			// TODO: The state update sequence here is inconsistent with the previous one. Consider reconstructing the state update logic of the state machine.
+			p.updateStateWithLock(StateFinished)
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "split procedure persist")
 			}
-			p.updateStateWithLock(StateFinished)
 			return nil
 		}
 	}
@@ -286,6 +287,24 @@ func splitCreateShardViewCallback(event *fsm.Event) {
 	}
 }
 
+func splitUpdateShardTablesCallback(event *fsm.Event) {
+	request, err := getRequestFromEvent[splitCallbackRequest](event)
+	if err != nil {
+		cancelEventWithLog(event, err, "get request from event")
+		return
+	}
+
+	if err := request.cluster.MigrateTable(request.ctx, cluster.MigrateTableRequest{
+		SchemaName: request.schemaName,
+		TableNames: request.tableNames,
+		OldShardID: request.shardID,
+		NewShardID: request.newShardID,
+	}); err != nil {
+		cancelEventWithLog(event, err, "update shard tables")
+		return
+	}
+}
+
 func splitOpenShardCallback(event *fsm.Event) {
 	request, err := getRequestFromEvent[splitCallbackRequest](event)
 	if err != nil {
@@ -303,88 +322,6 @@ func splitOpenShardCallback(event *fsm.Event) {
 		},
 	}); err != nil {
 		cancelEventWithLog(event, err, "open shard failed")
-		return
-	}
-}
-
-func splitUpdateShardTablesCallback(event *fsm.Event) {
-	request, err := getRequestFromEvent[splitCallbackRequest](event)
-	if err != nil {
-		cancelEventWithLog(event, err, "get request from event")
-		return
-	}
-	ctx := request.ctx
-
-	originShardTables := request.cluster.GetShardTables([]storage.ShardID{request.shardID}, request.targetNodeName)[request.shardID]
-
-	// Find remaining tables in old shard.
-	var remainingTables []cluster.TableInfo
-
-	for _, tableInfo := range originShardTables.Tables {
-		found := false
-		for _, tableName := range request.tableNames {
-			if tableInfo.Name == tableName && tableInfo.SchemaName == request.schemaName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			remainingTables = append(remainingTables, tableInfo)
-		}
-	}
-
-	// Update shard tables.
-	originShardTables.Tables = remainingTables
-	originShardTables.Shard.Version++
-
-	getNodeShardsResult, err := request.cluster.GetNodeShards(ctx)
-	if err != nil {
-		cancelEventWithLog(event, err, "get node shards")
-		return
-	}
-
-	// Find new shard in metadata.
-	var newShardInfo cluster.ShardInfo
-	found := false
-	for _, shardNodeWithVersion := range getNodeShardsResult.NodeShards {
-		if shardNodeWithVersion.ShardInfo.ID == request.newShardID {
-			newShardInfo = shardNodeWithVersion.ShardInfo
-			found = true
-			break
-		}
-	}
-	if !found {
-		cancelEventWithLog(event, cluster.ErrShardNotFound, "new shard not found", zap.Uint32("shardID", uint32(request.newShardID)))
-		return
-	}
-	newShardInfo.Version++
-
-	// Find split tables in metadata.
-	var tables []cluster.TableInfo
-	for _, tableName := range request.tableNames {
-		table, exists, err := request.cluster.GetTable(request.schemaName, tableName)
-		if err != nil {
-			cancelEventWithLog(event, err, "get table", zap.String("schemaName", request.schemaName), zap.String("tableName", tableName))
-			return
-		}
-		if !exists {
-			cancelEventWithLog(event, cluster.ErrTableNotFound, "table not found", zap.String("schemaName", request.schemaName), zap.String("tableName", tableName))
-			return
-		}
-		tables = append(tables, cluster.TableInfo{
-			ID:         table.ID,
-			Name:       table.Name,
-			SchemaID:   table.SchemaID,
-			SchemaName: request.schemaName,
-		})
-	}
-	newShardTables := cluster.ShardTables{
-		Shard:  newShardInfo,
-		Tables: tables,
-	}
-
-	if err := request.cluster.UpdateShardTables(ctx, []cluster.ShardTables{originShardTables, newShardTables}); err != nil {
-		cancelEventWithLog(event, err, "update shard tables")
 		return
 	}
 }

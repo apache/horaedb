@@ -42,7 +42,12 @@ var (
 )
 
 func dropTablePrepareCallback(event *fsm.Event) {
-	request := event.Args[0].(*dropTableCallbackRequest)
+	request, err := getRequestFromEvent[*dropTableCallbackRequest](event)
+	if err != nil {
+		cancelEventWithLog(event, err, "get request from event")
+		return
+	}
+
 	table, exists, err := request.cluster.GetTable(request.rawReq.GetSchemaName(), request.rawReq.GetName())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster get table")
@@ -62,6 +67,11 @@ func dropTablePrepareCallback(event *fsm.Event) {
 	result, err := request.cluster.DropTable(request.ctx, request.rawReq.GetSchemaName(), request.rawReq.GetName())
 	if err != nil {
 		cancelEventWithLog(event, err, "cluster drop table")
+		return
+	}
+
+	if len(result.ShardVersionUpdate) != 1 {
+		cancelEventWithLog(event, ErrDropTableResult, fmt.Sprintf("legnth of shardVersionResult is %d", len(result.ShardVersionUpdate)))
 		return
 	}
 
@@ -96,11 +106,11 @@ func dropTablePrepareCallback(event *fsm.Event) {
 	err = request.dispatch.DropTableOnShard(request.ctx, leader.NodeName, eventdispatch.DropTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
 			CurrShardInfo: cluster.ShardInfo{
-				ID:      result.ShardVersionUpdate.ShardID,
+				ID:      result.ShardVersionUpdate[0].ShardID,
 				Role:    storage.ShardRoleLeader,
-				Version: result.ShardVersionUpdate.CurrVersion,
+				Version: result.ShardVersionUpdate[0].CurrVersion,
 			},
-			PrevVersion: result.ShardVersionUpdate.PrevVersion,
+			PrevVersion: result.ShardVersionUpdate[0].PrevVersion,
 		},
 		TableInfo: tableInfo,
 	})
@@ -148,7 +158,16 @@ func NewDropTableProcedure(dispatch eventdispatch.Dispatch, cluster *cluster.Clu
 		dropTableEvents,
 		dropTableCallbacks,
 	)
-	return &DropTableProcedure{id: id, fsm: fsm, cluster: cluster, dispatch: dispatch, req: req, onSucceeded: onSucceeded, onFailed: onFailed, state: StateInit}
+	return &DropTableProcedure{
+		id:          id,
+		fsm:         fsm,
+		cluster:     cluster,
+		dispatch:    dispatch,
+		req:         req,
+		onSucceeded: onSucceeded,
+		onFailed:    onFailed,
+		state:       StateInit,
+	}
 }
 
 type DropTableProcedure struct {

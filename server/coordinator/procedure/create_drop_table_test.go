@@ -18,11 +18,24 @@ func TestCreateAndDropTable(t *testing.T) {
 	re := require.New(t)
 	dispatch := MockDispatch{}
 	_, c := prepare(t)
+
+	// Select a shard in nodeName0 to open table.
+	nodeShardsResult, err := c.GetNodeShards(context.Background())
+	re.NoError(err)
+	var shardID storage.ShardID
+	var found bool
+	for _, nodeShard := range nodeShardsResult.NodeShards {
+		if nodeShard.ShardNode.NodeName == nodeName0 {
+			shardID = nodeShard.ShardNode.ID
+			found = true
+		}
+	}
+	re.Equal(found, true)
 	testTableNum := 20
 	// Create table.
 	for i := 0; i < testTableNum; i++ {
 		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
-		testCreateTable(t, dispatch, c, tableName)
+		testCreateTable(t, dispatch, c, shardID, tableName)
 	}
 	// Check get table.
 	for i := 0; i < testTableNum; i++ {
@@ -67,20 +80,28 @@ func TestCreateAndDropTable(t *testing.T) {
 	re.Equal(tableTotal, 0)
 }
 
-func testCreateTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, tableName string) {
+func testCreateTable(t *testing.T, dispatch eventdispatch.Dispatch, c *cluster.Cluster, shardID storage.ShardID, tableName string) {
 	re := require.New(t)
 	// New CreateTableProcedure to create a new table.
-	procedure := NewCreateNormalTableProcedure(dispatch, c, uint64(1), &metaservicepb.CreateTableRequest{
-		Header: &metaservicepb.RequestHeader{
-			Node:        nodeName0,
-			ClusterName: clusterName,
+	procedure := NewCreateTableProcedure(CreateTableProcedureRequest{
+		Dispatch: dispatch,
+		Cluster:  c,
+		ID:       uint64(1),
+		ShardID:  shardID,
+		Req: &metaservicepb.CreateTableRequest{
+			Header: &metaservicepb.RequestHeader{
+				Node:        nodeName0,
+				ClusterName: clusterName,
+			},
+			SchemaName: testSchemaName,
+			Name:       tableName,
 		},
-		SchemaName: testSchemaName,
-		Name:       tableName,
-	}, func(_ cluster.CreateTableResult) error {
-		return nil
-	}, func(_ error) error {
-		return nil
+		OnSucceeded: func(_ cluster.CreateTableResult) error {
+			return nil
+		},
+		OnFailed: func(_ error) error {
+			return nil
+		},
 	})
 	err := procedure.Start(context.Background())
 	re.NoError(err)

@@ -15,6 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const defaultPartitionTableNum = 1
+
 type Factory struct {
 	idAllocator    id.Allocator
 	dispatch       eventdispatch.Dispatch
@@ -37,6 +39,17 @@ type CreateTableRequest struct {
 
 	OnSucceeded func(cluster.CreateTableResult) error
 	OnFailed    func(error) error
+}
+
+func (request *CreateTableRequest) isPartitionTable() (bool, error) {
+	if request.SourceReq.PartitionTableInfo != nil {
+		if len(request.SourceReq.PartitionTableInfo.SubTableNames) == 0 {
+			log.Error("fail to create table", zap.Error(ErrEmptyPartitionNames))
+			return false, ErrEmptyPartitionNames
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 type DropTableRequest struct {
@@ -66,8 +79,8 @@ type SplitRequest struct {
 }
 
 type CreatePartitionTableRequest struct {
-	ClusterName string
-	SourceReq   *metaservicepb.CreateTableRequest
+	Cluster   *cluster.Cluster
+	SourceReq *metaservicepb.CreateTableRequest
 
 	PartitionTableRatioOfNodes float32
 
@@ -81,7 +94,7 @@ func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage
 		dispatch:                        dispatch,
 		storage:                         storage,
 		clusterManager:                  manager,
-		shardPicker:                     NewRandomShardPicker(manager),
+		shardPicker:                     NewRandomBalancedShardPicker(manager),
 		partitionTableProportionOfNodes: partitionTableProportionOfNodes,
 	}
 }
@@ -96,21 +109,48 @@ func (f *Factory) CreateScatterProcedure(ctx context.Context, request ScatterReq
 }
 
 func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
-	procedure, err := NewCreateTableProcedure(ctx, f, request.Cluster,
-		request.SourceReq, request.OnSucceeded, request.OnFailed)
+	isPartitionTable, err := request.isPartitionTable()
 	if err != nil {
 		return nil, err
 	}
-	return procedure, nil
+
+	if isPartitionTable {
+		return f.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
+			Cluster:                    request.Cluster,
+			SourceReq:                  request.SourceReq,
+			PartitionTableRatioOfNodes: f.partitionTableProportionOfNodes,
+			OnSucceeded:                request.OnSucceeded,
+			OnFailed:                   request.OnFailed,
+		})
+	}
+
+	return f.makeCreateTableProcedure(ctx, request)
 }
 
-func (f *Factory) makeCreateNormalTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
+func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	procedure := NewCreateNormalTableProcedure(f.dispatch, request.Cluster, id,
-		request.SourceReq, request.OnSucceeded, request.OnFailed)
+	shards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), 1, false)
+	if err != nil {
+		log.Error("pick table shard", zap.Error(err))
+		return nil, errors.WithMessage(err, "pick table shard")
+	}
+	if len(shards) != 1 {
+		log.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
+		return nil, errors.WithMessagef(ErrPickShard, "pick table shard, shards length:%d", len(shards))
+	}
+
+	procedure := NewCreateTableProcedure(CreateTableProcedureRequest{
+		Dispatch:    f.dispatch,
+		Cluster:     request.Cluster,
+		ID:          id,
+		ShardID:     shards[0].ShardInfo.ID,
+		Req:         request.SourceReq,
+		OnSucceeded: request.OnSucceeded,
+		OnFailed:    request.OnFailed,
+	})
 	return procedure, nil
 }
 
@@ -120,13 +160,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		return nil, err
 	}
 
-	c, err := f.clusterManager.GetCluster(ctx, request.ClusterName)
-	if err != nil {
-		log.Error("cluster not found", zap.String("clusterName", request.ClusterName))
-		return nil, cluster.ErrClusterNotFound
-	}
-
-	getNodeShardResult, err := c.GetNodeShards(ctx)
+	getNodeShardResult, err := request.Cluster.GetNodeShards(ctx)
 	if err != nil {
 		log.Error("cluster get node shard result")
 		return nil, err
@@ -137,22 +171,28 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		nodeNames[nodeShard.ShardNode.NodeName] = 1
 	}
 
-	partitionTableNum := Max(1, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
+	partitionTableNum := Max(defaultPartitionTableNum, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
 
-	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, partitionTableNum, false)
+	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), partitionTableNum, false)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick partition table shards")
 	}
 
-	dataTableShards, err := f.shardPicker.PickShards(ctx, request.ClusterName, len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
+	dataTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick data table shards")
 	}
 
 	procedure := NewCreatePartitionTableProcedure(CreatePartitionTableProcedureRequest{
-		id: id, cluster: c, dispatch: f.dispatch, storage: f.storage,
-		req: request.SourceReq, partitionTableShards: partitionTableShards, dataTablesShards: dataTableShards,
-		onSucceeded: request.OnSucceeded, onFailed: request.OnFailed,
+		id:                   id,
+		cluster:              request.Cluster,
+		dispatch:             f.dispatch,
+		storage:              f.storage,
+		req:                  request.SourceReq,
+		partitionTableShards: partitionTableShards,
+		dataTablesShards:     dataTableShards,
+		onSucceeded:          request.OnSucceeded,
+		onFailed:             request.OnFailed,
 	})
 	return procedure, nil
 }
