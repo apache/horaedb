@@ -143,7 +143,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                         .map_err(|e| Box::new(e) as _)
                         .context(ErrWithCause {
                             code: StatusCode::Internal,
-                            msg: "fail to convert record batch to avro",
+                            msg: "encode record batch failed",
                         }) {
                             Err(e) => ReadResponse {
                                 header: Some(error::build_err_header(e)),
