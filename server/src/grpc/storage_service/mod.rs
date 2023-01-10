@@ -6,7 +6,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     stringify,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -100,6 +100,7 @@ pub struct HandlerContext<'a, Q> {
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
+    timeout: Option<Duration>,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -109,6 +110,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         instance: InstanceRef<Q>,
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
+        timeout: Option<Duration>,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -151,6 +153,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             schema,
             schema_config,
             forwarder,
+            timeout,
         })
     }
 
@@ -171,6 +174,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub runtimes: Arc<EngineRuntimes>,
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
+    pub timeout: Option<Duration>,
 }
 
 impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
@@ -181,6 +185,7 @@ impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
             runtimes: self.runtimes.clone(),
             schema_config_provider: self.schema_config_provider.clone(),
             forwarder: self.forwarder.clone(),
+            timeout: self.timeout,
         }
     }
 }
@@ -198,6 +203,7 @@ macro_rules! handle_request {
                 let header = RequestHeader::from(request.metadata());
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
+                let timeout = self.timeout;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -211,7 +217,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -287,6 +293,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             instance,
             &schema_config_provider,
             self.forwarder.clone(),
+            self.timeout,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -346,10 +353,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
+        let timeout = self.timeout;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,

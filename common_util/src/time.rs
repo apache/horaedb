@@ -30,11 +30,18 @@ impl DurationExt for Duration {
 
 pub trait InstantExt {
     fn saturating_elapsed(&self) -> Duration;
+
+    /// Check whether this instant is reached
+    fn check_deadline(&self) -> bool;
 }
 
 impl InstantExt for Instant {
     fn saturating_elapsed(&self) -> Duration {
         Instant::now().saturating_duration_since(*self)
+    }
+
+    fn check_deadline(&self) -> bool {
+        self.saturating_elapsed().is_zero()
     }
 }
 

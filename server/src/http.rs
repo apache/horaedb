@@ -4,6 +4,7 @@
 
 use std::{
     collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+    time::Duration,
 };
 
 use log::error;
@@ -274,6 +275,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .to_string();
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
+        let timeout = self.config.timeout;
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::TENANT_HEADER))
@@ -282,11 +284,12 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 let default_catalog = default_catalog.clone();
                 let default_schema = default_schema.clone();
                 let runtime = runtime.clone();
-                async {
+                async move {
                     RequestContext::builder()
                         .catalog(catalog.unwrap_or(default_catalog))
                         .tenant(tenant.unwrap_or(default_schema))
                         .runtime(runtime)
+                        .timeout(timeout)
                         .build()
                         .context(CreateContext)
                         .map_err(reject::custom)
@@ -413,6 +416,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 pub struct HttpConfig {
     pub endpoint: Endpoint,
     pub max_body_size: u64,
+    pub timeout: Option<Duration>,
 }
 
 #[derive(Debug, Serialize)]
