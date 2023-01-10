@@ -1,6 +1,6 @@
 # Observability
 
-CeresDB supports monitoring with Prometheus+Grafana;
+CeresDB is observable with Prometheus and Grafana;
 
 
 
