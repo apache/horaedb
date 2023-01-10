@@ -48,7 +48,8 @@
 
 # Technical and Design
 - [Architecture](architecture.md)
+- [Storage](storage.md)
+- [Query](query.md)
+- [Wal](wal.md)
+- [Partitioning](partitioning.md)
 
------
-
-- [Trouble Shooting](trouble_shooting.md)
