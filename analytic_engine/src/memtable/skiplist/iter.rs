@@ -165,7 +165,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
-                if deadline.saturating_elapsed().is_zero() {
+                if deadline.check_deadline() {
                     return IterTimeout {}.fail();
                 }
             }

@@ -71,8 +71,3 @@ message ProjectedSchema {
 message Projection {
   repeated uint64 idx = 1;
 }
-
-// A wrapper of u64, useful to represent null
-message U64Wrapper {
-  uint64 value = 1;
-}

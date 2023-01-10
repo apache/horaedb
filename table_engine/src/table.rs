@@ -21,7 +21,7 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
 };
-use proto::{common::U64Wrapper, sys_catalog as sys_catalog_pb};
+use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -169,6 +169,7 @@ define_result!(Error);
 
 /// Default partition num to scan in parallelism.
 pub const DEFAULT_READ_PARALLELISM: usize = 8;
+const NO_TIMEOUT: i64 = -1;
 
 /// Schema id (24 bits)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -338,9 +339,11 @@ impl From<proto::remote_engine::ReadOptions> for ReadOptions {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
-            deadline: pb
-                .timeout_ms
-                .map(|t| Instant::now() + Duration::from_millis(t.value)),
+            deadline: if pb.timeout_ms == NO_TIMEOUT {
+                None
+            } else {
+                Some(Instant::now() + Duration::from_millis(pb.timeout_ms as u64))
+            },
         }
     }
 }
@@ -350,9 +353,11 @@ impl From<ReadOptions> for proto::remote_engine::ReadOptions {
         Self {
             batch_size: opts.batch_size as u64,
             read_parallelism: opts.read_parallelism as u64,
-            timeout_ms: opts.deadline.map(|deadline| U64Wrapper {
-                value: deadline.duration_since(Instant::now()).as_millis() as u64,
-            }),
+            timeout_ms: if let Some(deadline) = opts.deadline {
+                deadline.duration_since(Instant::now()).as_millis() as i64
+            } else {
+                NO_TIMEOUT
+            },
         }
     }
 }

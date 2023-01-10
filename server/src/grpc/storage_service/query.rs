@@ -200,7 +200,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         })?;
 
     if let Some(deadline) = deadline {
-        if deadline.saturating_elapsed().is_zero() {
+        if deadline.check_deadline() {
             return ErrNoCause {
                 code: StatusCode::REQUEST_TIMEOUT,
                 msg: "Query timeout",
