@@ -1,1 +1,1 @@
-# Partitioning
+# Table Partitioning
