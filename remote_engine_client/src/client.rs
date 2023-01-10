@@ -178,7 +178,8 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                let record_batch = ipc::decode_record_batch(response.rows)
+                // TODO(chenxiang): read compression from config
+                let record_batch = ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
                     .map_err(|e| Box::new(e) as _)
                     .context(ConvertReadResponse {
                         msg: "decode record batch failed",

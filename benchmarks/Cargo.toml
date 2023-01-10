@@ -35,6 +35,7 @@ table_engine = { workspace = true }
 table_kv = { workspace = true }
 tokio = { workspace = true }
 wal = { workspace = true }
+zstd = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }

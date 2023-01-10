@@ -13,3 +13,4 @@ workspace = true
 [dependencies]
 arrow = { workspace = true }
 snafu = { workspace = true }
+zstd = { workspace = true }
