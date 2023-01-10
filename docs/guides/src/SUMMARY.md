@@ -9,8 +9,8 @@
 
 - [SQL Syntax](sql/README.md)
     - [Data Model](sql/model/README.md)
-        - [Data Types](model/data_types.md)
-        - [Special Columns](model/special_columns.md)
+        - [Data Types](sql/model/data_types.md)
+        - [Special Columns](sql/model/special_columns.md)
     - [Identifier](sql/identifier.md)
     - [Data Definition Statements](sql/ddl/README.md)
         - [CREATE TABLE](sql/ddl/create_table.md)
