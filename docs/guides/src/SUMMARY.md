@@ -7,10 +7,10 @@
 
 # User Guide
 
-- [Data Model](model/README.md)
-    - [Data Types](model/data_types.md)
-    - [Special Columns](model/special_columns.md)
 - [SQL Syntax](sql/README.md)
+    - [Data Model](sql/model/README.md)
+        - [Data Types](sql/model/data_types.md)
+        - [Special Columns](sql/model/special_columns.md)
     - [Identifier](sql/identifier.md)
     - [Data Definition Statements](sql/ddl/README.md)
         - [CREATE TABLE](sql/ddl/create_table.md)
@@ -19,18 +19,24 @@
         - [INSERT](sql/dml/insert.md)
         - [SELECT](sql/dml/select.md)
     - [Utility Statements](sql/utility.md)
-- [Analytic Engine](analytic_engine/README.md)
-    - [Options](analytic_engine/options.md)
+    - [Engine Options](sql/engine_options.md)
+
 - [Deployment](deploy/README.md)
     - [Supported Platform](deploy/platform.md)
     - [Static Routing](deploy/static_routing.md)
     - [Dynamic Routing](deploy/dynamic_routing.md)
+
 - [Develop Kits](sdk.md)
-- [Protocol](protocol.md)
+    - [Java SDK](sdk/java.md)
+    - [Go SDK](sdk/go.md)
+    - [Python SDK](sdk/python.md)
+    - [Rust SDK](sdk/rust.md)
+  
 - [Operation](operation/README.md)
     - [Table](operation/table.md)
     - [System Table](operation/system_table.md)
     - [Block List](operation/block_list.md)
+    - [Observability](operation/observability.md)
 
 # Dev Guide
 - [Supported Platform](dev/platform.md)
@@ -41,7 +47,8 @@
 
 # Technical and Design
 - [Architecture](architecture.md)
+- [Storage](storage.md)
+- [Query](query.md)
+- [Wal](wal.md)
+- [Table Partitioning](table_partitioning.md)
 
------
-
-- [Trouble Shooting](trouble_shooting.md)

@@ -16,5 +16,5 @@ The basic design idea of CeresDB is to adopt a hybrid storage format and the cor
 
 # How does CeresDB work?
 - See [Quick Start](quick_start.md) to learn about how to get started
-- For data model of CeresDB, see [Data Model](model)
+- For data model of CeresDB, see [Data Model](sql/model)
 - For the supported SQL data types, operators, and commands, please navigate to [SQL reference](sql)
