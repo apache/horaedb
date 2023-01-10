@@ -37,7 +37,7 @@
     - [Table](operation/table.md)
     - [System Table](operation/system_table.md)
     - [Block List](operation/block_list.md)
-    - [Monitor](operation/monitor.md)
+    - [Observability](operation/observability.md)
 
 # Dev Guide
 - [Supported Platform](dev/platform.md)
