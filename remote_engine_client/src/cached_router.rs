@@ -19,6 +19,7 @@ pub struct CachedRouter {
     router: RouterRef,
 
     /// Cache mapping table to channel of its endpoint
+    // TODO: we should add gc for the cache
     cache: RwLock<HashMap<TableIdentifier, Channel>>,
 
     /// Channel pool
@@ -112,7 +113,7 @@ impl CachedRouter {
             .unwrap()
             .endpoint
             .clone()
-            .context(RouteNoCause {
+            .with_context(|| RouteNoCause {
                 table_ident: table_ident.clone(),
                 msg: "no endpoint in route info",
             })?;

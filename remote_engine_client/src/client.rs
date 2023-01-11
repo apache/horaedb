@@ -49,7 +49,7 @@ impl Client {
         let result = rpc_client
             .read(Request::new(request_pb))
             .await
-            .context(Rpc {
+            .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
                 msg: "read from remote failed",
             });
@@ -89,7 +89,7 @@ impl Client {
         let result = rpc_client
             .write(Request::new(request_pb))
             .await
-            .context(Rpc {
+            .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
                 msg: "write to remote failed",
             });
