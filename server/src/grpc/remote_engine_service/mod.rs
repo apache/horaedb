@@ -2,12 +2,13 @@
 
 // Remote engine rpc service implementation.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc;
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_util::time::InstantExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{
@@ -25,8 +26,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::remote_engine_service::error::{
-        build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
+    grpc::{
+        metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        remote_engine_service::error::{
+            build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
+        },
     },
     instance::InstanceRef,
 };
@@ -46,6 +50,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         &self,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+        let begin_instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -77,6 +82,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 }
             });
         }
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
         Ok(ReceiverStream::new(rx))
     }
 
@@ -84,6 +93,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         &self,
         request: Request<WriteRequest>,
     ) -> std::result::Result<Response<WriteResponse>, Status> {
+        let begin_instant = Instant::now();
         let ctx = self.handler_ctx();
         let handle = self.runtimes.write_runtime.spawn(async move {
             let request = request.into_inner();
@@ -109,7 +119,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             }
         };
 
-        Ok(tonic::Response::new(resp))
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .write
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
     }
 
     fn handler_ctx(&self) -> HandlerContext {

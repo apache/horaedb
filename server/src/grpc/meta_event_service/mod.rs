@@ -2,7 +2,7 @@
 
 // Meta event rpc service implementation.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use catalog::{
@@ -23,7 +23,7 @@ use ceresdbproto::meta_event::{
 };
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
-use common_util::runtime::Runtime;
+use common_util::{runtime::Runtime, time::InstantExt};
 use log::info;
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -36,7 +36,10 @@ use table_engine::{
 };
 
 use crate::{
-    grpc::meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+    grpc::{
+        meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    },
     instance::InstanceRef,
 };
 
@@ -56,6 +59,7 @@ macro_rules! handle_request {
                 &self,
                 request: tonic::Request<$req_ty>,
             ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
+                let begin_instant = Instant::now();
                 let ctx = self.handler_ctx();
                 let handle = self.runtime.spawn(async move {
                     // FIXME: Data race about the operations on the shards should be taken into
@@ -86,6 +90,10 @@ macro_rules! handle_request {
                 };
 
                 info!("Finish handling request from meta, resp:{:?}", resp);
+
+                META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .$mod_name
+                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
                 Ok(tonic::Response::new(resp))
             }
         }

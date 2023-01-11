@@ -251,10 +251,6 @@ macro_rules! handle_request {
                         msg: "fail to join the spawn task",
                     });
 
-                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                    .$handle_fn
-                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
-
                 let resp = match res {
                     Ok(Ok(v)) => v,
                     Ok(Err(e)) | Err(e) => {
@@ -264,6 +260,10 @@ macro_rules! handle_request {
                         resp
                     },
                 };
+
+                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .$handle_fn
+                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
                 Ok(tonic::Response::new(resp))
             }
         }
@@ -348,7 +348,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_write
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Result::Ok(resp)
+        Ok(resp)
     }
 
     async fn stream_query_internal(
@@ -408,7 +408,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Result::Ok(ReceiverStream::new(rx))
+        Ok(ReceiverStream::new(rx))
     }
 }
 
