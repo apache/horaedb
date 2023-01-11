@@ -122,6 +122,7 @@ impl Factory for FactoryImpl {
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
         let hybrid_encoding = match options.storage_format_hint {
             StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
+            // `Auto` is mapped to columnar parquet format now, may change in future.
             StorageFormatHint::Auto => false,
         };
 

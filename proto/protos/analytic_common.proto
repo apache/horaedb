@@ -30,7 +30,8 @@ enum UpdateMode {
 
 message StorageFormatHint {
   oneof hint {
-    // The value of the auto is meaningless.
+    // Auto means the storage format is automatically determined by CeresDB and
+    // its value have no specific meaning.
     int32 auto = 1;
     StorageFormat specific = 2;
   }
