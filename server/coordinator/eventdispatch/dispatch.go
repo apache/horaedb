@@ -13,6 +13,7 @@ type Dispatch interface {
 	CloseShard(context context.Context, address string, request CloseShardRequest) error
 	CreateTableOnShard(context context.Context, address string, request CreateTableOnShardRequest) error
 	DropTableOnShard(context context.Context, address string, request DropTableOnShardRequest) error
+	CloseTableOnShard(context context.Context, address string, request CloseTableOnShardRequest) error
 }
 
 type OpenShardRequest struct {
@@ -39,6 +40,11 @@ type CreateTableOnShardRequest struct {
 }
 
 type DropTableOnShardRequest struct {
+	UpdateShardInfo UpdateShardInfo
+	TableInfo       cluster.TableInfo
+}
+
+type CloseTableOnShardRequest struct {
 	UpdateShardInfo UpdateShardInfo
 	TableInfo       cluster.TableInfo
 }

@@ -128,7 +128,7 @@ func (p *CreatePartitionTableProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventCreatePartitionTable, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "create partition table procedure create new shard view")
+				return errors.WithMessage(err, "create partition table procedure create new shard view")
 			}
 		case stateCreatePartitionTable:
 			if err := p.persist(ctx); err != nil {
@@ -136,7 +136,7 @@ func (p *CreatePartitionTableProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventCreateDataTables, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "create partition table procedure create partition table")
+				return errors.WithMessage(err, "create partition table procedure create partition table")
 			}
 		case stateCreateDataTables:
 			if err := p.persist(ctx); err != nil {
@@ -144,7 +144,7 @@ func (p *CreatePartitionTableProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventOpenPartitionTables, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "create partition table procedure create data tables")
+				return errors.WithMessage(err, "create partition table procedure create data tables")
 			}
 		case stateOpenPartitionTables:
 			if err := p.persist(ctx); err != nil {
@@ -152,7 +152,7 @@ func (p *CreatePartitionTableProcedure) Start(ctx context.Context) error {
 			}
 			if err := p.fsm.Event(eventFinish, createPartitionTableRequest); err != nil {
 				p.updateStateWithLock(StateFailed)
-				return errors.WithMessagef(err, "create partition table procedure open partition tables")
+				return errors.WithMessage(err, "create partition table procedure open partition tables")
 			}
 		case stateFinish:
 			// TODO: The state update sequence here is inconsistent with the previous one. Consider reconstructing the state update logic of the state machine.

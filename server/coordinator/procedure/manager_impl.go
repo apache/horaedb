@@ -179,6 +179,14 @@ func restoreProcedure(meta *Meta) Procedure {
 		return nil
 	case Scatter:
 		return nil
+	case CreateTable:
+		return nil
+	case DropTable:
+		return nil
+	case CreatePartitionTable:
+		return nil
+	case DropPartitionTable:
+		return nil
 	}
 	return nil
 }

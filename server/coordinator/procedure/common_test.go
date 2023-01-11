@@ -48,6 +48,10 @@ func (m MockDispatch) DropTableOnShard(_ context.Context, _ string, _ eventdispa
 	return nil
 }
 
+func (m MockDispatch) CloseTableOnShard(_ context.Context, _ string, _ eventdispatch.CloseTableOnShardRequest) error {
+	return nil
+}
+
 func newTestEtcdStorage(t *testing.T) (storage.Storage, clientv3.KV, etcdutil.CloseFn) {
 	_, client, closeSrv := etcdutil.PrepareEtcdServerAndClient(t)
 	storage := storage.NewStorageWithEtcdBackend(client, testRootPath, storage.Options{
