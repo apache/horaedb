@@ -2,15 +2,14 @@
 
 //! Cached router
 
-use std::num::NonZeroUsize;
+use std::collections::HashMap;
 
 use ceresdbproto::storage;
-use clru::CLruCache;
-use common_util::partitioned_lock::PartitionedMutex;
 use log::debug;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
+use tokio::sync::RwLock;
 use tonic::transport::Channel;
 
 use crate::{channel::ChannelPool, config::Config, error::*};
@@ -20,7 +19,7 @@ pub struct CachedRouter {
     router: RouterRef,
 
     /// Cache mapping table to channel of its endpoint
-    cache: PartitionedMutex<CLruCache<TableIdentifier, Channel>>,
+    cache: RwLock<HashMap<TableIdentifier, Channel>>,
 
     /// Channel pool
     channel_pool: ChannelPool,
@@ -28,10 +27,7 @@ pub struct CachedRouter {
 
 impl CachedRouter {
     pub fn new(router: RouterRef, config: Config) -> Self {
-        let cache = PartitionedMutex::new(
-            CLruCache::new(NonZeroUsize::new(config.route_cache_max_size_per_partition).unwrap()),
-            NonZeroUsize::new(config.route_cache_partition_num).unwrap(),
-        );
+        let cache = RwLock::new(HashMap::new());
 
         Self {
             router,
@@ -43,7 +39,7 @@ impl CachedRouter {
     pub async fn route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
         // Find in cache first.
         let channel_opt = {
-            let mut cache = self.cache.lock(table_ident).await;
+            let cache = self.cache.read().await;
             cache.get(table_ident).cloned()
         };
 
@@ -65,7 +61,7 @@ impl CachedRouter {
             let channel = self.do_route(table_ident).await?;
 
             {
-                let mut cache = self.cache.lock(table_ident).await;
+                let mut cache = self.cache.write().await;
                 // Double check here, if still not found, we put it.
                 let channel_opt = cache.get(table_ident).cloned();
                 if channel_opt.is_none() {
@@ -73,7 +69,7 @@ impl CachedRouter {
                         "CachedRouter put the new channel to cache, table_ident:{:?}",
                         table_ident
                     );
-                    cache.put(table_ident.clone(), channel.clone());
+                    let _ = cache.insert(table_ident.clone(), channel.clone());
                 }
             }
 
@@ -84,8 +80,8 @@ impl CachedRouter {
     }
 
     pub async fn evict(&self, table_ident: &TableIdentifier) {
-        let mut cache = self.cache.lock(table_ident).await;
-        let _ = cache.pop(table_ident);
+        let mut cache = self.cache.write().await;
+        let _ = cache.remove(table_ident);
     }
 
     async fn do_route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
