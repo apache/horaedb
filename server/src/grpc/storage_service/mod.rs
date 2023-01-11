@@ -196,20 +196,6 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub enable_tenant_as_schema: bool,
 }
 
-// impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
-//     fn clone(&self) -> Self {
-//         Self {
-//             router: self.router.clone(),
-//             instance: self.instance.clone(),
-//             runtimes: self.runtimes.clone(),
-//             schema_config_provider: self.schema_config_provider.clone(),
-//             forwarder: self.forwarder.clone(),
-//             timeout: self.timeout,
-//             enable_tenant_as_schema: self.enable_tenant_as_schema,
-//         }
-//     }
-// }
-
 macro_rules! handle_request {
     ($mod_name: ident, $handle_fn: ident, $req_ty: ident, $resp_ty: ident) => {
         paste! {
