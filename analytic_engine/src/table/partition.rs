@@ -262,7 +262,11 @@ impl Table for PartitionTableImpl {
         }
 
         let remote_timer = PARTITION_TABLE_DURATION_HISTOGRAM
-            .with_label_values(&["partitioned_read", "remote_read", &self.space_table.table_data().name])
+            .with_label_values(&[
+                "partitioned_read",
+                "remote_read",
+                &self.space_table.table_data().name,
+            ])
             .start_timer();
         let streams = try_join_all(futures)
             .await
