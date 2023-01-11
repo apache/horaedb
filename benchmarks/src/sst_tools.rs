@@ -16,13 +16,14 @@ use analytic_engine::{
         builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstBuilderOptions, SstReaderOptions, SstType,
+            SstBuilderOptions, SstReaderOptions,
         },
-        file::{self, FilePurgeQueue, SstMetaData, SstMetaReader},
+        file::FilePurgeQueue,
         manager::FileId,
+        meta_data::{self, SstMetaData, SstMetaReader},
     },
     table::sst_util,
-    table_options::Compression,
+    table_options::{Compression, StorageFormat, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
@@ -47,7 +48,7 @@ struct SstConfig {
 async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBatchStream) {
     let sst_factory = FactoryImpl;
     let sst_builder_options = SstBuilderOptions {
-        sst_type: SstType::Parquet,
+        storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
     };
@@ -92,7 +93,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
     let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
-    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
+    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema().clone());
     let sst_reader_options = SstReaderOptions {
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
@@ -129,7 +130,13 @@ async fn sst_to_record_batch_stream(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, input_path, &store_picker)
+        .new_sst_reader(
+            sst_reader_options,
+            input_path,
+            // FIXME: this storage format should be detected from the file itself.
+            StorageFormat::Columnar,
+            &store_picker,
+        )
         .unwrap();
 
     let sst_stream = sst_reader.read().await.unwrap();
@@ -248,7 +255,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             store_picker: store_picker.clone(),
         };
         let sst_metas = meta_reader.fetch_metas(&file_handles).await.unwrap();
-        file::merge_sst_meta(&sst_metas, schema)
+        meta_data::merge_sst_meta(sst_metas.iter(), schema)
     };
     let output_sst_config = SstConfig {
         sst_meta,

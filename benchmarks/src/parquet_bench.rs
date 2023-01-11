@@ -4,7 +4,7 @@
 
 use std::{io::Cursor, sync::Arc, time::Instant};
 
-use analytic_engine::sst::meta_cache::MetaCacheRef;
+use analytic_engine::sst::meta_data::cache::MetaCacheRef;
 use common_types::schema::Schema;
 use common_util::runtime::Runtime;
 use futures::StreamExt;

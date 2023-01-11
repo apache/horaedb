@@ -9,12 +9,13 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-        file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
+        file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
-        meta_cache::MetaCacheRef,
+        meta_data::{cache::MetaCacheRef, SstMetaData},
         parquet::encoding,
     },
     table::sst_util,
+    table_options::StorageFormat,
 };
 use common_types::{
     bytes::{BufMut, SafeBufMut},
@@ -62,7 +63,8 @@ pub async fn meta_from_sst(
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
     let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
 
-    encoding::decode_sst_meta_data(&kv_metas[0]).unwrap()
+    let parquet_meta_data = encoding::decode_sst_meta_data(&kv_metas[0]).unwrap();
+    SstMetaData::Parquet(Arc::new(parquet_meta_data))
 }
 
 pub async fn schema_from_sst(
@@ -72,7 +74,7 @@ pub async fn schema_from_sst(
 ) -> Schema {
     let sst_meta = meta_from_sst(store, sst_path, meta_cache).await;
 
-    sst_meta.schema
+    sst_meta.schema().clone()
 }
 
 pub fn projected_schema_by_number(
@@ -110,7 +112,12 @@ pub async fn load_sst_to_memtable(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(&sst_reader_options, sst_path, &store_picker)
+        .new_sst_reader(
+            &sst_reader_options,
+            sst_path,
+            StorageFormat::Columnar,
+            &store_picker,
+        )
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();
@@ -152,9 +159,9 @@ pub async fn file_handles_from_ssts(
             id: *file_id,
             size: 0,
             row_num: 0,
-            time_range: sst_meta.time_range,
-            max_seq: sst_meta.max_sequence,
-            storage_format_opts: sst_meta.storage_format_opts,
+            time_range: sst_meta.time_range(),
+            max_seq: sst_meta.max_sequence(),
+            storage_format: StorageFormat::Columnar,
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());

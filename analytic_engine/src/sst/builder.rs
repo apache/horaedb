@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use futures::Stream;
 
-use crate::sst::file::SstMetaData;
+use crate::{sst::meta_data::SstMetaData, table_options::StorageFormat};
 
 pub mod error {
     use common_util::define_result;
@@ -44,6 +44,9 @@ pub mod error {
         ReadData {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
+
+        #[snafu(display("Other kind of error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
+        OtherNoCause { msg: String, backtrace: Backtrace },
     }
 
     define_result!(Error);
@@ -60,6 +63,7 @@ pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send
 pub struct SstInfo {
     pub file_size: usize,
     pub row_num: usize,
+    pub storage_format: StorageFormat,
 }
 
 /// The builder for sst.

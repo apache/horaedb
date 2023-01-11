@@ -12,7 +12,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use crate::{
     sst::{file::FileMeta, manager::FileId},
     table::data::MemTableId,
-    table_options::StorageFormatOptions,
+    table_options::StorageFormat,
 };
 
 #[derive(Debug, Snafu)]
@@ -58,9 +58,7 @@ impl From<AddFile> for meta_pb::AddFileMeta {
             max_seq: v.file.max_seq,
             size: v.file.size,
             row_num: v.file.row_num,
-            storage_format: analytic_common_pb::StorageFormat::from(
-                v.file.storage_format_opts.format,
-            ) as i32,
+            storage_format: analytic_common_pb::StorageFormat::from(v.file.storage_format) as i32,
         }
     }
 }
@@ -86,7 +84,7 @@ impl TryFrom<meta_pb::AddFileMeta> for AddFile {
                 row_num: src.row_num,
                 time_range,
                 max_seq: src.max_seq,
-                storage_format_opts: StorageFormatOptions::new(storage_format.into()),
+                storage_format: StorageFormat::from(storage_format),
             },
         };
 
@@ -182,7 +180,7 @@ pub mod tests {
                     row_num: 0,
                     time_range: self.time_range,
                     max_seq: self.max_seq,
-                    storage_format_opts: StorageFormatOptions::default(),
+                    storage_format: StorageFormat::default(),
                 },
             }
         }
