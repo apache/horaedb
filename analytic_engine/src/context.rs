@@ -6,7 +6,7 @@ use std::{fmt, sync::Arc};
 
 use table_engine::engine::EngineRuntimes;
 
-use crate::{sst::meta_cache::MetaCacheRef, Config};
+use crate::{sst::meta_data::cache::MetaCacheRef, Config};
 
 /// Context for instance open
 pub struct OpenContext {
