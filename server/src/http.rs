@@ -102,6 +102,7 @@ pub struct Service<Q> {
     profiler: Arc<Profiler>,
     tx: Sender<()>,
     config: HttpConfig,
+    enable_tenant_as_schema: bool,
 }
 
 impl<Q> Service<Q> {
@@ -130,7 +131,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         })
     }
 
-    // TODO(yingwen): Avoid boilterplate code if there are more handlers
+    // TODO(yingwen): Avoid boilerplate code if there are more handlers
     fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
@@ -276,25 +277,36 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
+        let enable_tenant_as_schema = self.enable_tenant_as_schema;
 
         header::optional::<String>(consts::CATALOG_HEADER)
+            .and(header::optional::<String>(consts::SCHEMA_HEADER))
             .and(header::optional::<String>(consts::TENANT_HEADER))
-            .and_then(move |catalog: Option<_>, tenant: Option<_>| {
-                // Clone the captured variables
-                let default_catalog = default_catalog.clone();
-                let default_schema = default_schema.clone();
-                let runtime = runtime.clone();
-                async move {
-                    RequestContext::builder()
-                        .catalog(catalog.unwrap_or(default_catalog))
-                        .tenant(tenant.unwrap_or(default_schema))
-                        .runtime(runtime)
-                        .timeout(timeout)
-                        .build()
-                        .context(CreateContext)
-                        .map_err(reject::custom)
-                }
-            })
+            .and_then(
+                move |catalog: Option<_>, schema: Option<_>, tenant: Option<_>| {
+                    // Clone the captured variables
+                    let default_catalog = default_catalog.clone();
+                    let default_schema = default_schema.clone();
+                    let runtime = runtime.clone();
+                    // For compatibility, we may use tenant as the schema if schema is
+                    // missing.
+                    let schema = if enable_tenant_as_schema {
+                        schema.or(tenant).unwrap_or(default_schema)
+                    } else {
+                        schema.unwrap_or(default_schema)
+                    };
+                    async move {
+                        RequestContext::builder()
+                            .catalog(catalog.unwrap_or(default_catalog))
+                            .schema(schema)
+                            .runtime(runtime)
+                            .timeout(timeout)
+                            .build()
+                            .context(CreateContext)
+                            .map_err(reject::custom)
+                    }
+                },
+            )
     }
 
     fn with_profiler(&self) -> impl Filter<Extract = (Arc<Profiler>,), Error = Infallible> + Clone {
@@ -343,6 +355,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
+    enable_tenant_as_schema: bool,
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
@@ -352,6 +365,7 @@ pub struct Builder<Q> {
 impl<Q> Builder<Q> {
     pub fn new(config: HttpConfig) -> Self {
         Self {
+            enable_tenant_as_schema: false,
             config,
             engine_runtimes: None,
             log_runtime: None,
@@ -373,6 +387,11 @@ impl<Q> Builder<Q> {
         self.instance = Some(instance);
         self
     }
+
+    pub fn enable_tenant_as_schema(mut self, enable_tenant_as_schema: bool) -> Self {
+        self.enable_tenant_as_schema = enable_tenant_as_schema;
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -390,6 +409,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
+            enable_tenant_as_schema: self.enable_tenant_as_schema,
         };
 
         let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
