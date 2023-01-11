@@ -43,15 +43,17 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType},
-        file::{self, FileMeta, SstMetaData, SstMetaReader},
+        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions},
+        file::FileMeta,
+        meta_data::{self, SstMetaData, SstMetaReader},
+        parquet::meta_data::ParquetMetaData,
     },
     table::{
         data::{TableData, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
-    table_options::StorageFormatOptions,
+    table_options::StorageFormatHint,
 };
 
 const DEFAULT_CHANNEL_SIZE: usize = 5;
@@ -81,12 +83,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst type is not found, sst_type:{:?}.\nBacktrace:\n{}",
-        sst_type,
+        "Sst type is not found, storage_format_hint:{:?}.\nBacktrace:\n{}",
+        storage_format_hint,
         backtrace
     ))]
-    InvalidSstType {
-        sst_type: SstType,
+    InvalidSstStorageFormat {
+        storage_format_hint: StorageFormatHint,
         backtrace: Backtrace,
     },
 
@@ -128,7 +130,9 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to read sst meta, source:{}", source))]
-    ReadSstMeta { source: crate::sst::reader::Error },
+    ReadSstMeta {
+        source: crate::sst::meta_data::Error,
+    },
 
     #[snafu(display("Failed to send to channel, source:{}", source))]
     ChannelSend { source: mpsc::SendError },
@@ -610,7 +614,7 @@ impl Instance {
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
@@ -622,21 +626,22 @@ impl Instance {
             let sst_file_path = table_data.set_sst_file_path(file_id);
 
             // TODO: min_key max_key set in sst_builder build
-            let sst_meta = SstMetaData {
-                min_key: min_key.clone(),
-                max_key: max_key.clone(),
-                time_range: *time_range,
-                max_sequence,
-                schema: table_data.schema(),
-                storage_format_opts: StorageFormatOptions::new(
-                    table_data.table_options().storage_format,
-                ),
-                bloom_filter: Default::default(),
+            let sst_meta = {
+                let parquet_meta_data = ParquetMetaData {
+                    min_key: min_key.clone(),
+                    max_key: max_key.clone(),
+                    time_range: *time_range,
+                    max_sequence,
+                    schema: table_data.schema(),
+                    bloom_filter: Default::default(),
+                    collapsible_cols_idx: Vec::new(),
+                };
+                SstMetaData::Parquet(Arc::new(parquet_meta_data))
             };
 
             let store = self.space_store.clone();
             let sst_builder_options_clone = sst_builder_options.clone();
-            let sst_type = table_data.sst_type;
+            let storage_format_hint = table_data.table_options().storage_format_hint;
 
             // spawn build sst
             let handler = self.runtimes.bg_runtime.spawn(async move {
@@ -647,7 +652,9 @@ impl Instance {
                         &sst_file_path,
                         store.store_picker(),
                     )
-                    .context(InvalidSstType { sst_type })?;
+                    .context(InvalidSstStorageFormat {
+                        storage_format_hint,
+                    })?;
 
                 let sst_info = builder
                     .build(
@@ -704,9 +711,9 @@ impl Instance {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
-                    time_range: sst_meta.time_range,
-                    max_seq: sst_meta.max_sequence,
-                    storage_format_opts: sst_meta.storage_format_opts.clone(),
+                    time_range: sst_meta.time_range(),
+                    max_seq: sst_meta.max_sequence(),
+                    storage_format: sst_info.storage_format,
                 },
             })
         }
@@ -730,22 +737,26 @@ impl Instance {
             }
         };
         let max_sequence = memtable_state.last_sequence();
-        let sst_meta = SstMetaData {
-            min_key,
-            max_key,
-            time_range: memtable_state.time_range,
-            max_sequence,
-            schema: table_data.schema(),
-            storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
-            bloom_filter: Default::default(),
+        let sst_meta = {
+            let parquet_meta_data = ParquetMetaData {
+                min_key,
+                max_key,
+                time_range: memtable_state.time_range,
+                max_sequence,
+                schema: table_data.schema(),
+                bloom_filter: Default::default(),
+                collapsible_cols_idx: Vec::new(),
+            };
+            SstMetaData::Parquet(Arc::new(parquet_meta_data))
         };
 
         // Alloc file id for next sst file
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
+        let storage_format_hint = table_data.table_options().storage_format_hint;
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
@@ -757,8 +768,8 @@ impl Instance {
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
-            .context(InvalidSstType {
-                sst_type: table_data.sst_type,
+            .context(InvalidSstStorageFormat {
+                storage_format_hint,
             })?;
 
         let iter = build_mem_table_iter(memtable_state.mem.clone(), table_data)?;
@@ -782,7 +793,7 @@ impl Instance {
             size: sst_info.file_size as u64,
             time_range: memtable_state.time_range,
             max_seq: memtable_state.last_sequence(),
-            storage_format_opts: StorageFormatOptions::new(table_data.storage_format()),
+            storage_format: sst_info.storage_format,
         }))
     }
 
@@ -969,23 +980,24 @@ impl SpaceStore {
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
-            file::merge_sst_meta(&sst_metas, schema)
+            meta_data::merge_sst_meta(sst_metas.iter(), schema)
         };
 
         // Alloc file id for the merged sst.
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
+        let storage_format_hint = table_data.table_options().storage_format_hint;
         let sst_builder_options = SstBuilderOptions {
-            sst_type: table_data.sst_type,
+            storage_format_hint,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,
         };
         let mut sst_builder = self
             .sst_factory
             .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
-            .context(InvalidSstType {
-                sst_type: table_data.sst_type,
+            .context(InvalidSstStorageFormat {
+                storage_format_hint,
             })?;
 
         let sst_info = sst_builder
@@ -1006,13 +1018,14 @@ impl SpaceStore {
             .compaction_observe_output_sst_row_num(sst_row_num);
 
         info!(
-            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}",
+            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}, sst_info:{:?}",
             table_data.name,
             table_data.id,
             request_id,
             sst_file_path.to_string(),
             input.files,
             sst_meta,
+            sst_info,
         );
 
         // Store updates to edit_meta.
@@ -1031,10 +1044,9 @@ impl SpaceStore {
                 id: file_id,
                 size: sst_file_size,
                 row_num: sst_row_num,
-                max_seq: sst_meta.max_sequence,
-                time_range: sst_meta.time_range,
-                // FIXME: this should be told by the sst factory.
-                storage_format_opts: sst_meta.storage_format_opts,
+                max_seq: sst_meta.max_sequence(),
+                time_range: sst_meta.time_range(),
+                storage_format: sst_info.storage_format,
             },
         });
 

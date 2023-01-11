@@ -6,7 +6,7 @@ pub mod builder;
 pub mod factory;
 pub mod file;
 pub mod manager;
-pub mod meta_cache;
+pub mod meta_data;
 pub mod metrics;
 pub mod parquet;
 pub mod reader;

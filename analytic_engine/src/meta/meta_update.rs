@@ -22,7 +22,7 @@ use wal::{
 use crate::{
     space::SpaceId,
     table::version_edit::{AddFile, DeleteFile, VersionEdit},
-    TableOptions,
+    table_options, TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -46,6 +46,9 @@ pub enum Error {
 
     #[snafu(display("Empty table options.\nBacktrace:\n{}", backtrace))]
     EmptyTableOptions { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert table options, err:{}", source))]
+    ConvertTableOptions { source: table_options::Error },
 
     #[snafu(display("Empty log entry of meta update.\nBacktrace:\n{}", backtrace))]
     EmptyMetaUpdateLogEntry { backtrace: Backtrace },
@@ -248,7 +251,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
             table_id: TableId::from(src.table_id),
             table_name: src.table_name,
             schema: Schema::try_from(table_schema).context(ConvertSchema)?,
-            opts: TableOptions::from(opts),
+            opts: TableOptions::try_from(opts).context(ConvertTableOptions)?,
             partition_info,
         })
     }
@@ -412,7 +415,7 @@ impl TryFrom<meta_pb::AlterOptionsMeta> for AlterOptionsMeta {
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            options: TableOptions::from(table_options),
+            options: TableOptions::try_from(table_options).context(ConvertTableOptions)?,
         })
     }
 }

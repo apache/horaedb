@@ -16,7 +16,7 @@ use proto::{meta_update, table_requests};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
-use crate::TableOptions;
+use crate::{table_options, TableOptions};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -64,6 +64,9 @@ pub enum Error {
         backtrace
     ))]
     TableOptionsNotFound { backtrace: Backtrace },
+
+    #[snafu(display("Invalid table options, err:{}", source))]
+    InvalidTableOptions { source: table_options::Error },
 }
 
 define_result!(Error);
@@ -202,7 +205,8 @@ impl ReadPayload {
         let options: TableOptions = alter_option_meta_pb
             .options
             .context(TableOptionsNotFound)?
-            .into();
+            .try_into()
+            .context(InvalidTableOptions)?;
 
         Ok(Self::AlterOptions { options })
     }

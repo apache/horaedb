@@ -20,7 +20,7 @@ message TableOptions {
   // If sampling_segment_duration is true, then the segment duration
   // is still unknown.
   bool sampling_segment_duration = 11;
-  StorageFormat storage_format = 12;
+  StorageFormatHint storage_format_hint = 12;
 }
 
 enum UpdateMode {
@@ -28,9 +28,13 @@ enum UpdateMode {
   Append = 1;
 }
 
-message StorageFormatOptions {
-  StorageFormat format = 1;
-  repeated uint32 collapsible_cols_idx = 2;
+message StorageFormatHint {
+  oneof hint {
+    // Auto means the storage format is automatically determined by CeresDB and
+    // its value have no specific meaning.
+    int32 auto = 1;
+    StorageFormat specific = 2;
+  }
 }
 
 enum StorageFormat {

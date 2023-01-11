@@ -12,11 +12,11 @@ use table_engine::predicate::PredicateRef;
 use crate::{
     sst::{
         builder::SstBuilder,
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
         parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
     },
-    table_options::Compression,
+    table_options::{Compression, StorageFormat, StorageFormatHint},
 };
 
 /// Pick suitable object store for different scenes.
@@ -47,6 +47,7 @@ pub trait Factory: Send + Sync + Debug {
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
+        storage_format: StorageFormat,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>>;
 
@@ -56,12 +57,6 @@ pub trait Factory: Send + Sync + Debug {
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum SstType {
-    Auto,
-    Parquet,
 }
 
 /// The frequency of query execution may decide some behavior in the sst reader,
@@ -91,7 +86,7 @@ pub struct SstReaderOptions {
 
 #[derive(Debug, Clone)]
 pub struct SstBuilderOptions {
-    pub sst_type: SstType,
+    pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
 }
@@ -104,11 +99,13 @@ impl Factory for FactoryImpl {
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
+        storage_format: StorageFormat,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
         // TODO: Currently, we only have one sst format, and we have to choose right
         // reader for sst according to its real format in the future.
-        let reader = AsyncParquetReader::new(path, store_picker, options);
+        let hybrid_encoding = matches!(storage_format, StorageFormat::Hybrid);
+        let reader = AsyncParquetReader::new(path, hybrid_encoding, store_picker, options);
         let reader = ThreadedReader::new(
             reader,
             options.runtime.clone(),
@@ -123,13 +120,18 @@ impl Factory for FactoryImpl {
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
-        match options.sst_type {
-            SstType::Parquet | SstType::Auto => Some(Box::new(ParquetSstBuilder::new(
-                path,
-                store_picker,
-                options,
-            ))),
-        }
+        let hybrid_encoding = match options.storage_format_hint {
+            StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
+            // `Auto` is mapped to columnar parquet format now, may change in future.
+            StorageFormatHint::Auto => false,
+        };
+
+        Some(Box::new(ParquetSstBuilder::new(
+            path,
+            hybrid_encoding,
+            store_picker,
+            options,
+        )))
     }
 }
 

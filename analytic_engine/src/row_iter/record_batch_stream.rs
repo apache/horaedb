@@ -314,12 +314,17 @@ pub async fn stream_from_sst_file(
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
 
     let mut sst_reader = sst_factory
-        .new_sst_reader(sst_reader_options, &path, store_picker)
+        .new_sst_reader(
+            sst_reader_options,
+            &path,
+            sst_file.storage_format(),
+            store_picker,
+        )
         .with_context(|| SstReaderNotFound {
             options: sst_reader_options.clone(),
         })?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
-    let max_seq = meta.max_sequence;
+    let max_seq = meta.max_sequence();
     let sst_stream = sst_reader.read().await.context(ReadSstData)?;
 
     let stream = Box::new(sst_stream.map(move |v| {

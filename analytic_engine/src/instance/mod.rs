@@ -37,7 +37,7 @@ use crate::{
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
         file::FilePurger,
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
     },
     table::data::TableDataRef,
     wal_synchronizer::WalSynchronizer,

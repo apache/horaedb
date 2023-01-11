@@ -5,31 +5,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common_util::define_result;
 use lru::LruCache;
-use parquet::file::metadata::{FileMetaData, ParquetMetaData};
-use parquet_ext::ParquetMetaDataRef;
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use parquet::file::metadata::FileMetaData;
+use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::sst::{file::SstMetaDataRef, parquet::encoding};
-
-/// Error of sst file.
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "Key value metadata in parquet is not found.\nBacktrace\n:{}",
-        backtrace
-    ))]
-    KvMetaDataNotFound { backtrace: Backtrace },
-
-    #[snafu(display("Empty custom metadata in parquet.\nBacktrace\n:{}", backtrace))]
-    EmptyCustomMetaData { backtrace: Backtrace },
-
-    #[snafu(display("Failed to decode custom metadata in parquet, err:{}", source))]
-    DecodeCustomMetaData { source: encoding::Error },
-}
-
-define_result!(Error);
+use crate::sst::{
+    meta_data::{
+        DecodeCustomMetaData, EmptyCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result,
+    },
+    parquet::encoding,
+};
 
 pub type MetaCacheRef = Arc<MetaCache>;
 
@@ -39,8 +24,8 @@ pub type MetaCacheRef = Arc<MetaCache>;
 pub struct MetaData {
     /// The extended information in the parquet is removed for less memory
     /// consumption.
-    parquet: ParquetMetaDataRef,
-    custom: SstMetaDataRef,
+    parquet: parquet_ext::ParquetMetaDataRef,
+    custom: ParquetMetaDataRef,
 }
 
 impl MetaData {
@@ -48,7 +33,10 @@ impl MetaData {
     ///
     /// After the building, a new parquet meta data will be generated which
     /// contains no extended custom information.
-    pub fn try_new(parquet_meta_data: &ParquetMetaData, ignore_bloom_filter: bool) -> Result<Self> {
+    pub fn try_new(
+        parquet_meta_data: &parquet_ext::ParquetMetaData,
+        ignore_bloom_filter: bool,
+    ) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
         let kv_metas = file_meta_data
             .key_value_metadata()
@@ -77,7 +65,7 @@ impl MetaData {
                 file_meta_data.schema_descr_ptr(),
                 file_meta_data.column_orders().cloned(),
             );
-            let thin_parquet_meta_data = ParquetMetaData::new_with_page_index(
+            let thin_parquet_meta_data = parquet_ext::ParquetMetaData::new_with_page_index(
                 thin_file_meta_data,
                 parquet_meta_data.row_groups().to_vec(),
                 parquet_meta_data.page_indexes().cloned(),
@@ -91,12 +79,12 @@ impl MetaData {
     }
 
     #[inline]
-    pub fn parquet(&self) -> &ParquetMetaDataRef {
+    pub fn parquet(&self) -> &parquet_ext::ParquetMetaDataRef {
         &self.parquet
     }
 
     #[inline]
-    pub fn custom(&self) -> &SstMetaDataRef {
+    pub fn custom(&self) -> &ParquetMetaDataRef {
         &self.custom
     }
 }

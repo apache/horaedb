@@ -7,6 +7,5 @@ pub mod tests;
 
 use std::sync::Arc;
 
-use parquet::file::metadata::ParquetMetaData;
-
+pub use parquet::file::metadata::ParquetMetaData;
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
