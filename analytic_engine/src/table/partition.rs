@@ -29,7 +29,7 @@ use table_engine::{
     },
 };
 
-use crate::space::SpaceAndTable;
+use crate::{space::SpaceAndTable, table::metrics::PARTITION_TABLE_DURATION_HISTOGRAM};
 
 /// Table trait implementation
 pub struct PartitionTableImpl {
@@ -125,6 +125,10 @@ impl Table for PartitionTableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
+        let _timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&["write", "total", &self.space_table.table_data().name])
+            .start_timer();
+
         // Build partition rule.
         let df_partition_rule = match self.partition_info() {
             None => UnexpectedWithMsg {
@@ -139,11 +143,15 @@ impl Table for PartitionTableImpl {
         };
 
         // Split write request.
+        let locate_timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&["write", "locate", &self.space_table.table_data().name])
+            .start_timer();
         let mut split_rows = HashMap::new();
         let partitions = df_partition_rule
             .locate_partitions_for_write(&request.row_group)
             .map_err(|e| Box::new(e) as _)
             .context(LocatePartitions)?;
+        drop(locate_timer);
 
         let schema = request.row_group.schema().clone();
         for (partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
@@ -172,12 +180,16 @@ impl Table for PartitionTableImpl {
             });
         }
 
+        let remote_timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&["write", "remote_write", &self.space_table.table_data().name])
+            .start_timer();
         let result = try_join_all(futures)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Write {
                 table: self.name().to_string(),
             })?;
+        drop(remote_timer);
 
         Ok(result.into_iter().sum())
     }
@@ -199,6 +211,14 @@ impl Table for PartitionTableImpl {
     }
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
+        let _timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&[
+                "partitioned_read",
+                "total",
+                &self.space_table.table_data().name,
+            ])
+            .start_timer();
+
         // Build partition rule.
         let df_partition_rule = match self.partition_info() {
             None => UnexpectedWithMsg {
@@ -212,11 +232,19 @@ impl Table for PartitionTableImpl {
             }
         };
 
+        let locate_timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&[
+                "partitioned_read",
+                "locate",
+                &self.space_table.table_data().name,
+            ])
+            .start_timer();
         // Evaluate expr and locate partition.
         let partitions = df_partition_rule
             .locate_partitions_for_read(request.predicate.exprs())
             .map_err(|e| Box::new(e) as _)
             .context(LocatePartitions)?;
+        drop(locate_timer);
 
         // Query streams through remote engine.
         let mut futures = Vec::with_capacity(partitions.len());
@@ -233,12 +261,17 @@ impl Table for PartitionTableImpl {
             })
         }
 
+        let remote_timer = PARTITION_TABLE_DURATION_HISTOGRAM
+            .with_label_values(&["partitioned_read", "remote_read", &self.space_table.table_data().name])
+            .start_timer();
         let streams = try_join_all(futures)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(Scan {
                 table: self.name().to_string(),
             })?;
+        drop(remote_timer);
+
         Ok(PartitionedStreams { streams })
     }
 
