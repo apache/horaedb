@@ -15,8 +15,14 @@ message SstBloomFilter {
   repeated RowGroupFilter row_group_filters = 1;
 }
 
-/// Used by ssts encoded by parquet, incuding columar&hybrid storage formats.
 message SstMetaData {
+  oneof MetaData {
+    ParquetMetaData parquet = 1;
+  }
+}
+
+/// Used by ssts encoded by parquet, incuding columar&hybrid storage formats.
+message ParquetMetaData {
   // Min key in the sst
   bytes min_key = 1;
   // Max key in the sst

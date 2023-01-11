@@ -125,8 +125,9 @@ pub mod tests {
 
     use crate::{
         sst::{
-            file::{FileMeta, FilePurgeQueue, SstMetaData},
+            file::{FileMeta, FilePurgeQueue},
             manager::{FileId, LevelsController},
+            meta_data::SstMetaData,
         },
         table_options::StorageFormat,
     };
@@ -154,8 +155,8 @@ pub mod tests {
                         id: id as FileId,
                         size: 0,
                         row_num: 0,
-                        time_range: sst_meta.time_range,
-                        max_seq: sst_meta.max_sequence,
+                        time_range: sst_meta.time_range(),
+                        max_seq: sst_meta.max_sequence(),
                         storage_format: StorageFormat::Columnar,
                     },
                 );

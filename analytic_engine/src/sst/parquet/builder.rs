@@ -14,14 +14,20 @@ use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 
 use crate::{
     sst::{
-        builder::{RecordBatchStream, SstBuilder, *},
+        builder::{
+            self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
+            SstBuilder, SstInfo, Storage,
+        },
         factory::{ObjectStorePickerRef, SstBuilderOptions},
-        file::{BloomFilter, SstMetaData},
-        parquet::encoding::ParquetEncoder,
+        meta_data::SstMetaData,
+        parquet::{
+            encoding::ParquetEncoder,
+            meta_data::{BloomFilter, ParquetMetaData},
+        },
     },
     table_options::StorageFormat,
 };
@@ -65,7 +71,7 @@ struct RecordBytesReader {
     record_stream: RecordBatchStream,
     num_rows_per_row_group: usize,
     compression: Compression,
-    meta_data: SstMetaData,
+    meta_data: ParquetMetaData,
     total_row_num: Arc<AtomicUsize>,
     // Record batch partitioned by exactly given `num_rows_per_row_group`
     // There may be more than one `RecordBatchWithKey` inside each partition
@@ -214,13 +220,16 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
         request_id: RequestId,
         meta: &SstMetaData,
         record_stream: RecordBatchStream,
-    ) -> Result<SstInfo> {
+    ) -> builder::Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.num_rows_per_row_group
         );
 
         let total_row_num = Arc::new(AtomicUsize::new(0));
+        let parquet_meta_data = meta.as_parquet().context(OtherNoCause {
+            msg: format!("expect parquet meta data, got {:?}", meta),
+        })?;
         let reader = RecordBytesReader {
             hybrid_encoding: self.hybrid_encoding,
             request_id,
@@ -228,8 +237,7 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
             total_row_num: total_row_num.clone(),
-            // TODO(xikai): should we avoid this clone?
-            meta_data: meta.to_owned(),
+            meta_data: parquet_meta_data.as_ref().to_owned(),
             partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
@@ -317,14 +325,18 @@ mod tests {
 
             let schema = build_schema();
             let projected_schema = ProjectedSchema::no_projection(schema.clone());
-            let sst_meta = SstMetaData {
-                min_key: Bytes::from_static(b"100"),
-                max_key: Bytes::from_static(b"200"),
-                time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
-                max_sequence: 200,
-                schema: schema.clone(),
-                bloom_filter: Default::default(),
-                collapsible_cols_idx: Vec::new(),
+            let sst_meta = {
+                let parquet_meta_data = ParquetMetaData {
+                    min_key: Bytes::from_static(b"100"),
+                    max_key: Bytes::from_static(b"200"),
+                    time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
+                    max_sequence: 200,
+                    schema: schema.clone(),
+                    bloom_filter: Default::default(),
+                    collapsible_cols_idx: Vec::new(),
+                };
+
+                SstMetaData::Parquet(Arc::new(parquet_meta_data))
             };
 
             let mut counter = 5;
@@ -375,11 +387,18 @@ mod tests {
                     &store_picker,
                     &sst_reader_options,
                 );
-                let mut sst_meta_readback = reader.meta_data().await.unwrap().clone();
+                let mut sst_meta_readback = reader
+                    .meta_data()
+                    .await
+                    .unwrap()
+                    .as_parquet()
+                    .unwrap()
+                    .as_ref()
+                    .clone();
                 // bloom filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.bloom_filter = Default::default();
-                assert_eq!(&sst_meta_readback, &sst_meta);
+                assert_eq!(&sst_meta_readback, &*sst_meta.as_parquet().unwrap());
                 assert_eq!(
                     expected_num_rows,
                     reader
@@ -457,7 +476,7 @@ mod tests {
             record_stream: record_batch_stream,
             num_rows_per_row_group,
             compression: Compression::UNCOMPRESSED,
-            meta_data: SstMetaData {
+            meta_data: ParquetMetaData {
                 min_key: Default::default(),
                 max_key: Default::default(),
                 time_range: Default::default(),

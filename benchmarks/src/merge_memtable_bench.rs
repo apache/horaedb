@@ -20,7 +20,7 @@ use analytic_engine::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             SstReaderOptions,
         },
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
     },
     table::{
         sst_util,

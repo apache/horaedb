@@ -19,7 +19,7 @@ use analytic_engine::{
             SstReaderOptions,
         },
         file::{FileHandle, FilePurgeQueue, Request},
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
     },
     table::sst_util,
 };

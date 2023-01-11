@@ -26,7 +26,6 @@ use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::ParquetMetaDataRef;
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -34,10 +33,16 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
     factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-    file::{BloomFilter, SstMetaData, SstMetaDataRef},
-    meta_cache::{MetaCacheRef, MetaData},
+    meta_data::{
+        cache::{MetaCacheRef, MetaData},
+        SstMetaData,
+    },
     metrics,
-    parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
+    parquet::{
+        encoding::ParquetDecoder,
+        meta_data::{BloomFilter, ParquetMetaDataRef},
+        row_group_filter::RowGroupFilter,
+    },
     reader::{error::*, Result, SstReader},
 };
 
@@ -116,8 +121,7 @@ impl<'a> Reader<'a> {
             .as_ref()
             // metadata must be inited after `init_if_necessary`.
             .unwrap()
-            .custom()
-            .clone();
+            .custom();
 
         let streams: Vec<_> = streams
             .into_iter()
@@ -139,12 +143,12 @@ impl<'a> Reader<'a> {
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        bloom_filter: &Option<BloomFilter>,
+        bloom_filter: Option<&BloomFilter>,
     ) -> Result<Vec<usize>> {
         let filter = RowGroupFilter::try_new(
             &schema,
             row_groups,
-            bloom_filter.as_ref().map(|v| v.filters()),
+            bloom_filter.map(|v| v.filters()),
             self.predicate.exprs(),
         )?;
 
@@ -164,7 +168,7 @@ impl<'a> Reader<'a> {
         let filtered_row_groups = self.filter_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
-            &meta_data.custom().bloom_filter,
+            meta_data.custom().bloom_filter.as_ref(),
         )?;
 
         info!(
@@ -243,7 +247,7 @@ impl<'a> Reader<'a> {
     async fn load_meta_data_from_storage(
         &self,
         object_meta: &ObjectMeta,
-    ) -> Result<ParquetMetaDataRef> {
+    ) -> Result<parquet_ext::ParquetMetaDataRef> {
         let meta_data =
             file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
                 .await
@@ -430,7 +434,7 @@ struct RecordBatchProjector {
 
     row_num: usize,
     start_time: Instant,
-    sst_meta: SstMetaDataRef,
+    sst_meta: ParquetMetaDataRef,
 }
 
 impl RecordBatchProjector {
@@ -439,7 +443,7 @@ impl RecordBatchProjector {
         path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
-        sst_meta: SstMetaDataRef,
+        sst_meta: ParquetMetaDataRef,
     ) -> Self {
         Self {
             hybrid_encoding,
@@ -511,10 +515,12 @@ impl Stream for RecordBatchProjector {
 
 #[async_trait]
 impl<'a> SstReader for Reader<'a> {
-    async fn meta_data(&mut self) -> Result<&SstMetaData> {
+    async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.init_if_necessary().await?;
 
-        Ok(self.meta_data.as_ref().unwrap().custom().as_ref())
+        Ok(SstMetaData::Parquet(
+            self.meta_data.as_ref().unwrap().custom().clone(),
+        ))
     }
 
     async fn read(
@@ -620,7 +626,7 @@ impl<'a> ThreadedReader<'a> {
 
 #[async_trait]
 impl<'a> SstReader for ThreadedReader<'a> {
-    async fn meta_data(&mut self) -> Result<&SstMetaData> {
+    async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.inner.meta_data().await
     }
 

@@ -7,7 +7,7 @@ use std::{cmp, sync::Arc, time::Instant};
 use analytic_engine::{
     sst::{
         factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-        meta_cache::{MetaCache, MetaCacheRef},
+        meta_data::cache::{MetaCache, MetaCacheRef},
     },
     table_options::StorageFormat,
 };

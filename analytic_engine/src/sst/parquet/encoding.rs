@@ -22,12 +22,12 @@ use parquet::{
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
-use proto::sst::SstMetaData as SstMetaDataPb;
+use proto::sst as sst_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::sst::{
-    file::SstMetaData,
-    parquet::hybrid::{self, IndexedType},
+use crate::sst::parquet::{
+    hybrid::{self, IndexedType},
+    meta_data::ParquetMetaData,
 };
 
 // TODO: Only support i32 offset now, consider i64 here?
@@ -113,7 +113,9 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to convert sst meta data from protobuf, err:{}", source))]
-    ConvertSstMetaData { source: crate::sst::file::Error },
+    ConvertSstMetaData {
+        source: crate::sst::parquet::meta_data::Error,
+    },
 
     #[snafu(display(
         "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
@@ -161,8 +163,8 @@ pub const META_KEY: &str = "meta";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst meta data into binary key value pair.
-pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
-    let meta_data_pb = SstMetaDataPb::from(meta_data);
+pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
+    let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() as usize + 1);
     buf.try_put_u8(META_VALUE_HEADER)
@@ -177,7 +179,7 @@ pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
 }
 
 /// Decode the sst meta data from the binary key value pair.
-pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
+pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
     ensure!(
         kv.key == META_KEY,
         InvalidMetaKey {
@@ -201,10 +203,10 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
         InvalidMetaValueHeader { meta_value }
     );
 
-    let meta_data_pb: SstMetaDataPb =
+    let meta_data_pb: sst_pb::ParquetMetaData =
         Message::decode(&raw_bytes[1..]).context(DecodeFromPb { meta_value })?;
 
-    SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
+    ParquetMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }
 
 /// RecordEncoder is used for encoding ArrowBatch.
@@ -230,7 +232,7 @@ impl ColumnarRecordEncoder {
     fn try_new(
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: SstMetaData,
+        meta_data: ParquetMetaData,
     ) -> Result<Self> {
         let arrow_schema = meta_data.schema.to_arrow_schema_ref();
 
@@ -297,7 +299,7 @@ impl HybridRecordEncoder {
     fn try_new(
         num_rows_per_row_group: usize,
         compression: Compression,
-        mut meta_data: SstMetaData,
+        mut meta_data: ParquetMetaData,
     ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
@@ -412,7 +414,7 @@ impl ParquetEncoder {
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: SstMetaData,
+        meta_data: ParquetMetaData,
     ) -> Result<Self> {
         let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
             Box::new(HybridRecordEncoder::try_new(
@@ -487,7 +489,7 @@ impl HybridRecordDecoder {
         ))
     }
 
-    /// Stretch hybrid collpased column into columnar column.
+    /// Stretch hybrid collapsed column into columnar column.
     /// `value_offsets` specify offsets each value occupied, which means that
     /// the number of a `value[n]` is `value_offsets[n] - value_offsets[n-1]`.
     /// Ex:
@@ -860,7 +862,7 @@ mod tests {
     fn test_hybrid_record_encode_and_decode() {
         let schema = build_schema();
 
-        let mut meta_data = SstMetaData {
+        let mut meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
@@ -989,7 +991,7 @@ mod tests {
     fn test_hybrid_flush() {
         let schema = build_schema();
 
-        let meta_data = SstMetaData {
+        let meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),

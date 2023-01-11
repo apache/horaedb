@@ -432,7 +432,7 @@ impl TimeWindowPicker {
     }
 
     #[inline]
-    fn resolve_timetamp(ts: i64, timestamp_resolution: TimeUnit) -> i64 {
+    fn resolve_timestamp(ts: i64, timestamp_resolution: TimeUnit) -> i64 {
         match timestamp_resolution {
             TimeUnit::Microseconds => ts / 1000,
             TimeUnit::Nanoseconds => ts / 1000000,
@@ -454,7 +454,7 @@ impl TimeWindowPicker {
         for f in files {
             let ts = f.time_range_ref().exclusive_end().as_i64();
 
-            let ts = Self::resolve_timetamp(ts, timestamp_resolution);
+            let ts = Self::resolve_timestamp(ts, timestamp_resolution);
 
             let (left, _) = Self::get_window_bounds_in_millis(window, ts);
 
@@ -555,7 +555,7 @@ impl TimeWindowPicker {
             .time_range()
             .exclusive_end()
             .as_i64();
-        let now = Self::resolve_timetamp(now, timestamp_resolution);
+        let now = Self::resolve_timestamp(now, timestamp_resolution);
         Self::get_window_bounds_in_millis(window, now).0
     }
 }
@@ -612,14 +612,16 @@ mod tests {
     use crate::{
         compaction::PickerManager,
         sst::{
-            file::{FileMeta, FilePurgeQueue, SstMetaData},
+            file::{FileMeta, FilePurgeQueue},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
+            meta_data::SstMetaData,
+            parquet::meta_data::ParquetMetaData,
         },
         table_options::StorageFormat,
     };
 
     fn build_sst_meta_data(time_range: TimeRange) -> SstMetaData {
-        SstMetaData {
+        let parquet_meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range,
@@ -627,7 +629,9 @@ mod tests {
             schema: build_schema(),
             bloom_filter: Default::default(),
             collapsible_cols_idx: Vec::new(),
-        }
+        };
+
+        SstMetaData::Parquet(Arc::new(parquet_meta_data))
     }
 
     // testcase 0: file buckets: old bucket:[0,1] newest bucket:[2], expired:[3]

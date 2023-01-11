@@ -12,7 +12,7 @@ use table_engine::predicate::PredicateRef;
 use crate::{
     sst::{
         builder::SstBuilder,
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
         parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
     },

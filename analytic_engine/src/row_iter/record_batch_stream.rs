@@ -303,7 +303,7 @@ pub async fn stream_from_sst_file(
             options: sst_reader_options.clone(),
         })?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
-    let max_seq = meta.max_sequence;
+    let max_seq = meta.max_sequence();
     let sst_stream = sst_reader.read().await.context(ReadSstData)?;
 
     let stream = Box::new(sst_stream.map(move |v| {

@@ -18,8 +18,9 @@ use analytic_engine::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             SstBuilderOptions, SstReaderOptions,
         },
-        file::{self, FilePurgeQueue, SstMetaData, SstMetaReader},
+        file::FilePurgeQueue,
         manager::FileId,
+        meta_data::{self, SstMetaData, SstMetaReader},
     },
     table::sst_util,
     table_options::{Compression, StorageFormat, StorageFormatHint},
@@ -92,7 +93,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
     let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
-    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
+    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema().clone());
     let sst_reader_options = SstReaderOptions {
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
@@ -253,7 +254,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             store_picker: store_picker.clone(),
         };
         let sst_metas = meta_reader.fetch_metas(&file_handles).await.unwrap();
-        file::merge_sst_meta(&sst_metas, schema)
+        meta_data::merge_sst_meta(sst_metas.iter(), schema)
     };
     let output_sst_config = SstConfig {
         sst_meta,
