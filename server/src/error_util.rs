@@ -5,10 +5,7 @@
 //
 // So here we split by `Backtrace`, and return first part
 pub fn remove_backtrace_from_err(err_string: &str) -> &str {
-    err_string
-        .splitn(2, "Backtrace")
-        .next()
-        .unwrap_or(err_string)
+    err_string.split("Backtrace").next().unwrap_or(err_string)
 }
 
 #[cfg(test)]
@@ -32,7 +29,7 @@ err:DataFusion Failed to optimize physical plan, err:Error during planning.
         ];
 
         for (input, expected) in cases {
-            assert_eq!(expected, remove_backtrace_from_err(&input));
+            assert_eq!(expected, remove_backtrace_from_err(input));
         }
     }
 }
