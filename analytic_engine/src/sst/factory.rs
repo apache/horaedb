@@ -23,7 +23,7 @@ use crate::{
         builder::SstBuilder,
         meta_data::cache::MetaCacheRef,
         parquet::{
-            async_reader::AsyncFileReader, builder::ParquetSstBuilder, AsyncParquetReader,
+            async_reader::AsyncFileChunkReader, builder::ParquetSstBuilder, AsyncParquetReader,
             ThreadedReader,
         },
         reader::SstReader,
@@ -48,7 +48,7 @@ impl FileReaderOnObjectStore {
 }
 
 #[async_trait]
-impl AsyncFileReader for FileReaderOnObjectStore {
+impl AsyncFileChunkReader for FileReaderOnObjectStore {
     async fn file_size(&self) -> GenericResult<usize> {
         // check cached filed_size first
         {

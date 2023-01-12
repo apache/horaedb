@@ -23,7 +23,6 @@ use common_util::{
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
-use datafusion::error::DataFusionError as DfError;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use object_store::Path;
@@ -32,8 +31,9 @@ use parquet::{
         async_reader::AsyncFileReader as AsyncParquetFileReader, ParquetRecordBatchStreamBuilder,
         ProjectionMask,
     },
-    file::{footer, metadata::RowGroupMetaData},
+    file::metadata::RowGroupMetaData,
 };
+use parquet_ext::meta_data::{self, ChunkReader};
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -56,10 +56,10 @@ use crate::sst::{
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
-pub type AsyncFileReaderRef = Arc<dyn AsyncFileReader>;
+pub type AsyncFileReaderRef = Arc<dyn AsyncFileChunkReader>;
 
 #[async_trait]
-pub trait AsyncFileReader: Send + Sync {
+pub trait AsyncFileChunkReader: Send + Sync {
     async fn file_size(&self) -> GenericResult<usize>;
 
     async fn get_byte_range(&self, range: Range<usize>) -> GenericResult<Bytes>;
@@ -67,49 +67,15 @@ pub trait AsyncFileReader: Send + Sync {
     async fn get_byte_ranges(&self, ranges: &[Range<usize>]) -> GenericResult<Vec<Bytes>>;
 }
 
-/// Fetch and parse [`ParquetMetadata`] from the file reader.
-///
-/// Referring to: https://github.com/apache/arrow-datafusion/blob/ac2e5d15e5452e83c835d793a95335e87bf35569/datafusion/core/src/datasource/file_format/parquet.rs#L390-L449
-async fn fetch_parquet_metadata_from_file_reader(
-    file_reader: &dyn AsyncFileReader,
-) -> std::result::Result<parquet_ext::ParquetMetaData, DfError> {
-    const FOOTER_LEN: usize = 8;
+struct ChunkReaderAdapter {
+    file_reader: AsyncFileReaderRef,
+}
 
-    let file_size = file_reader.file_size().await?;
-
-    if file_size < FOOTER_LEN {
-        let err_msg = format!("file size of {} is less than footer", file_size);
-        return Err(DfError::Execution(err_msg));
+#[async_trait]
+impl ChunkReader for ChunkReaderAdapter {
+    async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
+        self.file_reader.get_byte_range(range).await
     }
-
-    let footer_start = file_size - FOOTER_LEN;
-
-    let footer_bytes = file_reader
-        .get_byte_range(footer_start..file_size)
-        .await
-        .map_err(|e| DfError::External(e))?;
-
-    assert_eq!(footer_bytes.len(), FOOTER_LEN);
-    let mut footer = [0; FOOTER_LEN];
-    footer.copy_from_slice(&footer_bytes);
-
-    let metadata_len = footer::decode_footer(&footer)?;
-
-    if file_size < metadata_len + FOOTER_LEN {
-        let err_msg = format!(
-            "file size of {} is smaller than footer + metadata {}",
-            file_size,
-            metadata_len + FOOTER_LEN
-        );
-        return Err(DfError::Execution(err_msg));
-    }
-
-    let metadata_start = file_size - metadata_len - FOOTER_LEN;
-    let metadata_bytes = file_reader
-        .get_byte_range(metadata_start..footer_start)
-        .await?;
-
-    Ok(footer::decode_metadata(&metadata_bytes)?)
 }
 
 pub struct Reader<'a> {
@@ -307,7 +273,12 @@ impl<'a> Reader<'a> {
     }
 
     async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaData> {
-        fetch_parquet_metadata_from_file_reader(self.file_reader.as_ref())
+        let file_size = self.file_reader.file_size().await.context(Other)?;
+        let chunk_reader_adapter = ChunkReaderAdapter {
+            file_reader: self.file_reader.clone(),
+        };
+
+        meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
             .await
             .map_err(|e| Box::new(e) as _)
             .context(DecodeSstMeta)
