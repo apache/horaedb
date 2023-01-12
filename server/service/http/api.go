@@ -31,13 +31,16 @@ type API struct {
 	procedureFactory *procedure.Factory
 
 	clusterManager cluster.Manager
+
+	forwardClient *ForwardClient
 }
 
-func NewAPI(procedureManager procedure.Manager, procedureFactory *procedure.Factory, clusterManager cluster.Manager) *API {
+func NewAPI(procedureManager procedure.Manager, procedureFactory *procedure.Factory, clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
 	return &API{
 		procedureManager: procedureManager,
 		procedureFactory: procedureFactory,
 		clusterManager:   clusterManager,
+		forwardClient:    forwardClient,
 	}
 }
 
@@ -73,6 +76,25 @@ type response struct {
 	Status string      `json:"status"`
 	Data   interface{} `json:"data,omitempty"`
 	Error  string      `json:"error,omitempty"`
+}
+
+func (a *API) respondForward(w http.ResponseWriter, response *http.Response) {
+	b, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Error("read resp failed", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for key, valArr := range response.Header {
+		for _, val := range valArr {
+			w.Header().Add(key, val)
+		}
+	}
+	w.WriteHeader(response.StatusCode)
+	if n, err := w.Write(b); err != nil {
+		log.Error("error writing response", zap.Int("msg", n), zap.Error(err))
+	}
 }
 
 func (a *API) respond(w http.ResponseWriter, data interface{}) {
@@ -191,8 +213,20 @@ type RouteRequest struct {
 }
 
 func (a *API) route(writer http.ResponseWriter, req *http.Request) {
+	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
+	if err != nil {
+		log.Error("forward to leader failed", zap.Error(err))
+		a.respondError(writer, ErrForwardToLeader, "forward to leader failed")
+		return
+	}
+
+	if !isLeader {
+		a.respondForward(writer, resp)
+		return
+	}
+
 	var routeRequest RouteRequest
-	err := json.NewDecoder(req.Body).Decode(&routeRequest)
+	err = json.NewDecoder(req.Body).Decode(&routeRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
 		a.respondError(writer, ErrParseRequest, "decode request body failed")

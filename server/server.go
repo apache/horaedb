@@ -185,7 +185,7 @@ func (srv *Server) startServer(_ context.Context) error {
 	srv.procedureFactory = procedureFactory
 	srv.scheduler = coordinator.NewScheduler(manager, procedureManager, procedureFactory, dispatch)
 
-	api := http.NewAPI(procedureManager, procedureFactory, manager)
+	api := http.NewAPI(procedureManager, procedureFactory, manager, http.NewForwardClient(srv.member, srv.cfg.HTTPPort))
 	httpService := http.NewHTTPService(srv.cfg.HTTPPort, time.Second*10, time.Second*10, api.NewAPIRouter())
 	go func() {
 		err := httpService.Start()
