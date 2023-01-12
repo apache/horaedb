@@ -289,10 +289,8 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{
-                Factory, FactoryImpl, FileReaderOnObjectStore, ReadFrequency, SstBuilderOptions,
-                SstReaderOptions,
-            },
+            factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
+            file_reader::FileReaderOnObjectStore,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },

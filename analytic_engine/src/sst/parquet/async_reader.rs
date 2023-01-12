@@ -27,10 +27,7 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use object_store::Path;
 use parquet::{
-    arrow::{
-        async_reader::AsyncFileReader as AsyncParquetFileReader, ParquetRecordBatchStreamBuilder,
-        ProjectionMask,
-    },
+    arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
 use parquet_ext::meta_data::{self, ChunkReader};
@@ -41,6 +38,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
     factory::{ReadFrequency, SstReaderOptions},
+    file_reader::AsyncFileReaderRef,
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
@@ -55,17 +53,6 @@ use crate::sst::{
 };
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
-
-pub type AsyncFileReaderRef = Arc<dyn AsyncFileChunkReader>;
-
-#[async_trait]
-pub trait AsyncFileChunkReader: Send + Sync {
-    async fn file_size(&self) -> GenericResult<usize>;
-
-    async fn get_byte_range(&self, range: Range<usize>) -> GenericResult<Bytes>;
-
-    async fn get_byte_ranges(&self, ranges: &[Range<usize>]) -> GenericResult<Vec<Bytes>>;
-}
 
 struct ChunkReaderAdapter {
     file_reader: AsyncFileReaderRef,
@@ -407,7 +394,7 @@ impl Drop for ParquetFileReaderAdapter {
     }
 }
 
-impl AsyncParquetFileReader for ParquetFileReaderAdapter {
+impl AsyncFileReader for ParquetFileReaderAdapter {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
         self.metrics
