@@ -473,7 +473,7 @@ async fn handle_rejection(
     } else if let Some(err) = rejection.find() {
         code = error_to_status_code(err);
         let err_string = err.to_string();
-        message = error_util::first_line_in_error(&err_string).to_string();
+        message = error_util::remove_backtrace_from_err(&err_string).to_string();
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
