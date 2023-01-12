@@ -289,7 +289,10 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
+            factory::{
+                Factory, FactoryImpl, FileReaderOnObjectStore, ReadFrequency, SstBuilderOptions,
+                SstReaderOptions,
+            },
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -385,10 +388,14 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
+                let file_reader = FileReaderOnObjectStore::new(
+                    sst_file_path.clone(),
+                    store_picker.default_store().clone(),
+                );
                 let mut reader = AsyncParquetReader::new(
                     &sst_file_path,
                     false,
-                    &store_picker,
+                    Arc::new(file_reader),
                     &sst_reader_options,
                 );
                 let mut sst_meta_readback = reader
