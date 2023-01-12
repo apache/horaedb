@@ -40,7 +40,7 @@ impl Error {
 
             Error::ErrWithCause { msg, source, .. } => {
                 let err_string = source.to_string();
-                let first_line = error_util::first_line_in_error(&err_string);
+                let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{}. Caused by: {}", msg, first_line)
             }
         }
