@@ -20,12 +20,14 @@ lazy_static! {
         &["table"]
     )
     .unwrap();
+
     static ref TABLE_WRITE_ROWS_COUNTER: IntCounterVec = register_int_counter_vec!(
         "table_write_rows_counter",
         "Number of rows wrote to table",
         &["table"]
     )
     .unwrap();
+
     static ref TABLE_READ_REQUEST_COUNTER: IntCounterVec = register_int_counter_vec!(
         "table_read_request_counter",
         "Read request counter of table",
@@ -42,6 +44,7 @@ lazy_static! {
         &["table"],
         exponential_buckets(0.002, 4.0, 10).unwrap()
     ).unwrap();
+
     // Buckets: 0, 1, .., 2^7
     static ref TABLE_FLUSH_SST_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_flush_sst_num",
@@ -49,6 +52,7 @@ lazy_static! {
         &["table"],
         exponential_buckets(1.0, 2.0, 8).unwrap()
     ).unwrap();
+
     // Buckets: 0, 1, ..., 4^11 (4GB)
     static ref TABLE_FLUSH_SST_SIZE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_flush_sst_size",
@@ -64,6 +68,7 @@ lazy_static! {
         &["table"],
         exponential_buckets(0.02, 4.0, 10).unwrap()
     ).unwrap();
+
     // Buckets: 0, 1, .., 2^7
     static ref TABLE_COMPACTION_SST_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_compaction_sst_num",
@@ -71,6 +76,7 @@ lazy_static! {
         &["table"],
         exponential_buckets(1.0, 2.0, 8).unwrap()
     ).unwrap();
+
     // Buckets: 0, 1, ..., 4^11 (4GB)
     static ref TABLE_COMPACTION_SST_SIZE_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_compaction_sst_size",
@@ -78,6 +84,7 @@ lazy_static! {
         &["table", "type"],
         exponential_buckets(1.0, 4.0, 12).unwrap()
     ).unwrap();
+
     // Buckets: 0, 1, ..., 10^12(1 billion)
     static ref TABLE_COMPACTION_SST_ROW_NUM_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "table_compaction_sst_row_num",
@@ -93,6 +100,24 @@ lazy_static! {
         &["table"],
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
+
+    // Buckets: 0, 0.01, .., 0.01 * 2^12
+    pub static ref PARTITION_TABLE_WRITE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "partition_table_write_duration",
+        "Histogram for write duration of the partition table in seconds",
+        &["type", "table"],
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+        )
+    .unwrap();
+
+    // Buckets: 0, 0.01, .., 0.01 * 2^12
+    pub static ref PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "partition_table_partitioned_read_duration",
+        "Histogram for partitioned read duration of the partition table in seconds",
+        &["type", "table"],
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+        )
+    .unwrap();
     // End of histograms.
 }
 
