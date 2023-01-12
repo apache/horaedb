@@ -38,7 +38,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
     factory::{ReadFrequency, SstReaderOptions},
-    file_reader::FileChunkReaderRef,
+    format::FileChunkReaderRef,
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,

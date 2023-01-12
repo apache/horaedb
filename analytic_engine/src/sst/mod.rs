@@ -5,7 +5,7 @@
 pub mod builder;
 pub mod factory;
 pub mod file;
-pub mod file_reader;
+pub mod format;
 pub mod manager;
 pub mod meta_data;
 pub mod metrics;

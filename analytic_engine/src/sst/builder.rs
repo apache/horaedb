@@ -9,16 +9,14 @@ use futures::Stream;
 use crate::{sst::meta_data::SstMetaData, table_options::StorageFormat};
 
 pub mod error {
-    use common_util::define_result;
+    use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub))]
     pub enum Error {
         #[snafu(display("Failed to perform storage operation, err:{}", source))]
-        Storage {
-            source: object_store::ObjectStoreError,
-        },
+        Storage { source: GenericError },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]
         EncodeMetaData {

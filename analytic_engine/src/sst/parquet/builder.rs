@@ -13,7 +13,6 @@ use datafusion::parquet::basic::Compression;
 use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
-use object_store::{ObjectStoreRef, Path};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
@@ -22,7 +21,8 @@ use crate::{
             self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
             SstBuilder, SstInfo, Storage,
         },
-        factory::{ObjectStorePickerRef, SstBuilderOptions},
+        factory::SstBuilderOptions,
+        format::FileChunkWriteRef,
         meta_data::SstMetaData,
         parquet::{
             encoding::ParquetEncoder,
@@ -34,29 +34,25 @@ use crate::{
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
-pub struct ParquetSstBuilder<'a> {
+pub struct ParquetSstBuilder {
     /// The path where the data is persisted.
-    path: &'a Path,
     hybrid_encoding: bool,
     /// The storage where the data is persist.
-    store: &'a ObjectStoreRef,
+    file_writer: FileChunkWriteRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
     compression: Compression,
 }
 
-impl<'a> ParquetSstBuilder<'a> {
+impl ParquetSstBuilder {
     pub fn new(
-        path: &'a Path,
         hybrid_encoding: bool,
-        store_picker: &'a ObjectStorePickerRef,
+        file_writer: FileChunkWriteRef,
         options: &SstBuilderOptions,
     ) -> Self {
-        let store = store_picker.default_store();
         Self {
-            path,
             hybrid_encoding,
-            store,
+            file_writer,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
         }
@@ -218,7 +214,7 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a> SstBuilder for ParquetSstBuilder<'a> {
+impl SstBuilder for ParquetSstBuilder {
     async fn build(
         &mut self,
         request_id: RequestId,
@@ -245,12 +241,8 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
-        self.store
-            .put(self.path, bytes.into())
-            .await
-            .context(Storage)?;
-
-        let file_head = self.store.head(self.path).await.context(Storage)?;
+        self.file_writer.append(bytes).await.context(Storage)?;
+        let file_size = self.file_writer.finish().await.context(Storage)?;
 
         let storage_format = if self.hybrid_encoding {
             StorageFormat::Hybrid
@@ -258,7 +250,7 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
             StorageFormat::Columnar
         };
         Ok(SstInfo {
-            file_size: file_head.size,
+            file_size,
             row_num: total_row_num.load(Ordering::Relaxed),
             storage_format,
         })
@@ -281,7 +273,7 @@ mod tests {
         tests::init_log_for_test,
     };
     use futures::stream;
-    use object_store::LocalFileSystem;
+    use object_store::{LocalFileSystem, ObjectStoreRef, Path};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
 
@@ -289,8 +281,11 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
-            file_reader::FileChunkReaderOnObjectStore,
+            factory::{
+                Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstBuilderOptions,
+                SstReaderOptions,
+            },
+            format::FileChunkReaderOnObjectStore,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },

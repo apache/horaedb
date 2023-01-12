@@ -12,7 +12,7 @@ use table_engine::predicate::PredicateRef;
 use crate::{
     sst::{
         builder::SstBuilder,
-        file_reader::FileChunkReaderOnObjectStore,
+        format::{FileChunkReaderOnObjectStore, FileChunkWriterOnObjectStore},
         meta_data::cache::MetaCacheRef,
         parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
@@ -130,10 +130,11 @@ impl Factory for FactoryImpl {
             StorageFormatHint::Auto => false,
         };
 
+        let store = store_picker.default_store();
+        let file_writer = FileChunkWriterOnObjectStore::new(path.clone(), store.clone());
         Some(Box::new(ParquetSstBuilder::new(
-            path,
             hybrid_encoding,
-            store_picker,
+            Arc::new(file_writer),
             options,
         )))
     }
