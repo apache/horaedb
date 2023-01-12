@@ -3,6 +3,7 @@
 //! Sst reader implementation based on parquet.
 
 use std::{
+    fmt,
     ops::Range,
     pin::Pin,
     sync::Arc,
@@ -18,24 +19,26 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use common_util::{
+    error::GenericResult,
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
-use datafusion::datasource::file_format;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
-use object_store::{ObjectMeta, ObjectStoreRef, Path};
+use object_store::Path;
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
+use parquet_ext::meta_data::{self, ChunkReader};
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
-    factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+    factory::{ReadFrequency, SstReaderOptions},
+    file_reader::FileChunkReaderRef,
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
@@ -51,12 +54,22 @@ use crate::sst::{
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
+struct ChunkReaderAdapter {
+    file_reader: FileChunkReaderRef,
+}
+
+#[async_trait]
+impl ChunkReader for ChunkReaderAdapter {
+    async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
+        self.file_reader.get_byte_range(range).await
+    }
+}
+
 pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     hybrid_encoding: bool,
-    /// The storage where the data is persist.
-    store: &'a ObjectStoreRef,
+    file_reader: FileChunkReaderRef,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -76,18 +89,17 @@ impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
         hybrid_encoding: bool,
-        store_picker: &'a ObjectStorePickerRef,
+        file_reader: FileChunkReaderRef,
         options: &SstReaderOptions,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
             ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
-        let store = store_picker.pick_by_freq(options.frequency);
 
         Self {
             path,
             hybrid_encoding,
-            store,
+            file_reader,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
@@ -211,9 +223,9 @@ impl<'a> Reader<'a> {
 
         let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
         for chunk in filtered_row_group_chunks {
-            let object_store_reader =
-                ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
+            let file_reader =
+                ParquetFileReaderAdapter::new(self.file_reader.clone(), meta_data.clone());
+            let builder = ParquetRecordBatchStreamBuilder::new(file_reader)
                 .await
                 .with_context(|| ParquetError)?;
             let stream = builder
@@ -247,17 +259,16 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    async fn load_meta_data_from_storage(
-        &self,
-        object_meta: &ObjectMeta,
-    ) -> Result<parquet_ext::ParquetMetaDataRef> {
-        let meta_data =
-            file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeSstMeta)?;
+    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaData> {
+        let file_size = self.file_reader.file_size().await.context(Other)?;
+        let chunk_reader_adapter = ChunkReaderAdapter {
+            file_reader: self.file_reader.clone(),
+        };
 
-        Ok(Arc::new(meta_data))
+        meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
+            .await
+            .map_err(|e| Box::new(e) as _)
+            .context(DecodeSstMeta)
     }
 
     fn need_update_cache(&self) -> bool {
@@ -280,12 +291,7 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let object_meta = self
-                .store
-                .head(self.path)
-                .await
-                .context(ObjectStoreError {})?;
-            let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
+            let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
             MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
@@ -347,25 +353,29 @@ impl ParallelismOptions {
     }
 }
 
-#[derive(Clone, Debug)]
 struct ReaderMetrics {
     bytes_scanned: usize,
     sst_get_range_length_histogram: LocalHistogram,
 }
 
-#[derive(Clone)]
-struct ObjectStoreReader {
-    storage: ObjectStoreRef,
-    path: Path,
+impl fmt::Debug for ReaderMetrics {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ReaderMetrics")
+            .field("bytes_scanned", &self.bytes_scanned)
+            .finish()
+    }
+}
+
+struct ParquetFileReaderAdapter {
+    file_reader: FileChunkReaderRef,
     meta_data: MetaData,
     metrics: ReaderMetrics,
 }
 
-impl ObjectStoreReader {
-    fn new(storage: ObjectStoreRef, path: Path, meta_data: MetaData) -> Self {
+impl ParquetFileReaderAdapter {
+    fn new(file_reader: FileChunkReaderRef, meta_data: MetaData) -> Self {
         Self {
-            storage,
-            path,
+            file_reader,
             meta_data,
             metrics: ReaderMetrics {
                 bytes_scanned: 0,
@@ -375,21 +385,24 @@ impl ObjectStoreReader {
     }
 }
 
-impl Drop for ObjectStoreReader {
+impl Drop for ParquetFileReaderAdapter {
     fn drop(&mut self) {
-        debug!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
+        debug!(
+            "ParquetFileReaderAdapter is dropped, metrics:{:?}",
+            self.metrics
+        );
     }
 }
 
-impl AsyncFileReader for ObjectStoreReader {
+impl AsyncFileReader for ParquetFileReaderAdapter {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
         self.metrics.bytes_scanned += range.end - range.start;
         self.metrics
             .sst_get_range_length_histogram
             .observe((range.end - range.start) as f64);
 
-        self.storage
-            .get_range(&self.path, range)
+        self.file_reader
+            .get_byte_range(range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
                     "Failed to fetch range from object store, err:{}",
@@ -409,13 +422,12 @@ impl AsyncFileReader for ObjectStoreReader {
                 .sst_get_range_length_histogram
                 .observe((range.end - range.start) as f64);
         }
-
         async move {
-            self.storage
-                .get_ranges(&self.path, &ranges)
+            self.file_reader
+                .get_byte_ranges(&ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{}",
+                        "Failed to fetch ranges from underlying reader, err:{}",
                         e
                     ))
                 })
