@@ -101,12 +101,21 @@ lazy_static! {
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
 
-    // Buckets: 0.0005, 0.001, 0.002, .., 262.14, +Inf
-    pub static ref PARTITION_TABLE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
-            "partition_table_duration",
-            "partition_table_duration",
-            &["type", "stage", "table"],
-            exponential_buckets(0.0005, 2.0, 20).unwrap()
+    // Buckets: 0, 0.01, .., 0.01 * 2^12
+    pub static ref PARTITION_TABLE_WRITE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "partition_table_write_duration",
+        "Histogram for write duration of the partition table in seconds",
+        &["type", "table"],
+        exponential_buckets(0.01, 2.0, 13).unwrap()
+        )
+    .unwrap();
+
+    // Buckets: 0, 0.01, .., 0.01 * 2^12
+    pub static ref PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "partition_table_partitioned_read_duration",
+        "Histogram for partitioned read duration of the partition table in seconds",
+        &["type", "table"],
+        exponential_buckets(0.01, 2.0, 13).unwrap()
         )
     .unwrap();
     // End of histograms.
