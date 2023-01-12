@@ -2,12 +2,11 @@
 
 //! Channel pool
 
-use std::num::NonZeroUsize;
+use std::collections::HashMap;
 
-use clru::CLruCache;
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tonic::transport::{Channel, Endpoint as TonicEndpoint};
 
 use super::config::Config;
@@ -16,9 +15,7 @@ use crate::error::*;
 /// Pool for reusing the built channel
 pub struct ChannelPool {
     /// Channels in pool
-    // TODO: should be replaced with a cache(like "moka")
-    // or partition the lock.
-    channels: Mutex<CLruCache<Endpoint, Channel>>,
+    channels: RwLock<HashMap<Endpoint, Channel>>,
 
     /// Channel builder
     builder: ChannelBuilder,
@@ -26,9 +23,7 @@ pub struct ChannelPool {
 
 impl ChannelPool {
     pub fn new(config: Config) -> Self {
-        let channels = Mutex::new(CLruCache::new(
-            NonZeroUsize::new(config.channel_pool_max_size).unwrap(),
-        ));
+        let channels = RwLock::new(HashMap::new());
         let builder = ChannelBuilder::new(config);
 
         Self { channels, builder }
@@ -36,23 +31,23 @@ impl ChannelPool {
 
     pub async fn get(&self, endpoint: &Endpoint) -> Result<Channel> {
         {
-            let mut inner = self.channels.lock().await;
+            let inner = self.channels.read().await;
             if let Some(channel) = inner.get(endpoint) {
                 return Ok(channel.clone());
             }
-        }
-
-        let mut inner = self.channels.lock().await;
-        // Double check here.
-        if let Some(channel) = inner.get(endpoint) {
-            return Ok(channel.clone());
         }
 
         let channel = self
             .builder
             .build(endpoint.clone().to_string().as_str())
             .await?;
-        inner.put(endpoint.clone(), channel.clone());
+        let mut inner = self.channels.write().await;
+        // Double check here.
+        if let Some(channel) = inner.get(endpoint) {
+            return Ok(channel.clone());
+        }
+
+        inner.insert(endpoint.clone(), channel.clone());
 
         Ok(channel)
     }

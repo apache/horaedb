@@ -2,6 +2,7 @@
 
 //! Remote table engine implementation
 
+mod cached_router;
 mod channel;
 mod client;
 pub mod config;
