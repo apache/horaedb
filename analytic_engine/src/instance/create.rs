@@ -105,7 +105,7 @@ impl Instance {
         });
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.wal_location(), update))
+            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
             .await
             .context(WriteManifest {
                 space_id: space.id,

@@ -16,7 +16,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     kv_encoder::Namespace,
-    manager::{self, RegionId},
+    manager::{self},
     message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData},
 };
 
@@ -94,13 +94,13 @@ define_result!(Error);
 
 /// Generate wal data topic name
 #[allow(unused)]
-pub fn format_wal_data_topic_name(namespace: &str, region_id: RegionId) -> String {
+pub fn format_wal_data_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{}_data_{}", namespace, region_id)
 }
 
 /// Generate wal meta topic name
 #[allow(unused)]
-pub fn format_wal_meta_topic_name(namespace: &str, region_id: RegionId) -> String {
+pub fn format_wal_meta_topic_name(namespace: &str, region_id: u64) -> String {
     format!("{}_meta_{}", namespace, region_id)
 }
 
@@ -179,7 +179,7 @@ impl MetaEncoding {
 /// Message queue implementation's meta key
 #[allow(unused)]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MetaKey(pub RegionId);
+pub struct MetaKey(pub u64);
 
 #[allow(unused)]
 #[derive(Clone, Debug)]
