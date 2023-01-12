@@ -12,6 +12,7 @@ use table_engine::predicate::PredicateRef;
 use crate::{
     sst::{
         builder::SstBuilder,
+        file_reader::FileChunkReaderOnObjectStore,
         meta_data::cache::MetaCacheRef,
         parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
@@ -105,9 +106,12 @@ impl Factory for FactoryImpl {
         // TODO: Currently, we only have one sst format, and we have to choose right
         // reader for sst according to its real format in the future.
         let hybrid_encoding = matches!(storage_format, StorageFormat::Hybrid);
-        let reader = AsyncParquetReader::new(path, hybrid_encoding, store_picker, options);
+        let store = store_picker.pick_by_freq(options.frequency).clone();
+        let file_reader = FileChunkReaderOnObjectStore::new(path.clone(), store);
+        let parquet_reader =
+            AsyncParquetReader::new(path, hybrid_encoding, Arc::new(file_reader), options);
         let reader = ThreadedReader::new(
-            reader,
+            parquet_reader,
             options.runtime.clone(),
             options.background_read_parallelism,
         );
