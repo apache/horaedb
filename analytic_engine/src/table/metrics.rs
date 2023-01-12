@@ -100,10 +100,7 @@ lazy_static! {
         &["table"],
         exponential_buckets(0.01, 2.0, 13).unwrap()
     ).unwrap();
-    // End of histograms.
-}
 
-lazy_static! {
     // Buckets: 0.0005, 0.001, 0.002, .., 262.14, +Inf
     pub static ref PARTITION_TABLE_DURATION_HISTOGRAM: HistogramVec = register_histogram_vec!(
             "partition_table_duration",
@@ -112,6 +109,7 @@ lazy_static! {
             exponential_buckets(0.0005, 2.0, 20).unwrap()
         )
     .unwrap();
+    // End of histograms.
 }
 
 /// Table metrics.

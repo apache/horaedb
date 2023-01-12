@@ -50,7 +50,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         &self,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
-        let begin_instant = Instant::now();
+        let instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -85,7 +85,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
 
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .stream_read
-            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+            .observe(instant.saturating_elapsed().as_secs_f64());
         Ok(ReceiverStream::new(rx))
     }
 

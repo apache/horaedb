@@ -203,7 +203,7 @@ macro_rules! handle_request {
                 &self,
                 request: tonic::Request<$req_ty>,
             ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
-                let begin_instant = Instant::now();
+                let instant = Instant::now();
 
                 let router = self.router.clone();
                 let header = RequestHeader::from(request.metadata());
@@ -263,7 +263,7 @@ macro_rules! handle_request {
 
                 GRPC_HANDLER_DURATION_HISTOGRAM_VEC
                     .$handle_fn
-                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
+                    .observe(instant.saturating_elapsed().as_secs_f64());
                 Ok(tonic::Response::new(resp))
             }
         }

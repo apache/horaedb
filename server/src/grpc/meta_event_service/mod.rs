@@ -34,6 +34,7 @@ use table_engine::{
     table::{SchemaId, TableId},
     ANALYTIC_ENGINE_TYPE,
 };
+use tonic::Response;
 
 use crate::{
     grpc::{
@@ -59,7 +60,7 @@ macro_rules! handle_request {
                 &self,
                 request: tonic::Request<$req_ty>,
             ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
-                let begin_instant = Instant::now();
+                let instant = Instant::now();
                 let ctx = self.handler_ctx();
                 let handle = self.runtime.spawn(async move {
                     // FIXME: Data race about the operations on the shards should be taken into
@@ -93,8 +94,8 @@ macro_rules! handle_request {
 
                 META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
                     .$mod_name
-                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
-                Ok(tonic::Response::new(resp))
+                    .observe(instant.saturating_elapsed().as_secs_f64());
+                Ok(Response::new(resp))
             }
         }
     };
