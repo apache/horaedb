@@ -38,7 +38,7 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
     factory::{ReadFrequency, SstReaderOptions},
-    file_reader::AsyncFileReaderRef,
+    file_reader::FileChunkReaderRef,
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
@@ -55,7 +55,7 @@ use crate::sst::{
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
 struct ChunkReaderAdapter {
-    file_reader: AsyncFileReaderRef,
+    file_reader: FileChunkReaderRef,
 }
 
 #[async_trait]
@@ -69,7 +69,7 @@ pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     hybrid_encoding: bool,
-    file_reader: AsyncFileReaderRef,
+    file_reader: FileChunkReaderRef,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -89,7 +89,7 @@ impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
         hybrid_encoding: bool,
-        file_reader: AsyncFileReaderRef,
+        file_reader: FileChunkReaderRef,
         options: &SstReaderOptions,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
@@ -367,13 +367,13 @@ impl fmt::Debug for ReaderMetrics {
 }
 
 struct ParquetFileReaderAdapter {
-    file_reader: AsyncFileReaderRef,
+    file_reader: FileChunkReaderRef,
     meta_data: MetaData,
     metrics: ReaderMetrics,
 }
 
 impl ParquetFileReaderAdapter {
-    fn new(file_reader: AsyncFileReaderRef, meta_data: MetaData) -> Self {
+    fn new(file_reader: FileChunkReaderRef, meta_data: MetaData) -> Self {
         Self {
             file_reader,
             meta_data,

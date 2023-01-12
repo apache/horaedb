@@ -10,10 +10,10 @@ use bytes::Bytes;
 use common_util::error::{GenericError, GenericResult};
 use object_store::{ObjectStoreRef, Path};
 
-pub type AsyncFileReaderRef = Arc<dyn AsyncFileChunkReader>;
+pub type FileChunkReaderRef = Arc<dyn FileChunkReader>;
 
 #[async_trait]
-pub trait AsyncFileChunkReader: Send + Sync {
+pub trait FileChunkReader: Send + Sync {
     async fn file_size(&self) -> GenericResult<usize>;
 
     async fn get_byte_range(&self, range: Range<usize>) -> GenericResult<Bytes>;
@@ -21,13 +21,14 @@ pub trait AsyncFileChunkReader: Send + Sync {
     async fn get_byte_ranges(&self, ranges: &[Range<usize>]) -> GenericResult<Vec<Bytes>>;
 }
 
-pub struct FileReaderOnObjectStore {
+/// A [`FileChunkReader`] implementation based on [`ObjectStore`].
+pub struct FileChunkReaderOnObjectStore {
     path: Path,
     store: ObjectStoreRef,
     cached_file_size: RwLock<Option<usize>>,
 }
 
-impl FileReaderOnObjectStore {
+impl FileChunkReaderOnObjectStore {
     pub fn new(path: Path, store: ObjectStoreRef) -> Self {
         Self {
             path,
@@ -38,7 +39,7 @@ impl FileReaderOnObjectStore {
 }
 
 #[async_trait]
-impl AsyncFileChunkReader for FileReaderOnObjectStore {
+impl FileChunkReader for FileChunkReaderOnObjectStore {
     async fn file_size(&self) -> GenericResult<usize> {
         // check cached filed_size first
         {

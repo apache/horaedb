@@ -290,7 +290,7 @@ mod tests {
         row_iter::tests::build_record_batch_with_key,
         sst::{
             factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
-            file_reader::FileReaderOnObjectStore,
+            file_reader::FileChunkReaderOnObjectStore,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -386,7 +386,7 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let file_reader = FileReaderOnObjectStore::new(
+                let file_reader = FileChunkReaderOnObjectStore::new(
                     sst_file_path.clone(),
                     store_picker.default_store().clone(),
                 );
