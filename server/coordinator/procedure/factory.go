@@ -182,7 +182,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		return nil, errors.WithMessage(err, "pick partition table shards")
 	}
 
-	dataTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
+	subTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), len(request.SourceReq.PartitionTableInfo.SubTableNames), true)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick data table shards")
 	}
@@ -194,7 +194,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		storage:              f.storage,
 		req:                  request.SourceReq,
 		partitionTableShards: partitionTableShards,
-		dataTablesShards:     dataTableShards,
+		subTablesShards:      subTableShards,
 		onSucceeded:          request.OnSucceeded,
 		onFailed:             request.OnFailed,
 	})

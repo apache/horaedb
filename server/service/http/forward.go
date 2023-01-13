@@ -6,12 +6,14 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/member"
+	"github.com/CeresDB/ceresmeta/server/service"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -88,12 +90,15 @@ func (s *ForwardClient) forwardToLeader(req *http.Request) (*http.Response, bool
 
 // formatHttpAddr convert grpcAddr(http://127.0.0.1:8831) httpPort(5000) to httpAddr(127.0.0.1:5000).
 func formatHTTPAddr(grpcAddr string, httpPort int) (string, error) {
-	leaderAddr := strings.Split(grpcAddr, ":")
-	if len(leaderAddr) != 3 {
-		return "", errors.WithMessagef(ErrParseLeaderAddr, "gprc addr:%s", grpcAddr)
+	url, err := url.Parse(grpcAddr)
+	if err != nil {
+		return "", service.ErrParseURL.WithCause(err)
 	}
-	leaderAddr[2] = strconv.Itoa(httpPort)
-	leaderAddr = append(leaderAddr[:0], leaderAddr[0:]...)
-	httpAddr := strings.Join(leaderAddr, ":")
+	hostAndPort := strings.Split(url.Host, ":")
+	if len(hostAndPort) != 2 {
+		return "", errors.WithMessagef(ErrParseLeaderAddr, "parse leader addr, grpcAdd:%s", grpcAddr)
+	}
+	hostAndPort[1] = strconv.Itoa(httpPort)
+	httpAddr := strings.Join(hostAndPort, ":")
 	return httpAddr, nil
 }

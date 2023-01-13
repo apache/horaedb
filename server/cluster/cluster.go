@@ -4,7 +4,9 @@ package cluster
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"path"
 	"sync"
 
@@ -144,54 +146,55 @@ func (c *Cluster) DropTable(ctx context.Context, schemaName, tableName string) (
 
 // OpenTable will open an existing table on the specified shard.
 // The table to be opened must have been created.
-func (c *Cluster) OpenTable(ctx context.Context, request OpenTableRequest) error {
+func (c *Cluster) OpenTable(ctx context.Context, request OpenTableRequest) (ShardVersionUpdate, error) {
 	log.Info("open table", zap.String("request", fmt.Sprintf("%v", request)))
 
 	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
 		log.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return err
+		return ShardVersionUpdate{}, err
 	}
 
 	if !exists {
 		log.Error("the table to be opened does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, request.TableName)
+		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, request.TableName)
 	}
 
 	if !table.Partitioned {
 		log.Error("normal table cannot be opened on multiple shards", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return errors.WithMessagef(ErrOpenTable, "normal table cannot be opened on multiple shards, schemaName:%s, tableName:%s", request.SchemaName, request.TableName)
+		return ShardVersionUpdate{}, errors.WithMessagef(ErrOpenTable, "normal table cannot be opened on multiple shards, schemaName:%s, tableName:%s", request.SchemaName, request.TableName)
 	}
 
-	_, err = c.topologyManager.AddTable(ctx, request.ShardID, []storage.Table{table})
+	shardVersionUpdate, err := c.topologyManager.AddTable(ctx, request.ShardID, []storage.Table{table})
 	if err != nil {
-		return errors.WithMessage(err, "add table to topology")
+		return ShardVersionUpdate{}, errors.WithMessage(err, "add table to topology")
 	}
 
 	log.Info("open table finish", zap.String("request", fmt.Sprintf("%v", request)))
-	return nil
+	return shardVersionUpdate, nil
 }
 
-func (c *Cluster) CloseTable(ctx context.Context, request CloseTableRequest) error {
+func (c *Cluster) CloseTable(ctx context.Context, request CloseTableRequest) (ShardVersionUpdate, error) {
 	log.Info("close table", zap.String("request", fmt.Sprintf("%v", request)))
 
 	table, exists, err := c.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
 		log.Error("get table", zap.Error(err), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return err
+		return ShardVersionUpdate{}, err
 	}
 
 	if !exists {
 		log.Error("the table to be closed does not exist", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
-		return errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s, tableName:%s", request.SchemaName, request.TableName)
+		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s, tableName:%s", request.SchemaName, request.TableName)
 	}
 
-	if _, err := c.topologyManager.RemoveTable(ctx, request.ShardID, []storage.TableID{table.ID}); err != nil {
-		return err
+	shardVersionUpdate, err := c.topologyManager.RemoveTable(ctx, request.ShardID, []storage.TableID{table.ID})
+	if err != nil {
+		return ShardVersionUpdate{}, err
 	}
 
 	log.Info("close table finish", zap.String("request", fmt.Sprintf("%v", request)))
-	return nil
+	return shardVersionUpdate, nil
 }
 
 // MigrateTable used to migrate tables from old shard to new shard.
@@ -358,6 +361,15 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 				ShardNode: shardNode,
 			})
 		}
+		// If nodeShards length bigger than 1, randomly select a nodeShard.
+		nodeShardsResult := nodeShards
+		if len(nodeShards) > 1 {
+			selectIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nodeShards))))
+			if err != nil {
+				return RouteTablesResult{}, errors.WithMessage(err, "generate random node index")
+			}
+			nodeShardsResult = []ShardNodeWithVersion{nodeShards[selectIndex.Uint64()]}
+		}
 		table := tables[tableID]
 		routeEntries[table.Name] = RouteEntry{
 			Table: TableInfo{
@@ -366,7 +378,7 @@ func (c *Cluster) RouteTables(_ context.Context, schemaName string, tableNames [
 				SchemaID:   table.SchemaID,
 				SchemaName: schemaName,
 			},
-			NodeShards: nodeShards,
+			NodeShards: nodeShardsResult,
 		}
 	}
 	return RouteTablesResult{

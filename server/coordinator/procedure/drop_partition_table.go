@@ -322,16 +322,6 @@ func closePartitionTableCallback(event *fsm.Event) {
 		return
 	}
 
-	var shardNodes []storage.ShardNode
-	for _, version := range request.versions {
-		ret, err := request.cluster.GetShardNodesByShardID(version.ShardID)
-		if err != nil {
-			cancelEventWithLog(event, err, "get shard nodes by shard id")
-			return
-		}
-		shardNodes = append(shardNodes, ret...)
-	}
-
 	tableInfo := cluster.TableInfo{
 		ID:         request.table.ID,
 		Name:       request.table.Name,
@@ -339,14 +329,25 @@ func closePartitionTableCallback(event *fsm.Event) {
 		SchemaName: request.request.GetSchemaName(),
 	}
 
-	for _, shardNode := range shardNodes {
-		// Close partition table shard.
-		if err = request.dispatch.CloseTableOnShard(request.ctx, shardNode.NodeName, eventdispatch.CloseTableOnShardRequest{
-			UpdateShardInfo: eventdispatch.UpdateShardInfo{},
-			TableInfo:       tableInfo,
-		}); err != nil {
-			cancelEventWithLog(event, err, "close shard")
+	for _, version := range request.versions[1:] {
+		shardNodes, err := request.cluster.GetShardNodesByShardID(version.ShardID)
+		if err != nil {
+			cancelEventWithLog(event, err, "get shard nodes by shard id")
 			return
+		}
+		// Close partition table shard.
+		for _, shardNode := range shardNodes {
+			if err = request.dispatch.CloseTableOnShard(request.ctx, shardNode.NodeName, eventdispatch.CloseTableOnShardRequest{
+				UpdateShardInfo: eventdispatch.UpdateShardInfo{CurrShardInfo: cluster.ShardInfo{
+					ID:      shardNode.ID,
+					Role:    shardNode.ShardRole,
+					Version: version.CurrVersion,
+				}, PrevVersion: version.PrevVersion},
+				TableInfo: tableInfo,
+			}); err != nil {
+				cancelEventWithLog(event, err, "close shard")
+				return
+			}
 		}
 	}
 }

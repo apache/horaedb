@@ -105,7 +105,7 @@ func NewRegisteredNode(meta storage.Node, shardInfos []ShardInfo) RegisteredNode
 	}
 }
 
-func (n *RegisteredNode) IsOnline() bool {
+func (n RegisteredNode) IsOnline() bool {
 	return n.Node.State == storage.NodeStateOnline
 }
 

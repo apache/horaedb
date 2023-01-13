@@ -341,7 +341,12 @@ func (m *TopologyManagerImpl) GetShardNodesByTableIDs(tableIDs []storage.TableID
 			if !ok {
 				return GetShardNodesByTableIDsResult{}, ErrShardNotFound.WithCausef("shard id:%d", shardID)
 			}
-			tableShardNodes[tableID] = shardNodes
+
+			if _, exists := tableShardNodes[tableID]; !exists {
+				tableShardNodes[tableID] = shardNodes
+			} else {
+				tableShardNodes[tableID] = append(tableShardNodes[tableID], shardNodes...)
+			}
 
 			_, ok = shardViewVersions[shardID]
 			if !ok {

@@ -88,6 +88,22 @@ func (d *DispatchImpl) DropTableOnShard(ctx context.Context, addr string, reques
 	return nil
 }
 
+func (d *DispatchImpl) OpenTableOnShard(ctx context.Context, addr string, request OpenTableOnShardRequest) error {
+	client, err := d.getMetaEventClient(ctx, addr)
+	if err != nil {
+		return err
+	}
+
+	resp, err := client.OpenTableOnShard(ctx, convertOpenTableOnShardRequestToPB(request))
+	if err != nil {
+		return errors.WithMessagef(err, "open table on shard, addr:%s, request:%v", addr, request)
+	}
+	if resp.GetHeader().Code != 0 {
+		return ErrDispatch.WithCausef("open table on shard, addr:%s, request:%v, err:%s", addr, request, resp.GetHeader().GetError())
+	}
+	return nil
+}
+
 func (d *DispatchImpl) CloseTableOnShard(ctx context.Context, addr string, request CloseTableOnShardRequest) error {
 	client, err := d.getMetaEventClient(ctx, addr)
 	if err != nil {
@@ -146,6 +162,13 @@ func convertDropTableOnShardRequestToPB(request DropTableOnShardRequest) *metaev
 
 func convertCloseTableOnShardRequestToPB(request CloseTableOnShardRequest) *metaeventpb.CloseTableOnShardRequest {
 	return &metaeventpb.CloseTableOnShardRequest{
+		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
+		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
+	}
+}
+
+func convertOpenTableOnShardRequestToPB(request OpenTableOnShardRequest) *metaeventpb.OpenTableOnShardRequest {
+	return &metaeventpb.OpenTableOnShardRequest{
 		UpdateShardInfo: convertUpdateShardInfoToPB(request.UpdateShardInfo),
 		TableInfo:       cluster.ConvertTableInfoToPB(request.TableInfo),
 	}
