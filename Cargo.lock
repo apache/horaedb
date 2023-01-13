@@ -4009,9 +4009,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "arrow",
  "arrow_ext 1.0.0-alpha02",
- "async-trait",
  "bytes 1.2.1",
- "common_util",
  "datafusion",
  "datafusion-expr",
  "log",
