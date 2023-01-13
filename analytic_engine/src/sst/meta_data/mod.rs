@@ -10,12 +10,12 @@ use proto::sst as sst_pb;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
-use super::factory::SstReaderHint;
+use super::factory::SstReadHint;
 use crate::{
     space::SpaceId,
     sst::{
         factory,
-        factory::{FactoryRef, ObjectStorePickerRef, SstReaderOptions},
+        factory::{FactoryRef, ObjectStorePickerRef, SstReadOptions},
         file::FileHandle,
         parquet::{
             self, encoding,
@@ -125,7 +125,7 @@ pub struct SstMetaReader {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub factory: FactoryRef,
-    pub read_opts: SstReaderOptions,
+    pub read_opts: SstReadOptions,
     pub store_picker: ObjectStorePickerRef,
 }
 
@@ -135,7 +135,7 @@ impl SstMetaReader {
         let mut sst_metas = Vec::with_capacity(files.len());
         for f in files {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
-            let read_hint = SstReaderHint {
+            let read_hint = SstReadHint {
                 file_size: Some(f.size() as usize),
                 file_format: Some(f.storage_format()),
             };

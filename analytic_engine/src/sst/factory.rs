@@ -62,14 +62,14 @@ pub trait Factory: Send + Sync + Debug {
     async fn create_reader<'a>(
         &self,
         path: &'a Path,
-        options: &SstReaderOptions,
-        hint: SstReaderHint,
+        options: &SstReadOptions,
+        hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
     async fn create_builder<'a>(
         &self,
-        options: &SstBuilderOptions,
+        options: &SstBuildOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstBuilder + Send + 'a>>;
@@ -84,7 +84,7 @@ pub enum ReadFrequency {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct SstReaderHint {
+pub struct SstReadHint {
     /// Hint for the size of the sst file. It may avoid some io if provided.
     pub file_size: Option<usize>,
     /// Hint for the storage format of the sst file. It may avoid some io if
@@ -93,7 +93,7 @@ pub struct SstReaderHint {
 }
 
 #[derive(Debug, Clone)]
-pub struct SstReaderOptions {
+pub struct SstReadOptions {
     pub read_batch_row_num: usize,
     pub reverse: bool,
     pub frequency: ReadFrequency,
@@ -110,7 +110,7 @@ pub struct SstReaderOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct SstBuilderOptions {
+pub struct SstBuildOptions {
     pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
@@ -124,8 +124,8 @@ impl Factory for FactoryImpl {
     async fn create_reader<'a>(
         &self,
         path: &'a Path,
-        options: &SstReaderOptions,
-        hint: SstReaderHint,
+        options: &SstReadOptions,
+        hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = match hint.file_format {
@@ -151,7 +151,7 @@ impl Factory for FactoryImpl {
 
     async fn create_builder<'a>(
         &self,
-        options: &SstBuilderOptions,
+        options: &SstBuildOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstBuilder + Send + 'a>> {

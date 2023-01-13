@@ -22,7 +22,7 @@ use crate::{
             self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
             SstBuilder, SstInfo, Storage,
         },
-        factory::{ObjectStorePickerRef, SstBuilderOptions},
+        factory::{ObjectStorePickerRef, SstBuildOptions},
         meta_data::SstMetaData,
         parquet::{
             encoding::ParquetEncoder,
@@ -50,7 +50,7 @@ impl<'a> ParquetSstBuilder<'a> {
         path: &'a Path,
         hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstBuilderOptions,
+        options: &SstBuildOptions,
     ) -> Self {
         let store = store_picker.default_store();
         Self {
@@ -289,7 +289,7 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
+            factory::{Factory, FactoryImpl, ReadFrequency, SstBuildOptions, SstReadOptions},
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -315,7 +315,7 @@ mod tests {
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
-            let sst_builder_options = SstBuilderOptions {
+            let sst_builder_options = SstBuildOptions {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
                 compression: table_options::Compression::Uncompressed,
@@ -373,7 +373,7 @@ mod tests {
             assert_eq!(15, sst_info.row_num);
 
             // read sst back to test
-            let sst_reader_options = SstReaderOptions {
+            let sst_read_options = SstReadOptions {
                 read_batch_row_num: 5,
                 reverse: false,
                 frequency: ReadFrequency::Frequent,
@@ -386,12 +386,8 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let mut reader = AsyncParquetReader::new(
-                    &sst_file_path,
-                    &sst_reader_options,
-                    None,
-                    &store_picker,
-                );
+                let mut reader =
+                    AsyncParquetReader::new(&sst_file_path, &sst_read_options, None, &store_picker);
                 let mut sst_meta_readback = reader
                     .meta_data()
                     .await

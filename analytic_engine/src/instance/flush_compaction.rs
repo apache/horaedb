@@ -44,7 +44,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{self, ReadFrequency, SstBuilderOptions, SstReaderOptions},
+        factory::{self, ReadFrequency, SstBuildOptions, SstReadOptions},
         file::FileMeta,
         meta_data::{self, SstMetaData, SstMetaReader},
         parquet::meta_data::ParquetMetaData,
@@ -617,7 +617,7 @@ impl Instance {
         let mut sst_handlers = Vec::with_capacity(time_ranges.len());
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
-        let sst_builder_options = SstBuilderOptions {
+        let sst_builder_options = SstBuildOptions {
             storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
@@ -760,7 +760,7 @@ impl Instance {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuilderOptions {
+        let sst_builder_options = SstBuildOptions {
             storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
@@ -924,7 +924,7 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: false,
             frequency: ReadFrequency::Once,
@@ -950,7 +950,7 @@ impl SpaceStore {
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 sst_factory: &self.sst_factory,
-                sst_reader_options: sst_reader_options.clone(),
+                sst_read_options: sst_read_options.clone(),
                 store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -979,7 +979,7 @@ impl SpaceStore {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 factory: self.sst_factory.clone(),
-                read_opts: sst_reader_options,
+                read_opts: sst_read_options,
                 store_picker: self.store_picker.clone(),
             };
             let sst_metas = meta_reader
@@ -994,7 +994,7 @@ impl SpaceStore {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuilderOptions {
+        let sst_builder_options = SstBuildOptions {
             storage_format_hint,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,

@@ -30,8 +30,7 @@ use crate::{
     space::SpaceId,
     sst::{
         factory::{
-            self, FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderHint,
-            SstReaderOptions,
+            self, FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadHint, SstReadOptions,
         },
         file::FileHandle,
     },
@@ -273,7 +272,7 @@ pub async fn filtered_stream_from_sst_file(
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
-    sst_reader_options: &SstReaderOptions,
+    sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_sst_file(
@@ -281,18 +280,18 @@ pub async fn filtered_stream_from_sst_file(
         table_id,
         sst_file,
         sst_factory,
-        sst_reader_options,
+        sst_read_options,
         store_picker,
     )
     .await
     .and_then(|origin_stream| {
         filter_stream(
             origin_stream,
-            sst_reader_options
+            sst_read_options
                 .projected_schema
                 .as_record_schema_with_key()
                 .to_arrow_schema_ref(),
-            sst_reader_options.predicate.as_ref(),
+            sst_read_options.predicate.as_ref(),
         )
     })
 }
@@ -303,18 +302,18 @@ pub async fn stream_from_sst_file(
     table_id: TableId,
     sst_file: &FileHandle,
     sst_factory: &SstFactoryRef,
-    sst_reader_options: &SstReaderOptions,
+    sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
 ) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
 
-    let read_hint = SstReaderHint {
+    let read_hint = SstReadHint {
         file_size: Some(sst_file.size() as usize),
         file_format: Some(sst_file.storage_format()),
     };
     let mut sst_reader = sst_factory
-        .create_reader(&path, sst_reader_options, read_hint, store_picker)
+        .create_reader(&path, sst_read_options, read_hint, store_picker)
         .await
         .context(CreateSstReader)?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;

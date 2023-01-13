@@ -6,7 +6,7 @@ use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::sst::{
     factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderHint, SstReaderOptions,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
     },
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
@@ -23,7 +23,7 @@ pub struct SstBench {
     pub sst_file_name: String,
     max_projections: usize,
     schema: Schema,
-    sst_reader_options: SstReaderOptions,
+    sst_read_options: SstReadOptions,
     runtime: Arc<Runtime>,
 }
 
@@ -39,7 +39,7 @@ impl SstBench {
         let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
             frequency: ReadFrequency::Frequent,
@@ -57,7 +57,7 @@ impl SstBench {
             sst_file_name: config.sst_file_name,
             max_projections,
             schema,
-            sst_reader_options,
+            sst_read_options,
             runtime,
         }
     }
@@ -71,7 +71,7 @@ impl SstBench {
         let projected_schema =
             util::projected_schema_by_number(&self.schema, i, self.max_projections);
 
-        self.sst_reader_options.projected_schema = projected_schema;
+        self.sst_read_options.projected_schema = projected_schema;
     }
 
     pub fn run_bench(&self) {
@@ -84,8 +84,8 @@ impl SstBench {
             let mut sst_reader = sst_factory
                 .create_reader(
                     &sst_path,
-                    &self.sst_reader_options,
-                    SstReaderHint::default(),
+                    &self.sst_read_options,
+                    SstReadHint::default(),
                     &store_picker,
                 )
                 .await

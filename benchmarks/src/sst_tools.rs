@@ -16,7 +16,7 @@ use analytic_engine::{
         builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstBuilderOptions, SstReaderHint, SstReaderOptions,
+            SstBuildOptions, SstReadHint, SstReadOptions,
         },
         file::FilePurgeQueue,
         manager::FileId,
@@ -47,7 +47,7 @@ struct SstConfig {
 
 async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBatchStream) {
     let sst_factory = FactoryImpl;
-    let sst_builder_options = SstBuilderOptions {
+    let sst_builder_options = SstBuildOptions {
         storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
@@ -95,7 +95,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema().clone());
-    let sst_reader_options = SstReaderOptions {
+    let sst_read_options = SstReadOptions {
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
         frequency: ReadFrequency::Once,
@@ -108,7 +108,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     };
 
     let record_batch_stream =
-        sst_to_record_batch_stream(&sst_reader_options, &input_path, &store).await;
+        sst_to_record_batch_stream(&sst_read_options, &input_path, &store).await;
 
     let output_sst_config = SstConfig {
         sst_meta,
@@ -124,7 +124,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 }
 
 async fn sst_to_record_batch_stream(
-    sst_reader_options: &SstReaderOptions,
+    sst_read_options: &SstReadOptions,
     input_path: &Path,
     store: &ObjectStoreRef,
 ) -> RecordBatchStream {
@@ -133,8 +133,8 @@ async fn sst_to_record_batch_stream(
     let mut sst_reader = sst_factory
         .create_reader(
             input_path,
-            sst_reader_options,
-            SstReaderHint::default(),
+            sst_read_options,
+            SstReadHint::default(),
             &store_picker,
         )
         .await
@@ -202,7 +202,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
-    let sst_reader_options = SstReaderOptions {
+    let sst_read_options = SstReadOptions {
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
         frequency: ReadFrequency::Once,
@@ -227,7 +227,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_reader_options: sst_reader_options.clone(),
+            sst_read_options: sst_read_options.clone(),
             store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
@@ -252,7 +252,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             space_id,
             table_id,
             factory: sst_factory,
-            read_opts: sst_reader_options,
+            read_opts: sst_read_options,
             store_picker: store_picker.clone(),
         };
         let sst_metas = meta_reader.fetch_metas(&file_handles).await.unwrap();

@@ -36,7 +36,7 @@ use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
-    factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+    factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
@@ -77,7 +77,7 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
-        options: &SstReaderOptions,
+        options: &SstReadOptions,
         file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Self {

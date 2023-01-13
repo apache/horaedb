@@ -9,8 +9,7 @@ use analytic_engine::{
     space::SpaceId,
     sst::{
         factory::{
-            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderHint,
-            SstReaderOptions,
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
         },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
@@ -101,7 +100,7 @@ pub async fn load_sst_to_memtable(
     memtable: &MemTableRef,
     runtime: Arc<Runtime>,
 ) {
-    let sst_reader_options = SstReaderOptions {
+    let sst_read_options = SstReadOptions {
         read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,
@@ -117,8 +116,8 @@ pub async fn load_sst_to_memtable(
     let mut sst_reader = sst_factory
         .create_reader(
             sst_path,
-            &sst_reader_options,
-            SstReaderHint::default(),
+            &sst_read_options,
+            SstReadHint::default(),
             &store_picker,
         )
         .await
