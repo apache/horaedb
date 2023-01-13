@@ -16,6 +16,7 @@ pub enum Error {
     ReadHeaderBytes {
         source: object_store::ObjectStoreError,
     },
+
     #[snafu(display(
         "Unknown header, header value:{:?}.\nBacktrace:\n{}",
         header_value,
@@ -49,6 +50,7 @@ impl<'a> HeaderParser<'a> {
         Self { path, store }
     }
 
+    /// Detect the storage format by parsing header of the sst.
     pub async fn parse(&self) -> Result<StorageFormat> {
         let header_value = self
             .store
