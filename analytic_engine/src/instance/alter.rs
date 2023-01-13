@@ -12,6 +12,7 @@ use wal::manager::WriteContext;
 
 use crate::{
     instance::{
+        self,
         engine::{
             AlterDroppedTable, EncodePayloads, FlushTable, GetLogBatchEncoder, InvalidOptions,
             InvalidPreVersion, InvalidSchemaVersion, OperateByWriteWorker, Result, WriteManifest,
@@ -122,19 +123,21 @@ impl Instance {
         let payload = WritePayload::AlterSchema(&alter_schema_pb);
 
         // Encode payloads
-        let wal_location = table_data.wal_location();
+        let table_location = table_data.table_location();
+        let wal_location =
+            instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder =
             self.space_store
                 .wal_manager
                 .encoder(wal_location)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    wal_location: table_data.wal_location(),
+                    wal_location,
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            wal_location: table_data.wal_location(),
+            wal_location,
         })?;
 
         // Write log batch
@@ -159,7 +162,7 @@ impl Instance {
         let update = MetaUpdate::AlterSchema(manifest_update);
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.wal_location(), update))
+            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,
@@ -290,19 +293,21 @@ impl Instance {
         let payload = WritePayload::AlterOption(&alter_options_pb);
 
         // Encode payload
-        let region_id = table_data.wal_location();
+        let table_location = table_data.table_location();
+        let wal_location =
+            instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder =
             self.space_store
                 .wal_manager
-                .encoder(region_id)
+                .encoder(wal_location)
                 .context(GetLogBatchEncoder {
                     table: &table_data.name,
-                    wal_location: table_data.wal_location(),
+                    wal_location,
                 })?;
 
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
-            wal_location: table_data.wal_location(),
+            wal_location,
         })?;
 
         // Write log batch
@@ -323,7 +328,7 @@ impl Instance {
         self.space_store
             .manifest
             .store_update(MetaUpdateRequest::new(
-                table_data.wal_location(),
+                table_data.table_location(),
                 meta_update,
             ))
             .await

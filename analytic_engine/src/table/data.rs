@@ -17,6 +17,7 @@ use std::{
 use arc_swap::ArcSwap;
 use arena::CollectorRef;
 use common_types::{
+    self,
     schema::{Schema, Version},
     table::{ClusterVersion, ShardId},
     time::{TimeRange, Timestamp},
@@ -27,7 +28,6 @@ use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
-use wal::manager::{RegionId, WalLocation};
 
 use crate::{
     instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
@@ -75,7 +75,7 @@ define_result!(Error);
 
 pub type MemTableId = u64;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
     pub cluster_version: ClusterVersion,
@@ -501,15 +501,18 @@ impl TableData {
         self.table_options().is_expired(timestamp)
     }
 
-    /// Get the table's wal location of this table.
-    #[inline]
-    pub fn wal_location(&self) -> WalLocation {
-        let region_id = self.shard_info.shard_id as RegionId;
-        let region_version = self.shard_info.cluster_version;
-        let table_id = self.id;
-
-        WalLocation::new(region_id, region_version, table_id.as_u64())
+    pub fn table_location(&self) -> TableLocation {
+        TableLocation {
+            id: self.id.as_u64(),
+            shard_info: self.shard_info,
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TableLocation {
+    pub id: common_types::table::TableId,
+    pub shard_info: TableShardInfo,
 }
 
 /// Table data reference

@@ -29,6 +29,7 @@ use crate::{
         CompactionInputFiles, CompactionTask, ExpiredFiles, TableCompactionRequest, WaitError,
     },
     instance::{
+        self,
         write_worker::{self, CompactTableCommand, FlushTableCommand, WorkerLocal},
         Instance, SpaceStore,
     },
@@ -312,7 +313,7 @@ impl Instance {
             self.space_store
                 .manifest
                 .store_update(MetaUpdateRequest::new(
-                    table_data.wal_location(),
+                    table_data.table_location(),
                     meta_update,
                 ))
                 .await
@@ -555,7 +556,7 @@ impl Instance {
         self.space_store
             .manifest
             .store_update(MetaUpdateRequest::new(
-                table_data.wal_location(),
+                table_data.table_location(),
                 meta_update,
             ))
             .await
@@ -572,12 +573,15 @@ impl Instance {
         table_data.current_version().apply_edit(edit);
 
         // Mark sequence <= flushed_sequence to be deleted.
+        let table_location = table_data.table_location();
+        let wal_location =
+            instance::create_wal_location(table_location.id, table_location.shard_info);
         self.space_store
             .wal_manager
-            .mark_delete_entries_up_to(table_data.wal_location(), flushed_sequence)
+            .mark_delete_entries_up_to(wal_location, flushed_sequence)
             .await
             .context(PurgeWal {
-                wal_location: table_data.wal_location(),
+                wal_location,
                 sequence: flushed_sequence,
             })?;
 
@@ -858,7 +862,7 @@ impl SpaceStore {
         let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
         self.manifest
             .store_update(MetaUpdateRequest::new(
-                table_data.wal_location(),
+                table_data.table_location(),
                 meta_update,
             ))
             .await

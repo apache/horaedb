@@ -21,7 +21,7 @@ use tokio::sync::Mutex;
 use wal::{
     log_batch::LogEntry,
     manager::{
-        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, RegionId, SequenceNumber,
+        BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, SequenceNumber,
         WalLocation, WalManagerRef, WriteContext,
     },
 };
@@ -73,9 +73,13 @@ pub enum Error {
     #[snafu(display("Failed to clean wal, err:{}", source))]
     CleanWal { source: wal::manager::Error },
 
-    #[snafu(display("Failed to clean snapshot, region_id:{}, err:{}", region_id, source))]
+    #[snafu(display(
+        "Failed to clean snapshot, wal_location:{:?}, err:{}",
+        wal_location,
+        source
+    ))]
     CleanSnapshot {
-        region_id: RegionId,
+        wal_location: WalLocation,
         source: wal::manager::Error,
     },
 
@@ -789,6 +793,7 @@ mod tests {
             },
             Manifest,
         },
+        table::data::{TableLocation, TableShardInfo},
         TableOptions,
     };
 
@@ -973,15 +978,20 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let shard_info = TableShardInfo {
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+            };
+
+            let table_location = TableLocation {
+                id: table_id.as_u64(),
+                shard_info,
+            };
+
             let add_table =
                 self.meta_update_add_table_with_partition_info(table_id, partition_info);
             manifest
-                .store_update(MetaUpdateRequest::new(location, add_table.clone()))
+                .store_update(MetaUpdateRequest::new(table_location, add_table.clone()))
                 .await
                 .unwrap();
             manifest_data_builder.apply_update(add_table).unwrap();
@@ -993,14 +1003,19 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let shard_info = TableShardInfo {
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+            };
+
+            let table_location = TableLocation {
+                id: table_id.as_u64(),
+                shard_info,
+            };
+
             let drop_table = self.meta_update_drop_table(table_id);
             manifest
-                .store_update(MetaUpdateRequest::new(location, drop_table.clone()))
+                .store_update(MetaUpdateRequest::new(table_location, drop_table.clone()))
                 .await
                 .unwrap();
             manifest_data_builder.apply_update(drop_table).unwrap();
@@ -1013,14 +1028,19 @@ mod tests {
             manifest_data_builder: &mut TableManifestDataBuilder,
             manifest: &ManifestImpl,
         ) {
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let shard_info = TableShardInfo {
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+            };
+
+            let table_location = TableLocation {
+                id: table_id.as_u64(),
+                shard_info,
+            };
+
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
             manifest
-                .store_update(MetaUpdateRequest::new(location, version_edit.clone()))
+                .store_update(MetaUpdateRequest::new(table_location, version_edit.clone()))
                 .await
                 .unwrap();
             manifest_data_builder.apply_update(version_edit).unwrap();
@@ -1064,14 +1084,22 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let shard_info = TableShardInfo {
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+            };
+
+            let table_location = TableLocation {
+                id: table_id.as_u64(),
+                shard_info,
+            };
+
             let alter_options = self.meta_update_alter_table_options(table_id);
             manifest
-                .store_update(MetaUpdateRequest::new(location, alter_options.clone()))
+                .store_update(MetaUpdateRequest::new(
+                    table_location,
+                    alter_options.clone(),
+                ))
                 .await
                 .unwrap();
             manifest_data_builder.apply_update(alter_options).unwrap();
@@ -1084,14 +1112,19 @@ mod tests {
         ) {
             let manifest = self.open_manifest().await;
 
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let shard_info = TableShardInfo {
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+            };
+
+            let table_location = TableLocation {
+                id: table_id.as_u64(),
+                shard_info,
+            };
+
             let alter_schema = self.meta_update_alter_table_schema(table_id);
             manifest
-                .store_update(MetaUpdateRequest::new(location, alter_schema.clone()))
+                .store_update(MetaUpdateRequest::new(table_location, alter_schema.clone()))
                 .await
                 .unwrap();
             manifest_data_builder.apply_update(alter_schema).unwrap();
@@ -1114,7 +1147,7 @@ mod tests {
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
 
             let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
+                table_id.as_u64(),
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1199,7 +1232,7 @@ mod tests {
                 linear: false,
             }));
             let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
+                table_id.as_u64(),
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1238,7 +1271,7 @@ mod tests {
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
             let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
+                table_id.as_u64(),
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1396,7 +1429,7 @@ mod tests {
         };
 
         let location = WalLocation::new(
-            DEFAULT_SHARD_ID as RegionId,
+            table_id.as_u64(),
             DEFAULT_CLUSTER_VERSION,
             table_id.as_u64(),
         );

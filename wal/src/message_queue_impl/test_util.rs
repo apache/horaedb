@@ -14,13 +14,13 @@ use super::{
 use crate::{
     kv_encoder::LogBatchEncoder,
     log_batch::LogWriteBatch,
-    manager::{RegionId, RegionVersion, WalLocation},
+    manager::WalLocation,
     tests::util::{TestPayload, TestPayloadDecoder},
 };
 
 pub struct TestContext<Mq: MessageQueue> {
-    pub region_id: RegionId,
-    pub region_version: RegionVersion,
+    pub region_id: u64,
+    pub region_version: u64,
     pub table_id: TableId,
     pub test_datas: Vec<(TableId, TestDataOfTable)>,
     pub test_payload_encoder: TestPayloadDecoder,
@@ -47,8 +47,8 @@ impl TestDataOfTable {
 impl<Mq: MessageQueue> TestContext<Mq> {
     pub async fn new(
         namespace: String,
-        region_id: RegionId,
-        region_version: RegionVersion,
+        region_id: u64,
+        region_version: u64,
         table_id: TableId,
         test_datas: Vec<(TableId, Vec<u32>)>,
         message_queue: Arc<Mq>,

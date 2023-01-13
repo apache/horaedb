@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::LogWriteBatch,
-    manager::{self, RegionId},
+    manager::{self},
     message_queue_impl,
 };
 
@@ -31,7 +31,7 @@ pub enum Error {
         backtrace
     ))]
     MarkDeleteTo {
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         msg: String,
         backtrace: Backtrace,
@@ -44,7 +44,7 @@ pub enum Error {
         backtrace
     ))]
     GetTableMeta {
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         backtrace: Backtrace,
     },
@@ -64,7 +64,7 @@ pub enum Error {
         source
     ))]
     WriteWithCause {
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -78,7 +78,7 @@ pub enum Error {
         backtrace
     ))]
     WriteNoCause {
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         msg: String,
         backtrace: Backtrace,
@@ -91,7 +91,7 @@ define_result!(Error);
 #[derive(Default, Debug)]
 pub struct RegionContext {
     /// Id of region
-    region_id: RegionId,
+    region_id: u64,
 
     /// Region context inner
     inner: RwLock<RegionContextInner>,
@@ -181,7 +181,7 @@ impl RegionContext {
         }
     }
 
-    pub fn region_id(&self) -> RegionId {
+    pub fn region_id(&self) -> u64 {
         self.region_id
     }
 }
@@ -210,7 +210,7 @@ impl TableContext {
     async fn write_logs<M: MessageQueue>(
         &self,
         ctx: &manager::WriteContext,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         log_batch: &LogWriteBatch,
         table_write_ctx: &TableWriteContext<M>,
@@ -228,11 +228,7 @@ impl TableContext {
             .await
     }
 
-    async fn mark_delete_to(
-        &self,
-        region_id: RegionId,
-        sequence_num: SequenceNumber,
-    ) -> Result<()> {
+    async fn mark_delete_to(&self, region_id: u64, sequence_num: SequenceNumber) -> Result<()> {
         let writer = self.writer.lock().await;
         writer
             .mark_delete_to(region_id, &self.meta, sequence_num)
@@ -439,13 +435,13 @@ impl OffsetRange {
 #[allow(unused)]
 #[derive(Debug)]
 pub struct RegionContextBuilder {
-    region_id: RegionId,
+    region_id: u64,
     table_metas: HashMap<TableId, TableMetaInner>,
 }
 
 #[allow(unused)]
 impl RegionContextBuilder {
-    pub fn new(region_id: RegionId) -> Self {
+    pub fn new(region_id: u64) -> Self {
         Self {
             region_id,
             table_metas: HashMap::default(),
@@ -572,7 +568,7 @@ impl TableWriter {
         &self,
         table_meta: &TableMeta,
         _ctx: &manager::WriteContext,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         log_batch: &LogWriteBatch,
         table_write_ctx: &TableWriteContext<M>,
@@ -656,7 +652,7 @@ impl TableWriter {
 
     async fn mark_delete_to(
         &self,
-        region_id: RegionId,
+        region_id: u64,
         table_meta: &TableMeta,
         sequence_num: SequenceNumber,
     ) -> Result<()> {

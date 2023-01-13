@@ -14,13 +14,14 @@ use table_engine::{engine::OpenTableRequest, remote::RemoteEngineRef};
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{ReadBoundary, ReadContext, ReadRequest, RegionId, WalLocation, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, WalLocation, WalManagerRef},
 };
 
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
     instance::{
+        self,
         engine::{
             ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
             RecoverTableData, Result,
@@ -215,17 +216,13 @@ impl Instance {
         info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
+        let table_id = request.table_id.as_u64();
         let manifest_data = self
             .space_store
             .manifest
             .load_data(
-                WalLocation::new(
-                    request.shard_id as RegionId,
-                    request.cluster_version,
-                    request.table_id.as_u64(),
-                ),
-                // Avoid snapshotting when recover table data.
-                false,
+                WalLocation::new(table_id, request.cluster_version, table_id),
+                true,
             )
             .await
             .context(ReadMetaUpdate {
@@ -308,13 +305,16 @@ impl Instance {
             replay_batch_size, table_data.id, table_data.shard_info
         );
 
+        let table_location = table_data.table_location();
+        let wal_location =
+            instance::create_wal_location(table_location.id, table_location.shard_info);
         let read_req = ReadRequest {
-            location: table_data.wal_location(),
+            location: wal_location,
             start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
             end: ReadBoundary::Max,
         };
 
-        // Read all wal of current table
+        // Read all wal of current table.
         let mut log_iter = self
             .space_store
             .wal_manager

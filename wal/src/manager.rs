@@ -135,7 +135,7 @@ pub struct WalLocation {
 }
 
 impl WalLocation {
-    pub fn new(region_id: RegionId, region_version: RegionVersion, table_id: TableId) -> Self {
+    pub fn new(region_id: u64, region_version: u64, table_id: TableId) -> Self {
         let versioned_region_id = VersionedRegionId {
             version: region_version,
             id: region_id,
@@ -150,18 +150,20 @@ impl WalLocation {
 
 /// Region id with version
 ///
-/// The `version` may be mapped to cluster version(while shard moved from nodes,
+/// Region is used to describe a set of table's log unit.
+///
+/// The `id` is used to identify the `Region`, can be mapped to table's related
+/// information(e.g. `shard id`, `table id`).
+///
+/// The `version` is introduced for solving the following bug:
+///     https://github.com/CeresDB/ceresdb/issues/441.
+/// It may be mapped to cluster version(while shard moved from nodes,
 /// it may changed to mark this moving) now.
-/// Introduce this field is for solving the following bug: https://github.com/CeresDB/ceresdb/issues/441
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VersionedRegionId {
-    pub version: RegionVersion,
-    pub id: RegionId,
+    pub version: u64,
+    pub id: u64,
 }
-
-pub type RegionId = u64;
-pub const MAX_REGION_ID: RegionId = u64::MAX;
-pub type RegionVersion = u64;
 
 #[derive(Debug, Clone)]
 pub struct WriteContext {
@@ -258,7 +260,7 @@ impl Default for ReadRequest {
     fn default() -> Self {
         Self {
             location: WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
+                DEFAULT_SHARD_ID as u64,
                 DEFAULT_CLUSTER_VERSION,
                 TableId::MIN,
             ),
