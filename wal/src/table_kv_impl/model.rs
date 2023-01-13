@@ -648,7 +648,7 @@ mod tests {
         );
 
         let table_unit_entry = TableUnitEntry {
-            table_id: crate::manager::MAX_REGION_ID,
+            table_id: TableId::MAX,
             start_sequence: common_types::MAX_SEQUENCE_NUMBER,
         };
 

@@ -10,13 +10,10 @@ use log::info;
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
-use crate::{
-    manager::RegionId,
-    message_queue_impl::{
-        self,
-        encoding::{MetaEncoding, MetaKey},
-        region_context::RegionMetaSnapshot,
-    },
+use crate::message_queue_impl::{
+    self,
+    encoding::{MetaEncoding, MetaKey},
+    region_context::RegionMetaSnapshot,
 };
 
 #[derive(Debug, Snafu)]
@@ -28,7 +25,7 @@ pub enum Error {
         source
     ))]
     SyncSnapshotWithCause {
-        region_id: RegionId,
+        region_id: u64,
         topic: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -41,7 +38,7 @@ pub enum Error {
         backtrace
     ))]
     SyncSnapshotNoCause {
-        region_id: RegionId,
+        region_id: u64,
         topic: String,
         msg: String,
         backtrace: Backtrace,
@@ -54,7 +51,7 @@ define_result!(Error);
 ///
 /// It will be locked before being called to keep the order of snapshots.
 pub struct SnapshotSynchronizer<Mq: MessageQueue> {
-    region_id: RegionId,
+    region_id: u64,
     message_queue: Arc<Mq>,
     meta_topic: String,
     meta_encoding: MetaEncoding,
@@ -62,7 +59,7 @@ pub struct SnapshotSynchronizer<Mq: MessageQueue> {
 
 impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
     pub fn new(
-        region_id: RegionId,
+        region_id: u64,
         message_queue: Arc<Mq>,
         meta_topic: String,
         meta_encoding: MetaEncoding,
