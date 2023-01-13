@@ -320,6 +320,7 @@ pub async fn stream_from_sst_file(
             sst_file.storage_format(),
             store_picker,
         )
+        .await
         .with_context(|| SstReaderNotFound {
             options: sst_reader_options.clone(),
         })?;

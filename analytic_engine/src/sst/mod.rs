@@ -5,6 +5,7 @@
 pub mod builder;
 pub mod factory;
 pub mod file;
+pub mod header;
 pub mod manager;
 pub mod meta_data;
 pub mod metrics;

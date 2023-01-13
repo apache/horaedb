@@ -141,6 +141,7 @@ impl SstMetaReader {
                     f.storage_format(),
                     &self.store_picker,
                 )
+                .await
                 .context(BuildSstReader)?;
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;
             sst_metas.push(meta_data.clone());

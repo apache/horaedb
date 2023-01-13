@@ -65,6 +65,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
 
     let mut builder = sst_factory
         .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+        .await
         .unwrap();
     builder
         .build(RequestId::next_id(), &config.sst_meta, record_batch_stream)
@@ -137,6 +138,7 @@ async fn sst_to_record_batch_stream(
             StorageFormat::Columnar,
             &store_picker,
         )
+        .await
         .unwrap();
 
     let sst_stream = sst_reader.read().await.unwrap();

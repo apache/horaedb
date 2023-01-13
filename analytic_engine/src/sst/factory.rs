@@ -4,11 +4,14 @@
 
 use std::{fmt::Debug, sync::Arc};
 
+use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
 use common_util::runtime::Runtime;
+use log::error;
 use object_store::{ObjectStoreRef, Path};
 use table_engine::predicate::PredicateRef;
 
+use super::header::HeaderParser;
 use crate::{
     sst::{
         builder::SstBuilder,
@@ -42,8 +45,9 @@ impl ObjectStorePicker for ObjectStoreRef {
     }
 }
 
+#[async_trait]
 pub trait Factory: Send + Sync + Debug {
-    fn new_sst_reader<'a>(
+    async fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
@@ -51,7 +55,7 @@ pub trait Factory: Send + Sync + Debug {
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>>;
 
-    fn new_sst_builder<'a>(
+    async fn new_sst_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
@@ -94,27 +98,39 @@ pub struct SstBuilderOptions {
 #[derive(Debug, Default)]
 pub struct FactoryImpl;
 
+#[async_trait]
 impl Factory for FactoryImpl {
-    fn new_sst_reader<'a>(
+    async fn new_sst_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
-        storage_format: StorageFormat,
+        _storage_format: StorageFormat,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Option<Box<dyn SstReader + Send + 'a>> {
-        // TODO: Currently, we only have one sst format, and we have to choose right
-        // reader for sst according to its real format in the future.
-        let hybrid_encoding = matches!(storage_format, StorageFormat::Hybrid);
-        let reader = AsyncParquetReader::new(path, hybrid_encoding, store_picker, options);
-        let reader = ThreadedReader::new(
-            reader,
-            options.runtime.clone(),
-            options.background_read_parallelism,
-        );
-        Some(Box::new(reader))
+        let storage_format = {
+            let header_parser = HeaderParser::new(path, store_picker.default_store());
+            match header_parser.parse().await {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Invalid storage format of sst:{}, err:{}", path, e);
+                    return None;
+                }
+            }
+        };
+        match storage_format {
+            StorageFormat::Columnar | StorageFormat::Hybrid => {
+                let reader = AsyncParquetReader::new(path, store_picker, options);
+                let reader = ThreadedReader::new(
+                    reader,
+                    options.runtime.clone(),
+                    options.background_read_parallelism,
+                );
+                Some(Box::new(reader))
+            }
+        }
     }
 
-    fn new_sst_builder<'a>(
+    async fn new_sst_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,

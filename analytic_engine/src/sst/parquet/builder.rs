@@ -363,6 +363,7 @@ mod tests {
 
             let mut builder = sst_factory
                 .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+                .await
                 .unwrap();
             let sst_info = builder
                 .build(RequestId::next_id(), &sst_meta, record_batch_stream)
@@ -385,12 +386,8 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let mut reader = AsyncParquetReader::new(
-                    &sst_file_path,
-                    false,
-                    &store_picker,
-                    &sst_reader_options,
-                );
+                let mut reader =
+                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
                 let mut sst_meta_readback = reader
                     .meta_data()
                     .await

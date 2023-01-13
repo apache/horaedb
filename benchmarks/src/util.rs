@@ -118,6 +118,7 @@ pub async fn load_sst_to_memtable(
             StorageFormat::Columnar,
             &store_picker,
         )
+        .await
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();

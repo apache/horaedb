@@ -656,6 +656,7 @@ impl Instance {
                         &sst_file_path,
                         store.store_picker(),
                     )
+                    .await
                     .context(InvalidSstStorageFormat {
                         storage_format_hint,
                     })?;
@@ -772,6 +773,7 @@ impl Instance {
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
+            .await
             .context(InvalidSstStorageFormat {
                 storage_format_hint,
             })?;
@@ -1000,6 +1002,7 @@ impl SpaceStore {
         let mut sst_builder = self
             .sst_factory
             .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
+            .await
             .context(InvalidSstStorageFormat {
                 storage_format_hint,
             })?;

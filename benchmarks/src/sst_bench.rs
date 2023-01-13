@@ -89,6 +89,7 @@ impl SstBench {
                     StorageFormat::Columnar,
                     &store_picker,
                 )
+                .await
                 .unwrap();
             let begin_instant = Instant::now();
             let mut sst_stream = sst_reader.read().await.unwrap();
