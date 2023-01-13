@@ -362,7 +362,7 @@ mod tests {
             }));
 
             let mut builder = sst_factory
-                .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+                .create_builder(&sst_builder_options, &sst_file_path, &store_picker)
                 .await
                 .unwrap();
             let sst_info = builder

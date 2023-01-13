@@ -10,7 +10,6 @@ use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::table_options::StorageFormat;
 
-/// Error of sst file.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to read header bytes, err:{}", source,))]

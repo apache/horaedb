@@ -112,7 +112,7 @@ pub async fn load_sst_to_memtable(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(
+        .create_reader(
             &sst_reader_options,
             sst_path,
             StorageFormat::Columnar,

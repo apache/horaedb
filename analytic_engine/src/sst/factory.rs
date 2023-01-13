@@ -6,21 +6,30 @@ use std::{fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::runtime::Runtime;
-use log::error;
+use common_util::{define_result, runtime::Runtime};
 use object_store::{ObjectStoreRef, Path};
+use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 
-use super::header::HeaderParser;
 use crate::{
     sst::{
         builder::SstBuilder,
+        header,
+        header::HeaderParser,
         meta_data::cache::MetaCacheRef,
         parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
     },
     table_options::{Compression, StorageFormat, StorageFormatHint},
 };
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Failed to parse sst header, err:{}", source,))]
+    ParseHeader { source: header::Error },
+}
+
+define_result!(Error);
 
 /// Pick suitable object store for different scenes.
 pub trait ObjectStorePicker: Send + Sync + Debug {
@@ -45,22 +54,25 @@ impl ObjectStorePicker for ObjectStoreRef {
     }
 }
 
+/// Sst factory reference
+pub type FactoryRef = Arc<dyn Factory>;
+
 #[async_trait]
 pub trait Factory: Send + Sync + Debug {
-    async fn new_sst_reader<'a>(
+    async fn create_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
         storage_format: StorageFormat,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstReader + Send + 'a>>;
+    ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
-    async fn new_sst_builder<'a>(
+    async fn create_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
+    ) -> Result<Box<dyn SstBuilder + Send + 'a>>;
 }
 
 /// The frequency of query execution may decide some behavior in the sst reader,
@@ -100,23 +112,18 @@ pub struct FactoryImpl;
 
 #[async_trait]
 impl Factory for FactoryImpl {
-    async fn new_sst_reader<'a>(
+    async fn create_reader<'a>(
         &self,
         options: &SstReaderOptions,
         path: &'a Path,
         _storage_format: StorageFormat,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstReader + Send + 'a>> {
+    ) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = {
             let header_parser = HeaderParser::new(path, store_picker.default_store());
-            match header_parser.parse().await {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Invalid storage format of sst:{}, err:{}", path, e);
-                    return None;
-                }
-            }
+            header_parser.parse().await.context(ParseHeader)?
         };
+
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
                 let reader = AsyncParquetReader::new(path, store_picker, options);
@@ -125,24 +132,24 @@ impl Factory for FactoryImpl {
                     options.runtime.clone(),
                     options.background_read_parallelism,
                 );
-                Some(Box::new(reader))
+                Ok(Box::new(reader))
             }
         }
     }
 
-    async fn new_sst_builder<'a>(
+    async fn create_builder<'a>(
         &self,
         options: &SstBuilderOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
+    ) -> Result<Box<dyn SstBuilder + Send + 'a>> {
         let hybrid_encoding = match options.storage_format_hint {
             StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
             // `Auto` is mapped to columnar parquet format now, may change in future.
             StorageFormatHint::Auto => false,
         };
 
-        Some(Box::new(ParquetSstBuilder::new(
+        Ok(Box::new(ParquetSstBuilder::new(
             path,
             hybrid_encoding,
             store_picker,
@@ -150,6 +157,3 @@ impl Factory for FactoryImpl {
         )))
     }
 }
-
-/// Sst factory reference
-pub type FactoryRef = Arc<dyn Factory>;

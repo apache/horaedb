@@ -64,7 +64,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
     let sst_file_path = Path::from(config.sst_file_name);
 
     let mut builder = sst_factory
-        .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+        .create_builder(&sst_builder_options, &sst_file_path, &store_picker)
         .await
         .unwrap();
     builder
@@ -131,7 +131,7 @@ async fn sst_to_record_batch_stream(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(
+        .create_reader(
             sst_reader_options,
             input_path,
             // FIXME: this storage format should be detected from the file itself.

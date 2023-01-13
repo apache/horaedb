@@ -93,7 +93,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let input_format = StorageFormat::try_from(args.input_format.as_str())
         .with_context(|| format!("invalid input storage format:{}", args.input_format))?;
     let mut reader = factory
-        .new_sst_reader(&reader_opts, &input_path, input_format, &store_picker)
+        .create_reader(&reader_opts, &input_path, input_format, &store_picker)
         .await
         .expect("no sst reader found");
 
@@ -107,7 +107,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     };
     let output = Path::from(args.output);
     let mut builder = factory
-        .new_sst_builder(&builder_opts, &output, &store_picker)
+        .create_builder(&builder_opts, &output, &store_picker)
         .await
         .expect("no sst builder found");
     let sst_stream = reader

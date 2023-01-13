@@ -13,6 +13,7 @@ use table_engine::table::TableId;
 use crate::{
     space::SpaceId,
     sst::{
+        factory,
         factory::{FactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
         parquet::{
@@ -42,8 +43,8 @@ pub enum Error {
     #[snafu(display("Failed to decode custom metadata in parquet, err:{}", source))]
     DecodeCustomMetaData { source: encoding::Error },
 
-    #[snafu(display("Failed to build sst reader.\nBacktrace:\n:{}", backtrace))]
-    BuildSstReader { backtrace: Backtrace },
+    #[snafu(display("Failed to create sst reader, err:{}", source))]
+    CreateSstReader { source: factory::Error },
 
     #[snafu(display("Failed to read meta data from reader, err:{}", source))]
     ReadMetaData { source: reader::Error },
@@ -135,14 +136,14 @@ impl SstMetaReader {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
             let mut reader = self
                 .factory
-                .new_sst_reader(
+                .create_reader(
                     &self.read_opts,
                     &path,
                     f.storage_format(),
                     &self.store_picker,
                 )
                 .await
-                .context(BuildSstReader)?;
+                .context(CreateSstReader)?;
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;
             sst_metas.push(meta_data.clone());
         }

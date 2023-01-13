@@ -83,7 +83,7 @@ impl SstBench {
 
         self.runtime.block_on(async {
             let mut sst_reader = sst_factory
-                .new_sst_reader(
+                .create_reader(
                     &self.sst_reader_options,
                     &sst_path,
                     StorageFormat::Columnar,

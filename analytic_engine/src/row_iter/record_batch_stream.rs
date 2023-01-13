@@ -29,7 +29,7 @@ use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
+        factory::{self, FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
         file::FileHandle,
     },
     table::sst_util,
@@ -38,15 +38,8 @@ use crate::{
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display(
-        "No sst reader found, sst_reader_options:{:?}.\nBacktrace:\n{}",
-        options,
-        backtrace
-    ))]
-    SstReaderNotFound {
-        options: SstReaderOptions,
-        backtrace: Backtrace,
-    },
+    #[snafu(display("Failed to create sst reader, err:{:?}", source,))]
+    CreateSstReader { source: factory::Error },
 
     #[snafu(display("Fail to read sst meta, err:{}", source))]
     ReadSstMeta { source: crate::sst::reader::Error },
@@ -314,16 +307,14 @@ pub async fn stream_from_sst_file(
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
 
     let mut sst_reader = sst_factory
-        .new_sst_reader(
+        .create_reader(
             sst_reader_options,
             &path,
             sst_file.storage_format(),
             store_picker,
         )
         .await
-        .with_context(|| SstReaderNotFound {
-            options: sst_reader_options.clone(),
-        })?;
+        .context(CreateSstReader)?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
     let max_seq = meta.max_sequence();
     let sst_stream = sst_reader.read().await.context(ReadSstData)?;

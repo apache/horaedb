@@ -19,7 +19,7 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use log::{debug, error, info};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
 use wal::manager::WalLocation;
@@ -44,7 +44,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions},
+        factory::{self, ReadFrequency, SstBuilderOptions, SstReaderOptions},
         file::FileMeta,
         meta_data::{self, SstMetaData, SstMetaReader},
         parquet::meta_data::ParquetMetaData,
@@ -84,17 +84,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst type is not found, storage_format_hint:{:?}.\nBacktrace:\n{}",
+        "Sst type is not found, storage_format_hint:{:?}, err:{}",
         storage_format_hint,
-        backtrace
+        source,
     ))]
-    InvalidSstStorageFormat {
+    CreateSstBuilder {
         storage_format_hint: StorageFormatHint,
-        backtrace: Backtrace,
+        source: factory::Error,
     },
 
     #[snafu(display("Failed to build sst, file_path:{}, source:{}", path, source))]
-    FailBuildSst {
+    BuildSst {
         path: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -651,13 +651,13 @@ impl Instance {
             let handler = self.runtimes.bg_runtime.spawn(async move {
                 let mut builder = store
                     .sst_factory
-                    .new_sst_builder(
+                    .create_builder(
                         &sst_builder_options_clone,
                         &sst_file_path,
                         store.store_picker(),
                     )
                     .await
-                    .context(InvalidSstStorageFormat {
+                    .context(CreateSstBuilder {
                         storage_format_hint,
                     })?;
 
@@ -672,7 +672,7 @@ impl Instance {
                         error!("Failed to build sst file, meta:{:?}, err:{}", sst_meta, e);
                         Box::new(e) as _
                     })
-                    .with_context(|| FailBuildSst {
+                    .with_context(|| BuildSst {
                         path: sst_file_path.to_string(),
                     })?;
 
@@ -768,13 +768,13 @@ impl Instance {
         let mut builder = self
             .space_store
             .sst_factory
-            .new_sst_builder(
+            .create_builder(
                 &sst_builder_options,
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
             .await
-            .context(InvalidSstStorageFormat {
+            .context(CreateSstBuilder {
                 storage_format_hint,
             })?;
 
@@ -787,7 +787,7 @@ impl Instance {
             .build(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| FailBuildSst {
+            .with_context(|| BuildSst {
                 path: sst_file_path.to_string(),
             })?;
 
@@ -1001,9 +1001,9 @@ impl SpaceStore {
         };
         let mut sst_builder = self
             .sst_factory
-            .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
+            .create_builder(&sst_builder_options, &sst_file_path, self.store_picker())
             .await
-            .context(InvalidSstStorageFormat {
+            .context(CreateSstBuilder {
                 storage_format_hint,
             })?;
 
@@ -1011,7 +1011,7 @@ impl SpaceStore {
             .build(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| FailBuildSst {
+            .with_context(|| BuildSst {
                 path: sst_file_path.to_string(),
             })?;
 
