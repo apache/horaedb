@@ -112,8 +112,8 @@ message_queue = { path = "components/message_queue" }
 zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "6cc1754ffc31ddfe0710972c94f8fe5acd61af98"
+git = "https://github.com/chunshao90/ceresdbproto.git"
+rev = "9bffa8aa977f5cb1ce1534ca37184e873e34549d"
 
 [workspace.dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"

@@ -24,6 +24,7 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
+table_engine =  { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 url = "2.2"

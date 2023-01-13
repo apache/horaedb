@@ -30,7 +30,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::{CloseTableRequest, TableEngineRef, TableState},
-    partition::PartitionInfoEncoder,
+    partition::PartitionInfo,
     table::{SchemaId, TableId},
     ANALYTIC_ENGINE_TYPE,
 };
@@ -327,18 +327,16 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match request.encoded_partition_info.is_empty() {
-        true => None,
-        false => PartitionInfoEncoder::default()
-            .decode(&request.encoded_partition_info)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::BadRequest,
-                msg: format!(
-                    "fail to decode encoded partition info bytes, raw_bytes:{:?}",
-                    request.encoded_partition_info
-                ),
-            })?,
+    let partition_info = match request.partition_info {
+        Some(v) => Some(
+            PartitionInfo::try_from(v.clone())
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::BadRequest,
+                    msg: format!("fail to parse partition info, partition_info:{:?}", v),
+                })?,
+        ),
+        None => None,
     };
 
     let create_table_request = CreateTableRequest {
