@@ -386,8 +386,12 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let mut reader =
-                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
+                let mut reader = AsyncParquetReader::new(
+                    &sst_file_path,
+                    &sst_reader_options,
+                    None,
+                    &store_picker,
+                );
                 let mut sst_meta_readback = reader
                     .meta_data()
                     .await

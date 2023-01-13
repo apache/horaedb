@@ -61,9 +61,9 @@ pub type FactoryRef = Arc<dyn Factory>;
 pub trait Factory: Send + Sync + Debug {
     async fn create_reader<'a>(
         &self,
-        options: &SstReaderOptions,
         path: &'a Path,
-        storage_format: StorageFormat,
+        options: &SstReaderOptions,
+        hint: SstReaderHint,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
@@ -83,6 +83,15 @@ pub enum ReadFrequency {
     Frequent,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SstReaderHint {
+    /// Hint for the size of the sst file. It may avoid some io if provided.
+    pub file_size: Option<usize>,
+    /// Hint for the storage format of the sst file. It may avoid some io if
+    /// provided.
+    pub file_format: Option<StorageFormat>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SstReaderOptions {
     pub read_batch_row_num: usize,
@@ -91,13 +100,13 @@ pub struct SstReaderOptions {
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
-    pub runtime: Arc<Runtime>,
 
     /// The max number of rows in one row group
     pub num_rows_per_row_group: usize,
-
     /// The suggested parallelism while reading sst
     pub background_read_parallelism: usize,
+
+    pub runtime: Arc<Runtime>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,19 +123,22 @@ pub struct FactoryImpl;
 impl Factory for FactoryImpl {
     async fn create_reader<'a>(
         &self,
-        options: &SstReaderOptions,
         path: &'a Path,
-        _storage_format: StorageFormat,
+        options: &SstReaderOptions,
+        hint: SstReaderHint,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstReader + Send + 'a>> {
-        let storage_format = {
-            let header_parser = HeaderParser::new(path, store_picker.default_store());
-            header_parser.parse().await.context(ParseHeader)?
+        let storage_format = match hint.file_format {
+            Some(v) => v,
+            None => {
+                let header_parser = HeaderParser::new(path, store_picker.default_store());
+                header_parser.parse().await.context(ParseHeader)?
+            }
         };
 
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
-                let reader = AsyncParquetReader::new(path, store_picker, options);
+                let reader = AsyncParquetReader::new(path, options, hint.file_size, store_picker);
                 let reader = ThreadedReader::new(
                     reader,
                     options.runtime.clone(),

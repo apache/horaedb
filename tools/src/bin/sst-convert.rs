@@ -7,9 +7,9 @@ use std::{error::Error, sync::Arc};
 use analytic_engine::{
     sst::factory::{
         Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstBuilderOptions,
-        SstReaderOptions,
+        SstReaderHint, SstReaderOptions,
     },
-    table_options::{Compression, StorageFormat, StorageFormatHint},
+    table_options::{Compression, StorageFormatHint},
 };
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -42,10 +42,6 @@ struct Args {
     /// Row group size of new sst file
     #[clap(short, long, default_value_t = 8192)]
     batch_size: usize,
-
-    /// Storage format(values: columnar/hybrid)
-    #[clap(short, long, default_value = "columnar")]
-    input_format: String,
 
     /// Storage format(values: columnar/hybrid)
     #[clap(short, long, default_value = "columnar")]
@@ -90,10 +86,13 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         num_rows_per_row_group: 8192,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
-    let input_format = StorageFormat::try_from(args.input_format.as_str())
-        .with_context(|| format!("invalid input storage format:{}", args.input_format))?;
     let mut reader = factory
-        .create_reader(&reader_opts, &input_path, input_format, &store_picker)
+        .create_reader(
+            &input_path,
+            &reader_opts,
+            SstReaderHint::default(),
+            &store_picker,
+        )
         .await
         .expect("no sst reader found");
 

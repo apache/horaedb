@@ -29,7 +29,10 @@ use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
     space::SpaceId,
     sst::{
-        factory::{self, FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
+        factory::{
+            self, FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderHint,
+            SstReaderOptions,
+        },
         file::FileHandle,
     },
     table::sst_util,
@@ -306,13 +309,12 @@ pub async fn stream_from_sst_file(
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
 
+    let read_hint = SstReaderHint {
+        file_size: Some(sst_file.size() as usize),
+        file_format: Some(sst_file.storage_format()),
+    };
     let mut sst_reader = sst_factory
-        .create_reader(
-            sst_reader_options,
-            &path,
-            sst_file.storage_format(),
-            store_picker,
-        )
+        .create_reader(&path, sst_reader_options, read_hint, store_picker)
         .await
         .context(CreateSstReader)?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;

@@ -16,14 +16,14 @@ use analytic_engine::{
         builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstBuilderOptions, SstReaderOptions,
+            SstBuilderOptions, SstReaderHint, SstReaderOptions,
         },
         file::FilePurgeQueue,
         manager::FileId,
         meta_data::{self, SstMetaData, SstMetaReader},
     },
     table::sst_util,
-    table_options::{Compression, StorageFormat, StorageFormatHint},
+    table_options::{Compression, StorageFormatHint},
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
 use common_util::runtime::Runtime;
@@ -132,10 +132,9 @@ async fn sst_to_record_batch_stream(
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
         .create_reader(
-            sst_reader_options,
             input_path,
-            // FIXME: this storage format should be detected from the file itself.
-            StorageFormat::Columnar,
+            sst_reader_options,
+            SstReaderHint::default(),
             &store_picker,
         )
         .await

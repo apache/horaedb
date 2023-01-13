@@ -8,7 +8,10 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
-        factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+        factory::{
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderHint,
+            SstReaderOptions,
+        },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
         meta_data::{cache::MetaCacheRef, SstMetaData},
@@ -113,9 +116,9 @@ pub async fn load_sst_to_memtable(
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
         .create_reader(
-            &sst_reader_options,
             sst_path,
-            StorageFormat::Columnar,
+            &sst_reader_options,
+            SstReaderHint::default(),
             &store_picker,
         )
         .await
