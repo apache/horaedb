@@ -9,7 +9,7 @@ use log::info;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
-use crate::{manager::RegionId, message_queue_impl::region_context::RegionMetaSnapshot};
+use crate::message_queue_impl::region_context::RegionMetaSnapshot;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -20,7 +20,7 @@ pub enum Error {
         source
     ))]
     CleanLogsWithCause {
-        region_id: RegionId,
+        region_id: u64,
         topic: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -33,7 +33,7 @@ pub enum Error {
         backtrace,
     ))]
     CleanLogsNoCause {
-        region_id: RegionId,
+        region_id: u64,
         topic: String,
         msg: String,
         backtrace: Backtrace,
@@ -44,14 +44,14 @@ define_result!(Error);
 
 /// Check and clean the outdated logs
 pub struct LogCleaner<M: MessageQueue> {
-    region_id: RegionId,
+    region_id: u64,
     message_queue: Arc<M>,
     log_topic: String,
     last_deleted_offset: Option<Offset>,
 }
 
 impl<M: MessageQueue> LogCleaner<M> {
-    pub fn new(region_id: RegionId, message_queue: Arc<M>, log_topic: String) -> Self {
+    pub fn new(region_id: u64, message_queue: Arc<M>, log_topic: String) -> Self {
         info!(
             "Log cleaner init, region id:{}, log topic:{}",
             region_id, log_topic

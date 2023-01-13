@@ -90,7 +90,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::{manager::RegionId, table_kv_impl::namespace};
+    use crate::table_kv_impl::namespace;
 
     #[test]
     fn test_format_namespace_key() {
@@ -178,10 +178,10 @@ mod tests {
         let key = format_table_unit_key(12345);
         assert_eq!("v1/table/12345", key);
 
-        let key = format_table_unit_key(RegionId::MIN);
+        let key = format_table_unit_key(u64::MIN);
         assert_eq!("v1/table/0", key);
 
-        let key = format_table_unit_key(RegionId::MAX);
+        let key = format_table_unit_key(u64::MAX);
         assert_eq!("v1/table/18446744073709551615", key);
     }
 }

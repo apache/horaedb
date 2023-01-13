@@ -15,7 +15,7 @@ use util::*;
 use crate::{
     kv_encoder::CommonLogEncoding,
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, RegionId},
+    manager::{self},
     message_queue_impl::{
         encoding::{format_wal_data_topic_name, format_wal_meta_topic_name, MetaEncoding},
         log_cleaner::LogCleaner,
@@ -39,7 +39,7 @@ pub enum Error {
         backtrace
     ))]
     ScanNoCause {
-        region_id: RegionId,
+        region_id: u64,
         table_id: Option<TableId>,
         msg: String,
         backtrace: Backtrace,
@@ -53,7 +53,7 @@ pub enum Error {
         source
     ))]
     ScanWithCause {
-        region_id: RegionId,
+        region_id: u64,
         table_id: Option<TableId>,
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -84,7 +84,7 @@ pub enum Error {
     ))]
     OpenWithCause {
         namespace: String,
-        region_id: RegionId,
+        region_id: u64,
         msg: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -98,7 +98,7 @@ pub enum Error {
     ))]
     OpenNoCause {
         namespace: String,
-        region_id: RegionId,
+        region_id: u64,
         msg: String,
         backtrace: Backtrace,
     },
@@ -126,7 +126,7 @@ pub struct Region<M: MessageQueue> {
 
 impl<M: MessageQueue> Region<M> {
     /// Init the region.
-    pub async fn open(namespace: &str, region_id: RegionId, message_queue: Arc<M>) -> Result<Self> {
+    pub async fn open(namespace: &str, region_id: u64, message_queue: Arc<M>) -> Result<Self> {
         info!(
             "Begin to open region in namespace, namespace:{}, region id:{}",
             namespace, region_id
@@ -211,7 +211,7 @@ impl<M: MessageQueue> Region<M> {
 
     async fn recover_region_meta_from_meta(
         namespace: &str,
-        region_id: RegionId,
+        region_id: u64,
         message_queue: &M,
         meta_topic: &str,
         meta_encoding: &MetaEncoding,
@@ -325,7 +325,7 @@ impl<M: MessageQueue> Region<M> {
 
     async fn recover_region_meta_from_log(
         namespace: &str,
-        region_id: RegionId,
+        region_id: u64,
         message_queue: &M,
         start_offset: Offset,
         log_topic: &str,
@@ -753,7 +753,7 @@ impl<M: MessageQueue> RegionInner<M> {
 #[derive(Debug)]
 pub struct MessageQueueLogIterator<C: ConsumeIterator> {
     /// Id of region
-    region_id: RegionId,
+    region_id: u64,
 
     /// Id of table id
     ///
@@ -784,7 +784,7 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 
 impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
     fn new(
-        region_id: RegionId,
+        region_id: u64,
         table_id: Option<TableId>,
         terminate_offset: Option<Offset>,
         iter: C,

@@ -27,8 +27,8 @@ use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
-        ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
+        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext, ScanRequest,
+        SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
 
@@ -60,7 +60,7 @@ impl TableUnit {
 
     #[inline]
     /// Generate [LogKey] from `region_id`, `table_id` and `sequence_num`.
-    fn log_key(&self, region_id: RegionId, sequence_num: SequenceNumber) -> CommonLogKey {
+    fn log_key(&self, region_id: u64, sequence_num: SequenceNumber) -> CommonLogKey {
         CommonLogKey::new(region_id, self.id, sequence_num)
     }
 
@@ -77,7 +77,7 @@ impl TableUnit {
     /// The delete procedure is ensured to be sequential.
     async fn delete_entries_up_to(
         &self,
-        region_id: RegionId,
+        region_id: u64,
         mut sequence_num: SequenceNumber,
     ) -> Result<()> {
         debug!(
@@ -280,7 +280,7 @@ impl RocksImpl {
         &self,
         table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
-        let mut current_region_id = RegionId::MAX;
+        let mut current_region_id = u64::MAX;
         let mut end_boundary_key_buf = BytesMut::new();
         loop {
             debug!(
@@ -347,7 +347,7 @@ impl RocksImpl {
 
     fn find_table_seqs_from_table_log_by_table_id(
         &self,
-        region_id: RegionId,
+        region_id: u64,
         table_max_seqs: &mut HashMap<TableId, SequenceNumber>,
     ) -> Result<()> {
         let mut current_table_id = TableId::MAX;

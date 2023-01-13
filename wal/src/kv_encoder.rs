@@ -15,7 +15,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     log_batch::{LogWriteBatch, LogWriteEntry, Payload},
-    manager::{self, Encoding, RegionId, WalLocation},
+    manager::{self, Encoding, WalLocation},
 };
 
 pub const LOG_KEY_ENCODING_V0: u8 = 0;
@@ -119,7 +119,7 @@ pub enum Namespace {
 
 /// Log key in old wal design, map the `TableId` to `RegionId`
 #[allow(unused)]
-pub type LogKey = (RegionId, SequenceNumber);
+pub type LogKey = (u64, SequenceNumber);
 
 #[allow(unused)]
 #[derive(Debug, Clone)]
@@ -278,7 +278,7 @@ pub struct MetaKeyEncoder {
 
 #[derive(Clone, Debug)]
 pub struct MetaKey {
-    pub region_id: RegionId,
+    pub region_id: u64,
 }
 
 impl MetaKeyEncoder {
@@ -597,14 +597,14 @@ impl LogBatchEncoder {
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,
     /// region may be mapped to table itself, shard, or others...
-    pub region_id: RegionId,
+    pub region_id: u64,
     pub table_id: TableId,
     pub sequence_num: SequenceNumber,
 }
 
 #[allow(unused)]
 impl CommonLogKey {
-    pub fn new(region_id: RegionId, table_id: TableId, sequence_num: SequenceNumber) -> Self {
+    pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
         Self {
             region_id,
             table_id,
