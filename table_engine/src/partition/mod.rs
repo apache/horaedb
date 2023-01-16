@@ -4,12 +4,11 @@
 
 pub mod rule;
 
+use ceresdbproto::cluster::partition_info::Info;
 use common_types::bytes::Bytes;
-use prost::Message;
 use proto::{meta_update as meta_pb, meta_update::partition_info::PartitionInfoEnum};
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, Snafu};
 
-const DEFAULT_PARTITION_INFO_ENCODING_VERSION: u8 = 0;
 const PARTITION_TABLE_PREFIX: &str = "__";
 
 #[derive(Debug, Snafu)]
@@ -198,13 +197,13 @@ impl From<PartitionInfo> for meta_pb::PartitionInfo {
             PartitionInfo::Hash(v) => {
                 let hash_partition_info = meta_pb::HashPartitionInfo::from(v);
                 meta_pb::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnumProto::Hash(hash_partition_info)),
+                    partition_info_enum: Some(PartitionInfoEnum::Hash(hash_partition_info)),
                 }
             }
             PartitionInfo::Key(v) => {
                 let key_partition_info = meta_pb::KeyPartitionInfo::from(v);
                 meta_pb::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnumProto::Key(key_partition_info)),
+                    partition_info_enum: Some(PartitionInfoEnum::Key(key_partition_info)),
                 }
             }
         }
@@ -219,11 +218,11 @@ impl TryFrom<meta_pb::PartitionInfo> for PartitionInfo {
     ) -> std::result::Result<Self, Self::Error> {
         match partition_info_pb.partition_info_enum {
             Some(partition_info_enum) => match partition_info_enum {
-                PartitionInfoEnumProto::Hash(v) => {
+                PartitionInfoEnum::Hash(v) => {
                     let hash_partition_info = HashPartitionInfo::from(v);
                     Ok(Self::Hash(hash_partition_info))
                 }
-                PartitionInfoEnumProto::Key(v) => {
+                PartitionInfoEnum::Key(v) => {
                     let key_partition_info = KeyPartitionInfo::from(v);
                     Ok(Self::Key(key_partition_info))
                 }
@@ -327,13 +326,13 @@ impl From<PartitionInfo> for ceresdbproto::cluster::PartitionInfo {
             PartitionInfo::Hash(v) => {
                 let hash_partition_info = ceresdbproto::cluster::HashPartitionInfo::from(v);
                 ceresdbproto::cluster::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnum::Hash(hash_partition_info)),
+                    info: Some(Info::Hash(hash_partition_info)),
                 }
             }
             PartitionInfo::Key(v) => {
                 let key_partition_info = ceresdbproto::cluster::KeyPartitionInfo::from(v);
                 ceresdbproto::cluster::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnum::Key(key_partition_info)),
+                    info: Some(Info::Key(key_partition_info)),
                 }
             }
         }
@@ -346,13 +345,13 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
     fn try_from(
         partition_info_pb: ceresdbproto::cluster::PartitionInfo,
     ) -> std::result::Result<Self, Self::Error> {
-        match partition_info_pb.partition_info_enum {
-            Some(partition_info_enum) => match partition_info_enum {
-                PartitionInfoEnum::Hash(v) => {
+        match partition_info_pb.info {
+            Some(info) => match info {
+                Info::Hash(v) => {
                     let hash_partition_info = HashPartitionInfo::from(v);
                     Ok(Self::Hash(hash_partition_info))
                 }
-                PartitionInfoEnum::Key(v) => {
+                Info::Key(v) => {
                     let key_partition_info = KeyPartitionInfo::from(v);
                     Ok(Self::Key(key_partition_info))
                 }

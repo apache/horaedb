@@ -48,7 +48,7 @@ impl PartitionParser {
 
             Ok(HashPartitionInfo {
                 version: DEFAULT_PARTITION_VERSION,
-                definitions: definitions,
+                definitions,
                 expr,
                 linear,
             })
@@ -71,7 +71,7 @@ impl PartitionParser {
 
         Ok(KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            definitions: definitions,
+            definitions,
             partition_key,
             linear,
         })
