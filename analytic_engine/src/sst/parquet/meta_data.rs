@@ -2,7 +2,7 @@
 
 // MetaData for SST based on parquet.
 
-use std::{cmp, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use bytes::Bytes;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
@@ -10,6 +10,8 @@ use common_util::define_result;
 use ethbloom::Bloom;
 use proto::{common as common_pb, sst as sst_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+
+use crate::sst::builder::MetaData;
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]
@@ -117,6 +119,32 @@ pub struct ParquetMetaData {
 
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
 
+impl From<MetaData> for ParquetMetaData {
+    fn from(meta: MetaData) -> Self {
+        Self {
+            min_key: meta.min_key,
+            max_key: meta.max_key,
+            time_range: meta.time_range,
+            max_sequence: meta.max_sequence,
+            schema: meta.schema,
+            bloom_filter: None,
+            collapsible_cols_idx: Vec::new(),
+        }
+    }
+}
+
+impl From<ParquetMetaData> for MetaData {
+    fn from(meta: ParquetMetaData) -> Self {
+        Self {
+            min_key: meta.min_key,
+            max_key: meta.max_key,
+            time_range: meta.time_range,
+            max_sequence: meta.max_sequence,
+            schema: meta.schema,
+        }
+    }
+}
+
 impl fmt::Debug for ParquetMetaData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ParquetMetaData")
@@ -169,41 +197,5 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             bloom_filter,
             collapsible_cols_idx: src.collapsible_cols_idx,
         })
-    }
-}
-
-/// Merge meta data of given `metas`, panic if `metas` is empty.
-///
-/// The size and row_num of the merged meta is initialized to 0.
-// TODO: add unit test for this method.
-pub fn merge_sst_meta<'a, I>(mut metas: I, schema: Schema) -> ParquetMetaData
-where
-    I: Iterator<Item = &'a ParquetMetaData>,
-{
-    let first_meta = metas.next().unwrap();
-    let mut min_key = &first_meta.min_key;
-    let mut max_key = &first_meta.max_key;
-    let mut time_range_start = first_meta.time_range.inclusive_start();
-    let mut time_range_end = first_meta.time_range.exclusive_end();
-    let mut max_sequence = first_meta.max_sequence;
-
-    for file in metas {
-        min_key = cmp::min(&file.min_key, min_key);
-        max_key = cmp::max(&file.max_key, max_key);
-        time_range_start = cmp::min(file.time_range.inclusive_start(), time_range_start);
-        time_range_end = cmp::max(file.time_range.exclusive_end(), time_range_end);
-        max_sequence = cmp::max(file.max_sequence, max_sequence);
-    }
-
-    ParquetMetaData {
-        min_key: min_key.clone(),
-        max_key: max_key.clone(),
-        time_range: TimeRange::new(time_range_start, time_range_end).unwrap(),
-        max_sequence,
-        schema,
-        // bloom filter will be rebuilt when write sst, so use default here.
-        bloom_filter: None,
-        // collapsible cols will be rebuilt when write sst, so use empty one here.
-        collapsible_cols_idx: Vec::new(),
     }
 }

@@ -43,11 +43,10 @@ use crate::{
     },
     space::SpaceAndTable,
     sst::{
-        builder::RecordBatchStream,
+        builder::{MetaData, RecordBatchStream},
         factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
         file::FileMeta,
-        meta_data::{self, SstMetaData, SstMetaReader},
-        parquet::meta_data::ParquetMetaData,
+        meta_data::SstMetaReader,
     },
     table::{
         data::{TableData, TableDataRef},
@@ -84,17 +83,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst type is not found, storage_format_hint:{:?}, err:{}",
+        "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
         storage_format_hint,
         source,
     ))]
-    CreateSstBuilder {
+    CreateSstWriter {
         storage_format_hint: StorageFormatHint,
         source: factory::Error,
     },
 
-    #[snafu(display("Failed to build sst, file_path:{}, source:{}", path, source))]
-    BuildSst {
+    #[snafu(display("Failed to write sst, file_path:{}, source:{}", path, source))]
+    WriteSst {
         path: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -629,18 +628,13 @@ impl Instance {
             let file_id = table_data.alloc_file_id();
             let sst_file_path = table_data.set_sst_file_path(file_id);
 
-            // TODO: min_key max_key set in sst_writer write
-            let sst_meta = {
-                let parquet_meta_data = ParquetMetaData {
-                    min_key: min_key.clone(),
-                    max_key: max_key.clone(),
-                    time_range: *time_range,
-                    max_sequence,
-                    schema: table_data.schema(),
-                    bloom_filter: Default::default(),
-                    collapsible_cols_idx: Vec::new(),
-                };
-                SstMetaData::Parquet(Arc::new(parquet_meta_data))
+            // TODO: `min_key` & `max_key` should be figured out when writing sst.
+            let sst_meta = MetaData {
+                min_key: min_key.clone(),
+                max_key: max_key.clone(),
+                time_range: *time_range,
+                max_sequence,
+                schema: table_data.schema(),
             };
 
             let store = self.space_store.clone();
@@ -653,7 +647,7 @@ impl Instance {
                     .sst_factory
                     .create_writer(&sst_write_options, &sst_file_path, store.store_picker())
                     .await
-                    .context(CreateSstBuilder {
+                    .context(CreateSstWriter {
                         storage_format_hint,
                     })?;
 
@@ -665,10 +659,10 @@ impl Instance {
                     )
                     .await
                     .map_err(|e| {
-                        error!("Failed to build sst file, meta:{:?}, err:{}", sst_meta, e);
+                        error!("Failed to write sst file, meta:{:?}, err:{}", sst_meta, e);
                         Box::new(e) as _
                     })
-                    .with_context(|| BuildSst {
+                    .with_context(|| WriteSst {
                         path: sst_file_path.to_string(),
                     })?;
 
@@ -712,8 +706,8 @@ impl Instance {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
-                    time_range: sst_meta.time_range(),
-                    max_seq: sst_meta.max_sequence(),
+                    time_range: sst_meta.time_range,
+                    max_seq: sst_meta.max_sequence,
                     storage_format: sst_info.storage_format,
                 },
             })
@@ -738,17 +732,12 @@ impl Instance {
             }
         };
         let max_sequence = memtable_state.last_sequence();
-        let sst_meta = {
-            let parquet_meta_data = ParquetMetaData {
-                min_key,
-                max_key,
-                time_range: memtable_state.time_range,
-                max_sequence,
-                schema: table_data.schema(),
-                bloom_filter: Default::default(),
-                collapsible_cols_idx: Vec::new(),
-            };
-            SstMetaData::Parquet(Arc::new(parquet_meta_data))
+        let sst_meta = MetaData {
+            min_key,
+            max_key,
+            time_range: memtable_state.time_range,
+            max_sequence,
+            schema: table_data.schema(),
         };
 
         // Alloc file id for next sst file
@@ -770,7 +759,7 @@ impl Instance {
                 self.space_store.store_picker(),
             )
             .await
-            .context(CreateSstBuilder {
+            .context(CreateSstWriter {
                 storage_format_hint,
             })?;
 
@@ -783,7 +772,7 @@ impl Instance {
             .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| BuildSst {
+            .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
 
@@ -982,7 +971,7 @@ impl SpaceStore {
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
-            meta_data::merge_sst_meta(sst_metas.iter(), schema)
+            MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
         };
 
         // Alloc file id for the merged sst.
@@ -999,7 +988,7 @@ impl SpaceStore {
             .sst_factory
             .create_writer(&sst_write_options, &sst_file_path, self.store_picker())
             .await
-            .context(CreateSstBuilder {
+            .context(CreateSstWriter {
                 storage_format_hint,
             })?;
 
@@ -1007,7 +996,7 @@ impl SpaceStore {
             .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| BuildSst {
+            .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
 
@@ -1047,8 +1036,8 @@ impl SpaceStore {
                 id: file_id,
                 size: sst_file_size,
                 row_num: sst_row_num,
-                max_seq: sst_meta.max_sequence(),
-                time_range: sst_meta.time_range(),
+                max_seq: sst_meta.max_sequence,
+                time_range: sst_meta.time_range,
                 storage_format: sst_info.storage_format,
             },
         });

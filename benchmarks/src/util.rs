@@ -8,12 +8,13 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
+        builder::MetaData,
         factory::{
             Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
         },
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
-        meta_data::{cache::MetaCacheRef, SstMetaData},
+        meta_data::cache::MetaCacheRef,
         parquet::encoding,
     },
     table::sst_util,
@@ -59,14 +60,14 @@ pub async fn meta_from_sst(
     store: &ObjectStoreRef,
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
-) -> SstMetaData {
+) -> MetaData {
     let get_result = store.get(sst_path).await.unwrap();
     let chunk_reader = get_result.bytes().await.unwrap();
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
     let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
 
     let parquet_meta_data = encoding::decode_sst_meta_data(&kv_metas[0]).unwrap();
-    SstMetaData::Parquet(Arc::new(parquet_meta_data))
+    MetaData::from(parquet_meta_data)
 }
 
 pub async fn schema_from_sst(
@@ -75,8 +76,7 @@ pub async fn schema_from_sst(
     meta_cache: &Option<MetaCacheRef>,
 ) -> Schema {
     let sst_meta = meta_from_sst(store, sst_path, meta_cache).await;
-
-    sst_meta.schema().clone()
+    sst_meta.schema
 }
 
 pub fn projected_schema_by_number(
@@ -162,8 +162,8 @@ pub async fn file_handles_from_ssts(
             id: *file_id,
             size: 0,
             row_num: 0,
-            time_range: sst_meta.time_range(),
-            max_seq: sst_meta.max_sequence(),
+            time_range: sst_meta.time_range,
+            max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,
         };
 
