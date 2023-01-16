@@ -1,0 +1,52 @@
+# Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+
+name: coverage
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '2 0 * * *'
+
+# Common environment variables
+env:
+  RUSTFLAGS: "-C debuginfo=1"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  LOCK_FILE: Cargo.lock
+
+jobs:
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [nightly-2022-08-08]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Setup Rust toolchain
+        run: |
+          rustup toolchain install ${{ matrix.rust }}
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+      - name: Ensure Disk Quota
+        run: |
+          make ensure-disk-quota
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --version=0.5.9
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+      - name: Report coverage
+        continue-on-error: true
+        run: bash <(curl -s https://codecov.io/bash)
+
