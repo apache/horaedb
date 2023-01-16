@@ -11,6 +11,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -217,14 +218,15 @@ func createPartitionTableCallback(event *fsm.Event) {
 	// Select first shard to create partition table.
 	partitionTableShardNode := req.partitionTableShards[0]
 
-	createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetName(), partitionTableShardNode.ShardInfo.ID, true)
+	partitionInfo := req.sourceReq.GetPartitionTableInfo().GetPartitionInfo()
+	createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetName(), partitionTableShardNode.ShardInfo.ID, partitionInfo)
 	if err != nil {
 		cancelEventWithLog(event, err, "create table metadata")
 		return
 	}
 	req.createTableResult = createTableResult
 
-	if err = createTableOnShard(req.ctx, req.cluster, req.dispatch, partitionTableShardNode.ShardInfo.ID, buildCreateTableRequest(createTableResult, req.sourceReq, true)); err != nil {
+	if err = createTableOnShard(req.ctx, req.cluster, req.dispatch, partitionTableShardNode.ShardInfo.ID, buildCreateTableRequest(createTableResult, req.sourceReq, partitionInfo)); err != nil {
 		cancelEventWithLog(event, err, "dispatch create table on shard")
 		return
 	}
@@ -239,13 +241,13 @@ func createDataTablesCallback(event *fsm.Event) {
 	}
 
 	for i, subTableShard := range req.subTablesShards {
-		createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetPartitionTableInfo().SubTableNames[i], subTableShard.ShardInfo.ID, false)
+		createTableResult, err := createTableMetadata(req.ctx, req.cluster, req.sourceReq.GetSchemaName(), req.sourceReq.GetPartitionTableInfo().SubTableNames[i], subTableShard.ShardInfo.ID, nil)
 		if err != nil {
 			cancelEventWithLog(event, err, "create table metadata")
 			return
 		}
 
-		if err = createTableOnShard(req.ctx, req.cluster, req.dispatch, subTableShard.ShardInfo.ID, buildCreateTableRequest(createTableResult, req.sourceReq, false)); err != nil {
+		if err = createTableOnShard(req.ctx, req.cluster, req.dispatch, subTableShard.ShardInfo.ID, buildCreateTableRequest(createTableResult, req.sourceReq, nil)); err != nil {
 			cancelEventWithLog(event, err, "dispatch create table on shard")
 			return
 		}
@@ -263,11 +265,12 @@ func openPartitionTableMetadataCallback(event *fsm.Event) {
 	req.partitionTableShards = append(req.partitionTableShards[:0], req.partitionTableShards[1:]...)
 	versions := make([]cluster.ShardVersionUpdate, 0, len(req.partitionTableShards))
 	for _, partitionTableShard := range req.partitionTableShards {
-		shardVersionUpdate, err := req.cluster.OpenTable(req.ctx, cluster.OpenTableRequest{
-			SchemaName: req.sourceReq.SchemaName,
-			TableName:  req.sourceReq.Name,
-			ShardID:    partitionTableShard.ShardInfo.ID,
-		})
+		shardVersionUpdate, err := req.cluster.OpenTable(req.ctx,
+			cluster.OpenTableRequest{
+				SchemaName: req.sourceReq.SchemaName,
+				TableName:  req.sourceReq.Name,
+				ShardID:    partitionTableShard.ShardInfo.ID,
+			})
 		if err != nil {
 			cancelEventWithLog(event, err, "open table")
 			return
@@ -305,17 +308,26 @@ func openPartitionTableCallback(event *fsm.Event) {
 
 		for _, shardNode := range shardNodes {
 			// Open partition table on target shard.
-			if err := req.dispatch.OpenTableOnShard(req.ctx, shardNode.NodeName, eventdispatch.OpenTableOnShardRequest{UpdateShardInfo: eventdispatch.UpdateShardInfo{CurrShardInfo: cluster.ShardInfo{
-				ID:      shardNode.ID,
-				Role:    shardNode.ShardRole,
-				Version: version.CurrVersion,
-			}, PrevVersion: version.PrevVersion}, TableInfo: cluster.TableInfo{
-				ID:          table.ID,
-				Name:        table.Name,
-				SchemaID:    table.SchemaID,
-				SchemaName:  req.sourceReq.SchemaName,
-				Partitioned: true,
-			}}); err != nil {
+			if err := req.dispatch.OpenTableOnShard(req.ctx, shardNode.NodeName,
+				eventdispatch.OpenTableOnShardRequest{
+					UpdateShardInfo: eventdispatch.UpdateShardInfo{
+						CurrShardInfo: cluster.ShardInfo{
+							ID:      shardNode.ID,
+							Role:    shardNode.ShardRole,
+							Version: version.CurrVersion,
+						},
+						PrevVersion: version.PrevVersion,
+					},
+					TableInfo: cluster.TableInfo{
+						ID:         table.ID,
+						Name:       table.Name,
+						SchemaID:   table.SchemaID,
+						SchemaName: req.sourceReq.SchemaName,
+						PartitionInfo: storage.PartitionInfo{
+							Info: req.sourceReq.GetPartitionTableInfo().GetPartitionInfo(),
+						},
+					},
+				}); err != nil {
 				cancelEventWithLog(event, err, "open table on shard")
 				return
 			}

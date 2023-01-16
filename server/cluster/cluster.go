@@ -85,10 +85,11 @@ func (c *Cluster) GetShardTables(shardIDs []storage.ShardID, nodeName string) ma
 				log.Warn("schema not exits", zap.Uint64("schemaID", uint64(table.SchemaID)))
 			}
 			tableInfos = append(tableInfos, TableInfo{
-				ID:         table.ID,
-				Name:       table.Name,
-				SchemaID:   table.SchemaID,
-				SchemaName: schema.Name,
+				ID:            table.ID,
+				Name:          table.Name,
+				SchemaID:      table.SchemaID,
+				SchemaName:    schema.Name,
+				PartitionInfo: table.PartitionInfo,
 			})
 		}
 		result[shardID] = ShardTables{
@@ -160,7 +161,7 @@ func (c *Cluster) OpenTable(ctx context.Context, request OpenTableRequest) (Shar
 		return ShardVersionUpdate{}, errors.WithMessagef(ErrTableNotFound, "table not exists, shcemaName:%s,tableName:%s", request.SchemaName, request.TableName)
 	}
 
-	if !table.Partitioned {
+	if !table.IsPartitioned() {
 		log.Error("normal table cannot be opened on multiple shards", zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 		return ShardVersionUpdate{}, errors.WithMessagef(ErrOpenTable, "normal table cannot be opened on multiple shards, schemaName:%s, tableName:%s", request.SchemaName, request.TableName)
 	}
@@ -245,10 +246,10 @@ func (c *Cluster) GetTable(schemaName, tableName string) (storage.Table, bool, e
 	return c.tableManager.GetTable(schemaName, tableName)
 }
 
-func (c *Cluster) CreateTable(ctx context.Context, shardID storage.ShardID, schemaName string, tableName string, partitioned bool) (CreateTableResult, error) {
-	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", schemaName), zap.String("tableName", tableName))
+func (c *Cluster) CreateTable(ctx context.Context, request CreateTableRequest) (CreateTableResult, error) {
+	log.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
-	_, exists, err := c.tableManager.GetTable(schemaName, tableName)
+	_, exists, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
 		return CreateTableResult{}, err
 	}
@@ -258,13 +259,13 @@ func (c *Cluster) CreateTable(ctx context.Context, shardID storage.ShardID, sche
 	}
 
 	// Create table in table manager.
-	table, err := c.tableManager.CreateTable(ctx, schemaName, tableName, partitioned)
+	table, err := c.tableManager.CreateTable(ctx, request.SchemaName, request.TableName, request.PartitionInfo)
 	if err != nil {
 		return CreateTableResult{}, errors.WithMessage(err, "table manager create table")
 	}
 
 	// Add table to topology manager.
-	result, err := c.topologyManager.AddTable(ctx, shardID, []storage.Table{table})
+	result, err := c.topologyManager.AddTable(ctx, request.ShardID, []storage.Table{table})
 	if err != nil {
 		return CreateTableResult{}, errors.WithMessage(err, "topology manager add table")
 	}

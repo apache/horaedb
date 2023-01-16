@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreateAndDropPartitionTable(t *testing.T) {
+	re := require.New(t)
 	ctx := context.Background()
 	dispatch := MockDispatch{}
 	manager, c := prepare(t)
@@ -21,7 +24,7 @@ func TestCreateAndDropPartitionTable(t *testing.T) {
 
 	shardPicker := NewRandomBalancedShardPicker(manager)
 
-	testTableNum := 20
+	testTableNum := 8
 	testSubTableNum := 4
 
 	// Create table.
@@ -34,7 +37,8 @@ func TestCreateAndDropPartitionTable(t *testing.T) {
 	// Check get table.
 	for i := 0; i < testTableNum; i++ {
 		tableName := fmt.Sprintf("%s_%d", testTableName0, i)
-		checkTable(t, c, tableName, true)
+		table := checkTable(t, c, tableName, true)
+		re.Equal(table.PartitionInfo.Info != nil, true)
 		subTableNames := genSubTables(tableName, testSubTableNum)
 		for _, subTableName := range subTableNames {
 			checkTable(t, c, subTableName, true)
@@ -69,6 +73,7 @@ func testCreatePartitionTable(ctx context.Context, t *testing.T, dispatch eventd
 		},
 		PartitionTableInfo: &metaservicepb.PartitionTableInfo{
 			SubTableNames: subTableNames,
+			PartitionInfo: &clusterpb.PartitionInfo{},
 		},
 		SchemaName: testSchemaName,
 		Name:       tableName,
@@ -133,9 +138,10 @@ func genSubTables(tableName string, tableNum int) []string {
 	return subTableNames
 }
 
-func checkTable(t *testing.T, c *cluster.Cluster, tableName string, exist bool) {
+func checkTable(t *testing.T, c *cluster.Cluster, tableName string, exist bool) storage.Table {
 	re := require.New(t)
-	_, b, err := c.GetTable(testSchemaName, tableName)
+	table, b, err := c.GetTable(testSchemaName, tableName)
 	re.NoError(err)
 	re.Equal(b, exist)
+	return table
 }

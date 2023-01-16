@@ -12,11 +12,11 @@ const (
 )
 
 type TableInfo struct {
-	ID          storage.TableID
-	Name        string
-	SchemaID    storage.SchemaID
-	SchemaName  string
-	Partitioned bool
+	ID            storage.TableID
+	Name          string
+	SchemaID      storage.SchemaID
+	SchemaName    string
+	PartitionInfo storage.PartitionInfo
 }
 
 type ShardTables struct {
@@ -40,6 +40,13 @@ type CreateClusterOpts struct {
 	NodeCount         uint32
 	ReplicationFactor uint32
 	ShardTotal        uint32
+}
+
+type CreateTableRequest struct {
+	ShardID       storage.ShardID
+	SchemaName    string
+	TableName     string
+	PartitionInfo storage.PartitionInfo
 }
 
 type CreateTableResult struct {
@@ -131,9 +138,10 @@ func ConvertShardsInfoPB(shard *metaservicepb.ShardInfo) ShardInfo {
 
 func ConvertTableInfoToPB(table TableInfo) *metaservicepb.TableInfo {
 	return &metaservicepb.TableInfo{
-		Id:         uint64(table.ID),
-		Name:       table.Name,
-		SchemaId:   uint32(table.SchemaID),
-		SchemaName: table.SchemaName,
+		Id:            uint64(table.ID),
+		Name:          table.Name,
+		SchemaId:      uint32(table.SchemaID),
+		SchemaName:    table.SchemaName,
+		PartitionInfo: table.PartitionInfo.Info,
 	}
 }

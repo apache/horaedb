@@ -5,6 +5,7 @@ package procedure
 import (
 	"context"
 
+	"github.com/CeresDB/ceresdbproto/golang/pkg/clusterpb"
 	"github.com/CeresDB/ceresdbproto/golang/pkg/metaservicepb"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
@@ -12,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitioned bool) (cluster.CreateTableResult, error) {
+func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (cluster.CreateTableResult, error) {
 	_, exists, err := c.GetTable(schemaName, tableName)
 	if err != nil {
 		return cluster.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
@@ -21,7 +22,12 @@ func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName str
 		return cluster.CreateTableResult{}, errors.WithMessagef(ErrTableAlreadyExists, "create an existing table, schemaName:%s, tableName:%s", schemaName, tableName)
 	}
 
-	createTableResult, err := c.CreateTable(ctx, shardID, schemaName, tableName, partitioned)
+	createTableResult, err := c.CreateTable(ctx, cluster.CreateTableRequest{
+		ShardID:       shardID,
+		SchemaName:    schemaName,
+		TableName:     tableName,
+		PartitionInfo: storage.PartitionInfo{Info: partitionInfo},
+	})
 	if err != nil {
 		return cluster.CreateTableResult{}, errors.WithMessage(err, "create table")
 	}
@@ -54,11 +60,7 @@ func createTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventd
 	return nil
 }
 
-func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitioned bool) eventdispatch.CreateTableOnShardRequest {
-	var encodedPartitionInfo []byte
-	if partitioned {
-		encodedPartitionInfo = req.EncodedPartitionInfo
-	}
+func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitionInfo *clusterpb.PartitionInfo) eventdispatch.CreateTableOnShardRequest {
 	return eventdispatch.CreateTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
 			CurrShardInfo: cluster.ShardInfo{
@@ -70,16 +72,15 @@ func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *m
 			PrevVersion: createTableResult.ShardVersionUpdate.PrevVersion,
 		},
 		TableInfo: cluster.TableInfo{
-			ID:          createTableResult.Table.ID,
-			Name:        createTableResult.Table.Name,
-			SchemaID:    createTableResult.Table.SchemaID,
-			SchemaName:  req.GetSchemaName(),
-			Partitioned: partitioned,
+			ID:            createTableResult.Table.ID,
+			Name:          createTableResult.Table.Name,
+			SchemaID:      createTableResult.Table.SchemaID,
+			SchemaName:    req.GetSchemaName(),
+			PartitionInfo: storage.PartitionInfo{Info: partitionInfo},
 		},
-		EncodedSchema:        req.EncodedSchema,
-		Engine:               req.Engine,
-		CreateIfNotExist:     req.CreateIfNotExist,
-		Options:              req.Options,
-		EncodedPartitionInfo: encodedPartitionInfo,
+		EncodedSchema:    req.EncodedSchema,
+		Engine:           req.Engine,
+		CreateIfNotExist: req.CreateIfNotExist,
+		Options:          req.Options,
 	}
 }

@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/AlekSi/gocov-xml v1.0.0
-	github.com/CeresDB/ceresdbproto/golang v0.0.0-20230106033057-6cc1754ffc31
+	github.com/CeresDB/ceresdbproto/golang v0.0.0-20230116070525-9430fe7d3219
 	github.com/axw/gocov v1.1.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
