@@ -673,13 +673,13 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn new(hybrid_encoding: bool, collapsible_cols_idx: &[u32]) -> Self {
-        let record_decoder: Box<dyn RecordDecoder> = if hybrid_encoding {
+    pub fn new(collapsible_cols_idx: &[u32]) -> Self {
+        let record_decoder: Box<dyn RecordDecoder> = if collapsible_cols_idx.is_empty() {
+            Box::new(ColumnarRecordDecoder {})
+        } else {
             Box::new(HybridRecordDecoder {
                 collapsible_cols_idx: collapsible_cols_idx.to_vec(),
             })
-        } else {
-            Box::new(ColumnarRecordDecoder {})
         };
 
         Self { record_decoder }

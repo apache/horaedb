@@ -10,10 +10,12 @@ use proto::sst as sst_pb;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
+use super::factory::SstReadHint;
 use crate::{
     space::SpaceId,
     sst::{
-        factory::{FactoryRef, ObjectStorePickerRef, SstReaderOptions},
+        factory,
+        factory::{FactoryRef, ObjectStorePickerRef, SstReadOptions},
         file::FileHandle,
         parquet::{
             self, encoding,
@@ -42,8 +44,8 @@ pub enum Error {
     #[snafu(display("Failed to decode custom metadata in parquet, err:{}", source))]
     DecodeCustomMetaData { source: encoding::Error },
 
-    #[snafu(display("Failed to build sst reader.\nBacktrace:\n:{}", backtrace))]
-    BuildSstReader { backtrace: Backtrace },
+    #[snafu(display("Failed to create sst reader, err:{}", source))]
+    CreateSstReader { source: factory::Error },
 
     #[snafu(display("Failed to read meta data from reader, err:{}", source))]
     ReadMetaData { source: reader::Error },
@@ -123,7 +125,7 @@ pub struct SstMetaReader {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub factory: FactoryRef,
-    pub read_opts: SstReaderOptions,
+    pub read_opts: SstReadOptions,
     pub store_picker: ObjectStorePickerRef,
 }
 
@@ -133,15 +135,15 @@ impl SstMetaReader {
         let mut sst_metas = Vec::with_capacity(files.len());
         for f in files {
             let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
+            let read_hint = SstReadHint {
+                file_size: Some(f.size() as usize),
+                file_format: Some(f.storage_format()),
+            };
             let mut reader = self
                 .factory
-                .new_sst_reader(
-                    &self.read_opts,
-                    &path,
-                    f.storage_format(),
-                    &self.store_picker,
-                )
-                .context(BuildSstReader)?;
+                .create_reader(&path, &self.read_opts, read_hint, &self.store_picker)
+                .await
+                .context(CreateSstReader)?;
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;
             sst_metas.push(meta_data.clone());
         }
