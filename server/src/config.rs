@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use analytic_engine;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
+use common_util::config::ReadableDuration;
 use meta_client::types::ShardId;
 use router::{
     endpoint::Endpoint,
@@ -129,6 +130,9 @@ pub struct Config {
     pub http_max_body_size: u64,
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
+    pub timeout: Option<ReadableDuration>,
+    /// Enable that use tenant as the schema if schema is not provided.
+    pub enable_tenant_as_schema: bool,
 
     /// Engine related configs:
     pub runtime: RuntimeConfig,
@@ -184,6 +188,8 @@ impl Default for Config {
             mysql_port: 3307,
             grpc_port,
             grpc_server_cq_count: 20,
+            timeout: None,
+            enable_tenant_as_schema: true,
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,

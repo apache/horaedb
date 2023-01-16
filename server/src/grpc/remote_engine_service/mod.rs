@@ -2,12 +2,13 @@
 
 // Remote engine rpc service implementation.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
+use arrow_ext::ipc;
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use common_types::record_batch::RecordBatch;
-use common_util::avro;
+use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_util::time::InstantExt;
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{
@@ -25,8 +26,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::{
-    grpc::remote_engine_service::error::{
-        build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
+    grpc::{
+        metrics::REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+        remote_engine_service::error::{
+            build_ok_header, ErrNoCause, ErrWithCause, Result, StatusCode,
+        },
     },
     instance::InstanceRef,
 };
@@ -34,7 +38,6 @@ use crate::{
 pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
-const ENCODE_ROWS_WITH_AVRO: u32 = 0;
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -47,6 +50,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         &self,
         request: Request<ReadRequest>,
     ) -> Result<ReceiverStream<Result<RecordBatch>>> {
+        let instant = Instant::now();
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
@@ -78,6 +82,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 }
             });
         }
+
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .stream_read
+            .observe(instant.saturating_elapsed().as_secs_f64());
         Ok(ReceiverStream::new(rx))
     }
 
@@ -85,6 +93,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         &self,
         request: Request<WriteRequest>,
     ) -> std::result::Result<Response<WriteResponse>, Status> {
+        let begin_instant = Instant::now();
         let ctx = self.handler_ctx();
         let handle = self.runtimes.write_runtime.spawn(async move {
             let request = request.into_inner();
@@ -110,7 +119,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             }
         };
 
-        Ok(tonic::Response::new(resp))
+        REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .write
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+        Ok(Response::new(resp))
     }
 
     fn handler_ctx(&self) -> HandlerContext {
@@ -137,19 +149,22 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
             Ok(stream) => {
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
-                        let resp = match avro::record_batch_to_avro_rows(&record_batch)
-                            .map_err(|e| Box::new(e) as _)
-                            .context(ErrWithCause {
-                                code: StatusCode::Internal,
-                                msg: "fail to convert record batch to avro",
-                            }) {
+                        let resp = match ipc::encode_record_batch(
+                            &record_batch.into_arrow_record_batch(),
+                            ipc::Compression::Zstd,
+                        )
+                        .map_err(|e| Box::new(e) as _)
+                        .context(ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: "encode record batch failed",
+                        }) {
                             Err(e) => ReadResponse {
                                 header: Some(error::build_err_header(e)),
                                 ..Default::default()
                             },
                             Ok(rows) => ReadResponse {
                                 header: Some(build_ok_header()),
-                                version: ENCODE_ROWS_WITH_AVRO,
+                                version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
                                 rows,
                             },
                         };

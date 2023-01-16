@@ -74,7 +74,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TableIdentifier {
     pub catalog: String,
     pub schema: String,

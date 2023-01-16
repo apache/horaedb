@@ -127,14 +127,14 @@ impl ShowCreateInterpreter {
                     res += format!(
                         " PARTITION BY LINEAR HASH({}) PARTITIONS {}",
                         expr,
-                        v.partition_definitions.len()
+                        v.definitions.len()
                     )
                     .as_str()
                 } else {
                     res += format!(
                         " PARTITION BY HASH({}) PARTITIONS {}",
                         expr,
-                        v.partition_definitions.len()
+                        v.definitions.len()
                     )
                     .as_str()
                 }
@@ -145,14 +145,14 @@ impl ShowCreateInterpreter {
                     res += format!(
                         " PARTITION BY LINEAR KEY({}) PARTITIONS {}",
                         rendered_partition_key,
-                        v.partition_definitions.len()
+                        v.definitions.len()
                     )
                     .as_str()
                 } else {
                     res += format!(
                         " PARTITION BY KEY({}) PARTITIONS {}",
                         rendered_partition_key,
-                        v.partition_definitions.len()
+                        v.definitions.len()
                     )
                     .as_str()
                 }
@@ -197,7 +197,7 @@ mod test {
         let expr = col("col1").add(col("col2"));
         let partition_info = PartitionInfo::Hash(HashPartitionInfo {
             version: 0,
-            partition_definitions: vec![
+            definitions: vec![
                 PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: None,
@@ -223,7 +223,7 @@ mod test {
         let partition_key_col_name = "col1";
         let partition_info = PartitionInfo::Key(KeyPartitionInfo {
             version: 0,
-            partition_definitions: vec![
+            definitions: vec![
                 PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: None,

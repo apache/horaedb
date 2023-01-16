@@ -10,7 +10,7 @@ use common_util::time::InstantExt;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use sql::{plan::QueryPlan, provider::CatalogProviderAdapter};
 use table_engine::stream::SendableRecordBatchStream;
 
@@ -39,6 +39,12 @@ pub enum Error {
 
     #[snafu(display("Failed to collect record batch stream, err:{}", source,))]
     Collect { source: table_engine::stream::Error },
+
+    #[snafu(display("Timeout when execute, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    Timeout {
+        source: tokio::time::error::Elapsed,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
@@ -91,8 +97,9 @@ impl Executor for ExecutorImpl {
         let plan = query.plan;
 
         // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
-        let df_ctx = ctx.build_df_session_ctx(&self.config);
+        let catalogs =
+            CatalogProviderAdapter::new_adapters(plan.tables.clone(), self.config.read_parallelism);
+        let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }

@@ -2,7 +2,7 @@
 
 //! Frontend
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use ceresdbproto::prometheus::PrometheusQueryRequest;
 use common_types::request_id::RequestId;
@@ -51,12 +51,15 @@ pub struct Context {
     pub request_id: RequestId,
     /// Parallelism to read table.
     pub read_parallelism: usize,
+    /// Deadline of this request
+    pub deadline: Option<Instant>,
 }
 
 impl Context {
-    pub fn new(request_id: RequestId) -> Self {
+    pub fn new(request_id: RequestId, deadline: Option<Instant>) -> Self {
         Self {
             request_id,
+            deadline,
             read_parallelism: table::DEFAULT_READ_PARALLELISM,
         }
     }

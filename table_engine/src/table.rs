@@ -9,6 +9,7 @@ use std::{
         atomic::{AtomicU32, AtomicU64, Ordering},
         Arc,
     },
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -168,6 +169,7 @@ define_result!(Error);
 
 /// Default partition num to scan in parallelism.
 pub const DEFAULT_READ_PARALLELISM: usize = 8;
+const NO_TIMEOUT: i64 = -1;
 
 /// Schema id (24 bits)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,6 +320,8 @@ pub struct ReadOptions {
     /// Suggested read parallelism, the actual returned stream should equal to
     /// `read_parallelism`.
     pub read_parallelism: usize,
+    /// Request deadline
+    pub deadline: Option<Instant>,
 }
 
 impl Default for ReadOptions {
@@ -325,6 +329,7 @@ impl Default for ReadOptions {
         Self {
             batch_size: 10000,
             read_parallelism: DEFAULT_READ_PARALLELISM,
+            deadline: None,
         }
     }
 }
@@ -334,6 +339,11 @@ impl From<proto::remote_engine::ReadOptions> for ReadOptions {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
+            deadline: if pb.timeout_ms == NO_TIMEOUT {
+                None
+            } else {
+                Some(Instant::now() + Duration::from_millis(pb.timeout_ms as u64))
+            },
         }
     }
 }
@@ -343,6 +353,11 @@ impl From<ReadOptions> for proto::remote_engine::ReadOptions {
         Self {
             batch_size: opts.batch_size as u64,
             read_parallelism: opts.read_parallelism as u64,
+            timeout_ms: if let Some(deadline) = opts.deadline {
+                deadline.duration_since(Instant::now()).as_millis() as i64
+            } else {
+                NO_TIMEOUT
+            },
         }
     }
 }

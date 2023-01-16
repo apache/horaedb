@@ -19,7 +19,7 @@ use tonic::{
     transport::{self, Channel},
 };
 
-use crate::consts::TENANT_HEADER;
+use crate::consts::SCHEMA_HEADER;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -293,7 +293,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             Ok(mut routes) => {
                 if routes.len() != 1 || routes[0].endpoint.is_none() {
                     warn!(
-                        "Fail to forward request for multiple route results, routes result:{:?}, req:{:?}",
+                        "Fail to forward request for multiple or empty route results, routes result:{:?}, req:{:?}",
                         routes, req
                     );
                     return Ok(ForwardResult::Original);
@@ -317,7 +317,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             req.set_timeout(self.config.forward_timeout);
             let metadata = req.metadata_mut();
             metadata.insert(
-                TENANT_HEADER,
+                SCHEMA_HEADER,
                 schema.parse().context(InvalidSchema { schema })?,
             );
         }
@@ -474,8 +474,8 @@ mod tests {
         };
 
         let do_rpc = |_client, req: tonic::Request<QueryRequest>, endpoint: &Endpoint| {
-            let tenant = req.metadata().get(TENANT_HEADER).unwrap().to_str().unwrap();
-            assert_eq!(tenant, "public");
+            let schema = req.metadata().get(SCHEMA_HEADER).unwrap().to_str().unwrap();
+            assert_eq!(schema, "public");
             let req = req.into_inner();
             let expect_endpoint = mock_router.routing_tables.get(&req.metrics[0]).unwrap();
             assert_eq!(expect_endpoint, endpoint);

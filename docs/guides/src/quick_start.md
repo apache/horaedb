@@ -82,5 +82,5 @@ See [sdk](./sdk.md)
 ## Next Step
 
 Congrats, you have finished this tutorial. For more information about CeresDB, see the following:
-- [Data Model](./model)
+- [Data Model](sql/model)
 - [Analytic Engine](./analytic_engine)

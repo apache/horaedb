@@ -34,7 +34,7 @@ impl Validator {
         // partition table access.
         if !self.ctx.enable_partition_table_access && Validator::contains_sub_tables(plan) {
             PermissionDenied {
-                msg: "only can process sub tables in table partition directly while enable partition table access",
+                msg: "only can process sub tables in table partition directly when enable partition table access",
             }
             .fail()
         } else {

@@ -7,6 +7,7 @@ use std::{
     str::FromStr,
     stringify,
     sync::Arc,
+    time::Duration,
 };
 
 use ceresdbproto::{
@@ -96,6 +97,9 @@ pub enum Error {
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
+
+    #[snafu(display("Missing timeout.\nBacktrace:\n{}", backtrace))]
+    MissingTimeout { backtrace: Backtrace },
 
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
@@ -199,6 +203,8 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 
 pub struct Builder<Q> {
     endpoint: String,
+    timeout: Option<Duration>,
+    enable_tenant_as_schema: bool,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -212,6 +218,8 @@ impl<Q> Builder<Q> {
     pub fn new() -> Self {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
+            timeout: None,
+            enable_tenant_as_schema: false,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -224,6 +232,11 @@ impl<Q> Builder<Q> {
 
     pub fn endpoint(mut self, endpoint: String) -> Self {
         self.endpoint = endpoint;
+        self
+    }
+
+    pub fn enable_tenant_as_schema(mut self, enable_tenant_as_schema: bool) -> Self {
+        self.enable_tenant_as_schema = enable_tenant_as_schema;
         self
     }
 
@@ -261,6 +274,11 @@ impl<Q> Builder<Q> {
 
     pub fn forward_config(mut self, config: forward::Config) -> Self {
         self.forward_config = Some(config);
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.timeout = timeout;
         self
     }
 }
@@ -311,6 +329,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             runtimes,
             schema_config_provider,
             forwarder,
+            timeout: self.timeout,
+            enable_tenant_as_schema: self.enable_tenant_as_schema,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

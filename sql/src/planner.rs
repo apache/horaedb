@@ -28,11 +28,11 @@ use datafusion::{
     sql::planner::SqlToRel,
 };
 use hashbrown::HashMap as NoStdHashMap;
-use log::debug;
+use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
-    ColumnDef, ColumnOption, Expr, Ident, ObjectName, Query, SetExpr, SqlOption,
-    Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
+    ColumnDef, ColumnOption, Expr, Ident, Query, SetExpr, SqlOption, Statement as SqlStatement,
+    TableConstraint, UnaryOperator, Value, Values,
 };
 use table_engine::table::TableRef;
 
@@ -273,8 +273,13 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Takes the ownership of statement because some statements like INSERT
     /// statements contains lots of data
     pub fn statement_to_plan(&self, statement: Statement) -> Result<Plan> {
-        let adapter =
-            ContextProviderAdapter::new(self.provider, self.request_id, self.read_parallelism);
+        trace!(
+            "Statement to plan, request_id:{}, statement:{:?}",
+            self.request_id,
+            statement
+        );
+
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -296,8 +301,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn promql_expr_to_plan(&self, expr: PromExpr) -> Result<(Plan, Arc<ColumnNames>)> {
-        let adapter =
-            ContextProviderAdapter::new(self.provider, self.request_id, self.read_parallelism);
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
@@ -564,21 +568,35 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
-        let table = if stmt.if_exists {
-            stmt.table_name.to_string()
-        } else {
-            self.find_table(stmt.table_name)?.name().to_string()
-        };
+        let (table_name, partition_info) =
+            if let Some(table) = self.find_table(&stmt.table_name.to_string())? {
+                let table_name = table.name().to_string();
+                let partition_info = table.partition_info();
+                (table_name, partition_info)
+            } else if stmt.if_exists {
+                let table_name = stmt.table_name.to_string();
+                (table_name, None)
+            } else {
+                return TableNotFound {
+                    name: stmt.table_name.to_string(),
+                }
+                .fail();
+            };
 
         Ok(Plan::Drop(DropTablePlan {
             engine: stmt.engine,
             if_exists: stmt.if_exists,
-            table,
+            table: table_name,
+            partition_info,
         }))
     }
 
     fn describe_table_to_plan(&self, stmt: DescribeTable) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
 
         Ok(Plan::Describe(DescribeTablePlan { table }))
     }
@@ -592,7 +610,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 source,
                 ..
             } => {
-                let table = self.find_table(ObjectName(table_name.0).into())?;
+                let table_name = TableName::from(table_name).to_string();
+
+                let table = self
+                    .find_table(&table_name)?
+                    .context(TableNotFound { name: table_name })?;
 
                 let schema = table.schema();
                 // Column name and its index in insert stmt: {column name} => index
@@ -681,7 +703,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn alter_modify_setting_to_plan(&self, stmt: AlterModifySetting) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
             operations: AlterTableOperation::ModifySetting(parse_options(stmt.options)?),
@@ -690,7 +716,10 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn alter_add_column_to_plan(&self, stmt: AlterAddColumn) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name)?;
+        let table_name = stmt.table_name.to_string();
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
             operations: AlterTableOperation::AddColumn(parse_columns(stmt.columns)?),
@@ -699,15 +728,18 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn exists_table_to_plan(&self, stmt: ExistsTable) -> Result<Plan> {
-        let table = self.find_table(stmt.table_name);
+        let table = self.find_table(&stmt.table_name.to_string())?;
         match table {
-            Ok(_) => Ok(Plan::Exists(ExistsTablePlan { exists: true })),
-            Err(_) => Ok(Plan::Exists(ExistsTablePlan { exists: false })),
+            Some(_) => Ok(Plan::Exists(ExistsTablePlan { exists: true })),
+            None => Ok(Plan::Exists(ExistsTablePlan { exists: false })),
         }
     }
 
     fn show_create_to_plan(&self, show_create: ShowCreate) -> Result<Plan> {
-        let table = self.find_table(show_create.table_name)?;
+        let table_name = show_create.table_name.to_string();
+        let table = self
+            .find_table(&table_name)?
+            .context(TableNotFound { name: table_name })?;
         let plan = ShowCreatePlan {
             table,
             obj_type: show_create.obj_type,
@@ -726,14 +758,12 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
-    fn find_table(&self, table_name: TableName) -> Result<TableRef> {
-        let table_name = table_name.to_string();
-        let table_ref = TableReference::from(table_name.as_str());
+    fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
+        let table_ref = TableReference::from(table_name);
 
         self.meta_provider
             .table(table_ref)
-            .context(MetaProviderFindTable)?
-            .with_context(|| TableNotFound { name: table_name })
+            .context(MetaProviderFindTable)
     }
 }
 
@@ -1010,6 +1040,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
 
 #[cfg(test)]
 mod tests {
+
     use sqlparser::ast::{Ident, Value};
 
     use super::*;
@@ -1088,11 +1119,11 @@ mod tests {
 
     #[test]
     fn test_create_statement_to_plan() {
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
-                                                      c3 string, 
-                                                      c4 uint32 Default 0, 
-                                                      c5 uint32 Default 1+1, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
+                                                      c3 string,
+                                                      c4 uint32 Default 0,
+                                                      c5 uint32 Default 1+1,
                                                       c6 String Default c3,
                                                       timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
@@ -1222,9 +1253,9 @@ mod tests {
         // CeresDB can reference other columns in default value expr, but it is mysql
         // style, which only allow it reference columns defined before it.
         // issue: https://github.com/CeresDB/ceresdb/issues/250
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
-                                                      c3 uint32 Default c4, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
+                                                      c3 uint32 Default c4,
                                                       c4 uint32 Default 0, timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
         assert!(quick_test(sql, "").is_err());
@@ -1233,8 +1264,8 @@ mod tests {
         // when default-value-expr is present, so planner will check if this cast is
         // allowed.
         // bool -> timestamp is not allowed in Arrow.
-        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null, 
-                                                      ts timestamp not null, 
+        let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
+                                                      ts timestamp not null,
                                                       c3 timestamp Default 1 > 2,
                                                       timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')";
@@ -1424,6 +1455,7 @@ mod tests {
         engine: "Analytic",
         if_exists: false,
         table: "test_table",
+        partition_info: None,
     },
 )"#,
         )
@@ -1440,6 +1472,7 @@ mod tests {
         engine: "Analytic",
         if_exists: true,
         table: "test_tablex",
+        partition_info: None,
     },
 )"#,
         )

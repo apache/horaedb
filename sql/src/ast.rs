@@ -26,7 +26,7 @@ pub enum Statement {
     Exists(ExistsTable),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TableName(ObjectName);
 
 impl TableName {

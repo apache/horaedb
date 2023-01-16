@@ -11,6 +11,7 @@ use common_types::{
 use common_util::config::ReadableDuration;
 use serde_derive::Deserialize;
 use snafu::OptionExt;
+use table_engine::partition::PartitionInfo;
 
 use crate::{Error, MissingShardInfo, MissingTableInfo, Result};
 pub type ClusterNodesRef = Arc<Vec<NodeShard>>;
@@ -35,6 +36,7 @@ pub struct AllocSchemaIdResponse {
 #[derive(Clone, Debug)]
 pub struct PartitionTableInfo {
     pub sub_table_names: Vec<String>,
+    pub partition_info: PartitionInfo,
 }
 
 #[derive(Clone, Debug)]
@@ -46,7 +48,6 @@ pub struct CreateTableRequest {
     pub create_if_not_exist: bool,
     pub options: HashMap<String, String>,
     pub partition_table_info: Option<PartitionTableInfo>,
-    pub encoded_partition_info: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +60,7 @@ pub struct CreateTableResponse {
 pub struct DropTableRequest {
     pub schema_name: String,
     pub name: String,
+    pub partition_table_info: Option<PartitionTableInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -310,6 +312,7 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
         let partition_table_info =
             req.partition_table_info
                 .map(|v| meta_service_pb::PartitionTableInfo {
+                    partition_info: Some(v.partition_info.into()),
                     sub_table_names: v.sub_table_names,
                 });
         Self {
@@ -320,7 +323,6 @@ impl From<CreateTableRequest> for meta_service_pb::CreateTableRequest {
             engine: req.engine,
             create_if_not_exist: req.create_if_not_exist,
             options: req.options,
-            encoded_partition_info: req.encoded_partition_info,
             partition_table_info,
         }
     }
@@ -346,10 +348,17 @@ impl TryFrom<meta_service_pb::CreateTableResponse> for CreateTableResponse {
 
 impl From<DropTableRequest> for meta_service_pb::DropTableRequest {
     fn from(req: DropTableRequest) -> Self {
+        let partition_table_info =
+            req.partition_table_info
+                .map(|v| meta_service_pb::PartitionTableInfo {
+                    partition_info: Some(v.partition_info.into()),
+                    sub_table_names: v.sub_table_names,
+                });
         Self {
             header: None,
             schema_name: req.schema_name,
             name: req.name,
+            partition_table_info,
         }
     }
 }

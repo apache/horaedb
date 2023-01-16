@@ -5,7 +5,6 @@
 use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
 use catalog::manager::ManagerRef;
-use common_types::request_id::RequestId;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
@@ -147,14 +146,13 @@ pub struct ContextProviderAdapter<'a, P> {
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
-    request_id: RequestId,
     /// Read parallelism for each table.
     read_parallelism: usize,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     /// Create a adapter from meta provider
-    pub fn new(meta_provider: &'a P, request_id: RequestId, read_parallelism: usize) -> Self {
+    pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
 
@@ -162,7 +160,6 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
-            request_id,
             read_parallelism,
         }
     }
@@ -187,6 +184,14 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         if self.err.borrow().is_none() {
             *self.err.borrow_mut() = Some(err);
         }
+    }
+
+    fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
+        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism));
+
+        Arc::new(DefaultTableSource {
+            table_provider: table_adapter,
+        })
     }
 }
 
@@ -218,27 +223,15 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(p) = self.table_cache.borrow().get(name) {
-            return Ok(p);
+        if let Some(table_ref) = self.table_cache.borrow().get(name) {
+            return Ok(self.table_source(table_ref));
         }
 
         // Find in meta provider
         match self.meta_provider.table(name) {
             Ok(Some(table)) => {
-                let table_adapter = Arc::new(TableProviderAdapter::new(
-                    table,
-                    self.request_id,
-                    self.read_parallelism,
-                ));
-                let table_source = Arc::new(DefaultTableSource {
-                    table_provider: table_adapter,
-                });
-                // Put into cache
-                self.table_cache
-                    .borrow_mut()
-                    .insert(name, table_source.clone());
-
-                Ok(table_source)
+                self.table_cache.borrow_mut().insert(name, table.clone());
+                Ok(self.table_source(table))
             }
             Ok(None) => Err(DataFusionError::Execution(format!(
                 "Table is not found, {:?}",
@@ -295,6 +288,7 @@ struct SchemaProviderAdapter {
     catalog: String,
     schema: String,
     tables: Arc<TableContainer>,
+    read_parallelism: usize,
 }
 
 impl SchemaProvider for SchemaProviderAdapter {
@@ -306,12 +300,7 @@ impl SchemaProvider for SchemaProviderAdapter {
         let mut names = Vec::new();
         let _ = self.tables.visit::<_, ()>(|name, table| {
             if name.catalog == self.catalog && name.schema == self.schema {
-                let provider = table
-                    .table_provider
-                    .as_any()
-                    .downcast_ref::<Arc<TableProviderAdapter>>()
-                    .unwrap();
-                names.push(provider.as_table_ref().name().to_string());
+                names.push(table.name().to_string());
             }
             Ok(())
         });
@@ -324,11 +313,9 @@ impl SchemaProvider for SchemaProviderAdapter {
             schema: &self.schema,
             table: name,
         };
-        self.tables.get(name_ref).map(|v| {
-            v.as_any()
-                .downcast_ref::<Arc<TableProviderAdapter>>()
-                .unwrap()
-                .clone() as _
+
+        self.tables.get(name_ref).map(|table_ref| {
+            Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism)) as _
         })
     }
 
@@ -343,7 +330,10 @@ pub struct CatalogProviderAdapter {
 }
 
 impl CatalogProviderAdapter {
-    pub fn new_adapters(tables: Arc<TableContainer>) -> HashMap<String, CatalogProviderAdapter> {
+    pub fn new_adapters(
+        tables: Arc<TableContainer>,
+        read_parallelism: usize,
+    ) -> HashMap<String, CatalogProviderAdapter> {
         let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
         let _ = tables.visit::<_, ()>(|name, _| {
             // Get or create catalog
@@ -361,6 +351,7 @@ impl CatalogProviderAdapter {
                         catalog: name.catalog.to_string(),
                         schema: name.schema.to_string(),
                         tables: tables.clone(),
+                        read_parallelism,
                     }),
                 );
             }

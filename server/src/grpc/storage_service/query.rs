@@ -127,28 +127,28 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 ) -> Result<Option<Output>> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
+    let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     info!(
-        "Grpc handle query begin, catalog:{}, tenant:{}, request_id:{}, request:{:?}",
+        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}, request:{:?}",
         ctx.catalog(),
-        ctx.tenant(),
+        ctx.schema(),
         request_id,
         req,
     );
 
     let instance = &ctx.instance;
-    // We use tenant as schema
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: ctx.tenant(),
+        default_schema: ctx.schema(),
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
 
-    let mut sql_ctx = SqlContext::new(request_id);
+    let mut sql_ctx = SqlContext::new(request_id, deadline);
     // Parse sql, frontend error of invalid sql already contains sql
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend
@@ -198,10 +198,20 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             msg: "Query is blocked",
         })?;
 
+    if let Some(deadline) = deadline {
+        if deadline.check_deadline() {
+            return ErrNoCause {
+                code: StatusCode::REQUEST_TIMEOUT,
+                msg: "Query timeout",
+            }
+            .fail();
+        }
+    }
+
     // Execute in interpreter
-    let interpreter_ctx = InterpreterContext::builder(request_id)
-        // Use current ctx's catalog and tenant as default catalog and tenant
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.tenant().to_string())
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
@@ -217,19 +227,30 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             msg: "Failed to create interpreter",
         })?;
 
-    let output = interpreter
-        .execute()
+    let output = if let Some(deadline) = deadline {
+        tokio::time::timeout_at(
+            tokio::time::Instant::from_std(deadline),
+            interpreter.execute(),
+        )
         .await
         .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute interpreter, query:{}", req.ql),
-        })?;
+        .context(ErrWithCause {
+            code: StatusCode::REQUEST_TIMEOUT,
+            msg: "Query timeout",
+        })?
+    } else {
+        interpreter.execute().await
+    }
+    .map_err(|e| Box::new(e) as _)
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: format!("Failed to execute interpreter, query:{}", req.ql),
+    })?;
 
     info!(
-        "Grpc handle query success, catalog:{}, tenant:{}, request_id:{}, cost:{}ms, request:{:?}",
+        "Grpc handle query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
         ctx.catalog(),
-        ctx.tenant(),
+        ctx.schema(),
         request_id,
         begin_instant.saturating_elapsed().as_millis(),
         req,

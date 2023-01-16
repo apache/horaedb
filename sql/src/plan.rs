@@ -84,7 +84,7 @@ pub struct CreateTablePlan {
     pub table_schema: Schema,
     /// Table options
     pub options: HashMap<String, String>,
-    /// Table partition rule
+    /// Table partition info
     pub partition_info: Option<PartitionInfo>,
 }
 
@@ -115,6 +115,8 @@ pub struct DropTablePlan {
     pub if_exists: bool,
     /// Table name
     pub table: String,
+    /// Table partition info
+    pub partition_info: Option<PartitionInfo>,
 }
 
 /// Insert logical plan

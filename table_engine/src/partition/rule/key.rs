@@ -23,7 +23,7 @@ pub const DEFAULT_PARTITION_VERSION: i32 = 0;
 
 pub struct KeyRule {
     pub typed_key_columns: Vec<ColumnWithType>,
-    pub partition_num: u64,
+    pub partition_num: usize,
 }
 
 impl KeyRule {
@@ -241,7 +241,7 @@ fn expand_partition_keys_group(
 // Compute partition
 pub(crate) fn compute_partition(
     partition_keys: &[&Datum],
-    partition_num: u64,
+    partition_num: usize,
     buf: &mut BytesMut,
 ) -> usize {
     buf.clear();
@@ -249,7 +249,7 @@ pub(crate) fn compute_partition(
         .iter()
         .for_each(|datum| buf.put_slice(&datum.to_bytes()));
 
-    (hash64(buf) % partition_num) as usize
+    (hash64(buf) % (partition_num as u64)) as usize
 }
 
 #[cfg(test)]
@@ -288,7 +288,7 @@ mod tests {
         buf.put_slice(&datums[2].to_bytes());
         buf.put_slice(&datums[3].to_bytes());
         buf.put_slice(&datums[4].to_bytes());
-        let expected = (hash64(&buf) % partition_num) as usize;
+        let expected = (hash64(&buf) % (partition_num as u64)) as usize;
 
         assert_eq!(actual, expected);
     }

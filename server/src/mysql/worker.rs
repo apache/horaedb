@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
@@ -25,6 +25,7 @@ pub struct MysqlWorker<W: std::io::Write + Send + Sync, Q> {
     generic_hold: PhantomData<W>,
     instance: Arc<Instance<Q>>,
     runtimes: Arc<EngineRuntimes>,
+    timeout: Option<Duration>,
 }
 
 impl<W, Q> MysqlWorker<W, Q>
@@ -32,11 +33,16 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    pub fn new(instance: Arc<Instance<Q>>, runtimes: Arc<EngineRuntimes>) -> Self {
+    pub fn new(
+        instance: Arc<Instance<Q>>,
+        runtimes: Arc<EngineRuntimes>,
+        timeout: Option<Duration>,
+    ) -> Self {
         Self {
             generic_hold: PhantomData::default(),
             instance,
             runtimes,
+            timeout,
         }
     }
 }
@@ -133,9 +139,10 @@ where
 
         RequestContext::builder()
             .catalog(default_catalog)
-            .tenant(default_schema)
+            .schema(default_schema)
             .runtime(runtime)
             .enable_partition_table_access(false)
+            .timeout(self.timeout)
             .build()
             .context(CreateContext)
     }

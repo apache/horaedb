@@ -6,7 +6,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     stringify,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
@@ -100,6 +100,7 @@ pub struct HandlerContext<'a, Q> {
     schema: String,
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
+    timeout: Option<Duration>,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -109,6 +110,8 @@ impl<'a, Q> HandlerContext<'a, Q> {
         instance: InstanceRef<Q>,
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
+        timeout: Option<Duration>,
+        enable_tenant_as_schema: bool,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -125,15 +128,31 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .unwrap_or_else(|| default_catalog.to_string());
 
         let schema = header
-            .get(consts::TENANT_HEADER)
+            .get(consts::SCHEMA_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
             .map_err(|e| Box::new(e) as _)
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "fail to parse schema name",
-            })?
-            .unwrap_or_else(|| default_schema.to_string());
+            })?;
+
+        let schema = if enable_tenant_as_schema {
+            let tenant = header
+                .get(consts::TENANT_HEADER)
+                .map(|v| String::from_utf8(v.to_vec()))
+                .transpose()
+                .map_err(|e| Box::new(e) as _)
+                .context(ErrWithCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: "fail to parse tenant name",
+                })?;
+            schema
+                .or(tenant)
+                .unwrap_or_else(|| default_schema.to_string())
+        } else {
+            schema.unwrap_or_else(|| default_schema.to_string())
+        };
 
         let schema_config = schema_config_provider
             .schema_config(&schema)
@@ -151,6 +170,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             schema,
             schema_config,
             forwarder,
+            timeout,
         })
     }
 
@@ -160,29 +180,20 @@ impl<'a, Q> HandlerContext<'a, Q> {
     }
 
     #[inline]
-    fn tenant(&self) -> &str {
+    fn schema(&self) -> &str {
         &self.schema
     }
 }
 
+#[derive(Clone)]
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub router: Arc<dyn Router + Send + Sync>,
     pub instance: InstanceRef<Q>,
     pub runtimes: Arc<EngineRuntimes>,
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
-}
-
-impl<Q: QueryExecutor + 'static> Clone for StorageServiceImpl<Q> {
-    fn clone(&self) -> Self {
-        Self {
-            router: self.router.clone(),
-            instance: self.instance.clone(),
-            runtimes: self.runtimes.clone(),
-            schema_config_provider: self.schema_config_provider.clone(),
-            forwarder: self.forwarder.clone(),
-        }
-    }
+    pub timeout: Option<Duration>,
+    pub enable_tenant_as_schema: bool,
 }
 
 macro_rules! handle_request {
@@ -192,12 +203,14 @@ macro_rules! handle_request {
                 &self,
                 request: tonic::Request<$req_ty>,
             ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
-                let begin_instant = Instant::now();
+                let instant = Instant::now();
 
                 let router = self.router.clone();
                 let header = RequestHeader::from(request.metadata());
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
+                let timeout = self.timeout;
+                let enable_tenant_as_schema = self.enable_tenant_as_schema;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -211,7 +224,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -238,10 +251,6 @@ macro_rules! handle_request {
                         msg: "fail to join the spawn task",
                     });
 
-                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                    .$handle_fn
-                    .observe(begin_instant.saturating_elapsed().as_secs_f64());
-
                 let resp = match res {
                     Ok(Ok(v)) => v,
                     Ok(Err(e)) | Err(e) => {
@@ -251,6 +260,10 @@ macro_rules! handle_request {
                         resp
                     },
                 };
+
+                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+                    .$handle_fn
+                    .observe(instant.saturating_elapsed().as_secs_f64());
                 Ok(tonic::Response::new(resp))
             }
         }
@@ -287,6 +300,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             instance,
             &schema_config_provider,
             self.forwarder.clone(),
+            self.timeout,
+            self.enable_tenant_as_schema,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -333,7 +348,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_write
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Result::Ok(resp)
+        Ok(resp)
     }
 
     async fn stream_query_internal(
@@ -346,10 +361,12 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
+        let timeout = self.timeout;
+        let enable_tenant_as_schema = self.enable_tenant_as_schema;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
@@ -391,7 +408,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             .handle_stream_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Result::Ok(ReceiverStream::new(rx))
+        Ok(ReceiverStream::new(rx))
     }
 }
 

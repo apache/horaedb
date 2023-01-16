@@ -69,7 +69,7 @@ where
     }
 
     async fn sql_to_output(&self, sql: &str) -> Result<Output> {
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         self.sql_to_output_with_context(sql, ctx).await
@@ -87,7 +87,7 @@ where
         table_name: &str,
         enable_partition_table_access: bool,
     ) -> Result<()> {
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
@@ -108,7 +108,7 @@ where
         table_name: &str,
         enable_partition_table_access: bool,
     ) -> Result<()> {
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
@@ -127,7 +127,7 @@ where
         table_name: &str,
         enable_partition_table_access: bool,
     ) -> Result<()> {
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
@@ -204,7 +204,7 @@ where
 
     async fn test_insert_table_with_missing_columns(&self) {
         let catalog_manager = Arc::new(build_catalog_manager(self.engine()).await);
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         let table_manipulator = Arc::new(TableManipulatorImpl::new(catalog_manager.clone()));
@@ -233,7 +233,7 @@ where
             self.engine(),
             table_manipulator,
         );
-        let ctx = Context::builder(RequestId::next_id())
+        let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .build();
         let plan = sql_to_plan(&self.meta_provider, select_sql);
@@ -242,13 +242,13 @@ where
         let records = output.try_into().unwrap();
 
         #[rustfmt::skip]
-        // sql: CREATE TABLE `test_missing_columns_table` (`key1` varbinary NOT NULL, 
-        //                                                 `key2` timestamp NOT NULL, 
-        //                                                 `field1` bigint NOT NULL DEFAULT 10, 
-        //                                                 `field2` uint32 NOT NULL DEFAULT 20, 
-        //                                                 `field3` uint32 NOT NULL DEFAULT 1 + 2, 
-        //                                                 `field4` uint32 NOT NULL, 
-        //                                                 `field5` uint32 NOT NULL DEFAULT field4 + 2, 
+        // sql: CREATE TABLE `test_missing_columns_table` (`key1` varbinary NOT NULL,
+        //                                                 `key2` timestamp NOT NULL,
+        //                                                 `field1` bigint NOT NULL DEFAULT 10,
+        //                                                 `field2` uint32 NOT NULL DEFAULT 20,
+        //                                                 `field3` uint32 NOT NULL DEFAULT 1 + 2,
+        //                                                 `field4` uint32 NOT NULL,
+        //                                                 `field5` uint32 NOT NULL DEFAULT field4 + 2,
         //                                                 PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic
         let expected = vec![
             "+------------+---------------------+--------+--------+--------+--------+--------+",
@@ -309,24 +309,24 @@ where
     async fn test_enable_partition_table_access(&self) {
         // Disable partition table access, all of create, insert and select about sub
         // table(in table partition) directly will failed.
-        let res = self.create_table_and_check("____test_table", false).await;
+        let res = self.create_table_and_check("__test_table", false).await;
         assert!(format!("{:?}", res)
-            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
-        let res1 = self.insert_table_and_check("____test_table", false).await;
+            .contains("only can process sub tables in table partition directly when enable partition table access"));
+        let res1 = self.insert_table_and_check("__test_table", false).await;
         assert!(format!("{:?}", res1)
-            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
-        let res2 = self.select_table_and_check("____test_table", false).await;
+            .contains("only can process sub tables in table partition directly when enable partition table access"));
+        let res2 = self.select_table_and_check("__test_table", false).await;
         assert!(format!("{:?}", res2)
-            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
+            .contains("only can process sub tables in table partition directly when enable partition table access"));
 
         // Enable partition table access, operations above will success.
-        self.create_table_and_check("____test_table", true)
+        self.create_table_and_check("__test_table", true)
             .await
             .unwrap();
-        self.insert_table_and_check("____test_table", true)
+        self.insert_table_and_check("__test_table", true)
             .await
             .unwrap();
-        self.select_table_and_check("____test_table", true)
+        self.select_table_and_check("__test_table", true)
             .await
             .unwrap();
     }

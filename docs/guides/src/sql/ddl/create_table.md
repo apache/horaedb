@@ -26,7 +26,7 @@ Add `IF NOT EXIST` to tell CeresDB to ignore errors if the table name already ex
 
 ## Define Column
 
-A column's definition should at least contains the name and type parts. All supported types are listed [here](../../model/data_types.md).
+A column's definition should at least contains the name and type parts. All supported types are listed [here](../model/data_types.md).
 
 Column is default be nullable. i.e. `NULL` keyword is implied. Adding `NOT NULL` constrains to make it required.
 ```sql
@@ -39,7 +39,7 @@ a_nullable int NULL
 b_not_null NOT NULL
 ```
 
-A column can be marked as [special column](../../model/special_columns.md) with related keyword.
+A column can be marked as [special column](../model/special_columns.md) with related keyword.
 
 ## Engine
 

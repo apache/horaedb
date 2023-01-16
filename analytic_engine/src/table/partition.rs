@@ -29,7 +29,13 @@ use table_engine::{
     },
 };
 
-use crate::space::SpaceAndTable;
+use crate::{
+    space::SpaceAndTable,
+    table::metrics::{
+        PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM,
+        PARTITION_TABLE_WRITE_DURATION_HISTOGRAM,
+    },
+};
 
 /// Table trait implementation
 pub struct PartitionTableImpl {
@@ -125,6 +131,10 @@ impl Table for PartitionTableImpl {
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
+        let _timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
+            .with_label_values(&["total", &self.space_table.table_data().name])
+            .start_timer();
+
         // Build partition rule.
         let df_partition_rule = match self.partition_info() {
             None => UnexpectedWithMsg {
@@ -139,12 +149,17 @@ impl Table for PartitionTableImpl {
         };
 
         // Split write request.
-        let mut split_rows = HashMap::new();
-        let partitions = df_partition_rule
-            .locate_partitions_for_write(&request.row_group)
-            .map_err(|e| Box::new(e) as _)
-            .context(LocatePartitions)?;
+        let partitions = {
+            let _locate_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["locate", &self.space_table.table_data().name])
+                .start_timer();
+            df_partition_rule
+                .locate_partitions_for_write(&request.row_group)
+                .map_err(|e| Box::new(e) as _)
+                .context(LocatePartitions)?
+        };
 
+        let mut split_rows = HashMap::new();
         let schema = request.row_group.schema().clone();
         for (partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
             split_rows
@@ -172,12 +187,17 @@ impl Table for PartitionTableImpl {
             });
         }
 
-        let result = try_join_all(futures)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Write {
-                table: self.name().to_string(),
-            })?;
+        let result = {
+            let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
+                .with_label_values(&["remote_write", &self.space_table.table_data().name])
+                .start_timer();
+            try_join_all(futures)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(Write {
+                    table: self.name().to_string(),
+                })?
+        };
 
         Ok(result.into_iter().sum())
     }
@@ -199,6 +219,10 @@ impl Table for PartitionTableImpl {
     }
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
+        let _timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
+            .with_label_values(&["total", &self.space_table.table_data().name])
+            .start_timer();
+
         // Build partition rule.
         let df_partition_rule = match self.partition_info() {
             None => UnexpectedWithMsg {
@@ -213,10 +237,15 @@ impl Table for PartitionTableImpl {
         };
 
         // Evaluate expr and locate partition.
-        let partitions = df_partition_rule
-            .locate_partitions_for_read(request.predicate.exprs())
-            .map_err(|e| Box::new(e) as _)
-            .context(LocatePartitions)?;
+        let partitions = {
+            let _locate_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
+                .with_label_values(&["locate", &self.space_table.table_data().name])
+                .start_timer();
+            df_partition_rule
+                .locate_partitions_for_read(request.predicate.exprs())
+                .map_err(|e| Box::new(e) as _)
+                .context(LocatePartitions)?
+        };
 
         // Query streams through remote engine.
         let mut futures = Vec::with_capacity(partitions.len());
@@ -233,12 +262,18 @@ impl Table for PartitionTableImpl {
             })
         }
 
-        let streams = try_join_all(futures)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Scan {
-                table: self.name().to_string(),
-            })?;
+        let streams = {
+            let _remote_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
+                .with_label_values(&["remote_read", &self.space_table.table_data().name])
+                .start_timer();
+            try_join_all(futures)
+                .await
+                .map_err(|e| Box::new(e) as _)
+                .context(Scan {
+                    table: self.name().to_string(),
+                })?
+        };
+
         Ok(PartitionedStreams { streams })
     }
 

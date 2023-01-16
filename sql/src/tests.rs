@@ -41,7 +41,7 @@ impl Default for MockMetaProvider {
                     ANALYTIC_ENGINE_TYPE.to_string(),
                 )),
                 Arc::new(MemoryTable::new(
-                    "____test_table".to_string(),
+                    "__test_table".to_string(),
                     TableId::from(103),
                     build_schema(),
                     ANALYTIC_ENGINE_TYPE.to_string(),

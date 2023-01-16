@@ -10,8 +10,6 @@ You can use the following command to create a CeresDB cluster with two instances
    Refer to [CeresMeta](https://github.com/CeresDB/ceresmeta)
 
 2. Prepare config of CeresDB
-* Replace `{meta_addr}` with the actual address of CeresMeta in config file
-
 ```toml
 # {project_path}/docs/example-cluster-0.toml
 bind_addr = "0.0.0.0"
@@ -22,13 +20,15 @@ log_level = "info"
 deploy_mode = "Cluster"
 
 [analytic]
-wal_path = "/tmp/ceresdb"
-sst_data_cache_cap = 10000
-sst_meta_cache_cap = 10000
+wal_path = "/tmp/ceresdb0"
 
 [analytic.storage]
+mem_cache_capacity = '1G'
+mem_cache_partition_bits = 0
+
+[analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb"
+data_path = "/tmp/ceresdb0"
 
 [cluster]
 cmd_channel_buffer_size = 10
@@ -40,9 +40,13 @@ port = 8831
 [cluster.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "http://{meta_addr}:2379"
+meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
+
+[limiter]
+write_block_list = ['mytable1']
+read_block_list = ['mytable1']
 ```
 
 ```toml
@@ -55,13 +59,15 @@ log_level = "info"
 deploy_mode = "Cluster"
 
 [analytic]
-wal_path = "/tmp/ceresdb2"
-sst_data_cache_cap = 10000
-sst_meta_cache_cap = 10000
+wal_path = "/tmp/ceresdb1"
 
 [analytic.storage]
+mem_cache_capacity = '1G'
+mem_cache_partition_bits = 0
+
+[analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb2"
+data_path = "/tmp/ceresdb1"
 
 [cluster]
 cmd_channel_buffer_size = 10
@@ -73,9 +79,13 @@ port = 8832
 [cluster.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "http://{meta_addr}:2379"
+meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
+
+[limiter]
+write_block_list = ['mytable1']
+read_block_list = ['mytable1']
 ```
 
 3. Start CeresDB instances

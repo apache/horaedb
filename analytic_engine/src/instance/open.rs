@@ -224,7 +224,8 @@ impl Instance {
                     request.cluster_version,
                     request.table_id.as_u64(),
                 ),
-                true,
+                // Avoid snapshotting when recover table data.
+                false,
             )
             .await
             .context(ReadMetaUpdate {

@@ -111,6 +111,20 @@ impl<T> Future for JoinHandle<T> {
     }
 }
 
+/// Helper that aborts the given join handles on drop.
+///
+/// Useful to kill background tasks when the consumer is dropped.
+#[derive(Debug)]
+pub struct AbortOnDropMany<T>(pub Vec<JoinHandle<T>>);
+
+impl<T> Drop for AbortOnDropMany<T> {
+    fn drop(&mut self) {
+        for join_handle in &self.0 {
+            join_handle.inner.abort();
+        }
+    }
+}
+
 /// Runtime statistics
 pub struct RuntimeStats {
     pub alive_thread_num: i64,

@@ -11,12 +11,14 @@ workspace = true
 workspace = true
 
 [dependencies]
+arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 clru = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 futures = { workspace = true }
+log = { workspace = true }
 proto = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
