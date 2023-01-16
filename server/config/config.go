@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	defaultGrpcHandleTimeoutMs int64 = 10 * 1000
-	defaultEtcdStartTimeoutMs  int64 = 10 * 1000
+	defaultGrpcHandleTimeoutMs int64 = 60 * 1000
+	defaultEtcdStartTimeoutMs  int64 = 60 * 1000
 	defaultCallTimeoutMs             = 5 * 1000
 	defaultMaxTxnOps                 = 128
 	defaultEtcdLeaseTTLSec           = 10

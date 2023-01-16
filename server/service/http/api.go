@@ -15,7 +15,6 @@ import (
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
-	jsoniter "github.com/json-iterator/go"
 	"go.uber.org/zap"
 )
 
@@ -27,10 +26,9 @@ const (
 )
 
 type API struct {
+	clusterManager   cluster.Manager
 	procedureManager procedure.Manager
 	procedureFactory *procedure.Factory
-
-	clusterManager cluster.Manager
 
 	forwardClient *ForwardClient
 }
@@ -76,6 +74,7 @@ type response struct {
 	Status string      `json:"status"`
 	Data   interface{} `json:"data,omitempty"`
 	Error  string      `json:"error,omitempty"`
+	Msg    string      `json:"msg,omitempty"`
 }
 
 func (a *API) respondForward(w http.ResponseWriter, response *http.Response) {
@@ -99,7 +98,6 @@ func (a *API) respondForward(w http.ResponseWriter, response *http.Response) {
 
 func (a *API) respond(w http.ResponseWriter, data interface{}) {
 	statusMessage := statusSuccess
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	b, err := json.Marshal(&response{
 		Status: statusMessage,
 		Data:   data,
@@ -117,12 +115,11 @@ func (a *API) respond(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-func (a *API) respondError(w http.ResponseWriter, apiErr coderr.CodeError, data interface{}) {
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
+func (a *API) respondError(w http.ResponseWriter, apiErr coderr.CodeError, msg string) {
 	b, err := json.Marshal(&response{
 		Status: statusError,
 		Error:  apiErr.Error(),
-		Data:   data,
+		Msg:    msg,
 	})
 	if err != nil {
 		log.Error("error marshaling json response", zap.Error(err))
@@ -165,7 +162,7 @@ func (a *API) getShardTables(writer http.ResponseWriter, req *http.Request) {
 	}
 
 	shardTables := c.GetShardTables(shardIDs, getShardTables.NodeName)
-	a.respond(writer, fmt.Sprintf("%+v", shardTables))
+	a.respond(writer, shardTables)
 }
 
 type TransferLeaderRequest struct {
@@ -241,7 +238,7 @@ func (a *API) route(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	a.respond(writer, fmt.Sprintf("%+v", result))
+	a.respond(writer, result)
 }
 
 type DropTableRequest struct {
@@ -282,7 +279,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 	err := json.NewDecoder(req.Body).Decode(&splitRequest)
 	if err != nil {
 		log.Error("decode request body failed", zap.Error(err))
-		a.respondError(writer, ErrParseRequest, nil)
+		a.respondError(writer, ErrParseRequest, "")
 		return
 	}
 	ctx := context.Background()
