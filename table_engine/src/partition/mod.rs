@@ -10,6 +10,7 @@ use proto::{meta_update as meta_pb, meta_update::partition_info::PartitionInfoEn
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 const DEFAULT_PARTITION_INFO_ENCODING_VERSION: u8 = 0;
+const PARTITION_TABLE_PREFIX: &str = "__";
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -232,7 +233,10 @@ impl TryFrom<meta_pb::PartitionInfo> for PartitionInfo {
 }
 
 pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -> String {
-    format!("__{}_{}", table_name, partition_name)
+    format!(
+        "{}{}_{}",
+        PARTITION_TABLE_PREFIX, table_name, partition_name
+    )
 }
 
 /// Encoder for partition info with version control.
