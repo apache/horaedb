@@ -94,7 +94,7 @@ mod tests {
         let valid_filters_2 = vec![filter1, filter2, filter3, filter4];
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -113,7 +113,7 @@ mod tests {
         ];
         let partition_key_refs = partition_keys.iter().collect::<Vec<_>>();
         let mut buf = BytesMut::new();
-        let expected = compute_partition(&partition_key_refs, partition_num as u64, &mut buf);
+        let expected = compute_partition(&partition_key_refs, partition_num, &mut buf);
 
         assert_eq!(partitions[0], expected);
 
@@ -139,7 +139,7 @@ mod tests {
         let invalid_filters_2 = vec![filter1, filter2, filter4];
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -170,7 +170,7 @@ mod tests {
         let partition_num = 16;
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -233,8 +233,8 @@ mod tests {
         let partition_keys_2 = test_datums[1].clone();
         let partition_key_refs_2 = partition_keys_2.iter().collect::<Vec<_>>();
         let mut buf = BytesMut::new();
-        let expected_1 = compute_partition(&partition_key_refs_1, partition_num as u64, &mut buf);
-        let expected_2 = compute_partition(&partition_key_refs_2, partition_num as u64, &mut buf);
+        let expected_1 = compute_partition(&partition_key_refs_1, partition_num, &mut buf);
+        let expected_2 = compute_partition(&partition_key_refs_2, partition_num, &mut buf);
         let expecteds = vec![expected_1, expected_2];
 
         assert_eq!(partitions, expecteds);

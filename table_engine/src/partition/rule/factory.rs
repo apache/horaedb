@@ -5,9 +5,11 @@
 use common_types::schema::Schema;
 use snafu::{ensure, OptionExt};
 
-use super::{key::KeyRule, ColumnWithType};
 use crate::partition::{
-    rule::{key::DEFAULT_PARTITION_VERSION, PartitionRuleRef},
+    rule::{
+        key::{KeyRule, DEFAULT_PARTITION_VERSION},
+        ColumnWithType, PartitionRuleRef,
+    },
     BuildPartitionRule, KeyPartitionInfo, PartitionInfo, Result,
 };
 
@@ -55,7 +57,7 @@ impl PartitionRuleFactory {
 
         Ok(Box::new(KeyRule {
             typed_key_columns,
-            partition_num: key_info.partition_definitions.len() as u64,
+            partition_num: key_info.definitions.len(),
         }))
     }
 }

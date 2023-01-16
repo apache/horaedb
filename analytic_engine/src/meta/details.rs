@@ -1191,7 +1191,7 @@ mod tests {
             let default_version = 0;
             let partition_info = Some(PartitionInfo::Hash(HashPartitionInfo {
                 version: default_version,
-                partition_definitions: vec![PartitionDefinition {
+                definitions: vec![PartitionDefinition {
                     name: "p0".to_string(),
                     origin_name: Some("region0".to_string()),
                 }],
