@@ -43,10 +43,10 @@ use crate::{
     },
     space::SpaceAndTable,
     sst::{
-        builder::{MetaData, RecordBatchStream},
         factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
         file::FileMeta,
         meta_data::SstMetaReader,
+        writer::{MetaData, RecordBatchStream},
     },
     table::{
         data::{TableData, TableDataRef},

@@ -3,7 +3,7 @@
 //! Sst implementation based on parquet.
 
 pub mod async_reader;
-pub mod builder;
+pub mod writer;
 pub mod encoding;
 mod hybrid;
 pub mod meta_data;

@@ -8,7 +8,6 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
-        builder::MetaData,
         factory::{
             Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
         },
@@ -16,6 +15,7 @@ use analytic_engine::{
         manager::FileId,
         meta_data::cache::MetaCacheRef,
         parquet::encoding,
+        writer::MetaData,
     },
     table::sst_util,
     table_options::StorageFormat,

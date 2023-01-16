@@ -11,7 +11,7 @@ use ethbloom::Bloom;
 use proto::{common as common_pb, sst as sst_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::sst::builder::MetaData;
+use crate::sst::writer::MetaData;
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]

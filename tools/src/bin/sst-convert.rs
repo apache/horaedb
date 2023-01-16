@@ -108,7 +108,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let mut writer = factory
         .create_writer(&builder_opts, &output, &store_picker)
         .await
-        .expect("no sst builder found");
+        .expect("no sst writer found");
     let sst_stream = reader
         .read()
         .await

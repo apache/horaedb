@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Sst builder implementation based on parquet.
+//! Sst writer implementation based on parquet.
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -18,14 +18,14 @@ use snafu::ResultExt;
 
 use crate::{
     sst::{
-        builder::{
-            self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
-            SstWriter, Storage,
-        },
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
             meta_data::{BloomFilter, ParquetMetaData},
+        },
+        writer::{
+            self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
+            SstWriter, Storage,
         },
     },
     table_options::StorageFormat,
@@ -33,7 +33,7 @@ use crate::{
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
-pub struct ParquetSstBuilder<'a> {
+pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     hybrid_encoding: bool,
@@ -44,7 +44,7 @@ pub struct ParquetSstBuilder<'a> {
     compression: Compression,
 }
 
-impl<'a> ParquetSstBuilder<'a> {
+impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
         hybrid_encoding: bool,
@@ -222,13 +222,13 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a> SstWriter for ParquetSstBuilder<'a> {
+impl<'a> SstWriter for ParquetSstWriter<'a> {
     async fn write(
         &mut self,
         request_id: RequestId,
         meta: &MetaData,
         record_stream: RecordBatchStream,
-    ) -> builder::Result<SstInfo> {
+    ) -> writer::Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.num_rows_per_row_group

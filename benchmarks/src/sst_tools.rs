@@ -13,7 +13,6 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        builder::{MetaData, RecordBatchStream},
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             SstReadHint, SstReadOptions, SstWriteOptions,
@@ -21,6 +20,7 @@ use analytic_engine::{
         file::FilePurgeQueue,
         manager::FileId,
         meta_data::SstMetaReader,
+        writer::{MetaData, RecordBatchStream},
     },
     table::sst_util,
     table_options::{Compression, StorageFormatHint},

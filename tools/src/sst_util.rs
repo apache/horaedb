@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use analytic_engine::sst::{builder::MetaData, parquet::encoding};
+use analytic_engine::sst::{parquet::encoding, writer::MetaData};
 use object_store::{ObjectStoreRef, Path};
 use parquet::file::footer;
 

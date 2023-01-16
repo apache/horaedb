@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Factory for different kinds sst builder and reader.
+//! Factory for different kinds sst writer and reader.
 
 use std::{fmt::Debug, sync::Arc};
 
@@ -13,12 +13,12 @@ use table_engine::predicate::PredicateRef;
 
 use crate::{
     sst::{
-        builder::SstWriter,
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
-        parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
+        parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
+        writer::SstWriter,
     },
     table_options::{Compression, StorageFormat, StorageFormatHint},
 };
@@ -161,7 +161,7 @@ impl Factory for FactoryImpl {
             StorageFormatHint::Auto => false,
         };
 
-        Ok(Box::new(ParquetSstBuilder::new(
+        Ok(Box::new(ParquetSstWriter::new(
             path,
             hybrid_encoding,
             store_picker,

@@ -13,7 +13,6 @@ use table_engine::table::TableId;
 use crate::{
     space::SpaceId,
     sst::{
-        builder::MetaData,
         factory,
         factory::{FactoryRef, ObjectStorePickerRef, SstReadHint, SstReadOptions},
         file::FileHandle,
@@ -22,6 +21,7 @@ use crate::{
             meta_data::{ParquetMetaData, ParquetMetaDataRef},
         },
         reader,
+        writer::MetaData,
     },
     table::sst_util,
 };
