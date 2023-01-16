@@ -82,10 +82,14 @@ where
         interpreter.execute().await
     }
 
-    async fn create_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+    async fn create_table_and_check(
+        &self,
+        table_name: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<()> {
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-            .admin(admin)
+            .enable_partition_table_access(enable_partition_table_access)
             .build();
         let sql= format!("CREATE TABLE IF NOT EXISTS {}(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
         ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')", table_name);
@@ -99,10 +103,14 @@ where
         Ok(())
     }
 
-    async fn insert_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+    async fn insert_table_and_check(
+        &self,
+        table_name: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<()> {
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-            .admin(admin)
+            .enable_partition_table_access(enable_partition_table_access)
             .build();
         let sql = format!("INSERT INTO {}(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');", table_name);
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
@@ -114,10 +122,14 @@ where
         Ok(())
     }
 
-    async fn select_table_and_check(&self, table_name: &str, admin: bool) -> Result<()> {
+    async fn select_table_and_check(
+        &self,
+        table_name: &str,
+        enable_partition_table_access: bool,
+    ) -> Result<()> {
         let ctx = Context::builder(RequestId::next_id())
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
-            .admin(admin)
+            .enable_partition_table_access(enable_partition_table_access)
             .build();
         let sql = format!("select * from {}", table_name);
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
@@ -294,20 +306,20 @@ where
         );
     }
 
-    async fn test_admin_permission(&self) {
-        // Not admin, all of create, insert and select about sub table(in table
-        // partition) directly will failed.
+    async fn test_enable_partition_table_access(&self) {
+        // Disable partition table access, all of create, insert and select about sub
+        // table(in table partition) directly will failed.
         let res = self.create_table_and_check("____test_table", false).await;
         assert!(format!("{:?}", res)
-            .contains("only admin can process sub tables in table partition directly"));
+            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
         let res1 = self.insert_table_and_check("____test_table", false).await;
         assert!(format!("{:?}", res1)
-            .contains("only admin can process sub tables in table partition directly"));
+            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
         let res2 = self.select_table_and_check("____test_table", false).await;
         assert!(format!("{:?}", res2)
-            .contains("only admin can process sub tables in table partition directly"));
+            .contains("only can process sub tables in table partition directly when enable partition table access is true"));
 
-        // Admin, operations above will success.
+        // Enable partition table access, operations above will success.
         self.create_table_and_check("____test_table", true)
             .await
             .unwrap();
@@ -353,5 +365,5 @@ async fn test_interpreters<T: EngineContext>(engine_context: T) {
 
     env.test_insert_table_with_missing_columns().await;
 
-    env.test_admin_permission().await;
+    env.test_enable_partition_table_access().await;
 }

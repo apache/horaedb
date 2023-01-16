@@ -21,7 +21,7 @@ pub struct Context {
     request_id: RequestId,
     default_catalog: String,
     default_schema: String,
-    admin: bool,
+    enable_partition_table_access: bool,
 }
 
 impl Context {
@@ -30,7 +30,7 @@ impl Context {
             request_id,
             default_catalog: String::new(),
             default_schema: String::new(),
-            admin: false,
+            enable_partition_table_access: false,
         }
     }
 
@@ -60,8 +60,8 @@ impl Context {
     }
 
     #[inline]
-    pub fn admin(&self) -> bool {
-        self.admin
+    pub fn enable_partition_table_access(&self) -> bool {
+        self.enable_partition_table_access
     }
 }
 
@@ -70,7 +70,7 @@ pub struct Builder {
     request_id: RequestId,
     default_catalog: String,
     default_schema: String,
-    admin: bool,
+    enable_partition_table_access: bool,
 }
 
 impl Builder {
@@ -80,8 +80,8 @@ impl Builder {
         self
     }
 
-    pub fn admin(mut self, admin: bool) -> Self {
-        self.admin = admin;
+    pub fn enable_partition_table_access(mut self, enable_partition_table_access: bool) -> Self {
+        self.enable_partition_table_access = enable_partition_table_access;
         self
     }
 
@@ -90,7 +90,7 @@ impl Builder {
             request_id: self.request_id,
             default_catalog: self.default_catalog,
             default_schema: self.default_schema,
-            admin: self.admin,
+            enable_partition_table_access: self.enable_partition_table_access,
         }
     }
 }

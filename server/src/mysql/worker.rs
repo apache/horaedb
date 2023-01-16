@@ -135,7 +135,7 @@ where
             .catalog(default_catalog)
             .tenant(default_schema)
             .runtime(runtime)
-            .admin(false)
+            .enable_partition_table_access(false)
             .build()
             .context(CreateContext)
     }

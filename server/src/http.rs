@@ -287,7 +287,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                         .catalog(catalog.unwrap_or(default_catalog))
                         .tenant(tenant.unwrap_or(default_schema))
                         .runtime(runtime)
-                        .admin(true)
+                        .enable_partition_table_access(true)
                         .build()
                         .context(CreateContext)
                         .map_err(reject::custom)

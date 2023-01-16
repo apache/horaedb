@@ -24,16 +24,17 @@ impl Validator {
     }
 
     pub fn validate(&self, plan: &Plan) -> Result<()> {
-        self.validate_admin_permission(plan)?;
+        self.validate_partition_table_access(plan)?;
 
         Ok(())
     }
 
-    fn validate_admin_permission(&self, plan: &Plan) -> Result<()> {
-        // Only admin can operate the sub tables(table partition) directly.
-        if Validator::contains_sub_tables(plan) && !self.ctx.admin {
+    fn validate_partition_table_access(&self, plan: &Plan) -> Result<()> {
+        // Only can operate the sub tables(table partition) directly while enable
+        // partition table access.
+        if !self.ctx.enable_partition_table_access && Validator::contains_sub_tables(plan) {
             PermissionDenied {
-                msg: "only admin can process sub tables in table partition directly",
+                msg: "only can process sub tables in table partition directly while enable partition table access",
             }
             .fail()
         } else {
@@ -91,5 +92,5 @@ impl Validator {
 
 #[derive(Debug, Default, Clone)]
 pub struct ValidateContext {
-    pub admin: bool,
+    pub enable_partition_table_access: bool,
 }

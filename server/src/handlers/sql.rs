@@ -165,7 +165,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     let interpreter_ctx = InterpreterContext::builder(request_id)
         // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog, ctx.tenant)
-        .admin(ctx.admin)
+        .enable_partition_table_access(ctx.enable_partition_table_access)
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),

@@ -46,7 +46,9 @@ impl<Q: Executor + 'static> Factory<Q> {
     }
 
     pub fn create(self, ctx: Context, plan: Plan) -> Result<InterpreterPtr> {
-        let validate_ctx = ValidateContext { admin: ctx.admin() };
+        let validate_ctx = ValidateContext {
+            enable_partition_table_access: ctx.enable_partition_table_access(),
+        };
         let validator = Validator::new(validate_ctx);
         validator.validate(&plan)?;
 

@@ -34,8 +34,8 @@ pub struct RequestContext {
     pub tenant: String,
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
-    /// Admin flag, some operation only can be done by admin
-    pub admin: bool,
+    /// Enable partition table_access flag
+    pub enable_partition_table_access: bool,
 }
 
 impl RequestContext {
@@ -68,7 +68,7 @@ impl Builder {
         self
     }
 
-    pub fn admin(mut self, admin: bool) -> Self {
+    pub fn enable_partition_table_access(mut self, admin: bool) -> Self {
         self.admin = admin;
         self
     }
@@ -84,7 +84,7 @@ impl Builder {
             catalog: self.catalog,
             tenant: self.tenant,
             runtime,
-            admin: self.admin,
+            enable_partition_table_access: self.admin,
         })
     }
 }
