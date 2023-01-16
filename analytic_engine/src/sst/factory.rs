@@ -13,7 +13,7 @@ use table_engine::predicate::PredicateRef;
 
 use crate::{
     sst::{
-        builder::SstBuilder,
+        builder::SstWriter,
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
@@ -67,12 +67,12 @@ pub trait Factory: Send + Sync + Debug {
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
-    async fn create_builder<'a>(
+    async fn create_writer<'a>(
         &self,
         options: &SstBuildOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Result<Box<dyn SstBuilder + Send + 'a>>;
+    ) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
 /// The frequency of query execution may decide some behavior in the sst reader,
@@ -149,12 +149,12 @@ impl Factory for FactoryImpl {
         }
     }
 
-    async fn create_builder<'a>(
+    async fn create_writer<'a>(
         &self,
         options: &SstBuildOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Result<Box<dyn SstBuilder + Send + 'a>> {
+    ) -> Result<Box<dyn SstWriter + Send + 'a>> {
         let hybrid_encoding = match options.storage_format_hint {
             StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
             // `Auto` is mapped to columnar parquet format now, may change in future.

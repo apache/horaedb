@@ -649,9 +649,9 @@ impl Instance {
 
             // spawn build sst
             let handler = self.runtimes.bg_runtime.spawn(async move {
-                let mut builder = store
+                let mut writer = store
                     .sst_factory
-                    .create_builder(
+                    .create_writer(
                         &sst_builder_options_clone,
                         &sst_file_path,
                         store.store_picker(),
@@ -661,8 +661,8 @@ impl Instance {
                         storage_format_hint,
                     })?;
 
-                let sst_info = builder
-                    .build(
+                let sst_info = writer
+                    .write(
                         request_id,
                         &sst_meta,
                         Box::new(batch_record_receiver.map_err(|e| Box::new(e) as _)),
@@ -765,10 +765,10 @@ impl Instance {
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
-        let mut builder = self
+        let mut writer = self
             .space_store
             .sst_factory
-            .create_builder(
+            .create_writer(
                 &sst_builder_options,
                 &sst_file_path,
                 self.space_store.store_picker(),
@@ -783,8 +783,8 @@ impl Instance {
         let record_batch_stream: RecordBatchStream =
             Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
 
-        let sst_info = builder
-            .build(request_id, &sst_meta, record_batch_stream)
+        let sst_info = writer
+            .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
             .with_context(|| BuildSst {
@@ -999,16 +999,16 @@ impl SpaceStore {
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,
         };
-        let mut sst_builder = self
+        let mut sst_writer = self
             .sst_factory
-            .create_builder(&sst_builder_options, &sst_file_path, self.store_picker())
+            .create_writer(&sst_builder_options, &sst_file_path, self.store_picker())
             .await
             .context(CreateSstBuilder {
                 storage_format_hint,
             })?;
 
-        let sst_info = sst_builder
-            .build(request_id, &sst_meta, record_batch_stream)
+        let sst_info = sst_writer
+            .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
             .with_context(|| BuildSst {

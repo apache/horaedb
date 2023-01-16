@@ -20,7 +20,7 @@ use crate::{
     sst::{
         builder::{
             self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
-            SstBuilder, SstInfo, Storage,
+            SstInfo, SstWriter, Storage,
         },
         factory::{ObjectStorePickerRef, SstBuildOptions},
         meta_data::SstMetaData,
@@ -218,8 +218,8 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a> SstBuilder for ParquetSstBuilder<'a> {
-    async fn build(
+impl<'a> SstWriter for ParquetSstBuilder<'a> {
+    async fn write(
         &mut self,
         request_id: RequestId,
         meta: &SstMetaData,
@@ -361,12 +361,12 @@ mod tests {
                 Poll::Ready(Some(Ok(batch)))
             }));
 
-            let mut builder = sst_factory
-                .create_builder(&sst_builder_options, &sst_file_path, &store_picker)
+            let mut writer = sst_factory
+                .create_writer(&sst_builder_options, &sst_file_path, &store_picker)
                 .await
                 .unwrap();
-            let sst_info = builder
-                .build(RequestId::next_id(), &sst_meta, record_batch_stream)
+            let sst_info = writer
+                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
                 .await
                 .unwrap();
 

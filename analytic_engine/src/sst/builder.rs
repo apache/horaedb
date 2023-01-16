@@ -66,13 +66,13 @@ pub struct SstInfo {
     pub storage_format: StorageFormat,
 }
 
-/// The builder for sst.
+/// The writer for sst.
 ///
-/// The caller provides a stream of [RecordBatch] and the builder takes
+/// The caller provides a stream of [RecordBatch] and the writer takes
 /// responsibilities for persisting the records.
 #[async_trait]
-pub trait SstBuilder {
-    async fn build(
+pub trait SstWriter {
+    async fn write(
         &mut self,
         request_id: RequestId,
         meta: &SstMetaData,

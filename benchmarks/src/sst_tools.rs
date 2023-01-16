@@ -63,12 +63,12 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let sst_file_path = Path::from(config.sst_file_name);
 
-    let mut builder = sst_factory
-        .create_builder(&sst_builder_options, &sst_file_path, &store_picker)
+    let mut writer = sst_factory
+        .create_writer(&sst_builder_options, &sst_file_path, &store_picker)
         .await
         .unwrap();
-    builder
-        .build(RequestId::next_id(), &config.sst_meta, record_batch_stream)
+    writer
+        .write(RequestId::next_id(), &config.sst_meta, record_batch_stream)
         .await
         .unwrap();
 }

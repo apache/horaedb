@@ -57,7 +57,7 @@ pub struct Reader<'a> {
     path: &'a Path,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
-    /// The hint for the sst file size. One io will be avoided if provided.
+    /// The hint for the sst file size.
     file_size_hint: Option<usize>,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,

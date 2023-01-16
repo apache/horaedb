@@ -105,8 +105,8 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
             .with_context(|| format!("invalid compression:{}", args.compression))?,
     };
     let output = Path::from(args.output);
-    let mut builder = factory
-        .create_builder(&builder_opts, &output, &store_picker)
+    let mut writer = factory
+        .create_writer(&builder_opts, &output, &store_picker)
         .await
         .expect("no sst builder found");
     let sst_stream = reader
@@ -115,8 +115,8 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         .unwrap()
         .map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>));
     let sst_stream = Box::new(sst_stream) as _;
-    let sst_info = builder
-        .build(RequestId::next_id(), &sst_meta, sst_stream)
+    let sst_info = writer
+        .write(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;
 
     println!("Write success, info:{:?}", sst_info);
