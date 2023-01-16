@@ -55,7 +55,7 @@ impl PartitionRuleFactory {
 
         Ok(Box::new(KeyRule {
             typed_key_columns,
-            partition_num: key_info.partition_definitions.len() as u64,
+            partition_num: key_info.definitions.len() as u64,
         }))
     }
 }

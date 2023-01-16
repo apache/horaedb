@@ -94,7 +94,7 @@ mod tests {
         let valid_filters_2 = vec![filter1, filter2, filter3, filter4];
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -139,7 +139,7 @@ mod tests {
         let invalid_filters_2 = vec![filter1, filter2, filter4];
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };
@@ -170,7 +170,7 @@ mod tests {
         let partition_num = 16;
         let ket_partition = KeyPartitionInfo {
             version: DEFAULT_PARTITION_VERSION,
-            partition_definitions: vec![PartitionDefinition::default(); partition_num],
+            definitions: vec![PartitionDefinition::default(); partition_num],
             partition_key: vec!["col1".to_string(), "col2".to_string(), "col3".to_string()],
             linear: false,
         };

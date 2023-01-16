@@ -113,7 +113,7 @@ zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/chunshao90/ceresdbproto.git"
-rev = "9bffa8aa977f5cb1ce1534ca37184e873e34549d"
+rev = "d393d4753ae0619d4609eef50c7fb2dd4b061df3"
 
 [workspace.dependencies.datafusion]
 git = "https://github.com/CeresDB/arrow-datafusion.git"

@@ -327,7 +327,7 @@ async fn handle_create_table_on_shard(
             ),
         })?;
 
-    let partition_info = match request.partition_info {
+    let partition_info = match table.partition_info {
         Some(v) => Some(
             PartitionInfo::try_from(v.clone())
                 .map_err(|e| Box::new(e) as _)

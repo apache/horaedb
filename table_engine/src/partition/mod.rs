@@ -77,8 +77,8 @@ pub enum PartitionInfo {
 impl PartitionInfo {
     pub fn get_definitions(&self) -> Vec<PartitionDefinition> {
         match self {
-            Self::Hash(v) => v.partition_definitions.clone(),
-            Self::Key(v) => v.partition_definitions.clone(),
+            Self::Hash(v) => v.definitions.clone(),
+            Self::Key(v) => v.definitions.clone(),
         }
     }
 }
@@ -92,7 +92,7 @@ pub struct PartitionDefinition {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HashPartitionInfo {
     pub version: i32,
-    pub partition_definitions: Vec<PartitionDefinition>,
+    pub definitions: Vec<PartitionDefinition>,
     pub expr: Bytes,
     pub linear: bool,
 }
@@ -100,7 +100,7 @@ pub struct HashPartitionInfo {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyPartitionInfo {
     pub version: i32,
-    pub partition_definitions: Vec<PartitionDefinition>,
+    pub definitions: Vec<PartitionDefinition>,
     pub partition_key: Vec<String>,
     pub linear: bool,
 }
@@ -136,7 +136,7 @@ impl From<meta_pb::HashPartitionInfo> for HashPartitionInfo {
     fn from(partition_info_pb: meta_pb::HashPartitionInfo) -> Self {
         HashPartitionInfo {
             version: partition_info_pb.version,
-            partition_definitions: partition_info_pb
+            definitions: partition_info_pb
                 .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
@@ -152,7 +152,7 @@ impl From<HashPartitionInfo> for meta_pb::HashPartitionInfo {
         meta_pb::HashPartitionInfo {
             version: partition_info.version,
             partition_definitions: partition_info
-                .partition_definitions
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -166,7 +166,7 @@ impl From<meta_pb::KeyPartitionInfo> for KeyPartitionInfo {
     fn from(partition_info_pb: meta_pb::KeyPartitionInfo) -> Self {
         KeyPartitionInfo {
             version: partition_info_pb.version,
-            partition_definitions: partition_info_pb
+            definitions: partition_info_pb
                 .partition_definitions
                 .into_iter()
                 .map(|v| v.into())
@@ -182,7 +182,7 @@ impl From<KeyPartitionInfo> for meta_pb::KeyPartitionInfo {
         meta_pb::KeyPartitionInfo {
             version: partition_info.version,
             partition_definitions: partition_info
-                .partition_definitions
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -265,8 +265,8 @@ impl From<ceresdbproto::cluster::HashPartitionInfo> for HashPartitionInfo {
     fn from(partition_info_pb: ceresdbproto::cluster::HashPartitionInfo) -> Self {
         HashPartitionInfo {
             version: partition_info_pb.version,
-            partition_definitions: partition_info_pb
-                .partition_definitions
+            definitions: partition_info_pb
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -280,8 +280,8 @@ impl From<HashPartitionInfo> for ceresdbproto::cluster::HashPartitionInfo {
     fn from(partition_info: HashPartitionInfo) -> Self {
         ceresdbproto::cluster::HashPartitionInfo {
             version: partition_info.version,
-            partition_definitions: partition_info
-                .partition_definitions
+            definitions: partition_info
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -295,8 +295,8 @@ impl From<ceresdbproto::cluster::KeyPartitionInfo> for KeyPartitionInfo {
     fn from(partition_info_pb: ceresdbproto::cluster::KeyPartitionInfo) -> Self {
         KeyPartitionInfo {
             version: partition_info_pb.version,
-            partition_definitions: partition_info_pb
-                .partition_definitions
+            definitions: partition_info_pb
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
@@ -310,8 +310,8 @@ impl From<KeyPartitionInfo> for ceresdbproto::cluster::KeyPartitionInfo {
     fn from(partition_info: KeyPartitionInfo) -> Self {
         ceresdbproto::cluster::KeyPartitionInfo {
             version: partition_info.version,
-            partition_definitions: partition_info
-                .partition_definitions
+            definitions: partition_info
+                .definitions
                 .into_iter()
                 .map(|v| v.into())
                 .collect(),
