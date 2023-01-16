@@ -20,9 +20,9 @@ use crate::{
     sst::{
         builder::{
             self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
-            SstBuilder, SstInfo, Storage,
+            SstInfo, SstWriter, Storage,
         },
-        factory::{ObjectStorePickerRef, SstBuilderOptions},
+        factory::{ObjectStorePickerRef, SstWriteOptions},
         meta_data::SstMetaData,
         parquet::{
             encoding::ParquetEncoder,
@@ -50,7 +50,7 @@ impl<'a> ParquetSstBuilder<'a> {
         path: &'a Path,
         hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstBuilderOptions,
+        options: &SstWriteOptions,
     ) -> Self {
         let store = store_picker.default_store();
         Self {
@@ -218,8 +218,8 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a> SstBuilder for ParquetSstBuilder<'a> {
-    async fn build(
+impl<'a> SstWriter for ParquetSstBuilder<'a> {
+    async fn write(
         &mut self,
         request_id: RequestId,
         meta: &SstMetaData,
@@ -289,7 +289,7 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions},
+            factory::{Factory, FactoryImpl, ReadFrequency, SstReadOptions, SstWriteOptions},
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -315,7 +315,7 @@ mod tests {
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
-            let sst_builder_options = SstBuilderOptions {
+            let sst_write_options = SstWriteOptions {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
                 compression: table_options::Compression::Uncompressed,
@@ -361,18 +361,19 @@ mod tests {
                 Poll::Ready(Some(Ok(batch)))
             }));
 
-            let mut builder = sst_factory
-                .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+            let mut writer = sst_factory
+                .create_writer(&sst_write_options, &sst_file_path, &store_picker)
+                .await
                 .unwrap();
-            let sst_info = builder
-                .build(RequestId::next_id(), &sst_meta, record_batch_stream)
+            let sst_info = writer
+                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
                 .await
                 .unwrap();
 
             assert_eq!(15, sst_info.row_num);
 
             // read sst back to test
-            let sst_reader_options = SstReaderOptions {
+            let sst_read_options = SstReadOptions {
                 read_batch_row_num: 5,
                 reverse: false,
                 frequency: ReadFrequency::Frequent,
@@ -385,12 +386,8 @@ mod tests {
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
-                let mut reader = AsyncParquetReader::new(
-                    &sst_file_path,
-                    false,
-                    &store_picker,
-                    &sst_reader_options,
-                );
+                let mut reader =
+                    AsyncParquetReader::new(&sst_file_path, &sst_read_options, None, &store_picker);
                 let mut sst_meta_readback = reader
                     .meta_data()
                     .await

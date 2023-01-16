@@ -18,24 +18,25 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use common_util::{
+    error::GenericResult,
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
-use datafusion::datasource::file_format;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
-use object_store::{ObjectMeta, ObjectStoreRef, Path};
+use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
+use parquet_ext::meta_data::ChunkReader;
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::sst::{
-    factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
+    factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
     meta_data::{
         cache::{MetaCacheRef, MetaData},
         SstMetaData,
@@ -54,9 +55,10 @@ type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBat
 pub struct Reader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
-    hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
+    /// The hint for the sst file size.
+    file_size_hint: Option<usize>,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -75,9 +77,9 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
-        hybrid_encoding: bool,
+        options: &SstReadOptions,
+        file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstReaderOptions,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
@@ -86,8 +88,8 @@ impl<'a> Reader<'a> {
 
         Self {
             path,
-            hybrid_encoding,
             store,
+            file_size_hint,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
@@ -130,7 +132,6 @@ impl<'a> Reader<'a> {
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
-                    self.hybrid_encoding,
                     self.path.to_string(),
                     stream,
                     row_projector.clone(),
@@ -247,12 +248,27 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    async fn load_meta_data_from_storage(
-        &self,
-        object_meta: &ObjectMeta,
-    ) -> Result<parquet_ext::ParquetMetaDataRef> {
+    async fn load_file_size(&self) -> Result<usize> {
+        let file_size = match self.file_size_hint {
+            Some(v) => v,
+            None => {
+                let object_meta = self.store.head(self.path).await.context(ObjectStoreError)?;
+                object_meta.size
+            }
+        };
+
+        Ok(file_size)
+    }
+
+    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
+        let file_size = self.load_file_size().await?;
+        let chunk_reader_adapter = ChunkReaderAdapter {
+            path: self.path,
+            store: self.store,
+        };
+
         let meta_data =
-            file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
+            parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?;
@@ -280,12 +296,7 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let object_meta = self
-                .store
-                .head(self.path)
-                .await
-                .context(ObjectStoreError {})?;
-            let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
+            let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
             MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
@@ -434,8 +445,22 @@ impl AsyncFileReader for ObjectStoreReader {
     }
 }
 
+struct ChunkReaderAdapter<'a> {
+    path: &'a Path,
+    store: &'a ObjectStoreRef,
+}
+
+#[async_trait]
+impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
+    async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
+        self.store
+            .get_range(self.path, range)
+            .await
+            .map_err(|e| Box::new(e) as _)
+    }
+}
+
 struct RecordBatchProjector {
-    hybrid_encoding: bool,
     path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
@@ -447,14 +472,12 @@ struct RecordBatchProjector {
 
 impl RecordBatchProjector {
     fn new(
-        hybrid_encoding: bool,
         path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
         sst_meta: ParquetMetaDataRef,
     ) -> Self {
         Self {
-            hybrid_encoding,
             path,
             stream,
             row_projector,
@@ -490,10 +513,8 @@ impl Stream for RecordBatchProjector {
                 {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
-                        let parquet_decoder = ParquetDecoder::new(
-                            projector.hybrid_encoding,
-                            &projector.sst_meta.collapsible_cols_idx,
-                        );
+                        let parquet_decoder =
+                            ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
                             .map_err(|e| Box::new(e) as _)

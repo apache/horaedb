@@ -19,7 +19,7 @@ use futures::{
     stream, SinkExt, TryStreamExt,
 };
 use log::{debug, error, info};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
 use wal::manager::WalLocation;
@@ -44,7 +44,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{ReadFrequency, SstBuilderOptions, SstReaderOptions},
+        factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
         file::FileMeta,
         meta_data::{self, SstMetaData, SstMetaReader},
         parquet::meta_data::ParquetMetaData,
@@ -84,17 +84,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Sst type is not found, storage_format_hint:{:?}.\nBacktrace:\n{}",
+        "Sst type is not found, storage_format_hint:{:?}, err:{}",
         storage_format_hint,
-        backtrace
+        source,
     ))]
-    InvalidSstStorageFormat {
+    CreateSstBuilder {
         storage_format_hint: StorageFormatHint,
-        backtrace: Backtrace,
+        source: factory::Error,
     },
 
     #[snafu(display("Failed to build sst, file_path:{}, source:{}", path, source))]
-    FailBuildSst {
+    BuildSst {
         path: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -617,7 +617,7 @@ impl Instance {
         let mut sst_handlers = Vec::with_capacity(time_ranges.len());
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
-        let sst_builder_options = SstBuilderOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
@@ -629,7 +629,7 @@ impl Instance {
             let file_id = table_data.alloc_file_id();
             let sst_file_path = table_data.set_sst_file_path(file_id);
 
-            // TODO: min_key max_key set in sst_builder build
+            // TODO: min_key max_key set in sst_writer write
             let sst_meta = {
                 let parquet_meta_data = ParquetMetaData {
                     min_key: min_key.clone(),
@@ -644,24 +644,21 @@ impl Instance {
             };
 
             let store = self.space_store.clone();
-            let sst_builder_options_clone = sst_builder_options.clone();
             let storage_format_hint = table_data.table_options().storage_format_hint;
+            let sst_write_options = sst_write_options.clone();
 
             // spawn build sst
             let handler = self.runtimes.bg_runtime.spawn(async move {
-                let mut builder = store
+                let mut writer = store
                     .sst_factory
-                    .new_sst_builder(
-                        &sst_builder_options_clone,
-                        &sst_file_path,
-                        store.store_picker(),
-                    )
-                    .context(InvalidSstStorageFormat {
+                    .create_writer(&sst_write_options, &sst_file_path, store.store_picker())
+                    .await
+                    .context(CreateSstBuilder {
                         storage_format_hint,
                     })?;
 
-                let sst_info = builder
-                    .build(
+                let sst_info = writer
+                    .write(
                         request_id,
                         &sst_meta,
                         Box::new(batch_record_receiver.map_err(|e| Box::new(e) as _)),
@@ -671,7 +668,7 @@ impl Instance {
                         error!("Failed to build sst file, meta:{:?}, err:{}", sst_meta, e);
                         Box::new(e) as _
                     })
-                    .with_context(|| FailBuildSst {
+                    .with_context(|| BuildSst {
                         path: sst_file_path.to_string(),
                     })?;
 
@@ -759,20 +756,21 @@ impl Instance {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuilderOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
         };
-        let mut builder = self
+        let mut writer = self
             .space_store
             .sst_factory
-            .new_sst_builder(
-                &sst_builder_options,
+            .create_writer(
+                &sst_write_options,
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
-            .context(InvalidSstStorageFormat {
+            .await
+            .context(CreateSstBuilder {
                 storage_format_hint,
             })?;
 
@@ -781,11 +779,11 @@ impl Instance {
         let record_batch_stream: RecordBatchStream =
             Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
 
-        let sst_info = builder
-            .build(request_id, &sst_meta, record_batch_stream)
+        let sst_info = writer
+            .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| FailBuildSst {
+            .with_context(|| BuildSst {
                 path: sst_file_path.to_string(),
             })?;
 
@@ -922,7 +920,7 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: false,
             frequency: ReadFrequency::Once,
@@ -948,7 +946,7 @@ impl SpaceStore {
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 sst_factory: &self.sst_factory,
-                sst_reader_options: sst_reader_options.clone(),
+                sst_read_options: sst_read_options.clone(),
                 store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -977,7 +975,7 @@ impl SpaceStore {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
                 factory: self.sst_factory.clone(),
-                read_opts: sst_reader_options,
+                read_opts: sst_read_options,
                 store_picker: self.store_picker.clone(),
             };
             let sst_metas = meta_reader
@@ -992,23 +990,24 @@ impl SpaceStore {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuilderOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,
         };
-        let mut sst_builder = self
+        let mut sst_writer = self
             .sst_factory
-            .new_sst_builder(&sst_builder_options, &sst_file_path, self.store_picker())
-            .context(InvalidSstStorageFormat {
+            .create_writer(&sst_write_options, &sst_file_path, self.store_picker())
+            .await
+            .context(CreateSstBuilder {
                 storage_format_hint,
             })?;
 
-        let sst_info = sst_builder
-            .build(request_id, &sst_meta, record_batch_stream)
+        let sst_info = sst_writer
+            .write(request_id, &sst_meta, record_batch_stream)
             .await
             .map_err(|e| Box::new(e) as _)
-            .with_context(|| FailBuildSst {
+            .with_context(|| BuildSst {
                 path: sst_file_path.to_string(),
             })?;
 
