@@ -6,8 +6,8 @@ use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
     sst::factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstBuildOptions, SstReadHint,
-        SstReadOptions,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
+        SstWriteOptions,
     },
     table_options::{Compression, StorageFormatHint},
 };
@@ -98,7 +98,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
 
     let output_format_hint = StorageFormatHint::try_from(args.output_format.as_str())
         .with_context(|| format!("invalid storage format:{}", args.output_format))?;
-    let builder_opts = SstBuildOptions {
+    let builder_opts = SstWriteOptions {
         storage_format_hint: output_format_hint,
         num_rows_per_row_group: args.batch_size,
         compression: Compression::parse_from(&args.compression)

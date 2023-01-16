@@ -44,7 +44,7 @@ use crate::{
     space::SpaceAndTable,
     sst::{
         builder::RecordBatchStream,
-        factory::{self, ReadFrequency, SstBuildOptions, SstReadOptions},
+        factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
         file::FileMeta,
         meta_data::{self, SstMetaData, SstMetaReader},
         parquet::meta_data::ParquetMetaData,
@@ -617,7 +617,7 @@ impl Instance {
         let mut sst_handlers = Vec::with_capacity(time_ranges.len());
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
-        let sst_builder_options = SstBuildOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
@@ -629,7 +629,7 @@ impl Instance {
             let file_id = table_data.alloc_file_id();
             let sst_file_path = table_data.set_sst_file_path(file_id);
 
-            // TODO: min_key max_key set in sst_builder build
+            // TODO: min_key max_key set in sst_writer write
             let sst_meta = {
                 let parquet_meta_data = ParquetMetaData {
                     min_key: min_key.clone(),
@@ -644,18 +644,14 @@ impl Instance {
             };
 
             let store = self.space_store.clone();
-            let sst_builder_options_clone = sst_builder_options.clone();
             let storage_format_hint = table_data.table_options().storage_format_hint;
+            let sst_write_options = sst_write_options.clone();
 
             // spawn build sst
             let handler = self.runtimes.bg_runtime.spawn(async move {
                 let mut writer = store
                     .sst_factory
-                    .create_writer(
-                        &sst_builder_options_clone,
-                        &sst_file_path,
-                        store.store_picker(),
-                    )
+                    .create_writer(&sst_write_options, &sst_file_path, store.store_picker())
                     .await
                     .context(CreateSstBuilder {
                         storage_format_hint,
@@ -760,7 +756,7 @@ impl Instance {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuildOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
@@ -769,7 +765,7 @@ impl Instance {
             .space_store
             .sst_factory
             .create_writer(
-                &sst_builder_options,
+                &sst_write_options,
                 &sst_file_path,
                 self.space_store.store_picker(),
             )
@@ -994,14 +990,14 @@ impl SpaceStore {
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
         let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_builder_options = SstBuildOptions {
+        let sst_write_options = SstWriteOptions {
             storage_format_hint,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             compression: table_options.compression,
         };
         let mut sst_writer = self
             .sst_factory
-            .create_writer(&sst_builder_options, &sst_file_path, self.store_picker())
+            .create_writer(&sst_write_options, &sst_file_path, self.store_picker())
             .await
             .context(CreateSstBuilder {
                 storage_format_hint,

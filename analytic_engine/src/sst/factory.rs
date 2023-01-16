@@ -69,7 +69,7 @@ pub trait Factory: Send + Sync + Debug {
 
     async fn create_writer<'a>(
         &self,
-        options: &SstBuildOptions,
+        options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstWriter + Send + 'a>>;
@@ -110,7 +110,7 @@ pub struct SstReadOptions {
 }
 
 #[derive(Debug, Clone)]
-pub struct SstBuildOptions {
+pub struct SstWriteOptions {
     pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
@@ -151,7 +151,7 @@ impl Factory for FactoryImpl {
 
     async fn create_writer<'a>(
         &self,
-        options: &SstBuildOptions,
+        options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {

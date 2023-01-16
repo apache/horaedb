@@ -16,7 +16,7 @@ use analytic_engine::{
         builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstBuildOptions, SstReadHint, SstReadOptions,
+            SstReadHint, SstReadOptions, SstWriteOptions,
         },
         file::FilePurgeQueue,
         manager::FileId,
@@ -47,15 +47,15 @@ struct SstConfig {
 
 async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBatchStream) {
     let sst_factory = FactoryImpl;
-    let sst_builder_options = SstBuildOptions {
+    let sst_write_options = SstWriteOptions {
         storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
     };
 
     info!(
-        "create sst from stream, config:{:?}, sst_builder_options:{:?}",
-        config, sst_builder_options
+        "create sst from stream, config:{:?}, sst_write_options:{:?}",
+        config, sst_write_options
     );
 
     let store: ObjectStoreRef =
@@ -64,7 +64,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
     let sst_file_path = Path::from(config.sst_file_name);
 
     let mut writer = sst_factory
-        .create_writer(&sst_builder_options, &sst_file_path, &store_picker)
+        .create_writer(&sst_write_options, &sst_file_path, &store_picker)
         .await
         .unwrap();
     writer

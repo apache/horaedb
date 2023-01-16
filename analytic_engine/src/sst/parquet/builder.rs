@@ -22,7 +22,7 @@ use crate::{
             self, EncodeRecordBatch, OtherNoCause, PollRecordBatch, RecordBatchStream, Result,
             SstInfo, SstWriter, Storage,
         },
-        factory::{ObjectStorePickerRef, SstBuildOptions},
+        factory::{ObjectStorePickerRef, SstWriteOptions},
         meta_data::SstMetaData,
         parquet::{
             encoding::ParquetEncoder,
@@ -50,7 +50,7 @@ impl<'a> ParquetSstBuilder<'a> {
         path: &'a Path,
         hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstBuildOptions,
+        options: &SstWriteOptions,
     ) -> Self {
         let store = store_picker.default_store();
         Self {
@@ -289,7 +289,7 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstBuildOptions, SstReadOptions},
+            factory::{Factory, FactoryImpl, ReadFrequency, SstReadOptions, SstWriteOptions},
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -315,7 +315,7 @@ mod tests {
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
-            let sst_builder_options = SstBuildOptions {
+            let sst_write_options = SstWriteOptions {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
                 compression: table_options::Compression::Uncompressed,
@@ -362,7 +362,7 @@ mod tests {
             }));
 
             let mut writer = sst_factory
-                .create_writer(&sst_builder_options, &sst_file_path, &store_picker)
+                .create_writer(&sst_write_options, &sst_file_path, &store_picker)
                 .await
                 .unwrap();
             let sst_info = writer
