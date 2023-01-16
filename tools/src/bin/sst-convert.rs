@@ -6,10 +6,10 @@ use std::{error::Error, sync::Arc};
 
 use analytic_engine::{
     sst::factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstBuilderOptions,
-        SstReaderOptions,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
+        SstWriteOptions,
     },
-    table_options::{Compression, StorageFormat, StorageFormatHint},
+    table_options::{Compression, StorageFormatHint},
 };
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -45,10 +45,6 @@ struct Args {
 
     /// Storage format(values: columnar/hybrid)
     #[clap(short, long, default_value = "columnar")]
-    input_format: String,
-
-    /// Storage format(values: columnar/hybrid)
-    #[clap(short, long, default_value = "columnar")]
     output_format: String,
 }
 
@@ -78,7 +74,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let input_path = Path::from(args.input);
     let sst_meta = sst_util::meta_from_sst(&store, &input_path).await;
     let factory = FactoryImpl;
-    let reader_opts = SstReaderOptions {
+    let reader_opts = SstReadOptions {
         read_batch_row_num: 8192,
         reverse: false,
         frequency: ReadFrequency::Once,
@@ -90,23 +86,28 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         num_rows_per_row_group: 8192,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
-    let input_format = StorageFormat::try_from(args.input_format.as_str())
-        .with_context(|| format!("invalid input storage format:{}", args.input_format))?;
     let mut reader = factory
-        .new_sst_reader(&reader_opts, &input_path, input_format, &store_picker)
+        .create_reader(
+            &input_path,
+            &reader_opts,
+            SstReadHint::default(),
+            &store_picker,
+        )
+        .await
         .expect("no sst reader found");
 
     let output_format_hint = StorageFormatHint::try_from(args.output_format.as_str())
         .with_context(|| format!("invalid storage format:{}", args.output_format))?;
-    let builder_opts = SstBuilderOptions {
+    let builder_opts = SstWriteOptions {
         storage_format_hint: output_format_hint,
         num_rows_per_row_group: args.batch_size,
         compression: Compression::parse_from(&args.compression)
             .with_context(|| format!("invalid compression:{}", args.compression))?,
     };
     let output = Path::from(args.output);
-    let mut builder = factory
-        .new_sst_builder(&builder_opts, &output, &store_picker)
+    let mut writer = factory
+        .create_writer(&builder_opts, &output, &store_picker)
+        .await
         .expect("no sst builder found");
     let sst_stream = reader
         .read()
@@ -114,8 +115,8 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         .unwrap()
         .map(|batch| batch.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>));
     let sst_stream = Box::new(sst_stream) as _;
-    let sst_info = builder
-        .build(RequestId::next_id(), &sst_meta, sst_stream)
+    let sst_info = writer
+        .write(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;
 
     println!("Write success, info:{:?}", sst_info);

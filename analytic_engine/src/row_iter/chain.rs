@@ -20,7 +20,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReaderOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
         file::FileHandle,
     },
     table::version::{MemTableVec, SamplingMemTable},
@@ -58,7 +58,7 @@ pub struct ChainConfig<'a> {
     /// Predicate of the query.
     pub predicate: PredicateRef,
 
-    pub sst_reader_options: SstReaderOptions,
+    pub sst_read_options: SstReadOptions,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
     /// Store picker for persisting sst.
@@ -145,7 +145,7 @@ impl<'a> Builder<'a> {
                     self.config.table_id,
                     sst,
                     self.config.sst_factory,
-                    &self.config.sst_reader_options,
+                    &self.config.sst_read_options,
                     self.config.store_picker,
                 )
                 .await

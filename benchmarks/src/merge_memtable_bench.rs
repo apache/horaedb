@@ -18,7 +18,7 @@ use analytic_engine::{
     sst::{
         factory::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstReaderOptions,
+            SstReadOptions,
         },
         meta_data::cache::MetaCacheRef,
     },
@@ -48,7 +48,7 @@ pub struct MergeMemTableBench {
     space_id: SpaceId,
     table_id: TableId,
     dedup: bool,
-    sst_reader_options: SstReaderOptions,
+    sst_read_options: SstReadOptions,
 }
 
 impl MergeMemTableBench {
@@ -100,7 +100,7 @@ impl MergeMemTableBench {
                 id: *id,
             });
         }
-        let sst_reader_options = mock_sst_reader_options(projected_schema.clone(), runtime.clone());
+        let sst_read_options = mock_sst_read_options(projected_schema.clone(), runtime.clone());
 
         MergeMemTableBench {
             store,
@@ -112,7 +112,7 @@ impl MergeMemTableBench {
             space_id,
             table_id,
             dedup: true,
-            sst_reader_options,
+            sst_read_options,
         }
     }
 
@@ -149,7 +149,7 @@ impl MergeMemTableBench {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_reader_options: self.sst_reader_options.clone(),
+            sst_read_options: self.sst_read_options.clone(),
             store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
@@ -190,11 +190,11 @@ impl MergeMemTableBench {
     }
 }
 
-fn mock_sst_reader_options(
+fn mock_sst_read_options(
     projected_schema: ProjectedSchema,
     runtime: Arc<Runtime>,
-) -> SstReaderOptions {
-    SstReaderOptions {
+) -> SstReadOptions {
+    SstReadOptions {
         read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,
