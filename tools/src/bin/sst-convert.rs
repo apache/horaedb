@@ -78,7 +78,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         read_batch_row_num: 8192,
         reverse: false,
         frequency: ReadFrequency::Once,
-        projected_schema: ProjectedSchema::no_projection(sst_meta.schema().clone()),
+        projected_schema: ProjectedSchema::no_projection(sst_meta.schema.clone()),
         predicate: Arc::new(Predicate::empty()),
         meta_cache: None,
         runtime,
@@ -108,7 +108,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let mut writer = factory
         .create_writer(&builder_opts, &output, &store_picker)
         .await
-        .expect("no sst builder found");
+        .expect("no sst writer found");
     let sst_stream = reader
         .read()
         .await

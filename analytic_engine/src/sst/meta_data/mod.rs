@@ -10,18 +10,18 @@ use proto::sst as sst_pb;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
-use super::factory::SstReadHint;
 use crate::{
     space::SpaceId,
     sst::{
         factory,
-        factory::{FactoryRef, ObjectStorePickerRef, SstReadOptions},
+        factory::{FactoryRef, ObjectStorePickerRef, SstReadHint, SstReadOptions},
         file::FileHandle,
         parquet::{
             self, encoding,
             meta_data::{ParquetMetaData, ParquetMetaDataRef},
         },
         reader,
+        writer::MetaData,
     },
     table::sst_util,
 };
@@ -120,6 +120,14 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
     }
 }
 
+impl From<SstMetaData> for MetaData {
+    fn from(meta: SstMetaData) -> Self {
+        match meta {
+            SstMetaData::Parquet(v) => Self::from(v.as_ref().clone()),
+        }
+    }
+}
+
 /// A utility reader to fetch meta data of multiple sst files.
 pub struct SstMetaReader {
     pub space_id: SpaceId,
@@ -150,19 +158,4 @@ impl SstMetaReader {
 
         Ok(sst_metas)
     }
-}
-
-/// Merge multiple sst meta data into the one.
-///
-/// Panic if the metas is empty.
-pub fn merge_sst_meta<'a, I>(metas: I, schema: Schema) -> SstMetaData
-where
-    I: Iterator<Item = &'a SstMetaData>,
-{
-    let parquet_metas = metas.map(|v| match v {
-        SstMetaData::Parquet(meta_data) => meta_data.as_ref(),
-    });
-
-    let parquet_meta_data = parquet::meta_data::merge_sst_meta(parquet_metas, schema);
-    SstMetaData::Parquet(Arc::new(parquet_meta_data))
 }

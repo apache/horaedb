@@ -13,14 +13,14 @@ use analytic_engine::{
     },
     space::SpaceId,
     sst::{
-        builder::RecordBatchStream,
         factory::{
             Factory, FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
             SstReadHint, SstReadOptions, SstWriteOptions,
         },
         file::FilePurgeQueue,
         manager::FileId,
-        meta_data::{self, SstMetaData, SstMetaReader},
+        meta_data::SstMetaReader,
+        writer::{MetaData, RecordBatchStream},
     },
     table::sst_util,
     table_options::{Compression, StorageFormatHint},
@@ -38,7 +38,7 @@ use crate::{config::BenchPredicate, util};
 
 #[derive(Debug)]
 struct SstConfig {
-    sst_meta: SstMetaData,
+    sst_meta: MetaData,
     store_path: String,
     sst_file_name: String,
     num_rows_per_row_group: usize,
@@ -94,7 +94,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
 
     let sst_meta = util::meta_from_sst(&store, &input_path, &None).await;
 
-    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema().clone());
+    let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
     let sst_read_options = SstReadOptions {
         read_batch_row_num: config.read_batch_row_num,
         reverse: false,
@@ -256,7 +256,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             store_picker: store_picker.clone(),
         };
         let sst_metas = meta_reader.fetch_metas(&file_handles).await.unwrap();
-        meta_data::merge_sst_meta(sst_metas.iter(), schema)
+        MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
     };
     let output_sst_config = SstConfig {
         sst_meta,
