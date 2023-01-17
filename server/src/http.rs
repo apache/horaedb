@@ -10,6 +10,7 @@ use std::{
 use log::error;
 use logger::RuntimeLevel;
 use profile::Profiler;
+use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
 use serde_derive::Serialize;
@@ -28,7 +29,7 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{self, sql::Request},
+    handlers::{self, prom::CeresDBStorage, sql::Request},
     instance::InstanceRef,
     metrics,
 };
@@ -100,6 +101,7 @@ pub struct Service<Q> {
     log_runtime: Arc<RuntimeLevel>,
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
+    prom_remote_storage: RemoteStorageRef,
     tx: Sender<()>,
     config: HttpConfig,
     enable_tenant_as_schema: bool,
@@ -121,6 +123,28 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.admin_block())
             .or(self.flush_memtable())
             .or(self.update_log_level())
+            .or(self.prom_api())
+    }
+
+    /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
+    /// storage request
+    fn prom_api(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        let write_api = warp::path!("write")
+            .and(web::warp::with_remote_storage(
+                self.prom_remote_storage.clone(),
+            ))
+            .and(web::warp::protobuf_body())
+            .and_then(web::warp::write);
+        let query_api = warp::path!("read")
+            .and(web::warp::with_remote_storage(
+                self.prom_remote_storage.clone(),
+            ))
+            .and(web::warp::protobuf_body())
+            .and_then(web::warp::read);
+
+        warp::path!("prom" / "v1" / ..)
+            .and(warp::post())
+            .and(write_api.or(query_api))
     }
 
     fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -401,12 +425,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
+        let prom_remote_storage = Arc::new(CeresDBStorage::new(instance.clone()));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
             engine_runtimes: engine_runtime.clone(),
             log_runtime,
             instance,
+            prom_remote_storage,
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),

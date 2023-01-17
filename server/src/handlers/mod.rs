@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod error;
+pub mod prom;
 pub mod sql;
 
 mod prelude {
