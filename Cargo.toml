@@ -150,15 +150,20 @@ tracing_util = { workspace = true }
 [build-dependencies]
 vergen = { version = "5", default-features = false, features = ["build", "git"] }
 
-[profile.bench]
-debug = true
-
 # This profile optimizes for good runtime performance.
 [profile.release]
+# reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+codegen-units = 1
 debug = true
+# reference: https://doc.rust-lang.org/cargo/reference/profiles.html#lto
+lto = true
 overflow-checks = true
 
-# This profile optimizes for best runtime performance but with more memory consumption.
-[profile.better-release]
+# This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
+# but with a faster speed and low memory consumption required by compiling.
+[profile.release-slim]
 inherits = "release"
-lto = true
+codegen-units = 16
+debug = false
+lto = false
+strip = true
