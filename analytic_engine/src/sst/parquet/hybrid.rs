@@ -19,7 +19,7 @@ use common_types::{
 };
 use snafu::{Backtrace, ResultExt, Snafu};
 
-use crate::sst::builder::{EncodeRecordBatch, Result};
+use crate::sst::writer::{EncodeRecordBatch, Result};
 
 //  hard coded in https://github.com/apache/arrow-rs/blob/20.0.0/arrow/src/array/array_list.rs#L185
 const LIST_ITEM_NAME: &str = "item";
