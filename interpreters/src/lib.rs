@@ -21,6 +21,7 @@ pub mod interpreter;
 pub mod select;
 pub mod show;
 pub mod table_manipulator;
+pub mod validator;
 
 mod show_create;
 

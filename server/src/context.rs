@@ -34,6 +34,8 @@ pub struct RequestContext {
     pub schema: String,
     /// Runtime of this request
     pub runtime: Arc<Runtime>,
+    /// Enable partition table_access flag
+    pub enable_partition_table_access: bool,
     /// Request timeout
     pub timeout: Option<Duration>,
 }
@@ -49,6 +51,7 @@ pub struct Builder {
     catalog: String,
     schema: String,
     runtime: Option<Arc<Runtime>>,
+    enable_partition_table_access: bool,
     timeout: Option<Duration>,
 }
 
@@ -68,6 +71,11 @@ impl Builder {
         self
     }
 
+    pub fn enable_partition_table_access(mut self, enable_partition_table_access: bool) -> Self {
+        self.enable_partition_table_access = enable_partition_table_access;
+        self
+    }
+
     pub fn timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
         self
@@ -83,6 +91,7 @@ impl Builder {
             catalog: self.catalog,
             schema: self.schema,
             runtime,
+            enable_partition_table_access: self.enable_partition_table_access,
             timeout: self.timeout,
         })
     }

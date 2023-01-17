@@ -80,7 +80,13 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             instance.table_engine.clone(),
             instance.table_manipulator.clone(),
         );
-        let interpreter = interpreter_factory.create(interpreter_ctx, plan);
+        let interpreter = interpreter_factory
+            .create(interpreter_ctx, plan)
+            .map_err(|e| Box::new(e) as _)
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Failed to create interpreter",
+            })?;
 
         let row_num = match interpreter
             .execute()
@@ -234,7 +240,13 @@ async fn create_table<Q: QueryExecutor + 'static>(
         instance.table_engine.clone(),
         instance.table_manipulator.clone(),
     );
-    let interpreter = interpreter_factory.create(interpreter_ctx, plan);
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to create interpreter",
+        })?;
 
     let _ = match interpreter
         .execute()

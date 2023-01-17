@@ -141,6 +141,7 @@ where
             .catalog(default_catalog)
             .schema(default_schema)
             .runtime(runtime)
+            .enable_partition_table_access(false)
             .timeout(self.timeout)
             .build()
             .context(CreateContext)

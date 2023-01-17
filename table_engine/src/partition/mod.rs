@@ -367,3 +367,7 @@ pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -
         PARTITION_TABLE_PREFIX, table_name, partition_name
     )
 }
+
+pub fn is_sub_partition_table(table_name: &str) -> bool {
+    table_name.starts_with(PARTITION_TABLE_PREFIX)
+}
