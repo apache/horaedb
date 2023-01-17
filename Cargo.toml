@@ -161,8 +161,8 @@ overflow-checks = true
 
 # This profile is used to produce a smaller(no symbols) but a little bit slower binary in a faster speed and with low memory consumption.
 [profile.release-slim]
+inherits = "release"
 codegen-units = 16
 debug = false
-inherits = "release"
 lto = false
 strip = true
