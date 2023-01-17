@@ -373,7 +373,7 @@ impl ObjectStoreReader {
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        info!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
+        debug!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
     }
 }
 

@@ -8,6 +8,7 @@ use arrow::datatypes::SchemaRef;
 use common_types::datum::Datum;
 use datafusion::{prelude::Expr, scalar::ScalarValue};
 use ethbloom::{Bloom, Input};
+use log::debug;
 use parquet::file::metadata::RowGroupMetaData;
 use parquet_ext::prune::{
     equal::{self, ColumnPosition},
@@ -50,15 +51,39 @@ impl<'a> RowGroupFilter<'a> {
     }
 
     pub fn filter(&self) -> Vec<usize> {
+        debug!(
+            "begin to filter row groups, total_row_groups:{}, bloom_filtering:{}, predicates:{:?}",
+            self.row_groups.len(),
+            self.blooms.is_some(),
+            self.predicates,
+        );
+
         let filtered0 = self.filter_by_min_max();
         match self.blooms {
             Some(v) => {
                 // TODO: We can do continuous filtering based on the `filtered0` to reduce the
                 // filtering cost.
                 let filtered1 = self.filter_by_bloom(v);
-                Self::intersect_filtered_row_groups(&filtered0, &filtered1)
+                let filtered = Self::intersect_filtered_row_groups(&filtered0, &filtered1);
+
+                debug!(
+                    "finish filtering row groups by blooms and min_max, total_row_groups:{}, filtered_by_min_max:{}, filtered_by_blooms:{}, filtered_by_both:{}",
+                    self.row_groups.len(),
+                    filtered0.len(),
+                    filtered1.len(),
+                    filtered.len(),
+                );
+
+                filtered
             }
-            None => filtered0,
+            None => {
+                debug!(
+                    "finish filtering row groups by min_max, total_row_groups:{}, filtered_row_groups:{}",
+                    self.row_groups.len(),
+                    filtered0.len(),
+                );
+                filtered0
+            }
         }
     }
 
