@@ -19,13 +19,23 @@
 - [x] Set up nightly benchmark with TSBS.
 
 ### v1.0.0-alpha
-- [ ] Implement Distributed WAL based on `Apache Kafka`.
-- [ ] Release Golang client.
-- [ ] Improve the query performance for traditional time series workloads.
-- [ ] Support dynamic migration of tables in cluster mode.
+- [x] Implement Distributed WAL based on `Apache Kafka`.
+- [x] Release Golang client.
+- [x] Improve the query performance for traditional time series workloads.
+- [x] Support dynamic migration of tables in cluster mode.
 
-### Afterward
-- [ ] Support Prometheus protocol.
-- [ ] Implement UDF framework which makes CeresDB more extensible.
+### v1.0.0
+- [x] Formally release CeresDB and its SDKs. All breaking changes will be finished.
+- [x] Finish the majority of work related to PartitionTable.
+- [x] Various efforts to improve query performance, especially for cloud-native cluster mode. Theses works includes:
+    - Multi-tier cacheing.
+    - Introduce various methods to reduce the data fetched from remote storage (improve the accuracy of SST data filtering).
+    - Increase the parallelism while fetching data from remote object-store.
+    - Add some resource-controlling methods.
+
+### Afterwards
+With an in-depth understanding of the time-series database and its various use cases, the majority of our work will be focused on performance, scalability, ease of use, and collaborations with open-source communities.
+- [ ] Add utilities that support promQL, influxQL, opentsdb protocol, and so on.
+- [ ] Provide basic operation and maintenance tools which fit well for deployments on Kubernetes or bare servers.
 - [ ] Support more underlying storages for adaptivity. For example, the underlying storage could be a distributed file system.
-- [ ] Various tools that ease the use of CeresDB. For example, data import and export tools.
+- [ ] Develop various tools that ease the use of CeresDB. For example, data import and export tools.
