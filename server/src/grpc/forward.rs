@@ -187,7 +187,7 @@ pub enum ForwardResult<Resp, Err> {
 #[derive(Debug)]
 pub struct ForwardRequest<Req> {
     pub schema: String,
-    pub metric: String,
+    pub table: String,
     pub req: tonic::Request<Req>,
 }
 
@@ -281,12 +281,12 @@ impl<B: ClientBuilder> Forwarder<B> {
 
         let ForwardRequest {
             schema,
-            metric,
+            table,
             mut req,
         } = forward_req;
 
         let route_req = RouteRequest {
-            metrics: vec![metric],
+            tables: vec![table],
         };
 
         let endpoint = match self.router.route(&schema, route_req).await {
@@ -364,7 +364,7 @@ impl<B: ClientBuilder> Forwarder<B> {
 
 #[cfg(test)]
 mod tests {
-    use ceresdbproto::storage::{QueryRequest, QueryResponse, Route};
+    use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
     use router::Router;
     use tonic::IntoRequest;
@@ -398,11 +398,11 @@ mod tests {
     #[async_trait]
     impl Router for MockRouter {
         async fn route(&self, _schema: &str, req: RouteRequest) -> router::Result<Vec<Route>> {
-            let endpoint = self.routing_tables.get(&req.metrics[0]);
+            let endpoint = self.routing_tables.get(&req.tables[0]);
             match endpoint {
                 None => Ok(vec![]),
                 Some(v) => Ok(vec![Route {
-                    metric: req.metrics[0].clone(),
+                    table: req.tables[0].clone(),
                     endpoint: Some(v.clone().into()),
                     ext: vec![],
                 }]),
@@ -430,26 +430,26 @@ mod tests {
         let mut mock_router = MockRouter {
             routing_tables: HashMap::new(),
         };
-        let test_metric0: &str = "test_metric0";
-        let test_metric1: &str = "test_metric1";
-        let test_metric2: &str = "test_metric2";
-        let test_metric3: &str = "test_metric3";
+        let test_table0: &str = "test_table0";
+        let test_table1: &str = "test_table1";
+        let test_table2: &str = "test_table2";
+        let test_table3: &str = "test_table3";
         let test_endpoint0 = Endpoint::new("192.168.1.12".to_string(), 8831);
         let test_endpoint1 = Endpoint::new("192.168.1.2".to_string(), 8831);
         let test_endpoint2 = Endpoint::new("192.168.1.2".to_string(), 8832);
         let test_endpoint3 = Endpoint::new("192.168.1.1".to_string(), 8831);
         mock_router
             .routing_tables
-            .insert(test_metric0.to_string(), test_endpoint0.clone());
+            .insert(test_table0.to_string(), test_endpoint0.clone());
         mock_router
             .routing_tables
-            .insert(test_metric1.to_string(), test_endpoint1.clone());
+            .insert(test_table1.to_string(), test_endpoint1.clone());
         mock_router
             .routing_tables
-            .insert(test_metric2.to_string(), test_endpoint2.clone());
+            .insert(test_table2.to_string(), test_endpoint2.clone());
         mock_router
             .routing_tables
-            .insert(test_metric3.to_string(), test_endpoint3.clone());
+            .insert(test_table3.to_string(), test_endpoint3.clone());
         let mock_router = Arc::new(mock_router);
 
         let local_endpoint = test_endpoint3.clone();
@@ -461,33 +461,33 @@ mod tests {
         )
         .unwrap();
 
-        let make_forward_req = |metric: &str| {
-            let query_request = QueryRequest {
-                metrics: vec![metric.to_string()],
+        let make_forward_req = |table: &str| {
+            let query_request = SqlQueryRequest {
+                tables: vec![table.to_string()],
                 ql: "".to_string(),
             };
             ForwardRequest {
                 schema: "public".to_string(),
-                metric: metric.to_string(),
+                table: table.to_string(),
                 req: query_request.into_request(),
             }
         };
 
-        let do_rpc = |_client, req: tonic::Request<QueryRequest>, endpoint: &Endpoint| {
+        let do_rpc = |_client, req: tonic::Request<SqlQueryRequest>, endpoint: &Endpoint| {
             let schema = req.metadata().get(SCHEMA_HEADER).unwrap().to_str().unwrap();
             assert_eq!(schema, "public");
             let req = req.into_inner();
-            let expect_endpoint = mock_router.routing_tables.get(&req.metrics[0]).unwrap();
+            let expect_endpoint = mock_router.routing_tables.get(&req.tables[0]).unwrap();
             assert_eq!(expect_endpoint, endpoint);
 
-            let resp = QueryResponse::default();
+            let resp = SqlQueryResponse::default();
             Box::new(async move { Ok(resp) }.boxed()) as _
         };
 
-        for test_metric in [test_metric0, test_metric1, test_metric2, test_metric3] {
-            let endpoint = mock_router.routing_tables.get(test_metric).unwrap();
-            let forward_req = make_forward_req(test_metric);
-            let res: Result<ForwardResult<QueryResponse, Error>> =
+        for test_table in [test_table0, test_table1, test_table2, test_table3] {
+            let endpoint = mock_router.routing_tables.get(test_table).unwrap();
+            let forward_req = make_forward_req(test_table);
+            let res: Result<ForwardResult<SqlQueryResponse, Error>> =
                 forwarder.forward(forward_req, do_rpc).await;
             let forward_res = res.expect("should succeed in forwarding");
             if endpoint == &local_endpoint {

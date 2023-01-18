@@ -15,10 +15,7 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::{
-    column_schema::{self},
-    schema::Error as SchemaError,
-};
+use common_types::column_schema;
 use common_util::{
     define_result,
     error::GenericError,
@@ -112,9 +109,6 @@ pub enum Error {
         source: std::string::FromUtf8Error,
         backtrace: Backtrace,
     },
-
-    #[snafu(display("Fail to build table schema for metric:{}, err:{}", metric, source))]
-    BuildTableSchema { metric: String, source: SchemaError },
 
     #[snafu(display("Fail to build forwarder, err:{}", source))]
     BuildForwarder { source: forward::Error },

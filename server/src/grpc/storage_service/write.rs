@@ -7,7 +7,9 @@ use std::{
     time::Instant,
 };
 
-use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
+use ceresdbproto::storage::{
+    value, WriteRequest, WriteResponse, WriteSeriesEntry, WriteTableRequest,
+};
 use cluster::config::SchemaConfig;
 use common_types::{
     bytes::Bytes,
@@ -48,10 +50,10 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         catalog,
         schema,
         request_id,
-        req.metrics
+        req.table_requests
             .first()
-            .map(|m| (&m.metric, &m.tag_names, &m.field_names)),
-        req.metrics.len(),
+            .map(|m| (&m.table, &m.tag_names, &m.field_names)),
+        req.table_requests.len(),
     );
 
     let plan_vec = write_request_to_insert_plan(
@@ -161,7 +163,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<Vec<InsertPlan>> {
-    let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
+    let mut plan_vec = Vec::with_capacity(write_request.table_requests.len());
 
     for write_metric in write_request.metrics {
         let table_name = &write_metric.metric;
@@ -170,16 +172,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         if table.is_none() {
             if let Some(config) = schema_config {
                 if config.auto_create_tables {
-                    create_table(
-                        request_id,
-                        catalog,
-                        schema,
-                        instance.clone(),
-                        &write_metric,
-                        schema_config,
-                        deadline,
-                    )
-                    .await?;
+                    create_table(ctx, &write_table_req, request_id, deadline).await?;
                     // try to get table again
                     table = try_get_table(catalog, schema, instance.clone(), table_name)?;
                 }
@@ -188,7 +181,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
 
         match table {
             Some(table) => {
-                let plan = write_metric_to_insert_plan(table, write_metric)?;
+                let plan = write_table_request_to_insert_plan(table, write_table_req)?;
                 plan_vec.push(plan);
             }
             None => {
@@ -241,6 +234,8 @@ fn try_get_table<Q: QueryExecutor + 'static>(
 }
 
 async fn create_table<Q: QueryExecutor + 'static>(
+    ctx: &HandlerContext<'_, Q>,
+    write_table_req: &WriteTableRequest,
     request_id: RequestId,
     catalog: &str,
     schema: &str,
@@ -249,16 +244,19 @@ async fn create_table<Q: QueryExecutor + 'static>(
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<()> {
-    let create_table_plan =
-        storage_service::write_metric_to_create_table_plan(schema_config, write_metric)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!(
-                    "Failed to build creating table plan from metric, table:{}",
-                    write_metric.metric
-                ),
-            })?;
+    let create_table_plan = storage_service::write_table_request_to_create_table_plan(
+        schema_config,
+        ctx,
+        write_table_req,
+    )
+    .map_err(|e| Box::new(e) as _)
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: format!(
+            "Failed to build creating table plan, table:{}",
+            write_metric.table
+        ),
+    })?;
 
     debug!(
         "Grpc handle create table begin, table:{}, schema:{:?}",
@@ -311,16 +309,19 @@ async fn create_table<Q: QueryExecutor + 'static>(
         })
 }
 
-fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Result<InsertPlan> {
+fn write_table_request_to_insert_plan(
+    table: TableRef,
+    write_table_req: WriteTableRequest,
+) -> Result<InsertPlan> {
     let schema = table.schema();
 
     let mut rows_total = Vec::new();
-    for write_entry in write_metric.entries {
+    for write_entry in write_table_req.entries {
         let mut rows = write_entry_to_rows(
-            &write_metric.metric,
+            &write_table_req.table,
             &schema,
-            &write_metric.tag_names,
-            &write_metric.field_names,
+            &write_table_req.tag_names,
+            &write_table_req.field_names,
             write_entry,
         )?;
         rows_total.append(&mut rows);
@@ -345,12 +346,12 @@ fn write_entry_to_rows(
     schema: &Schema,
     tag_names: &[String],
     field_names: &[String],
-    write_entry: WriteEntry,
+    write_series_entry: WriteSeriesEntry,
 ) -> Result<Vec<Row>> {
     // Init all columns by null.
     let mut rows = vec![
         Row::from_datums(vec![Datum::Null; schema.num_columns()]);
-        write_entry.field_groups.len()
+        write_series_entry.field_groups.len()
     ];
 
     // Fill tsid by default value.
@@ -363,7 +364,7 @@ fn write_entry_to_rows(
     }
 
     // Fill tags.
-    for tag in write_entry.tags {
+    for tag in write_series_entry.tags {
         let name_index = tag.name_index as usize;
         ensure!(
             name_index < tag_names.len(),
@@ -423,7 +424,7 @@ fn write_entry_to_rows(
 
     // Fill fields.
     let mut field_name_index: HashMap<String, usize> = HashMap::new();
-    for (i, field_group) in write_entry.field_groups.into_iter().enumerate() {
+    for (i, field_group) in write_series_entry.field_groups.into_iter().enumerate() {
         // timestamp
         let timestamp_index_in_schema = schema.timestamp_index();
         rows[i][timestamp_index_in_schema] =
@@ -541,7 +542,7 @@ mod test {
     const FIELD_VALUE_STRING: &str = "stringValue";
 
     // tag_names field_names write_entry
-    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteEntry) {
+    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteSeriesEntry) {
         let tag_names = vec![TAG_K.to_string(), TAG_K1.to_string()];
         let field_names = vec![FIELD_NAME.to_string(), FIELD_NAME1.to_string()];
 
@@ -584,7 +585,7 @@ mod test {
             fields: vec![field1],
         };
 
-        let write_entry = WriteEntry {
+        let write_entry = WriteSeriesEntry {
             tags,
             field_groups: vec![field_group, field_group1, field_group2],
         };
