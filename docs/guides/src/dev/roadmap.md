@@ -25,19 +25,19 @@
 - [x] Support dynamic migration of tables in cluster mode.
 
 ### v1.0.0
-- [ ] Formally release CeresDB and its SDKs. All breaking changes will be finished.
+- [ ] Formally release CeresDB and its SDKs with all breaking changes finished.
 - [ ] Finish the majority of work related to `Table Partitioning`.
 - [ ] Various efforts to improve query performance, especially for cloud-native cluster mode. These works includes:
     - Multi-tier cache.
     - Introduce various methods to reduce the data fetched from remote storage (improve the accuracy of SST data filtering).
     - Increase the parallelism while fetching data from remote object-store.
-- [ ] Improve data ingestion performance with some resource-controlling methods.
+- [ ] Improve data ingestion performance by introducing resource control over compaction.
 
 ### Afterwards
 With an in-depth understanding of the time-series database and its various use cases, the majority of our work will focus on performance, reliability, scalability, ease of use, and collaborations with open-source communities.
-- [ ] Add utilities that support promQL, influxQL, opentsdb protocol, and so on.
-- [ ] Provide basic utilities for operation and maintenance. Specifically, include the following:
-    - Deployment tools that fit well for both Kubernetes and bare servers.
+- [ ] Add utilities that support `PromQL`, `InfluxQL`, `OpenTSDB` protocol, and so on.
+- [ ] Provide basic utilities for operation and maintenance. Specifically, the following are included:
+    - Deployment tools that fit well for cloud infrastructures like `Kubernetes`.
     - Enhance self-observability, especially critical logs and metrics should be supplemented.
 - [ ] Develop various tools that ease the use of CeresDB. For example, data import and export tools.
 - [ ] Explore new storage formats that will improve performance on hybrid workloads (analytical and traditional time-series workloads).
