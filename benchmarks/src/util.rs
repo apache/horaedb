@@ -8,13 +8,17 @@ use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
     space::SpaceId,
     sst::{
-        factory::{Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-        file::{FileHandle, FileMeta, FilePurgeQueue, SstMetaData},
+        factory::{
+            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
+        },
+        file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
         parquet::encoding,
+        writer::MetaData,
     },
     table::sst_util,
+    table_options::StorageFormat,
 };
 use common_types::{
     bytes::{BufMut, SafeBufMut},
@@ -56,13 +60,14 @@ pub async fn meta_from_sst(
     store: &ObjectStoreRef,
     sst_path: &Path,
     _meta_cache: &Option<MetaCacheRef>,
-) -> SstMetaData {
+) -> MetaData {
     let get_result = store.get(sst_path).await.unwrap();
     let chunk_reader = get_result.bytes().await.unwrap();
     let metadata = footer::parse_metadata(&chunk_reader).unwrap();
     let kv_metas = metadata.file_metadata().key_value_metadata().unwrap();
 
-    encoding::decode_sst_meta_data(&kv_metas[0]).unwrap()
+    let parquet_meta_data = encoding::decode_sst_meta_data(&kv_metas[0]).unwrap();
+    MetaData::from(parquet_meta_data)
 }
 
 pub async fn schema_from_sst(
@@ -71,7 +76,6 @@ pub async fn schema_from_sst(
     meta_cache: &Option<MetaCacheRef>,
 ) -> Schema {
     let sst_meta = meta_from_sst(store, sst_path, meta_cache).await;
-
     sst_meta.schema
 }
 
@@ -96,7 +100,7 @@ pub async fn load_sst_to_memtable(
     memtable: &MemTableRef,
     runtime: Arc<Runtime>,
 ) {
-    let sst_reader_options = SstReaderOptions {
+    let sst_read_options = SstReadOptions {
         read_batch_row_num: 500,
         reverse: false,
         frequency: ReadFrequency::Frequent,
@@ -110,7 +114,13 @@ pub async fn load_sst_to_memtable(
     let sst_factory = FactoryImpl;
     let store_picker: ObjectStorePickerRef = Arc::new(store.clone());
     let mut sst_reader = sst_factory
-        .new_sst_reader(&sst_reader_options, sst_path, &store_picker)
+        .create_reader(
+            sst_path,
+            &sst_read_options,
+            SstReadHint::default(),
+            &store_picker,
+        )
+        .await
         .unwrap();
 
     let mut sst_stream = sst_reader.read().await.unwrap();
@@ -150,7 +160,11 @@ pub async fn file_handles_from_ssts(
         let sst_meta = meta_from_sst(store, &path, meta_cache).await;
         let file_meta = FileMeta {
             id: *file_id,
-            meta: sst_meta,
+            size: 0,
+            row_num: 0,
+            time_range: sst_meta.time_range,
+            max_seq: sst_meta.max_sequence,
+            storage_format: StorageFormat::Columnar,
         };
 
         let handle = FileHandle::new(file_meta, purge_queue.clone());

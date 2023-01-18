@@ -16,10 +16,10 @@ use analytic_engine::{
     sst::{
         factory::{
             FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            SstReaderOptions,
+            SstReadOptions,
         },
         file::{FileHandle, FilePurgeQueue, Request},
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
     },
     table::sst_util,
 };
@@ -36,7 +36,7 @@ pub struct MergeSstBench {
     store: ObjectStoreRef,
     max_projections: usize,
     schema: Schema,
-    sst_reader_options: SstReaderOptions,
+    sst_read_options: SstReadOptions,
     runtime: Arc<Runtime>,
     space_id: SpaceId,
     table_id: TableId,
@@ -61,7 +61,7 @@ impl MergeSstBench {
 
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: config.read_batch_row_num,
             reverse: false,
             frequency: ReadFrequency::Frequent,
@@ -90,7 +90,7 @@ impl MergeSstBench {
             store,
             max_projections,
             schema,
-            sst_reader_options,
+            sst_read_options,
             runtime,
             space_id,
             table_id,
@@ -109,7 +109,7 @@ impl MergeSstBench {
         let projected_schema =
             util::projected_schema_by_number(&self.schema, i, self.max_projections);
 
-        self.sst_reader_options.projected_schema = projected_schema;
+        self.sst_read_options.projected_schema = projected_schema;
         self.dedup = dedup;
     }
 
@@ -118,7 +118,7 @@ impl MergeSstBench {
         let table_id = self.table_id;
         let sequence = u64::MAX;
         let iter_options = IterOptions::default();
-        let projected_schema = self.sst_reader_options.projected_schema.clone();
+        let projected_schema = self.sst_read_options.projected_schema.clone();
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
@@ -132,7 +132,7 @@ impl MergeSstBench {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_reader_options: self.sst_reader_options.clone(),
+            sst_read_options: self.sst_read_options.clone(),
             store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
@@ -169,7 +169,7 @@ impl MergeSstBench {
     fn run_no_dedup_bench(&self) {
         let space_id = self.space_id;
         let table_id = self.table_id;
-        let projected_schema = self.sst_reader_options.projected_schema.clone();
+        let projected_schema = self.sst_read_options.projected_schema.clone();
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl::default());
 
         let request_id = RequestId::next_id();
@@ -182,7 +182,7 @@ impl MergeSstBench {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_reader_options: self.sst_reader_options.clone(),
+            sst_read_options: self.sst_read_options.clone(),
             store_picker: &store_picker,
         })
         .ssts(vec![self.file_handles.clone()]);

@@ -22,6 +22,7 @@ pub struct Context {
     deadline: Option<Instant>,
     default_catalog: String,
     default_schema: String,
+    enable_partition_table_access: bool,
 }
 
 impl Context {
@@ -31,6 +32,7 @@ impl Context {
             deadline,
             default_catalog: String::new(),
             default_schema: String::new(),
+            enable_partition_table_access: false,
         }
     }
 
@@ -59,6 +61,11 @@ impl Context {
     pub fn request_id(&self) -> RequestId {
         self.request_id
     }
+
+    #[inline]
+    pub fn enable_partition_table_access(&self) -> bool {
+        self.enable_partition_table_access
+    }
 }
 
 #[must_use]
@@ -67,6 +74,7 @@ pub struct Builder {
     deadline: Option<Instant>,
     default_catalog: String,
     default_schema: String,
+    enable_partition_table_access: bool,
 }
 
 impl Builder {
@@ -76,12 +84,18 @@ impl Builder {
         self
     }
 
+    pub fn enable_partition_table_access(mut self, enable_partition_table_access: bool) -> Self {
+        self.enable_partition_table_access = enable_partition_table_access;
+        self
+    }
+
     pub fn build(self) -> Context {
         Context {
             request_id: self.request_id,
             deadline: self.deadline,
             default_catalog: self.default_catalog,
             default_schema: self.default_schema,
+            enable_partition_table_access: self.enable_partition_table_access,
         }
     }
 }

@@ -17,6 +17,7 @@ use std::{
 use arc_swap::ArcSwap;
 use arena::CollectorRef;
 use common_types::{
+    self,
     schema::{Schema, Version},
     table::{ClusterVersion, ShardId},
     time::{TimeRange, Timestamp},
@@ -27,7 +28,6 @@ use log::{debug, info};
 use object_store::Path;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::TableId};
-use wal::manager::{RegionId, WalLocation};
 
 use crate::{
     instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
@@ -37,13 +37,12 @@ use crate::{
     },
     meta::meta_update::AddTableMeta,
     space::SpaceId,
-    sst::{factory::SstType, file::FilePurger, manager::FileId},
+    sst::{file::FilePurger, manager::FileId},
     table::{
         metrics::Metrics,
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
-    table_options::StorageFormat,
     TableOptions,
 };
 
@@ -76,7 +75,7 @@ define_result!(Error);
 
 pub type MemTableId = u64;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableShardInfo {
     pub shard_id: ShardId,
     pub cluster_version: ClusterVersion,
@@ -101,8 +100,6 @@ pub struct TableData {
     schema: Mutex<Schema>,
     /// Space id of this table
     pub space_id: SpaceId,
-    /// The sst type of this table
-    pub sst_type: SstType,
 
     /// Mutable memtable memory size limitation
     mutable_limit: AtomicU32,
@@ -164,7 +161,6 @@ impl fmt::Debug for TableData {
             .field("id", &self.id)
             .field("name", &self.name)
             .field("space", &self.space_id)
-            .field("sst_type", &self.sst_type)
             .field("mutable_limit", &self.mutable_limit)
             .field("opts", &self.opts)
             .field("last_sequence", &self.last_sequence)
@@ -172,6 +168,7 @@ impl fmt::Debug for TableData {
             .field("last_file_id", &self.last_file_id)
             .field("dropped", &self.dropped.load(Ordering::Relaxed))
             .field("shard_info", &self.shard_info)
+            .field("partition_info", &self.partition_info)
             .finish()
     }
 }
@@ -213,8 +210,6 @@ impl TableData {
             name: request.table_name,
             schema: Mutex::new(request.table_schema),
             space_id,
-            // TODO(xikai): sst type should be decided by the `request`.
-            sst_type: SstType::Auto,
             mutable_limit: AtomicU32::new(get_mutable_limit(&table_opts)),
             opts: ArcSwap::new(Arc::new(table_opts)),
             memtable_factory,
@@ -253,8 +248,6 @@ impl TableData {
             name: add_meta.table_name,
             schema: Mutex::new(add_meta.schema),
             space_id: add_meta.space_id,
-            // TODO(xikai): it should be recovered from `add_meta` struct.
-            sst_type: SstType::Parquet,
             mutable_limit: AtomicU32::new(get_mutable_limit(&add_meta.opts)),
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
             memtable_factory,
@@ -508,19 +501,18 @@ impl TableData {
         self.table_options().is_expired(timestamp)
     }
 
-    pub fn storage_format(&self) -> StorageFormat {
-        self.table_options().storage_format
+    pub fn table_location(&self) -> TableLocation {
+        TableLocation {
+            id: self.id.as_u64(),
+            shard_info: self.shard_info,
+        }
     }
+}
 
-    /// Get the table's wal location of this table.
-    #[inline]
-    pub fn wal_location(&self) -> WalLocation {
-        let region_id = self.shard_info.shard_id as RegionId;
-        let region_version = self.shard_info.cluster_version;
-        let table_id = self.id;
-
-        WalLocation::new(region_id, region_version, table_id.as_u64())
-    }
+#[derive(Debug, Clone, Copy)]
+pub struct TableLocation {
+    pub id: common_types::table::TableId,
+    pub shard_info: TableShardInfo,
 }
 
 /// Table data reference

@@ -16,13 +16,16 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{partition::PartitionInfo, table::TableId};
 use wal::{
     log_batch::{Payload, PayloadDecoder},
-    manager::WalLocation,
+    manager::{VersionedRegionId, WalLocation},
 };
 
 use crate::{
     space::SpaceId,
-    table::version_edit::{AddFile, DeleteFile, VersionEdit},
-    TableOptions,
+    table::{
+        data::TableLocation,
+        version_edit::{AddFile, DeleteFile, VersionEdit},
+    },
+    table_options, TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -46,6 +49,9 @@ pub enum Error {
 
     #[snafu(display("Empty table options.\nBacktrace:\n{}", backtrace))]
     EmptyTableOptions { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert table options, err:{}", source))]
+    ConvertTableOptions { source: table_options::Error },
 
     #[snafu(display("Empty log entry of meta update.\nBacktrace:\n{}", backtrace))]
     EmptyMetaUpdateLogEntry { backtrace: Backtrace },
@@ -248,7 +254,7 @@ impl TryFrom<meta_pb::AddTableMeta> for AddTableMeta {
             table_id: TableId::from(src.table_id),
             table_name: src.table_name,
             schema: Schema::try_from(table_schema).context(ConvertSchema)?,
-            opts: TableOptions::from(opts),
+            opts: TableOptions::try_from(opts).context(ConvertTableOptions)?,
             partition_info,
         })
     }
@@ -284,7 +290,7 @@ impl From<meta_pb::DropTableMeta> for DropTableMeta {
 }
 
 /// Meta data of version edit to table
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionEditMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
@@ -412,7 +418,7 @@ impl TryFrom<meta_pb::AlterOptionsMeta> for AlterOptionsMeta {
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            options: TableOptions::from(table_options),
+            options: TableOptions::try_from(table_options).context(ConvertTableOptions)?,
         })
     }
 }
@@ -470,7 +476,19 @@ pub struct MetaUpdateRequest {
 }
 
 impl MetaUpdateRequest {
-    pub fn new(location: WalLocation, meta_update: MetaUpdate) -> Self {
+    pub fn new(table_location: TableLocation, meta_update: MetaUpdate) -> Self {
+        // Region id in manifest shouldn't change following by its moving from shards,
+        // so it should be mapped to `table_id`.
+        let versioned_region_id = VersionedRegionId {
+            version: table_location.shard_info.cluster_version,
+            id: table_location.id,
+        };
+
+        let location = WalLocation {
+            versioned_region_id,
+            table_id: table_location.id,
+        };
+
         Self {
             location,
             meta_update,

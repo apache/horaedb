@@ -34,7 +34,7 @@ use crate::{
         IterOptions, RecordBatchWithKeyIterator,
     },
     space::SpaceAndTable,
-    sst::factory::{ReadFrequency, SstReaderOptions},
+    sst::factory::{ReadFrequency, SstReadOptions},
     table::{
         data::TableData,
         version::{ReadView, TableVersion},
@@ -152,7 +152,7 @@ impl Instance {
         // Current visible sequence
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
@@ -179,7 +179,7 @@ impl Instance {
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_factory: &self.space_store.sst_factory,
-                sst_reader_options: sst_reader_options.clone(),
+                sst_read_options: sst_read_options.clone(),
                 store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -215,7 +215,7 @@ impl Instance {
 
         assert!(request.order.is_out_of_order());
 
-        let sst_reader_options = SstReaderOptions {
+        let sst_read_options = SstReadOptions {
             read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
@@ -241,7 +241,7 @@ impl Instance {
                 table_id: table_data.id,
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
-                sst_reader_options: sst_reader_options.clone(),
+                sst_read_options: sst_read_options.clone(),
                 sst_factory: &self.space_store.sst_factory,
                 store_picker: self.space_store.store_picker(),
             };

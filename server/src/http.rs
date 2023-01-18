@@ -301,6 +301,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             .schema(schema)
                             .runtime(runtime)
                             .timeout(timeout)
+                            .enable_partition_table_access(true)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)

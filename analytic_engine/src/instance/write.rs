@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use wal::manager::{SequenceNumber, WalLocation, WriteContext};
 
 use crate::{
+    instance,
     instance::{
         flush_compaction::TableFlushOptions,
         write_worker,
@@ -401,7 +402,9 @@ impl Instance {
 
         // Encode payload
         let payload = WritePayload::Write(&write_req_pb);
-        let wal_location = table_data.wal_location();
+        let table_location = table_data.table_location();
+        let wal_location =
+            instance::create_wal_location(table_location.id, table_location.shard_info);
         let log_batch_encoder =
             self.space_store
                 .wal_manager

@@ -22,15 +22,12 @@ use parquet::{
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
-use proto::sst::SstMetaData as SstMetaDataPb;
+use proto::sst as sst_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
-use crate::{
-    sst::{
-        file::SstMetaData,
-        parquet::hybrid::{self, IndexedType},
-    },
-    table_options::{StorageFormat, StorageFormatOptions},
+use crate::sst::parquet::{
+    hybrid::{self, IndexedType},
+    meta_data::ParquetMetaData,
 };
 
 // TODO: Only support i32 offset now, consider i64 here?
@@ -116,7 +113,9 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to convert sst meta data from protobuf, err:{}", source))]
-    ConvertSstMetaData { source: crate::sst::file::Error },
+    ConvertSstMetaData {
+        source: crate::sst::parquet::meta_data::Error,
+    },
 
     #[snafu(display(
         "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
@@ -164,8 +163,8 @@ pub const META_KEY: &str = "meta";
 pub const META_VALUE_HEADER: u8 = 0;
 
 /// Encode the sst meta data into binary key value pair.
-pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
-    let meta_data_pb = SstMetaDataPb::from(meta_data);
+pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
+    let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() as usize + 1);
     buf.try_put_u8(META_VALUE_HEADER)
@@ -180,7 +179,7 @@ pub fn encode_sst_meta_data(meta_data: SstMetaData) -> Result<KeyValue> {
 }
 
 /// Decode the sst meta data from the binary key value pair.
-pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
+pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
     ensure!(
         kv.key == META_KEY,
         InvalidMetaKey {
@@ -204,10 +203,10 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<SstMetaData> {
         InvalidMetaValueHeader { meta_value }
     );
 
-    let meta_data_pb: SstMetaDataPb =
+    let meta_data_pb: sst_pb::ParquetMetaData =
         Message::decode(&raw_bytes[1..]).context(DecodeFromPb { meta_value })?;
 
-    SstMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
+    ParquetMetaData::try_from(meta_data_pb).context(ConvertSstMetaData)
 }
 
 /// RecordEncoder is used for encoding ArrowBatch.
@@ -233,7 +232,7 @@ impl ColumnarRecordEncoder {
     fn try_new(
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: SstMetaData,
+        meta_data: ParquetMetaData,
     ) -> Result<Self> {
         let arrow_schema = meta_data.schema.to_arrow_schema_ref();
 
@@ -292,7 +291,7 @@ struct HybridRecordEncoder {
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
-    // columns that can be collpased into list
+    // columns that can be collapsed into list
     collapsible_col_types: Vec<IndexedType>,
 }
 
@@ -300,7 +299,7 @@ impl HybridRecordEncoder {
     fn try_new(
         num_rows_per_row_group: usize,
         compression: Compression,
-        mut meta_data: SstMetaData,
+        mut meta_data: ParquetMetaData,
     ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
@@ -322,10 +321,7 @@ impl HybridRecordEncoder {
                     idx,
                     data_type: meta_data.schema.column(idx).data_type,
                 });
-                meta_data
-                    .storage_format_opts
-                    .collapsible_cols_idx
-                    .push(idx as u32);
+                meta_data.collapsible_cols_idx.push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
@@ -405,21 +401,23 @@ pub struct ParquetEncoder {
 
 impl ParquetEncoder {
     pub fn try_new(
+        hybrid_encoding: bool,
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: SstMetaData,
+        meta_data: ParquetMetaData,
     ) -> Result<Self> {
-        let record_encoder: Box<dyn RecordEncoder + Send> = match meta_data.storage_format() {
-            StorageFormat::Hybrid => Box::new(HybridRecordEncoder::try_new(
+        let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
+            Box::new(HybridRecordEncoder::try_new(
                 num_rows_per_row_group,
                 compression,
                 meta_data,
-            )?),
-            StorageFormat::Columnar => Box::new(ColumnarRecordEncoder::try_new(
+            )?)
+        } else {
+            Box::new(ColumnarRecordEncoder::try_new(
                 num_rows_per_row_group,
                 compression,
                 meta_data,
-            )?),
+            )?)
         };
 
         Ok(ParquetEncoder { record_encoder })
@@ -458,7 +456,7 @@ impl RecordDecoder for ColumnarRecordDecoder {
 }
 
 struct HybridRecordDecoder {
-    storage_format_opts: StorageFormatOptions,
+    collapsible_cols_idx: Vec<u32>,
 }
 
 impl HybridRecordDecoder {
@@ -481,7 +479,7 @@ impl HybridRecordDecoder {
         ))
     }
 
-    /// Stretch hybrid collpased column into columnar column.
+    /// Stretch hybrid collapsed column into columnar column.
     /// `value_offsets` specify offsets each value occupied, which means that
     /// the number of a `value[n]` is `value_offsets[n] - value_offsets[n-1]`.
     /// Ex:
@@ -626,7 +624,7 @@ impl RecordDecoder for HybridRecordDecoder {
 
         let mut value_offsets = None;
         // Find value offsets from the first col in collapsible_cols_idx.
-        if let Some(idx) = self.storage_format_opts.collapsible_cols_idx.first() {
+        if let Some(idx) = self.collapsible_cols_idx.first() {
             let offset_slices = arrays[*idx as usize].data().buffers()[0].as_slice();
             value_offsets = Some(Self::get_array_offsets(offset_slices));
         } else {
@@ -675,12 +673,13 @@ pub struct ParquetDecoder {
 }
 
 impl ParquetDecoder {
-    pub fn new(storage_format_opts: StorageFormatOptions) -> Self {
-        let record_decoder: Box<dyn RecordDecoder> = match storage_format_opts.format {
-            StorageFormat::Hybrid => Box::new(HybridRecordDecoder {
-                storage_format_opts,
-            }),
-            StorageFormat::Columnar => Box::new(ColumnarRecordDecoder {}),
+    pub fn new(collapsible_cols_idx: &[u32]) -> Self {
+        let record_decoder: Box<dyn RecordDecoder> = if collapsible_cols_idx.is_empty() {
+            Box::new(ColumnarRecordDecoder {})
+        } else {
+            Box::new(HybridRecordDecoder {
+                collapsible_cols_idx: collapsible_cols_idx.to_vec(),
+            })
         };
 
         Self { record_decoder }
@@ -707,7 +706,6 @@ mod tests {
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     use super::*;
-    use crate::table_options::StorageFormatOptions;
 
     fn build_schema() -> Schema {
         Builder::new()
@@ -854,18 +852,15 @@ mod tests {
     #[test]
     fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
-        let storage_format_opts = StorageFormatOptions::new(StorageFormat::Hybrid);
 
-        let mut meta_data = SstMetaData {
+        let mut meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            size: 10,
-            row_num: 4,
-            storage_format_opts,
             bloom_filter: Default::default(),
+            collapsible_cols_idx: Vec::new(),
         };
         let mut encoder =
             HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
@@ -923,13 +918,10 @@ mod tests {
             .build()
             .unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
-        collect_collapsible_cols_idx(
-            &meta_data.schema,
-            &mut meta_data.storage_format_opts.collapsible_cols_idx,
-        );
+        collect_collapsible_cols_idx(&meta_data.schema, &mut meta_data.collapsible_cols_idx);
 
         let decoder = HybridRecordDecoder {
-            storage_format_opts: meta_data.storage_format_opts,
+            collapsible_cols_idx: meta_data.collapsible_cols_idx.clone(),
         };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 

@@ -10,7 +10,7 @@ use analytic_engine::{
         skiplist::factory::SkiplistMemTableFactory,
         MemTableRef, ScanContext, ScanRequest,
     },
-    sst::meta_cache::MetaCacheRef,
+    sst::meta_data::cache::MetaCacheRef,
 };
 use arena::NoopCollector;
 use common_types::projected_schema::ProjectedSchema;

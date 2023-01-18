@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
     log_batch::{LogEntry, LogWriteBatch},
-    manager::{self, ReadContext, ReadRequest, RegionId, SequenceNumber, SyncLogIterator},
+    manager::{self, ReadContext, ReadRequest, SequenceNumber, SyncLogIterator},
     table_kv_impl::{encoding, model::TableUnitEntry, namespace::BucketRef, WalRuntimes},
 };
 
@@ -91,7 +91,7 @@ pub enum Error {
         source
     ))]
     WriteLog {
-        region_id: RegionId,
+        region_id: u64,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
@@ -101,7 +101,7 @@ pub enum Error {
         backtrace
     ))]
     TableUnitNotExists {
-        region_id: RegionId,
+        region_id: u64,
         backtrace: Backtrace,
     },
 
@@ -110,8 +110,20 @@ pub enum Error {
 
     #[snafu(display("Failed to delete table, region_id:{}, err:{}", region_id, source))]
     Delete {
-        region_id: RegionId,
+        region_id: u64,
         source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    #[snafu(display(
+        "Failed to load last sequence, table_id:{}, msg:{}.\nBacktrace:\n{}",
+        msg,
+        table_id,
+        backtrace
+    ))]
+    LoadLastSequence {
+        table_id: TableId,
+        msg: String,
+        backtrace: Backtrace,
     },
 }
 
@@ -122,7 +134,7 @@ const DEFAULT_CLEAN_BATCH_SIZE: i32 = 100;
 
 struct TableUnitState {
     /// Region id of this table unit
-    region_id: RegionId,
+    region_id: u64,
     /// Table id of this table unit
     table_id: TableId,
     /// Start sequence (inclusive) of this table unit, update is protected by
@@ -191,7 +203,7 @@ impl TableUnit {
         table_kv: &T,
         scan_ctx: ScanContext,
         table_unit_meta_table: &str,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         // Buckets ordered by time.
         buckets: Vec<BucketRef>,
@@ -213,8 +225,14 @@ impl TableUnit {
             );
 
             // Load last sequence of this table unit.
-            let last_sequence =
-                Self::load_last_sequence(&table_kv, scan_ctx, region_id, table_id, &buckets)?;
+            let last_sequence = Self::load_last_sequence(
+                &table_kv,
+                scan_ctx,
+                region_id,
+                table_id,
+                &buckets,
+                table_unit_entry.start_sequence,
+            )?;
 
             Ok(Some(Self {
                 runtimes,
@@ -240,7 +258,7 @@ impl TableUnit {
         table_kv: &T,
         scan_ctx: ScanContext,
         table_unit_meta_table: &str,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         // Buckets ordered by time.
         buckets: Vec<BucketRef>,
@@ -266,8 +284,14 @@ impl TableUnit {
                 };
 
             // Load last sequence of this table unit.
-            let last_sequence =
-                Self::load_last_sequence(&table_kv, scan_ctx, region_id, table_id, &buckets)?;
+            let last_sequence = Self::load_last_sequence(
+                &table_kv,
+                scan_ctx,
+                region_id,
+                table_id,
+                &buckets,
+                table_unit_entry.start_sequence,
+            )?;
 
             Ok(Self {
                 runtimes,
@@ -374,7 +398,7 @@ impl TableUnit {
     }
 
     #[inline]
-    pub fn region_id(&self) -> RegionId {
+    pub fn region_id(&self) -> u64 {
         self.state.region_id
     }
 
@@ -405,9 +429,10 @@ impl TableUnit {
     fn load_last_sequence<T: TableKv>(
         table_kv: &T,
         scan_ctx: ScanContext,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         buckets: &[BucketRef],
+        start_sequence: u64,
     ) -> Result<SequenceNumber> {
         debug!(
             "Load last sequence, buckets{:?}, region id:{}, table id:{}",
@@ -415,28 +440,48 @@ impl TableUnit {
         );
 
         // Starts from the latest bucket, find last sequence of given region id.
+        // It is likely that, table has just been moved to an new shard, so we should
+        // pick `start_sequence - 1`(`start_sequence` equal to flushed_sequence + 1)
+        // as the `last_sequence`.
         for bucket in buckets.iter().rev() {
             let table_name = bucket.wal_shard_table(region_id);
 
-            if let Some(seq) = Self::load_last_sequence_from_table(
+            if let Some(sequence) = Self::load_last_sequence_from_table(
                 table_kv,
                 scan_ctx.clone(),
                 table_name,
                 region_id,
                 table_id,
             )? {
-                return Ok(seq);
+                ensure!(
+                    sequence + 1 >= start_sequence,
+                    LoadLastSequence {
+                        table_id,
+                        msg: format!(
+                            "found last sequence, but last sequence + 1 < start sequence,
+                            last sequence:{}, start sequence:{}",
+                            sequence, start_sequence,
+                        )
+                    }
+                );
+                return Ok(sequence);
             }
         }
 
-        Ok(common_types::MIN_SEQUENCE_NUMBER)
+        // If no flush ever happened, start_sequence will equal to 0.
+        let last_sequence = if start_sequence > 0 {
+            start_sequence - 1
+        } else {
+            start_sequence
+        };
+        Ok(last_sequence)
     }
 
     fn load_last_sequence_from_table<T: TableKv>(
         table_kv: &T,
         scan_ctx: ScanContext,
         table_name: &str,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
     ) -> Result<Option<SequenceNumber>> {
         let log_encoding = CommonLogEncoding::newest();

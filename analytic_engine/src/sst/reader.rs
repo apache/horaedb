@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use common_types::record_batch::RecordBatchWithKey;
 use futures::Stream;
 
-use crate::sst::file::SstMetaData;
+use crate::sst::meta_data::SstMetaData;
 
 pub mod error {
     use common_util::define_result;
@@ -82,7 +82,7 @@ pub use error::*;
 
 #[async_trait]
 pub trait SstReader {
-    async fn meta_data(&mut self) -> Result<&SstMetaData>;
+    async fn meta_data(&mut self) -> Result<SstMetaData>;
 
     async fn read(
         &mut self,

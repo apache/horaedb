@@ -18,33 +18,36 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use common_util::{
+    error::GenericResult,
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
-use datafusion::datasource::file_format;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
-use object_store::{ObjectMeta, ObjectStoreRef, Path};
+use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{async_reader::AsyncFileReader, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::ParquetMetaDataRef;
+use parquet_ext::meta_data::ChunkReader;
 use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::{
-    sst::{
-        factory::{ObjectStorePickerRef, ReadFrequency, SstReaderOptions},
-        file::{BloomFilter, SstMetaData},
-        meta_cache::{MetaCacheRef, MetaData},
-        metrics,
-        parquet::{encoding::ParquetDecoder, row_group_filter::RowGroupFilter},
-        reader::{error::*, Result, SstReader},
+use crate::sst::{
+    factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
+    meta_data::{
+        cache::{MetaCacheRef, MetaData},
+        SstMetaData,
     },
-    table_options::StorageFormatOptions,
+    metrics,
+    parquet::{
+        encoding::ParquetDecoder,
+        meta_data::{BloomFilter, ParquetMetaDataRef},
+        row_group_filter::RowGroupFilter,
+    },
+    reader::{error::*, Result, SstReader},
 };
 
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
@@ -54,6 +57,8 @@ pub struct Reader<'a> {
     path: &'a Path,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
+    /// The hint for the sst file size.
+    file_size_hint: Option<usize>,
     projected_schema: ProjectedSchema,
     meta_cache: Option<MetaCacheRef>,
     predicate: PredicateRef,
@@ -72,8 +77,9 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(
         path: &'a Path,
+        options: &SstReadOptions,
+        file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstReaderOptions,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
@@ -83,6 +89,7 @@ impl<'a> Reader<'a> {
         Self {
             path,
             store,
+            file_size_hint,
             projected_schema: options.projected_schema.clone(),
             meta_cache: options.meta_cache.clone(),
             predicate: options.predicate.clone(),
@@ -114,14 +121,12 @@ impl<'a> Reader<'a> {
         let row_projector = self.row_projector.take().unwrap();
         let row_projector = ArrowRecordBatchProjector::from(row_projector);
 
-        let storage_format_opts = self
+        let sst_meta_data = self
             .meta_data
             .as_ref()
             // metadata must be inited after `init_if_necessary`.
             .unwrap()
-            .custom()
-            .storage_format_opts
-            .clone();
+            .custom();
 
         let streams: Vec<_> = streams
             .into_iter()
@@ -130,7 +135,7 @@ impl<'a> Reader<'a> {
                     self.path.to_string(),
                     stream,
                     row_projector.clone(),
-                    storage_format_opts.clone(),
+                    sst_meta_data.clone(),
                 )) as _
             })
             .collect();
@@ -142,12 +147,12 @@ impl<'a> Reader<'a> {
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        bloom_filter: &Option<BloomFilter>,
+        bloom_filter: Option<&BloomFilter>,
     ) -> Result<Vec<usize>> {
         let filter = RowGroupFilter::try_new(
             &schema,
             row_groups,
-            bloom_filter.as_ref().map(|v| v.filters()),
+            bloom_filter.map(|v| v.filters()),
             self.predicate.exprs(),
         )?;
 
@@ -167,7 +172,7 @@ impl<'a> Reader<'a> {
         let filtered_row_groups = self.filter_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
-            &meta_data.custom().bloom_filter,
+            meta_data.custom().bloom_filter.as_ref(),
         )?;
 
         info!(
@@ -243,12 +248,27 @@ impl<'a> Reader<'a> {
         Ok(())
     }
 
-    async fn load_meta_data_from_storage(
-        &self,
-        object_meta: &ObjectMeta,
-    ) -> Result<ParquetMetaDataRef> {
+    async fn load_file_size(&self) -> Result<usize> {
+        let file_size = match self.file_size_hint {
+            Some(v) => v,
+            None => {
+                let object_meta = self.store.head(self.path).await.context(ObjectStoreError)?;
+                object_meta.size
+            }
+        };
+
+        Ok(file_size)
+    }
+
+    async fn load_meta_data_from_storage(&self) -> Result<parquet_ext::ParquetMetaDataRef> {
+        let file_size = self.load_file_size().await?;
+        let chunk_reader_adapter = ChunkReaderAdapter {
+            path: self.path,
+            store: self.store,
+        };
+
         let meta_data =
-            file_format::parquet::fetch_parquet_metadata(self.store.as_ref(), object_meta, None)
+            parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?;
@@ -276,15 +296,10 @@ impl<'a> Reader<'a> {
         let empty_predicate = self.predicate.exprs().is_empty();
 
         let meta_data = {
-            let object_meta = self
-                .store
-                .head(self.path)
-                .await
-                .context(ObjectStoreError {})?;
-            let parquet_meta_data = self.load_meta_data_from_storage(&object_meta).await?;
+            let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, object_meta.size, ignore_bloom_filter)
+            MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
                 .map_err(|e| Box::new(e) as _)
                 .context(DecodeSstMeta)?
         };
@@ -373,7 +388,7 @@ impl ObjectStoreReader {
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        info!("ObjectStoreReader dropped, metrics:{:?}", self.metrics);
+        debug!("ObjectStoreReader is dropped, metrics:{:?}", self.metrics);
     }
 }
 
@@ -427,14 +442,29 @@ impl AsyncFileReader for ObjectStoreReader {
     }
 }
 
+struct ChunkReaderAdapter<'a> {
+    path: &'a Path,
+    store: &'a ObjectStoreRef,
+}
+
+#[async_trait]
+impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
+    async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
+        self.store
+            .get_range(self.path, range)
+            .await
+            .map_err(|e| Box::new(e) as _)
+    }
+}
+
 struct RecordBatchProjector {
     path: String,
     stream: SendableRecordBatchStream,
     row_projector: ArrowRecordBatchProjector,
-    storage_format_opts: StorageFormatOptions,
 
     row_num: usize,
     start_time: Instant,
+    sst_meta: ParquetMetaDataRef,
 }
 
 impl RecordBatchProjector {
@@ -442,15 +472,15 @@ impl RecordBatchProjector {
         path: String,
         stream: SendableRecordBatchStream,
         row_projector: ArrowRecordBatchProjector,
-        storage_format_opts: StorageFormatOptions,
+        sst_meta: ParquetMetaDataRef,
     ) -> Self {
         Self {
             path,
             stream,
             row_projector,
-            storage_format_opts,
             row_num: 0,
             start_time: Instant::now(),
+            sst_meta,
         }
     }
 }
@@ -481,7 +511,7 @@ impl Stream for RecordBatchProjector {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
                         let parquet_decoder =
-                            ParquetDecoder::new(projector.storage_format_opts.clone());
+                            ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
                             .map_err(|e| Box::new(e) as _)
@@ -511,10 +541,12 @@ impl Stream for RecordBatchProjector {
 
 #[async_trait]
 impl<'a> SstReader for Reader<'a> {
-    async fn meta_data(&mut self) -> Result<&SstMetaData> {
+    async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.init_if_necessary().await?;
 
-        Ok(self.meta_data.as_ref().unwrap().custom().as_ref())
+        Ok(SstMetaData::Parquet(
+            self.meta_data.as_ref().unwrap().custom().clone(),
+        ))
     }
 
     async fn read(
@@ -622,7 +654,7 @@ impl<'a> ThreadedReader<'a> {
 
 #[async_trait]
 impl<'a> SstReader for ThreadedReader<'a> {
-    async fn meta_data(&mut self) -> Result<&SstMetaData> {
+    async fn meta_data(&mut self) -> Result<SstMetaData> {
         self.inner.meta_data().await
     }
 

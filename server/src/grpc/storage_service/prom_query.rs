@@ -112,7 +112,13 @@ where
         instance.table_engine.clone(),
         instance.table_manipulator.clone(),
     );
-    let interpreter = interpreter_factory.create(interpreter_ctx, plan);
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to create interpreter",
+        })?;
 
     let output = if let Some(deadline) = deadline {
         tokio::time::timeout_at(

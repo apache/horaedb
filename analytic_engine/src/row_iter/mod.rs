@@ -14,7 +14,7 @@ use futures::stream::Stream;
 use log::{debug, error};
 use tokio::sync::mpsc::{self, Receiver};
 
-use crate::sst::builder::{RecordBatchStream, RecordBatchStreamItem};
+use crate::sst::writer::{RecordBatchStream, RecordBatchStreamItem};
 
 pub mod chain;
 pub mod dedup;

@@ -16,6 +16,13 @@ message SstBloomFilter {
 }
 
 message SstMetaData {
+  oneof MetaData {
+    ParquetMetaData parquet = 1;
+  }
+}
+
+/// Used by ssts encoded by parquet, incuding columar&hybrid storage formats.
+message ParquetMetaData {
   // Min key in the sst
   bytes min_key = 1;
   // Max key in the sst
@@ -25,8 +32,6 @@ message SstMetaData {
   // The time range of the sst
   common.TimeRange time_range = 4;
   common.TableSchema schema = 5;
-  uint64 size = 6;
-  uint64 row_num = 7;
-  analytic_common.StorageFormatOptions storage_format_opts = 8;
-  SstBloomFilter bloom_filter = 9;
+  SstBloomFilter bloom_filter = 6;
+  repeated uint32 collapsible_cols_idx = 7;
 }

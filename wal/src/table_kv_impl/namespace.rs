@@ -21,8 +21,7 @@ use crate::{
     kv_encoder::CommonLogKey,
     log_batch::LogWriteBatch,
     manager::{
-        self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber,
-        WalLocation,
+        self, ReadContext, ReadRequest, ScanContext, ScanRequest, SequenceNumber, WalLocation,
     },
     table_kv_impl::{
         consts, encoding,
@@ -134,7 +133,7 @@ pub enum Error {
     ))]
     OpenTableUnit {
         namespace: String,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         source: crate::table_kv_impl::table_unit::Error,
     },
@@ -202,7 +201,7 @@ pub enum Error {
     ))]
     CleanLog {
         namespace: String,
-        region_id: RegionId,
+        region_id: u64,
         table_id: TableId,
         source: crate::table_kv_impl::table_unit::Error,
     },
@@ -1315,7 +1314,7 @@ impl Bucket {
     }
 
     #[inline]
-    pub fn wal_shard_table(&self, region_id: RegionId) -> &str {
+    pub fn wal_shard_table(&self, region_id: u64) -> &str {
         let index = region_id as usize % self.wal_shard_names.len();
         &self.wal_shard_names[index]
     }
@@ -1766,11 +1765,8 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as RegionId,
-                DEFAULT_CLUSTER_VERSION,
-                table_id,
-            );
+            let location =
+                WalLocation::new(DEFAULT_SHARD_ID as u64, DEFAULT_CLUSTER_VERSION, table_id);
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;
 
@@ -1803,7 +1799,7 @@ mod tests {
     async fn direct_read_logs_from_table<T: TableKv>(
         table_kv: &T,
         table_name: &str,
-        region_id: RegionId,
+        region_id: u64,
     ) -> Vec<(SequenceNumber, TestPayload)> {
         let log_encoding = LogEncoding::newest();
 

@@ -166,8 +166,9 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
 
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
+        // Use current ctx's catalog and tenant as default catalog and tenant
         .default_catalog_and_schema(ctx.catalog, ctx.schema)
+        .enable_partition_table_access(ctx.enable_partition_table_access)
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
@@ -175,7 +176,13 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         instance.table_engine.clone(),
         instance.table_manipulator.clone(),
     );
-    let interpreter = interpreter_factory.create(interpreter_ctx, plan);
+    let interpreter =
+        interpreter_factory
+            .create(interpreter_ctx, plan)
+            .context(InterpreterExec {
+                query: &request.query,
+            })?;
+
     let output = if let Some(deadline) = deadline {
         tokio::time::timeout_at(
             tokio::time::Instant::from_std(deadline),

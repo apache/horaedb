@@ -22,12 +22,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use common_types::table::TableId;
 use common_util::{define_result, runtime::Runtime};
 use log::info;
 use mem_collector::MemUsageCollector;
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, remote::RemoteEngineRef};
-use wal::manager::WalManagerRef;
+use wal::manager::{WalLocation, WalManagerRef};
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
@@ -37,9 +38,9 @@ use crate::{
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
         file::FilePurger,
-        meta_cache::MetaCacheRef,
+        meta_data::cache::MetaCacheRef,
     },
-    table::data::TableDataRef,
+    table::data::{TableDataRef, TableShardInfo},
     wal_synchronizer::WalSynchronizer,
     TableOptions,
 };
@@ -239,3 +240,12 @@ impl Instance {
 
 /// Instance reference
 pub type InstanceRef = Arc<Instance>;
+
+#[inline]
+pub(crate) fn create_wal_location(table_id: TableId, shard_info: TableShardInfo) -> WalLocation {
+    WalLocation::new(
+        shard_info.shard_id as u64,
+        shard_info.cluster_version,
+        table_id,
+    )
+}

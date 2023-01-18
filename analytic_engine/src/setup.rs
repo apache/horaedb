@@ -41,7 +41,7 @@ use crate::{
     },
     sst::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
-        meta_cache::{MetaCache, MetaCacheRef},
+        meta_data::cache::{MetaCache, MetaCacheRef},
     },
     storage_options::{ObjectStoreOptions, StorageOptions},
     Config, ObkvWalConfig, WalStorageConfig,

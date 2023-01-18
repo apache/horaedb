@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Sst builder implementation based on parquet.
+//! Sst writer implementation based on parquet.
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -18,19 +18,25 @@ use snafu::ResultExt;
 
 use crate::{
     sst::{
-        builder::{RecordBatchStream, SstBuilder, *},
-        factory::{ObjectStorePickerRef, SstBuilderOptions},
-        file::{BloomFilter, SstMetaData},
-        parquet::encoding::ParquetEncoder,
+        factory::{ObjectStorePickerRef, SstWriteOptions},
+        parquet::{
+            encoding::ParquetEncoder,
+            meta_data::{BloomFilter, ParquetMetaData},
+        },
+        writer::{
+            self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
+            SstWriter, Storage,
+        },
     },
     table_options::StorageFormat,
 };
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
-pub struct ParquetSstBuilder<'a> {
+pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
+    hybrid_encoding: bool,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
     /// Max row group size.
@@ -38,15 +44,17 @@ pub struct ParquetSstBuilder<'a> {
     compression: Compression,
 }
 
-impl<'a> ParquetSstBuilder<'a> {
+impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
+        hybrid_encoding: bool,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstBuilderOptions,
+        options: &SstWriteOptions,
     ) -> Self {
         let store = store_picker.default_store();
         Self {
             path,
+            hybrid_encoding,
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
@@ -58,10 +66,11 @@ impl<'a> ParquetSstBuilder<'a> {
 /// by parquet.
 struct RecordBytesReader {
     request_id: RequestId,
+    hybrid_encoding: bool,
+    meta_data: MetaData,
     record_stream: RecordBatchStream,
     num_rows_per_row_group: usize,
     compression: Compression,
-    meta_data: SstMetaData,
     total_row_num: Arc<AtomicUsize>,
     // Record batch partitioned by exactly given `num_rows_per_row_group`
     // There may be more than one `RecordBatchWithKey` inside each partition
@@ -142,7 +151,7 @@ impl RecordBytesReader {
 
     fn build_bloom_filter(&self) -> BloomFilter {
         // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
-        if self.meta_data.storage_format_opts.format == StorageFormat::Hybrid {
+        if self.hybrid_encoding {
             return BloomFilter::default();
         }
         let filters = self
@@ -171,13 +180,19 @@ impl RecordBytesReader {
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
         self.partition_record_batch().await?;
-        let filter = self.build_bloom_filter();
-        self.meta_data.bloom_filter = Some(filter);
+
+        let parquet_meta_data = {
+            let bloom_filter = self.build_bloom_filter();
+            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
+            parquet_meta_data.bloom_filter = Some(bloom_filter);
+            parquet_meta_data
+        };
 
         let mut parquet_encoder = ParquetEncoder::try_new(
+            self.hybrid_encoding,
             self.num_rows_per_row_group,
             self.compression,
-            self.meta_data,
+            parquet_meta_data,
         )
         .map_err(|e| Box::new(e) as _)
         .context(EncodeRecordBatch)?;
@@ -207,13 +222,13 @@ impl RecordBytesReader {
 }
 
 #[async_trait]
-impl<'a> SstBuilder for ParquetSstBuilder<'a> {
-    async fn build(
+impl<'a> SstWriter for ParquetSstWriter<'a> {
+    async fn write(
         &mut self,
         request_id: RequestId,
-        meta: &SstMetaData,
+        meta: &MetaData,
         record_stream: RecordBatchStream,
-    ) -> Result<SstInfo> {
+    ) -> writer::Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.num_rows_per_row_group
@@ -221,13 +236,13 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
 
         let total_row_num = Arc::new(AtomicUsize::new(0));
         let reader = RecordBytesReader {
+            hybrid_encoding: self.hybrid_encoding,
             request_id,
             record_stream,
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
             total_row_num: total_row_num.clone(),
-            // TODO(xikai): should we avoid this clone?
-            meta_data: meta.to_owned(),
+            meta_data: meta.clone(),
             partitioned_record_batch: Default::default(),
         };
         let bytes = reader.read_all().await?;
@@ -238,9 +253,15 @@ impl<'a> SstBuilder for ParquetSstBuilder<'a> {
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
 
+        let storage_format = if self.hybrid_encoding {
+            StorageFormat::Hybrid
+        } else {
+            StorageFormat::Columnar
+        };
         Ok(SstInfo {
             file_size: file_head.size,
             row_num: total_row_num.load(Ordering::Relaxed),
+            storage_format,
         })
     }
 }
@@ -269,13 +290,11 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{
-                Factory, FactoryImpl, ReadFrequency, SstBuilderOptions, SstReaderOptions, SstType,
-            },
+            factory::{Factory, FactoryImpl, ReadFrequency, SstReadOptions, SstWriteOptions},
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
-        table_options,
+        table_options::{self, StorageFormatHint},
     };
 
     // TODO(xikai): add test for reverse reader
@@ -297,8 +316,8 @@ mod tests {
     ) {
         runtime.block_on(async {
             let sst_factory = FactoryImpl;
-            let sst_builder_options = SstBuilderOptions {
-                sst_type: SstType::Parquet,
+            let sst_write_options = SstWriteOptions {
+                storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
                 compression: table_options::Compression::Uncompressed,
             };
@@ -311,16 +330,12 @@ mod tests {
 
             let schema = build_schema();
             let projected_schema = ProjectedSchema::no_projection(schema.clone());
-            let sst_meta = SstMetaData {
+            let sst_meta = MetaData {
                 min_key: Bytes::from_static(b"100"),
                 max_key: Bytes::from_static(b"200"),
                 time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
                 max_sequence: 200,
                 schema: schema.clone(),
-                size: 10,
-                row_num: 2,
-                storage_format_opts: Default::default(),
-                bloom_filter: Default::default(),
             };
 
             let mut counter = 5;
@@ -341,18 +356,19 @@ mod tests {
                 Poll::Ready(Some(Ok(batch)))
             }));
 
-            let mut builder = sst_factory
-                .new_sst_builder(&sst_builder_options, &sst_file_path, &store_picker)
+            let mut writer = sst_factory
+                .create_writer(&sst_write_options, &sst_file_path, &store_picker)
+                .await
                 .unwrap();
-            let sst_info = builder
-                .build(RequestId::next_id(), &sst_meta, record_batch_stream)
+            let sst_info = writer
+                .write(RequestId::next_id(), &sst_meta, record_batch_stream)
                 .await
                 .unwrap();
 
             assert_eq!(15, sst_info.row_num);
 
             // read sst back to test
-            let sst_reader_options = SstReaderOptions {
+            let sst_read_options = SstReadOptions {
                 read_batch_row_num: 5,
                 reverse: false,
                 frequency: ReadFrequency::Frequent,
@@ -366,18 +382,19 @@ mod tests {
 
             let mut reader: Box<dyn SstReader + Send> = {
                 let mut reader =
-                    AsyncParquetReader::new(&sst_file_path, &store_picker, &sst_reader_options);
-                let mut sst_meta_readback = {
-                    // FIXME: size of SstMetaData is not what this file's size, so overwrite it
-                    // https://github.com/CeresDB/ceresdb/issues/321
-                    let mut meta = reader.meta_data().await.unwrap().clone();
-                    meta.size = sst_meta.size;
-                    meta
-                };
+                    AsyncParquetReader::new(&sst_file_path, &sst_read_options, None, &store_picker);
+                let mut sst_meta_readback = reader
+                    .meta_data()
+                    .await
+                    .unwrap()
+                    .as_parquet()
+                    .unwrap()
+                    .as_ref()
+                    .clone();
                 // bloom filter is built insider sst writer, so overwrite to default for
-                // comparsion
+                // comparison.
                 sst_meta_readback.bloom_filter = Default::default();
-                assert_eq!(&sst_meta_readback, &sst_meta);
+                assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,
                     reader
@@ -451,19 +468,16 @@ mod tests {
 
         let mut reader = RecordBytesReader {
             request_id: RequestId::next_id(),
+            hybrid_encoding: false,
             record_stream: record_batch_stream,
             num_rows_per_row_group,
             compression: Compression::UNCOMPRESSED,
-            meta_data: SstMetaData {
+            meta_data: MetaData {
                 min_key: Default::default(),
                 max_key: Default::default(),
                 time_range: Default::default(),
                 max_sequence: 1,
                 schema,
-                size: 0,
-                row_num: 0,
-                storage_format_opts: Default::default(),
-                bloom_filter: Default::default(),
             },
             total_row_num: Arc::new(AtomicUsize::new(0)),
             partitioned_record_batch: Vec::new(),

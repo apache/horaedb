@@ -432,7 +432,7 @@ impl TimeWindowPicker {
     }
 
     #[inline]
-    fn resolve_timetamp(ts: i64, timestamp_resolution: TimeUnit) -> i64 {
+    fn resolve_timestamp(ts: i64, timestamp_resolution: TimeUnit) -> i64 {
         match timestamp_resolution {
             TimeUnit::Microseconds => ts / 1000,
             TimeUnit::Nanoseconds => ts / 1000000,
@@ -454,7 +454,7 @@ impl TimeWindowPicker {
         for f in files {
             let ts = f.time_range_ref().exclusive_end().as_i64();
 
-            let ts = Self::resolve_timetamp(ts, timestamp_resolution);
+            let ts = Self::resolve_timestamp(ts, timestamp_resolution);
 
             let (left, _) = Self::get_window_bounds_in_millis(window, ts);
 
@@ -555,7 +555,7 @@ impl TimeWindowPicker {
             .time_range()
             .exclusive_end()
             .as_i64();
-        let now = Self::resolve_timetamp(now, timestamp_resolution);
+        let now = Self::resolve_timestamp(now, timestamp_resolution);
         Self::get_window_bounds_in_millis(window, now).0
     }
 }
@@ -612,45 +612,48 @@ mod tests {
     use crate::{
         compaction::PickerManager,
         sst::{
-            file::{FileMeta, FilePurgeQueue, SstMetaData},
+            file::{FileMeta, FilePurgeQueue},
             manager::{tests::LevelsControllerMockBuilder, LevelsController},
+            meta_data::SstMetaData,
+            parquet::meta_data::ParquetMetaData,
         },
+        table_options::StorageFormat,
     };
 
-    fn build_sst_meta_data(time_range: TimeRange, size: u64) -> SstMetaData {
-        SstMetaData {
+    fn build_sst_meta_data(time_range: TimeRange) -> SstMetaData {
+        let parquet_meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range,
             max_sequence: 200,
             schema: build_schema(),
-            size,
-            row_num: 2,
-            storage_format_opts: Default::default(),
             bloom_filter: Default::default(),
-        }
+            collapsible_cols_idx: Vec::new(),
+        };
+
+        SstMetaData::Parquet(Arc::new(parquet_meta_data))
     }
 
     // testcase 0: file buckets: old bucket:[0,1] newest bucket:[2], expired:[3]
     fn build_old_bucket_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(200)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(100),
+                Timestamp::new(200),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -660,30 +663,30 @@ mod tests {
     fn build_newest_bucket_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -693,22 +696,22 @@ mod tests {
     fn build_newest_bucket_no_match_case(now: i64) -> LevelsController {
         let builder = LevelsControllerMockBuilder::default();
         let sst_meta_vec = vec![
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 14000), Timestamp::new(now - 13000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
-            build_sst_meta_data(
-                TimeRange::new_unchecked(Timestamp::new(now - 4000), Timestamp::new(now - 3000)),
-                2,
-            ),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 14000),
+                Timestamp::new(now - 13000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
+            build_sst_meta_data(TimeRange::new_unchecked(
+                Timestamp::new(now - 4000),
+                Timestamp::new(now - 3000),
+            )),
         ];
         builder.add_sst(sst_meta_vec).build()
     }
@@ -769,7 +772,11 @@ mod tests {
             .map(|size| {
                 let file_meta = FileMeta {
                     id: 1,
-                    meta: build_sst_meta_data(TimeRange::empty(), size),
+                    size,
+                    row_num: 0,
+                    time_range: TimeRange::empty(),
+                    max_seq: 0,
+                    storage_format: StorageFormat::default(),
                 };
                 let queue = FilePurgeQueue::new(1, 1.into(), tx.clone());
                 FileHandle::new(file_meta, queue)

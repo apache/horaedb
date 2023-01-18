@@ -4,9 +4,7 @@
 
 use std::{
     borrow::Borrow,
-    cmp,
     collections::{BTreeMap, HashSet},
-    convert::TryFrom,
     fmt,
     fmt::Debug,
     hash::{Hash, Hasher},
@@ -17,8 +15,6 @@ use std::{
 };
 
 use common_types::{
-    bytes::Bytes,
-    schema::Schema,
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
@@ -27,49 +23,20 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
-use ethbloom::Bloom;
 use log::{debug, error, info};
 use object_store::ObjectStoreRef;
-use proto::{common as common_pb, sst as sst_pb};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
     Mutex,
 };
 
-use crate::{
-    space::SpaceId,
-    sst::manager::FileId,
-    table::sst_util,
-    table_options::{StorageFormat, StorageFormatOptions},
-};
+use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options::StorageFormat};
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Time range is not found.\nBacktrace\n:{}", backtrace))]
-    TimeRangeNotFound { backtrace: Backtrace },
-
-    #[snafu(display("Table schema is not found.\nBacktrace\n:{}", backtrace))]
-    TableSchemaNotFound { backtrace: Backtrace },
-
-    #[snafu(display("Storage format options are not found.\nBacktrace\n:{}", backtrace))]
-    StorageFormatOptionsNotFound { backtrace: Backtrace },
-
-    #[snafu(display(
-        "Bloom filter should be 256 byte, current:{}.\nBacktrace\n:{}",
-        size,
-        backtrace
-    ))]
-    InvalidBloomFilterSize { size: usize, backtrace: Backtrace },
-
-    #[snafu(display("Failed to convert time range, err:{}", source))]
-    ConvertTimeRange { source: common_types::time::Error },
-
-    #[snafu(display("Failed to convert table schema, err:{}", source))]
-    ConvertTableSchema { source: common_types::schema::Error },
-
     #[snafu(display("Failed to join purger, err:{}", source))]
     StopPurger { source: common_util::runtime::Error },
 }
@@ -185,7 +152,7 @@ impl FileHandle {
 
     #[inline]
     pub fn row_num(&self) -> u64 {
-        self.inner.meta.meta.row_num
+        self.inner.meta.row_num
     }
 
     #[inline]
@@ -204,28 +171,18 @@ impl FileHandle {
     }
 
     #[inline]
-    pub fn min_key(&self) -> Bytes {
-        self.inner.meta.meta.min_key.clone()
-    }
-
-    #[inline]
-    pub fn max_key(&self) -> Bytes {
-        self.inner.meta.meta.max_key.clone()
-    }
-
-    #[inline]
     pub fn time_range(&self) -> TimeRange {
-        self.inner.meta.meta.time_range
+        self.inner.meta.time_range
     }
 
     #[inline]
     pub fn time_range_ref(&self) -> &TimeRange {
-        &self.inner.meta.meta.time_range
+        &self.inner.meta.time_range
     }
 
     #[inline]
     pub fn max_sequence(&self) -> SequenceNumber {
-        self.inner.meta.meta.max_sequence
+        self.inner.meta.max_seq
     }
 
     #[inline]
@@ -235,7 +192,7 @@ impl FileHandle {
 
     #[inline]
     pub fn size(&self) -> u64 {
-        self.inner.meta.meta.size
+        self.inner.meta.size
     }
 
     #[inline]
@@ -245,7 +202,7 @@ impl FileHandle {
 
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
-        self.inner.meta.meta.storage_format_opts.format
+        self.inner.meta.storage_format
     }
 }
 
@@ -420,155 +377,25 @@ impl FileHandleSet {
 }
 
 /// Meta of a sst file, immutable once created
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileMeta {
     /// Id of the sst file
     pub id: FileId,
-    pub meta: SstMetaData,
+    /// File size in bytes
+    pub size: u64,
+    /// Total row number
+    pub row_num: u64,
+    /// The time range of the file.
+    pub time_range: TimeRange,
+    /// The max sequence number of the file.
+    pub max_seq: u64,
+    /// The format of the file.
+    pub storage_format: StorageFormat,
 }
 
 impl FileMeta {
     pub fn intersect_with_time_range(&self, time_range: TimeRange) -> bool {
-        self.meta.time_range.intersect_with(time_range)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct BloomFilter {
-    // Two level vector means
-    // 1. row group
-    // 2. column
-    filters: Vec<Vec<Bloom>>,
-}
-
-impl BloomFilter {
-    pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
-        Self { filters }
-    }
-
-    #[inline]
-    pub fn filters(&self) -> &[Vec<Bloom>] {
-        &self.filters
-    }
-}
-
-impl From<BloomFilter> for sst_pb::SstBloomFilter {
-    fn from(bloom_filter: BloomFilter) -> Self {
-        let row_group_filters = bloom_filter
-            .filters
-            .iter()
-            .map(|row_group_filter| {
-                let column_filters = row_group_filter
-                    .iter()
-                    .map(|column_filter| column_filter.data().to_vec())
-                    .collect::<Vec<_>>();
-                sst_pb::sst_bloom_filter::RowGroupFilter { column_filters }
-            })
-            .collect::<Vec<_>>();
-
-        sst_pb::SstBloomFilter { row_group_filters }
-    }
-}
-
-impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
-    type Error = Error;
-
-    fn try_from(src: sst_pb::SstBloomFilter) -> Result<Self> {
-        let filters = src
-            .row_group_filters
-            .into_iter()
-            .map(|row_group_filter| {
-                row_group_filter
-                    .column_filters
-                    .into_iter()
-                    .map(|encoded_bytes| {
-                        let size = encoded_bytes.len();
-                        let bs: [u8; 256] = encoded_bytes
-                            .try_into()
-                            .ok()
-                            .context(InvalidBloomFilterSize { size })?;
-
-                        Ok(Bloom::from(bs))
-                    })
-                    .collect::<Result<Vec<_>>>()
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(BloomFilter { filters })
-    }
-}
-
-/// Meta data of a sst file
-#[derive(Debug, Clone, PartialEq)]
-pub struct SstMetaData {
-    pub min_key: Bytes,
-    pub max_key: Bytes,
-    /// Time Range of the sst
-    pub time_range: TimeRange,
-    /// Max sequence number in the sst
-    pub max_sequence: SequenceNumber,
-    pub schema: Schema,
-    /// file size in bytes
-    pub size: u64,
-    // total row number
-    pub row_num: u64,
-    pub storage_format_opts: StorageFormatOptions,
-    pub bloom_filter: Option<BloomFilter>,
-}
-
-pub type SstMetaDataRef = Arc<SstMetaData>;
-
-impl SstMetaData {
-    pub fn storage_format(&self) -> StorageFormat {
-        self.storage_format_opts.format
-    }
-}
-
-impl From<SstMetaData> for sst_pb::SstMetaData {
-    fn from(src: SstMetaData) -> Self {
-        sst_pb::SstMetaData {
-            min_key: src.min_key.to_vec(),
-            max_key: src.max_key.to_vec(),
-            max_sequence: src.max_sequence,
-            time_range: Some(src.time_range.into()),
-            schema: Some(common_pb::TableSchema::from(&src.schema)),
-            size: src.size,
-            row_num: src.row_num,
-            storage_format_opts: Some(src.storage_format_opts.into()),
-            bloom_filter: src.bloom_filter.map(|v| v.into()),
-        }
-    }
-}
-
-impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
-    type Error = Error;
-
-    fn try_from(src: sst_pb::SstMetaData) -> Result<Self> {
-        let time_range = {
-            let time_range = src.time_range.context(TimeRangeNotFound)?;
-            TimeRange::try_from(time_range).context(ConvertTimeRange)?
-        };
-        let schema = {
-            let schema = src.schema.context(TableSchemaNotFound)?;
-            Schema::try_from(schema).context(ConvertTableSchema)?
-        };
-        let storage_format_opts = StorageFormatOptions::from(
-            src.storage_format_opts
-                .context(StorageFormatOptionsNotFound)?,
-        );
-        let bloom_filter = src.bloom_filter.map(BloomFilter::try_from).transpose()?;
-
-        Ok(Self {
-            min_key: src.min_key.into(),
-            max_key: src.max_key.into(),
-            time_range,
-            max_sequence: src.max_sequence,
-            schema,
-            size: src.size,
-            row_num: src.row_num,
-            storage_format_opts,
-            bloom_filter,
-        })
+        self.time_range.intersect_with(time_range)
     }
 }
 
@@ -717,44 +544,6 @@ impl FilePurger {
     }
 }
 
-/// Merge sst meta of given `files`, panic if `files` is empty.
-///
-/// The size and row_num of the merged meta is initialized to 0.
-pub fn merge_sst_meta(files: &[FileHandle], schema: Schema) -> SstMetaData {
-    let mut min_key = files[0].min_key();
-    let mut max_key = files[0].max_key();
-    let mut time_range_start = files[0].time_range().inclusive_start();
-    let mut time_range_end = files[0].time_range().exclusive_end();
-    let mut max_sequence = files[0].max_sequence();
-    // TODO(jiacai2050): what if format of different file is different?
-    // pick first now
-    let storage_format = files[0].storage_format();
-
-    if files.len() > 1 {
-        for file in &files[1..] {
-            min_key = cmp::min(file.min_key(), min_key);
-            max_key = cmp::max(file.max_key(), max_key);
-            time_range_start = cmp::min(file.time_range().inclusive_start(), time_range_start);
-            time_range_end = cmp::max(file.time_range().exclusive_end(), time_range_end);
-            max_sequence = cmp::max(file.max_sequence(), max_sequence);
-        }
-    }
-
-    SstMetaData {
-        min_key,
-        max_key,
-        time_range: TimeRange::new(time_range_start, time_range_end).unwrap(),
-        max_sequence,
-        schema,
-        // we don't know file size and total row number yet
-        size: 0,
-        row_num: 0,
-        storage_format_opts: StorageFormatOptions::new(storage_format),
-        // bloom filter is rebuilt when write sst, so use default here
-        bloom_filter: Default::default(),
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -768,47 +557,6 @@ pub mod tests {
             FilePurger {
                 sender,
                 handle: Mutex::new(None),
-            }
-        }
-    }
-
-    #[must_use]
-    pub struct SstMetaDataMocker {
-        schema: Schema,
-        time_range: TimeRange,
-        max_sequence: SequenceNumber,
-    }
-
-    impl SstMetaDataMocker {
-        pub fn new(schema: Schema) -> Self {
-            Self {
-                schema,
-                time_range: TimeRange::min_to_max(),
-                max_sequence: 1,
-            }
-        }
-
-        pub fn time_range(mut self, range: TimeRange) -> Self {
-            self.time_range = range;
-            self
-        }
-
-        pub fn max_sequence(mut self, max_sequence: SequenceNumber) -> Self {
-            self.max_sequence = max_sequence;
-            self
-        }
-
-        pub fn build(&self) -> SstMetaData {
-            SstMetaData {
-                min_key: Bytes::new(),
-                max_key: Bytes::new(),
-                time_range: self.time_range,
-                max_sequence: self.max_sequence,
-                schema: self.schema.clone(),
-                row_num: 0,
-                size: 0,
-                storage_format_opts: Default::default(),
-                bloom_filter: Default::default(),
             }
         }
     }

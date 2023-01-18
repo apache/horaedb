@@ -11,7 +11,7 @@ use snafu::ResultExt;
 use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::{
     engine::TableEngineRef,
-    partition::{format_sub_partition_table_name, PartitionInfo, PartitionInfoEncoder},
+    partition::{format_sub_partition_table_name, PartitionInfo},
 };
 
 use crate::{
@@ -50,22 +50,6 @@ impl TableManipulator for TableManipulatorImpl {
 
         let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
 
-        let encoder = PartitionInfoEncoder::default();
-
-        let encoded_partition_info = match plan.partition_info.clone() {
-            None => Vec::new(),
-            Some(v) => {
-                encoder
-                    .encode(v)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(CreateWithCause {
-                        msg: format!(
-                            "fail to encode partition info, ctx:{:?}, plan:{:?}",
-                            ctx, plan
-                        ),
-                    })?
-            }
-        };
         let req = CreateTableRequest {
             schema_name: ctx.default_schema().to_string(),
             name: plan.table,
@@ -74,7 +58,6 @@ impl TableManipulator for TableManipulatorImpl {
             create_if_not_exist: plan.if_not_exists,
             options: plan.options,
             partition_table_info,
-            encoded_partition_info,
         };
 
         let resp = self
@@ -130,12 +113,17 @@ fn create_partition_table_info(
     table_name: &str,
     partition_info: &Option<PartitionInfo>,
 ) -> Option<PartitionTableInfo> {
-    let sub_table_names = partition_info.as_ref().map(|v| {
-        v.get_definitions()
+    if let Some(info) = partition_info {
+        let sub_table_names = info
+            .get_definitions()
             .iter()
             .map(|def| format_sub_partition_table_name(table_name, &def.name))
-            .collect::<Vec<String>>()
-    });
-
-    sub_table_names.map(|v| PartitionTableInfo { sub_table_names: v })
+            .collect::<Vec<String>>();
+        Some(PartitionTableInfo {
+            sub_table_names,
+            partition_info: info.clone(),
+        })
+    } else {
+        None
+    }
 }

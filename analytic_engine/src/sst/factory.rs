@@ -1,23 +1,35 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Factory for different kinds sst builder and reader.
+//! Factory for different kinds sst writer and reader.
 
 use std::{fmt::Debug, sync::Arc};
 
+use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
-use common_util::runtime::Runtime;
+use common_util::{define_result, runtime::Runtime};
 use object_store::{ObjectStoreRef, Path};
+use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 
 use crate::{
     sst::{
-        builder::SstBuilder,
-        meta_cache::MetaCacheRef,
-        parquet::{builder::ParquetSstBuilder, AsyncParquetReader, ThreadedReader},
+        header,
+        header::HeaderParser,
+        meta_data::cache::MetaCacheRef,
+        parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
         reader::SstReader,
+        writer::SstWriter,
     },
-    table_options::Compression,
+    table_options::{Compression, StorageFormat, StorageFormatHint},
 };
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Failed to parse sst header, err:{}", source,))]
+    ParseHeader { source: header::Error },
+}
+
+define_result!(Error);
 
 /// Pick suitable object store for different scenes.
 pub trait ObjectStorePicker: Send + Sync + Debug {
@@ -42,26 +54,25 @@ impl ObjectStorePicker for ObjectStoreRef {
     }
 }
 
+/// Sst factory reference
+pub type FactoryRef = Arc<dyn Factory>;
+
+#[async_trait]
 pub trait Factory: Send + Sync + Debug {
-    fn new_sst_reader<'a>(
+    async fn create_reader<'a>(
         &self,
-        options: &SstReaderOptions,
+        path: &'a Path,
+        options: &SstReadOptions,
+        hint: SstReadHint,
+        store_picker: &'a ObjectStorePickerRef,
+    ) -> Result<Box<dyn SstReader + Send + 'a>>;
+
+    async fn create_writer<'a>(
+        &self,
+        options: &SstWriteOptions,
         path: &'a Path,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstReader + Send + 'a>>;
-
-    fn new_sst_builder<'a>(
-        &self,
-        options: &SstBuilderOptions,
-        path: &'a Path,
-        store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstBuilder + Send + 'a>>;
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum SstType {
-    Auto,
-    Parquet,
+    ) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
 /// The frequency of query execution may decide some behavior in the sst reader,
@@ -72,26 +83,35 @@ pub enum ReadFrequency {
     Frequent,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SstReadHint {
+    /// Hint for the size of the sst file. It may avoid some io if provided.
+    pub file_size: Option<usize>,
+    /// Hint for the storage format of the sst file. It may avoid some io if
+    /// provided.
+    pub file_format: Option<StorageFormat>,
+}
+
 #[derive(Debug, Clone)]
-pub struct SstReaderOptions {
+pub struct SstReadOptions {
     pub read_batch_row_num: usize,
     pub reverse: bool,
     pub frequency: ReadFrequency,
     pub projected_schema: ProjectedSchema,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
-    pub runtime: Arc<Runtime>,
 
     /// The max number of rows in one row group
     pub num_rows_per_row_group: usize,
-
     /// The suggested parallelism while reading sst
     pub background_read_parallelism: usize,
+
+    pub runtime: Arc<Runtime>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SstBuilderOptions {
-    pub sst_type: SstType,
+pub struct SstWriteOptions {
+    pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
 }
@@ -99,39 +119,53 @@ pub struct SstBuilderOptions {
 #[derive(Debug, Default)]
 pub struct FactoryImpl;
 
+#[async_trait]
 impl Factory for FactoryImpl {
-    fn new_sst_reader<'a>(
+    async fn create_reader<'a>(
         &self,
-        options: &SstReaderOptions,
         path: &'a Path,
+        options: &SstReadOptions,
+        hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstReader + Send + 'a>> {
-        // TODO: Currently, we only have one sst format, and we have to choose right
-        // reader for sst according to its real format in the future.
-        let reader = AsyncParquetReader::new(path, store_picker, options);
-        let reader = ThreadedReader::new(
-            reader,
-            options.runtime.clone(),
-            options.background_read_parallelism,
-        );
-        Some(Box::new(reader))
-    }
+    ) -> Result<Box<dyn SstReader + Send + 'a>> {
+        let storage_format = match hint.file_format {
+            Some(v) => v,
+            None => {
+                let header_parser = HeaderParser::new(path, store_picker.default_store());
+                header_parser.parse().await.context(ParseHeader)?
+            }
+        };
 
-    fn new_sst_builder<'a>(
-        &self,
-        options: &SstBuilderOptions,
-        path: &'a Path,
-        store_picker: &'a ObjectStorePickerRef,
-    ) -> Option<Box<dyn SstBuilder + Send + 'a>> {
-        match options.sst_type {
-            SstType::Parquet | SstType::Auto => Some(Box::new(ParquetSstBuilder::new(
-                path,
-                store_picker,
-                options,
-            ))),
+        match storage_format {
+            StorageFormat::Columnar | StorageFormat::Hybrid => {
+                let reader = AsyncParquetReader::new(path, options, hint.file_size, store_picker);
+                let reader = ThreadedReader::new(
+                    reader,
+                    options.runtime.clone(),
+                    options.background_read_parallelism,
+                );
+                Ok(Box::new(reader))
+            }
         }
     }
-}
 
-/// Sst factory reference
-pub type FactoryRef = Arc<dyn Factory>;
+    async fn create_writer<'a>(
+        &self,
+        options: &SstWriteOptions,
+        path: &'a Path,
+        store_picker: &'a ObjectStorePickerRef,
+    ) -> Result<Box<dyn SstWriter + Send + 'a>> {
+        let hybrid_encoding = match options.storage_format_hint {
+            StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
+            // `Auto` is mapped to columnar parquet format now, may change in future.
+            StorageFormatHint::Auto => false,
+        };
+
+        Ok(Box::new(ParquetSstWriter::new(
+            path,
+            hybrid_encoding,
+            store_picker,
+            options,
+        )))
+    }
+}
