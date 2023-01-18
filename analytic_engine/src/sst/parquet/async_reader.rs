@@ -388,10 +388,7 @@ impl ObjectStoreReader {
 
 impl Drop for ObjectStoreReader {
     fn drop(&mut self) {
-        debug!(
-            "ParquetFileReaderAdapter is dropped, metrics:{:?}",
-            self.metrics
-        );
+        debug!("ObjectStoreReader is dropped, metrics:{:?}", self.metrics);
     }
 }
 
