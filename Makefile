@@ -10,6 +10,10 @@ build:
 	ls -alh
 	cd $(DIR); cargo build --release
 
+build-slim:
+	ls -alh
+	cd $(DIR); cargo build --profile release-slim
+
 build-asan:
 	ls -alh
 	export RUSTFLAGS=-Zsanitizer=address RUSTDOCFLAGS=-Zsanitizer=address
