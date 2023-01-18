@@ -52,7 +52,7 @@ impl<'a> RowGroupFilter<'a> {
 
     pub fn filter(&self) -> Vec<usize> {
         debug!(
-            "begin to filter row groups, total_row_groups:{}, bloom_filtering:{}, predicates:{:?}",
+            "Begin to filter row groups, total_row_groups:{}, bloom_filtering:{}, predicates:{:?}",
             self.row_groups.len(),
             self.blooms.is_some(),
             self.predicates,
@@ -67,7 +67,7 @@ impl<'a> RowGroupFilter<'a> {
                 let filtered = Self::intersect_filtered_row_groups(&filtered0, &filtered1);
 
                 debug!(
-                    "finish filtering row groups by blooms and min_max, total_row_groups:{}, filtered_by_min_max:{}, filtered_by_blooms:{}, filtered_by_both:{}",
+                    "Finish filtering row groups by blooms and min_max, total_row_groups:{}, filtered_by_min_max:{}, filtered_by_blooms:{}, filtered_by_both:{}",
                     self.row_groups.len(),
                     filtered0.len(),
                     filtered1.len(),
@@ -78,7 +78,7 @@ impl<'a> RowGroupFilter<'a> {
             }
             None => {
                 debug!(
-                    "finish filtering row groups by min_max, total_row_groups:{}, filtered_row_groups:{}",
+                    "Finish filtering row groups by min_max, total_row_groups:{}, filtered_row_groups:{}",
                     self.row_groups.len(),
                     filtered0.len(),
                 );
