@@ -304,8 +304,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
-            .schema_config_provider(schema_config_provider)
             .build()
             .context(StartHttpService)?;
 
@@ -330,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .local_endpoint(
                 Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
             )
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
+            .query_resp_batch_size(self.config.query_resp_batch_size)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)

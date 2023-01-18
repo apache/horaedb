@@ -4,6 +4,7 @@
 
 use std::time::Instant;
 
+use arrow_ext::ipc;
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{storage_service_client::StorageServiceClient, SqlQueryRequest, SqlQueryResponse},
@@ -105,7 +106,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
 
     let output_result = fetch_query_output(ctx, &req).await?;
     if let Some(output) = output_result {
-        convert_output(&output)
+        convert_output(&output, ctx.query_resp_batch_size)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -255,9 +256,9 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
-fn convert_output(output: &Output) -> Result<SqlQueryResponse> {
+fn convert_output(output: &Output, batch_size: usize) -> Result<SqlQueryResponse> {
     match output {
-        Output::Records(records) => convert_records(records),
+        Output::Records(records) => convert_records(records, batch_size),
         Output::AffectedRows(rows) => {
             let mut resp = empty_ok_resp();
             resp.affected_rows = *rows as u32;
@@ -277,11 +278,21 @@ pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
     }
 }
 
-/// REQUIRE: records have same schema
-pub fn convert_records(records: &[RecordBatch]) -> Result<SqlQueryResponse> {
-    if records.is_empty() {
+/// Convert the record batches into the sql query response.
+///
+/// Multiple record batches will be encoded as one batch in the query response
+/// to ensure the one batch contains at least `batch_size` records.
+///
+/// REQUIRE: Record batches have same schema.
+pub fn convert_records(
+    record_batches: &[RecordBatch],
+    _batch_size: usize,
+) -> Result<SqlQueryResponse> {
+    if record_batches.is_empty() {
         return Ok(empty_ok_resp());
     }
+
+    // let record_bytes = Vec::with_capacity(records.len());
 
     // let mut resp = empty_ok_resp();
     // let mut avro_schema_opt = None;

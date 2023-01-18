@@ -102,6 +102,7 @@ pub struct HandlerContext<'a, Q> {
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
+    query_resp_batch_size: usize,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -112,7 +113,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
-        enable_tenant_as_schema: bool,
+        query_resp_batch_size: usize,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -136,24 +137,8 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "fail to parse schema name",
-            })?;
-
-        let schema = if enable_tenant_as_schema {
-            let tenant = header
-                .get(consts::TENANT_HEADER)
-                .map(|v| String::from_utf8(v.to_vec()))
-                .transpose()
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "fail to parse tenant name",
-                })?;
-            schema
-                .or(tenant)
-                .unwrap_or_else(|| default_schema.to_string())
-        } else {
-            schema.unwrap_or_else(|| default_schema.to_string())
-        };
+            })?
+            .unwrap_or_else(|| default_schema.to_string());
 
         let schema_config = schema_config_provider
             .schema_config(&schema)
@@ -172,6 +157,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             schema_config,
             forwarder,
             timeout,
+            query_resp_batch_size,
         })
     }
 
@@ -194,7 +180,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
-    pub enable_tenant_as_schema: bool,
+    pub query_resp_batch_size: usize,
 }
 
 macro_rules! handle_request {
@@ -211,12 +197,12 @@ macro_rules! handle_request {
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
-                let enable_tenant_as_schema = self.enable_tenant_as_schema;
+                let query_resp_batch_size = self.query_resp_batch_size;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
                 let runtime = match stringify!($mod_name) {
-                    "query" => &self.runtimes.read_runtime,
+                    "sql_query" | "prom_query" => &self.runtimes.read_runtime,
                     "write" => &self.runtimes.write_runtime,
                     _ => &self.runtimes.bg_runtime,
                 };
@@ -225,7 +211,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, query_resp_batch_size)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -302,7 +288,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             &schema_config_provider,
             self.forwarder.clone(),
             self.timeout,
-            self.enable_tenant_as_schema,
+            self.query_resp_batch_size,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -363,11 +349,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
-        let enable_tenant_as_schema = self.enable_tenant_as_schema;
+        let query_resp_batch_size = self.query_resp_batch_size;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, query_resp_batch_size)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
@@ -383,7 +369,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                     })?;
             if let Some(batch) = sql_query::get_record_batch(output) {
                 for i in 0..batch.len() {
-                    let resp = sql_query::convert_records(&batch[i..i + 1]);
+                    let resp = sql_query::convert_records(&batch[i..i + 1], query_resp_batch_size);
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
                         break;
