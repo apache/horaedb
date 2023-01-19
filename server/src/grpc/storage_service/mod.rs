@@ -102,7 +102,7 @@ pub struct HandlerContext<'a, Q> {
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
-    query_resp_batch_size: usize,
+    min_rows_per_batch: usize,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -113,7 +113,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
-        query_resp_batch_size: usize,
+        min_rows_per_batch: usize,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -157,7 +157,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             schema_config,
             forwarder,
             timeout,
-            query_resp_batch_size,
+            min_rows_per_batch,
         })
     }
 
@@ -180,7 +180,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
-    pub query_resp_batch_size: usize,
+    pub min_rows_per_batch: usize,
 }
 
 macro_rules! handle_request {
@@ -197,7 +197,7 @@ macro_rules! handle_request {
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
-                let query_resp_batch_size = self.query_resp_batch_size;
+                let min_rows_per_batch = self.min_rows_per_batch;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -211,7 +211,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, query_resp_batch_size)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -288,7 +288,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             &schema_config_provider,
             self.forwarder.clone(),
             self.timeout,
-            self.query_resp_batch_size,
+            self.min_rows_per_batch,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -349,11 +349,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
-        let query_resp_batch_size = self.query_resp_batch_size;
+        let min_rows_per_batch = self.min_rows_per_batch;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, query_resp_batch_size)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
@@ -369,7 +369,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                     })?;
             if let Some(batch) = sql_query::get_record_batch(output) {
                 for i in 0..batch.len() {
-                    let resp = sql_query::convert_records(&batch[i..i + 1], query_resp_batch_size);
+                    let resp = sql_query::convert_records(&batch[i..i + 1], min_rows_per_batch);
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
                         break;

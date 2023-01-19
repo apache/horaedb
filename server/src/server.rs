@@ -328,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .local_endpoint(
                 Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
             )
-            .query_resp_batch_size(self.config.query_resp_batch_size)
+            .min_rows_per_batch(self.config.min_rows_per_batch)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)

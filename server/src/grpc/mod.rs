@@ -198,7 +198,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 pub struct Builder<Q> {
     endpoint: String,
     timeout: Option<Duration>,
-    query_resp_batch_size: usize,
+    min_rows_per_batch: usize,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -213,7 +213,7 @@ impl<Q> Builder<Q> {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
-            query_resp_batch_size: 8192,
+            min_rows_per_batch: 8192,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -229,8 +229,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn query_resp_batch_size(mut self, batch_size: usize) -> Self {
-        self.query_resp_batch_size = batch_size;
+    pub fn min_rows_per_batch(mut self, batch_size: usize) -> Self {
+        self.min_rows_per_batch = batch_size;
         self
     }
 
@@ -324,7 +324,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             schema_config_provider,
             forwarder,
             timeout: self.timeout,
-            query_resp_batch_size: self.query_resp_batch_size,
+            min_rows_per_batch: self.min_rows_per_batch,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

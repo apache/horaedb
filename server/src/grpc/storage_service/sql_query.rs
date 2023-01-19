@@ -124,7 +124,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
 
     let output_result = fetch_query_output(ctx, &req).await?;
     if let Some(output) = output_result {
-        convert_output(&output, ctx.query_resp_batch_size)
+        convert_output(&output, ctx.min_rows_per_batch)
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -274,9 +274,9 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
-fn convert_output(output: &Output, batch_size: usize) -> Result<SqlQueryResponse> {
+fn convert_output(output: &Output, min_rows_per_batch: usize) -> Result<SqlQueryResponse> {
     match output {
-        Output::Records(records) => convert_records(records, batch_size),
+        Output::Records(records) => convert_records(records, min_rows_per_batch),
         Output::AffectedRows(rows) => {
             let mut resp = empty_ok_resp();
             resp.affected_rows = *rows as u32;
@@ -299,12 +299,12 @@ pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
 /// Convert the record batches into the sql query response.
 ///
 /// Multiple record batches will be encoded as one batch in the query response
-/// to ensure the one batch contains at least `batch_size` records.
+/// to ensure the one batch contains at least `min_rows_per_batch` records.
 ///
 /// REQUIRE: Record batches have same schema.
 pub fn convert_records(
     record_batches: &[RecordBatch],
-    batch_size: usize,
+    min_rows_per_batch: usize,
 ) -> Result<SqlQueryResponse> {
     if record_batches.is_empty() {
         return Ok(empty_ok_resp());
@@ -319,7 +319,7 @@ pub fn convert_records(
             RecordBatchesEncoder::new(ipc::Compression::None)
         };
 
-        if enc.num_rows() < batch_size {
+        if enc.num_rows() < min_rows_per_batch {
             enc.write(batch.as_arrow_record_batch())
                 .map_err(|e| Box::new(e) as _)
                 .with_context(|| ErrWithCause {

@@ -132,7 +132,7 @@ pub struct Config {
     pub grpc_server_cq_count: usize,
     pub timeout: Option<ReadableDuration>,
     /// The batch size of the query response.
-    pub query_resp_batch_size: usize,
+    pub min_rows_per_batch: usize,
 
     /// Engine related configs:
     pub runtime: RuntimeConfig,
@@ -189,7 +189,7 @@ impl Default for Config {
             grpc_port,
             grpc_server_cq_count: 20,
             timeout: None,
-            query_resp_batch_size: 8192,
+            min_rows_per_batch: 8192,
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,
