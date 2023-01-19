@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use analytic_engine;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
 use router::{
     endpoint::Endpoint,
@@ -131,10 +131,10 @@ pub struct ServiceConfig {
     pub grpc_server_cq_count: usize,
     pub timeout: Option<ReadableDuration>,
     /// The batch size of the query response.
-    pub min_rows_per_batch: usize,
+    pub min_rows_per_query_batch: usize,
     /// The threshold of the datums in the query response to trigger
     /// compression.
-    pub datum_compression_threshold: usize,
+    pub query_response_size_compression_threshold: ReadableSize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -195,8 +195,8 @@ impl Default for ServiceConfig {
             grpc_port: 8831,
             grpc_server_cq_count: 20,
             timeout: None,
-            min_rows_per_batch: 8192,
-            datum_compression_threshold: 81920,
+            min_rows_per_query_batch: 8192,
+            query_response_size_compression_threshold: ReadableSize::mb(4),
         }
     }
 }

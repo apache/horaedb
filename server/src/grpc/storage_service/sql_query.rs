@@ -140,8 +140,8 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     let output = fetch_query_output(ctx, &req).await?;
     convert_output(
         &output,
-        ctx.min_rows_per_batch,
-        ctx.datum_compression_threshold,
+        ctx.min_rows_per_query_batch,
+        ctx.query_response_size_compression_threshold,
     )
     .map_err(|e| Box::new(e) as _)
     .with_context(|| ErrWithCause {
@@ -295,13 +295,15 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
 fn convert_output(
     output: &Output,
-    min_rows_per_batch: usize,
-    datum_compression_threshold: usize,
+    min_rows_per_query_batch: usize,
+    query_response_size_compression_threshold: usize,
 ) -> Result<SqlQueryResponse> {
     match output {
         Output::Records(batches) => {
-            let mut writer =
-                QueryResponseWriter::new(min_rows_per_batch, datum_compression_threshold);
+            let mut writer = QueryResponseWriter::new(
+                min_rows_per_query_batch,
+                query_response_size_compression_threshold,
+            );
             writer.write_batches(batches)?;
             writer.finish()
         }
@@ -314,13 +316,14 @@ fn convert_output(
 /// Writer for encoding multiple [`RecordBatch`]es to the [`SqlQueryResponse`].
 ///
 /// Multiple record batches may be encoded into one batch in the query response
-/// to ensure the one batch contains at least `min_rows_per_batch` records.
+/// to ensure the one batch contains at least `min_rows_per_query_batch`
+/// records.
 ///
 /// Whether to do compression depends on the size of the encoded bytes.
 ///
 /// REQUIRE: Multiple record batches must share the same schema.
 pub struct QueryResponseWriter {
-    min_rows_per_batch: usize,
+    min_rows_per_query_batch: usize,
     compression_size_threshold: usize,
     encoder: RecordBatchesEncoder,
     encoded_batches: Vec<Vec<u8>>,
@@ -329,9 +332,9 @@ pub struct QueryResponseWriter {
 impl QueryResponseWriter {
     const DEFAULT_ZSTD_LEVEL: i32 = 3;
 
-    pub fn new(min_rows_per_batch: usize, compression_size_threshold: usize) -> Self {
+    pub fn new(min_rows_per_query_batch: usize, compression_size_threshold: usize) -> Self {
         Self {
-            min_rows_per_batch,
+            min_rows_per_query_batch,
             compression_size_threshold,
             encoder: RecordBatchesEncoder::new(Compression::None),
             encoded_batches: Vec::new(),
@@ -347,7 +350,7 @@ impl QueryResponseWriter {
                 msg: "failed to encode record batch".to_string(),
             })?;
 
-        if self.encoder.num_rows() < self.min_rows_per_batch {
+        if self.encoder.num_rows() < self.min_rows_per_query_batch {
             Ok(())
         } else {
             let new_encoder = RecordBatchesEncoder::new(Compression::None);
