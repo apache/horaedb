@@ -133,6 +133,9 @@ pub struct Config {
     pub timeout: Option<ReadableDuration>,
     /// The batch size of the query response.
     pub min_rows_per_batch: usize,
+    /// The threshold of the datums in the query response to trigger
+    /// compression.
+    pub datum_compression_threshold: usize,
 
     /// Engine related configs:
     pub runtime: RuntimeConfig,
@@ -190,6 +193,7 @@ impl Default for Config {
             grpc_server_cq_count: 20,
             timeout: None,
             min_rows_per_batch: 8192,
+            datum_compression_threshold: 81920,
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,

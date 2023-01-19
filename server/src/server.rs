@@ -329,6 +329,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
             )
             .min_rows_per_batch(self.config.min_rows_per_batch)
+            .datum_compression_threshold(self.config.datum_compression_threshold)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)

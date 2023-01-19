@@ -103,9 +103,11 @@ pub struct HandlerContext<'a, Q> {
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
     min_rows_per_batch: usize,
+    datum_compression_threshold: usize,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         header: RequestHeader,
         router: Arc<dyn Router + Sync + Send>,
@@ -114,6 +116,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
         min_rows_per_batch: usize,
+        datum_compression_threshold: usize,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -158,6 +161,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             forwarder,
             timeout,
             min_rows_per_batch,
+            datum_compression_threshold,
         })
     }
 
@@ -181,6 +185,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
     pub min_rows_per_batch: usize,
+    pub datum_compression_threshold: usize,
 }
 
 macro_rules! handle_request {
@@ -198,6 +203,7 @@ macro_rules! handle_request {
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
                 let min_rows_per_batch = self.min_rows_per_batch;
+                let datum_compression_threshold = self.datum_compression_threshold;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -211,7 +217,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch, datum_compression_threshold)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -289,6 +295,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             self.forwarder.clone(),
             self.timeout,
             self.min_rows_per_batch,
+            self.datum_compression_threshold,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -350,10 +357,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
         let min_rows_per_batch = self.min_rows_per_batch;
+        let datum_compression_threshold = self.datum_compression_threshold;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_batch, datum_compression_threshold)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
@@ -369,7 +377,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                     })?;
             if let Some(batch) = sql_query::get_record_batch(output) {
                 for i in 0..batch.len() {
-                    let resp = sql_query::convert_records(&batch[i..i + 1], min_rows_per_batch);
+                    let resp = sql_query::convert_records(&batch[i..i + 1], min_rows_per_batch, datum_compression_threshold);
                     if tx.send(resp).await.is_err() {
                         error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
                         break;

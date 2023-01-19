@@ -199,6 +199,7 @@ pub struct Builder<Q> {
     endpoint: String,
     timeout: Option<Duration>,
     min_rows_per_batch: usize,
+    datum_compression_threshold: usize,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -214,6 +215,7 @@ impl<Q> Builder<Q> {
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
             min_rows_per_batch: 8192,
+            datum_compression_threshold: 81920,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -231,6 +233,11 @@ impl<Q> Builder<Q> {
 
     pub fn min_rows_per_batch(mut self, batch_size: usize) -> Self {
         self.min_rows_per_batch = batch_size;
+        self
+    }
+
+    pub fn datum_compression_threshold(mut self, threshold: usize) -> Self {
+        self.datum_compression_threshold = threshold;
         self
     }
 
@@ -325,6 +332,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             forwarder,
             timeout: self.timeout,
             min_rows_per_batch: self.min_rows_per_batch,
+            datum_compression_threshold: self.datum_compression_threshold,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

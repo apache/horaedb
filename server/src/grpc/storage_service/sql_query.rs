@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use arrow_ext::ipc::{self, RecordBatchesEncoder};
+use arrow_ext::ipc::{Compression, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
@@ -124,12 +124,16 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
 
     let output_result = fetch_query_output(ctx, &req).await?;
     if let Some(output) = output_result {
-        convert_output(&output, ctx.min_rows_per_batch)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to convert output, query:{}", &req.ql),
-            })
+        convert_output(
+            &output,
+            ctx.min_rows_per_batch,
+            ctx.datum_compression_threshold,
+        )
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to convert output, query:{}", &req.ql),
+        })
     } else {
         Ok(empty_ok_resp())
     }
@@ -274,9 +278,15 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
-fn convert_output(output: &Output, min_rows_per_batch: usize) -> Result<SqlQueryResponse> {
+fn convert_output(
+    output: &Output,
+    min_rows_per_batch: usize,
+    datum_compression_threshold: usize,
+) -> Result<SqlQueryResponse> {
     match output {
-        Output::Records(records) => convert_records(records, min_rows_per_batch),
+        Output::Records(records) => {
+            convert_records(records, min_rows_per_batch, datum_compression_threshold)
+        }
         Output::AffectedRows(rows) => {
             let mut resp = empty_ok_resp();
             resp.affected_rows = *rows as u32;
@@ -305,10 +315,23 @@ pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
 pub fn convert_records(
     record_batches: &[RecordBatch],
     min_rows_per_batch: usize,
+    datum_compression_threshold: usize,
 ) -> Result<SqlQueryResponse> {
     if record_batches.is_empty() {
         return Ok(empty_ok_resp());
     }
+
+    let compression = {
+        let num_datum = record_batches
+            .iter()
+            .map(|batch| batch.num_rows() * batch.num_columns())
+            .sum::<usize>();
+        if num_datum > datum_compression_threshold {
+            Compression::Zstd
+        } else {
+            Compression::None
+        }
+    };
 
     let mut encoded_record_batches = Vec::with_capacity(record_batches.len());
     let mut encoder: Option<RecordBatchesEncoder> = None;
@@ -316,7 +339,7 @@ pub fn convert_records(
         let mut enc = if let Some(v) = encoder.take() {
             v
         } else {
-            RecordBatchesEncoder::new(ipc::Compression::None)
+            RecordBatchesEncoder::new(compression)
         };
 
         if enc.num_rows() < min_rows_per_batch {
@@ -350,9 +373,14 @@ pub fn convert_records(
         encoded_record_batches.push(encoded_record_batch);
     }
 
+    let pb_compression = match compression {
+        Compression::None => arrow_payload::Compression::None,
+        Compression::Zstd => arrow_payload::Compression::Zstd,
+    };
+
     let resp = make_query_resp_with_arrow_payload(ArrowPayload {
         record_batches: encoded_record_batches,
-        compression: arrow_payload::Compression::None as i32,
+        compression: pb_compression as i32,
     });
 
     Ok(resp)
