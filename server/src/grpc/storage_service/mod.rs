@@ -38,7 +38,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
-use self::sql_query::QueryResponseBuilder;
+use self::sql_query::{QueryResponseBuilder, QueryResponseWriter};
 use crate::{
     consts,
     grpc::{
@@ -385,8 +385,13 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                         }
                 }
                 Output::Records(batches) => {
-                    for i in 0..batches.len() {
-                        let resp = sql_query::convert_records(&batches[i..i + 1], min_rows_per_batch, datum_compression_threshold);
+                    for batch in &batches {
+                        let resp = {
+                            let mut writer = QueryResponseWriter::new(min_rows_per_batch, datum_compression_threshold);
+                            writer.write(batch)?;
+                            writer.finish()
+                        };
+
                         if tx.send(resp).await.is_err() {
                             error!("Failed to send record batches resp in stream query");
                             break;

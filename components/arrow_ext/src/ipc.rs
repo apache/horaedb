@@ -34,8 +34,9 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub enum Compression {
+    #[default]
     None,
     Zstd,
 }
@@ -44,6 +45,7 @@ pub enum Compression {
 // The lower the level, the faster the speed (at the cost of compression).
 const ZSTD_LEVEL: i32 = 3;
 
+#[derive(Default)]
 /// Encoder that can encode a batch of record batches with specific compression
 /// method.
 pub struct RecordBatchesEncoder {
