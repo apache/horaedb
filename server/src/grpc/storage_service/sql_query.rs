@@ -35,39 +35,45 @@ use crate::grpc::{
     },
 };
 
-pub fn make_query_resp_with_affected_rows(affected_rows: usize) -> SqlQueryResponse {
-    let header = ResponseHeader {
-        code: StatusCode::OK.as_u16() as u32,
-        ..Default::default()
-    };
+/// Builder for building [`SqlQueryResponse`].
+#[derive(Debug, Default)]
+pub struct QueryResponseBuilder {
+    header: ResponseHeader,
+}
 
-    let output = Some(sql_query_response::Output::AffectedRows(
-        affected_rows as u32,
-    ));
-    SqlQueryResponse {
-        header: Some(header),
-        output,
+impl QueryResponseBuilder {
+    pub fn with_ok_header() -> Self {
+        let header = ResponseHeader {
+            code: StatusCode::OK.as_u16() as u32,
+            ..Default::default()
+        };
+        Self { header }
     }
-}
 
-pub fn make_query_resp_with_empty_arrow_payload() -> SqlQueryResponse {
-    let payload = ArrowPayload {
-        record_batches: Vec::new(),
-        compression: arrow_payload::Compression::None as i32,
-    };
-    make_query_resp_with_arrow_payload(payload)
-}
+    pub fn build_with_affected_rows(self, affected_rows: usize) -> SqlQueryResponse {
+        let output = Some(sql_query_response::Output::AffectedRows(
+            affected_rows as u32,
+        ));
+        SqlQueryResponse {
+            header: Some(self.header),
+            output,
+        }
+    }
 
-pub fn make_query_resp_with_arrow_payload(payload: ArrowPayload) -> SqlQueryResponse {
-    let header = ResponseHeader {
-        code: StatusCode::OK.as_u16() as u32,
-        ..Default::default()
-    };
+    pub fn build_with_empty_arrow_payload(self) -> SqlQueryResponse {
+        let payload = ArrowPayload {
+            record_batches: Vec::new(),
+            compression: arrow_payload::Compression::None as i32,
+        };
+        self.build_with_arrow_payload(payload)
+    }
 
-    let output = Some(sql_query_response::Output::Arrow(payload));
-    SqlQueryResponse {
-        header: Some(header),
-        output,
+    pub fn build_with_arrow_payload(self, payload: ArrowPayload) -> SqlQueryResponse {
+        let output = Some(sql_query_response::Output::Arrow(payload));
+        SqlQueryResponse {
+            header: Some(self.header),
+            output,
+        }
     }
 }
 
@@ -296,7 +302,9 @@ fn convert_output(
         Output::Records(records) => {
             convert_records(records, min_rows_per_batch, datum_compression_threshold)
         }
-        Output::AffectedRows(rows) => Ok(make_query_resp_with_affected_rows(*rows)),
+        Output::AffectedRows(rows) => {
+            Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
+        }
     }
 }
 
@@ -312,7 +320,7 @@ pub fn convert_records(
     datum_compression_threshold: usize,
 ) -> Result<SqlQueryResponse> {
     if record_batches.is_empty() {
-        return Ok(make_query_resp_with_empty_arrow_payload());
+        return Ok(QueryResponseBuilder::with_ok_header().build_with_empty_arrow_payload());
     }
 
     let compression = {
@@ -372,7 +380,7 @@ pub fn convert_records(
         Compression::Zstd => arrow_payload::Compression::Zstd,
     };
 
-    let resp = make_query_resp_with_arrow_payload(ArrowPayload {
+    let resp = QueryResponseBuilder::with_ok_header().build_with_arrow_payload(ArrowPayload {
         record_batches: encoded_record_batches,
         compression: pb_compression as i32,
     });

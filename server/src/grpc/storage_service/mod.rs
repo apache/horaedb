@@ -38,6 +38,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
+use self::sql_query::QueryResponseBuilder;
 use crate::{
     consts,
     grpc::{
@@ -378,7 +379,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                     })?;
             match output {
                 Output::AffectedRows(rows) => {
-                        let resp = sql_query::make_query_resp_with_affected_rows(rows);
+                        let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
                         if tx.send(Ok(resp)).await.is_err() {
                             error!("Failed to send affected rows resp in stream query");
                         }
