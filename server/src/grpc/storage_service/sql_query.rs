@@ -8,9 +8,8 @@ use arrow_ext::ipc::{Compression, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
-        arrow_payload, sql_query_response::RowsPayload,
-        storage_service_client::StorageServiceClient, ArrowPayload, SqlQueryRequest,
-        SqlQueryResponse,
+        arrow_payload, sql_query_response, storage_service_client::StorageServiceClient,
+        ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
@@ -19,7 +18,7 @@ use futures::FutureExt;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
 use sql::{
@@ -36,29 +35,39 @@ use crate::grpc::{
     },
 };
 
-fn empty_ok_resp() -> SqlQueryResponse {
+pub fn make_query_resp_with_affected_rows(affected_rows: usize) -> SqlQueryResponse {
     let header = ResponseHeader {
         code: StatusCode::OK.as_u16() as u32,
         ..Default::default()
     };
 
+    let output = Some(sql_query_response::Output::AffectedRows(
+        affected_rows as u32,
+    ));
     SqlQueryResponse {
         header: Some(header),
-        ..Default::default()
+        output,
     }
 }
 
-fn make_query_resp_with_arrow_payload(payload: ArrowPayload) -> SqlQueryResponse {
+pub fn make_query_resp_with_empty_arrow_payload() -> SqlQueryResponse {
+    let payload = ArrowPayload {
+        record_batches: Vec::new(),
+        compression: arrow_payload::Compression::None as i32,
+    };
+    make_query_resp_with_arrow_payload(payload)
+}
+
+pub fn make_query_resp_with_arrow_payload(payload: ArrowPayload) -> SqlQueryResponse {
     let header = ResponseHeader {
         code: StatusCode::OK.as_u16() as u32,
         ..Default::default()
     };
 
-    let rows_payload = Some(RowsPayload::Arrow(payload));
+    let output = Some(sql_query_response::Output::Arrow(payload));
     SqlQueryResponse {
         header: Some(header),
-        affected_rows: 0,
-        rows_payload,
+        output,
     }
 }
 
@@ -122,27 +131,23 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         None => req,
     };
 
-    let output_result = fetch_query_output(ctx, &req).await?;
-    if let Some(output) = output_result {
-        convert_output(
-            &output,
-            ctx.min_rows_per_batch,
-            ctx.datum_compression_threshold,
-        )
-        .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to convert output, query:{}", &req.ql),
-        })
-    } else {
-        Ok(empty_ok_resp())
-    }
+    let output = fetch_query_output(ctx, &req).await?;
+    convert_output(
+        &output,
+        ctx.min_rows_per_batch,
+        ctx.datum_compression_threshold,
+    )
+    .map_err(|e| Box::new(e) as _)
+    .with_context(|| ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: format!("Failed to convert output, sql:{}", &req.sql),
+    })
 }
 
 pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: &SqlQueryRequest,
-) -> Result<Option<Output>> {
+) -> Result<Output> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -170,16 +175,20 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     // Parse sql, frontend error of invalid sql already contains sql
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend
-        .parse_sql(&mut sql_ctx, &req.ql)
+        .parse_sql(&mut sql_ctx, &req.sql)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "failed to parse sql",
         })?;
 
-    if stmts.is_empty() {
-        return Ok(None);
-    }
+    ensure!(
+        !stmts.is_empty(),
+        ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: format!("No valid query statement provided, sql:{}", req.sql),
+        }
+    );
 
     // TODO(yingwen): For simplicity, we only support executing one statement now
     // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
@@ -188,9 +197,9 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Only support execute one statement now, current num:{}, query:{}",
+                "Only support execute one statement now, current num:{}, sql:{}",
                 stmts.len(),
-                req.ql
+                req.sql
             ),
         }
     );
@@ -204,7 +213,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to create plan, query:{}", req.ql),
+            msg: format!("Failed to create plan, query:{}", req.sql),
         })?;
 
     ctx.instance
@@ -262,7 +271,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     .map_err(|e| Box::new(e) as _)
     .with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: format!("Failed to execute interpreter, query:{}", req.ql),
+        msg: format!("Failed to execute interpreter, sql:{}", req.sql),
     })?;
 
     info!(
@@ -274,7 +283,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         req,
     );
 
-    Ok(Some(output))
+    Ok(output)
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
@@ -287,22 +296,7 @@ fn convert_output(
         Output::Records(records) => {
             convert_records(records, min_rows_per_batch, datum_compression_threshold)
         }
-        Output::AffectedRows(rows) => {
-            let mut resp = empty_ok_resp();
-            resp.affected_rows = *rows as u32;
-            Ok(resp)
-        }
-    }
-}
-
-pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
-    if let Some(output) = op {
-        match output {
-            Output::Records(records) => Some(records),
-            _ => unreachable!(),
-        }
-    } else {
-        None
+        Output::AffectedRows(rows) => Ok(make_query_resp_with_affected_rows(*rows)),
     }
 }
 
@@ -318,7 +312,7 @@ pub fn convert_records(
     datum_compression_threshold: usize,
 ) -> Result<SqlQueryResponse> {
     if record_batches.is_empty() {
-        return Ok(empty_ok_resp());
+        return Ok(make_query_resp_with_empty_arrow_payload());
     }
 
     let compression = {

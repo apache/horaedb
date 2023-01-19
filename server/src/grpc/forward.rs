@@ -464,7 +464,7 @@ mod tests {
         let make_forward_req = |table: &str| {
             let query_request = SqlQueryRequest {
                 tables: vec![table.to_string()],
-                ql: "".to_string(),
+                sql: "".to_string(),
             };
             ForwardRequest {
                 schema: "public".to_string(),

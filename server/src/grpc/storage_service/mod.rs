@@ -26,6 +26,7 @@ use common_types::{
 use common_util::{runtime::JoinHandle, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use http::StatusCode;
+use interpreters::interpreter::Output;
 use log::{error, warn};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -375,24 +376,21 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                         error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
                         e
                     })?;
-            if let Some(batch) = sql_query::get_record_batch(output) {
-                for i in 0..batch.len() {
-                    let resp = sql_query::convert_records(&batch[i..i + 1], min_rows_per_batch, datum_compression_threshold);
-                    if tx.send(resp).await.is_err() {
-                        error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
-                        break;
-                    }
+            match output {
+                Output::AffectedRows(rows) => {
+                        let resp = sql_query::make_query_resp_with_affected_rows(rows);
+                        if tx.send(Ok(resp)).await.is_err() {
+                            error!("Failed to send affected rows resp in stream query");
+                        }
                 }
-            } else {
-                let resp = SqlQueryResponse {
-                    header: Some(error::build_ok_header()),
-                    ..Default::default()
-                };
-
-                if tx.send(Result::Ok(resp)).await.is_err() {
-                    error!(
-                        "Failed to send handler result, mod:stream_query, handler:handle_stream_query"
-                    );
+                Output::Records(batches) => {
+                    for i in 0..batches.len() {
+                        let resp = sql_query::convert_records(&batches[i..i + 1], min_rows_per_batch, datum_compression_threshold);
+                        if tx.send(resp).await.is_err() {
+                            error!("Failed to send record batches resp in stream query");
+                            break;
+                        }
+                    }
                 }
             }
 
