@@ -283,14 +283,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         // Create http config
         let endpoint = Endpoint {
-            addr: self.config.bind_addr.clone(),
-            port: self.config.http_port,
+            addr: self.config.service.bind_addr.clone(),
+            port: self.config.service.http_port,
         };
 
         let http_config = HttpConfig {
             endpoint,
-            max_body_size: self.config.http_max_body_size,
-            timeout: self.config.timeout.map(|v| v.0),
+            max_body_size: self.config.service.http_max_body_size,
+            timeout: self.config.service.timeout.map(|v| v.0),
         };
 
         // Start http service
@@ -308,9 +308,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(StartHttpService)?;
 
         let mysql_config = mysql::MysqlConfig {
-            ip: self.config.bind_addr.clone(),
-            port: self.config.mysql_port,
-            timeout: self.config.timeout.map(|v| v.0),
+            ip: self.config.service.bind_addr.clone(),
+            port: self.config.service.mysql_port,
+            timeout: self.config.service.timeout.map(|v| v.0),
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
@@ -324,19 +324,23 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
-            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .local_endpoint(
-                Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
+            .endpoint(
+                Endpoint::new(self.config.service.bind_addr, self.config.service.grpc_port)
+                    .to_string(),
             )
-            .min_rows_per_batch(self.config.min_rows_per_batch)
-            .datum_compression_threshold(self.config.datum_compression_threshold)
+            .local_endpoint(
+                Endpoint::new(self.config.cluster.node.addr, self.config.service.grpc_port)
+                    .to_string(),
+            )
+            .min_rows_per_batch(self.config.service.min_rows_per_batch)
+            .datum_compression_threshold(self.config.service.datum_compression_threshold)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
-            .timeout(self.config.timeout.map(|v| v.0))
+            .timeout(self.config.service.timeout.map(|v| v.0))
             .build()
             .context(BuildGrpcService)?;
 

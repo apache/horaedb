@@ -119,10 +119,9 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-// TODO(yingwen): Split config into several sub configs.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct Config {
+pub struct ServiceConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
@@ -136,8 +135,13 @@ pub struct Config {
     /// The threshold of the datums in the query response to trigger
     /// compression.
     pub datum_compression_threshold: usize,
+}
 
-    /// Engine related configs:
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// Config for service, including http, mysql and grpc.
+    pub service: ServiceConfig,
     pub runtime: RuntimeConfig,
 
     /// Log related configs:
@@ -181,19 +185,26 @@ impl Default for RuntimeConfig {
     }
 }
 
-impl Default for Config {
+impl Default for ServiceConfig {
     fn default() -> Self {
-        let grpc_port = 8831;
         Self {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5000,
             http_max_body_size: DEFAULT_MAX_BODY_SIZE,
             mysql_port: 3307,
-            grpc_port,
+            grpc_port: 8831,
             grpc_server_cq_count: 20,
             timeout: None,
             min_rows_per_batch: 8192,
             datum_compression_threshold: 81920,
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            service: ServiceConfig::default(),
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,
