@@ -46,58 +46,65 @@ Value:
 | version header(u8) | playload |
 +--------------------+----------+
 ```
-### 1.3 Data structure
-The data structure for recording the wal state looks like (here just for display, thread safety is not considered yet) :
+### 1.3 Metadata
+The most important and hardest thing is to design the metadata for recording the wal state of region.
+The metadata is designed as following(it is just pseudocode for display here, implementation details(such as thread safety) are not considered yet) :
 
 ```
 /// Used to record one table's log state.
-struct LogState {
-    /// The sequence number of the newest log entry 
-    next_sequence_num: SequenceNumber,
-    /// The kafka offset in its partition of the newest log entry 
-    cur_offset: Option<KafkaOffset>,
-    /// The start kafka offset of current log set 
-    /// which is still not deleted(due to compaction)
-    start_offset: Option<KafkaOffset>,
+struct RegionMeta {
+  table_metas: HashMap<TableId, Table>
 }
 
-/// All tables in the same shard will be managed by a `Region`.
-struct Region {
-    ...
-    log_states: HashMap<TableId, LogState>,
-    ...
+struct TableMeta {
+    /// The sequence number of the newest log entry 
+    next_sequence_num: SequenceNumber,
+    
+    /// The kafka offset in its partition of the newest log entry 
+    /// The start kafka offset of current log set 
+    /// which is still not deleted(due to compaction)
+    latest_marked_deleted: SequenceNumber,
+    
+    /// The high watermark after this table's latest writing.
+    current_high_watermark: Offset,
+
+    /// Map the sequence numbers to offsets in every write.
+    ///
+    /// It will be removed to the mark deleted sequence number after flushing.
+    sequence_offset_mapping: BTreeMap<SequenceNumber, Offset>,
 }
 ```
+The `region meta snapshot`(make from `RegionMeta`) needed to be created and sync to Kafka before cleaning logs, that is important for correct region recovering.
+
 ## 2. Main process
 ### 2.1 Open namespace
 - Fetch all topics and filter them according to the namespace, and cache the results.
 ### 2.2 Open region
 - Search the region in the opened namespace. 
-- If the region not found and auto creating is defined, create the corresponding topic in kafka and add it to cache.
-- Return the found or created `region`.
+- If the region found, we need to recover its metadata, the recovering can be split to two steps:
+  - Recover from `region meta snapshot` mentioned above.
+  - Recover from logs written after `region meta snapshot`.
+- If the region not found and auto creating is defined, create the corresponding topic in Kafka.
+- Add the found or created `region` to cache, return it afterwards.
 ### 2.3 Write
 - Open the corresponding `region` (auto create it if necessary).
 - Put the log batch to `wal partition`.
-- Update `cur_offset` and `next_sequence_number` in memory.
+- Update `next_sequence_num`, `current_high_watermark`, `sequence_offset_mapping` in `TableMeta`.
 ### 2.4 Read
 - Open the corresponding `region`.
 - Just read all the logs of the `region`, and the split and replay work will be done by the caller.
 ### 2.5 Delete
 Log's deletion can be split to two steps:
-+ Mark the delete offset.
-+ Do delayed deletion periodically in a background thread.
++ Mark the deleted offset.
++ Do delayed cleaning work periodically in a background thread.
 #### Mark
-+ Each table's `cur_sequence_num` and `cur_offset` will be updated in each log writing, and `start_offset` will be updated in its first log writing.
-+ When `mark_delete_entries_up_to` is called on a table, it will make `start_offset` None.
-#### Delete
-The deletion logic done in a background thread called `cleaner`, and it may be a bit complicated. In the `cleaner`'s checking, two situations should be taken into cosiderations:
-- Common cleaning:
-  - Scan all `log_states` in region,  check their `start_offset` and get their maximum `cur_offset`(or directly get it from kafka?) .
-  - If all the start_offsets are None, it represents that every table is just compacted, we will delete records up to maximum `cur_offset`.
-  - Otherwise, we will delete records up to the minimum `start_offset`.
-- Too large wal size (while some tables have low update frequency or are never updated for a long time) :
-  - We should get such tables and flush them, and try to clean the wals afterwards.
-  - But the strategy about this still needs more consideration and discussion, the simplest way to avoid this situation is to flush all tables periodically.
++ Update `latest_marked_deleted` and `sequence_offset_mapping`(remove the entries to `latest_marked_deleted`) in `TableMeta`.
++ Maybe we need to make and sync the `region meta snapshot` to Kafka while dropping table.
+#### Clean
+The deletion logic done in a background thread called `cleaner`:
+- Make `region meta snapshot`.
+- Decide whether needed to clean logs based on `region meta snapshot`.
+- If so, sync the `region meta snapshot` to Kafka first, and clean logs afterwards.
 
 # Drawbacks
 Due to wals of all tables in a region will be written together, the splitting work is needed while replay, which leads to complicated replay and possible poor performance.
