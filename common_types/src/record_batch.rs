@@ -247,6 +247,10 @@ impl RecordBatch {
         self.data.num_rows()
     }
 
+    pub fn as_arrow_record_batch(&self) -> &ArrowRecordBatch {
+        &self.data.arrow_record_batch
+    }
+
     pub fn into_arrow_record_batch(self) -> ArrowRecordBatch {
         self.data.arrow_record_batch
     }

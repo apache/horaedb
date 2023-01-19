@@ -4,10 +4,14 @@
 
 use std::time::Instant;
 
-use arrow_ext::ipc;
+use arrow_ext::ipc::{self, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
-    storage::{storage_service_client::StorageServiceClient, SqlQueryRequest, SqlQueryResponse},
+    storage::{
+        arrow_payload, sql_query_response::RowsPayload,
+        storage_service_client::StorageServiceClient, ArrowPayload, SqlQueryRequest,
+        SqlQueryResponse,
+    },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::time::InstantExt;
@@ -41,6 +45,20 @@ fn empty_ok_resp() -> SqlQueryResponse {
     SqlQueryResponse {
         header: Some(header),
         ..Default::default()
+    }
+}
+
+fn make_query_resp_with_arrow_payload(payload: ArrowPayload) -> SqlQueryResponse {
+    let header = ResponseHeader {
+        code: StatusCode::OK.as_u16() as u32,
+        ..Default::default()
+    };
+
+    let rows_payload = Some(RowsPayload::Arrow(payload));
+    SqlQueryResponse {
+        header: Some(header),
+        affected_rows: 0,
+        rows_payload,
     }
 }
 
@@ -286,41 +304,56 @@ pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
 /// REQUIRE: Record batches have same schema.
 pub fn convert_records(
     record_batches: &[RecordBatch],
-    _batch_size: usize,
+    batch_size: usize,
 ) -> Result<SqlQueryResponse> {
     if record_batches.is_empty() {
         return Ok(empty_ok_resp());
     }
 
-    // let record_bytes = Vec::with_capacity(records.len());
+    let mut encoded_record_batches = Vec::with_capacity(record_batches.len());
+    let mut encoder: Option<RecordBatchesEncoder> = None;
+    for batch in record_batches {
+        let mut enc = if let Some(v) = encoder.take() {
+            v
+        } else {
+            RecordBatchesEncoder::new(ipc::Compression::None)
+        };
 
-    // let mut resp = empty_ok_resp();
-    // let mut avro_schema_opt = None;
+        if enc.num_rows() < batch_size {
+            enc.write(batch.as_arrow_record_batch())
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "failed to encode record batch".to_string(),
+                })?;
+            encoder = Some(enc);
+        } else {
+            let encoded_record_batch =
+                enc.finish()
+                    .map_err(|e| Box::new(e) as _)
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "failed to encode record batch".to_string(),
+                    })?;
+            encoded_record_batches.push(encoded_record_batch);
+        }
+    }
 
-    // let total_row = records.iter().map(|v| v.num_rows()).sum();
-    // resp.rows = Vec::with_capacity(total_row);
-    // for record_batch in records {
-    //     if avro_schema_opt.as_ref().is_none() {
-    //         let avro_schema = avro::to_avro_schema(RECORD_NAME,
-    // record_batch.schema());
+    if let Some(enc) = encoder {
+        let encoded_record_batch =
+            enc.finish()
+                .map_err(|e| Box::new(e) as _)
+                .with_context(|| ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "failed to encode record batch".to_string(),
+                })?;
+        encoded_record_batches.push(encoded_record_batch);
+    }
 
-    //         // We only set schema_json once, so all record batches need to have
-    // same schema         resp.schema_type = query_response::SchemaType::Avro
-    // as i32;         resp.schema_content = avro_schema.canonical_form();
+    let resp = make_query_resp_with_arrow_payload(ArrowPayload {
+        record_batches: encoded_record_batches,
+        compression: arrow_payload::Compression::None as i32,
+    });
 
-    //         avro_schema_opt = Some(avro_schema);
-    //     }
-
-    //     let mut rows = avro::record_batch_to_avro_rows(record_batch)
-    //         .map_err(|e| Box::new(e) as _)
-    //         .context(ErrWithCause {
-    //             code: StatusCode::INTERNAL_SERVER_ERROR,
-    //             msg: "failed to convert record batch",
-    //         })?;
-    //     resp.rows.append(&mut rows);
-    // }
-
-    // Ok(resp)
-
-    todo!()
+    Ok(resp)
 }

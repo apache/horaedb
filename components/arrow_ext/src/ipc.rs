@@ -13,7 +13,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Arror error, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("Arrow error, err:{}.\nBacktrace:\n{}", source, backtrace))]
     ArrowError {
         source: arrow::error::ArrowError,
         backtrace: Backtrace,
@@ -24,6 +24,9 @@ pub enum Error {
         source: std::io::Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Try to encode without record batches.\nBacktrace:\n{}", backtrace))]
+    EncodeWithoutRecordBatch { backtrace: Backtrace },
 
     #[snafu(display("Failed to decode record batch.\nBacktrace:\n{}", backtrace))]
     Decode { backtrace: Backtrace },
@@ -41,19 +44,67 @@ pub enum Compression {
 // The lower the level, the faster the speed (at the cost of compression).
 const ZSTD_LEVEL: i32 = 3;
 
-pub fn encode_record_batch(batch: &RecordBatch, compression: Compression) -> Result<Vec<u8>> {
-    let buffer: Vec<u8> = Vec::new();
-    let mut stream_writer = StreamWriter::try_new(buffer, &batch.schema()).context(ArrowError)?;
-    stream_writer.write(batch).context(ArrowError)?;
-    stream_writer
-        .into_inner()
-        .context(ArrowError)
-        .and_then(|bytes| match compression {
-            Compression::None => Ok(bytes),
+/// Encoder that can encode a batch of record batches with specific compression
+/// method.
+pub struct RecordBatchesEncoder {
+    stream_writer: Option<StreamWriter<Vec<u8>>>,
+    compression: Compression,
+    num_rows: usize,
+}
+
+impl RecordBatchesEncoder {
+    pub fn new(compression: Compression) -> Self {
+        Self {
+            stream_writer: None,
+            compression,
+            num_rows: 0,
+        }
+    }
+
+    /// Get the number of rows that have been encoded.
+    pub fn num_rows(&self) -> usize {
+        self.num_rows
+    }
+
+    /// Append one batch into the encoder for encoding.
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        let stream_writer = if let Some(v) = &mut self.stream_writer {
+            v
+        } else {
+            let buffer: Vec<u8> = Vec::new();
+            let stream_writer =
+                StreamWriter::try_new(buffer, &batch.schema()).context(ArrowError)?;
+            self.stream_writer = Some(stream_writer);
+            self.stream_writer.as_mut().unwrap()
+        };
+
+        stream_writer.write(batch).context(ArrowError)?;
+        self.num_rows += batch.num_rows();
+        Ok(())
+    }
+
+    /// Finish encoding and generate the final encoded bytes.
+    pub fn finish(mut self) -> Result<Vec<u8>> {
+        let stream_writer = self
+            .stream_writer
+            .take()
+            .context(EncodeWithoutRecordBatch)?;
+
+        let encoded_bytes = stream_writer.into_inner().context(ArrowError)?;
+
+        match self.compression {
+            Compression::None => Ok(encoded_bytes),
             Compression::Zstd => {
-                zstd::stream::encode_all(Cursor::new(bytes), ZSTD_LEVEL).context(ZstdError)
+                zstd::stream::encode_all(Cursor::new(encoded_bytes), ZSTD_LEVEL).context(ZstdError)
             }
-        })
+        }
+    }
+}
+
+pub fn encode_record_batch(batch: &RecordBatch, compression: Compression) -> Result<Vec<u8>> {
+    let mut encoder = RecordBatchesEncoder::new(compression);
+    encoder.write(batch)?;
+    encoder.finish()
 }
 
 pub fn decode_record_batch(bytes: Vec<u8>, compression: Compression) -> Result<RecordBatch> {
