@@ -27,6 +27,7 @@ define_result!(Error);
 /// Context for request, may contains
 /// 1. Request context and options
 /// 2. Info from http headers
+#[derive(Clone)]
 pub struct RequestContext {
     /// Catalog of the request
     pub catalog: String,

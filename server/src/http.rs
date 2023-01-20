@@ -101,7 +101,7 @@ pub struct Service<Q> {
     log_runtime: Arc<RuntimeLevel>,
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
-    prom_remote_storage: RemoteStorageRef,
+    prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     tx: Sender<()>,
     config: HttpConfig,
     enable_tenant_as_schema: bool,
@@ -133,12 +133,14 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(web::warp::with_remote_storage(
                 self.prom_remote_storage.clone(),
             ))
+            .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::write);
         let query_api = warp::path!("read")
             .and(web::warp::with_remote_storage(
                 self.prom_remote_storage.clone(),
             ))
+            .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::read);
 
@@ -171,6 +173,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and_then(|req, ctx, instance| async move {
                 let result = handlers::sql::handle_sql(ctx, instance, req)
                     .await
+                    .map(handlers::sql::convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
