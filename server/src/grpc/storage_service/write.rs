@@ -134,17 +134,22 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
             msg: "Failed to create interpreter",
         })?;
 
-    match interpreter
+    interpreter
         .execute()
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
-        })? {
-        Output::AffectedRows(n) => Ok(n),
-        _ => unreachable!(),
-    }
+        })
+        .and_then(|output| match output {
+            Output::AffectedRows(n) => Ok(n),
+            Output::Records(_) => ErrNoCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
+            .fail(),
+        })
 }
 
 pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
@@ -288,19 +293,22 @@ async fn create_table<Q: QueryExecutor + 'static>(
             msg: "Failed to create interpreter",
         })?;
 
-    let _ = match interpreter
+    interpreter
         .execute()
         .await
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
-        })? {
-        Output::AffectedRows(n) => n,
-        _ => unreachable!(),
-    };
-
-    Ok(())
+        })
+        .and_then(|output| match output {
+            Output::AffectedRows(_) => Ok(()),
+            Output::Records(_) => ErrNoCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
+            .fail(),
+        })
 }
 
 fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Result<InsertPlan> {

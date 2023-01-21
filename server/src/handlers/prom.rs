@@ -1,5 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! This module implements prometheus remote storage API.
+//! It converts write request to gRPC write request, and
+//! translates query request to SQL for execution.
+
 use std::{collections::HashMap, time::Instant};
 
 use async_trait::async_trait;
@@ -154,11 +158,11 @@ impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
             TIMESTAMP_COLUMN
         );
 
-        debug!("remote storage read, sql:{}", sql);
         let result = handlers::sql::handle_sql(ctx, self.instance.clone(), sql.into())
             .await
             .map_err(Box::new)
             .context(SqlHandle)?;
+
         convert_query_result(measurement, result)
     }
 

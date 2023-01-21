@@ -4265,8 +4265,9 @@ dependencies = [
 
 [[package]]
 name = "prom-remote-api"
-version = "0.1.0"
-source = "git+https://github.com/jiacai2050/prom-remote-api#1532c2ad46a8f0abd9d8c7c71a46f45be886e341"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b375194cde05179f99e00565a6434293408ddeee4df8547d8aeb40ab831d664"
 dependencies = [
  "async-trait",
  "prost",
