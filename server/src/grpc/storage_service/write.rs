@@ -8,6 +8,7 @@ use std::{
 };
 
 use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
+use cluster::config::SchemaConfig;
 use common_types::{
     bytes::Bytes,
     datum::{Datum, DatumKind},
@@ -24,10 +25,13 @@ use snafu::{ensure, OptionExt, ResultExt};
 use sql::plan::{InsertPlan, Plan};
 use table_engine::table::TableRef;
 
-use crate::grpc::storage_service::{
-    self,
-    error::{self, ErrNoCause, ErrWithCause, Result},
-    HandlerContext,
+use crate::{
+    grpc::storage_service::{
+        self,
+        error::{self, ErrNoCause, ErrWithCause, Result},
+        HandlerContext,
+    },
+    instance::InstanceRef,
 };
 
 pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
@@ -37,11 +41,12 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
-
+    let catalog = ctx.catalog();
+    let schema = ctx.schema();
     debug!(
         "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
-        ctx.catalog(),
-        ctx.schema(),
+        catalog,
+        schema,
         request_id,
         req.metrics
             .first()
@@ -49,58 +54,28 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         req.metrics.len(),
     );
 
-    let instance = &ctx.instance;
-    let plan_vec = write_request_to_insert_plan(ctx, req, request_id, deadline).await?;
+    let plan_vec = write_request_to_insert_plan(
+        request_id,
+        catalog,
+        schema,
+        ctx.instance.clone(),
+        req,
+        ctx.schema_config,
+        deadline,
+    )
+    .await?;
 
     let mut success = 0;
     for insert_plan in plan_vec {
-        debug!(
-            "Grpc handle write table begin, table:{}, row_num:{}",
-            insert_plan.table.name(),
-            insert_plan.rows.num_rows()
-        );
-        let plan = Plan::Insert(insert_plan);
-
-        ctx.instance
-            .limiter
-            .try_limit(&plan)
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::FORBIDDEN,
-                msg: "Insert is blocked",
-            })?;
-
-        let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-            // Use current ctx's catalog and schema as default catalog and schema
-            .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
-            .build();
-        let interpreter_factory = Factory::new(
-            instance.query_executor.clone(),
-            instance.catalog_manager.clone(),
-            instance.table_engine.clone(),
-            instance.table_manipulator.clone(),
-        );
-        let interpreter = interpreter_factory
-            .create(interpreter_ctx, plan)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create interpreter",
-            })?;
-
-        let row_num = match interpreter
-            .execute()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to execute interpreter",
-            })? {
-            Output::AffectedRows(n) => n,
-            _ => unreachable!(),
-        };
-
-        success += row_num;
+        success += execute_plan(
+            request_id,
+            catalog,
+            schema,
+            ctx.instance.clone(),
+            insert_plan,
+            deadline,
+        )
+        .await?;
     }
 
     let resp = WriteResponse {
@@ -111,32 +86,97 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
 
     debug!(
         "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
-        ctx.catalog(),
-        ctx.schema(),
-        resp
+        catalog, schema, resp
     );
 
     Ok(resp)
 }
 
-async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, Q>,
-    write_request: WriteRequest,
+pub async fn execute_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    insert_plan: InsertPlan,
+    deadline: Option<Instant>,
+) -> Result<usize> {
+    debug!(
+        "Grpc handle write table begin, table:{}, row_num:{}",
+        insert_plan.table.name(),
+        insert_plan.rows.num_rows()
+    );
+    let plan = Plan::Insert(insert_plan);
+
+    instance
+        .limiter
+        .try_limit(&plan)
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::FORBIDDEN,
+            msg: "Insert is blocked",
+        })?;
+
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+        .build();
+    let interpreter_factory = Factory::new(
+        instance.query_executor.clone(),
+        instance.catalog_manager.clone(),
+        instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
+    );
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to create interpreter",
+        })?;
+
+    match interpreter
+        .execute()
+        .await
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "failed to execute interpreter",
+        })? {
+        Output::AffectedRows(n) => Ok(n),
+        _ => unreachable!(),
+    }
+}
+
+pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
+    request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    write_request: WriteRequest,
+    schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
 
     for write_metric in write_request.metrics {
         let table_name = &write_metric.metric;
-        let mut table = try_get_table(ctx, table_name)?;
+        let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
         if table.is_none() {
-            if let Some(config) = ctx.schema_config {
+            if let Some(config) = schema_config {
                 if config.auto_create_tables {
-                    create_table(ctx, &write_metric, request_id, deadline).await?;
+                    create_table(
+                        request_id,
+                        catalog,
+                        schema,
+                        instance.clone(),
+                        &write_metric,
+                        schema_config,
+                        deadline,
+                    )
+                    .await?;
                     // try to get table again
-                    table = try_get_table(ctx, table_name)?;
+                    table = try_get_table(catalog, schema, instance.clone(), table_name)?;
                 }
             }
         }
@@ -149,11 +189,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             None => {
                 return ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!(
-                        "Table not found, schema:{}, table:{}",
-                        ctx.schema(),
-                        table_name
-                    ),
+                    msg: format!("Table not found, schema:{}, table:{}", schema, table_name),
                 }
                 .fail();
             }
@@ -164,30 +200,32 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
 }
 
 fn try_get_table<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, Q>,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
     table_name: &str,
 ) -> Result<Option<TableRef>> {
-    ctx.instance
+    instance
         .catalog_manager
-        .catalog_by_name(ctx.catalog())
+        .catalog_by_name(catalog)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find catalog, catalog_name:{}", ctx.catalog()),
+            msg: format!("Failed to find catalog, catalog_name:{}", catalog),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Catalog not found, catalog_name:{}", ctx.catalog()),
+            msg: format!("Catalog not found, catalog_name:{}", catalog),
         })?
-        .schema_by_name(ctx.schema())
+        .schema_by_name(schema)
         .map_err(|e| Box::new(e) as _)
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find schema, schema_name:{}", ctx.schema()),
+            msg: format!("Failed to find schema, schema_name:{}", schema),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Schema not found, schema_name:{}", ctx.schema()),
+            msg: format!("Schema not found, schema_name:{}", schema),
         })?
         .table_by_name(table_name)
         .map_err(|e| Box::new(e) as _)
@@ -198,28 +236,30 @@ fn try_get_table<Q: QueryExecutor + 'static>(
 }
 
 async fn create_table<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, Q>,
-    write_metric: &WriteMetric,
     request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    write_metric: &WriteMetric,
+    schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<()> {
-    let create_table_plan = storage_service::write_metric_to_create_table_plan(ctx, write_metric)
-        .map_err(|e| Box::new(e) as _)
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!(
-                "Failed to build creating table plan from metric, table:{}",
-                write_metric.metric
-            ),
-        })?;
+    let create_table_plan =
+        storage_service::write_metric_to_create_table_plan(schema_config, write_metric)
+            .map_err(|e| Box::new(e) as _)
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!(
+                    "Failed to build creating table plan from metric, table:{}",
+                    write_metric.metric
+                ),
+            })?;
 
     debug!(
         "Grpc handle create table begin, table:{}, schema:{:?}",
         create_table_plan.table, create_table_plan.table_schema,
     );
     let plan = Plan::Create(create_table_plan);
-
-    let instance = &ctx.instance;
 
     instance
         .limiter
@@ -232,7 +272,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
 
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
+        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),

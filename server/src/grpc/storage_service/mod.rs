@@ -52,7 +52,7 @@ pub(crate) mod error;
 mod prom_query;
 mod query;
 mod route;
-mod write;
+pub(crate) mod write;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
@@ -491,11 +491,11 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
 /// Create CreateTablePlan from a write metric.
 // The caller must ENSURE that the HandlerContext's schema_config is not None.
-pub fn write_metric_to_create_table_plan<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<Q>,
+pub fn write_metric_to_create_table_plan(
+    schema_config: Option<&SchemaConfig>,
     write_metric: &WriteMetric,
 ) -> Result<CreateTablePlan> {
-    let schema_config = ctx.schema_config.unwrap();
+    let schema_config = schema_config.unwrap();
     Ok(CreateTablePlan {
         engine: schema_config.default_engine_type.clone(),
         if_not_exists: true,

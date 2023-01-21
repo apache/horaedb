@@ -34,7 +34,7 @@ opensrv-mysql = "0.1.0"
 paste = { workspace = true }
 profile = { workspace = true }
 # prom-remote-api = { version = "0.1.0", features = ["warp"] }
-prom-remote-api = { git ="https://github.com/jiacai2050/prom-remote-api", features = ["warp"] }
+prom-remote-api = { git = "https://github.com/jiacai2050/prom-remote-api", features = ["warp"] }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }

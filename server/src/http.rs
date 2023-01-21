@@ -32,6 +32,7 @@ use crate::{
     handlers::{self, prom::CeresDBStorage, sql::Request},
     instance::InstanceRef,
     metrics,
+    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -55,6 +56,9 @@ pub enum Error {
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
+    MissingSchemaConfigProvider { backtrace: Backtrace },
 
     #[snafu(display(
         "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
@@ -388,6 +392,7 @@ pub struct Builder<Q> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
+    schema_config_provider: Option<SchemaConfigProviderRef>,
 }
 
 impl<Q> Builder<Q> {
@@ -398,6 +403,7 @@ impl<Q> Builder<Q> {
             engine_runtimes: None,
             log_runtime: None,
             instance: None,
+            schema_config_provider: None,
         }
     }
 
@@ -420,6 +426,11 @@ impl<Q> Builder<Q> {
         self.enable_tenant_as_schema = enable_tenant_as_schema;
         self
     }
+
+    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
+        self.schema_config_provider = Some(provider);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -428,7 +439,13 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
-        let prom_remote_storage = Arc::new(CeresDBStorage::new(instance.clone()));
+        let schema_config_provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
+        let prom_remote_storage = Arc::new(CeresDBStorage::new(
+            instance.clone(),
+            schema_config_provider,
+        ));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
@@ -483,6 +500,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
+        | Error::MissingSchemaConfigProvider { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }

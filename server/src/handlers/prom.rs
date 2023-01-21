@@ -1,10 +1,14 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use async_trait::async_trait;
+use ceresdbproto::storage::{
+    value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric, WriteRequest as WriteRequestPb,
+};
 use common_types::{
     datum::DatumKind,
+    request_id::RequestId,
     schema::{RecordSchema, TIMESTAMP_COLUMN, TSID_COLUMN},
 };
 use interpreters::interpreter::Output;
@@ -17,7 +21,10 @@ use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use warp::reject;
 
-use crate::{context::RequestContext, handlers, instance::InstanceRef};
+use crate::{
+    context::RequestContext, handlers, instance::InstanceRef,
+    schema_config_provider::SchemaConfigProviderRef,
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -81,6 +88,16 @@ pub enum Error {
         kind: DatumKind,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to write via gRPC, source:{}.", source))]
+    GRPCWriteError {
+        source: crate::grpc::storage_service::error::Error,
+    },
+
+    #[snafu(display("Failed to get schema, source:{}.", source))]
+    SchemaError {
+        source: crate::schema_config_provider::Error,
+    },
 }
 
 define_result!(Error);
@@ -92,11 +109,15 @@ const VALUE_COLUMN: &str = "value";
 
 pub struct CeresDBStorage<Q: QueryExecutor + 'static> {
     instance: InstanceRef<Q>,
+    schema_config_provider: SchemaConfigProviderRef,
 }
 
 impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
-    pub fn new(instance: InstanceRef<Q>) -> Self {
-        Self { instance }
+    pub fn new(instance: InstanceRef<Q>, schema_config_provider: SchemaConfigProviderRef) -> Self {
+        Self {
+            instance,
+            schema_config_provider,
+        }
     }
 }
 
@@ -140,6 +161,72 @@ impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
             .context(SqlHandle)?;
         convert_query_result(measurement, result)
     }
+
+    fn normalize_labels(labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
+        let mut new_labels = Vec::with_capacity(labels.len());
+        let mut measurement = None;
+        for label in labels {
+            if label.name == NAME_LABEL {
+                measurement = Some(label.value);
+                continue;
+            }
+
+            new_labels.push(label);
+        }
+        let measurement = measurement.context(MissingName)?;
+
+        Ok((measurement, new_labels))
+    }
+
+    fn convert_write_request(req: WriteRequest) -> Result<WriteRequestPb> {
+        let mut req_by_metric = HashMap::new();
+        for timeseries in req.timeseries {
+            let (measurement, labels) = Self::normalize_labels(timeseries.labels)?;
+            let (tag_names, tag_values): (Vec<_>, Vec<_>) = labels
+                .into_iter()
+                .map(|label| (label.name, label.value))
+                .unzip();
+
+            req_by_metric
+                .entry(measurement.to_string())
+                .or_insert_with(|| WriteMetric {
+                    metric: measurement,
+                    tag_names,
+                    field_names: vec![VALUE_COLUMN.to_string()],
+                    entries: Vec::new(),
+                })
+                .entries
+                .push(WriteEntry {
+                    tags: tag_values
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, v)| Tag {
+                            name_index: idx as u32,
+                            value: Some(Value {
+                                value: Some(value::Value::StringValue(v)),
+                            }),
+                        })
+                        .collect(),
+                    field_groups: timeseries
+                        .samples
+                        .into_iter()
+                        .map(|sample| FieldGroup {
+                            timestamp: sample.timestamp,
+                            fields: vec![Field {
+                                name_index: 0,
+                                value: Some(Value {
+                                    value: Some(value::Value::Float64Value(sample.value)),
+                                }),
+                            }],
+                        })
+                        .collect(),
+                });
+        }
+
+        Ok(WriteRequestPb {
+            metrics: req_by_metric.into_values().collect(),
+        })
+    }
 }
 
 #[async_trait]
@@ -148,10 +235,47 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
     type Err = Error;
 
     /// Write samples to remote storage
-    async fn write(&self, _ctx: Self::Context, req: WriteRequest) -> Result<()> {
-        debug!("mock write, req:{req:?}");
+    async fn write(&self, ctx: Self::Context, req: WriteRequest) -> Result<()> {
+        let request_id = RequestId::next_id();
+        let deadline = ctx.timeout.map(|t| Instant::now() + t);
+        let catalog = &ctx.catalog;
+        self.instance.catalog_manager.default_catalog_name();
+        let schema = &ctx.schema;
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
+            .context(SchemaError)?;
+        let plans = crate::grpc::storage_service::write::write_request_to_insert_plan(
+            request_id,
+            catalog,
+            schema,
+            self.instance.clone(),
+            Self::convert_write_request(req)?,
+            schema_config,
+            deadline,
+        )
+        .await
+        .context(GRPCWriteError)?;
 
-        unimplemented!()
+        let mut success = 0;
+        for insert_plan in plans {
+            success += crate::grpc::storage_service::write::execute_plan(
+                request_id,
+                catalog,
+                schema,
+                self.instance.clone(),
+                insert_plan,
+                deadline,
+            )
+            .await
+            .context(GRPCWriteError)?;
+        }
+        debug!(
+            "Remote write finished, catalog:{}, schema:{}, success:{}",
+            catalog, schema, success
+        );
+
+        Ok(())
     }
 
     /// Read samples from remote storage
