@@ -175,7 +175,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let result = handlers::sql::handle_sql(ctx, instance, req)
+                let result = handlers::sql::handle_sql(&ctx, instance, req)
                     .await
                     .map(handlers::sql::convert_output)
                     .map_err(|e| {

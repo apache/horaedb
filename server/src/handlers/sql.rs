@@ -105,7 +105,7 @@ impl From<Bytes> for Request {
 }
 
 pub async fn handle_sql<Q: QueryExecutor + 'static>(
-    ctx: RequestContext,
+    ctx: &RequestContext,
     instance: InstanceRef<Q>,
     request: Request,
 ) -> Result<Output> {
@@ -164,7 +164,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
-        .default_catalog_and_schema(ctx.catalog, ctx.schema)
+        .default_catalog_and_schema(ctx.catalog.to_string(), ctx.schema.to_string())
         .enable_partition_table_access(ctx.enable_partition_table_access)
         .build();
     let interpreter_factory = Factory::new(

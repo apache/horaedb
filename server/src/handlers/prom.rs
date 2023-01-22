@@ -18,8 +18,7 @@ use common_types::{
 use interpreters::interpreter::Output;
 use log::debug;
 use prom_remote_api::types::{
-    label_matcher, Label, Query, QueryResult, ReadRequest, ReadResponse, RemoteStorage, Sample,
-    TimeSeries, WriteRequest,
+    label_matcher, Label, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -126,46 +125,8 @@ impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
-    async fn read_inner(&self, ctx: RequestContext, q: Query) -> Result<QueryResult> {
-        let mut filters = Vec::with_capacity(q.matchers.len());
-        filters.push(format!(
-            "{} between {} AND {}",
-            TIMESTAMP_COLUMN, q.start_timestamp_ms, q.end_timestamp_ms
-        ));
-        let mut measurement = None;
-        for m in &q.matchers {
-            if m.name == NAME_LABEL {
-                measurement = Some(m.value.to_string());
-                continue;
-            }
-
-            let filter = match m.r#type() {
-                label_matcher::Type::Eq => format!("{} = '{}'", m.name, m.value),
-                label_matcher::Type::Neq => format!("{} != '{}'", m.name, m.value),
-                // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
-                label_matcher::Type::Re => format!("{} ~ '^(?:{})'", m.name, m.value),
-                label_matcher::Type::Nre => format!("{} !~ '^(?:{})'", m.name, m.value),
-            };
-            filters.push(filter)
-        }
-
-        let measurement = measurement.context(MissingName).unwrap();
-        let sql = format!(
-            "select * from {} where {} order by {}, {}",
-            measurement,
-            filters.join(" and "),
-            TSID_COLUMN,
-            TIMESTAMP_COLUMN
-        );
-
-        let result = handlers::sql::handle_sql(ctx, self.instance.clone(), sql.into())
-            .await
-            .map_err(Box::new)
-            .context(SqlHandle)?;
-
-        convert_query_result(measurement, result)
-    }
-
+    /// This function will separate measurement from labels, and sort labels by
+    /// name.
     fn normalize_labels(labels: Vec<Label>) -> Result<(String, Vec<Label>)> {
         let mut new_labels = Vec::with_capacity(labels.len());
         let mut measurement = None;
@@ -178,6 +139,7 @@ impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
             new_labels.push(label);
         }
         let measurement = measurement.context(MissingName)?;
+        new_labels.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
         Ok((measurement, new_labels))
     }
@@ -231,6 +193,22 @@ impl<Q: QueryExecutor + 'static> CeresDBStorage<Q> {
             metrics: req_by_metric.into_values().collect(),
         })
     }
+
+    fn convert_query_result(measurement: String, resp: Output) -> Result<QueryResult> {
+        let record_batches = match resp {
+            Output::AffectedRows(_) => return ResponseMustRows {}.fail(),
+            Output::Records(v) => v,
+        };
+
+        let converter = match record_batches.first() {
+            None => {
+                return Ok(QueryResult::default());
+            }
+            Some(batch) => Converter::try_new(batch.schema())?,
+        };
+
+        converter.convert(measurement, record_batches)
+    }
 }
 
 #[async_trait]
@@ -282,21 +260,49 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
         Ok(())
     }
 
-    /// Read samples from remote storage
-    async fn read(&self, ctx: Self::Context, req: ReadRequest) -> Result<ReadResponse> {
-        let results = futures::future::join_all(
-            req.queries
-                .into_iter()
-                .map(|q| async { self.read_inner(ctx.clone(), q).await }),
-        )
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+    /// Process one query within ReadRequest.
+    async fn process_query(&self, ctx: &Self::Context, q: Query) -> Result<QueryResult> {
+        let mut filters = Vec::with_capacity(q.matchers.len());
+        filters.push(format!(
+            "{} between {} AND {}",
+            TIMESTAMP_COLUMN, q.start_timestamp_ms, q.end_timestamp_ms
+        ));
+        let mut measurement = None;
+        for m in &q.matchers {
+            if m.name == NAME_LABEL {
+                measurement = Some(m.value.to_string());
+                continue;
+            }
 
-        Ok(ReadResponse { results })
+            let filter = match m.r#type() {
+                label_matcher::Type::Eq => format!("{} = '{}'", m.name, m.value),
+                label_matcher::Type::Neq => format!("{} != '{}'", m.name, m.value),
+                // https://github.com/prometheus/prometheus/blob/2ce94ac19673a3f7faf164e9e078a79d4d52b767/model/labels/regexp.go#L29
+                label_matcher::Type::Re => format!("{} ~ '^(?:{})'", m.name, m.value),
+                label_matcher::Type::Nre => format!("{} !~ '^(?:{})'", m.name, m.value),
+            };
+            filters.push(filter)
+        }
+
+        let measurement = measurement.context(MissingName).unwrap();
+        let sql = format!(
+            "select * from {} where {} order by {}, {}",
+            measurement,
+            filters.join(" and "),
+            TSID_COLUMN,
+            TIMESTAMP_COLUMN
+        );
+
+        let result = handlers::sql::handle_sql(ctx, self.instance.clone(), sql.into())
+            .await
+            .map_err(Box::new)
+            .context(SqlHandle)?;
+
+        Self::convert_query_result(measurement, result)
     }
 }
 
+/// Converter convert Arrow's RecordBatch into Prometheus's QueryResult
 struct Converter {
     tsid_idx: usize,
     timestamp_idx: usize,
@@ -418,20 +424,4 @@ impl Converter {
             timeseries: series_by_tsid.into_values().collect(),
         })
     }
-}
-
-fn convert_query_result(measurement: String, resp: Output) -> Result<QueryResult> {
-    let record_batches = match resp {
-        Output::AffectedRows(_) => return ResponseMustRows {}.fail(),
-        Output::Records(v) => v,
-    };
-
-    let converter = match record_batches.first() {
-        None => {
-            return Ok(QueryResult::default());
-        }
-        Some(batch) => Converter::try_new(batch.schema())?,
-    };
-
-    converter.convert(measurement, record_batches)
 }

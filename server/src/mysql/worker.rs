@@ -113,7 +113,7 @@ where
         let ctx = self.create_ctx()?;
 
         let req = Request::from(sql.to_string());
-        handlers::sql::handle_sql(ctx, self.instance.clone(), req)
+        handlers::sql::handle_sql(&ctx, self.instance.clone(), req)
             .await
             // TODO(chenxiang): no need for this convert for MySQL, remove it
             .map(handlers::sql::convert_output)
