@@ -173,7 +173,7 @@ func (m *Member) CampaignAndKeepLeader(ctx context.Context, leaseTTLSec int64, c
 		return ErrTxnPutLeader.WithCausef("txn put leader failed, resp:%v", resp)
 	}
 
-	m.logger.Info("succeed to set leader", zap.String("leader-key", m.leaderKey), zap.String("leader", m.Name))
+	m.logger.Info("[SetLeader]", zap.String("leader-key", m.leaderKey), zap.String("leader", m.Name))
 
 	if callbacks != nil {
 		// The leader has been elected and trigger the callbacks.

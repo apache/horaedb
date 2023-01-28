@@ -5,6 +5,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -76,7 +77,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 		}, ShardInfos: shardInfos,
 	}
 
-	log.Info("registerNode", zap.String("name", req.Info.Endpoint), zap.String("info", fmt.Sprintf("%+v", registeredNode)))
+	log.Info("[NodeHeartbeat]", zap.String("name", req.Info.Endpoint), zap.String("info", fmt.Sprintf("%+v", registeredNode)))
 
 	err = s.h.GetClusterManager().RegisterNode(ctx, req.GetHeader().GetClusterName(), registeredNode)
 	if err != nil {
@@ -99,6 +100,8 @@ func (s *Service) AllocSchemaID(ctx context.Context, req *metaservicepb.AllocSch
 	if ceresmetaClient != nil {
 		return ceresmetaClient.AllocSchemaID(ctx, req)
 	}
+
+	log.Info("[AllocSchemaID]", zap.String("schemaName", req.GetName()), zap.String("clusterName", req.GetHeader().GetClusterName()))
 
 	schemaID, _, err := s.h.GetClusterManager().AllocSchemaID(ctx, req.GetHeader().GetClusterName(), req.GetName())
 	if err != nil {
@@ -124,6 +127,8 @@ func (s *Service) GetTablesOfShards(ctx context.Context, req *metaservicepb.GetT
 		return ceresmetaClient.GetTablesOfShards(ctx, req)
 	}
 
+	log.Info("[GetTablesOfShards]", zap.String("clusterName", req.GetHeader().GetClusterName()), zap.String("shardIDs", fmt.Sprint(req.ShardIds)))
+
 	shardIDs := make([]storage.ShardID, 0, len(req.GetShardIds()))
 	for _, shardID := range req.GetShardIds() {
 		shardIDs = append(shardIDs, storage.ShardID(shardID))
@@ -148,6 +153,8 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	if ceresmetaClient != nil {
 		return ceresmetaClient.CreateTable(ctx, req)
 	}
+
+	log.Info("[CreateTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.GetName()))
 
 	clusterManager := s.h.GetClusterManager()
 	factory := s.h.GetProcedureFactory()
@@ -220,6 +227,8 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		return ceresmetaClient.DropTable(ctx, req)
 	}
 
+	log.Info("[DropTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.Name))
+
 	clusterManager := s.h.GetClusterManager()
 	factory := s.h.GetProcedureFactory()
 	manager := s.h.GetProcedureManager()
@@ -275,6 +284,8 @@ func (s *Service) RouteTables(ctx context.Context, req *metaservicepb.RouteTable
 		return &metaservicepb.RouteTablesResponse{Header: responseHeader(err, "grpc routeTables")}, nil
 	}
 
+	log.Info("[RouteTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableNames", strings.Join(req.TableNames, ",")))
+
 	// Forward request to the leader.
 	if ceresmetaClient != nil {
 		return ceresmetaClient.RouteTables(ctx, req)
@@ -299,6 +310,8 @@ func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesReque
 	if ceresmetaClient != nil {
 		return ceresmetaClient.GetNodes(ctx, req)
 	}
+
+	log.Info("[GetNodes]", zap.String("clusterName", req.GetHeader().ClusterName))
 
 	nodesResult, err := s.h.GetClusterManager().GetNodeShards(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
