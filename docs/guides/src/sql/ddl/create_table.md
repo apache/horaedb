@@ -52,7 +52,7 @@ A column can be marked as [special column](../model/special_columns.md) with rel
 
 Specifies which engine this table belongs to. CeresDB current support [`Analytic`](../../analytic_engine/README.md) engine type. This attribute is immutable.
 
-## Table Partitioning
+## Partition Options
 
 `partition_options` can be used to control partitioning of the table. This example shows a table partitioned by key, with 8 partitions:
 ```sql
