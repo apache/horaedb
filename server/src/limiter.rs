@@ -2,7 +2,8 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use datafusion::{catalog::TableReference, logical_plan::LogicalPlan};
+use datafusion::catalog::TableReference;
+use datafusion_expr::logical_plan::LogicalPlan;
 use serde::Serialize;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, Snafu};

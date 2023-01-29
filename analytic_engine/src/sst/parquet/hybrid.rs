@@ -8,7 +8,7 @@ use arrow::{
         UInt64Array,
     },
     bitmap::Bitmap,
-    buffer::{Buffer, MutableBuffer},
+    buffer::MutableBuffer,
     datatypes::Schema as ArrowSchema,
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
@@ -153,7 +153,7 @@ trait VariableSizeArray {
     // Returns the length for the element at index i.
     fn value_length(&self, index: usize) -> i32;
     // Returns a clone of the value data buffer.
-    fn value_data(&self) -> Buffer;
+    fn value_data(&self) -> &[u8];
 }
 
 macro_rules! impl_offsets {
@@ -167,7 +167,7 @@ macro_rules! impl_offsets {
                 self.0.value_length(index)
             }
 
-            fn value_data(&self) -> Buffer {
+            fn value_data(&self) -> &[u8] {
                 self.0.value_data()
             }
         }
@@ -404,9 +404,8 @@ impl ListArrayBuilder {
                         inner_offsets.push(inner_length_so_far);
                     }
 
-                    inner_values.extend_from_slice(
-                        &array.value_data().as_slice()[start as usize..end as usize],
-                    );
+                    inner_values
+                        .extend_from_slice(&array.value_data()[start as usize..end as usize]);
                 }
             }
             // The data in the arrays belong to the same tsid, so the offsets is the total

@@ -61,6 +61,7 @@ impl PhysicalOptimizer for PhysicalOptimizerImpl {
     async fn optimize(&mut self, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
         let exec_plan = self
             .ctx
+            .state()
             .create_physical_plan(&logical_plan.df_plan)
             .await
             .context(DataFusionOptimize)?;

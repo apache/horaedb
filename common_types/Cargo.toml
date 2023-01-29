@@ -30,5 +30,4 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-# TODO(yingwen): Make sqlparser support a feature
-sqlparser = { version = "0.23.0", features = ["serde"] }
+sqlparser = { workspace = true }

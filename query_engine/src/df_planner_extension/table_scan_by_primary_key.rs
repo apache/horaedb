@@ -104,7 +104,7 @@ impl TableScanByPrimaryKey {
                 table_provider
                     .scan_table(
                         session_state,
-                        projection,
+                        projection.as_ref(),
                         &filters,
                         *fetch,
                         ReadOrder::from_is_asc(Some(self.asc)),

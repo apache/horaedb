@@ -265,25 +265,25 @@ impl Period {
     }
 
     fn truncate_day(ts: Timestamp, period: u16) -> Option<Timestamp> {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
         // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
         // Truncate day
         let day = datetime.day();
         let day = day - (day % u32::from(period));
         let truncated_datetime = offset
-            .ymd(datetime.year(), datetime.month(), day)
-            .and_hms(0, 0, 0);
+            .with_ymd_and_hms(datetime.year(), datetime.month(), day, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Some(Timestamp::new(truncated_ts))
     }
 
     fn truncate_week(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
         // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
         // Truncate week.
         let week_offset = datetime.weekday().num_days_from_monday();
@@ -297,26 +297,28 @@ impl Period {
     }
 
     fn truncate_month(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
         // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
         // Truncate month
         let truncated_datetime = offset
-            .ymd(datetime.year(), datetime.month(), 1)
-            .and_hms(0, 0, 0);
+            .with_ymd_and_hms(datetime.year(), datetime.month(), 1, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Timestamp::new(truncated_ts)
     }
 
     fn truncate_year(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
         // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
         // Truncate year
-        let truncated_datetime = offset.ymd(datetime.year(), 1, 1).and_hms(0, 0, 0);
+        let truncated_datetime = offset
+            .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Timestamp::new(truncated_ts)

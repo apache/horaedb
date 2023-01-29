@@ -6,7 +6,8 @@ use std::{collections::HashMap, fmt};
 
 use async_trait::async_trait;
 use common_types::{row::Row, schema::Schema, time::TimeRange};
-use datafusion::logical_plan::{Column, Expr};
+use datafusion::common::Column;
+use datafusion_expr::Expr;
 use futures::TryStreamExt;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{

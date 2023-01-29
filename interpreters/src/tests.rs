@@ -138,8 +138,8 @@ where
             "+------------+---------------------+--------+--------+",
             "| key1       | key2                | field1 | field2 |",
             "+------------+---------------------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 100    | hello3 |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "| 7461676b   | 2021-12-02T07:00:34 | 100    | hello3 |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 100    | hello3 |",
             "+------------+---------------------+--------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -254,8 +254,8 @@ where
             "+------------+---------------------+--------+--------+--------+--------+--------+",
             "| key1       | key2                | field1 | field2 | field3 | field4 | field5 |",
             "+------------+---------------------+--------+--------+--------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      | 1      | 3      |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      | 10     | 12     |",
+            "| 7461676b   | 2021-12-02T07:00:34 | 10     | 20     | 3      | 1      | 3      |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 10     | 20     | 3      | 10     | 12     |",
             "+------------+---------------------+--------+--------+--------+--------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -334,6 +334,7 @@ where
 
 #[tokio::test]
 async fn test_interpreters_rocks() {
+    common_util::tests::init_log_for_test();
     let rocksdb_ctx = RocksDBEngineContext::default();
     test_interpreters(rocksdb_ctx).await;
 }
@@ -362,8 +363,6 @@ async fn test_interpreters<T: EngineContext>(engine_context: T) {
     env.test_show_create_table().await;
     env.test_alter_table().await;
     env.test_drop_table().await;
-
     env.test_insert_table_with_missing_columns().await;
-
     env.test_enable_partition_table_access().await;
 }

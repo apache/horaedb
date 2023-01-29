@@ -16,6 +16,7 @@ test = []
 [dependencies]
 # In alphabetical order
 arrow = { workspace = true }
+async-trait = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }
@@ -29,7 +30,7 @@ log = { workspace = true }
 paste = { workspace = true }
 regex = "1"
 snafu = { workspace = true }
-sqlparser = "0.23.0"
+sqlparser = { workspace = true }
 table_engine = { workspace = true }
 
 [dev-dependencies]

@@ -9,10 +9,8 @@ use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
-use datafusion::{
-    logical_plan::{Expr, Operator},
-    scalar::ScalarValue,
-};
+use datafusion::scalar::ScalarValue;
+use datafusion_expr::{Expr, Operator};
 use datafusion_proto::bytes::Serializeable;
 use log::debug;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -298,8 +296,6 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::Multiply
             | Operator::Divide
             | Operator::Modulo
-            | Operator::Like
-            | Operator::NotLike
             | Operator::IsDistinctFrom
             | Operator::IsNotDistinctFrom
             | Operator::RegexMatch
@@ -360,15 +356,15 @@ impl<'a> TimeRangeExtractor<'a> {
     /// how to handle it, returns `TimeRange::zero_to_max()`.
     fn extract_time_range_from_expr(&self, expr: &Expr) -> TimeRange {
         match expr {
-            Expr::BinaryExpr { left, op, right } => {
+            Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => {
                 self.extract_time_range_from_binary_expr(left, right, op)
             }
-            Expr::Between {
+            Expr::Between(datafusion_expr::Between {
                 expr,
                 negated,
                 low,
                 high,
-            } => {
+            }) => {
                 if let Expr::Column(column) = expr.as_ref() {
                     if column.name == self.timestamp_column_name {
                         return Self::time_range_from_between_expr(low, high, *negated);
@@ -423,7 +419,8 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::ScalarSubquery(_)
             | Expr::QualifiedWildcard { .. }
             | Expr::GroupingSet(_)
-            | Expr::GetIndexedField { .. } => TimeRange::min_to_max(),
+            | Expr::GetIndexedField { .. }
+            | Expr::Placeholder { .. } => TimeRange::min_to_max(),
         }
     }
 }

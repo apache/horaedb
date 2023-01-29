@@ -19,15 +19,15 @@ use common_types::{
 };
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
+    common::ToDFSchema,
     error::DataFusionError,
     logical_expr::ColumnarValue as DfColumnarValue,
-    logical_plan::ToDFSchema,
-    optimizer::simplify_expressions::ConstEvaluator,
     physical_expr::{
         create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
     },
 };
-use datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable};
+use datafusion_expr::{expr::Expr as DfLogicalExpr, Expr};
+use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyInfo};
 use df_operator::visitor::find_columns_by_expr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
@@ -198,6 +198,26 @@ impl<'a> TsidBuilder<'a> {
     }
 }
 
+// Copy from https://github.com/apache/arrow-datafusion/blob/125a8580c19c78c99fbbe3a6afe373de2538b205/datafusion/optimizer/src/simplify_expressions/expr_simplifier.rs#L78.
+#[derive(Default)]
+struct Info {
+    execution_props: ExecutionProps,
+}
+
+impl SimplifyInfo for Info {
+    fn is_boolean_type(&self, _expr: &Expr) -> datafusion::common::Result<bool> {
+        Ok(false)
+    }
+
+    fn nullable(&self, _expr: &Expr) -> datafusion::common::Result<bool> {
+        Ok(true)
+    }
+
+    fn execution_props(&self) -> &ExecutionProps {
+        &self.execution_props
+    }
+}
+
 /// Fill missing columns which can be calculated via default value expr.
 fn fill_default_values(
     table: TableRef,
@@ -209,16 +229,21 @@ fn fill_default_values(
 
     for (column_idx, default_value_expr) in default_value_map.iter() {
         // Optimize logical expr
-        let execution_props = ExecutionProps::default();
-        let mut const_optimizer =
-            ConstEvaluator::try_new(&execution_props).context(DatafusionExpr)?;
-        let evaluated_expr = default_value_expr
-            .clone()
-            .rewrite(&mut const_optimizer)
+        let simplifier = ExprSimplifier::new(Info::default());
+        let default_value_expr = simplifier
+            .coerce(
+                default_value_expr.clone(),
+                table_arrow_schema
+                    .clone()
+                    .to_dfschema_ref()
+                    .context(DatafusionSchema)?,
+            )
+            .unwrap();
+        let simplified_expr = simplifier
+            .simplify(default_value_expr)
             .context(DatafusionExpr)?;
-
         // Find input columns
-        let required_column_idxes = find_columns_by_expr(&evaluated_expr)
+        let required_column_idxes = find_columns_by_expr(&simplified_expr)
             .iter()
             .map(|column_name| {
                 table
@@ -238,7 +263,7 @@ fn fill_default_values(
         // Create physical expr
         let execution_props = ExecutionProps::default();
         let physical_expr = create_physical_expr(
-            &evaluated_expr,
+            &simplified_expr,
             &input_df_schema,
             &input_arrow_schema,
             &execution_props,

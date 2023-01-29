@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use datafusion::{
+    config::ConfigOptions,
     physical_optimizer::{optimizer::PhysicalOptimizerRule, repartition::Repartition},
     physical_plan::ExecutionPlan,
-    prelude::SessionConfig,
 };
 use log::debug;
 
@@ -31,7 +31,7 @@ impl PhysicalOptimizerRule for RepartitionAdapter {
     fn optimize(
         &self,
         plan: Arc<dyn ExecutionPlan>,
-        config: &SessionConfig,
+        config: &ConfigOptions,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         // the underlying plan maybe requires the order of the output.
         if plan.output_partitioning().partition_count() == 1 {
@@ -47,5 +47,9 @@ impl PhysicalOptimizerRule for RepartitionAdapter {
 
     fn name(&self) -> &str {
         "custom-repartition"
+    }
+
+    fn schema_check(&self) -> bool {
+        true
     }
 }

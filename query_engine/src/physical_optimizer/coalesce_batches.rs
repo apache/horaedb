@@ -3,10 +3,9 @@
 use std::sync::Arc;
 
 use datafusion::{
-    config::OPT_BATCH_SIZE,
+    config::ConfigOptions,
     physical_optimizer::{coalesce_batches::CoalesceBatches, optimizer::PhysicalOptimizerRule},
     physical_plan::{limit::GlobalLimitExec, ExecutionPlan},
-    prelude::SessionConfig,
 };
 
 use crate::physical_optimizer::{Adapter, OptimizeRuleRef};
@@ -30,7 +29,7 @@ impl CoalesceBatchesAdapter {
     /// `batch_size`).
     fn detect_small_limit_plan(plan: &dyn ExecutionPlan, batch_size: usize) -> bool {
         if let Some(limit_plan) = plan.as_any().downcast_ref::<GlobalLimitExec>() {
-            return limit_plan.skip() + limit_plan.fetch().copied().unwrap_or(0) < batch_size;
+            return limit_plan.skip() + limit_plan.fetch().unwrap_or(0) < batch_size;
         }
 
         for child_plan in plan.children() {
@@ -48,11 +47,11 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
     fn optimize(
         &self,
         plan: Arc<dyn ExecutionPlan>,
-        config: &SessionConfig,
+        config: &ConfigOptions,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         if Self::detect_small_limit_plan(
-            &*plan,
-            config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
+            &*plan, // config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
+            512,
         ) {
             Ok(plan)
         } else {
@@ -62,5 +61,9 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
 
     fn name(&self) -> &str {
         "custom_coalesce_batches"
+    }
+
+    fn schema_check(&self) -> bool {
+        true
     }
 }

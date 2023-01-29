@@ -259,7 +259,7 @@ pub fn make_string_from_decimal<T: DecimalType>(
 ) -> Result<String> {
     let array = column
         .as_any()
-        .downcast_ref::<array::DecimalArray<T>>()
+        .downcast_ref::<array::PrimitiveArray<T>>()
         .unwrap();
 
     let formatted_decimal = array.value_as_string(row);

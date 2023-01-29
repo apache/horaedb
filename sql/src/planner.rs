@@ -25,9 +25,8 @@ use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    sql::planner::SqlToRel,
+    sql::planner::{PlannerContext, SqlToRel},
 };
-use hashbrown::HashMap as NoStdHashMap;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -670,7 +669,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                             // This column in schema is not in insert stmt
                             if let Some(expr) = &column.default_value {
                                 let expr = df_planner
-                                    .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
+                                    .sql_to_expr(
+                                        expr.clone(),
+                                        &df_schema,
+                                        &mut PlannerContext::new(),
+                                    )
                                     .context(DatafusionExpr)?;
 
                                 default_value_map.insert(idx, expr);
@@ -825,10 +828,12 @@ fn build_row_group(
 ) -> Result<RowGroup> {
     // Build row group by schema
     match *source.body {
-        SetExpr::Values(Values(values)) => {
-            let mut row_group_builder =
-                RowGroupBuilder::with_capacity(schema.clone(), values.len());
-            for mut exprs in values {
+        SetExpr::Values(Values {
+            explicit_row: _,
+            rows,
+        }) => {
+            let mut row_group_builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+            for mut exprs in rows {
                 // Try to build row
                 let mut row_builder = row_group_builder.row_builder();
 
@@ -915,19 +920,18 @@ fn parse_options(options: Vec<SqlOption>) -> Result<HashMap<String, String>> {
 pub fn parse_for_option(value: Value) -> Result<Option<String>> {
     let value_opt = match value {
         Value::Number(n, _long) => Some(n),
-        Value::SingleQuotedString(v) | Value::DoubleQuotedString(v) => Some(v),
+        Value::SingleQuotedString(v) | Value::DoubleQuotedString(v) | Value::UnQuotedString(v) => {
+            Some(v)
+        }
         Value::NationalStringLiteral(v) | Value::HexStringLiteral(v) => {
             return UnsupportedOption { value: v }.fail();
         }
         Value::Boolean(v) => Some(v.to_string()),
-        Value::Interval { value, .. } => {
-            return UnsupportedOption {
-                value: value.to_string(),
-            }
-            .fail();
-        }
         // Ignore this option if value is null.
-        Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
+        Value::Null
+        | Value::Placeholder(_)
+        | Value::EscapedStringLiteral(_)
+        | Value::DollarQuotedString(_) => None,
     };
 
     Ok(value_opt)
@@ -996,7 +1000,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     for column_def in columns.iter() {
         if let Some(expr) = &column_def.default_value {
             let df_logical_expr = df_planner
-                .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
+                .sql_to_expr(expr.clone(), &df_schema, &mut PlannerContext::new())
                 .context(DatafusionExpr)?;
 
             // Create physical expr
@@ -1041,7 +1045,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
 #[cfg(test)]
 mod tests {
 
-    use sqlparser::ast::{Ident, Value};
+    use sqlparser::ast::Value;
 
     use super::*;
     use crate::{
@@ -1091,20 +1095,6 @@ mod tests {
             ),
             (Value::HexStringLiteral(test_string.clone()), true, None),
             (Value::Boolean(true), false, Some("true".to_string())),
-            (
-                Value::Interval {
-                    value: Box::new(Expr::Identifier(Ident {
-                        value: test_string,
-                        quote_style: None,
-                    })),
-                    leading_field: None,
-                    leading_precision: None,
-                    last_field: None,
-                    fractional_seconds_precision: None,
-                },
-                true,
-                None,
-            ),
             (Value::Null, false, None),
         ];
 
@@ -1278,12 +1268,16 @@ mod tests {
         assert!(quick_test(sql, "").is_err());
 
         let sql = "select * from test_table;";
-        quick_test(sql, "Query(
+        quick_test(
+            sql,
+            "Query(
     QueryPlan {
-        df_plan: Projection: #test_table.key1, #test_table.key2, #test_table.field1, #test_table.field2
+        df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2
           TableScan: test_table,
     },
-)").unwrap();
+)",
+        )
+        .unwrap();
     }
 
     #[test]
