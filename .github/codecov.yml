@@ -1,0 +1,8 @@
+ignore:
+  - "**/error.rs"
+  - "benchmarks"
+  - "integration_test"
+  - "meta_client"
+  - "remote_engine_client"
+  - "wal/src/message_queue_impl"
+  - "wal/src/table_kv_impl"
