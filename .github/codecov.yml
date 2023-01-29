@@ -1,5 +1,4 @@
 ignore:
-  - "**/error.rs"
   - "benchmarks"
   - "integration_test"
   - "meta_client"
