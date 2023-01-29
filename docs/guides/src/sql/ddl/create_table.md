@@ -5,7 +5,8 @@
 Basic syntax (parts between `[]` are optional):
 ```sql
 CREATE TABLE [IF NOT EXIST] 
-    table_name ( column_definitions ) 
+    table_name ( column_definitions )
+    [partition_options]
     ENGINE = engine_type 
     [WITH ( table_options )];
 ```
@@ -15,7 +16,13 @@ Column definition syntax:
 column_name column_type [[NOT] NULL] {[TAG] | [TIMESTAMP KEY] | [PRIMARY KEY]}
 ```
 
-Table options syntax are key-value pairs. Value should be quote with quotation marks (`'`). E.g.:
+Partition options syntax:
+```sql
+
+PARTITION BY KEY (column_list) [PARTITIONS num]
+```
+
+Table options syntax are key-value pairs. Value should be quoted with quotation marks (`'`). E.g.:
 ```sql
 ... WITH ( enable_ttl='false' )
 ```
@@ -44,3 +51,12 @@ A column can be marked as [special column](../model/special_columns.md) with rel
 ## Engine
 
 Specifies which engine this table belongs to. CeresDB current support [`Analytic`](../../analytic_engine/README.md) engine type. This attribute is immutable.
+
+## Table Partitioning
+
+`partition_options` can be used to control partitioning of the table. This example shows a table partitioned by key, with 8 partitions:
+```sql
+CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))
+    PARTITION BY KEY(name) PARTITIONS 8
+    ENGINE=Analytic with (enable_ttl='false')
+```
