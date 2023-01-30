@@ -47,7 +47,7 @@ pub mod forward;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
-mod storage_service;
+pub(crate) mod storage_service;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

@@ -296,11 +296,16 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let schema_config_provider = self
+            .schema_config_provider
+            .clone()
+            .context(MissingSchemaConfigProvider)?;
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
             .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
+            .schema_config_provider(schema_config_provider)
             .build()
             .context(StartHttpService)?;
 

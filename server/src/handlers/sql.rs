@@ -4,7 +4,6 @@
 
 use std::time::Instant;
 
-use arrow::error::Result as ArrowResult;
 use common_types::{
     bytes::Bytes,
     datum::{Datum, DatumKind},
@@ -25,9 +24,7 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{
-        ArrowToString, CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
-    },
+    error::{CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt},
     prelude::*,
 };
 
@@ -108,10 +105,10 @@ impl From<Bytes> for Request {
 }
 
 pub async fn handle_sql<Q: QueryExecutor + 'static>(
-    ctx: RequestContext,
+    ctx: &RequestContext,
     instance: InstanceRef<Q>,
     request: Request,
-) -> Result<Response> {
+) -> Result<Output> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -139,7 +136,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         .context(ParseSql)?;
 
     if stmts.is_empty() {
-        return Ok(Response::AffectedRows(0));
+        return Ok(Output::AffectedRows(0));
     }
 
     // TODO(yingwen): For simplicity, we only support executing one statement now
@@ -167,7 +164,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and tenant as default catalog and tenant
-        .default_catalog_and_schema(ctx.catalog, ctx.schema)
+        .default_catalog_and_schema(ctx.catalog.to_string(), ctx.schema.to_string())
         .enable_partition_table_access(ctx.enable_partition_table_access)
         .build();
     let interpreter_factory = Factory::new(
@@ -202,10 +199,6 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
             query: &request.query,
         })?
     };
-    // Convert output to json
-    let resp = convert_output(output).context(ArrowToString {
-        query: &request.query,
-    })?;
 
     info!(
         "sql handler finished, request_id:{}, cost:{}ms, request:{:?}",
@@ -214,22 +207,23 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         request
     );
 
-    Ok(resp)
+    Ok(output)
 }
 
-fn convert_output(output: Output) -> ArrowResult<Response> {
+// Convert output to json
+pub fn convert_output(output: Output) -> Response {
     match output {
-        Output::AffectedRows(n) => Ok(Response::AffectedRows(n)),
+        Output::AffectedRows(n) => Response::AffectedRows(n),
         Output::Records(records) => convert_records(records),
     }
 }
 
-fn convert_records(records: RecordBatchVec) -> ArrowResult<Response> {
+fn convert_records(records: RecordBatchVec) -> Response {
     if records.is_empty() {
-        return Ok(Response::Rows(ResponseRows {
+        return Response::Rows(ResponseRows {
             column_names: Vec::new(),
             data: Vec::new(),
-        }));
+        });
     }
 
     let mut column_names = vec![];
@@ -261,8 +255,8 @@ fn convert_records(records: RecordBatchVec) -> ArrowResult<Response> {
         }
     }
 
-    Ok(Response::Rows(ResponseRows {
+    Response::Rows(ResponseRows {
         column_names,
         data: column_data,
-    }))
+    })
 }
