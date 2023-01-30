@@ -88,10 +88,9 @@ jobs:
       - name: Check Lock File
         run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-      - name: Run Sqlness
-        working-directory: integration_tests
+      - name: Run black-box tests
         run: |
-          make run
+          make test-black
         env:
           RUST_BACKTRACE: "1"
       - name: Report Disk Usage
