@@ -17,6 +17,7 @@ use crate::{
 };
 
 const DEFAULT_PARTITION_VERSION: i32 = 0;
+pub const MAX_PARTITION_NUM: u64 = 1024;
 
 pub struct PartitionParser;
 
