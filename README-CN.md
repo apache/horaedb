@@ -142,7 +142,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 [约定式提交](docs/guides/src/dev/conventional_commit.md)
 
 ## 架构及技术文档
-相关技术文档在[docs](docs)目录中，补充完善中~
+相关技术文档请参考[docs](https://docs.ceresdb.io/)目录中，补充完善中~
 
 ## 致谢
 CeresDB 部分设计参考 [influxdb_iox](https://github.com/influxdata/influxdb_iox), 部分代码实现参考 [tikv](https://github.com/tikv/tikv) 以及其他的优秀开源项目，感谢 InfluxDB 团队、TiKV 团队，以及其他优秀的开源项目。
