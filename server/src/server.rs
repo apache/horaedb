@@ -296,10 +296,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
+            .schema_config_provider(provider.clone())
             .build()
             .context(StartHttpService)?;
 
@@ -316,9 +320,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(BuildMysqlService)?;
 
         let router = self.router.context(MissingRouter)?;
-        let provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
             .endpoint(
                 Endpoint::new(self.config.service.bind_addr, self.config.service.grpc_port)

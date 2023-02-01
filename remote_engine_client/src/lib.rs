@@ -32,7 +32,7 @@ use self::client::{Client, ClientReadRecordBatchStream};
 
 pub mod error {
     use common_util::define_result;
-    use snafu::Snafu;
+    use snafu::{Backtrace, Snafu};
     use table_engine::remote::model::TableIdentifier;
 
     #[derive(Debug, Snafu)]
@@ -56,7 +56,17 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to convert request or response, table, msg:{}, version:{}, err:{}",
+            "Invalid record batches number in the response, expect only one, given:{}.\nBacktrace:\n{}",
+            batch_num,
+            backtrace,
+        ))]
+        InvalidRecordBatchNumber {
+            batch_num: usize,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display(
+            "Failed to convert request or response, msg:{}, version:{}, err:{}",
             msg,
             version,
             source

@@ -410,6 +410,11 @@ impl<Q> Builder<Q> {
         self.instance = Some(instance);
         self
     }
+
+    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
+        self.schema_config_provider = Some(provider);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
