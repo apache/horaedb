@@ -55,7 +55,6 @@ mod prom_query;
 mod route;
 mod sql_query;
 pub(crate) mod write;
-mod write;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
@@ -492,10 +491,10 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 }
 
 /// Create CreateTablePlan from a write metric.
-// The caller must ENSURE that the HandlerContext's schema_config is not None.
-pub fn write_table_request_to_create_table_plan<Q: QueryExecutor + 'static>(
+///
+/// The caller must ENSURE that the HandlerContext's schema_config is not None.
+pub fn write_table_request_to_create_table_plan(
     schema_config: Option<&SchemaConfig>,
-    ctx: &HandlerContext<Q>,
     write_table: &WriteTableRequest,
 ) -> Result<CreateTablePlan> {
     let schema_config = schema_config.unwrap();

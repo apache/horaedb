@@ -165,14 +165,23 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(write_request.table_requests.len());
 
-    for write_metric in write_request.metrics {
-        let table_name = &write_metric.metric;
+    for write_table_req in write_request.table_requests {
+        let table_name = &write_table_req.table;
         let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
         if table.is_none() {
             if let Some(config) = schema_config {
                 if config.auto_create_tables {
-                    create_table(ctx, &write_table_req, request_id, deadline).await?;
+                    create_table(
+                        request_id,
+                        catalog,
+                        schema,
+                        instance.clone(),
+                        &write_table_req,
+                        schema_config,
+                        deadline,
+                    )
+                    .await?;
                     // try to get table again
                     table = try_get_table(catalog, schema, instance.clone(), table_name)?;
                 }
@@ -234,29 +243,24 @@ fn try_get_table<Q: QueryExecutor + 'static>(
 }
 
 async fn create_table<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, Q>,
-    write_table_req: &WriteTableRequest,
     request_id: RequestId,
     catalog: &str,
     schema: &str,
     instance: InstanceRef<Q>,
-    write_metric: &WriteMetric,
+    write_table_req: &WriteTableRequest,
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<()> {
-    let create_table_plan = storage_service::write_table_request_to_create_table_plan(
-        schema_config,
-        ctx,
-        write_table_req,
-    )
-    .map_err(|e| Box::new(e) as _)
-    .with_context(|| ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: format!(
-            "Failed to build creating table plan, table:{}",
-            write_metric.table
-        ),
-    })?;
+    let create_table_plan =
+        storage_service::write_table_request_to_create_table_plan(schema_config, write_table_req)
+            .map_err(|e| Box::new(e) as _)
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!(
+                    "Failed to build creating table plan, table:{}",
+                    write_table_req.table
+                ),
+            })?;
 
     debug!(
         "Grpc handle create table begin, table:{}, schema:{:?}",
