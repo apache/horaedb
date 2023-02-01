@@ -11,6 +11,7 @@ use datafusion::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
         filter_push_down::FilterPushDown, limit_push_down::LimitPushDown, optimizer::OptimizerRule,
         projection_push_down::ProjectionPushDown, simplify_expressions::SimplifyExpressions,
+        single_distinct_to_groupby::SingleDistinctToGroupBy,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
@@ -86,8 +87,7 @@ impl Context {
             Arc::new(ProjectionPushDown::new()),
             Arc::new(FilterPushDown::new()),
             Arc::new(LimitPushDown::new()),
-            // TODO: Re-enable this. Issue: https://github.com/CeresDB/ceresdb/issues/59
-            // Arc::new(SingleDistinctToGroupBy::new()),
+            Arc::new(SingleDistinctToGroupBy::new()),
         ];
 
         // FIXME(xikai): use config to control the optimize rule.

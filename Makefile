@@ -26,6 +26,9 @@ build-arm64:
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
+test-black:
+	cd $(DIR)/integration_tests; make run
+
 # grcov needs build first, then run test
 build-ut:
 	echo $(CARGO_INCREMENTAL)
@@ -38,14 +41,14 @@ test-ut:
 	echo $(RUSTFLAGS)
 	echo $(RUSTDOCFLAGS)
 	#cd $(DIR); cargo test --workspace -- -Z unstable-options --format json | tee results.json; \
- 	#cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
+	#cat results.json | cargo2junit > ${WORKSPACE}/testresult/TEST-all.xml
 	cargo test --workspace
 
 fmt:
 	cd $(DIR); cargo fmt -- --check
 
 check-cargo-toml:
-	cd $(DIR); cargo sort --workspace --check 
+	cd $(DIR); cargo sort --workspace --check
 
 check-license:
 	cd $(DIR); sh scripts/check-license.sh
@@ -69,7 +72,7 @@ mem-test:
 	export RUSTFLAGS=-Zsanitizer=memory RUSTDOCFLAGS=-Zsanitizer=memory
 	cd $(DIR); cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --workspace
 
-# test with miri. 
+# test with miri.
 # only list packages will be tested.
 miri:
 	cd $(DIR); cargo miri test --package arena
