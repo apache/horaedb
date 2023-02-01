@@ -5359,7 +5359,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "warp",
- "zstd 0.12.1+zstd.1.5.2",
 ]
 
 [[package]]
