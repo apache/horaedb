@@ -27,9 +27,6 @@ pub enum Error {
 
     #[snafu(display("Try to encode without record batches.\nBacktrace:\n{}", backtrace))]
     EncodeWithoutRecordBatch { backtrace: Backtrace },
-
-    #[snafu(display("Failed to decode record batch.\nBacktrace:\n{}", backtrace))]
-    Decode { backtrace: Backtrace },
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -103,20 +100,24 @@ impl RecordBatchesEncoder {
     }
 }
 
+/// Encode one record batch with given compression.
 pub fn encode_record_batch(batch: &RecordBatch, compression: Compression) -> Result<Vec<u8>> {
     let mut encoder = RecordBatchesEncoder::new(compression);
     encoder.write(batch)?;
     encoder.finish()
 }
 
-pub fn decode_record_batch(bytes: Vec<u8>, compression: Compression) -> Result<RecordBatch> {
+/// Decode multiple record batches from the encoded bytes.
+pub fn decode_record_batches(bytes: Vec<u8>, compression: Compression) -> Result<Vec<RecordBatch>> {
     let bytes = match compression {
         Compression::None => bytes,
         Compression::Zstd => zstd::stream::decode_all(Cursor::new(bytes)).context(ZstdError)?,
     };
 
-    let mut stream_reader = StreamReader::try_new(Cursor::new(bytes), None).context(ArrowError)?;
-    stream_reader.next().context(Decode)?.context(ArrowError)
+    let stream_reader = StreamReader::try_new(Cursor::new(bytes), None).context(ArrowError)?;
+    stream_reader
+        .collect::<std::result::Result<Vec<RecordBatch>, _>>()
+        .context(ArrowError)
 }
 
 #[cfg(test)]
@@ -145,9 +146,28 @@ mod tests {
     #[test]
     fn test_ipc_encode_decode() {
         let batch = create_batch(1024);
-        for compression in &[Compression::None, Compression::Zstd] {
-            let bytes = encode_record_batch(&batch, *compression).unwrap();
-            assert_eq!(batch, decode_record_batch(bytes, *compression).unwrap());
+        for compression in [Compression::None, Compression::Zstd] {
+            let bytes = encode_record_batch(&batch, compression).unwrap();
+            let decoded_batches = decode_record_batches(bytes, compression).unwrap();
+            assert_eq!(decoded_batches.len(), 1);
+            assert_eq!(batch, decoded_batches[0]);
         }
+    }
+
+    #[test]
+    fn test_encode_multiple_record_batches() {
+        let num_batches = 1000;
+        let mut batches = Vec::with_capacity(num_batches);
+        for _ in 0..num_batches {
+            batches.push(create_batch(1024));
+        }
+
+        let mut encoder = RecordBatchesEncoder::new(Compression::Zstd);
+        for batch in &batches {
+            encoder.write(&batch).unwrap();
+        }
+        let encoded_bytes = encoder.finish().unwrap();
+        let decoded_batches = decode_record_batches(encoded_bytes, Compression::Zstd).unwrap();
+        assert_eq!(decoded_batches, batches);
     }
 }
