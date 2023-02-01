@@ -125,20 +125,23 @@ message MetaUpdate {
   }
 }
 
-message SnapshotFlagLogEntry {
-  uint64 sequence = 1;
-}
-
 message SnapshotLogEntry {
-  uint64 sequence = 1;
-  MetaUpdate meta_update = 2;
+  uint64 end_seq = 1;
+  string snapshot_file_path = 2;
 }
 
 message MetaUpdateLogEntry {
   oneof entry {
     MetaUpdate normal = 1;
     SnapshotLogEntry snapshot = 2;
-    SnapshotFlagLogEntry snapshot_start = 3;
-    SnapshotFlagLogEntry snapshot_end = 4;
   }
+}
+
+message Snapshot {
+  uint64 end_seq = 1;
+  message Content {
+    AddTableMeta meta = 1;
+    VersionEditMeta version_edit = 2;
+  }
+  Content content = 2;
 }

@@ -15,7 +15,7 @@ use crate::{
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,

@@ -7,7 +7,7 @@ use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    meta::meta_update::{AddTableMeta, MetaUpdate},
+    manifest::meta_update::{AddTableMeta, MetaUpdate},
     table::version::TableVersionMeta,
 };
 

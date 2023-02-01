@@ -32,7 +32,7 @@ use crate::{
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
         Instance, SpaceStore, Spaces,
     },
-    meta::{meta_data::TableManifestData, ManifestRef},
+    manifest::{meta_data::TableManifestData, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},

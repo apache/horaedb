@@ -33,8 +33,8 @@ use crate::{
         write_worker::{self, CompactTableCommand, FlushTableCommand, WorkerLocal},
         Instance, SpaceStore,
     },
+    manifest::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
-    meta::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
     row_iter::{
         self,
         dedup::DedupIterator,

@@ -23,7 +23,7 @@ use crate::{
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
     payload::WritePayload,
     space::SpaceAndTable,
     table::data::TableDataRef,

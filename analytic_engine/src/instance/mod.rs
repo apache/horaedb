@@ -32,7 +32,7 @@ use wal::manager::{WalLocation, WalManagerRef};
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
-    meta::ManifestRef,
+    manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
     sst::{

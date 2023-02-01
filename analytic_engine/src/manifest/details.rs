@@ -26,7 +26,7 @@ use wal::{
     },
 };
 
-use crate::meta::{
+use crate::manifest::{
     meta_data::{TableManifestData, TableManifestDataBuilder},
     meta_update::{
         MetaUpdate, MetaUpdateDecoder, MetaUpdateLogEntry, MetaUpdatePayload, MetaUpdateRequest,
@@ -67,7 +67,7 @@ pub enum Error {
 
     #[snafu(display("Failed to apply table meta update, err:{}", source))]
     ApplyUpdate {
-        source: Box<crate::meta::meta_data::Error>,
+        source: Box<crate::manifest::meta_data::Error>,
     },
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
@@ -200,7 +200,6 @@ struct StoreContext {
 ///  - The manifest of table is separate from each other.
 ///  - The snapshot mechanism is based on logs(check the details on comments on
 ///    [`Snapshotter`]).
-/// TODO(xikai): it may be better to store the snapshot on object store.
 #[derive(Debug)]
 pub struct ManifestImpl {
     opts: Options,
@@ -422,57 +421,6 @@ impl MetaUpdateLogStore for RegionWal {
     }
 }
 
-/// Snapshotter for the specific region(table).
-///
-/// The relationship between table and region is one-to-one. The Snapshotter can
-/// read the latest snapshot or create a new snapshot for a specific table.
-///
-/// The snapshot mechanism is based on log:
-/// - Every log in `log_store` is [`MetaUpdateLogEntry`], which has four types:
-///   - SnapshotStart(seq): denotes the start of `Snapshot` marked as SS(seq);
-///   - SnapshotEnd(seq): denotes the end of `Snapshot` marked as SE(seq);
-///   - Snapshot(seq+MetaUpdate): denotes the contents of the `Snapshot` marked
-///     as S0(seq) or S1(seq) or ...;
-///   - Normal(MetaUpdate): denotes the normal update logs marked N0 or N1 or
-///     ...;
-/// - Every `Snapshot` has a sequence number which means the max log sequence
-///   during this `Snapshot`.
-/// - An example of the real logs may be in this form:
-/// ```text
-/// seq - log
-/// 0   - N0
-/// 1   - N1
-/// 2   - SS(0)
-/// 3   - N2
-/// 4   - S0(0)
-/// 5   - SE(0)
-/// 6   - N3
-/// ```
-///
-/// Reading the table's latest manifest data follows the rules:
-///   - Find the **latest** **integrate** snapshot denoted by sequence marked as
-///     `curr_snapshot_end_seq`:
-///     - The **integrate** means the snapshot contains both SS and SE logs.
-///     - the **latest** means the sequence of the snapshot is biggest.
-///   - Then scan the logs:
-///     - save the snapshot logs whose sequence is equal to
-///       `curr_snapshot_end_seq` into a vector called `updates_in_snapshot`;
-///     - save the normal logs whose sequence is greater than
-///       `current_snapshot_end_seq` into a vector called
-///       `updates_after_snapshot`;
-///     - The manifest data can be acquired by applying the logs in the order:
-///       `updates_in_snapshot` + `updates_after_snapshot`.
-///   - The latest manifest data of the example above actually consists these
-///    logs: S0(0), N1, N2, N3.
-///
-/// Creating a new snapshot follows the rules:
-///   - Create a new snapshot of the logs with snapshots:
-///     - Read the latest manifest data(this procedure has been described
-///       above);
-///     - Convert it into meta logs: SS, S0, S1, SE;
-///     - Save the logs into the `log_store`.
-///   - Create a new snapshot of the logs without a snapshot is trivial, and
-///     just read all logs and convert them into snapshot.
 #[derive(Debug, Clone)]
 struct Snapshotter<S> {
     location: WalLocation,
@@ -785,7 +733,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        meta::{
+        manifest::{
             details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
             meta_update::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,

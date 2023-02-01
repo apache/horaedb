@@ -78,11 +78,9 @@ define_result!(Error);
 pub enum MetaUpdateLogEntry {
     Normal(MetaUpdate),
     Snapshot {
-        sequence: SequenceNumber,
-        meta_update: MetaUpdate,
+        end_seq: SequenceNumber,
+        file_path: String,
     },
-    SnapshotStart(SequenceNumber),
-    SnapshotEnd(SequenceNumber),
 }
 
 impl From<MetaUpdateLogEntry> for meta_pb::MetaUpdateLogEntry {
@@ -91,25 +89,12 @@ impl From<MetaUpdateLogEntry> for meta_pb::MetaUpdateLogEntry {
             MetaUpdateLogEntry::Normal(v) => {
                 meta_pb::meta_update_log_entry::Entry::Normal(v.into())
             }
-            MetaUpdateLogEntry::Snapshot {
-                sequence,
-                meta_update,
-            } => {
+            MetaUpdateLogEntry::Snapshot { end_seq, file_path } => {
                 let snapshot_log_entry = meta_pb::SnapshotLogEntry {
-                    sequence,
-                    meta_update: Some(meta_update.into()),
+                    end_seq,
+                    snapshot_file_path: file_path,
                 };
                 meta_pb::meta_update_log_entry::Entry::Snapshot(snapshot_log_entry)
-            }
-            MetaUpdateLogEntry::SnapshotStart(sequence) => {
-                meta_pb::meta_update_log_entry::Entry::SnapshotStart(
-                    meta_pb::SnapshotFlagLogEntry { sequence },
-                )
-            }
-            MetaUpdateLogEntry::SnapshotEnd(sequence) => {
-                meta_pb::meta_update_log_entry::Entry::SnapshotEnd(meta_pb::SnapshotFlagLogEntry {
-                    sequence,
-                })
             }
         };
 
@@ -126,15 +111,9 @@ impl TryFrom<meta_pb::MetaUpdateLogEntry> for MetaUpdateLogEntry {
                 MetaUpdateLogEntry::Normal(MetaUpdate::try_from(v)?)
             }
             meta_pb::meta_update_log_entry::Entry::Snapshot(v) => MetaUpdateLogEntry::Snapshot {
-                sequence: v.sequence,
-                meta_update: MetaUpdate::try_from(v.meta_update.context(EmptyMetaUpdate)?)?,
+                end_seq: v.end_seq,
+                file_path: v.snapshot_file_path,
             },
-            meta_pb::meta_update_log_entry::Entry::SnapshotStart(v) => {
-                MetaUpdateLogEntry::SnapshotStart(v.sequence)
-            }
-            meta_pb::meta_update_log_entry::Entry::SnapshotEnd(v) => {
-                MetaUpdateLogEntry::SnapshotEnd(v.sequence)
-            }
         };
 
         Ok(entry)

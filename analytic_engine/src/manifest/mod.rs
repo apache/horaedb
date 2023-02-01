@@ -11,7 +11,7 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use wal::manager::WalLocation;
 
-use crate::meta::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
+use crate::manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
