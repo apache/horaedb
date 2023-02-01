@@ -31,7 +31,6 @@ jobs:
           restore-keys: |
             release-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             release-${{ runner.os }}-
-            release-${{ runner.os }}
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
@@ -41,7 +40,7 @@ jobs:
           sudo apt install --yes protobuf-compiler
       - name: Build server
         run: |
-          make build
+          make build-slim
       - name: Run TSBS
         run: |
           ./scripts/run-tsbs.sh

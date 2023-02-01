@@ -3,7 +3,7 @@ name: Publish Nightly Docker image
 on:
   workflow_dispatch:
   schedule:
-    - cron: '10 0 * * *'
+    - cron: '10 20 * * *'
 
 jobs:
   docker:

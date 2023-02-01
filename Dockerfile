@@ -23,7 +23,7 @@ RUN apt update && \
 
 ENV RUST_BACKTRACE 1
 
-COPY --from=build /ceresdb/target/release/ceresdb-server /usr/bin/ceresdb-server
+COPY --from=build /ceresdb/target/release-slim/ceresdb-server /usr/bin/ceresdb-server
 RUN chmod +x /usr/bin/ceresdb-server
 
 COPY ./docker/entrypoint.sh /entrypoint.sh
