@@ -5,12 +5,12 @@ FROM rust:${RUST_VERSION}-slim-bullseye as build
 # cache mounts below may already exist and owned by root
 USER root
 
-RUN apt update && apt install --yes gcc g++ libssl-dev pkg-config cmake && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install --yes gcc g++ libssl-dev pkg-config cmake protobuf-compiler && rm -rf /var/lib/apt/lists/*
 
 COPY . /ceresdb
 WORKDIR /ceresdb
 
-RUN make build
+RUN make build-slim
 
 ## CeresDB
 FROM ubuntu:20.04

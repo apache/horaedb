@@ -29,10 +29,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
       - name: Build Docker image
         run: docker build -t ${IMAGE_NAME} .
       - name: Test the Built Image
