@@ -19,12 +19,14 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Set datetime
+      - name: Set Environment Variables
         run: |
-            echo "BUILD_DATE=$(TZ=':Asia/Shanghai' date '+%Y%m%d%H%M%S')" >> $GITHUB_ENV
+            echo "BUILD_DATE=$(TZ=':Asia/Shanghai' date '+%Y%m%d')" >> $GITHUB_ENV
+            # only first 7 chars of commit id
+            echo "COMMIT_ID=${GITHUB_SHA::7}" >> $GITHUB_ENV
       - name: Build and Push CeresDB Server Docker Image
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
-          tags: ceresdb/ceresdb-server:nightly-${{ env.BUILD_DATE }}-${{ github.sha }}
+          tags: ceresdb/ceresdb-server:nightly-${{ env.BUILD_DATE }}-${{ env.COMMIT_ID }}
