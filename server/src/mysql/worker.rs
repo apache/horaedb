@@ -11,10 +11,7 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
-    handlers::{
-        self,
-        sql::{Request},
-    },
+    handlers::{self, sql::Request},
     instance::Instance,
     mysql::{
         error::{CreateContext, HandleSql, Result},

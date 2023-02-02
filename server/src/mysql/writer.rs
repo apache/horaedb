@@ -5,10 +5,7 @@ use interpreters::interpreter::Output;
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 use query_engine::executor::RecordBatchVec;
 
-use crate::{
-    handlers::sql::{ResponseColumn},
-    mysql::error::Result,
-};
+use crate::{handlers::sql::ResponseColumn, mysql::error::Result};
 
 pub struct MysqlQueryResultWriter<'a, W: std::io::Write> {
     inner: Option<QueryResultWriter<'a, W>>,
