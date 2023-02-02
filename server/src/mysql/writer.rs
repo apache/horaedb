@@ -1,11 +1,14 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use common_types::datum::{Datum, DatumKind};
+use common_types::{
+    column_schema::ColumnSchema,
+    datum::{Datum, DatumKind},
+};
 use interpreters::interpreter::Output;
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 use query_engine::executor::RecordBatchVec;
 
-use crate::{handlers::sql::ResponseColumn, mysql::error::Result};
+use crate::mysql::error::Result;
 
 pub struct MysqlQueryResultWriter<'a, W: std::io::Write> {
     inner: Option<QueryResultWriter<'a, W>>,
@@ -42,7 +45,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
             return Ok(());
         }
 
-        let mut column_names = vec![];
+        let mut column_schemas = vec![];
         let mut column_data = vec![];
 
         for record_batch in records {
@@ -52,10 +55,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
 
             for col_idx in 0..num_cols {
                 let column_schema = schema.column(col_idx).clone();
-                column_names.push(ResponseColumn {
-                    name: column_schema.name,
-                    data_type: column_schema.data_type,
-                });
+                column_schemas.push(column_schema);
             }
 
             for row_idx in 0..num_rows {
@@ -71,7 +71,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
             }
         }
 
-        let columns = &column_names
+        let columns = &column_schemas
             .iter()
             .map(make_column_by_field)
             .collect::<Vec<_>>();
@@ -115,11 +115,11 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
     }
 }
 
-fn make_column_by_field(column: &ResponseColumn) -> Column {
-    let column_type = convert_datum_kind_type(&column.data_type);
+fn make_column_by_field(column_schema: &ColumnSchema) -> Column {
+    let column_type = convert_datum_kind_type(&column_schema.data_type);
     Column {
         table: "".to_string(),
-        column: column.name.clone(),
+        column: column_schema.name.clone(),
         coltype: column_type,
         colflags: ColumnFlags::empty(),
     }
@@ -167,13 +167,13 @@ fn convert_field_type(field: &Datum) -> ColumnType {
 
 #[cfg(test)]
 mod tests {
-    use common_types::datum::DatumKind;
+    use common_types::{column_schema::ColumnSchema, datum::DatumKind};
     use opensrv_mysql::{Column, ColumnFlags, ColumnType};
 
-    use crate::{handlers::sql::ResponseColumn, mysql::writer::make_column_by_field};
+    use crate::mysql::writer::make_column_by_field;
 
     struct MakeColumnTest {
-        column: ResponseColumn,
+        column: ColumnSchema,
         target_type: ColumnType,
     }
 
@@ -181,37 +181,67 @@ mod tests {
     fn test_make_column_by_field() {
         let tests = [
             MakeColumnTest {
-                column: ResponseColumn {
+                column: ColumnSchema {
+                    id: 1,
                     name: "id".to_string(),
                     data_type: DatumKind::Int32,
+                    is_nullable: false,
+                    is_tag: false,
+                    comment: "".to_string(),
+                    escaped_name: "id".to_string(),
+                    default_value: None,
                 },
                 target_type: ColumnType::MYSQL_TYPE_LONG,
             },
             MakeColumnTest {
-                column: ResponseColumn {
+                column: ColumnSchema {
+                    id: 2,
                     name: "name".to_string(),
                     data_type: DatumKind::String,
+                    is_nullable: true,
+                    is_tag: true,
+                    comment: "".to_string(),
+                    escaped_name: "name".to_string(),
+                    default_value: None,
                 },
                 target_type: ColumnType::MYSQL_TYPE_VARCHAR,
             },
             MakeColumnTest {
-                column: ResponseColumn {
+                column: ColumnSchema {
+                    id: 3,
                     name: "birthday".to_string(),
                     data_type: DatumKind::Timestamp,
+                    is_nullable: true,
+                    is_tag: true,
+                    comment: "".to_string(),
+                    escaped_name: "birthday".to_string(),
+                    default_value: None,
                 },
                 target_type: ColumnType::MYSQL_TYPE_LONG,
             },
             MakeColumnTest {
-                column: ResponseColumn {
+                column: ColumnSchema {
+                    id: 4,
                     name: "is_show".to_string(),
                     data_type: DatumKind::Boolean,
+                    is_nullable: true,
+                    is_tag: true,
+                    comment: "".to_string(),
+                    escaped_name: "is_show".to_string(),
+                    default_value: None,
                 },
                 target_type: ColumnType::MYSQL_TYPE_SHORT,
             },
             MakeColumnTest {
-                column: ResponseColumn {
+                column: ColumnSchema {
+                    id: 5,
                     name: "money".to_string(),
                     data_type: DatumKind::Double,
+                    is_nullable: true,
+                    is_tag: true,
+                    comment: "".to_string(),
+                    escaped_name: "money".to_string(),
+                    default_value: None,
                 },
                 target_type: ColumnType::MYSQL_TYPE_DOUBLE,
             },
