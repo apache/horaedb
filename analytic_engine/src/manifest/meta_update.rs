@@ -73,14 +73,16 @@ pub enum Error {
 
 define_result!(Error);
 
+pub struct SnapshotLogEntry {
+    pub end_seq: SequenceNumber,
+    pub file_path: String,
+}
+
 /// Wrapper for the meta update written into the Wal.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetaUpdateLogEntry {
     Normal(MetaUpdate),
-    Snapshot {
-        end_seq: SequenceNumber,
-        file_path: String,
-    },
+    Snapshot(SnapshotLogEntry),
 }
 
 impl From<MetaUpdateLogEntry> for meta_pb::MetaUpdateLogEntry {
@@ -89,10 +91,10 @@ impl From<MetaUpdateLogEntry> for meta_pb::MetaUpdateLogEntry {
             MetaUpdateLogEntry::Normal(v) => {
                 meta_pb::meta_update_log_entry::Entry::Normal(v.into())
             }
-            MetaUpdateLogEntry::Snapshot { end_seq, file_path } => {
+            MetaUpdateLogEntry::Snapshot(v) => {
                 let snapshot_log_entry = meta_pb::SnapshotLogEntry {
-                    end_seq,
-                    snapshot_file_path: file_path,
+                    end_seq: v.end_seq,
+                    snapshot_file_path: v.file_path,
                 };
                 meta_pb::meta_update_log_entry::Entry::Snapshot(snapshot_log_entry)
             }
@@ -110,10 +112,12 @@ impl TryFrom<meta_pb::MetaUpdateLogEntry> for MetaUpdateLogEntry {
             meta_pb::meta_update_log_entry::Entry::Normal(v) => {
                 MetaUpdateLogEntry::Normal(MetaUpdate::try_from(v)?)
             }
-            meta_pb::meta_update_log_entry::Entry::Snapshot(v) => MetaUpdateLogEntry::Snapshot {
-                end_seq: v.end_seq,
-                file_path: v.snapshot_file_path,
-            },
+            meta_pb::meta_update_log_entry::Entry::Snapshot(v) => {
+                MetaUpdateLogEntry::Snapshot(SnapshotLogEntry {
+                    end_seq: v.end_seq,
+                    file_path: v.snapshot_file_path,
+                })
+            }
         };
 
         Ok(entry)
