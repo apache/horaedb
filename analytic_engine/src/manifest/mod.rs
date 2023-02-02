@@ -11,7 +11,10 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use wal::manager::WalLocation;
 
-use crate::manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
+use crate::{
+    manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
+    space::SpaceId,
+};
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
@@ -28,6 +31,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// the manifest data.
     async fn load_data(
         &self,
+        space_id: SpaceId,
         location: WalLocation,
         do_snapshot: bool,
     ) -> Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>;

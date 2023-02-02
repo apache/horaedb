@@ -3,7 +3,7 @@
 //! Implementation of Manifest
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     mem,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -13,11 +13,12 @@ use std::{
 };
 
 use async_trait::async_trait;
+use common_types::table::TableId;
 use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info};
 use object_store::ObjectStoreRef;
 use serde_derive::Deserialize;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::Mutex;
 use wal::{
     log_batch::LogEntry,
@@ -27,13 +28,13 @@ use wal::{
     },
 };
 
-use crate::manifest::{
-    meta_data::{TableManifestData, TableManifestDataBuilder},
-    meta_update::{
-        MetaUpdate, MetaUpdateDecoder, MetaUpdateLogEntry, MetaUpdatePayload, MetaUpdateRequest,
-        SnapshotLogEntry, VersionEditMeta,
+use crate::{
+    manifest::{
+        meta_data::{TableManifestData, TableManifestDataBuilder},
+        meta_update::{MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest},
+        Manifest,
     },
-    Manifest,
+    space::SpaceId,
 };
 
 #[derive(Debug, Snafu)]
@@ -68,7 +69,7 @@ pub enum Error {
 
     #[snafu(display("Failed to apply table meta update, err:{}", source))]
     ApplyUpdate {
-        source: Box<crate::manifest::meta_data::Error>,
+        source: crate::manifest::meta_data::Error,
     },
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
@@ -108,7 +109,7 @@ define_result!(Error);
 
 #[async_trait]
 trait MetaUpdateLogEntryIterator {
-    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>>;
+    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>>;
 }
 
 /// Implementation of [MetaUpdateReader]
@@ -116,12 +117,12 @@ trait MetaUpdateLogEntryIterator {
 pub struct MetaUpdateReaderImpl {
     iter: BatchLogIteratorAdapter,
     has_next: bool,
-    buffer: VecDeque<LogEntry<MetaUpdateLogEntry>>,
+    buffer: VecDeque<LogEntry<MetaUpdate>>,
 }
 
 #[async_trait]
 impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
-    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
+    async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>> {
         if !self.has_next {
             return Ok(None);
         }
@@ -173,28 +174,10 @@ impl Default for Options {
     }
 }
 
-impl Options {
-    fn scan_context(&self) -> ScanContext {
-        ScanContext {
-            timeout: self.scan_timeout.0,
-            batch_size: self.scan_batch_size,
-        }
-    }
-
-    fn store_context(&self) -> StoreContext {
-        StoreContext {
-            timeout: self.store_timeout.0,
-        }
-    }
-}
-
-struct ScanContext {
-    timeout: Duration,
-    batch_size: usize,
-}
-
-struct StoreContext {
-    timeout: Duration,
+#[derive(Debug, Clone)]
+struct SnapshotContext {
+    space_id: SpaceId,
+    table_id: TableId,
 }
 
 /// The implementation based on wal of Manifest which features:
@@ -236,48 +219,57 @@ impl ManifestImpl {
 
     async fn store_update_to_wal(&self, request: MetaUpdateRequest) -> Result<SequenceNumber> {
         info!("Manifest store update, request:{:?}", request);
-
-        let payload: MetaUpdatePayload = MetaUpdateLogEntry::Normal(request.meta_update).into();
-        let log_batch_encoder =
-            self.wal_manager
-                .encoder(request.location)
-                .context(GetLogBatchEncoder {
-                    wal_location: request.location,
-                })?;
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            wal_location: request.location,
-        })?;
-
-        let store_ctx = self.opts.store_context();
-        let write_ctx = WriteContext {
-            timeout: store_ctx.timeout,
+        let log_store = RegionWal {
+            opts: self.opts.clone(),
+            location: request.location,
+            wal_manager: self.wal_manager.clone(),
         };
-
-        self.wal_manager
-            .write(&write_ctx, &log_batch)
-            .await
-            .context(WriteWal)
+        log_store.append(request.meta_update).await
     }
 
     /// Do snapshot if no other snapshot is triggered.
     ///
     /// Returns the latest snapshot if snapshot is done.
-    async fn maybe_do_snapshot(&self, location: WalLocation) -> Result<Option<Snapshot>> {
-        if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
-            let snapshotter = Snapshotter {
-                location,
-                log_store: RegionWal::new(location, self.wal_manager.clone()),
-                options: self.opts.clone(),
-            };
-            let snapshot = snapshotter.snapshot().await?;
-
-            self.decrease_num_updates(snapshot.original_logs_num);
-
-            return Ok(Some(snapshot));
+    async fn maybe_do_snapshot(
+        &self,
+        space_id: SpaceId,
+        location: WalLocation,
+        force: bool,
+    ) -> Result<Option<Snapshot>> {
+        if !force {
+            let num_updates = self
+                .num_updates_since_snapshot
+                .fetch_add(1, Ordering::Relaxed);
+            if num_updates < self.opts.snapshot_every_n_updates {
+                return Ok(None);
+            }
         }
 
-        debug!("Avoid concurrent snapshot");
-        Ok(None)
+        if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
+            let snapshot_ctx = SnapshotContext {
+                space_id,
+                table_id: location.table_id,
+            };
+            let log_store = RegionWal {
+                opts: self.opts.clone(),
+                location,
+                wal_manager: self.wal_manager.clone(),
+            };
+            let snapshotter = Snapshotter {
+                snapshot_ctx,
+                location,
+                log_store,
+                snapshot_store: ObjectStoreBasedSnapshotStore {},
+            };
+            let snapshot = snapshotter.snapshot().await?.map(|v| {
+                self.decrease_num_updates(v.original_logs_num);
+                v
+            });
+            Ok(snapshot)
+        } else {
+            debug!("Avoid concurrent snapshot");
+            Ok(None)
+        }
     }
 
     // with snapshot guard held
@@ -298,97 +290,93 @@ impl Manifest for ManifestImpl {
         request: MetaUpdateRequest,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let location = request.location;
+        let space_id = request.meta_update.space_id();
         self.store_update_to_wal(request).await?;
 
-        let num_updates = self
-            .num_updates_since_snapshot
-            .fetch_add(1, Ordering::Relaxed);
-        if num_updates < self.opts.snapshot_every_n_updates {
-            return Ok(());
-        }
-
-        self.maybe_do_snapshot(location).await?;
+        self.maybe_do_snapshot(space_id, location, false).await?;
 
         Ok(())
     }
 
     async fn load_data(
         &self,
+        space_id: SpaceId,
         location: WalLocation,
         do_snapshot: bool,
     ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
     {
         if do_snapshot {
-            if let Some(snapshot) = self.maybe_do_snapshot(location).await? {
+            if let Some(snapshot) = self.maybe_do_snapshot(space_id, location, true).await? {
                 return Ok(snapshot.data);
             }
         }
 
-        let snapshotter = Snapshotter {
+        let snapshot_ctx = SnapshotContext {
+            space_id: space_id,
+            table_id: location.table_id,
+        };
+        let log_store = RegionWal {
+            opts: self.opts.clone(),
             location,
-            log_store: RegionWal::new(location, self.wal_manager.clone()),
-            options: self.opts.clone(),
+            wal_manager: self.wal_manager.clone(),
+        };
+        let snapshotter = Snapshotter {
+            snapshot_ctx,
+            location,
+            log_store,
+            snapshot_store: ObjectStoreBasedSnapshotStore {},
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
-        Ok(snapshot.data)
+        Ok(snapshot.and_then(|v| v.data))
     }
 }
 
 #[async_trait]
 trait MetaUpdateLogStore: std::fmt::Debug {
     type Iter: MetaUpdateLogEntryIterator;
-    async fn scan(
-        &self,
-        ctx: &ScanContext,
-        start: ReadBoundary,
-        end: ReadBoundary,
-    ) -> Result<Self::Iter>;
+    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter>;
 
-    async fn store_snapshot(
-        &self,
-        ctx: &StoreContext,
-        path: &str,
-        snapshot: Snapshot,
-    ) -> Result<()>;
-    async fn load_snapshot(&self, ctx: &StoreContext, path: &str) -> Result<Snapshot>;
+    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
 }
 
-#[derive(Debug, Clone)]
-struct RegionWal {
-    location: WalLocation,
-    wal_manager: WalManagerRef,
-    object_store: ObjectStoreRef,
+#[async_trait]
+trait MetaUpdateSnapshotStore: std::fmt::Debug {
+    async fn store(&self, ctx: &SnapshotContext, snapshot: &Snapshot) -> Result<()>;
+
+    async fn load(&self, ctx: &SnapshotContext) -> Result<Option<Snapshot>>;
 }
 
-impl RegionWal {
-    fn new(
-        location: WalLocation,
-        wal_manager: WalManagerRef,
-        object_store: ObjectStoreRef,
-    ) -> Self {
-        Self {
-            location,
-            wal_manager,
-            object_store,
-        }
+#[derive(Debug)]
+struct ObjectStoreBasedSnapshotStore {}
+
+#[async_trait]
+impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
+    async fn store(&self, ctx: &SnapshotContext, snapshot: &Snapshot) -> Result<()> {
+        todo!()
     }
+
+    async fn load(&self, ctx: &SnapshotContext) -> Result<Option<Snapshot>> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RegionWal {
+    opts: Options,
+    location: WalLocation,
+    wal_manager: WalManagerRef,
 }
 
 #[async_trait]
 impl MetaUpdateLogStore for RegionWal {
     type Iter = MetaUpdateReaderImpl;
 
-    async fn scan(
-        &self,
-        ctx: &ScanContext,
-        start: ReadBoundary,
-        end: ReadBoundary,
-    ) -> Result<Self::Iter> {
+    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
         let ctx = ReadContext {
-            timeout: ctx.timeout,
-            batch_size: ctx.batch_size,
+            timeout: self.opts.scan_timeout.0,
+            batch_size: self.opts.scan_batch_size,
         };
 
         let read_req = ReadRequest {
@@ -410,17 +398,26 @@ impl MetaUpdateLogStore for RegionWal {
         })
     }
 
-    async fn store_snapshot(
-        &self,
-        ctx: &StoreContext,
-        path: &str,
-        snapshot: Snapshot,
-    ) -> Result<()> {
-        todo!()
-    }
+    async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
+        let payload = MetaUpdatePayload::from(meta_update);
+        let log_batch_encoder =
+            self.wal_manager
+                .encoder(self.location)
+                .context(GetLogBatchEncoder {
+                    wal_location: self.location,
+                })?;
+        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+            wal_location: self.location,
+        })?;
 
-    async fn load_snapshot(&self, ctx: &StoreContext, path: &str) -> Result<Snapshot> {
-        todo!()
+        let write_ctx = WriteContext {
+            timeout: self.opts.store_timeout.0,
+        };
+
+        self.wal_manager
+            .write(&write_ctx, &log_batch)
+            .await
+            .context(WriteWal)
     }
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
@@ -432,20 +429,16 @@ impl MetaUpdateLogStore for RegionWal {
 }
 
 #[derive(Debug, Clone)]
-struct Snapshotter<S> {
+struct Snapshotter<LogStore, SnapshotStore> {
+    snapshot_ctx: SnapshotContext,
     location: WalLocation,
-    log_store: S,
-    options: Options,
+    log_store: LogStore,
+    snapshot_store: SnapshotStore,
 }
 
-/// Context for read/create snapshot including the sequence number for the next
-/// snapshot(to be created) and the sequence number for the current snapshot.
-#[derive(Debug, Clone, PartialEq)]
-struct SnapshotContext {
-    /// The end sequence of logs that new snapshot covers.
-    new_snapshot_end_seq: SequenceNumber,
-    /// The end sequence of logs that current snapshot covers.
-    latest_snapshot_log: Option<SnapshotLogEntry>,
+#[derive(Debug, Clone)]
+struct CurrentSnapshot {
+    sequence: SequenceNumber,
 }
 
 /// The snapshot for the current logs.
@@ -463,221 +456,82 @@ struct Snapshot {
     data: Option<TableManifestData>,
 }
 
-impl<S: MetaUpdateLogStore + Send + Sync> Snapshotter<S> {
+impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
+where
+    LogStore: MetaUpdateLogStore + Send + Sync,
+    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
+{
     /// Do snapshot for the current logs including:
     ///  - saving the snapshot.
     ///  - deleting the expired logs.
-    async fn snapshot(&self) -> Result<Snapshot> {
-        let snapshot = self.create_latest_snapshot().await?;
+    async fn snapshot(&self) -> Result<Option<Snapshot>> {
+        let snapshot = if let Some(v) = self.create_latest_snapshot().await? {
+            v
+        } else {
+            info!("No content to do snapshot, location:{:?}", self.location);
+            return Ok(None);
+        };
+
         info!(
             "Store snapshot to region, location:{:?}, snapshot_end_seq:{}",
             self.location, snapshot.end_seq,
         );
 
-        // Delete the expired logs after saving the snapshot.
-        let meta_updates = Self::snapshot_to_meta_updates(&snapshot);
-        let store_ctx = self.options.store_context();
-        self.log_store
-            .store_snapshot(&store_ctx, &meta_updates)
+        if snapshot.original_logs_num == 0 {
+            info!("No new logs after previous snapshot is found, no need to update snapshot, location:{:?}", self.location);
+            return Ok(Some(snapshot));
+        }
+
+        // Update the current snapshot to the new one.
+        self.snapshot_store
+            .store(&self.snapshot_ctx, &snapshot)
             .await?;
+        // Delete the expired logs after saving the snapshot.
         self.log_store.delete_up_to(snapshot.end_seq).await?;
 
-        Ok(snapshot)
-    }
-
-    fn snapshot_file_path(snapshot: &Snapshot) -> String {
-        format!("manifest/snapshot/{}/{}/{}", snapshot.data)
+        Ok(Some(snapshot))
     }
 
     /// Create a latest snapshot of the current logs.
-    async fn create_latest_snapshot(&self) -> Result<Snapshot> {
-        let ctx = self.prepare_snapshot_context().await?;
-
-        let scan_ctx = self.options.scan_context();
-        let reader = self
+    async fn create_latest_snapshot(&self) -> Result<Option<Snapshot>> {
+        // Load the current snapshot first.
+        let curr_snapshot = self.snapshot_store.load(&self.snapshot_ctx).await?;
+        let log_start_boundary = if let Some(v) = &curr_snapshot {
+            ReadBoundary::Excluded(v.end_seq)
+        } else {
+            ReadBoundary::Included(SequenceNumber::MIN)
+        };
+        let mut reader = self
             .log_store
-            .scan(
-                &scan_ctx,
-                ReadBoundary::Included(ctx.curr_snapshot_end_seq.unwrap_or(SequenceNumber::MIN)),
-                ReadBoundary::Included(ctx.new_snapshot_end_seq),
-            )
+            .scan(log_start_boundary, ReadBoundary::Max)
             .await?;
 
-        match ctx.latest_snapshot_log {
-            Some(entry) => {
-                debug!(
-                    "Create snapshot from current snapshot, snapshot context:{:?}, location:{:?}",
-                    ctx, self.location
-                );
-
-                Self::create_snapshot_from_current(ctx.new_snapshot_end_seq, entry, reader).await
-            }
-            None => {
-                debug!("Create snapshot from start, location:{:?}", self.location);
-
-                Self::create_snapshot_from_start(ctx.new_snapshot_end_seq, reader).await
-            }
-        }
-    }
-
-    /// Prepare [`SnapshotContext`] by:
-    ///  - find the latest snapshot.
-    ///  - decide the new snapshot end sequence which is basically the latest
-    ///    sequence of all logs.
-    async fn prepare_snapshot_context(&self) -> Result<SnapshotContext> {
-        let scan_ctx = self.options.scan_context();
-        let mut log_entry_reader = self
-            .log_store
-            .scan(&scan_ctx, ReadBoundary::Min, ReadBoundary::Max)
-            .await?;
-
-        let mut latest_log_seq = SequenceNumber::MIN;
-        let mut latest_snapshot_log: Option<SnapshotLogEntry> = None;
-        while let Some((log_seq, log_entry)) = log_entry_reader.next_update().await? {
-            debug!(
-                "Next update returned, log seq:{}, location:{:?}",
-                log_seq, self.location
-            );
-
-            latest_log_seq = log_seq;
-
-            if let MetaUpdateLogEntry::Snapshot(entry) = log_entry {
-                latest_snapshot_log = Some(entry);
-            }
-        }
-
-        debug!(
-            "Finish to get latest snapshot, snapshot log:{:?}, location:{:?}",
-            latest_snapshot_log, self.location
-        );
-
-        Ok(SnapshotContext {
-            new_snapshot_end_seq: latest_log_seq,
-            latest_snapshot_log,
-        })
-    }
-
-    /// Create the snapshot from the start of logs, that is to say, no snapshot
-    /// happens before.
-    async fn create_snapshot_from_start(
-        snapshot_end_seq: SequenceNumber,
-        mut log_entry_reader: impl MetaUpdateLogEntryIterator,
-    ) -> Result<Snapshot> {
-        let mut manifest_builder = TableManifestDataBuilder::default();
-        let mut original_logs_num = 0;
-
-        while let Some((log_seq, log_entry)) = log_entry_reader.next_update().await? {
-            if log_seq > snapshot_end_seq {
-                break;
-            }
-            match log_entry {
-                MetaUpdateLogEntry::Normal(meta_update) => {
-                    manifest_builder
-                        .apply_update(meta_update)
-                        .map_err(Box::new)
-                        .context(ApplyUpdate)?;
-                    original_logs_num += 1;
-                }
-                MetaUpdateLogEntry::Snapshot { .. } => {
-                    debug!("Snapshot shouldn't occur here");
-                }
-            }
-        }
-
-        Ok(Snapshot {
-            end_seq: snapshot_end_seq,
-            original_logs_num,
-            data: manifest_builder.build(),
-        })
-    }
-
-    /// Create a new snapshot based on current snapshot.
-    async fn create_snapshot_from_current(
-        new_snapshot_end_seq: SequenceNumber,
-        curr_snapshot_log: SnapshotLogEntry,
-        mut log_entry_reader: impl MetaUpdateLogEntryIterator,
-    ) -> Result<Snapshot> {
-        let mut manifest_builder = TableManifestDataBuilder::default();
-
-        let mut updates_in_snapshot = Vec::new();
-        let mut updates_after_snapshot = Vec::new();
-        while let Some((log_seq, log_entry)) = log_entry_reader.next_update().await? {
-            if log_seq > new_snapshot_end_seq {
-                break;
-            }
-
-            if let MetaUpdateLogEntry::Normal(update) = log_entry {
-                // omit the updates older than the prev snapshot
-                if log_seq > curr_snapshot_log.end_seq {
-                    updates_after_snapshot.push(meta_update);
-                }
-            }
-        }
-
-        let original_logs_num = updates_after_snapshot.len();
-
-        // TODO: read the snapshot and build the real snapshot
-        for update in updates_in_snapshot
-            .into_iter()
-            .chain(updates_after_snapshot.into_iter())
-        {
-            manifest_builder
+        let mut num_logs = 0usize;
+        let mut latest_seq = SequenceNumber::MIN;
+        let curr_snapshot_exists = curr_snapshot.is_some();
+        let mut manifest_data_builder = if let Some(Some(v)) = curr_snapshot.map(|v| v.data) {
+            TableManifestDataBuilder::new(Some(v.table_meta), v.version_meta)
+        } else {
+            TableManifestDataBuilder::default()
+        };
+        while let Some((seq, update)) = reader.next_update().await? {
+            latest_seq = seq;
+            num_logs += 1;
+            manifest_data_builder
                 .apply_update(update)
-                .map_err(Box::new)
                 .context(ApplyUpdate)?;
         }
 
-        Ok(Snapshot {
-            end_seq: new_snapshot_end_seq,
-            original_logs_num,
-            data: manifest_builder.build(),
-        })
-    }
-
-    /// convert a snapshot to meta update logs for saving the snapshot into the
-    /// log store.
-    fn snapshot_to_meta_updates(snapshot: &Snapshot) -> Vec<MetaUpdateLogEntry> {
-        // at most 4 updates:
-        // - start flag
-        // - (add table)
-        // - (version edit)
-        // - end flag
-        let mut meta_updates = Vec::with_capacity(4);
-
-        // start flag for snapshot
-        meta_updates.push(MetaUpdateLogEntry::SnapshotStart(snapshot.end_seq));
-
-        if let Some(snapshot_data) = &snapshot.data {
-            // add table update log.
-            let TableManifestData {
-                table_meta,
-                version_meta,
-            } = snapshot_data;
-            meta_updates.push(MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot.end_seq,
-                meta_update: MetaUpdate::AddTable(table_meta.clone()),
-            });
-
-            // version edit update.
-            if let Some(version_meta) = &version_meta {
-                let version_edit_meta = VersionEditMeta {
-                    space_id: table_meta.space_id,
-                    table_id: table_meta.table_id,
-                    flushed_sequence: version_meta.flushed_sequence,
-                    files_to_add: version_meta.ordered_files(),
-                    files_to_delete: Vec::new(),
-                };
-                meta_updates.push(MetaUpdateLogEntry::Snapshot {
-                    sequence: snapshot.end_seq,
-                    meta_update: MetaUpdate::VersionEdit(version_edit_meta),
-                });
-            }
+        if curr_snapshot_exists || num_logs > 0 {
+            let snapshot = Snapshot {
+                end_seq: latest_seq,
+                original_logs_num: num_logs,
+                data: manifest_data_builder.build(),
+            };
+            Ok(Some(snapshot))
+        } else {
+            Ok(None)
         }
-
-        // end flag for snapshot.
-        meta_updates.push(MetaUpdateLogEntry::SnapshotEnd(snapshot.end_seq));
-
-        meta_updates
     }
 }
 

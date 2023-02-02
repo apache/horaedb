@@ -20,6 +20,7 @@ use wal::{
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
+    engine,
     instance::{
         self,
         engine::{
@@ -217,10 +218,12 @@ impl Instance {
 
         // Load manifest, also create a new snapshot at startup.
         let table_id = request.table_id.as_u64();
+        let space_id = engine::build_space_id(request.schema_id);
         let manifest_data = self
             .space_store
             .manifest
             .load_data(
+                space_id,
                 WalLocation::new(table_id, request.cluster_version, table_id),
                 true,
             )

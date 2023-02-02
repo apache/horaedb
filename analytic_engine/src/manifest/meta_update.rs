@@ -36,6 +36,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Failed to decode payload, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    DecodePayloadPb {
+        source: prost::DecodeError,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Failed to convert schema, err:{}", source))]
     ConvertSchema { source: common_types::schema::Error },
 
@@ -53,17 +59,8 @@ pub enum Error {
     #[snafu(display("Failed to convert table options, err:{}", source))]
     ConvertTableOptions { source: table_options::Error },
 
-    #[snafu(display("Empty log entry of meta update.\nBacktrace:\n{}", backtrace))]
-    EmptyMetaUpdateLogEntry { backtrace: Backtrace },
-
     #[snafu(display("Empty meta update.\nBacktrace:\n{}", backtrace))]
     EmptyMetaUpdate { backtrace: Backtrace },
-
-    #[snafu(display("Failed to decode payload, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    DecodePayloadPb {
-        source: prost::DecodeError,
-        backtrace: Backtrace,
-    },
 
     #[snafu(display("Failed to convert version edit, err:{}", source))]
     ConvertVersionEdit {
@@ -72,57 +69,6 @@ pub enum Error {
 }
 
 define_result!(Error);
-
-pub struct SnapshotLogEntry {
-    pub end_seq: SequenceNumber,
-    pub file_path: String,
-}
-
-/// Wrapper for the meta update written into the Wal.
-#[derive(Debug, Clone, PartialEq)]
-pub enum MetaUpdateLogEntry {
-    Normal(MetaUpdate),
-    Snapshot(SnapshotLogEntry),
-}
-
-impl From<MetaUpdateLogEntry> for meta_pb::MetaUpdateLogEntry {
-    fn from(v: MetaUpdateLogEntry) -> Self {
-        let entry = match v {
-            MetaUpdateLogEntry::Normal(v) => {
-                meta_pb::meta_update_log_entry::Entry::Normal(v.into())
-            }
-            MetaUpdateLogEntry::Snapshot(v) => {
-                let snapshot_log_entry = meta_pb::SnapshotLogEntry {
-                    end_seq: v.end_seq,
-                    snapshot_file_path: v.file_path,
-                };
-                meta_pb::meta_update_log_entry::Entry::Snapshot(snapshot_log_entry)
-            }
-        };
-
-        meta_pb::MetaUpdateLogEntry { entry: Some(entry) }
-    }
-}
-
-impl TryFrom<meta_pb::MetaUpdateLogEntry> for MetaUpdateLogEntry {
-    type Error = Error;
-
-    fn try_from(src: meta_pb::MetaUpdateLogEntry) -> Result<Self> {
-        let entry = match src.entry.context(EmptyMetaUpdateLogEntry)? {
-            meta_pb::meta_update_log_entry::Entry::Normal(v) => {
-                MetaUpdateLogEntry::Normal(MetaUpdate::try_from(v)?)
-            }
-            meta_pb::meta_update_log_entry::Entry::Snapshot(v) => {
-                MetaUpdateLogEntry::Snapshot(SnapshotLogEntry {
-                    end_seq: v.end_seq,
-                    file_path: v.snapshot_file_path,
-                })
-            }
-        };
-
-        Ok(entry)
-    }
-}
 
 /// Modifications to meta data in meta
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +102,16 @@ impl MetaUpdate {
             MetaUpdate::AlterSchema(v) => v.table_id,
             MetaUpdate::AlterOptions(v) => v.table_id,
             MetaUpdate::DropTable(v) => v.table_id,
+        }
+    }
+
+    pub fn space_id(&self) -> SpaceId {
+        match self {
+            MetaUpdate::AddTable(v) => v.space_id,
+            MetaUpdate::VersionEdit(v) => v.space_id,
+            MetaUpdate::AlterSchema(v) => v.space_id,
+            MetaUpdate::AlterOptions(v) => v.space_id,
+            MetaUpdate::DropTable(v) => v.space_id,
         }
     }
 }
@@ -409,16 +365,16 @@ impl TryFrom<meta_pb::AlterOptionsMeta> for AlterOptionsMeta {
 /// An adapter to implement [wal::log_batch::Payload] for
 /// [proto::meta_update::MetaUpdate]
 #[derive(Debug)]
-pub struct MetaUpdatePayload(meta_pb::MetaUpdateLogEntry);
+pub struct MetaUpdatePayload(meta_pb::MetaUpdate);
 
-impl From<MetaUpdateLogEntry> for MetaUpdatePayload {
-    fn from(src: MetaUpdateLogEntry) -> Self {
+impl From<MetaUpdate> for MetaUpdatePayload {
+    fn from(src: MetaUpdate) -> Self {
         Self(src.into())
     }
 }
 
-impl From<&MetaUpdateLogEntry> for MetaUpdatePayload {
-    fn from(src: &MetaUpdateLogEntry) -> Self {
+impl From<&MetaUpdate> for MetaUpdatePayload {
+    fn from(src: &MetaUpdate) -> Self {
         Self::from(src.clone())
     }
 }
@@ -440,15 +396,11 @@ pub struct MetaUpdateDecoder;
 
 impl PayloadDecoder for MetaUpdateDecoder {
     type Error = Error;
-    type Target = MetaUpdateLogEntry;
+    type Target = MetaUpdate;
 
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
-        let log_entry_pb =
-            meta_pb::MetaUpdateLogEntry::decode(buf.chunk()).context(DecodePayloadPb)?;
-
-        let log_entry = MetaUpdateLogEntry::try_from(log_entry_pb)?;
-
-        Ok(log_entry)
+        let meta_update_pb = meta_pb::MetaUpdate::decode(buf.chunk()).context(DecodePayloadPb)?;
+        MetaUpdate::try_from(meta_update_pb)
     }
 }
 
