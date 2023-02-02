@@ -35,8 +35,9 @@ pub fn main() {
             ipc::encode_record_batch(&batch.into_arrow_record_batch(), compression).unwrap();
         println!("Arrow IPC encoded size:{}", bytes.len());
 
-        let decode_batch = ipc::decode_record_batch(bytes, compression).unwrap();
-        let _ = common_types::record_batch::RecordBatch::try_from(decode_batch).unwrap();
+        let mut decode_batches = ipc::decode_record_batches(bytes, compression).unwrap();
+        let _ = common_types::record_batch::RecordBatch::try_from(decode_batches.swap_remove(0))
+            .unwrap();
 
         let cost = begin.saturating_elapsed();
         println!("Arrow IPC encode/decode cost:{}ms", cost.as_millis());

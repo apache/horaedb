@@ -164,7 +164,7 @@ mod tests {
 
         let mut encoder = RecordBatchesEncoder::new(Compression::Zstd);
         for batch in &batches {
-            encoder.write(&batch).unwrap();
+            encoder.write(batch).unwrap();
         }
         let encoded_bytes = encoder.finish().unwrap();
         let decoded_batches = decode_record_batches(encoded_bytes, Compression::Zstd).unwrap();
