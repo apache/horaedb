@@ -17,6 +17,7 @@ use common_types::table::TableId;
 use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info};
 use object_store::ObjectStoreRef;
+use proto::meta_update;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use tokio::sync::Mutex;
@@ -31,10 +32,14 @@ use wal::{
 use crate::{
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
-        meta_update::{MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest},
+        meta_update::{
+            AddTableMeta, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest,
+            VersionEditMeta,
+        },
         Manifest,
     },
     space::SpaceId,
+    table::version::TableVersionMeta,
 };
 
 #[derive(Debug, Snafu)]
@@ -58,6 +63,7 @@ pub enum Error {
         wal_location: WalLocation,
         source: wal::manager::Error,
     },
+
     #[snafu(display("Failed to write update to wal, err:{}", source))]
     WriteWal { source: wal::manager::Error },
 
@@ -75,33 +81,9 @@ pub enum Error {
     #[snafu(display("Failed to clean wal, err:{}", source))]
     CleanWal { source: wal::manager::Error },
 
-    #[snafu(display(
-        "Failed to clean snapshot, wal_location:{:?}, err:{}",
-        wal_location,
-        source
-    ))]
-    CleanSnapshot {
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
-    #[snafu(display("Failed to load sequence of manifest, err:{}", source))]
-    LoadSequence { source: wal::manager::Error },
-
-    #[snafu(display("Failed to load sequence of snapshot state, err:{}", source))]
-    LoadSnapshotMetaSequence { source: wal::manager::Error },
-
-    #[snafu(display("Failed to clean snapshot state, err:{}", source))]
-    CleanSnapshotState { source: wal::manager::Error },
-
-    #[snafu(display(
-        "Snapshot flag log is corrupted, end flag's sequence:{}.\nBacktrace:\n{}",
-        seq,
-        backtrace
-    ))]
-    CorruptedSnapshotFlag {
-        seq: SequenceNumber,
-        backtrace: Backtrace,
+    #[snafu(display("Failed to parse snapshot, err:{}", source))]
+    ParseSnapshot {
+        source: crate::manifest::meta_update::Error,
     },
 }
 
@@ -174,12 +156,6 @@ impl Default for Options {
     }
 }
 
-#[derive(Debug, Clone)]
-struct SnapshotContext {
-    space_id: SpaceId,
-    table_id: TableId,
-}
-
 /// The implementation based on wal of Manifest which features:
 ///  - The manifest of table is separate from each other.
 ///  - The snapshot mechanism is based on logs(check the details on comments on
@@ -219,7 +195,7 @@ impl ManifestImpl {
 
     async fn store_update_to_wal(&self, request: MetaUpdateRequest) -> Result<SequenceNumber> {
         info!("Manifest store update, request:{:?}", request);
-        let log_store = RegionWal {
+        let log_store = WalBasedLogStore {
             opts: self.opts.clone(),
             location: request.location,
             wal_manager: self.wal_manager.clone(),
@@ -246,20 +222,20 @@ impl ManifestImpl {
         }
 
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
-            let snapshot_ctx = SnapshotContext {
-                space_id,
-                table_id: location.table_id,
-            };
-            let log_store = RegionWal {
+            let log_store = WalBasedLogStore {
                 opts: self.opts.clone(),
                 location,
                 wal_manager: self.wal_manager.clone(),
             };
+            let snapshot_store = ObjectStoreBasedSnapshotStore {
+                space_id,
+                table_id: location.table_id,
+                store: self.store.clone(),
+            };
             let snapshotter = Snapshotter {
-                snapshot_ctx,
                 location,
                 log_store,
-                snapshot_store: ObjectStoreBasedSnapshotStore {},
+                snapshot_store,
             };
             let snapshot = snapshotter.snapshot().await?.map(|v| {
                 self.decrease_num_updates(v.original_logs_num);
@@ -311,20 +287,20 @@ impl Manifest for ManifestImpl {
             }
         }
 
-        let snapshot_ctx = SnapshotContext {
-            space_id: space_id,
-            table_id: location.table_id,
-        };
-        let log_store = RegionWal {
+        let log_store = WalBasedLogStore {
             opts: self.opts.clone(),
             location,
             wal_manager: self.wal_manager.clone(),
         };
+        let snapshot_store = ObjectStoreBasedSnapshotStore {
+            space_id,
+            table_id: location.table_id,
+            store: self.store.clone(),
+        };
         let snapshotter = Snapshotter {
-            snapshot_ctx,
             location,
             log_store,
-            snapshot_store: ObjectStoreBasedSnapshotStore {},
+            snapshot_store,
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
         Ok(snapshot.and_then(|v| v.data))
@@ -343,34 +319,69 @@ trait MetaUpdateLogStore: std::fmt::Debug {
 
 #[async_trait]
 trait MetaUpdateSnapshotStore: std::fmt::Debug {
-    async fn store(&self, ctx: &SnapshotContext, snapshot: &Snapshot) -> Result<()>;
+    async fn store(&self, snapshot: &Snapshot) -> Result<()>;
 
-    async fn load(&self, ctx: &SnapshotContext) -> Result<Option<Snapshot>>;
+    async fn load(&self) -> Result<Option<Snapshot>>;
 }
 
 #[derive(Debug)]
-struct ObjectStoreBasedSnapshotStore {}
+struct ObjectStoreBasedSnapshotStore {
+    space_id: SpaceId,
+    table_id: TableId,
+    store: ObjectStoreRef,
+}
+
+impl ObjectStoreBasedSnapshotStore {
+    const CURRENT_SNAPSHOT_NAME: &str = "current";
+    const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
+
+    fn current_snapshot_path(&self) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            Self::SNAPSHOT_PATH_PREFIX,
+            self.space_id,
+            self.table_id,
+            Self::CURRENT_SNAPSHOT_NAME
+        )
+    }
+
+    fn snapshot_path(&self, seq: SequenceNumber) -> String {
+        format!(
+            "{}/{}/{}/{}",
+            Self::SNAPSHOT_PATH_PREFIX,
+            self.space_id,
+            self.table_id,
+            seq,
+        )
+    }
+}
 
 #[async_trait]
 impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
-    async fn store(&self, ctx: &SnapshotContext, snapshot: &Snapshot) -> Result<()> {
+    /// - Store the latest snapshot to as the
+    /// `/manifest/snapshot/{space_id}/{table_id}/{end_seq}` into Object
+    /// Storage;
+    /// - Overwrite the
+    /// `/manifest/snapshot/{space_id}/{table_id}/current` to map the current
+    /// snapshot to the path of the latest snapshot;
+    async fn store(&self, snapshot: &Snapshot) -> Result<()> {
         todo!()
     }
 
-    async fn load(&self, ctx: &SnapshotContext) -> Result<Option<Snapshot>> {
+    async fn load(&self) -> Result<Option<Snapshot>> {
         todo!()
     }
 }
 
 #[derive(Debug, Clone)]
-struct RegionWal {
+struct WalBasedLogStore {
     opts: Options,
     location: WalLocation,
     wal_manager: WalManagerRef,
 }
 
 #[async_trait]
-impl MetaUpdateLogStore for RegionWal {
+impl MetaUpdateLogStore for WalBasedLogStore {
     type Iter = MetaUpdateReaderImpl;
 
     async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
@@ -430,7 +441,6 @@ impl MetaUpdateLogStore for RegionWal {
 
 #[derive(Debug, Clone)]
 struct Snapshotter<LogStore, SnapshotStore> {
-    snapshot_ctx: SnapshotContext,
     location: WalLocation,
     log_store: LogStore,
     snapshot_store: SnapshotStore,
@@ -439,6 +449,22 @@ struct Snapshotter<LogStore, SnapshotStore> {
 #[derive(Debug, Clone)]
 struct CurrentSnapshot {
     sequence: SequenceNumber,
+}
+
+impl From<meta_update::CurrentSnapshot> for CurrentSnapshot {
+    fn from(src: meta_update::CurrentSnapshot) -> Self {
+        Self {
+            sequence: src.sequence,
+        }
+    }
+}
+
+impl From<CurrentSnapshot> for meta_update::CurrentSnapshot {
+    fn from(src: CurrentSnapshot) -> Self {
+        Self {
+            sequence: src.sequence,
+        }
+    }
 }
 
 /// The snapshot for the current logs.
@@ -454,6 +480,73 @@ struct Snapshot {
     /// The data of the snapshot.
     /// None means the table not exists(maybe dropped or not created yet).
     data: Option<TableManifestData>,
+}
+
+impl TryFrom<meta_update::Snapshot> for Snapshot {
+    type Error = Error;
+
+    fn try_from(src: meta_update::Snapshot) -> Result<Self> {
+        let meta = src
+            .meta
+            .map(AddTableMeta::try_from)
+            .transpose()
+            .context(ParseSnapshot)?;
+
+        let version_edit = src
+            .version_edit
+            .map(VersionEditMeta::try_from)
+            .transpose()
+            .context(ParseSnapshot)?;
+
+        let version_meta = version_edit.map(|v| {
+            let mut version_meta = TableVersionMeta::default();
+            version_meta.apply_edit(v.into_version_edit());
+            version_meta
+        });
+
+        let table_manifest_data = meta.map(|v| TableManifestData {
+            table_meta: v,
+            version_meta,
+        });
+        Ok(Self {
+            end_seq: src.end_seq,
+            original_logs_num: 0,
+            data: table_manifest_data,
+        })
+    }
+}
+
+impl From<Snapshot> for meta_update::Snapshot {
+    fn from(src: Snapshot) -> Self {
+        if let Some((meta, version_edit)) = src.data.map(|v| {
+            let space_id = v.table_meta.space_id;
+            let table_id = v.table_meta.table_id;
+            let table_meta = meta_update::AddTableMeta::from(v.table_meta);
+            let version_edit = v.version_meta.map(|version_meta| VersionEditMeta {
+                space_id,
+                table_id,
+                flushed_sequence: version_meta.flushed_sequence,
+                files_to_add: version_meta.ordered_files(),
+                files_to_delete: vec![],
+            });
+            (
+                table_meta,
+                version_edit.map(meta_update::VersionEditMeta::from),
+            )
+        }) {
+            Self {
+                end_seq: src.end_seq,
+                meta: Some(meta),
+                version_edit,
+            }
+        } else {
+            Self {
+                end_seq: src.end_seq,
+                meta: None,
+                version_edit: None,
+            }
+        }
+    }
 }
 
 impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
@@ -483,9 +576,7 @@ where
         }
 
         // Update the current snapshot to the new one.
-        self.snapshot_store
-            .store(&self.snapshot_ctx, &snapshot)
-            .await?;
+        self.snapshot_store.store(&snapshot).await?;
         // Delete the expired logs after saving the snapshot.
         self.log_store.delete_up_to(snapshot.end_seq).await?;
 
@@ -495,7 +586,7 @@ where
     /// Create a latest snapshot of the current logs.
     async fn create_latest_snapshot(&self) -> Result<Option<Snapshot>> {
         // Load the current snapshot first.
-        let curr_snapshot = self.snapshot_store.load(&self.snapshot_ctx).await?;
+        let curr_snapshot = self.snapshot_store.load().await?;
         let log_start_boundary = if let Some(v) = &curr_snapshot {
             ReadBoundary::Excluded(v.end_seq)
         } else {
