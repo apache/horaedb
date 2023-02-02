@@ -2,11 +2,11 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
+use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
-use interpreters::interpreter::Output;
 use table_engine::engine::EngineRuntimes;
 
 use crate::{

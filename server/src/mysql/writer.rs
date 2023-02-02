@@ -1,8 +1,8 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use common_types::datum::{Datum, DatumKind};
-use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 use interpreters::interpreter::Output;
+use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
 use query_engine::executor::RecordBatchVec;
 
 use crate::{
