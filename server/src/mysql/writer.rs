@@ -2,9 +2,11 @@
 
 use common_types::datum::{Datum, DatumKind};
 use opensrv_mysql::{Column, ColumnFlags, ColumnType, OkResponse, QueryResultWriter};
+use interpreters::interpreter::Output;
+use query_engine::executor::RecordBatchVec;
 
 use crate::{
-    handlers::sql::{Response, ResponseColumn, ResponseRows},
+    handlers::sql::{ResponseColumn},
     mysql::error::Result,
 };
 
@@ -17,11 +19,11 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Self { inner: Some(inner) }
     }
 
-    pub fn write(&mut self, query_result: Response) -> Result<()> {
+    pub fn write(&mut self, query_result: Output) -> Result<()> {
         if let Some(inner) = self.inner.take() {
             return match query_result {
-                Response::AffectedRows(count) => Self::write_affected_rows(inner, count),
-                Response::Rows(rows) => Self::write_rows(inner, rows),
+                Output::AffectedRows(count) => Self::write_affected_rows(inner, count),
+                Output::Records(rows) => Self::write_rows(inner, rows),
             };
         }
         Ok(())
@@ -36,21 +38,49 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         Ok(())
     }
 
-    fn write_rows(writer: QueryResultWriter<'a, W>, rows: ResponseRows) -> Result<()> {
+    fn write_rows(writer: QueryResultWriter<'a, W>, records: RecordBatchVec) -> Result<()> {
         let default_response = OkResponse::default();
-        if rows.column_names.is_empty() {
+        if records.is_empty() {
             writer.completed(default_response)?;
             return Ok(());
         }
 
-        let columns = &rows
-            .column_names
+        let mut column_names = vec![];
+        let mut column_data = vec![];
+
+        for record_batch in records {
+            let num_cols = record_batch.num_columns();
+            let num_rows = record_batch.num_rows();
+            let schema = record_batch.schema();
+
+            for col_idx in 0..num_cols {
+                let column_schema = schema.column(col_idx).clone();
+                column_names.push(ResponseColumn {
+                    name: column_schema.name,
+                    data_type: column_schema.data_type,
+                });
+            }
+
+            for row_idx in 0..num_rows {
+                let mut row_data = Vec::with_capacity(num_cols);
+                for col_idx in 0..num_cols {
+                    let column = record_batch.column(col_idx);
+                    let column = column.datum(row_idx);
+
+                    row_data.push(column);
+                }
+
+                column_data.push(row_data);
+            }
+        }
+
+        let columns = &column_names
             .iter()
             .map(make_column_by_field)
             .collect::<Vec<_>>();
         let mut row_writer = writer.start(columns)?;
 
-        for row in &rows.data {
+        for row in &column_data {
             for val in row {
                 let data_type = convert_field_type(val);
                 let re = match (data_type, val) {
