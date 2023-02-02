@@ -47,7 +47,7 @@ FROM
 HAVING
     1 = 2;
 
-affected_rows: -1
+affected_rows: 0
 
 SELECT
     `value` % 3,

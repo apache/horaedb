@@ -17,7 +17,7 @@ SELECT id+1, count(distinct(account))
 FROM issue59
 GROUP BY id+1;
 
-affected_rows: -1
+affected_rows: 0
 
 explain SELECT id+1, count(distinct(account))
 FROM issue59

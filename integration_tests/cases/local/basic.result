@@ -51,7 +51,7 @@ affected_rows: 0
 
 SELECT `nAmE` FROM `DeMo`;
 
-affected_rows: -1
+affected_rows: 0
 
 DROP TABLE `DeMo`;
 
