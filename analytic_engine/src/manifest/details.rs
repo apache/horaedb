@@ -752,7 +752,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, iter::FromIterator, path::PathBuf, sync::Arc, vec};
+    use std::{path::PathBuf, sync::Arc, vec};
 
     use bytes::Bytes;
     use common_types::{
@@ -764,6 +764,7 @@ mod tests {
     };
     use common_util::{runtime, runtime::Runtime, tests::init_log_for_test};
     use futures::future::BoxFuture;
+    use object_store::LocalFileSystem;
     use table_engine::{
         partition::{HashPartitionInfo, PartitionDefinition, PartitionInfo},
         table::{SchemaId, TableId, TableSeqGenerator},
@@ -862,9 +863,14 @@ mod tests {
                     .build()
                     .unwrap();
 
-            ManifestImpl::open(Arc::new(manifest_wal), self.options.clone())
-                .await
-                .unwrap()
+            let object_store = LocalFileSystem::new_with_prefix(&self.dir).unwrap();
+            ManifestImpl::open(
+                self.options.clone(),
+                Arc::new(manifest_wal),
+                Arc::new(object_store),
+            )
+            .await
+            .unwrap()
         }
 
         async fn check_table_manifest_data_with_manifest(
@@ -873,7 +879,10 @@ mod tests {
             expected: &Option<TableManifestData>,
             manifest: &ManifestImpl,
         ) {
-            let data = manifest.load_data(location, false).await.unwrap();
+            let data = manifest
+                .load_data(self.schema_id.as_u32(), location, false)
+                .await
+                .unwrap();
             assert_eq!(&data, expected);
         }
 
@@ -1233,7 +1242,10 @@ mod tests {
             )
             .await;
 
-            manifest.maybe_do_snapshot(location).await.unwrap();
+            manifest
+                .maybe_do_snapshot(ctx.schema_id.as_u32(), location, true)
+                .await
+                .unwrap();
 
             ctx.version_edit_table_with_manifest(
                 table_id,
@@ -1283,7 +1295,10 @@ mod tests {
             )
             .await;
 
-            manifest.maybe_do_snapshot(location).await.unwrap();
+            manifest
+                .maybe_do_snapshot(ctx.schema_id.as_u32(), location, true)
+                .await
+                .unwrap();
             for i in 500..550 {
                 ctx.version_edit_table_with_manifest(
                     table_id,
@@ -1304,35 +1319,35 @@ mod tests {
 
     #[derive(Debug)]
     struct MemLogStore {
-        logs: Mutex<Vec<Option<MetaUpdateLogEntry>>>,
+        logs: std::sync::Mutex<Vec<Option<MetaUpdate>>>,
     }
 
     impl MemLogStore {
-        fn from_logs(logs: &[MetaUpdateLogEntry]) -> Self {
-            let mut buf = Vec::with_capacity(logs.len());
-            buf.extend(logs.iter().map(|v| Some(v.clone())));
+        fn from_updates(updates: &[MetaUpdate]) -> Self {
+            let mut buf = Vec::with_capacity(updates.len());
+            buf.extend(updates.iter().map(|v| Some(v.clone())));
             Self {
-                logs: Mutex::new(buf),
+                logs: std::sync::Mutex::new(buf),
             }
         }
 
-        async fn to_log_entries(&self) -> Vec<MetaUpdateLogEntry> {
-            let logs = self.logs.lock().await;
+        async fn to_meta_updates(&self) -> Vec<MetaUpdate> {
+            let logs = self.logs.lock().unwrap();
             logs.iter().filter_map(|v| v.clone()).collect()
+        }
+
+        fn next_seq(&self) -> u64 {
+            let logs = self.logs.lock().unwrap();
+            logs.len() as u64
         }
     }
 
     #[async_trait]
     impl MetaUpdateLogStore for MemLogStore {
-        type Iter = vec::IntoIter<(SequenceNumber, MetaUpdateLogEntry)>;
+        type Iter = vec::IntoIter<(SequenceNumber, MetaUpdate)>;
 
-        async fn scan(
-            &self,
-            _ctx: &ScanContext,
-            start: ReadBoundary,
-            end: ReadBoundary,
-        ) -> Result<Self::Iter> {
-            let logs = self.logs.lock().await;
+        async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
+            let logs = self.logs.lock().unwrap();
             let start = start.as_start_sequence_number().unwrap() as usize;
             let end = {
                 let inclusive_end = end.as_end_sequence_number().unwrap() as usize;
@@ -1345,32 +1360,28 @@ mod tests {
                 }
             };
 
-            let mut exist_logs = Vec::with_capacity(end - start);
-            for (idx, log_entry) in logs[..end].iter().enumerate() {
-                if idx < start {
+            let mut exist_logs = Vec::new();
+            let truncated_logs = logs[..end].iter().enumerate();
+            for (idx, update) in truncated_logs {
+                if idx < start || update.is_none() {
                     continue;
                 }
-                if let Some(log_entry) = &log_entry {
-                    exist_logs.push((idx as u64, log_entry.clone()));
-                }
+                exist_logs.push((idx as u64, update.clone().unwrap()));
             }
 
             Ok(exist_logs.into_iter())
         }
 
-        async fn store(
-            &self,
-            _ctx: &StoreContext,
-            log_entries: &[MetaUpdateLogEntry],
-        ) -> Result<()> {
-            let mut logs = self.logs.lock().await;
-            logs.extend(log_entries.iter().map(|v| Some(v.clone())));
+        async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
+            let mut logs = self.logs.lock().unwrap();
+            let seq = logs.len() as u64;
+            logs.push(Some(meta_update));
 
-            Ok(())
+            Ok(seq)
         }
 
         async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-            let mut logs = self.logs.lock().await;
+            let mut logs = self.logs.lock().unwrap();
             for i in 0..=inclusive_end {
                 logs[i as usize] = None;
             }
@@ -1382,407 +1393,156 @@ mod tests {
     #[async_trait]
     impl<T> MetaUpdateLogEntryIterator for T
     where
-        T: Iterator<Item = (SequenceNumber, MetaUpdateLogEntry)> + Send + Sync,
+        T: Iterator<Item = (SequenceNumber, MetaUpdate)> + Send + Sync,
     {
-        async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdateLogEntry)>> {
+        async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>> {
             Ok(self.next())
+        }
+    }
+
+    #[derive(Debug)]
+    struct MemSnapshotStore {
+        curr_snapshot: Mutex<Option<Snapshot>>,
+    }
+
+    impl MemSnapshotStore {
+        fn new() -> Self {
+            Self {
+                curr_snapshot: Mutex::new(None),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl MetaUpdateSnapshotStore for MemSnapshotStore {
+        async fn store(&self, snapshot: &Snapshot) -> Result<()> {
+            let mut curr_snapshot = self.curr_snapshot.lock().await;
+            *curr_snapshot = Some(snapshot.clone());
+            Ok(())
+        }
+
+        async fn load(&self) -> Result<Option<Snapshot>> {
+            let curr_snapshot = self.curr_snapshot.lock().await;
+            Ok(curr_snapshot.clone())
         }
     }
 
     fn run_snapshot_test(
         ctx: Arc<TestContext>,
         table_id: TableId,
-        logs: Vec<(&str, MetaUpdateLogEntry)>,
-        expect_log_name_order: &[&str],
-        expect_snapshot_log_num: usize,
-        expect_meta_updates: &[MetaUpdateLogEntry],
+        input_updates: Vec<MetaUpdate>,
+        updates_after_snapshot: Vec<MetaUpdate>,
     ) {
-        let table_manifest_data = {
-            let mapping: HashMap<_, _> =
-                HashMap::from_iter(logs.iter().enumerate().map(|(idx, (name, _))| (*name, idx)));
-            let mut manifest_builder = TableManifestDataBuilder::default();
-            // apply the real order:
-            // S0,S1,N2,N3,N4
-            for log_name in expect_log_name_order {
-                let (_, log_entry) = &logs[*mapping.get(log_name).unwrap()];
-                let meta_update = match log_entry {
-                    MetaUpdateLogEntry::Normal(meta_update) => meta_update,
-                    MetaUpdateLogEntry::Snapshot { meta_update, .. } => meta_update,
-                    _ => unreachable!(),
-                };
-                manifest_builder.apply_update(meta_update.clone()).unwrap();
-            }
-            manifest_builder.build()
-        };
-
         let location = WalLocation::new(
             table_id.as_u64(),
             DEFAULT_CLUSTER_VERSION,
             table_id.as_u64(),
         );
-        let log_store = {
-            let log_entries: Vec<_> = logs
-                .iter()
-                .map(|(_, log_entry)| log_entry.clone())
-                .collect();
-            MemLogStore::from_logs(&log_entries)
-        };
+        let log_store = MemLogStore::from_updates(&input_updates);
+        let snapshot_store = MemSnapshotStore::new();
 
-        let options = ctx.options.clone();
         ctx.runtime.block_on(async move {
             let snapshotter = Snapshotter {
                 location,
                 log_store,
-                options,
+                snapshot_store,
             };
 
-            let latest_snapshot = snapshotter.create_latest_snapshot().await.unwrap();
-            assert_eq!(latest_snapshot.data, table_manifest_data);
+            // Create and check the latest snapshot first.
+            let mut manifest_builder = TableManifestDataBuilder::default();
+            for update in &input_updates {
+                manifest_builder.apply_update(update.clone()).unwrap();
+            }
+            let expect_table_manifest_data = manifest_builder.clone().build();
 
-            let snapshot_log_num = snapshotter.snapshot().await.unwrap().original_logs_num;
-            assert_eq!(expect_snapshot_log_num, snapshot_log_num);
+            // Do snapshot and check the snapshot result
+            let snapshot = snapshotter.snapshot().await.unwrap();
+            if input_updates.is_empty() {
+                assert!(snapshot.is_none());
+            } else {
+                assert!(snapshot.is_some());
+                let snapshot = snapshot.unwrap();
+                assert_eq!(input_updates.len(), snapshot.original_logs_num);
+                assert_eq!(snapshot.data, expect_table_manifest_data);
+                assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
+            }
 
-            let latest_snapshot = snapshotter.create_latest_snapshot().await.unwrap();
-            assert_eq!(latest_snapshot.data, table_manifest_data);
+            // The logs in the log store should be cleared after snapshot.
+            let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
+            assert!(updates_in_log_store.is_empty());
 
-            let entries = snapshotter.log_store.to_log_entries().await;
-            assert_eq!(expect_meta_updates, &entries);
+            // Write the updates after snapshot.
+            for update in &updates_after_snapshot {
+                manifest_builder.apply_update(update.clone()).unwrap();
+                snapshotter.log_store.append(update.clone()).await.unwrap();
+            }
+            let expect_table_manifest_data = manifest_builder.build();
+            // Do snapshot and check the snapshot result again.
+            let snapshot = snapshotter.snapshot().await.unwrap();
+
+            if input_updates.is_empty() && updates_after_snapshot.is_empty() {
+                assert!(snapshot.is_none());
+            } else {
+                assert!(snapshot.is_some());
+                let snapshot = snapshot.unwrap();
+                assert_eq!(updates_after_snapshot.len(), snapshot.original_logs_num);
+                assert_eq!(snapshot.data, expect_table_manifest_data);
+                assert_eq!(snapshot.end_seq, snapshotter.log_store.next_seq() - 1);
+            }
+            // The logs in the log store should be cleared after snapshot.
+            let updates_in_log_store = snapshotter.log_store.to_meta_updates().await;
+            assert!(updates_in_log_store.is_empty());
         });
     }
 
-    // Actual logs:
-    // N0,N1,SS(1),N2
-    // =>
-    // logs after snapshot:
-    // SS(3),Snapshot(...),SE(3)
-    // logs applied after snapshot:
-    // N0,N1,N2
     #[test]
-    fn test_no_snapshot_logs_merge() {
+    fn test_simple_snapshot() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_merge_no_snapshot",
             SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
-        let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
-            (
-                "N0",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_add_table(table_id)),
-            ),
-            (
-                "N1",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(1))),
-            ),
-            ("SS(1)", MetaUpdateLogEntry::SnapshotStart(1)),
-            (
-                "N2",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(3))),
-            ),
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_version_edit(table_id, Some(1)),
+            ctx.meta_update_version_edit(table_id, Some(3)),
         ];
 
-        let snapshot_start_seq = (logs.len() - 1) as u64;
-        let expect_log_name_order = &["N0", "N1", "N2"];
-        let expect_snapshot_updates = &[
-            MetaUpdateLogEntry::SnapshotStart(snapshot_start_seq),
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_add_table(table_id),
-            },
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_version_edit(table_id, Some(3)),
-            },
-            MetaUpdateLogEntry::SnapshotEnd(3),
-        ];
-
-        run_snapshot_test(
-            ctx,
-            table_id,
-            logs,
-            expect_log_name_order,
-            3,
-            expect_snapshot_updates,
-        );
+        run_snapshot_test(ctx, table_id, input_updates, vec![]);
     }
 
-    // Actual logs:
-    // N0,N1,SS(1),N2,S0(1),S1(1),N3,SE(1),N4
-    // =>
-    // logs after snapshot:
-    // SS(8),Snapshot(...),SE(8)
-    // logs applied after snapshot:
-    // S0(1),S1(1),N2,N3,N4
     #[test]
-    fn test_multiple_snapshot_merge_normal() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_merge_normal",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
-            (
-                "N0",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_add_table(table_id)),
-            ),
-            (
-                "N1",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(1))),
-            ),
-            ("SS(1)", MetaUpdateLogEntry::SnapshotStart(1)),
-            (
-                "N2",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(3))),
-            ),
-            (
-                "S0(1)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 1,
-                    meta_update: ctx.meta_update_add_table(table_id),
-                },
-            ),
-            (
-                "S1(1)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 1,
-                    meta_update: ctx.meta_update_version_edit(table_id, Some(1)),
-                },
-            ),
-            (
-                "N3",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(6))),
-            ),
-            ("SE(1)", MetaUpdateLogEntry::SnapshotEnd(1)),
-            (
-                "N4",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(7))),
-            ),
-        ];
-
-        let expect_log_name_order = &["S0(1)", "S1(1)", "N2", "N3", "N4"];
-        let snapshot_start_seq = (logs.len() - 1) as u64;
-        let expect_snapshot_updates = &[
-            MetaUpdateLogEntry::SnapshotStart(snapshot_start_seq),
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_add_table(table_id),
-            },
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_version_edit(table_id, Some(7)),
-            },
-            MetaUpdateLogEntry::SnapshotEnd(snapshot_start_seq),
-        ];
-        run_snapshot_test(
-            ctx,
-            table_id,
-            logs,
-            expect_log_name_order,
-            3,
-            expect_snapshot_updates,
-        );
-    }
-
-    // Actual logs:
-    // 0 - N0
-    // 1 - SS(0)
-    // 2 - N1
-    // 3 - S0(0)
-    // 4 - N2
-    // 5 - SS(4)
-    // 6 - N3
-    // 7 - S1(4)
-    // 8 - S2(4)
-    // 9 - SE(4)
-    // 10- N4
-    // =>
-    // logs after snapshot:
-    // SS(10),Snapshot(...),SE(10)
-    // logs applied after snapshot:
-    // S1(4),S2(4),N3,N4
-    #[test]
-    fn test_multiple_snapshot_merge_interleaved_snapshot() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_merge_interleaved",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
-            (
-                "N0",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_add_table(table_id)),
-            ),
-            ("SS(0)", MetaUpdateLogEntry::SnapshotStart(0)),
-            (
-                "N1",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(1))),
-            ),
-            (
-                "S0(0)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 0,
-                    meta_update: ctx.meta_update_add_table(table_id),
-                },
-            ),
-            (
-                "N2",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(2))),
-            ),
-            ("SS(4)", MetaUpdateLogEntry::SnapshotStart(4)),
-            (
-                "N3",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(3))),
-            ),
-            (
-                "S1(4)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 4,
-                    meta_update: ctx.meta_update_add_table(table_id),
-                },
-            ),
-            (
-                "S2(4)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 4,
-                    meta_update: ctx.meta_update_version_edit(table_id, Some(3)),
-                },
-            ),
-            ("SE(4)", MetaUpdateLogEntry::SnapshotEnd(4)),
-            (
-                "N4",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(4))),
-            ),
-        ];
-
-        let expect_log_name_order = &["S1(4)", "S2(4)", "N3", "N4"];
-        let snapshot_start_seq = (logs.len() - 1) as u64;
-        let expect_snapshot_updates = &[
-            MetaUpdateLogEntry::SnapshotStart(snapshot_start_seq),
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_add_table(table_id),
-            },
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_version_edit(table_id, Some(4)),
-            },
-            MetaUpdateLogEntry::SnapshotEnd(snapshot_start_seq),
-        ];
-        run_snapshot_test(
-            ctx,
-            table_id,
-            logs,
-            expect_log_name_order,
-            2,
-            expect_snapshot_updates,
-        );
-    }
-
-    // Actual logs:
-    // 0 - N0
-    // 1 - N1
-    // 2 - SS(0)
-    // 3 - N2
-    // 4 - S0(0)
-    // 5 - SE(0)
-    // =>
-    // logs after snapshot:
-    // SS(5),Snapshot(...),SE(5)
-    // logs applied after snapshot:
-    // S0(0),N1,N2
-    #[test]
-    fn test_multiple_snapshot_merge_sneaked_update() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_merge_sneaked_update",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
-            (
-                "N0",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_add_table(table_id)),
-            ),
-            (
-                "N1",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(1))),
-            ),
-            ("SS(0)", MetaUpdateLogEntry::SnapshotStart(0)),
-            (
-                "N2",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_version_edit(table_id, Some(2))),
-            ),
-            (
-                "S0(0)",
-                MetaUpdateLogEntry::Snapshot {
-                    sequence: 0,
-                    meta_update: ctx.meta_update_add_table(table_id),
-                },
-            ),
-            ("SE(0)", MetaUpdateLogEntry::SnapshotEnd(0)),
-        ];
-
-        let expect_log_name_order = &["S0(0)", "N1", "N2"];
-        let snapshot_start_seq = (logs.len() - 1) as u64;
-        let expect_snapshot_updates = &[
-            MetaUpdateLogEntry::SnapshotStart(snapshot_start_seq),
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_add_table(table_id),
-            },
-            MetaUpdateLogEntry::Snapshot {
-                sequence: snapshot_start_seq,
-                meta_update: ctx.meta_update_version_edit(table_id, Some(2)),
-            },
-            MetaUpdateLogEntry::SnapshotEnd(snapshot_start_seq),
-        ];
-        run_snapshot_test(
-            ctx,
-            table_id,
-            logs,
-            expect_log_name_order,
-            2,
-            expect_snapshot_updates,
-        );
-    }
-
-    // Actual logs:
-    // 0 - N0(add table)
-    // 1 - N1(drop table)
-    // =>
-    // logs after snapshot:
-    // SS(1),SE(1)
-    // logs applied after snapshot:
-    // N0,N1
-    #[test]
-    fn test_multiple_snapshot_drop_table() {
+    fn test_snapshot_drop_table() {
         let ctx = Arc::new(TestContext::new(
             "snapshot_drop_table",
             SchemaId::from_u32(0),
         ));
         let table_id = ctx.alloc_table_id();
-        let logs: Vec<(&str, MetaUpdateLogEntry)> = vec![
-            (
-                "N0",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_add_table(table_id)),
-            ),
-            (
-                "N1",
-                MetaUpdateLogEntry::Normal(ctx.meta_update_drop_table(table_id)),
-            ),
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_drop_table(table_id),
         ];
 
-        let expect_log_name_order = &["N0", "N1"];
-        let snapshot_start_seq = (logs.len() - 1) as u64;
-        let expect_snapshot_updates = &[
-            MetaUpdateLogEntry::SnapshotStart(snapshot_start_seq),
-            MetaUpdateLogEntry::SnapshotEnd(snapshot_start_seq),
+        run_snapshot_test(ctx, table_id, input_updates, vec![]);
+    }
+
+    #[test]
+    fn test_snapshot_twice() {
+        let ctx = Arc::new(TestContext::new(
+            "snapshot_merge_no_snapshot",
+            SchemaId::from_u32(0),
+        ));
+        let table_id = ctx.alloc_table_id();
+        let input_updates = vec![
+            ctx.meta_update_add_table(table_id),
+            ctx.meta_update_version_edit(table_id, Some(1)),
+            ctx.meta_update_version_edit(table_id, Some(3)),
         ];
-        run_snapshot_test(
-            ctx,
-            table_id,
-            logs,
-            expect_log_name_order,
-            2,
-            expect_snapshot_updates,
-        );
+        let updates_after_snapshot = vec![
+            ctx.meta_update_version_edit(table_id, Some(4)),
+            ctx.meta_update_version_edit(table_id, Some(8)),
+        ];
+
+        run_snapshot_test(ctx, table_id, input_updates, updates_after_snapshot);
     }
 }
