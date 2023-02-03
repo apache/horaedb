@@ -710,21 +710,22 @@ where
     /// Create a latest snapshot of the current logs.
     async fn create_latest_snapshot(&self) -> Result<Option<Snapshot>> {
         // Load the current snapshot first.
-        let curr_snapshot = self.snapshot_store.load().await?;
-        let log_start_boundary = if let Some(v) = &curr_snapshot {
-            ReadBoundary::Excluded(v.end_seq)
-        } else {
-            ReadBoundary::Included(SequenceNumber::MIN)
-        };
+        match self.snapshot_store.load().await? {
+            Some(v) => Ok(Some(self.create_latest_snapshot_with_prev(v).await?)),
+            None => self.create_latest_snapshot_without_prev().await,
+        }
+    }
+
+    async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
+        let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
         let mut reader = self
             .log_store
             .scan(log_start_boundary, ReadBoundary::Max)
             .await?;
 
         let mut num_logs = 0usize;
-        let mut latest_seq = SequenceNumber::MIN;
-        let curr_snapshot_exists = curr_snapshot.is_some();
-        let mut manifest_data_builder = if let Some(Some(v)) = curr_snapshot.map(|v| v.data) {
+        let mut latest_seq = prev_snapshot.end_seq;
+        let mut manifest_data_builder = if let Some(v) = prev_snapshot.data {
             TableManifestDataBuilder::new(Some(v.table_meta), v.version_meta)
         } else {
             TableManifestDataBuilder::default()
@@ -736,14 +737,36 @@ where
                 .apply_update(update)
                 .context(ApplyUpdate)?;
         }
+        Ok(Snapshot {
+            end_seq: latest_seq,
+            original_logs_num: num_logs,
+            data: manifest_data_builder.build(),
+        })
+    }
 
-        if curr_snapshot_exists || num_logs > 0 {
-            let snapshot = Snapshot {
+    async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
+        let mut reader = self
+            .log_store
+            .scan(ReadBoundary::Min, ReadBoundary::Max)
+            .await?;
+
+        let mut num_logs = 0usize;
+        let mut latest_seq = SequenceNumber::MIN;
+        let mut manifest_data_builder = TableManifestDataBuilder::default();
+        while let Some((seq, update)) = reader.next_update().await? {
+            latest_seq = seq;
+            num_logs += 1;
+            manifest_data_builder
+                .apply_update(update)
+                .context(ApplyUpdate)?;
+        }
+
+        if num_logs > 0 {
+            Ok(Some(Snapshot {
                 end_seq: latest_seq,
                 original_logs_num: num_logs,
                 data: manifest_data_builder.build(),
-            };
-            Ok(Some(snapshot))
+            }))
         } else {
             Ok(None)
         }
