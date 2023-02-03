@@ -2,6 +2,7 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
+use interpreters::interpreter::Output;
 use log::{error, info};
 use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
 use query_engine::executor::Executor as QueryExecutor;
@@ -10,10 +11,7 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
-    handlers::{
-        self,
-        sql::{Request, Response},
-    },
+    handlers::{self, sql::Request},
     instance::Instance,
     mysql::{
         error::{CreateContext, HandleSql, Result},
@@ -109,14 +107,12 @@ where
     W: std::io::Write + Send + Sync,
     Q: QueryExecutor + 'static,
 {
-    async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Response> {
+    async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;
 
         let req = Request::from(sql.to_string());
         handlers::sql::handle_sql(&ctx, self.instance.clone(), req)
             .await
-            // TODO(chenxiang): no need for this convert for MySQL, remove it
-            .map(handlers::sql::convert_output)
             .map_err(|e| {
                 error!("Mysql service Failed to handle sql, err: {}", e);
                 e
