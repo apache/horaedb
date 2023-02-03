@@ -45,74 +45,52 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
             return Ok(());
         }
 
-        let mut column_schemas = vec![];
-        let mut column_data = vec![];
-
-        let mut need_collect = true;
-        for record_batch in records {
-            let num_cols = record_batch.num_columns();
-            let num_rows = record_batch.num_rows();
-            let schema = record_batch.schema();
-
-            if need_collect {
-                for col_idx in 0..num_cols {
-                    let column_schema = schema.column(col_idx).clone();
-                    column_schemas.push(column_schema);
-                }
-                need_collect = false;
-            }
-
-            for row_idx in 0..num_rows {
-                let mut row_data = Vec::with_capacity(num_cols);
-                for col_idx in 0..num_cols {
-                    let column = record_batch.column(col_idx);
-                    let column = column.datum(row_idx);
-
-                    row_data.push(column);
-                }
-
-                column_data.push(row_data);
-            }
-        }
-
-        let columns = &column_schemas
+        // Schema of records should be the same, so only get columns using first record.
+        let columns = records[0]
+            .schema()
+            .columns()
             .iter()
             .map(make_column_by_field)
             .collect::<Vec<_>>();
-        let mut row_writer = writer.start(columns)?;
+        let mut row_writer = writer.start(&columns)?;
 
-        for row in &column_data {
-            for val in row {
-                let data_type = convert_field_type(val);
-                let re = match (data_type, val) {
-                    (_, Datum::Varbinary(v)) => row_writer.write_col(v.as_ref()),
-                    (_, Datum::Null) => row_writer.write_col(None::<u8>),
-                    (ColumnType::MYSQL_TYPE_LONG, Datum::Timestamp(t)) => {
-                        row_writer.write_col(t.as_i64())
-                    }
-                    (ColumnType::MYSQL_TYPE_VARCHAR, v) => {
-                        row_writer.write_col(v.as_str().map_or("", |s| s))
-                    }
-                    (ColumnType::MYSQL_TYPE_LONG, v) => {
-                        row_writer.write_col(v.as_u64().map_or(0, |v| v))
-                    }
-                    (ColumnType::MYSQL_TYPE_SHORT, Datum::Boolean(b)) => {
-                        row_writer.write_col(*b as i8)
-                    }
-                    (ColumnType::MYSQL_TYPE_DOUBLE, v) => {
-                        row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
-                    }
-                    (ColumnType::MYSQL_TYPE_FLOAT, v) => {
-                        row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
-                    }
-                    (_, v) => Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Unsupported column type, val: {:?}", v),
-                    )),
-                };
-                re?;
+        for record_batch in records {
+            let num_cols = record_batch.num_columns();
+            let num_rows = record_batch.num_rows();
+            for row_idx in 0..num_rows {
+                for col_idx in 0..num_cols {
+                    let val = record_batch.column(col_idx).datum(row_idx);
+                    let data_type = convert_datum_kind_type(&val.kind());
+                    match (data_type, val) {
+                        (_, Datum::Varbinary(v)) => row_writer.write_col(v.as_ref()),
+                        (_, Datum::Null) => row_writer.write_col(None::<u8>),
+                        (ColumnType::MYSQL_TYPE_LONG, Datum::Timestamp(t)) => {
+                            row_writer.write_col(t.as_i64())
+                        }
+                        (ColumnType::MYSQL_TYPE_VARCHAR, v) => {
+                            row_writer.write_col(v.as_str().map_or("", |s| s))
+                        }
+                        (ColumnType::MYSQL_TYPE_LONG, v) => {
+                            row_writer.write_col(v.as_u64().map_or(0, |v| v))
+                        }
+                        (ColumnType::MYSQL_TYPE_SHORT, Datum::Boolean(b)) => {
+                            row_writer.write_col(b as i8)
+                        }
+                        (ColumnType::MYSQL_TYPE_DOUBLE, v) => {
+                            row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
+                        }
+                        (ColumnType::MYSQL_TYPE_FLOAT, v) => {
+                            row_writer.write_col(v.as_f64().map_or(0.0, |v| v))
+                        }
+                        (_, v) => Err(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Unsupported column type, val: {:?}", v),
+                        )),
+                    }?
+                }
+
+                row_writer.end_row()?;
             }
-            row_writer.end_row()?;
         }
 
         Ok(())
@@ -146,26 +124,6 @@ fn convert_datum_kind_type(data_type: &DatumKind) -> ColumnType {
         DatumKind::Int8 => ColumnType::MYSQL_TYPE_LONG,
         DatumKind::Boolean => ColumnType::MYSQL_TYPE_SHORT,
         DatumKind::Null => ColumnType::MYSQL_TYPE_NULL,
-    }
-}
-
-fn convert_field_type(field: &Datum) -> ColumnType {
-    match field {
-        Datum::Timestamp(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Double(_) => ColumnType::MYSQL_TYPE_DOUBLE,
-        Datum::Float(_) => ColumnType::MYSQL_TYPE_FLOAT,
-        Datum::Varbinary(_) => ColumnType::MYSQL_TYPE_LONG_BLOB,
-        Datum::String(_) => ColumnType::MYSQL_TYPE_VARCHAR,
-        Datum::UInt64(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::UInt32(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::UInt16(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::UInt8(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Int64(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Int32(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Int16(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Int8(_) => ColumnType::MYSQL_TYPE_LONG,
-        Datum::Boolean(_) => ColumnType::MYSQL_TYPE_SHORT,
-        Datum::Null => ColumnType::MYSQL_TYPE_NULL,
     }
 }
 
