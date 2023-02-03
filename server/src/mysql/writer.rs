@@ -48,14 +48,18 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
         let mut column_schemas = vec![];
         let mut column_data = vec![];
 
+        let mut need_collect = true;
         for record_batch in records {
             let num_cols = record_batch.num_columns();
             let num_rows = record_batch.num_rows();
             let schema = record_batch.schema();
 
-            for col_idx in 0..num_cols {
-                let column_schema = schema.column(col_idx).clone();
-                column_schemas.push(column_schema);
+            if need_collect {
+                for col_idx in 0..num_cols {
+                    let column_schema = schema.column(col_idx).clone();
+                    column_schemas.push(column_schema);
+                }
+                need_collect = false;
             }
 
             for row_idx in 0..num_rows {
