@@ -87,24 +87,44 @@ pub enum Error {
         source: crate::manifest::meta_update::Error,
     },
 
-    #[snafu(display("Failed to store snapshot, err:{}", source))]
+    #[snafu(display(
+        "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
+        source,
+        backtrace
+    ))]
     StoreSnapshot {
         source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to update current snapshot, err:{}", source))]
+    #[snafu(display(
+        "Failed to update current snapshot, err:{}.\nBacktrace:\n{:?}",
+        source,
+        backtrace
+    ))]
     UpdateCurrentSnapshot {
         source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to fetch current snapshot, err:{}", source))]
+    #[snafu(display(
+        "Failed to fetch current snapshot, err:{}.\nBacktrace:\n{:?}",
+        source,
+        backtrace
+    ))]
     FetchCurrentSnapshot {
         source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to fetch snapshot, err:{}", source))]
+    #[snafu(display(
+        "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
+        source,
+        backtrace
+    ))]
     FetchSnapshot {
         source: object_store::ObjectStoreError,
+        backtrace: Backtrace,
     },
 
     #[snafu(display(
@@ -135,7 +155,7 @@ trait MetaUpdateLogEntryIterator {
     async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>>;
 }
 
-/// Implementation of [MetaUpdateReader]
+/// Implementation of [`MetaUpdateLogEntryIterator`].
 #[derive(Debug)]
 pub struct MetaUpdateReaderImpl {
     iter: BatchLogIteratorAdapter,
@@ -197,10 +217,7 @@ impl Default for Options {
     }
 }
 
-/// The implementation based on wal of Manifest which features:
-///  - The manifest of table is separate from each other.
-///  - The snapshot mechanism is based on logs(check the details on comments on
-///    [`Snapshotter`]).
+/// The implementation based on wal and object store of [`Manifest`].
 #[derive(Debug)]
 pub struct ManifestImpl {
     opts: Options,
@@ -426,7 +443,7 @@ impl ObjectStoreBasedSnapshotStore {
 impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
     /// Store the latest snapshot to the underlying store, and then update the
     /// `current_snapshot` to ensure the mapping to the latest snapshot.
-    /// Purge the old snapshot when things done.
+    /// The old snapshot will be purged when things done.
     async fn store(&self, snapshot: &Snapshot) -> Result<()> {
         let snapshot_pb = meta_update::Snapshot::from(snapshot.clone());
         let payload = snapshot_pb.encode_to_vec();
@@ -570,6 +587,7 @@ struct Snapshotter<LogStore, SnapshotStore> {
     snapshot_store: SnapshotStore,
 }
 
+/// Recording the sequence number of the current snapshot.
 #[derive(Debug, Clone)]
 struct CurrentSnapshot {
     sequence: SequenceNumber,
