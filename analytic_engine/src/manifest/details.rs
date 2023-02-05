@@ -323,6 +323,8 @@ impl Manifest for ManifestImpl {
         &self,
         request: MetaUpdateRequest,
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        debug!("try to store update:{:?}", request);
+
         let location = request.location;
         let space_id = request.meta_update.space_id();
         self.store_update_to_wal(request).await?;
@@ -361,6 +363,7 @@ impl Manifest for ManifestImpl {
             snapshot_store,
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
+        println!("snapshot is {:?}", snapshot);
         Ok(snapshot.and_then(|v| v.data))
     }
 }
