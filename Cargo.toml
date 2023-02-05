@@ -155,8 +155,6 @@ vergen = { version = "5", default-features = false, features = ["build", "git"] 
 # reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
 codegen-units = 1
 debug = true
-# reference: https://doc.rust-lang.org/cargo/reference/profiles.html#lto
-lto = true
 overflow-checks = true
 
 # This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
@@ -165,5 +163,4 @@ overflow-checks = true
 inherits = "release"
 codegen-units = 16
 debug = false
-lto = false
 strip = true

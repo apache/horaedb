@@ -10,7 +10,7 @@ RUN apt update && apt install --yes gcc g++ libssl-dev pkg-config cmake protobuf
 COPY . /ceresdb
 WORKDIR /ceresdb
 
-RUN make build-slim
+RUN make build
 
 ## CeresDB
 FROM ubuntu:20.04
@@ -23,7 +23,7 @@ RUN apt update && \
 
 ENV RUST_BACKTRACE 1
 
-COPY --from=build /ceresdb/target/release-slim/ceresdb-server /usr/bin/ceresdb-server
+COPY --from=build /ceresdb/target/release/ceresdb-server /usr/bin/ceresdb-server
 RUN chmod +x /usr/bin/ceresdb-server
 
 COPY ./docker/entrypoint.sh /entrypoint.sh
