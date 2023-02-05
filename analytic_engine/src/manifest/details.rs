@@ -723,6 +723,8 @@ where
         // Update the current snapshot to the new one.
         self.snapshot_store.store(&snapshot).await?;
         // Delete the expired logs after saving the snapshot.
+        // TODO: Actually this operation can be performed background, and the failure of
+        // it can be ignored.
         self.log_store.delete_up_to(snapshot.end_seq).await?;
 
         Ok(Some(snapshot))
