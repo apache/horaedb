@@ -33,7 +33,7 @@ cleanup() {
 
 mkdir -p ${LOG_DIR}
 
-nohup ./target/release-slim/ceresdb-server -c ${CONFIG_FILE} > ${LOG_DIR}/server.log &
+nohup ./target/release/ceresdb-server -c ${CONFIG_FILE} > ${LOG_DIR}/server.log &
 
 git clone -b feat-ceresdb --depth 1 --single-branch https://github.com/CeresDB/tsbs.git
 
