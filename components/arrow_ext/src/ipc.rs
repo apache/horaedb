@@ -94,7 +94,7 @@ impl RecordBatchesEncoder {
         match self.compression {
             Compression::None => Ok(encoded_bytes),
             Compression::Zstd => {
-                zstd::stream::encode_all(Cursor::new(encoded_bytes), ZSTD_LEVEL).context(ZstdError)
+                zstd::bulk::compress(&encoded_bytes, ZSTD_LEVEL).context(ZstdError)
             }
         }
     }
