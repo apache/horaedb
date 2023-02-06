@@ -165,7 +165,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
         let serve_addr = self.serve_addr;
         let (stop_tx, stop_rx) = oneshot::channel();
         let join_handle = self.runtime.spawn(async move {
-            info!("Grpc server starts listening on {}", serve_addr);
+            info!("Grpc server tries to listen on {}", serve_addr);
 
             let mut router = Server::builder().add_service(rpc_server);
 

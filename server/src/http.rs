@@ -460,7 +460,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         };
 
         info!(
-            "HTTP server starts listening on {}",
+            "HTTP server tries to listen on {}",
             &self.config.endpoint.to_string()
         );
 

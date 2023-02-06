@@ -211,7 +211,10 @@ impl MessageQueue for KafkaImpl {
             )
             .await;
 
-        info!("Create topic finish, name:{}", topic_name);
+        info!(
+            "Create topic finish, name:{}, result:{:?}",
+            topic_name, result
+        );
         match result {
             // Race condition between check and creation action, that's OK.
             Ok(_)
