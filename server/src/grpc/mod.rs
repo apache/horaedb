@@ -177,11 +177,12 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
             info!("Grpc server serves remote engine rpc service");
             router = router.add_service(remote_engine_server);
 
-            let serve_res = router
+            router
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
-                .await;
-
-            warn!("Grpc server stops serving, exit result:{:?}", serve_res);
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("Grpc server listens failed, err:{:?}", e);
+                });
         });
         self.join_handle = Some(join_handle);
         self.stop_tx = Some(stop_tx);

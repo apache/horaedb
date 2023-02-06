@@ -6,16 +6,12 @@ use common_util::runtime::JoinHandle;
 use log::{error, info};
 use opensrv_mysql::AsyncMysqlIntermediary;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
 use crate::{
     instance::{Instance, InstanceRef},
-    mysql::{
-        error::{Result, ServerNotRunning},
-        worker::MysqlWorker,
-    },
+    mysql::{error::Result, worker::MysqlWorker},
 };
 
 pub struct MysqlService<Q> {
@@ -77,16 +73,11 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         timeout: Option<Duration>,
         mut rx: Receiver<()>,
     ) {
-        let listener = match tokio::net::TcpListener::bind(socket_addr)
+        let listener = tokio::net::TcpListener::bind(socket_addr)
             .await
-            .context(ServerNotRunning)
-        {
-            Ok(l) => l,
-            Err(err) => {
-                error!("Mysql server binds failed, err:{}", err);
-                return;
-            }
-        };
+            .unwrap_or_else(|e| {
+                panic!("Mysql server listens failed, err:{}", e);
+            });
         loop {
             tokio::select! {
                 conn_result = listener.accept() => {
