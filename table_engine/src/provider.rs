@@ -4,6 +4,7 @@
 
 use std::{
     any::Any,
+    collections::HashSet,
     fmt,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -26,6 +27,7 @@ use datafusion::{
     scalar::ScalarValue,
 };
 use datafusion_expr::{TableSource, TableType};
+use df_operator::visitor::find_columns_by_expr;
 use log::debug;
 
 use crate::{
@@ -100,7 +102,7 @@ impl TableProviderAdapter {
             self.read_parallelism
         };
 
-        let predicate = self.predicate_from_filters(filters);
+        let predicate = self.check_and_build_predicate_from_filters(filters);
         let mut scan_table = ScanTable {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.clone())
                 .map_err(|e| {
@@ -122,11 +124,59 @@ impl TableProviderAdapter {
         Ok(Arc::new(scan_table))
     }
 
-    fn predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
+    fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
+        // 1.Only filter of primary key or timestamp key can be pushed down.
+        // Build key set.
+        let mut key_set = HashSet::new();
+        // Timestamp key should be always picked.
+        key_set.insert(self.read_schema.timestamp_name());
+        if self.read_schema.tsid_column().is_some() {
+            // When tsid exists, that means default primary key (tsid, timestamp) is used.
+            // So, all tag columns(tsid is the hash result of all tags) can be pushed down.
+            for column in self.read_schema.columns() {
+                if column.is_tag {
+                    key_set.insert(&column.name);
+                }
+            }
+        } else {
+            // When tsid does not exist, that means user defined primary key is used.
+            for primary_idx in self.read_schema.primary_key_indexes() {
+                let primary_column = self.read_schema.column(*primary_idx);
+                key_set.insert(&primary_column.name);
+            }
+        }
+
+        let push_down_filters = filters
+            .iter()
+            .filter_map(|filter| {
+                if self.should_push_down(filter, &key_set) {
+                    Some(filter.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // 2.Build predicates from push down filters.
         PredicateBuilder::default()
-            .add_pushdown_exprs(filters)
-            .extract_time_range(&self.read_schema, filters)
+            .add_pushdown_exprs(&push_down_filters)
+            .extract_time_range(&self.read_schema, &push_down_filters)
             .build()
+    }
+
+    fn should_push_down(&self, filter: &Expr, key_set: &HashSet<&str>) -> bool {
+        let columns = find_columns_by_expr(filter);
+        let mut should_push_down = true;
+        for column in columns {
+            // Once found a column not primary key or timestamp key in `filter`,
+            // the `filter` will be marked as unable to push down.
+            if !key_set.contains(column.as_str()) {
+                should_push_down = false;
+                break;
+            }
+        }
+
+        should_push_down
     }
 }
 
