@@ -527,7 +527,6 @@ pub struct MemoryEngineContext {
 impl Default for MemoryEngineContext {
     fn default() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        println!("dir is {:?}", dir);
 
         let config = Config {
             storage: StorageOptions {

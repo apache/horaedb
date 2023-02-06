@@ -273,7 +273,6 @@ impl<'a> Reader<'a> {
                 .with_context(|| FetchAndDecodeSstMeta {
                     file_path: self.path.to_string(),
                 })?;
-        println!("finish reading file:{}", self.path);
 
         Ok(Arc::new(meta_data))
     }
