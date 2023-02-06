@@ -87,15 +87,15 @@ pub struct BloomFilter {
     // Every filter is a row group filter consists of column filters.
     //
     // The row group filter can be None if the row group is not indexed.
-    row_group_filters: Vec<Option<RowGroupBloomFilter>>,
+    row_group_filters: Vec<RowGroupBloomFilter>,
 }
 
 impl BloomFilter {
-    pub fn new(row_group_filters: Vec<Option<RowGroupBloomFilter>>) -> Self {
+    pub fn new(row_group_filters: Vec<RowGroupBloomFilter>) -> Self {
         Self { row_group_filters }
     }
 
-    pub fn row_group_filters(&self) -> &[Option<RowGroupBloomFilter>] {
+    pub fn row_group_filters(&self) -> &[RowGroupBloomFilter] {
         &self.row_group_filters
     }
 }
@@ -106,19 +106,16 @@ impl From<BloomFilter> for sst_pb::SstBloomFilter {
             .row_group_filters
             .iter()
             .map(|row_group_filter| {
-                let column_filters = match row_group_filter {
-                    Some(v) => v
-                        .column_filters
-                        .iter()
-                        .map(|column_filter| {
-                            column_filter
-                                .map(|v| v.data().to_vec())
-                                // If the column filter does not exist, use an empty vector for it.
-                                .unwrap_or_default()
-                        })
-                        .collect::<Vec<_>>(),
-                    None => Vec::new(),
-                };
+                let column_filters = row_group_filter
+                    .column_filters
+                    .iter()
+                    .map(|column_filter| {
+                        column_filter
+                            .map(|v| v.data().to_vec())
+                            // If the column filter does not exist, use an empty vector for it.
+                            .unwrap_or_default()
+                    })
+                    .collect::<Vec<_>>();
                 sst_pb::sst_bloom_filter::RowGroupFilter { column_filters }
             })
             .collect::<Vec<_>>();
@@ -145,30 +142,24 @@ impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
             .row_group_filters
             .into_iter()
             .map(|row_group_filter| {
-                // If no column filter exists in the row group, it means the row group is not
-                // indexed.
-                if row_group_filter.column_filters.is_empty() {
-                    Ok(None)
-                } else {
-                    let column_filters = row_group_filter
-                        .column_filters
-                        .into_iter()
-                        .map(|encoded_bytes| {
-                            if encoded_bytes.is_empty() {
-                                Ok(None)
-                            } else {
-                                let size = encoded_bytes.len();
-                                let bs: [u8; 256] = encoded_bytes
-                                    .try_into()
-                                    .ok()
-                                    .context(InvalidBloomFilterSize { size })?;
+                let column_filters = row_group_filter
+                    .column_filters
+                    .into_iter()
+                    .map(|encoded_bytes| {
+                        if encoded_bytes.is_empty() {
+                            Ok(None)
+                        } else {
+                            let size = encoded_bytes.len();
+                            let bs: [u8; 256] = encoded_bytes
+                                .try_into()
+                                .ok()
+                                .context(InvalidBloomFilterSize { size })?;
 
-                                Ok(Some(Bloom::from(bs)))
-                            }
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    Ok(Some(RowGroupBloomFilter { column_filters }))
-                }
+                            Ok(Some(Bloom::from(bs)))
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(RowGroupBloomFilter { column_filters })
             })
             .collect::<Result<Vec<_>>>()?;
 

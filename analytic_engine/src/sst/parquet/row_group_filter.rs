@@ -25,7 +25,7 @@ use crate::sst::reader::error::{OtherNoCause, Result};
 pub struct RowGroupFilter<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
-    blooms: Option<&'a [Option<RowGroupBloomFilter>]>,
+    blooms: Option<&'a [RowGroupBloomFilter]>,
     predicates: &'a [Expr],
 }
 
@@ -33,7 +33,7 @@ impl<'a> RowGroupFilter<'a> {
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
-        blooms: Option<&'a [Option<RowGroupBloomFilter>]>,
+        blooms: Option<&'a [RowGroupBloomFilter]>,
         predicates: &'a [Expr],
     ) -> Result<Self> {
         if let Some(blooms) = blooms {
@@ -92,17 +92,12 @@ impl<'a> RowGroupFilter<'a> {
     }
 
     /// Filter row groups according to the bloom filter.
-    fn filter_by_bloom(
-        &self,
-        row_group_bloom_filters: &[Option<RowGroupBloomFilter>],
-    ) -> Vec<usize> {
+    fn filter_by_bloom(&self, row_group_bloom_filters: &[RowGroupBloomFilter]) -> Vec<usize> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
                 let exist = row_group_bloom_filters
-                    .get(col_pos.row_group_idx)
-                    .as_ref()?
-                    .as_ref()?
+                    .get(col_pos.row_group_idx)?
                     .contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
                 if exist {
                     // bloom filter has false positivity, that is to say we are unsure whether this

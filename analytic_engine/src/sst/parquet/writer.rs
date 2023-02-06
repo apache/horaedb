@@ -171,7 +171,7 @@ impl RecordBytesReader {
                     }
                 }
 
-                Some(row_group_filter)
+                row_group_filter
             })
             .collect::<Vec<_>>();
 
