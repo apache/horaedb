@@ -200,7 +200,7 @@ impl MessageQueue for KafkaImpl {
 
         // Create topic in Kafka.
         let topic_management_config = &self.config.topic_management_config;
-        info!("Try to create topic:{} in kafka", topic_name);
+        info!("Try to create topic, name:{}.", topic_name);
         let result = self
             .controller_client
             .create_topic(
@@ -211,6 +211,7 @@ impl MessageQueue for KafkaImpl {
             )
             .await;
 
+        info!("Create topic finish, name:{}", topic_name);
         match result {
             // Race condition between check and creation action, that's OK.
             Ok(_)

@@ -51,6 +51,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
 
         let rt = self.runtimes.clone();
         self.tx = Some(tx);
+        info!("MySQL server starts listening on {}", self.socket_addr);
         self.join_handler = Some(rt.bg_runtime.spawn(Self::loop_accept(
             self.instance.clone(),
             self.runtimes.clone(),
@@ -58,7 +59,6 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
             self.timeout,
             rx,
         )));
-        info!("Mysql service listens on {}", self.socket_addr);
         Ok(())
     }
 
