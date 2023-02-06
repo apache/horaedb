@@ -74,10 +74,7 @@ macro_rules! handle_request {
 
                 let res = handle
                     .await
-                    .map_err(|e| {
-                        error!("Fail to process request from meta, err:{}", e);
-                        Box::new(e) as _
-                    })
+                    .map_err(|e| Box::new(e) as _)
                     .context(ErrWithCause {
                         code: StatusCode::Internal,
                         msg: "fail to join task",
@@ -89,6 +86,7 @@ macro_rules! handle_request {
                         resp.header = Some(error::build_ok_header());
                     }
                     Ok(Err(e)) | Err(e) => {
+                        error!("Fail to process request from meta, err:{}", e);
                         resp.header = Some(error::build_err_header(e));
                     }
                 };
