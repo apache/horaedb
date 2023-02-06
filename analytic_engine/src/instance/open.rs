@@ -14,7 +14,7 @@ use table_engine::{engine::OpenTableRequest, remote::RemoteEngineRef};
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{ReadBoundary, ReadContext, ReadRequest, WalLocation, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
 };
 
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
         Instance, SpaceStore, Spaces,
     },
-    manifest::{meta_data::TableManifestData, ManifestRef},
+    manifest::{meta_data::TableManifestData, LoadRequest, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},
@@ -217,16 +217,20 @@ impl Instance {
         info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
-        let table_id = request.table_id.as_u64();
+        let table_id = request.table_id;
         let space_id = engine::build_space_id(request.schema_id);
+        let load_req = LoadRequest {
+            space_id,
+            table_id,
+            cluster_version: request.cluster_version,
+            // TODO: change this to shard id when we support shard migration.
+            shard_id: table_id.as_u64() as u32,
+            do_snapshot: true,
+        };
         let manifest_data = self
             .space_store
             .manifest
-            .load_data(
-                space_id,
-                WalLocation::new(table_id, request.cluster_version, table_id),
-                true,
-            )
+            .load_data(&load_req)
             .await
             .context(ReadMetaUpdate {
                 table_id: request.table_id,

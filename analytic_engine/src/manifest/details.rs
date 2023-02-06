@@ -12,7 +12,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::table::TableId;
 use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
@@ -21,6 +20,7 @@ use prost::Message;
 use proto::meta_update;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
+use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
     log_batch::LogEntry,
@@ -37,7 +37,7 @@ use crate::{
             AddTableMeta, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest,
             VersionEditMeta,
         },
-        Manifest,
+        LoadRequest, Manifest,
     },
     space::SpaceId,
     table::version::TableVersionMeta,
@@ -267,6 +267,7 @@ impl ManifestImpl {
     async fn maybe_do_snapshot(
         &self,
         space_id: SpaceId,
+        table_id: TableId,
         location: WalLocation,
         force: bool,
     ) -> Result<Option<Snapshot>> {
@@ -287,7 +288,7 @@ impl ManifestImpl {
             };
             let snapshot_store = ObjectStoreBasedSnapshotStore {
                 space_id,
-                table_id: location.table_id,
+                table_id,
                 store: self.store.clone(),
             };
             let snapshotter = Snapshotter {
@@ -327,22 +328,31 @@ impl Manifest for ManifestImpl {
 
         let location = request.location;
         let space_id = request.meta_update.space_id();
+        let table_id = request.meta_update.table_id();
         self.store_update_to_wal(request).await?;
 
-        self.maybe_do_snapshot(space_id, location, false).await?;
+        self.maybe_do_snapshot(space_id, table_id, location, false)
+            .await?;
 
         Ok(())
     }
 
     async fn load_data(
         &self,
-        space_id: SpaceId,
-        location: WalLocation,
-        do_snapshot: bool,
+        load_req: &LoadRequest,
     ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
     {
-        if do_snapshot {
-            if let Some(snapshot) = self.maybe_do_snapshot(space_id, location, true).await? {
+        let location = WalLocation::new(
+            load_req.shard_id as u64,
+            load_req.cluster_version,
+            load_req.table_id.as_u64(),
+        );
+
+        if load_req.do_snapshot {
+            if let Some(snapshot) = self
+                .maybe_do_snapshot(load_req.space_id, load_req.table_id, location, true)
+                .await?
+            {
                 return Ok(snapshot.data);
             }
         }
@@ -353,8 +363,8 @@ impl Manifest for ManifestImpl {
             wal_manager: self.wal_manager.clone(),
         };
         let snapshot_store = ObjectStoreBasedSnapshotStore {
-            space_id,
-            table_id: location.table_id,
+            space_id: load_req.space_id,
+            table_id: load_req.table_id,
             store: self.store.clone(),
         };
         let snapshotter = Snapshotter {
@@ -363,7 +373,6 @@ impl Manifest for ManifestImpl {
             snapshot_store,
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
-        println!("snapshot is {:?}", snapshot);
         Ok(snapshot.and_then(|v| v.data))
     }
 }
@@ -825,7 +834,7 @@ mod tests {
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
                 VersionEditMeta,
             },
-            Manifest,
+            LoadRequest, Manifest,
         },
         table::data::{TableLocation, TableShardInfo},
         TableOptions,
@@ -921,24 +930,21 @@ mod tests {
 
         async fn check_table_manifest_data_with_manifest(
             &self,
-            location: WalLocation,
+            load_req: &LoadRequest,
             expected: &Option<TableManifestData>,
             manifest: &ManifestImpl,
         ) {
-            let data = manifest
-                .load_data(self.schema_id.as_u32(), location, false)
-                .await
-                .unwrap();
+            let data = manifest.load_data(load_req).await.unwrap();
             assert_eq!(&data, expected);
         }
 
         async fn check_table_manifest_data(
             &self,
-            location: WalLocation,
+            load_req: &LoadRequest,
             expected: &Option<TableManifestData>,
         ) {
             let manifest = self.open_manifest().await;
-            self.check_table_manifest_data_with_manifest(location, expected, &manifest)
+            self.check_table_manifest_data_with_manifest(load_req, expected, &manifest)
                 .await;
         }
 
@@ -1188,13 +1194,15 @@ mod tests {
 
             update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
 
-            let location = WalLocation::new(
-                table_id.as_u64(),
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let load_req = LoadRequest {
+                table_id,
+                shard_id: DEFAULT_SHARD_ID,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+                space_id: ctx.schema_id.as_u32(),
+                do_snapshot: false,
+            };
             let expected_table_manifest_data = manifest_data_builder.build();
-            ctx.check_table_manifest_data(location, &expected_table_manifest_data)
+            ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
                 .await;
         })
     }
@@ -1289,7 +1297,7 @@ mod tests {
             .await;
 
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), location, true)
+                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
                 .await
                 .unwrap();
 
@@ -1300,8 +1308,15 @@ mod tests {
                 &manifest,
             )
             .await;
+            let load_req = LoadRequest {
+                space_id: ctx.schema_id.as_u32(),
+                table_id,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+                shard_id: DEFAULT_SHARD_ID,
+                do_snapshot: false,
+            };
             ctx.check_table_manifest_data_with_manifest(
-                location,
+                &load_req,
                 &manifest_data_builder.build(),
                 &manifest,
             )
@@ -1315,11 +1330,13 @@ mod tests {
         let runtime = ctx.runtime.clone();
         runtime.block_on(async move {
             let table_id = ctx.alloc_table_id();
-            let location = WalLocation::new(
-                table_id.as_u64(),
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let load_req = LoadRequest {
+                space_id: ctx.schema_id.as_u32(),
+                table_id,
+                cluster_version: DEFAULT_CLUSTER_VERSION,
+                shard_id: table_id.as_u64() as u32,
+                do_snapshot: false,
+            };
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(table_id, None, &mut manifest_data_builder, &manifest)
@@ -1335,14 +1352,19 @@ mod tests {
                 .await;
             }
             ctx.check_table_manifest_data_with_manifest(
-                location,
+                &load_req,
                 &manifest_data_builder.clone().build(),
                 &manifest,
             )
             .await;
 
+            let location = WalLocation::new(
+                table_id.as_u64(),
+                DEFAULT_CLUSTER_VERSION,
+                table_id.as_u64(),
+            );
             manifest
-                .maybe_do_snapshot(ctx.schema_id.as_u32(), location, true)
+                .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
                 .await
                 .unwrap();
             for i in 500..550 {
@@ -1355,7 +1377,7 @@ mod tests {
                 .await;
             }
             ctx.check_table_manifest_data_with_manifest(
-                location,
+                &load_req,
                 &manifest_data_builder.build(),
                 &manifest,
             )
