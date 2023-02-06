@@ -117,7 +117,7 @@ dependencies = [
  "table_engine",
  "table_kv",
  "tempfile",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "wal",
 ]
 
@@ -371,7 +371,7 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "sync_wrapper",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tower",
  "tower-http",
  "tower-layer",
@@ -451,7 +451,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_engine",
  "table_kv",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "wal",
  "zstd 0.12.1+zstd.1.5.2",
 ]
@@ -783,7 +783,7 @@ dependencies = [
  "snafu 0.6.10",
  "system_catalog",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -831,7 +831,7 @@ dependencies = [
  "common_types 0.4.0",
  "dashmap 5.4.0",
  "futures 0.3.25",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tonic",
 ]
 
@@ -843,7 +843,7 @@ dependencies = [
  "async-trait",
  "ceresdb-client-rs",
  "sqlness",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -1009,7 +1009,7 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -1101,7 +1101,7 @@ dependencies = [
  "snafu 0.6.10",
  "tempfile",
  "time 0.1.44",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-test",
  "toml",
 ]
@@ -1518,7 +1518,7 @@ dependencies = [
  "smallvec 1.9.0",
  "sqlparser",
  "tempfile",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-stream",
  "url 2.2.2",
  "uuid 1.1.2",
@@ -1622,7 +1622,7 @@ dependencies = [
  "datafusion-expr",
  "hashbrown",
  "sqlparser",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -2322,7 +2322,7 @@ dependencies = [
  "http 0.2.8",
  "indexmap",
  "slab",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-util",
  "tracing",
 ]
@@ -2545,7 +2545,7 @@ dependencies = [
  "itoa 1.0.3",
  "pin-project-lite",
  "socket2",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tower-service",
  "tracing",
  "want 0.3.0",
@@ -2559,7 +2559,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper 0.14.20",
  "pin-project-lite",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-io-timeout",
 ]
 
@@ -2585,7 +2585,7 @@ dependencies = [
  "bytes 1.2.1",
  "hyper 0.14.20",
  "native-tls",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-native-tls",
 ]
 
@@ -2721,7 +2721,7 @@ dependencies = [
  "snafu 0.6.10",
  "sql",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -3207,7 +3207,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "snafu 0.6.10",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "uuid 1.1.2",
 ]
 
@@ -3229,7 +3229,7 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tonic",
  "url 2.2.2",
 ]
@@ -3699,7 +3699,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "percent-encoding 2.1.0",
  "snafu 0.7.1",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tracing",
  "url 2.2.2",
  "walkdir",
@@ -3730,7 +3730,7 @@ dependencies = [
  "serde_json",
  "snafu 0.6.10",
  "tempfile",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -3795,7 +3795,7 @@ dependencies = [
  "chrono",
  "mysql_common 0.29.1",
  "nom 7.1.1",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -3982,7 +3982,7 @@ dependencies = [
  "seq-macro",
  "snap",
  "thrift 0.16.0",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "zstd 0.11.2+zstd.1.5.2",
 ]
 
@@ -4506,7 +4506,7 @@ dependencies = [
  "snafu 0.6.10",
  "sql",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -4862,7 +4862,7 @@ dependencies = [
  "serde_derive",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tonic",
 ]
 
@@ -4936,7 +4936,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.7.1",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-native-tls",
  "tower-service",
  "url 2.2.2",
@@ -5015,7 +5015,7 @@ dependencies = [
  "rand 0.8.5",
  "snap",
  "thiserror",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tracing",
 ]
 
@@ -5355,7 +5355,7 @@ dependencies = [
  "sql",
  "system_catalog",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-stream",
  "tonic",
  "warp",
@@ -5666,7 +5666,7 @@ dependencies = [
  "snafu 0.6.10",
  "sqlparser",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -5680,7 +5680,7 @@ dependencies = [
  "prettydiff",
  "serde",
  "thiserror",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "toml",
  "walkdir",
 ]
@@ -5899,7 +5899,7 @@ dependencies = [
  "proto 1.0.0-alpha02",
  "snafu 0.6.10",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -5927,7 +5927,7 @@ dependencies = [
  "serde_derive",
  "smallvec 1.9.0",
  "snafu 0.6.10",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -6150,9 +6150,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.24.1"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d9f76183f91ecfb55e1d7d5602bd1d979e38a3a522fe900241cf195624d67ae"
+checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
 dependencies = [
  "autocfg 1.1.0",
  "bytes 1.2.1",
@@ -6228,7 +6228,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
 dependencies = [
  "pin-project-lite",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -6249,7 +6249,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -6279,7 +6279,7 @@ checksum = "df54d54117d6fdc4e4fea40fe1e4e566b3505700e148a6827e59b34b0d2600d9"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -6315,7 +6315,7 @@ dependencies = [
  "async-stream",
  "bytes 1.2.1",
  "futures-core",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-stream",
 ]
 
@@ -6356,7 +6356,7 @@ checksum = "f714dd15bead90401d77e04243611caec13726c2408afd5b31901dfcdcb3b181"
 dependencies = [
  "futures-util",
  "log",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tungstenite",
 ]
 
@@ -6370,7 +6370,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tracing",
 ]
 
@@ -6405,7 +6405,7 @@ dependencies = [
  "pin-project",
  "prost",
  "prost-derive",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-stream",
  "tokio-util",
  "tower",
@@ -6443,7 +6443,7 @@ dependencies = [
  "parquet",
  "parquet_ext",
  "table_engine",
- "tokio 1.24.1",
+ "tokio 1.25.0",
 ]
 
 [[package]]
@@ -6459,7 +6459,7 @@ dependencies = [
  "pin-project-lite",
  "rand 0.8.5",
  "slab",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-util",
  "tower-layer",
  "tower-service",
@@ -6858,7 +6858,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_kv",
  "tempfile",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "uuid 1.1.2",
 ]
 
@@ -6917,7 +6917,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded 0.7.1",
- "tokio 1.24.1",
+ "tokio 1.25.0",
  "tokio-stream",
  "tokio-tungstenite",
  "tokio-util",
