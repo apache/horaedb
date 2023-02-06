@@ -24,6 +24,7 @@ use common_types::{
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
+    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
     sql::planner::{PlannerContext, SqlToRel},
 };
@@ -1005,6 +1006,18 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
 
             // Create physical expr
             let execution_props = ExecutionProps::default();
+            let df_schema_ref = Arc::new(df_schema.clone());
+            let simplifier = ExprSimplifier::new(
+                SimplifyContext::new(&execution_props).with_schema(df_schema_ref.clone()),
+            );
+            let df_logical_expr = simplifier
+                .coerce(df_logical_expr, df_schema_ref.clone())
+                .context(DatafusionExpr)?;
+
+            let df_logical_expr = simplifier
+                .simplify(df_logical_expr)
+                .context(DatafusionExpr)?;
+
             let physical_expr = create_physical_expr(
                 &df_logical_expr,
                 &df_schema,

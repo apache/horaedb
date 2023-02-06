@@ -6,7 +6,7 @@ Int64(1),
 
 SELECT x;
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named 'x'. Valid fields are ." })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: SELECT x;. Caused by: Failed to create plan, err:Failed to generate datafusion plan, err:Schema error: No field named 'x'." })
 
 SELECT 'a';
 

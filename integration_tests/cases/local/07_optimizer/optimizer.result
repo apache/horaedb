@@ -9,8 +9,8 @@ affected_rows: 0
 EXPLAIN SELECT max(value) AS c1, avg(value) AS c2 FROM `07_optimizer_t` GROUP BY name;
 
 plan_type,plan,
-String(StringBytes(b"logical_plan")),String(StringBytes(b"Projection: #MAX(07_optimizer_t.value) AS c1, #AVG(07_optimizer_t.value) AS c2\n  Aggregate: groupBy=[[#07_optimizer_t.name]], aggr=[[MAX(#07_optimizer_t.value), AVG(#07_optimizer_t.value)]]\n    TableScan: 07_optimizer_t projection=[name, value]")),
-String(StringBytes(b"physical_plan")),String(StringBytes(b"ProjectionExec: expr=[MAX(07_optimizer_t.value)@1 as c1, AVG(07_optimizer_t.value)@2 as c2]\n  AggregateExec: mode=FinalPartitioned, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n    CoalesceBatchesExec: target_batch_size=4096\n      RepartitionExec: partitioning=Hash([Column { name: \"name\", index: 0 }], 8)\n        AggregateExec: mode=Partial, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n          ScanTable: table=07_optimizer_t, parallelism=8, order=None, \n")),
+String(StringBytes(b"logical_plan")),String(StringBytes(b"Projection: MAX(07_optimizer_t.value) AS c1, AVG(07_optimizer_t.value) AS c2\n  Aggregate: groupBy=[[07_optimizer_t.name]], aggr=[[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]]\n    TableScan: 07_optimizer_t projection=[name, value]")),
+String(StringBytes(b"physical_plan")),String(StringBytes(b"ProjectionExec: expr=[MAX(07_optimizer_t.value)@1 as c1, AVG(07_optimizer_t.value)@2 as c2]\n  AggregateExec: mode=FinalPartitioned, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n    CoalesceBatchesExec: target_batch_size=8192\n      RepartitionExec: partitioning=Hash([Column { name: \"name\", index: 0 }], 8), input_partitions=8\n        AggregateExec: mode=Partial, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n          ScanTable: table=07_optimizer_t, parallelism=8, order=None, \n")),
 
 
 DROP TABLE `07_optimizer_t`;

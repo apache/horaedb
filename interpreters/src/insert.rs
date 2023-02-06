@@ -27,7 +27,7 @@ use datafusion::{
     },
 };
 use datafusion_expr::{expr::Expr as DfLogicalExpr, Expr};
-use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyInfo};
+use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext, SimplifyInfo};
 use df_operator::visitor::find_columns_by_expr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
@@ -226,22 +226,25 @@ fn fill_default_values(
 ) -> Result<()> {
     let mut cached_column_values: HashMap<usize, DfColumnarValue> = HashMap::new();
     let table_arrow_schema = table.schema().to_arrow_schema_ref();
+    let df_schema_ref = table_arrow_schema
+        .clone()
+        .to_dfschema_ref()
+        .context(DatafusionSchema)?;
 
     for (column_idx, default_value_expr) in default_value_map.iter() {
+        let execution_props = ExecutionProps::default();
+
         // Optimize logical expr
-        let simplifier = ExprSimplifier::new(Info::default());
+        let simplifier = ExprSimplifier::new(
+            SimplifyContext::new(&execution_props).with_schema(df_schema_ref.clone()),
+        );
         let default_value_expr = simplifier
-            .coerce(
-                default_value_expr.clone(),
-                table_arrow_schema
-                    .clone()
-                    .to_dfschema_ref()
-                    .context(DatafusionSchema)?,
-            )
-            .unwrap();
+            .coerce(default_value_expr.clone(), df_schema_ref.clone())
+            .context(DatafusionExpr)?;
         let simplified_expr = simplifier
             .simplify(default_value_expr)
             .context(DatafusionExpr)?;
+
         // Find input columns
         let required_column_idxes = find_columns_by_expr(&simplified_expr)
             .iter()
@@ -261,7 +264,6 @@ fn fill_default_values(
             .context(DatafusionSchema)?;
 
         // Create physical expr
-        let execution_props = ExecutionProps::default();
         let physical_expr = create_physical_expr(
             &simplified_expr,
             &input_df_schema,

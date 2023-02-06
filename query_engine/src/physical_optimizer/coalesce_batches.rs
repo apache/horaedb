@@ -49,10 +49,7 @@ impl PhysicalOptimizerRule for CoalesceBatchesAdapter {
         plan: Arc<dyn ExecutionPlan>,
         config: &ConfigOptions,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
-        if Self::detect_small_limit_plan(
-            &*plan, // config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
-            512,
-        ) {
+        if Self::detect_small_limit_plan(&*plan, config.execution.batch_size) {
             Ok(plan)
         } else {
             self.original_rule.optimize(plan, config)
