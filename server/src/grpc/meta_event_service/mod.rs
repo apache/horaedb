@@ -24,7 +24,7 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::{runtime::Runtime, time::InstantExt};
-use log::info;
+use log::{error, info};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -74,7 +74,10 @@ macro_rules! handle_request {
 
                 let res = handle
                     .await
-                    .map_err(|e| Box::new(e) as _)
+                    .map_err(|e| {
+                        error!("Fail to process request from meta, err:{}", e);
+                        Box::new(e) as _
+                    })
                     .context(ErrWithCause {
                         code: StatusCode::Internal,
                         msg: "fail to join task",
