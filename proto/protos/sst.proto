@@ -12,7 +12,8 @@ message SstBloomFilter {
     repeated bytes column_filters = 1;
   };
 
-  repeated RowGroupFilter row_group_filters = 1;
+  uint32 version = 1;
+  repeated RowGroupFilter row_group_filters = 2;
 }
 
 message SstMetaData {
