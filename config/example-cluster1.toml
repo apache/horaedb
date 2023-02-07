@@ -3,8 +3,7 @@ peer-urls = "http://127.0.0.1:12380"
 advertise-client-urls = "http://127.0.0.1:12379"
 advertise-peer-urls = "http://127.0.0.1:12380"
 client-urls = "http://127.0.0.1:12379"
-wal-dir = "/tmp/ceresmeta1/wal"
-data-dir = "/tmp/ceresmeta1/data"
+data-dir = "/tmp/ceresmeta1"
 node-name = "meta1"
 initial-cluster = "meta0=http://127.0.0.1:2380,meta1=http://127.0.0.1:12380,meta2=http://127.0.0.1:22380"
 default-cluster-node-count = 2
@@ -14,4 +13,4 @@ default-http-port = 8081
 level = "info"
 
 [etcd-log]
-file = "/tmp/ceresmeta1/etcd.log"
+level = "info"

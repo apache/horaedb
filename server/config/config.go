@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
@@ -24,8 +25,6 @@ const (
 	defaultEtcdLeaseTTLSec           = 10
 
 	defaultNodeNamePrefix          = "ceresmeta"
-	defaultDataDir                 = "/tmp/ceresmeta/data"
-	defaultWalDir                  = "/tmp/ceresmeta/wal"
 	defaultRootPath                = "/rootPath"
 	defaultClientUrls              = "http://0.0.0.0:2379"
 	defaultPeerUrls                = "http://0.0.0.0:2380"
@@ -51,6 +50,14 @@ const (
 	defaultPartitionTableProportionOfNodes = 0
 
 	defaultHTTPPort = 8080
+
+	defaultDataDir = "/tmp/ceresmeta"
+
+	defaultEtcdDataDir = "/etcd"
+	defaultWalDir      = "/wal"
+
+	defaultEtcdLogFile = "/etcd.log"
+	defaultLogFile     = "/ceresmeta.log"
 )
 
 // Config is server start config, it has three input modes:
@@ -71,7 +78,6 @@ type Config struct {
 
 	NodeName            string `toml:"node-name" env:"NODE_NAME"`
 	DataDir             string `toml:"data-dir" env:"DATA_DIR"`
-	WalDir              string `toml:"wal-dir" env:"WAL_DIR"`
 	StorageRootPath     string `toml:"storage-root-path" env:"STORAGE_ROOT_PATH"`
 	InitialCluster      string `toml:"initial-cluster" env:"INITIAL_CLUSTER"`
 	InitialClusterState string `toml:"initial-cluster-state" env:"INITIAL_CLUSTER_STATE"`
@@ -134,8 +140,8 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 	cfg := embed.NewConfig()
 
 	cfg.Name = c.NodeName
-	cfg.Dir = c.DataDir
-	cfg.WalDir = c.WalDir
+	cfg.Dir = strings.Join([]string{c.DataDir, defaultEtcdDataDir}, "")
+	cfg.WalDir = strings.Join([]string{c.DataDir, defaultWalDir}, "")
 	cfg.InitialCluster = c.InitialCluster
 	cfg.ClusterState = c.InitialClusterState
 	cfg.InitialClusterToken = c.InitialClusterToken
@@ -170,10 +176,17 @@ func (c *Config) GenEtcdConfig() (*embed.Config, error) {
 	}
 
 	cfg.Logger = "zap"
-	cfg.LogOutputs = []string{c.EtcdLog.File}
+	cfg.LogOutputs = []string{strings.Join([]string{c.DataDir, defaultEtcdLogFile}, "")}
 	cfg.LogLevel = c.EtcdLog.Level
 
 	return cfg, nil
+}
+
+func (c *Config) GenLogConfigConfig() log.Config {
+	return log.Config{
+		Level: c.Log.Level,
+		File:  defaultLogFile,
+	}
 }
 
 // Parser builds the config from the flags.
@@ -232,7 +245,6 @@ func MakeConfigParser() (*Parser, error) {
 
 		NodeName:        defaultNodeName,
 		DataDir:         defaultDataDir,
-		WalDir:          defaultWalDir,
 		StorageRootPath: defaultRootPath,
 
 		InitialCluster:      defaultInitialCluster,

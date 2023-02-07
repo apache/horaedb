@@ -54,6 +54,10 @@ func main() {
 		panicf("fail to marshal server config, err:%v", err)
 	}
 
+	if err = os.MkdirAll(cfg.DataDir, os.ModePerm); err != nil {
+		panicf("fail to create data dir, data_dir:%v, err:%v", cfg.DataDir, err)
+	}
+
 	logger, err := log.InitGlobalLogger(&cfg.Log)
 	if err != nil {
 		panicf("fail to init global logger, err:%v", err)
