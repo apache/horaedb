@@ -303,36 +303,12 @@ mod tests {
             bloom_filter.row_group_filters().len(),
         );
         assert_eq!(
-            decoded_bloom_filter.row_group_filters[0]
-                .column_filters
-                .len(),
-            bloom_filter.row_group_filters()[0].column_filters.len(),
+            decoded_bloom_filter.row_group_filters[0].column_filters,
+            bloom_filter.row_group_filters()[0].column_filters
         );
         assert_eq!(
-            decoded_bloom_filter.row_group_filters[1]
-                .column_filters
-                .len(),
-            bloom_filter.row_group_filters()[1].column_filters.len(),
-        );
-        assert_eq!(
-            decoded_bloom_filter.row_group_filters[0].column_filters[0]
-                .as_ref()
-                .unwrap()
-                .data(),
-            bloom_filter.row_group_filters()[0].column_filters[0]
-                .as_ref()
-                .unwrap()
-                .data(),
-        );
-        assert_eq!(
-            decoded_bloom_filter.row_group_filters[0].column_filters[1]
-                .as_ref()
-                .unwrap()
-                .data(),
-            bloom_filter.row_group_filters()[0].column_filters[1]
-                .as_ref()
-                .unwrap()
-                .data(),
+            decoded_bloom_filter.row_group_filters[1],
+            bloom_filter.row_group_filters()[1],
         );
     }
 }
