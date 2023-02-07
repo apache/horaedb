@@ -152,7 +152,7 @@ impl<'a> Reader<'a> {
         let filter = RowGroupFilter::try_new(
             &schema,
             row_groups,
-            bloom_filter.map(|v| v.filters()),
+            bloom_filter.map(|v| v.row_group_filters()),
             self.predicate.exprs(),
         )?;
 
