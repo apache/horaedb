@@ -130,8 +130,7 @@ pub struct ServiceConfig {
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
     pub timeout: Option<ReadableDuration>,
-    /// The threshold of the datums in the query response to trigger
-    /// compression.
+    /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
 }
 

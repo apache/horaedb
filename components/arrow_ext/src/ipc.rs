@@ -50,16 +50,19 @@ pub struct RecordBatchesEncoder {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CompressOptions {
+    /// The minimum length of the payload to be compressed.
     pub compress_min_length: usize,
     pub method: Compression,
 }
 
+#[derive(Clone, Default, Debug)]
 pub struct CompressOutput {
     pub method: Compression,
     pub payload: Vec<u8>,
 }
 
 impl CompressOutput {
+    #[inline]
     pub fn no_compression(payload: Vec<u8>) -> Self {
         Self {
             method: Compression::None,
