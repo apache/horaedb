@@ -304,17 +304,20 @@ impl Instance {
 
             // Now persist the new options, the `worker_local` ensure there is no race
             // condition.
-            let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
-                space_id: table_data.space_id,
-                table_id: table_data.id,
-                options: new_table_opts.clone(),
-            });
+            let update_req = {
+                let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
+                    space_id: table_data.space_id,
+                    table_id: table_data.id,
+                    options: new_table_opts.clone(),
+                });
+                MetaUpdateRequest {
+                    shard_info: table_data.shard_info,
+                    meta_update,
+                }
+            };
             self.space_store
                 .manifest
-                .store_update(MetaUpdateRequest::new(
-                    table_data.table_location(),
-                    meta_update,
-                ))
+                .store_update(update_req)
                 .await
                 .context(StoreVersionEdit)?;
 
@@ -544,20 +547,23 @@ impl Instance {
         );
 
         // Persist the flush result to manifest.
-        let edit_meta = VersionEditMeta {
-            space_id: table_data.space_id,
-            table_id: table_data.id,
-            flushed_sequence,
-            files_to_add: files_to_level0.clone(),
-            files_to_delete: vec![],
+        let update_req = {
+            let edit_meta = VersionEditMeta {
+                space_id: table_data.space_id,
+                table_id: table_data.id,
+                flushed_sequence,
+                files_to_add: files_to_level0.clone(),
+                files_to_delete: vec![],
+            };
+            let meta_update = MetaUpdate::VersionEdit(edit_meta);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
         };
-        let meta_update = MetaUpdate::VersionEdit(edit_meta);
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
-                meta_update,
-            ))
+            .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
 
@@ -846,12 +852,15 @@ impl SpaceStore {
             .await?;
         }
 
-        let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
-        self.manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
+        let update_req = {
+            let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
                 meta_update,
-            ))
+            }
+        };
+        self.manifest
+            .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
 

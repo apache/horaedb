@@ -223,8 +223,7 @@ impl Instance {
             space_id,
             table_id,
             cluster_version: request.cluster_version,
-            // TODO: change this to shard id when we support shard migration.
-            shard_id: table_id.as_u64() as u32,
+            shard_id: request.shard_id,
             do_snapshot: true,
         };
         let manifest_data = self

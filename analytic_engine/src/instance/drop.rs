@@ -104,14 +104,20 @@ impl Instance {
             })?;
 
         // Store the dropping information into meta
-        let update = MetaUpdate::DropTable(DropTableMeta {
-            space_id: space.id,
-            table_id: table_data.id,
-            table_name: table_data.name.clone(),
-        });
+        let update_req = {
+            let meta_update = MetaUpdate::DropTable(DropTableMeta {
+                space_id: space.id,
+                table_id: table_data.id,
+                table_name: table_data.name.clone(),
+            });
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: space.id,

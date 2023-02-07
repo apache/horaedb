@@ -251,14 +251,17 @@ impl ManifestImpl {
         Ok(manifest)
     }
 
-    async fn store_update_to_wal(&self, request: MetaUpdateRequest) -> Result<SequenceNumber> {
-        info!("Manifest store update, request:{:?}", request);
+    async fn store_update_to_wal(
+        &self,
+        meta_update: MetaUpdate,
+        location: WalLocation,
+    ) -> Result<SequenceNumber> {
         let log_store = WalBasedLogStore {
             opts: self.opts.clone(),
-            location: request.location,
+            location,
             wal_manager: self.wal_manager.clone(),
         };
-        log_store.append(request.meta_update).await
+        log_store.append(meta_update).await
     }
 
     /// Do snapshot if no other snapshot is triggered.
@@ -326,10 +329,17 @@ impl Manifest for ManifestImpl {
     ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("try to store update:{:?}", request);
 
-        let location = request.location;
+        let table_id = request.meta_update.table_id();
+        let location = WalLocation::new(
+            // TODO: use shard id as region id.
+            table_id.as_u64(),
+            request.shard_info.cluster_version,
+            table_id.as_u64(),
+        );
         let space_id = request.meta_update.space_id();
         let table_id = request.meta_update.table_id();
-        self.store_update_to_wal(request).await?;
+        self.store_update_to_wal(request.meta_update, location)
+            .await?;
 
         self.maybe_do_snapshot(space_id, table_id, location, false)
             .await?;
@@ -343,7 +353,8 @@ impl Manifest for ManifestImpl {
     ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
     {
         let location = WalLocation::new(
-            load_req.shard_id as u64,
+            // TODO: use shard id as region id.
+            load_req.table_id.as_u64(),
             load_req.cluster_version,
             load_req.table_id.as_u64(),
         );
@@ -836,7 +847,7 @@ mod tests {
             },
             LoadRequest, Manifest,
         },
-        table::data::{TableLocation, TableShardInfo},
+        table::data::TableShardInfo,
         TableOptions,
     };
 
@@ -1031,17 +1042,16 @@ mod tests {
                 cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
-            let table_location = TableLocation {
-                id: table_id.as_u64(),
-                shard_info,
-            };
-
             let add_table =
                 self.meta_update_add_table_with_partition_info(table_id, partition_info);
-            manifest
-                .store_update(MetaUpdateRequest::new(table_location, add_table.clone()))
-                .await
-                .unwrap();
+            let update_req = {
+                MetaUpdateRequest {
+                    shard_info,
+                    meta_update: add_table.clone(),
+                }
+            };
+
+            manifest.store_update(update_req).await.unwrap();
             manifest_data_builder.apply_update(add_table).unwrap();
         }
 
@@ -1056,16 +1066,14 @@ mod tests {
                 cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
-            let table_location = TableLocation {
-                id: table_id.as_u64(),
-                shard_info,
-            };
-
             let drop_table = self.meta_update_drop_table(table_id);
-            manifest
-                .store_update(MetaUpdateRequest::new(table_location, drop_table.clone()))
-                .await
-                .unwrap();
+            let update_req = {
+                MetaUpdateRequest {
+                    shard_info,
+                    meta_update: drop_table.clone(),
+                }
+            };
+            manifest.store_update(update_req).await.unwrap();
             manifest_data_builder.apply_update(drop_table).unwrap();
         }
 
@@ -1081,16 +1089,14 @@ mod tests {
                 cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
-            let table_location = TableLocation {
-                id: table_id.as_u64(),
-                shard_info,
-            };
-
             let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
-            manifest
-                .store_update(MetaUpdateRequest::new(table_location, version_edit.clone()))
-                .await
-                .unwrap();
+            let update_req = {
+                MetaUpdateRequest {
+                    shard_info,
+                    meta_update: version_edit.clone(),
+                }
+            };
+            manifest.store_update(update_req).await.unwrap();
             manifest_data_builder.apply_update(version_edit).unwrap();
         }
 
@@ -1137,19 +1143,14 @@ mod tests {
                 cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
-            let table_location = TableLocation {
-                id: table_id.as_u64(),
-                shard_info,
-            };
-
             let alter_options = self.meta_update_alter_table_options(table_id);
-            manifest
-                .store_update(MetaUpdateRequest::new(
-                    table_location,
-                    alter_options.clone(),
-                ))
-                .await
-                .unwrap();
+            let update_req = {
+                MetaUpdateRequest {
+                    shard_info,
+                    meta_update: alter_options.clone(),
+                }
+            };
+            manifest.store_update(update_req).await.unwrap();
             manifest_data_builder.apply_update(alter_options).unwrap();
         }
 
@@ -1165,16 +1166,15 @@ mod tests {
                 cluster_version: DEFAULT_CLUSTER_VERSION,
             };
 
-            let table_location = TableLocation {
-                id: table_id.as_u64(),
-                shard_info,
+            let alter_schema = self.meta_update_alter_table_schema(table_id);
+            let update_req = {
+                MetaUpdateRequest {
+                    shard_info,
+                    meta_update: alter_schema.clone(),
+                }
             };
 
-            let alter_schema = self.meta_update_alter_table_schema(table_id);
-            manifest
-                .store_update(MetaUpdateRequest::new(table_location, alter_schema.clone()))
-                .await
-                .unwrap();
+            manifest.store_update(update_req).await.unwrap();
             manifest_data_builder.apply_update(alter_schema).unwrap();
         }
     }

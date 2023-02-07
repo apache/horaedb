@@ -159,10 +159,16 @@ impl Instance {
         );
 
         // Write to Manifest
-        let update = MetaUpdate::AlterSchema(manifest_update);
+        let update_req = {
+            let meta_update = MetaUpdate::AlterSchema(manifest_update);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,
@@ -324,13 +330,16 @@ impl Instance {
             })?;
 
         // Write to Manifest
-        let meta_update = MetaUpdate::AlterOptions(manifest_update);
+        let update_req = {
+            let meta_update = MetaUpdate::AlterOptions(manifest_update);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
-                meta_update,
-            ))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,

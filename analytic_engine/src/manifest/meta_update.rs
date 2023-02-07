@@ -14,15 +14,12 @@ use prost::Message;
 use proto::{analytic_common, common as common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{partition::PartitionInfo, table::TableId};
-use wal::{
-    log_batch::{Payload, PayloadDecoder},
-    manager::{VersionedRegionId, WalLocation},
-};
+use wal::log_batch::{Payload, PayloadDecoder};
 
 use crate::{
     space::SpaceId,
     table::{
-        data::TableLocation,
+        data::TableShardInfo,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
     table_options, TableOptions,
@@ -406,27 +403,6 @@ impl PayloadDecoder for MetaUpdateDecoder {
 
 #[derive(Debug, Clone)]
 pub struct MetaUpdateRequest {
-    pub location: WalLocation,
+    pub shard_info: TableShardInfo,
     pub meta_update: MetaUpdate,
-}
-
-impl MetaUpdateRequest {
-    pub fn new(table_location: TableLocation, meta_update: MetaUpdate) -> Self {
-        // Region id in manifest shouldn't change following by its moving from shards,
-        // so it should be mapped to `table_id`.
-        let versioned_region_id = VersionedRegionId {
-            version: table_location.shard_info.cluster_version,
-            id: table_location.id,
-        };
-
-        let location = WalLocation {
-            versioned_region_id,
-            table_id: table_location.id,
-        };
-
-        Self {
-            location,
-            meta_update,
-        }
-    }
 }
