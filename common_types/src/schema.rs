@@ -99,8 +99,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Timestamp key not exists.\nBacktrace:\n{}", backtrace))]
-    MissingTimestampKey { backtrace: Backtrace },
+    #[snafu(display("Timestamp not in primary key.\nBacktrace:\n{}", backtrace))]
+    TimestampNotInPrimaryKey { backtrace: Backtrace },
 
     #[snafu(display(
         "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
@@ -1178,7 +1178,7 @@ impl Builder {
 
     /// Build the schema
     pub fn build(self) -> Result<Schema> {
-        let timestamp_index = self.timestamp_index.context(MissingTimestampKey)?;
+        let timestamp_index = self.timestamp_index.context(TimestampNotInPrimaryKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero
         assert!(!self.primary_key_indexes.is_empty());

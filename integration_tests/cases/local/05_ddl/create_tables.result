@@ -231,6 +231,10 @@ drop table `05_create_tables_t12`;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: drop table `05_create_tables_t12`;. Caused by: Failed to create plan, err:Table not found, table:05_create_tables_t12" })
 
+CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;. Caused by: Failed to create plan, err:Failed to build schema, err:Timestamp not in primary key." })
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 
 affected_rows: 0
