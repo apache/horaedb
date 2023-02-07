@@ -17,9 +17,13 @@ use sqlparser::{
 };
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::ast::{
-    AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
-    HashPartition, KeyPartition, Partition, ShowCreate, ShowCreateObject, ShowTables, Statement,
+use crate::{
+    ast::{
+        AlterAddColumn, AlterModifySetting, CreateTable, DescribeTable, DropTable, ExistsTable,
+        HashPartition, KeyPartition, Partition, ShowCreate, ShowCreateObject, ShowTables,
+        Statement,
+    },
+    partition,
 };
 
 define_result!(ParserError);
@@ -641,16 +645,27 @@ impl<'a> Parser<'a> {
 
     // Parse second part: "PARTITIONS num" (if not set, num will use 1 as default).
     fn parse_partition_num(&mut self) -> Result<u64> {
-        if self.parser.parse_keyword(Keyword::PARTITIONS) {
+        let partition_num = if self.parser.parse_keyword(Keyword::PARTITIONS) {
             match self.parser.parse_number_value()? {
                 sqlparser::ast::Value::Number(v, _) => match v.parse::<u64>() {
-                    Ok(v) => Ok(v),
-                    Err(e) => parser_err!(format!("invalid partition num, raw:{}, err:{}", v, e)),
+                    Ok(v) => v,
+                    Err(e) => {
+                        return parser_err!(format!("invalid partition num, raw:{}, err:{}", v, e))
+                    }
                 },
-                v => parser_err!(format!("expect partition number, found:{}", v)),
+                v => return parser_err!(format!("expect partition number, found:{}", v)),
             }
         } else {
-            Ok(1)
+            1
+        };
+
+        if partition_num > partition::MAX_PARTITION_NUM {
+            parser_err!(format!(
+                "partition num must be <= MAX_PARTITION_NUM, MAX_PARTITION_NUM:{}, set partition num:{}",
+                partition::MAX_PARTITION_NUM, partition_num
+            ))
+        } else {
+            Ok(partition_num)
         }
     }
 
@@ -1399,5 +1414,35 @@ mod tests {
                 ParserError(r#"partition key must be tag, key name:"value""#.to_string())
             )
         }
+    }
+
+    #[test]
+    fn test_partition_num_restriction() {
+        let invalid_partition_num = partition::MAX_PARTITION_NUM + 1;
+        let invalid_partition_num_sql =
+            create_sql_with_partition_num(partition::MAX_PARTITION_NUM + 1);
+        let result = Parser::parse_sql(&invalid_partition_num_sql);
+        assert_eq!(
+            result.err().unwrap(),
+            ParserError(format!(
+                r#"partition num must be <= MAX_PARTITION_NUM, MAX_PARTITION_NUM:{}, set partition num:{}"#,
+                partition::MAX_PARTITION_NUM,
+                invalid_partition_num
+            ))
+        );
+
+        let valid_partition_num = partition::MAX_PARTITION_NUM - 1;
+        let valid_partition_num_sql = create_sql_with_partition_num(valid_partition_num);
+        let result = Parser::parse_sql(&valid_partition_num_sql);
+        assert!(result.is_ok());
+    }
+
+    fn create_sql_with_partition_num(partition_num: u64) -> String {
+        format!(
+            r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL,
+            `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS {}
+            ENGINE=Analytic with (enable_ttl="false")"#,
+            partition_num
+        )
     }
 }

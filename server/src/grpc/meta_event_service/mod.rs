@@ -24,7 +24,7 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::{runtime::Runtime, time::InstantExt};
-use log::info;
+use log::{error, info};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -86,6 +86,7 @@ macro_rules! handle_request {
                         resp.header = Some(error::build_ok_header());
                     }
                     Ok(Err(e)) | Err(e) => {
+                        error!("Fail to process request from meta, err:{}", e);
                         resp.header = Some(error::build_err_header(e));
                     }
                 };

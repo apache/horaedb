@@ -10,6 +10,7 @@ use std::{
 use log::error;
 use logger::RuntimeLevel;
 use profile::Profiler;
+use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
 use serde_derive::Serialize;
@@ -28,9 +29,10 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{self, sql::Request},
+    handlers::{self, prom::CeresDBStorage, sql::Request},
     instance::InstanceRef,
     metrics,
+    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -54,6 +56,9 @@ pub enum Error {
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
+    MissingSchemaConfigProvider { backtrace: Backtrace },
 
     #[snafu(display(
         "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
@@ -100,6 +105,7 @@ pub struct Service<Q> {
     log_runtime: Arc<RuntimeLevel>,
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
+    prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     tx: Sender<()>,
     config: HttpConfig,
     enable_tenant_as_schema: bool,
@@ -121,6 +127,30 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.admin_block())
             .or(self.flush_memtable())
             .or(self.update_log_level())
+            .or(self.prom_api())
+    }
+
+    /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
+    /// storage request
+    fn prom_api(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        let write_api = warp::path!("write")
+            .and(web::warp::with_remote_storage(
+                self.prom_remote_storage.clone(),
+            ))
+            .and(self.with_context())
+            .and(web::warp::protobuf_body())
+            .and_then(web::warp::write);
+        let query_api = warp::path!("read")
+            .and(web::warp::with_remote_storage(
+                self.prom_remote_storage.clone(),
+            ))
+            .and(self.with_context())
+            .and(web::warp::protobuf_body())
+            .and_then(web::warp::read);
+
+        warp::path!("prom" / "v1" / ..)
+            .and(warp::post())
+            .and(write_api.or(query_api))
     }
 
     fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -145,8 +175,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let result = handlers::sql::handle_sql(ctx, instance, req)
+                let result = handlers::sql::handle_sql(&ctx, instance, req)
                     .await
+                    .map(handlers::sql::convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
@@ -361,6 +392,7 @@ pub struct Builder<Q> {
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
+    schema_config_provider: Option<SchemaConfigProviderRef>,
 }
 
 impl<Q> Builder<Q> {
@@ -371,6 +403,7 @@ impl<Q> Builder<Q> {
             engine_runtimes: None,
             log_runtime: None,
             instance: None,
+            schema_config_provider: None,
         }
     }
 
@@ -393,6 +426,11 @@ impl<Q> Builder<Q> {
         self.enable_tenant_as_schema = enable_tenant_as_schema;
         self
     }
+
+    pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
+        self.schema_config_provider = Some(provider);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -401,12 +439,20 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
+        let schema_config_provider = self
+            .schema_config_provider
+            .context(MissingSchemaConfigProvider)?;
+        let prom_remote_storage = Arc::new(CeresDBStorage::new(
+            instance.clone(),
+            schema_config_provider,
+        ));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
             engine_runtimes: engine_runtime.clone(),
             log_runtime,
             instance,
+            prom_remote_storage,
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
@@ -454,6 +500,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
+        | Error::MissingSchemaConfigProvider { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }
