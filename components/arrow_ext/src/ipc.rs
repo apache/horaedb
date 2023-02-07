@@ -209,7 +209,7 @@ mod tests {
                 compress_min_length: 0,
                 method: compression,
             };
-            ensure_encoding_and_decoding(&batch, compress_opts, CompressionMethod::Zstd);
+            ensure_encoding_and_decoding(&batch, compress_opts, compression);
         }
     }
 
