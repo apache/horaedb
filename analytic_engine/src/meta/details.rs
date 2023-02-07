@@ -13,7 +13,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_util::{config::ReadableDuration, define_result};
-use log::{debug, info, warn};
+use log::{debug, info};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
@@ -98,42 +98,12 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to update current snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    UpdateCurrentSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to fetch current snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    FetchCurrentSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
         "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
         source,
         backtrace
     ))]
     FetchSnapshot {
         source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to decode current snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    DecodeCurrentSnapshot {
-        source: prost::DecodeError,
         backtrace: Backtrace,
     },
 
@@ -289,11 +259,8 @@ impl ManifestImpl {
                 location,
                 wal_manager: self.wal_manager.clone(),
             };
-            let snapshot_store = ObjectStoreBasedSnapshotStore {
-                space_id,
-                table_id,
-                store: self.store.clone(),
-            };
+            let snapshot_store =
+                ObjectStoreBasedSnapshotStore::new(space_id, table_id, self.store.clone());
             let snapshotter = Snapshotter {
                 location,
                 log_store,
@@ -364,11 +331,11 @@ impl Manifest for ManifestImpl {
             location,
             wal_manager: self.wal_manager.clone(),
         };
-        let snapshot_store = ObjectStoreBasedSnapshotStore {
-            space_id: load_req.space_id,
-            table_id: load_req.table_id,
-            store: self.store.clone(),
-        };
+        let snapshot_store = ObjectStoreBasedSnapshotStore::new(
+            load_req.space_id,
+            load_req.table_id,
+            self.store.clone(),
+        );
         let snapshotter = Snapshotter {
             location,
             log_store,
@@ -398,111 +365,46 @@ trait MetaUpdateSnapshotStore: std::fmt::Debug {
 
 #[derive(Debug)]
 struct ObjectStoreBasedSnapshotStore {
-    space_id: SpaceId,
-    table_id: TableId,
     store: ObjectStoreRef,
+    snapshot_path: Path,
 }
 
 impl ObjectStoreBasedSnapshotStore {
     const CURRENT_SNAPSHOT_NAME: &str = "current";
     const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
 
-    fn current_snapshot_path(&self) -> Path {
+    pub fn new(space_id: SpaceId, table_id: TableId, store: ObjectStoreRef) -> Self {
+        let snapshot_path = Self::snapshot_path(space_id, table_id);
+        Self {
+            store,
+            snapshot_path,
+        }
+    }
+
+    fn snapshot_path(space_id: SpaceId, table_id: TableId) -> Path {
         format!(
             "{}/{}/{}/{}",
             Self::SNAPSHOT_PATH_PREFIX,
-            self.space_id,
-            self.table_id,
-            Self::CURRENT_SNAPSHOT_NAME
+            space_id,
+            table_id,
+            Self::CURRENT_SNAPSHOT_NAME,
         )
         .into()
-    }
-
-    fn snapshot_path(&self, seq: SequenceNumber) -> Path {
-        format!(
-            "{}/{}/{}/{}",
-            Self::SNAPSHOT_PATH_PREFIX,
-            self.space_id,
-            self.table_id,
-            seq,
-        )
-        .into()
-    }
-
-    async fn load_current_snapshot_seq(&self) -> Result<Option<SequenceNumber>> {
-        let path = self.current_snapshot_path();
-        let payload = {
-            let get_res = self.store.get(&path).await;
-            if let Err(object_store::ObjectStoreError::NotFound { path, source }) = &get_res {
-                warn!(
-                    "Current snapshot file doesn't exist, path:{}, err:{}",
-                    path, source
-                );
-                return Ok(None);
-            }
-
-            get_res
-                .context(FetchCurrentSnapshot)?
-                .bytes()
-                .await
-                .context(FetchCurrentSnapshot)?
-        };
-        let current_snapshot = meta_update::CurrentSnapshot::decode(payload.as_bytes())
-            .context(DecodeCurrentSnapshot)?;
-        Ok(Some(current_snapshot.sequence))
     }
 }
 
 #[async_trait]
 impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
-    /// Store the latest snapshot to the underlying store, and then update the
-    /// `current_snapshot` to ensure the mapping to the latest snapshot.
-    /// The old snapshot will be purged when things done.
+    /// Store the latest snapshot to the underlying store by overwriting the old
+    /// snapshot.
     async fn store(&self, snapshot: &Snapshot) -> Result<()> {
         let snapshot_pb = meta_update::Snapshot::from(snapshot.clone());
         let payload = snapshot_pb.encode_to_vec();
-        let path = self.snapshot_path(snapshot.end_seq);
+        // The atomic write is ensured by the [`ObjectStore`] implementation.
         self.store
-            .put(&path, payload.into())
+            .put(&self.snapshot_path, payload.into())
             .await
             .context(StoreSnapshot)?;
-
-        // Fetch the old snapshot sequence before overwriting it.
-        let old_snapshot_seq = match self.load_current_snapshot_seq().await {
-            Ok(v) => v,
-            Err(e) => {
-                warn!(
-                    "Ignore the failure to load current snapshot for following purge, err:{}",
-                    e
-                );
-                None
-            }
-        };
-
-        // Update the current snapshot.
-        let current_snapshot = meta_update::CurrentSnapshot {
-            sequence: snapshot.end_seq,
-        };
-        let payload = current_snapshot.encode_to_vec();
-        let path = self.current_snapshot_path();
-        // The update of the file should be ensured to be atomic by the `ObjectStore`.
-        self.store
-            .put(&path, payload.into())
-            .await
-            .context(UpdateCurrentSnapshot)?;
-
-        // Purge the old snapshot if any, and ignore the failure.
-        if let Some(v) = old_snapshot_seq {
-            let old_snapshot_path = self.snapshot_path(v);
-            if let Err(e) = self.store.delete(&old_snapshot_path).await {
-                warn!(
-                    "Ignore the failure to purge old snapshot:{}, err:{}",
-                    old_snapshot_path, e
-                );
-            } else {
-                debug!("Succeed in purging old snapshot:{}", old_snapshot_path);
-            }
-        }
 
         Ok(())
     }
@@ -510,15 +412,9 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
     /// Load the `current_snapshot` file from the underlying store, and with the
     /// mapping info in it load the latest snapshot file then.
     async fn load(&self) -> Result<Option<Snapshot>> {
-        let current_snapshot_seq = match self.load_current_snapshot_seq().await? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
-
-        let snapshot_path = self.snapshot_path(current_snapshot_seq);
         let payload = self
             .store
-            .get(&snapshot_path)
+            .get(&self.snapshot_path)
             .await
             .context(FetchSnapshot)?
             .bytes()
@@ -600,28 +496,6 @@ struct Snapshotter<LogStore, SnapshotStore> {
     location: WalLocation,
     log_store: LogStore,
     snapshot_store: SnapshotStore,
-}
-
-/// Recording the sequence number of the current snapshot.
-#[derive(Debug, Clone)]
-struct CurrentSnapshot {
-    sequence: SequenceNumber,
-}
-
-impl From<meta_update::CurrentSnapshot> for CurrentSnapshot {
-    fn from(src: meta_update::CurrentSnapshot) -> Self {
-        Self {
-            sequence: src.sequence,
-        }
-    }
-}
-
-impl From<CurrentSnapshot> for meta_update::CurrentSnapshot {
-    fn from(src: CurrentSnapshot) -> Self {
-        Self {
-            sequence: src.sequence,
-        }
-    }
 }
 
 /// The snapshot for the current logs.

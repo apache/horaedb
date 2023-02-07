@@ -119,10 +119,6 @@ message MetaUpdate {
   }
 }
 
-message CurrentSnapshot {
-  uint64 sequence = 1;
-}
-
 message Snapshot {
   uint64 end_seq = 1;
   AddTableMeta meta = 2;
