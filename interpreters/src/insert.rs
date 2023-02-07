@@ -26,8 +26,8 @@ use datafusion::{
         create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
     },
 };
-use datafusion_expr::{expr::Expr as DfLogicalExpr, Expr};
-use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext, SimplifyInfo};
+use datafusion_expr::expr::Expr as DfLogicalExpr;
+use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext};
 use df_operator::visitor::find_columns_by_expr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
@@ -195,26 +195,6 @@ impl<'a> TsidBuilder<'a> {
 
     fn finish(self) -> u64 {
         hash64(self.hash_bytes)
-    }
-}
-
-// Copy from https://github.com/apache/arrow-datafusion/blob/125a8580c19c78c99fbbe3a6afe373de2538b205/datafusion/optimizer/src/simplify_expressions/expr_simplifier.rs#L78.
-#[derive(Default)]
-struct Info {
-    execution_props: ExecutionProps,
-}
-
-impl SimplifyInfo for Info {
-    fn is_boolean_type(&self, _expr: &Expr) -> datafusion::common::Result<bool> {
-        Ok(false)
-    }
-
-    fn nullable(&self, _expr: &Expr) -> datafusion::common::Result<bool> {
-        Ok(true)
-    }
-
-    fn execution_props(&self) -> &ExecutionProps {
-        &self.execution_props
     }
 }
 

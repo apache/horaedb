@@ -1106,7 +1106,7 @@ mod tests {
                 true,
                 None,
             ),
-            (Value::HexStringLiteral(test_string.clone()), true, None),
+            (Value::HexStringLiteral(test_string), true, None),
             (Value::Boolean(true), false, Some("true".to_string())),
             (Value::Null, false, None),
         ];

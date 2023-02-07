@@ -478,7 +478,6 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 
     fn try_from(arrow_schema: ArrowSchemaRef) -> Result<Self> {
         let fields = arrow_schema.fields();
-        println!("fields {:?}", fields);
         let mut columns = Vec::with_capacity(fields.len());
 
         for field in fields {
