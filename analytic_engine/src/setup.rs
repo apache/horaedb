@@ -35,7 +35,7 @@ use crate::{
     context::OpenContext,
     engine::TableEngineImpl,
     instance::{Instance, InstanceRef},
-    manifest::{
+    meta::{
         details::{ManifestImpl, Options as ManifestOptions},
         ManifestRef,
     },
@@ -68,9 +68,7 @@ pub enum Error {
     OpenManifestWal { source: manager::error::Error },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
-    OpenManifest {
-        source: crate::manifest::details::Error,
-    },
+    OpenManifest { source: crate::meta::details::Error },
 
     #[snafu(display("Failed to open obkv, err:{}", source))]
     OpenObkv { source: table_kv::obkv::Error },

@@ -16,7 +16,7 @@ use crate::{
         write_worker::{self, DropTableCommand, WorkerLocal},
         Instance,
     },
-    manifest::meta_update::{DropTableMeta, MetaUpdate, MetaUpdateRequest},
+    meta::meta_update::{DropTableMeta, MetaUpdate, MetaUpdateRequest},
     space::SpaceRef,
 };
 

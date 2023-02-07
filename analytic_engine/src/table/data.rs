@@ -31,11 +31,11 @@ use table_engine::{engine::CreateTableRequest, partition::PartitionInfo, table::
 
 use crate::{
     instance::write_worker::{choose_worker, WorkerLocal, WriteHandle},
-    manifest::meta_update::AddTableMeta,
     memtable::{
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
         skiplist::factory::SkiplistMemTableFactory,
     },
+    meta::meta_update::AddTableMeta,
     space::SpaceId,
     sst::{file::FilePurger, manager::FileId},
     table::{
