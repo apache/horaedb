@@ -198,8 +198,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 pub struct Builder<Q> {
     endpoint: String,
     timeout: Option<Duration>,
-    min_rows_per_query_batch: usize,
-    query_response_size_compression_threshold: usize,
+    resp_compress_min_length: usize,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -214,8 +213,7 @@ impl<Q> Builder<Q> {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
-            min_rows_per_query_batch: 8192,
-            query_response_size_compression_threshold: 81920,
+            resp_compress_min_length: 81920,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -231,13 +229,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn min_rows_per_query_batch(mut self, batch_size: usize) -> Self {
-        self.min_rows_per_query_batch = batch_size;
-        self
-    }
-
-    pub fn query_response_size_compression_threshold(mut self, threshold: usize) -> Self {
-        self.query_response_size_compression_threshold = threshold;
+    pub fn resp_compress_min_length(mut self, threshold: usize) -> Self {
+        self.resp_compress_min_length = threshold;
         self
     }
 
@@ -331,9 +324,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             schema_config_provider,
             forwarder,
             timeout: self.timeout,
-            min_rows_per_query_batch: self.min_rows_per_query_batch,
-            query_response_size_compression_threshold: self
-                .query_response_size_compression_threshold,
+            resp_compress_min_length: self.resp_compress_min_length,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

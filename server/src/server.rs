@@ -329,12 +329,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 Endpoint::new(self.config.cluster.node.addr, self.config.service.grpc_port)
                     .to_string(),
             )
-            .min_rows_per_query_batch(self.config.service.min_rows_per_query_batch)
-            .query_response_size_compression_threshold(
-                self.config
-                    .service
-                    .query_response_size_compression_threshold
-                    .as_bytes() as usize,
+            .resp_compress_min_length(
+                self.config.service.resp_compress_min_length.as_bytes() as usize
             )
             .runtimes(engine_runtimes)
             .instance(instance.clone())

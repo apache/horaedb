@@ -103,8 +103,7 @@ pub struct HandlerContext<'a, Q> {
     schema_config: Option<&'a SchemaConfig>,
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
-    min_rows_per_query_batch: usize,
-    query_response_size_compression_threshold: usize,
+    resp_compress_min_length: usize,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -116,8 +115,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
-        min_rows_per_query_batch: usize,
-        query_response_size_compression_threshold: usize,
+        resp_compress_min_length: usize,
     ) -> Result<Self> {
         let default_catalog = instance.catalog_manager.default_catalog_name();
         let default_schema = instance.catalog_manager.default_schema_name();
@@ -161,8 +159,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             schema_config,
             forwarder,
             timeout,
-            min_rows_per_query_batch,
-            query_response_size_compression_threshold,
+            resp_compress_min_length,
         })
     }
 
@@ -185,8 +182,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
-    pub min_rows_per_query_batch: usize,
-    pub query_response_size_compression_threshold: usize,
+    pub resp_compress_min_length: usize,
 }
 
 macro_rules! handle_request {
@@ -203,8 +199,7 @@ macro_rules! handle_request {
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
-                let min_rows_per_query_batch = self.min_rows_per_query_batch;
-                let query_response_size_compression_threshold = self.query_response_size_compression_threshold;
+                let resp_compress_min_length = self.resp_compress_min_length;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -218,7 +213,7 @@ macro_rules! handle_request {
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_query_batch, query_response_size_compression_threshold)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
                             .map_err(|e| Box::new(e) as _)
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
@@ -295,8 +290,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             &schema_config_provider,
             self.forwarder.clone(),
             self.timeout,
-            self.min_rows_per_query_batch,
-            self.query_response_size_compression_threshold,
+            self.resp_compress_min_length,
         )
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
@@ -357,13 +351,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
-        let min_rows_per_query_batch = self.min_rows_per_query_batch;
-        let query_response_size_compression_threshold =
-            self.query_response_size_compression_threshold;
+        let resp_compress_min_length = self.resp_compress_min_length;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, min_rows_per_query_batch, query_response_size_compression_threshold)
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
                 .map_err(|e| Box::new(e) as _)
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
@@ -387,7 +379,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 Output::Records(batches) => {
                     for batch in &batches {
                         let resp = {
-                            let mut writer = QueryResponseWriter::new(min_rows_per_query_batch, query_response_size_compression_threshold);
+                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
                             writer.write(batch)?;
                             writer.finish()
                         };

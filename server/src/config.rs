@@ -130,11 +130,9 @@ pub struct ServiceConfig {
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
     pub timeout: Option<ReadableDuration>,
-    /// The batch size of the query response.
-    pub min_rows_per_query_batch: usize,
     /// The threshold of the datums in the query response to trigger
     /// compression.
-    pub query_response_size_compression_threshold: ReadableSize,
+    pub resp_compress_min_length: ReadableSize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -195,8 +193,7 @@ impl Default for ServiceConfig {
             grpc_port: 8831,
             grpc_server_cq_count: 20,
             timeout: None,
-            min_rows_per_query_batch: 8192,
-            query_response_size_compression_threshold: ReadableSize::mb(4),
+            resp_compress_min_length: ReadableSize::mb(4),
         }
     }
 }

@@ -2,9 +2,9 @@
 
 //! Query handler
 
-use std::{io::Cursor, mem, time::Instant};
+use std::time::Instant;
 
-use arrow_ext::ipc::{Compression, RecordBatchesEncoder};
+use arrow_ext::ipc::{CompressOptions, Compression, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
@@ -138,16 +138,12 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     };
 
     let output = fetch_query_output(ctx, &req).await?;
-    convert_output(
-        &output,
-        ctx.min_rows_per_query_batch,
-        ctx.query_response_size_compression_threshold,
-    )
-    .map_err(|e| Box::new(e) as _)
-    .with_context(|| ErrWithCause {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: format!("Failed to convert output, sql:{}", &req.sql),
-    })
+    convert_output(&output, ctx.resp_compress_min_length)
+        .map_err(|e| Box::new(e) as _)
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to convert output, sql:{}", &req.sql),
+        })
 }
 
 pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
@@ -293,17 +289,10 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
-fn convert_output(
-    output: &Output,
-    min_rows_per_query_batch: usize,
-    query_response_size_compression_threshold: usize,
-) -> Result<SqlQueryResponse> {
+fn convert_output(output: &Output, resp_compress_min_length: usize) -> Result<SqlQueryResponse> {
     match output {
         Output::Records(batches) => {
-            let mut writer = QueryResponseWriter::new(
-                min_rows_per_query_batch,
-                query_response_size_compression_threshold,
-            );
+            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
             writer.write_batches(batches)?;
             writer.finish()
         }
@@ -315,29 +304,19 @@ fn convert_output(
 
 /// Writer for encoding multiple [`RecordBatch`]es to the [`SqlQueryResponse`].
 ///
-/// Multiple record batches may be encoded into one batch in the query response
-/// to ensure the one batch contains at least `min_rows_per_query_batch`
-/// records.
-///
 /// Whether to do compression depends on the size of the encoded bytes.
-///
-/// REQUIRE: Multiple record batches must share the same schema.
 pub struct QueryResponseWriter {
-    min_rows_per_query_batch: usize,
-    compression_size_threshold: usize,
     encoder: RecordBatchesEncoder,
-    encoded_batches: Vec<Vec<u8>>,
 }
 
 impl QueryResponseWriter {
-    const DEFAULT_ZSTD_LEVEL: i32 = 3;
-
-    pub fn new(min_rows_per_query_batch: usize, compression_size_threshold: usize) -> Self {
+    pub fn new(compress_min_length: usize) -> Self {
+        let compress_opts = CompressOptions {
+            compress_min_length,
+            method: Compression::Zstd,
+        };
         Self {
-            min_rows_per_query_batch,
-            compression_size_threshold,
-            encoder: RecordBatchesEncoder::new(Compression::None),
-            encoded_batches: Vec::new(),
+            encoder: RecordBatchesEncoder::new(compress_opts),
         }
     }
 
@@ -348,22 +327,10 @@ impl QueryResponseWriter {
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to encode record batch".to_string(),
-            })?;
-
-        if self.encoder.num_rows() < self.min_rows_per_query_batch {
-            Ok(())
-        } else {
-            let new_encoder = RecordBatchesEncoder::new(Compression::None);
-            let old_encoder = mem::replace(&mut self.encoder, new_encoder);
-            let encoded_batch = Self::finish_encoder(old_encoder)?;
-            self.encoded_batches.push(encoded_batch);
-            Ok(())
-        }
+            })
     }
 
     pub fn write_batches(&mut self, record_batch: &[RecordBatch]) -> Result<()> {
-        self.encoded_batches.reserve(record_batch.len());
-
         for batch in record_batch {
             self.write(batch)?;
         }
@@ -371,60 +338,29 @@ impl QueryResponseWriter {
         Ok(())
     }
 
-    pub fn finish(mut self) -> Result<SqlQueryResponse> {
-        if self.encoder.num_rows() > 0 {
-            let encoder = mem::take(&mut self.encoder);
-            self.encoded_batches.push(Self::finish_encoder(encoder)?);
-        }
-
-        if self.encoded_batches.is_empty() {
-            return Ok(QueryResponseBuilder::with_ok_header().build_with_empty_arrow_payload());
-        }
-
-        let compression = self.maybe_do_compression()?;
-
-        let resp = QueryResponseBuilder::with_ok_header().build_with_arrow_payload(ArrowPayload {
-            record_batches: self.encoded_batches,
-            compression: compression as i32,
-        });
-
-        Ok(resp)
-    }
-
-    fn maybe_do_compression(&mut self) -> Result<arrow_payload::Compression> {
-        let total_size: usize = self.encoded_batches.iter().map(|v| v.len()).sum();
-        if total_size > self.compression_size_threshold {
-            self.do_compression()?;
-            Ok(arrow_payload::Compression::Zstd)
-        } else {
-            Ok(arrow_payload::Compression::None)
-        }
-    }
-
-    fn do_compression(&mut self) -> Result<()> {
-        let compressed_batches = Vec::with_capacity(self.encoded_batches.len());
-        let old_encoded_batches = mem::replace(&mut self.encoded_batches, compressed_batches);
-        for encoded_batch in old_encoded_batches {
-            let compressed_batch =
-                zstd::stream::encode_all(Cursor::new(encoded_batch), Self::DEFAULT_ZSTD_LEVEL)
-                    .map_err(|e| Box::new(e) as _)
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "failed to compress record batch",
-                    })?;
-            self.encoded_batches.push(compressed_batch);
-        }
-
-        Ok(())
-    }
-
-    fn finish_encoder(encoder: RecordBatchesEncoder) -> Result<Vec<u8>> {
-        encoder
+    pub fn finish(self) -> Result<SqlQueryResponse> {
+        let compress_output = self
+            .encoder
             .finish()
             .map_err(|e| Box::new(e) as _)
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to encode record batch".to_string(),
-            })
+            })?;
+
+        if compress_output.payload.is_empty() {
+            return Ok(QueryResponseBuilder::with_ok_header().build_with_empty_arrow_payload());
+        }
+
+        let compression = match compress_output.method {
+            Compression::None => arrow_payload::Compression::None,
+            Compression::Zstd => arrow_payload::Compression::Zstd,
+        };
+        let resp = QueryResponseBuilder::with_ok_header().build_with_arrow_payload(ArrowPayload {
+            record_batches: vec![compress_output.payload],
+            compression: compression as i32,
+        });
+
+        Ok(resp)
     }
 }

@@ -28,14 +28,17 @@ pub fn main() {
     // Arrow IPC
     {
         let batch = common_types::record_batch::RecordBatch::try_from(arrow_batch.clone()).unwrap();
-        let compression = ipc::Compression::Zstd;
+        let compress_opts = ipc::CompressOptions {
+            method: ipc::Compression::Zstd,
+            compress_min_length: 0,
+        };
 
         let begin = Instant::now();
-        let bytes =
-            ipc::encode_record_batch(&batch.into_arrow_record_batch(), compression).unwrap();
-        println!("Arrow IPC encoded size:{}", bytes.len());
+        let output =
+            ipc::encode_record_batch(&batch.into_arrow_record_batch(), compress_opts).unwrap();
+        println!("Arrow IPC encoded size:{}", output.payload.len());
 
-        let mut decode_batches = ipc::decode_record_batches(bytes, compression).unwrap();
+        let mut decode_batches = ipc::decode_record_batches(output.payload, output.method).unwrap();
         let _ = common_types::record_batch::RecordBatch::try_from(decode_batches.swap_remove(0))
             .unwrap();
 
