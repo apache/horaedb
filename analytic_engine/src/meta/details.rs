@@ -359,15 +359,6 @@ impl Manifest for ManifestImpl {
             load_req.table_id.as_u64(),
         );
 
-        if load_req.do_snapshot {
-            if let Some(snapshot) = self
-                .maybe_do_snapshot(load_req.space_id, load_req.table_id, location, true)
-                .await?
-            {
-                return Ok(snapshot.data);
-            }
-        }
-
         let log_store = WalBasedLogStore {
             opts: self.opts.clone(),
             location,
@@ -391,7 +382,7 @@ impl Manifest for ManifestImpl {
 #[async_trait]
 trait MetaUpdateLogStore: std::fmt::Debug {
     type Iter: MetaUpdateLogEntryIterator;
-    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter>;
+    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
 
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
 
@@ -494,6 +485,7 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
         };
         let payload = current_snapshot.encode_to_vec();
         let path = self.current_snapshot_path();
+        // The update of the file should be ensured to be atomic by the `ObjectStore`.
         self.store
             .put(&path, payload.into())
             .await
@@ -548,7 +540,7 @@ struct WalBasedLogStore {
 impl MetaUpdateLogStore for WalBasedLogStore {
     type Iter = MetaUpdateReaderImpl;
 
-    async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
+    async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
         let ctx = ReadContext {
             timeout: self.opts.scan_timeout.0,
             batch_size: self.opts.scan_batch_size,
@@ -557,7 +549,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
         let read_req = ReadRequest {
             location: self.location,
             start,
-            end,
+            end: ReadBoundary::Max,
         };
 
         let iter = self
@@ -761,10 +753,7 @@ where
 
     async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
         let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
-        let mut reader = self
-            .log_store
-            .scan(log_start_boundary, ReadBoundary::Max)
-            .await?;
+        let mut reader = self.log_store.scan(log_start_boundary).await?;
 
         let mut num_logs = 0usize;
         let mut latest_seq = prev_snapshot.end_seq;
@@ -788,10 +777,7 @@ where
     }
 
     async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
-        let mut reader = self
-            .log_store
-            .scan(ReadBoundary::Min, ReadBoundary::Max)
-            .await?;
+        let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
 
         let mut num_logs = 0usize;
         let mut latest_seq = SequenceNumber::MIN;
@@ -1199,7 +1185,6 @@ mod tests {
                 shard_id: DEFAULT_SHARD_ID,
                 cluster_version: DEFAULT_CLUSTER_VERSION,
                 space_id: ctx.schema_id.as_u32(),
-                do_snapshot: false,
             };
             let expected_table_manifest_data = manifest_data_builder.build();
             ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
@@ -1313,7 +1298,6 @@ mod tests {
                 table_id,
                 cluster_version: DEFAULT_CLUSTER_VERSION,
                 shard_id: DEFAULT_SHARD_ID,
-                do_snapshot: false,
             };
             ctx.check_table_manifest_data_with_manifest(
                 &load_req,
@@ -1335,7 +1319,6 @@ mod tests {
                 table_id,
                 cluster_version: DEFAULT_CLUSTER_VERSION,
                 shard_id: table_id.as_u64() as u32,
-                do_snapshot: false,
             };
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
@@ -1414,23 +1397,13 @@ mod tests {
     impl MetaUpdateLogStore for MemLogStore {
         type Iter = vec::IntoIter<(SequenceNumber, MetaUpdate)>;
 
-        async fn scan(&self, start: ReadBoundary, end: ReadBoundary) -> Result<Self::Iter> {
+        async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
             let logs = self.logs.lock().unwrap();
             let start = start.as_start_sequence_number().unwrap() as usize;
-            let end = {
-                let inclusive_end = end.as_end_sequence_number().unwrap() as usize;
-                if logs.len() == 0 {
-                    0
-                } else if inclusive_end < logs.len() {
-                    inclusive_end + 1
-                } else {
-                    logs.len()
-                }
-            };
 
             let mut exist_logs = Vec::new();
-            let truncated_logs = logs[..end].iter().enumerate();
-            for (idx, update) in truncated_logs {
+            let logs_with_idx = logs.iter().enumerate();
+            for (idx, update) in logs_with_idx {
                 if idx < start || update.is_none() {
                     continue;
                 }

@@ -22,7 +22,6 @@ pub struct LoadRequest {
     pub table_id: TableId,
     pub cluster_version: u64,
     pub shard_id: ShardId,
-    pub do_snapshot: bool,
 }
 
 /// Manifest holds meta data of all tables.

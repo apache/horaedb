@@ -224,7 +224,6 @@ impl Instance {
             table_id,
             cluster_version: request.cluster_version,
             shard_id: request.shard_id,
-            do_snapshot: true,
         };
         let manifest_data = self
             .space_store
