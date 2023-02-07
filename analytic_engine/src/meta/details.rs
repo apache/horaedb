@@ -13,7 +13,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_util::{config::ReadableDuration, define_result};
-use log::{debug, info};
+use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
@@ -412,10 +412,16 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
     /// Load the `current_snapshot` file from the underlying store, and with the
     /// mapping info in it load the latest snapshot file then.
     async fn load(&self) -> Result<Option<Snapshot>> {
-        let payload = self
-            .store
-            .get(&self.snapshot_path)
-            .await
+        let get_res = self.store.get(&self.snapshot_path).await;
+        if let Err(object_store::ObjectStoreError::NotFound { path, source }) = &get_res {
+            warn!(
+                "Current snapshot file doesn't exist, path:{}, err:{}",
+                path, source
+            );
+            return Ok(None);
+        };
+
+        let payload = get_res
             .context(FetchSnapshot)?
             .bytes()
             .await
