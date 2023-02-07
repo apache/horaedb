@@ -4,7 +4,6 @@
 
 use std::{
     any::Any,
-    collections::HashSet,
     fmt,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -125,32 +124,12 @@ impl TableProviderAdapter {
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        // 1.Only filters of primary key or timestamp key can be pushed down.
-        // Build key set.
-        let mut key_set = HashSet::new();
-        // Timestamp key should be always picked.
-        key_set.insert(self.read_schema.timestamp_name());
-        if self.read_schema.tsid_column().is_some() {
-            // When tsid exists, that means default primary key (tsid, timestamp) is used.
-            // So, all filters of tag columns(tsid is the hash result of all tags) can be pushed down.
-            for column in self.read_schema.columns() {
-                if column.is_tag {
-                    key_set.insert(&column.name);
-                }
-            }
-        } else {
-            // When tsid does not exist, that means user defined primary key is used.
-            // So, only filters of primary key can be pushed down.
-            for primary_idx in self.read_schema.primary_key_indexes() {
-                let primary_column = self.read_schema.column(*primary_idx);
-                key_set.insert(&primary_column.name);
-            }
-        }
+        let unique_keys = self.read_schema.unique_keys();
 
         let push_down_filters = filters
             .iter()
             .filter_map(|filter| {
-                if self.should_push_down(filter, &key_set) {
+                if Self::only_filter_unique_key_columns(filter, &unique_keys) {
                     Some(filter.clone())
                 } else {
                     None
@@ -158,26 +137,22 @@ impl TableProviderAdapter {
             })
             .collect::<Vec<_>>();
 
-        // 2.Build predicates from push down filters.
         PredicateBuilder::default()
             .add_pushdown_exprs(&push_down_filters)
             .extract_time_range(&self.read_schema, &push_down_filters)
             .build()
     }
 
-    fn should_push_down(&self, filter: &Expr, key_set: &HashSet<&str>) -> bool {
-        let columns = visitor::find_columns_by_expr(filter);
-        let mut should_push_down = true;
-        for column in columns {
-            // Once found a column not primary key or timestamp key in `filter`,
-            // the `filter` will be marked as unable to push down.
-            if !key_set.contains(column.as_str()) {
-                should_push_down = false;
-                break;
+    fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
+        let filter_cols = visitor::find_columns_by_expr(filter);
+        for filter_col in filter_cols {
+            // If a column which is not part of the unique key occurred in `filter`, the
+            // `filter` shouldn't be pushed down.
+            if !unique_keys.contains(&filter_col.as_str()) {
+                return false;
             }
         }
-
-        should_push_down
+        true
     }
 }
 
@@ -400,7 +375,7 @@ mod test {
         Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::String)
+                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
                     .build()
                     .expect("should succeed build column schema"),
             )
@@ -432,13 +407,19 @@ mod test {
         Builder::new()
             .auto_increment_column_id(true)
             .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                column_schema::Builder::new("tsid".to_string(), DatumKind::UInt64)
                     .build()
                     .expect("should succeed build column schema"),
             )
             .unwrap()
             .add_key_column(
-                column_schema::Builder::new("tsid".to_string(), DatumKind::UInt64)
+                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
                     .build()
                     .expect("should succeed build column schema"),
             )
@@ -462,7 +443,8 @@ mod test {
 
     fn build_filters() -> Vec<Expr> {
         let filter1 = col("timestamp").lt(Expr::Literal(ScalarValue::UInt64(Some(10086))));
-        let filter2 = col("key1").eq(Expr::Literal(ScalarValue::Utf8(Some("10086".to_string()))));
+        let filter2 =
+            col("user_define1").eq(Expr::Literal(ScalarValue::Utf8(Some("10086".to_string()))));
         let filter3 = col("field1").eq(Expr::Literal(ScalarValue::Utf8(Some("10087".to_string()))));
         let filter4 = col("field2").eq(Expr::Literal(ScalarValue::Float64(Some(10088.0))));
 
@@ -490,11 +472,6 @@ mod test {
     #[test]
     pub fn test_push_down_in_default_primary_key_case() {
         let test_filters = build_filters();
-        let test_filters = vec![
-            test_filters[0].clone(),
-            test_filters[2].clone(),
-            test_filters[3].clone(),
-        ];
         let default_pk_schema = build_default_primary_key_schema();
 
         let table = MemoryTable::new(
@@ -506,7 +483,7 @@ mod test {
         let provider = TableProviderAdapter::new(Arc::new(table), 1);
         let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
 
-        let expected_filters = vec![test_filters[0].clone(), test_filters[1].clone()];
+        let expected_filters = vec![test_filters[0].clone(), test_filters[2].clone()];
         assert_eq!(predicate.exprs(), &expected_filters);
     }
 }
