@@ -29,7 +29,7 @@ pub enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum Compression {
+pub enum CompressionMethod {
     #[default]
     None,
     Zstd,
@@ -52,12 +52,12 @@ pub struct RecordBatchesEncoder {
 pub struct CompressOptions {
     /// The minimum length of the payload to be compressed.
     pub compress_min_length: usize,
-    pub method: Compression,
+    pub method: CompressionMethod,
 }
 
 #[derive(Clone, Default, Debug)]
 pub struct CompressOutput {
-    pub method: Compression,
+    pub method: CompressionMethod,
     pub payload: Vec<u8>,
 }
 
@@ -65,7 +65,7 @@ impl CompressOutput {
     #[inline]
     pub fn no_compression(payload: Vec<u8>) -> Self {
         Self {
-            method: Compression::None,
+            method: CompressionMethod::None,
             payload,
         }
     }
@@ -78,11 +78,11 @@ impl CompressOptions {
         }
 
         match self.method {
-            Compression::None => Ok(CompressOutput::no_compression(input)),
-            Compression::Zstd => {
+            CompressionMethod::None => Ok(CompressOutput::no_compression(input)),
+            CompressionMethod::Zstd => {
                 let payload = zstd::bulk::compress(&input, ZSTD_LEVEL).context(ZstdError)?;
                 Ok(CompressOutput {
-                    method: Compression::Zstd,
+                    method: CompressionMethod::Zstd,
                     payload,
                 })
             }
@@ -145,14 +145,19 @@ pub fn encode_record_batch(
 }
 
 /// Decode multiple record batches from the encoded bytes.
-pub fn decode_record_batches(bytes: Vec<u8>, compression: Compression) -> Result<Vec<RecordBatch>> {
+pub fn decode_record_batches(
+    bytes: Vec<u8>,
+    compression: CompressionMethod,
+) -> Result<Vec<RecordBatch>> {
     if bytes.is_empty() {
         return Ok(Vec::new());
     }
 
     let bytes = match compression {
-        Compression::None => bytes,
-        Compression::Zstd => zstd::stream::decode_all(Cursor::new(bytes)).context(ZstdError)?,
+        CompressionMethod::None => bytes,
+        CompressionMethod::Zstd => {
+            zstd::stream::decode_all(Cursor::new(bytes)).context(ZstdError)?
+        }
     };
 
     let stream_reader = StreamReader::try_new(Cursor::new(bytes), None).context(ArrowError)?;
@@ -187,7 +192,7 @@ mod tests {
     fn ensure_encoding_and_decoding(
         input: &RecordBatch,
         compress_opts: CompressOptions,
-        expect_compress_method: Compression,
+        expect_compress_method: CompressionMethod,
     ) {
         let output = encode_record_batch(input, compress_opts).unwrap();
         assert_eq!(output.method, expect_compress_method);
@@ -199,12 +204,12 @@ mod tests {
     #[test]
     fn test_ipc_encode_decode() {
         let batch = create_batch(1024);
-        for compression in [Compression::None, Compression::Zstd] {
+        for compression in [CompressionMethod::None, CompressionMethod::Zstd] {
             let compress_opts = CompressOptions {
                 compress_min_length: 0,
                 method: compression,
             };
-            ensure_encoding_and_decoding(&batch, compress_opts, Compression::Zstd);
+            ensure_encoding_and_decoding(&batch, compress_opts, CompressionMethod::Zstd);
         }
     }
 
@@ -218,15 +223,16 @@ mod tests {
 
         let compress_opts = CompressOptions {
             compress_min_length: 0,
-            method: Compression::Zstd,
+            method: CompressionMethod::Zstd,
         };
         let mut encoder = RecordBatchesEncoder::new(compress_opts);
         for batch in &batches {
             encoder.write(batch).unwrap();
         }
         let output = encoder.finish().unwrap();
-        assert_eq!(output.method, Compression::Zstd);
-        let decoded_batches = decode_record_batches(output.payload, Compression::Zstd).unwrap();
+        assert_eq!(output.method, CompressionMethod::Zstd);
+        let decoded_batches =
+            decode_record_batches(output.payload, CompressionMethod::Zstd).unwrap();
         assert_eq!(decoded_batches, batches);
     }
 
@@ -239,9 +245,9 @@ mod tests {
             // should not be compressed.
             let compress_opts = CompressOptions {
                 compress_min_length: 1024 * 1024 * 1024,
-                method: Compression::Zstd,
+                method: CompressionMethod::Zstd,
             };
-            ensure_encoding_and_decoding(&batch, compress_opts, Compression::None);
+            ensure_encoding_and_decoding(&batch, compress_opts, CompressionMethod::None);
         }
 
         {
@@ -249,9 +255,9 @@ mod tests {
             // should be compressed.
             let compress_opts = CompressOptions {
                 compress_min_length: 10,
-                method: Compression::Zstd,
+                method: CompressionMethod::Zstd,
             };
-            ensure_encoding_and_decoding(&batch, compress_opts, Compression::Zstd);
+            ensure_encoding_and_decoding(&batch, compress_opts, CompressionMethod::Zstd);
         }
     }
 
@@ -260,11 +266,11 @@ mod tests {
     fn test_encode_no_record_batch() {
         let compress_opts = CompressOptions {
             compress_min_length: 0,
-            method: Compression::Zstd,
+            method: CompressionMethod::Zstd,
         };
         let encoder = RecordBatchesEncoder::new(compress_opts);
         let output = encoder.finish().unwrap();
-        assert_eq!(output.method, Compression::None);
+        assert_eq!(output.method, CompressionMethod::None);
         assert!(output.payload.is_empty());
     }
 }

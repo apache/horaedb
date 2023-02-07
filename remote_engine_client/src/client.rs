@@ -161,7 +161,7 @@ impl Stream for ClientReadRecordBatchStream {
                     .context(ConvertVersion)?
                 {
                     RemoteEngineVersion::ArrowIPCWithZstd => {
-                        ipc::decode_record_batches(response.rows, ipc::Compression::Zstd)
+                        ipc::decode_record_batches(response.rows, ipc::CompressionMethod::Zstd)
                             .map_err(|e| Box::new(e) as _)
                             .context(ConvertReadResponse {
                                 msg: "decode record batch failed",

@@ -4,7 +4,7 @@
 
 use std::time::Instant;
 
-use arrow_ext::ipc::{CompressOptions, Compression, RecordBatchesEncoder};
+use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
@@ -313,7 +313,7 @@ impl QueryResponseWriter {
     pub fn new(compress_min_length: usize) -> Self {
         let compress_opts = CompressOptions {
             compress_min_length,
-            method: Compression::Zstd,
+            method: CompressionMethod::Zstd,
         };
         Self {
             encoder: RecordBatchesEncoder::new(compress_opts),
@@ -353,8 +353,8 @@ impl QueryResponseWriter {
         }
 
         let compression = match compress_output.method {
-            Compression::None => arrow_payload::Compression::None,
-            Compression::Zstd => arrow_payload::Compression::Zstd,
+            CompressionMethod::None => arrow_payload::Compression::None,
+            CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
         };
         let resp = QueryResponseBuilder::with_ok_header().build_with_arrow_payload(ArrowPayload {
             record_batches: vec![compress_output.payload],

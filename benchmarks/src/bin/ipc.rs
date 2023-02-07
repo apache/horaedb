@@ -29,7 +29,7 @@ pub fn main() {
     {
         let batch = common_types::record_batch::RecordBatch::try_from(arrow_batch.clone()).unwrap();
         let compress_opts = ipc::CompressOptions {
-            method: ipc::Compression::Zstd,
+            method: ipc::CompressionMethod::Zstd,
             compress_min_length: 0,
         };
 

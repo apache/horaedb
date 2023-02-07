@@ -155,7 +155,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                             // proper value.
                             CompressOptions {
                                 compress_min_length: 0,
-                                method: ipc::Compression::Zstd,
+                                method: ipc::CompressionMethod::Zstd,
                             },
                         )
                         .map_err(|e| Box::new(e) as _)
