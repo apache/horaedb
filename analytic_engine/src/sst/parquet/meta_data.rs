@@ -60,10 +60,6 @@ impl RowGroupBloomFilter {
         }
     }
 
-    pub fn push_column_filter(&mut self, column_filter: Option<Bloom>) {
-        self.column_filters.push(column_filter);
-    }
-
     /// Accrue the data belonging to one column.
     ///
     /// Caller should ensure the `column_idx` is in the range.
@@ -84,9 +80,7 @@ impl RowGroupBloomFilter {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BloomFilter {
-    // Every filter is a row group filter consists of column filters.
-    //
-    // The row group filter can be None if the row group is not indexed.
+    /// Every filter is a row group filter consists of column filters.
     row_group_filters: Vec<RowGroupBloomFilter>,
 }
 
@@ -261,5 +255,84 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             bloom_filter,
             collapsible_cols_idx: src.collapsible_cols_idx,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_conversion_sst_bloom_filter() {
+        let bloom_filter = BloomFilter {
+            row_group_filters: vec![
+                RowGroupBloomFilter {
+                    column_filters: vec![None, Some(Bloom::default())],
+                },
+                RowGroupBloomFilter {
+                    column_filters: vec![Some(Bloom::default()), None],
+                },
+            ],
+        };
+
+        let sst_bloom_filter: sst_pb::SstBloomFilter = bloom_filter.clone().into();
+        assert_eq!(sst_bloom_filter.version, DEFAULT_BLOOM_FILTER_VERSION);
+        assert_eq!(sst_bloom_filter.row_group_filters.len(), 2);
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[0].column_filters.len(),
+            2
+        );
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[1].column_filters.len(),
+            2
+        );
+        assert!(sst_bloom_filter.row_group_filters[0].column_filters[0].is_empty());
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[0].column_filters[1].len(),
+            256
+        );
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[1].column_filters[0].len(),
+            256
+        );
+        assert!(sst_bloom_filter.row_group_filters[1].column_filters[1].is_empty());
+
+        let decoded_bloom_filter = BloomFilter::try_from(sst_bloom_filter).unwrap();
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters.len(),
+            bloom_filter.row_group_filters().len(),
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[0]
+                .column_filters
+                .len(),
+            bloom_filter.row_group_filters()[0].column_filters.len(),
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[1]
+                .column_filters
+                .len(),
+            bloom_filter.row_group_filters()[1].column_filters.len(),
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[0].column_filters[0]
+                .as_ref()
+                .unwrap()
+                .data(),
+            bloom_filter.row_group_filters()[0].column_filters[0]
+                .as_ref()
+                .unwrap()
+                .data(),
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[0].column_filters[1]
+                .as_ref()
+                .unwrap()
+                .data(),
+            bloom_filter.row_group_filters()[0].column_filters[1]
+                .as_ref()
+                .unwrap()
+                .data(),
+        );
     }
 }
