@@ -44,8 +44,8 @@ ORDER BY
     `arch` DESC;
 
 arch,SUM(02_function_aggregate_table1.value),
-String(StringBytes(b"x86-64")),Int64(200),
-String(StringBytes(b"arm64")),Int64(210),
+String("x86-64"),Int64(200),
+String("arm64"),Int64(210),
 
 
 SELECT count(`value`) FROM `02_function_aggregate_table1`;
@@ -75,7 +75,7 @@ Int32(100),
 SELECT min(`uvalue`) - max(`uvalue`) FROM `02_function_aggregate_table1`;
 
 MIN(02_function_aggregate_table1.uvalue) - MAX(02_function_aggregate_table1.uvalue),
-Int64(-10),
+UInt64(18446744073709551606),
 
 
 INSERT INTO `02_function_aggregate_table1`

@@ -40,7 +40,7 @@ pub enum Error {
     #[snafu(display("Failed to execute exists, err:{}", source))]
     Exists { source: crate::exists::Error },
 
-    #[snafu(display("Failed to transfer ouput to records"))]
+    #[snafu(display("Failed to transfer output to records"))]
     TryIntoRecords,
 
     #[snafu(display("Failed to check permission, msg:{}", msg))]

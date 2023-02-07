@@ -34,9 +34,9 @@ ORDER BY
     `value` ASC;
 
 timestamp,value,
-Timestamp(Timestamp(2)),Int32(1002),
-Timestamp(Timestamp(5)),Int32(4405),
-Timestamp(Timestamp(4)),Int32(30004),
+Timestamp(2),Int32(1002),
+Timestamp(5),Int32(4405),
+Timestamp(4),Int32(30004),
 
 
 SELECT

@@ -1,3 +1,4 @@
+[service]
 bind_addr = "127.0.0.1"
 http_port = 5440
 grpc_port = 8831

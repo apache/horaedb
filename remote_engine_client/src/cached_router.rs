@@ -89,7 +89,7 @@ impl CachedRouter {
         let schema = &table_ident.schema;
         let table = table_ident.table.clone();
         let route_request = storage::RouteRequest {
-            metrics: vec![table],
+            tables: vec![table],
         };
         let route_infos =
             self.router
