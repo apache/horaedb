@@ -674,7 +674,7 @@ impl<'a> Parser<'a> {
         if let Expr::Nested(inner) = expr {
             match inner.as_ref() {
                 Expr::Identifier(id) => {
-                    if check_column_expr_validity_in_hash(&id, columns) {
+                    if check_column_expr_validity_in_hash(id, columns) {
                         Ok(*inner)
                     } else {
                         parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{}", id))

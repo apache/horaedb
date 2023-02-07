@@ -35,7 +35,7 @@ pub struct State(Vec<DfScalarValue>);
 
 impl State {
     /// Convert to a set of ScalarValues
-    fn to_state(self) -> Vec<DfScalarValue> {
+    fn into_state(self) -> Vec<DfScalarValue> {
         self.0
     }
 }
@@ -116,7 +116,7 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         let state = self.accumulator.state().map_err(|e| {
             DataFusionError::Execution(format!("Accumulator failed to get state, err:{}", e))
         })?;
-        Ok(state.to_state())
+        Ok(state.into_state())
     }
 
     fn update_batch(&mut self, values: &[DfArrayRef]) -> DfResult<()> {

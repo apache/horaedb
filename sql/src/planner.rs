@@ -798,7 +798,7 @@ fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<D
                 UnaryOperator::Plus => false,
                 _ => InsertExprNotValue {
                     source_expr: Expr::UnaryOp {
-                        op: op.clone(),
+                        op: *op,
                         expr: child_expr.clone(),
                     },
                 }

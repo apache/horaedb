@@ -139,10 +139,9 @@ impl TableProviderAdapter {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         let (request_id, deadline) = if let Some(options) = ceresdb_options {
             let request_id = RequestId::from(options.request_id);
-            let deadline = match options.request_timeout {
-                Some(n) => Some(Instant::now() + Duration::from_millis(n)),
-                _ => None,
-            };
+            let deadline = options
+                .request_timeout
+                .map(|n| Instant::now() + Duration::from_millis(n));
             (request_id, deadline)
         } else {
             (RequestId::from(0), None)

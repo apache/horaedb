@@ -100,7 +100,7 @@ impl OptimizerRule for TypeConversion {
                     .iter()
                     .map(|plan| {
                         self.try_optimize(plan, optimizer_config)
-                            .map(|v| v.unwrap_or_else(|| plan.clone().clone()))
+                            .map(|v| v.unwrap_or_else(|| (*plan).clone()))
                     })
                     .collect::<Result<Vec<_>>>()?;
 
