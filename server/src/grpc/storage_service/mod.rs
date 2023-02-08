@@ -832,8 +832,8 @@ mod tests {
 
         let key_columns = schema.key_columns();
         assert_eq!(2, key_columns.len());
-        assert_eq!(TIMESTAMP_COLUMN, key_columns[0].name);
-        assert_eq!("tsid", key_columns[1].name);
+        assert_eq!("tsid", key_columns[0].name);
+        assert_eq!(TIMESTAMP_COLUMN, key_columns[1].name);
 
         let columns = schema.normal_columns();
         assert_eq!(6, columns.len());
