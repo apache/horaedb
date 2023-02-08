@@ -329,6 +329,7 @@ pub(crate) fn byte_size_of_datum(kind: &DatumKind) -> usize {
         DatumKind::Int16 => mem::size_of::<i16>(),
         DatumKind::Int8 => mem::size_of::<i8>(),
         DatumKind::Boolean => mem::size_of::<bool>(),
+        DatumKind::Date => mem::size_of::<u32>(),
     };
 
     datum_size + 1
@@ -405,6 +406,11 @@ fn must_read_view<'a>(
         }
         DatumKind::Int8 => DatumView::Int8(datum_buf[0] as i8),
         DatumKind::Boolean => DatumView::Boolean(datum_buf[0] != 0),
+        DatumKind::Date => {
+            let value_buf = datum_buf[..mem::size_of::<u32>()].try_into().unwrap();
+            let v = i32::from_ne_bytes(value_buf);
+            DatumView::Date(v)
+        },
     }
 }
 

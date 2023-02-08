@@ -78,10 +78,11 @@ pub enum DatumKind {
     Int16,
     Int8,
     Boolean,
+    Date,
 }
 
 impl DatumKind {
-    pub const VALUES: [Self; 15] = [
+    pub const VALUES: [Self; 16] = [
         Self::Null,
         Self::Timestamp,
         Self::Double,
@@ -97,6 +98,7 @@ impl DatumKind {
         Self::Int16,
         Self::Int8,
         Self::Boolean,
+        Self::Date,
     ];
 
     /// Return true if this is DatumKind::Timestamp
@@ -136,6 +138,7 @@ impl DatumKind {
                 | DatumKind::Int16
                 | DatumKind::Int8
                 | DatumKind::Boolean
+                | DatumKind::Date
         )
     }
 
@@ -167,6 +170,7 @@ impl DatumKind {
             DatumKind::Int16 => "smallint",
             DatumKind::Int8 => "tinyint",
             DatumKind::Boolean => "boolean",
+            DatumKind::Date => "date",
         }
     }
 
@@ -194,6 +198,7 @@ impl DatumKind {
             DatumKind::Int16 => 8,
             DatumKind::Int8 => 8,
             DatumKind::Boolean => 1,
+            DatumKind::Date => 4,
         };
         Some(size)
     }
@@ -213,6 +218,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::Int(_) => Ok(Self::Int32),
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
             SqlDataType::String => Ok(Self::String),
+            SqlDataType::Date => Ok(Self::Date),
             SqlDataType::Custom(objects) if objects.0.len() == 1 => {
                 match objects.0[0].value.as_str() {
                     "UINT64" | "uint64" => Ok(Self::UInt64),
@@ -260,6 +266,7 @@ impl TryFrom<u8> for DatumKind {
             v if DatumKind::Int16.into_u8() == v => Ok(DatumKind::Int16),
             v if DatumKind::Int8.into_u8() == v => Ok(DatumKind::Int8),
             v if DatumKind::Boolean.into_u8() == v => Ok(DatumKind::Boolean),
+            v if DatumKind::Date.into_u8() == v => Ok(DatumKind::Date),
             _ => InvalidDatumByte { value: v }.fail(),
         }
     }
@@ -283,6 +290,7 @@ impl From<DatumKind> for DataTypePb {
             DatumKind::Int16 => Self::Int16,
             DatumKind::Int8 => Self::Int8,
             DatumKind::Boolean => Self::Bool,
+            DatumKind::Date => Self::Date,
         }
     }
 }
@@ -305,6 +313,7 @@ impl From<DataTypePb> for DatumKind {
             DataTypePb::Int16 => DatumKind::Int16,
             DataTypePb::Int8 => DatumKind::Int8,
             DataTypePb::Bool => DatumKind::Boolean,
+            DataTypePb::Date => DatumKind::Date,
         }
     }
 }
@@ -347,6 +356,7 @@ pub enum Datum {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
+    Date(i32),
 }
 
 impl Datum {
@@ -368,6 +378,7 @@ impl Datum {
             DatumKind::Int16 => Self::Int16(0),
             DatumKind::Int8 => Self::Int8(0),
             DatumKind::Boolean => Self::Boolean(false),
+            DatumKind::Date => Self::Date(0),
         }
     }
 
@@ -507,6 +518,7 @@ impl Datum {
             Datum::Timestamp(ts) => ts.as_i64().to_le_bytes().to_vec(),
             Datum::Varbinary(b) => b.to_vec(),
             Datum::String(string) => string.as_bytes().to_vec(),
+            Datum::Date(v) => v.to_le_bytes().to_vec(),
         }
     }
 
@@ -532,6 +544,7 @@ impl Datum {
             Datum::Int16(v) => 0i16.checked_sub(v).map(Datum::Int16),
             Datum::Int8(v) => 0i8.checked_sub(v).map(Datum::Int8),
             Datum::Boolean(v) => Some(Datum::Boolean(!v)),
+            Datum::Date(v) => None,
         }
     }
 
@@ -552,6 +565,8 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
+            // todo date format
+            Datum::Date(v) => Local.timestamp_millis(v.as_i64()*86400).to_rfc3339(),
         }
     }
 
@@ -752,6 +767,7 @@ pub enum DatumView<'a> {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
+    Date(i32),
 }
 
 impl<'a> DatumView<'a> {
@@ -773,6 +789,7 @@ impl<'a> DatumView<'a> {
             DatumView::Int16(_) => DatumKind::Int16,
             DatumView::Int8(_) => DatumKind::Int8,
             DatumView::Boolean(_) => DatumKind::Boolean,
+            DatumView::Date(_) => DatumKind::Date,
         }
     }
 }
@@ -804,6 +821,7 @@ pub mod arrow_convert {
                 DataType::Int16 => Some(Self::Int16),
                 DataType::Int8 => Some(Self::Int8),
                 DataType::Boolean => Some(Self::Boolean),
+                DataType::Date32 => Some(Self::Date),
                 DataType::Float16
                 | DataType::LargeUtf8
                 | DataType::LargeBinary
@@ -816,7 +834,6 @@ pub mod arrow_convert {
                 | DataType::Time32(_)
                 | DataType::Time64(_)
                 | DataType::Timestamp(_, _)
-                | DataType::Date32
                 | DataType::Date64
                 | DataType::Interval(_)
                 | DataType::Duration(_)
@@ -844,6 +861,7 @@ pub mod arrow_convert {
                 DatumKind::Int16 => DataType::Int16,
                 DatumKind::Int8 => DataType::Int8,
                 DatumKind::Boolean => DataType::Boolean,
+                DatumKind::Date => DataType::Date32,
             }
         }
     }
@@ -868,6 +886,7 @@ pub mod arrow_convert {
                 Datum::Int16(v) => Some(ScalarValue::Int16(Some(*v))),
                 Datum::Int8(v) => Some(ScalarValue::Int8(Some(*v))),
                 Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
+                Datum::Date(v) => Some(ScalarValue::Date32(Some(*v))),
             }
         }
 
