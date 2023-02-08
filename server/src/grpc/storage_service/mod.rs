@@ -638,7 +638,7 @@ fn build_schema_from_write_table_request(
         msg: "invalid timestamp column schema to build",
     })?;
 
-    // Use (timestamp, tsid) as primary key.
+    // Use (tsid, timestamp) as primary key.
     let tsid_column_schema =
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
             .is_nullable(false)
@@ -650,17 +650,17 @@ fn build_schema_from_write_table_request(
             })?;
 
     schema_builder = schema_builder
-        .add_key_column(timestamp_column_schema)
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid timestamp column to add",
-        })?
         .add_key_column(tsid_column_schema)
         .map_err(|e| Box::new(e) as _)
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid tsid column to add",
+        })?
+        .add_key_column(timestamp_column_schema)
+        .map_err(|e| Box::new(e) as _)
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid timestamp column to add",
         })?;
 
     for col in name_column_map.into_values() {
@@ -832,8 +832,8 @@ mod tests {
 
         let key_columns = schema.key_columns();
         assert_eq!(2, key_columns.len());
-        assert_eq!(TIMESTAMP_COLUMN, key_columns[0].name);
-        assert_eq!("tsid", key_columns[1].name);
+        assert_eq!("tsid", key_columns[0].name);
+        assert_eq!(TIMESTAMP_COLUMN, key_columns[1].name);
 
         let columns = schema.normal_columns();
         assert_eq!(6, columns.len());
