@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use log::error;
+use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
@@ -108,7 +108,6 @@ pub struct Service<Q> {
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     tx: Sender<()>,
     config: HttpConfig,
-    enable_tenant_as_schema: bool,
 }
 
 impl<Q> Service<Q> {
@@ -308,24 +307,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
-        let enable_tenant_as_schema = self.enable_tenant_as_schema;
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
             .and(header::optional::<String>(consts::TENANT_HEADER))
             .and_then(
-                move |catalog: Option<_>, schema: Option<_>, tenant: Option<_>| {
+                move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
-                    let default_schema = default_schema.clone();
                     let runtime = runtime.clone();
-                    // For compatibility, we may use tenant as the schema if schema is
-                    // missing.
-                    let schema = if enable_tenant_as_schema {
-                        schema.or(tenant).unwrap_or(default_schema)
-                    } else {
-                        schema.unwrap_or(default_schema)
-                    };
+                    let schema = schema.unwrap_or_else(|| default_schema.clone());
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -387,7 +378,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
-    enable_tenant_as_schema: bool,
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
@@ -398,7 +388,6 @@ pub struct Builder<Q> {
 impl<Q> Builder<Q> {
     pub fn new(config: HttpConfig) -> Self {
         Self {
-            enable_tenant_as_schema: false,
             config,
             engine_runtimes: None,
             log_runtime: None,
@@ -419,11 +408,6 @@ impl<Q> Builder<Q> {
 
     pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
         self.instance = Some(instance);
-        self
-    }
-
-    pub fn enable_tenant_as_schema(mut self, enable_tenant_as_schema: bool) -> Self {
-        self.enable_tenant_as_schema = enable_tenant_as_schema;
         self
     }
 
@@ -456,8 +440,12 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
-            enable_tenant_as_schema: self.enable_tenant_as_schema,
         };
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
 
         let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
             ip: self.config.endpoint.addr,

@@ -283,36 +283,34 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         // Create http config
         let endpoint = Endpoint {
-            addr: self.config.bind_addr.clone(),
-            port: self.config.http_port,
+            addr: self.config.service.bind_addr.clone(),
+            port: self.config.service.http_port,
         };
 
         let http_config = HttpConfig {
             endpoint,
-            max_body_size: self.config.http_max_body_size,
-            timeout: self.config.timeout.map(|v| v.0),
+            max_body_size: self.config.service.http_max_body_size,
+            timeout: self.config.service.timeout.map(|v| v.0),
         };
 
         // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let schema_config_provider = self
+        let provider = self
             .schema_config_provider
-            .clone()
             .context(MissingSchemaConfigProvider)?;
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
-            .schema_config_provider(schema_config_provider)
+            .schema_config_provider(provider.clone())
             .build()
             .context(StartHttpService)?;
 
         let mysql_config = mysql::MysqlConfig {
-            ip: self.config.bind_addr.clone(),
-            port: self.config.mysql_port,
-            timeout: self.config.timeout.map(|v| v.0),
+            ip: self.config.service.bind_addr.clone(),
+            port: self.config.service.mysql_port,
+            timeout: self.config.service.timeout.map(|v| v.0),
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
@@ -322,22 +320,25 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(BuildMysqlService)?;
 
         let router = self.router.context(MissingRouter)?;
-        let provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
-            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .local_endpoint(
-                Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
+            .endpoint(
+                Endpoint::new(self.config.service.bind_addr, self.config.service.grpc_port)
+                    .to_string(),
             )
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
+            .local_endpoint(
+                Endpoint::new(self.config.cluster.node.addr, self.config.service.grpc_port)
+                    .to_string(),
+            )
+            .resp_compress_min_length(
+                self.config.service.resp_compress_min_length.as_bytes() as usize
+            )
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
-            .timeout(self.config.timeout.map(|v| v.0))
+            .timeout(self.config.service.timeout.map(|v| v.0))
             .build()
             .context(BuildGrpcService)?;
 

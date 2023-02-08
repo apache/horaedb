@@ -4,7 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_ext::ipc;
+use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
@@ -151,7 +151,12 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     Ok(record_batch) => {
                         let resp = match ipc::encode_record_batch(
                             &record_batch.into_arrow_record_batch(),
-                            ipc::Compression::Zstd,
+                            // TODO: Set compress_min_size to 0 for now, we should set it to a
+                            // proper value.
+                            CompressOptions {
+                                compress_min_length: 0,
+                                method: ipc::CompressionMethod::Zstd,
+                            },
                         )
                         .map_err(|e| Box::new(e) as _)
                         .context(ErrWithCause {
@@ -162,10 +167,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 header: Some(error::build_err_header(e)),
                                 ..Default::default()
                             },
-                            Ok(rows) => ReadResponse {
+                            Ok(CompressOutput { payload, .. }) => ReadResponse {
                                 header: Some(build_ok_header()),
                                 version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
-                                rows,
+                                rows: payload,
                             },
                         };
 

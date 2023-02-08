@@ -15,7 +15,7 @@ use common_types::{
 use futures::{Stream, StreamExt};
 use proto::remote_engine::{self, remote_engine_service_client::*};
 use router::RouterRef;
-use snafu::ResultExt;
+use snafu::{ensure, ResultExt};
 use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};
 use tonic::{transport::Channel, Request, Streaming};
 
@@ -161,14 +161,21 @@ impl Stream for ClientReadRecordBatchStream {
                     .context(ConvertVersion)?
                 {
                     RemoteEngineVersion::ArrowIPCWithZstd => {
-                        ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
+                        ipc::decode_record_batches(response.rows, ipc::CompressionMethod::Zstd)
                             .map_err(|e| Box::new(e) as _)
                             .context(ConvertReadResponse {
                                 msg: "decode record batch failed",
                                 version: response.version,
                             })
-                            .and_then(|v| {
-                                RecordBatch::try_from(v)
+                            .and_then(|mut batches| {
+                                ensure!(
+                                    batches.len() == 1,
+                                    InvalidRecordBatchNumber {
+                                        batch_num: batches.len()
+                                    }
+                                );
+
+                                RecordBatch::try_from(batches.swap_remove(0))
                                     .map_err(|e| Box::new(e) as _)
                                     .context(ConvertReadResponse {
                                         msg: "convert record batch failed",

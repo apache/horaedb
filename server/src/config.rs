@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use analytic_engine;
 use cluster::config::{ClusterConfig, SchemaConfig};
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
 use router::{
     endpoint::Endpoint,
@@ -119,10 +119,9 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-// TODO(yingwen): Split config into several sub configs.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct Config {
+pub struct ServiceConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
@@ -131,10 +130,15 @@ pub struct Config {
     pub grpc_port: u16,
     pub grpc_server_cq_count: usize,
     pub timeout: Option<ReadableDuration>,
-    /// Enable that use tenant as the schema if schema is not provided.
-    pub enable_tenant_as_schema: bool,
+    /// The minimum length of the response body to compress.
+    pub resp_compress_min_length: ReadableSize,
+}
 
-    /// Engine related configs:
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// Config for service, including http, mysql and grpc.
+    pub service: ServiceConfig,
     pub runtime: RuntimeConfig,
 
     /// Log related configs:
@@ -178,18 +182,25 @@ impl Default for RuntimeConfig {
     }
 }
 
-impl Default for Config {
+impl Default for ServiceConfig {
     fn default() -> Self {
-        let grpc_port = 8831;
         Self {
             bind_addr: String::from("127.0.0.1"),
             http_port: 5000,
             http_max_body_size: DEFAULT_MAX_BODY_SIZE,
             mysql_port: 3307,
-            grpc_port,
+            grpc_port: 8831,
             grpc_server_cq_count: 20,
             timeout: None,
-            enable_tenant_as_schema: true,
+            resp_compress_min_length: ReadableSize::mb(4),
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            service: ServiceConfig::default(),
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,

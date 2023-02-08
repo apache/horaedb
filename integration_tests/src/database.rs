@@ -12,7 +12,7 @@ use std::{
 use async_trait::async_trait;
 use ceresdb_client_rs::{
     db_client::{Builder, DbClient, Mode},
-    model::{display::CsvFormatter, request::QueryRequest},
+    model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
 use sqlness::Database;
@@ -61,7 +61,7 @@ impl CeresDB {
             )
         });
 
-        let db_client = Builder::new(endpoint, Mode::Standalone).build();
+        let db_client = Builder::new(endpoint, Mode::Proxy).build();
 
         CeresDB {
             db_client,
@@ -74,22 +74,19 @@ impl CeresDB {
     }
 
     async fn execute(query: String, client: Arc<dyn DbClient>) -> Box<dyn Display> {
-        let query_ctx = RpcContext {
-            tenant: "public".to_string(),
-            token: "".to_string(),
+        let query_ctx = RpcContext::new("public".to_string(), "".to_string());
+        let query_req = Request {
+            tables: vec![],
+            sql: query,
         };
-        let query_req = QueryRequest {
-            metrics: vec![],
-            ql: query,
-        };
-        let result = client.query(&query_ctx, &query_req).await;
+        let result = client.sql_query(&query_ctx, &query_req).await;
 
         Box::new(match result {
             Ok(resp) => {
-                if resp.has_schema() {
-                    format!("{}", CsvFormatter { resp })
-                } else {
+                if resp.rows.is_empty() {
                     format!("affected_rows: {}", resp.affected_rows)
+                } else {
+                    format!("{}", CsvFormatter { resp })
                 }
             }
             Err(e) => format!("Failed to execute query, err: {:?}", e),

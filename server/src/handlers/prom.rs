@@ -8,7 +8,8 @@ use std::{collections::HashMap, time::Instant};
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
-    value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric, WriteRequest as WriteRequestPb,
+    value, Field, FieldGroup, Tag, Value, WriteRequest as WriteRequestPb, WriteSeriesEntry,
+    WriteTableRequest,
 };
 use common_types::{
     datum::DatumKind,
@@ -172,14 +173,14 @@ impl<Q> CeresDBStorage<Q> {
 
             req_by_metric
                 .entry(metric.to_string())
-                .or_insert_with(|| WriteMetric {
-                    metric,
+                .or_insert_with(|| WriteTableRequest {
+                    table: metric,
                     tag_names,
                     field_names: vec![VALUE_COLUMN.to_string()],
                     entries: Vec::new(),
                 })
                 .entries
-                .push(WriteEntry {
+                .push(WriteSeriesEntry {
                     tags: tag_values
                         .into_iter()
                         .enumerate()
@@ -207,7 +208,7 @@ impl<Q> CeresDBStorage<Q> {
         }
 
         Ok(WriteRequestPb {
-            metrics: req_by_metric.into_values().collect(),
+            table_requests: req_by_metric.into_values().collect(),
         })
     }
 

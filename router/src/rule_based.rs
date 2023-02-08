@@ -100,16 +100,16 @@ impl RuleBasedRouter {
         }
     }
 
-    fn maybe_route_by_rule(metric: &str, rule_list: &RuleList) -> Option<ShardId> {
+    fn maybe_route_by_rule(table: &str, rule_list: &RuleList) -> Option<ShardId> {
         for prefix_rule in &rule_list.prefix_rules {
-            if metric.starts_with(&prefix_rule.prefix) {
+            if table.starts_with(&prefix_rule.prefix) {
                 return Some(prefix_rule.shard);
             }
         }
 
         if let Some(hash_rule) = rule_list.hash_rules.get(0) {
             let total_shards = hash_rule.shards.len();
-            let hash_value = hash::hash_table(metric);
+            let hash_value = hash::hash_table(table);
             let index = hash_value as usize % total_shards;
 
             return Some(hash_rule.shards[index]);
@@ -119,24 +119,20 @@ impl RuleBasedRouter {
     }
 
     #[inline]
-    fn route_by_hash(metric: &str, total_shards: usize) -> ShardId {
-        let hash_value = hash::hash_table(metric);
+    fn route_by_hash(table: &str, total_shards: usize) -> ShardId {
+        let hash_value = hash::hash_table(table);
         (hash_value as usize % total_shards) as ShardId
     }
 
-    fn route_metric(
-        metric: &str,
-        rule_list_opt: Option<&RuleList>,
-        total_shards: usize,
-    ) -> ShardId {
+    fn route_table(table: &str, rule_list_opt: Option<&RuleList>, total_shards: usize) -> ShardId {
         if let Some(rule_list) = rule_list_opt {
-            if let Some(shard_id) = Self::maybe_route_by_rule(metric, rule_list) {
+            if let Some(shard_id) = Self::maybe_route_by_rule(table, rule_list) {
                 return shard_id;
             }
         }
 
         // Fallback to hash route rule.
-        Self::route_by_hash(metric, total_shards)
+        Self::route_by_hash(table, total_shards)
     }
 }
 
@@ -151,18 +147,18 @@ impl Router for RuleBasedRouter {
 
             // TODO(yingwen): Better way to get total shard number
             let total_shards = shard_nodes.len();
-            let mut route_results = Vec::with_capacity(req.metrics.len());
-            for metric in req.metrics {
-                let shard_id = Self::route_metric(&metric, rule_list_opt, total_shards);
+            let mut route_results = Vec::with_capacity(req.tables.len());
+            for table in req.tables {
+                let shard_id = Self::route_table(&table, rule_list_opt, total_shards);
 
                 let endpoint = shard_nodes.get(&shard_id).with_context(|| ShardNotFound {
                     schema,
-                    table: &metric,
+                    table: &table,
                 })?;
 
                 let pb_endpoint = storage::Endpoint::from(endpoint.clone());
                 let route = Route {
-                    metric,
+                    table,
                     endpoint: Some(pb_endpoint),
                     ..Default::default()
                 };

@@ -118,7 +118,7 @@ zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "9430fe7d321955878ca06c431b115d73640f5d8f"
+rev = "55495dd395d12a1f97f6c98e355290671d107c44"
 
 [dependencies]
 analytic_engine = { workspace = true }

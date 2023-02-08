@@ -11,7 +11,7 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 SELECT 'a';
 
 Utf8("a"),
-String(StringBytes(b"a")),
+String("a"),
 
 
 SELECT NOT(1=1);
@@ -22,7 +22,7 @@ Boolean(false),
 
 SELECT NOT(1);
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, query: SELECT NOT(1);. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:External error: Internal error: NOT 'Literal { value: Int64(1) }' can't be evaluated because the expression's type is Int64, not boolean or NULL. This was likely caused by a bug in DataFusion's code and we would welcome that you file an bug report in our issue tracker" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute interpreter, sql: SELECT NOT(1);. Caused by: Failed to execute select, err:Failed to execute logical plan, err:Failed to collect record batch stream, err:Stream error, msg:convert from arrow record batch, err:External error: Internal error: NOT 'Literal { value: Int64(1) }' can't be evaluated because the expression's type is Int64, not boolean or NULL. This was likely caused by a bug in DataFusion's code and we would welcome that you file an bug report in our issue tracker" })
 
 SELECT TRUE;
 
@@ -57,7 +57,7 @@ Int64(24),
 SELECT "That is not good.";
 
 Utf8("That is not good."),
-String(StringBytes(b"That is not good.")),
+String("That is not good."),
 
 
 SELECT *;
