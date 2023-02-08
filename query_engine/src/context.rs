@@ -50,13 +50,16 @@ impl Context {
             request_id: request_id.as_u64(),
             request_timeout: timeout,
         };
-        let df_session_config = SessionConfig::new()
+        let mut df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(
                 self.default_catalog.clone(),
                 self.default_schema.clone(),
             )
-            .with_extension(Arc::new(ceresdb_options))
             .with_target_partitions(config.read_parallelism);
+        df_session_config
+            .config_options_mut()
+            .extensions
+            .insert(ceresdb_options);
 
         let logical_optimize_rules = Self::logical_optimize_rules();
         let state = default_session_builder(df_session_config)

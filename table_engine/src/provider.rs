@@ -137,15 +137,12 @@ impl TableProviderAdapter {
         read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
-        let (request_id, deadline) = if let Some(options) = ceresdb_options {
-            let request_id = RequestId::from(options.request_id);
-            let deadline = options
-                .request_timeout
-                .map(|n| Instant::now() + Duration::from_millis(n));
-            (request_id, deadline)
-        } else {
-            (RequestId::from(0), None)
-        };
+        assert!(ceresdb_options.is_some());
+        let ceresdb_options = ceresdb_options.unwrap();
+        let request_id = RequestId::from(ceresdb_options.request_id);
+        let deadline = ceresdb_options
+            .request_timeout
+            .map(|n| Instant::now() + Duration::from_millis(n));
         debug!(
             "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
             self.table.name(),

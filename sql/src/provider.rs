@@ -149,7 +149,10 @@ pub struct ContextProviderAdapter<'a, P> {
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
     /// Read parallelism for each table.
+    // TODO: to remove this parameter, use the config
     read_parallelism: usize,
+    /// Read config for each table.
+    config: ConfigOptions,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -157,12 +160,14 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
-
+        let mut config = ConfigOptions::default();
+        config.execution.target_partitions = read_parallelism;
         Self {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
             read_parallelism,
+            config,
         }
     }
 
@@ -286,7 +291,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     }
 
     fn options(&self) -> &ConfigOptions {
-        todo!()
+        &self.config
     }
 }
 
