@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use log::error;
+use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
@@ -441,6 +441,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             tx,
             config: self.config.clone(),
         };
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
 
         let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
             ip: self.config.endpoint.addr,

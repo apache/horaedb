@@ -24,16 +24,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Mysql Server not running, err: {}.\nBacktrace:\n{}",
-        source,
-        backtrace
-    ))]
-    ServerNotRunning {
-        backtrace: Backtrace,
-        source: std::io::Error,
-    },
-
     #[snafu(display("Failed to create request context, err:{}", source))]
     CreateContext { source: crate::context::Error },
 
