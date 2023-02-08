@@ -2,7 +2,7 @@
 
 //! Schema of column
 
-use std::{collections::BTreeMap, convert::TryFrom, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, str::FromStr};
 
 use arrow::datatypes::{DataType, Field};
 use proto::common as common_pb;
@@ -281,11 +281,7 @@ impl TryFrom<&Field> for ColumnSchema {
             id,
             is_tag,
             comment,
-        } = field
-            .metadata()
-            .map(decode_arrow_field_meta_data)
-            .transpose()?
-            .unwrap_or_default();
+        } = decode_arrow_field_meta_data(field.metadata())?;
         Ok(Self {
             id,
             name: field.name().clone(),
@@ -311,14 +307,14 @@ impl From<&ColumnSchema> for Field {
             col_schema.data_type.into(),
             col_schema.is_nullable,
         );
-        field.set_metadata(Some(metadata));
+        field.set_metadata(metadata);
 
         field
     }
 }
 
 fn parse_arrow_field_meta_value<T>(
-    meta: &BTreeMap<String, String>,
+    meta: &HashMap<String, String>,
     key: ArrowFieldMetaKey,
 ) -> Result<T>
 where
@@ -333,16 +329,20 @@ where
         .context(InvalidArrowFieldMetaValue { key, raw_value })
 }
 
-fn decode_arrow_field_meta_data(meta: &BTreeMap<String, String>) -> Result<ArrowFieldMeta> {
-    Ok(ArrowFieldMeta {
-        id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
-        is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
-        comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
-    })
+fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowFieldMeta> {
+    if meta.is_empty() {
+        Ok(ArrowFieldMeta::default())
+    } else {
+        Ok(ArrowFieldMeta {
+            id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
+            is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
+            comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
+        })
+    }
 }
 
-fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> BTreeMap<String, String> {
-    let mut meta = BTreeMap::new();
+fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, String> {
+    let mut meta = HashMap::new();
 
     meta.insert(ArrowFieldMetaKey::Id.to_string(), col_schema.id.to_string());
     meta.insert(

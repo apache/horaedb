@@ -111,8 +111,10 @@ impl<'a> Parser<'a> {
         let mut tokenizer = Tokenizer::new(dialect, sql);
         let tokens = tokenizer.tokenize()?;
 
+        let parser = SqlParser::new(dialect);
+
         Ok(Parser {
-            parser: SqlParser::new(tokens, dialect),
+            parser: parser.with_tokens(tokens),
         })
     }
 
@@ -133,7 +135,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             if expecting_statement_delimiter {
-                return parser.expected("end of statement", parser.parser.peek_token());
+                return parser.expected("end of statement", parser.parser.peek_token().token);
             }
 
             let statement = parser.parse_statement()?;
@@ -153,7 +155,7 @@ impl<'a> Parser<'a> {
 
     // Parse a new expression
     fn parse_statement(&mut self) -> Result<Statement> {
-        match self.parser.peek_token() {
+        match self.parser.peek_token().token {
             Token::Word(w) => {
                 match w.keyword {
                     Keyword::CREATE => {
@@ -202,9 +204,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_alter(&mut self) -> Result<Statement> {
-        let nth1_token = self.parser.peek_token();
-        let nth2_token = self.parser.peek_nth_token(2);
-        let nth3_token = self.parser.peek_nth_token(3);
+        let nth1_token = self.parser.peek_token().token;
+        let nth2_token = self.parser.peek_nth_token(2).token;
+        let nth3_token = self.parser.peek_nth_token(3).token;
         if let (Token::Word(nth1_word), Token::Word(nth2_word), Token::Word(nth3_word)) =
             (nth1_token, nth2_token, nth3_token)
         {
@@ -236,18 +238,18 @@ impl<'a> Parser<'a> {
         } else if self.consume_token("CREATE") {
             Ok(self.parse_show_create()?)
         } else {
-            self.expected("create/tables/databases", self.parser.peek_token())
+            self.expected("create/tables/databases", self.parser.peek_token().token)
         }
     }
 
     fn parse_show_tables(&mut self) -> Result<Statement> {
-        let pattern = match self.parser.next_token() {
+        let pattern = match self.parser.next_token().token {
             Token::Word(w) => match w.keyword {
                 Keyword::LIKE => Some(self.parser.parse_literal_string()?),
-                _ => return self.expected("like", self.parser.peek_token()),
+                _ => return self.expected("like", self.parser.peek_token().token),
             },
             Token::SemiColon | Token::EOF => None,
-            _ => return self.expected(";", self.parser.peek_token()),
+            _ => return self.expected(";", self.parser.peek_token().token),
         };
         Ok(Statement::ShowTables(ShowTables { pattern }))
     }
@@ -366,12 +368,12 @@ impl<'a> Parser<'a> {
         loop {
             if let Some(constraint) = self.parse_optional_table_constraint()? {
                 constraints.push(constraint);
-            } else if let Token::Word(_) = self.parser.peek_token() {
+            } else if let Token::Word(_) = self.parser.peek_token().token {
                 columns.push(self.parse_column_def()?);
             } else {
                 return self.expected(
                     "column name or constraint definition",
-                    self.parser.peek_token(),
+                    self.parser.peek_token().token,
                 );
             }
             let comma = self.parser.consume_token(&Token::Comma);
@@ -381,7 +383,7 @@ impl<'a> Parser<'a> {
             } else if !comma {
                 return self.expected(
                     "',' or ')' after column definition",
-                    self.parser.peek_token(),
+                    self.parser.peek_token().token,
                 );
             }
         }
@@ -400,7 +402,7 @@ impl<'a> Parser<'a> {
 
         self.parser.expect_token(&Token::Eq)?;
 
-        match self.parser.next_token() {
+        match self.parser.next_token().token {
             Token::Word(w) => Ok(w.value),
             unexpected => self.expected("Engine is missing", unexpected),
         }
@@ -424,7 +426,7 @@ impl<'a> Parser<'a> {
                 } else {
                     return self.expected(
                         "constraint details after CONSTRAINT <name>",
-                        self.parser.peek_token(),
+                        self.parser.peek_token().token,
                     );
                 }
             } else if let Some(option) = self.parse_optional_column_option()? {
@@ -448,10 +450,12 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        match self.parser.next_token() {
+        match self.parser.next_token().token {
             Token::Word(w) if w.keyword == Keyword::PRIMARY => {
                 self.parser.expect_keyword(Keyword::KEY)?;
-                let columns = self.parser.parse_parenthesized_column_list(Mandatory)?;
+                let columns = self
+                    .parser
+                    .parse_parenthesized_column_list(Mandatory, false)?;
                 Ok(Some(TableConstraint::Unique {
                     name,
                     columns,
@@ -460,7 +464,9 @@ impl<'a> Parser<'a> {
             }
             Token::Word(w) if w.keyword == Keyword::TIMESTAMP => {
                 self.parser.expect_keyword(Keyword::KEY)?;
-                let columns = self.parser.parse_parenthesized_column_list(Mandatory)?;
+                let columns = self
+                    .parser
+                    .parse_parenthesized_column_list(Mandatory, false)?;
                 // TODO(boyan), TableConstraint doesn't support dialect right now
                 // we use unique constraint as TIMESTAMP KEY constraint.
                 Ok(Some(TableConstraint::Unique {
@@ -591,7 +597,7 @@ impl<'a> Parser<'a> {
 
         let key_columns = self
             .parser
-            .parse_parenthesized_column_list(Mandatory)
+            .parse_parenthesized_column_list(Mandatory, false)
             .map_err(|e| {
                 ParserError::ParserError(format!("Fail to parse partition key, err:{}", e))
             })?;
@@ -798,7 +804,7 @@ fn maybe_convert_table_name(object_name: &mut ObjectName) {
 #[cfg(test)]
 mod tests {
     use sqlparser::{
-        ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value},
+        ast::{ColumnOptionDef, DataType, Ident, ObjectName, TimezoneInfo, Value},
         parser::ParserError::ParserError,
     };
 
@@ -908,7 +914,7 @@ mod tests {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
-                make_column_def("c1", DataType::Timestamp),
+                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
                 make_column_def("c2", DataType::Double),
                 make_column_def("c3", DataType::String),
             ],
@@ -925,7 +931,7 @@ mod tests {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
-                make_column_def("c1", DataType::Timestamp),
+                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
                 make_comment_column_def("c2", DataType::Double, "id".to_string()),
                 make_comment_column_def("c3", DataType::String, "name".to_string()),
             ],

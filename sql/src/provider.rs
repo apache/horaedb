@@ -4,10 +4,12 @@
 
 use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
+    config::ConfigOptions,
     datasource::{DefaultTableSource, TableProvider},
     physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
     sql::planner::ContextProvider,
@@ -147,7 +149,10 @@ pub struct ContextProviderAdapter<'a, P> {
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
     /// Read parallelism for each table.
+    // TODO: to remove this parameter, use the config
     read_parallelism: usize,
+    /// Read config for each table.
+    config: ConfigOptions,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -155,12 +160,14 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
-
+        let mut config = ConfigOptions::default();
+        config.execution.target_partitions = read_parallelism;
         Self {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
             read_parallelism,
+            config,
         }
     }
 
@@ -282,6 +289,10 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     ) -> Option<common_types::schema::DataType> {
         None
     }
+
+    fn options(&self) -> &ConfigOptions {
+        &self.config
+    }
 }
 
 struct SchemaProviderAdapter {
@@ -291,6 +302,7 @@ struct SchemaProviderAdapter {
     read_parallelism: usize,
 }
 
+#[async_trait]
 impl SchemaProvider for SchemaProviderAdapter {
     fn as_any(&self) -> &dyn Any {
         self
@@ -307,7 +319,7 @@ impl SchemaProvider for SchemaProviderAdapter {
         names
     }
 
-    fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
+    async fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let name_ref = TableReference::Full {
             catalog: &self.catalog,
             schema: &self.schema,
@@ -320,7 +332,7 @@ impl SchemaProvider for SchemaProviderAdapter {
     }
 
     fn table_exist(&self, name: &str) -> bool {
-        self.table(name).is_some()
+        self.tables.get(TableReference::parse_str(name)).is_some()
     }
 }
 

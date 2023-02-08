@@ -1,8 +1,8 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use arrow::datatypes::SchemaRef;
-use datafusion::{logical_plan::Column, scalar::ScalarValue};
-use datafusion_expr::{Expr, Operator};
+use datafusion::{common::Column, scalar::ScalarValue};
+use datafusion_expr::{self, Expr, Operator};
 
 const MAX_ELEMS_IN_LIST_FOR_FILTER: usize = 100;
 
@@ -149,7 +149,7 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
     let unhandled = NormalizedExpr::True;
 
     match expr {
-        Expr::BinaryExpr { left, op, right } => match op {
+        Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => match op {
             Operator::And => {
                 let left = normalize_predicate_expression(left);
                 let right = normalize_predicate_expression(right);

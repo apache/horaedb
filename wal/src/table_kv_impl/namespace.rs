@@ -56,7 +56,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to open bucket, namespace:{}, err:{}", namespace, source,))]
-    OpenBucket {
+    BucketMeta {
         namespace: String,
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -119,7 +119,7 @@ pub enum Error {
     ValueNotFound { key: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to build namespace, namespace:{}, err:{}", namespace, source,))]
-    BuildNamepsace {
+    BuildNamespace {
         namespace: String,
         source: crate::table_kv_impl::model::Error,
     },
@@ -315,7 +315,7 @@ impl<T: TableKv> NamespaceInner<T> {
                 .context(LoadBuckets {
                     namespace: self.name(),
                 })?;
-            let bucket = Bucket::new(self.name(), bucket_entry);
+            let bucket = Bucket::new(self.name(), bucket_entry)?;
 
             // Collect the outdated bucket entries for deletion.
             if let Some(ttl) = self.entry.wal.ttl {
@@ -758,7 +758,7 @@ impl BucketCreator {
             inner.config.ttl,
         );
 
-        let bucket = Bucket::new(inner.name(), bucket_entry);
+        let bucket = Bucket::new(inner.name(), bucket_entry)?;
 
         self.create_bucket(inner, bucket)
     }
@@ -783,7 +783,7 @@ impl BucketCreator {
         bucket: Bucket,
     ) -> Result<Bucket> {
         // Insert bucket record into TableKv.
-        let key = bucket.format_bucket_key(inner.name());
+        let key = bucket.format_bucket_key(inner.name())?;
         let value = bucket.entry.encode().context(Encode {
             namespace: inner.name(),
         })?;
@@ -837,7 +837,7 @@ impl BucketCreator {
         let value = get_value(&inner.table_kv, &inner.meta_table_name, key)?;
         let bucket_entry = BucketEntry::decode(&value).context(Decode { key })?;
 
-        let bucket = Bucket::new(inner.name(), bucket_entry);
+        let bucket = Bucket::new(inner.name(), bucket_entry)?;
 
         Ok(bucket)
     }
@@ -1063,7 +1063,7 @@ impl<T: TableKv> Namespace<T> {
     ) -> Result<Namespace<T>> {
         let mut namespace_entry = config
             .new_namespace_entry(namespace)
-            .context(BuildNamepsace { namespace })?;
+            .context(BuildNamespace { namespace })?;
 
         let key = encoding::format_namespace_key(namespace);
         let value = namespace_entry.encode().context(Encode { namespace })?;
@@ -1193,12 +1193,12 @@ impl TableOperator {
         let table_exists = table_kv
             .table_exists(table_name)
             .map_err(|e| Box::new(e) as _)
-            .context(OpenBucket { namespace })?;
+            .context(BucketMeta { namespace })?;
         if !table_exists {
             table_kv
                 .create_table(table_name)
                 .map_err(|e| Box::new(e) as _)
-                .context(OpenBucket { namespace })?;
+                .context(BucketMeta { namespace })?;
         }
 
         Ok(())
@@ -1289,7 +1289,7 @@ pub struct Bucket {
 }
 
 impl Bucket {
-    fn new(namespace: &str, entry: BucketEntry) -> Self {
+    fn new(namespace: &str, entry: BucketEntry) -> Result<Self> {
         let mut wal_shard_names = Vec::with_capacity(entry.shard_num);
 
         for shard_id in 0..entry.shard_num {
@@ -1297,15 +1297,17 @@ impl Bucket {
                 encoding::format_permanent_wal_name(namespace, shard_id)
             } else {
                 encoding::format_timed_wal_name(namespace, entry.gmt_start_ms(), shard_id)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(BucketMeta { namespace })?
             };
 
             wal_shard_names.push(table_name);
         }
 
-        Self {
+        Ok(Self {
             entry,
             wal_shard_names,
-        }
+        })
     }
 
     #[inline]
@@ -1319,7 +1321,7 @@ impl Bucket {
         &self.wal_shard_names[index]
     }
 
-    fn format_bucket_key(&self, namespace: &str) -> String {
+    fn format_bucket_key(&self, namespace: &str) -> Result<String> {
         match self.entry.bucket_duration() {
             Some(bucket_duration) => {
                 // Timed bucket.
@@ -1328,10 +1330,12 @@ impl Bucket {
                     ReadableDuration(bucket_duration),
                     self.entry.gmt_start_ms(),
                 )
+                .map_err(|e| Box::new(e) as _)
+                .context(BucketMeta { namespace })
             }
             None => {
                 // This is a permanent bucket.
-                encoding::format_permanent_bucket_key(namespace)
+                Ok(encoding::format_permanent_bucket_key(namespace))
             }
         }
     }
@@ -1438,7 +1442,7 @@ fn purge_buckets<T: TableKv>(
 
         // All tables of this bucket have been dropped, we can remove the bucket record
         // later.
-        let key = bucket.format_bucket_key(namespace);
+        let key = bucket.format_bucket_key(namespace).map_err(Box::new)?;
 
         batch.delete(key.as_bytes());
 
@@ -1534,7 +1538,7 @@ mod tests {
         let entry = BucketEntry::new_timed(4, gmt_start_ms, BUCKET_DURATION_MS).unwrap();
         assert!(!entry.is_permanent());
 
-        let bucket = Bucket::new("test", entry);
+        let bucket = Bucket::new("test", entry).unwrap();
         assert_eq!(4, bucket.wal_shard_names.len());
         let expect_names = [
             "wal_test_20220328000000_000000",
@@ -1550,7 +1554,7 @@ mod tests {
         let entry = BucketEntry::new_permanent(4);
         assert!(entry.is_permanent());
 
-        let bucket = Bucket::new("test", entry);
+        let bucket = Bucket::new("test", entry).unwrap();
         assert_eq!(4, bucket.wal_shard_names.len());
         let expect_names = [
             "wal_test_permanent_000000",
@@ -1564,7 +1568,7 @@ mod tests {
     #[test]
     fn test_permanent_bucket_set() {
         let entry = BucketEntry::new_permanent(4);
-        let bucket = Arc::new(Bucket::new("test", entry));
+        let bucket = Arc::new(Bucket::new("test", entry).unwrap());
 
         let mut bucket_set = BucketSet::new(false);
         let buckets = bucket_set.buckets();
@@ -1593,7 +1597,7 @@ mod tests {
     fn new_timed_bucket(ts: Timestamp) -> BucketRef {
         let entry = BucketEntry::new_timed(1, ts, BUCKET_DURATION_MS).unwrap();
 
-        Arc::new(Bucket::new("test", entry))
+        Arc::new(Bucket::new("test", entry).unwrap())
     }
 
     #[test]

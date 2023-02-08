@@ -3,7 +3,7 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use arrow::{
-    array::{Array, ArrayData, ArrayRef},
+    array::{make_array, Array, ArrayData, ArrayRef},
     buffer::MutableBuffer,
     compute,
     record_batch::RecordBatch as ArrowRecordBatch,
@@ -557,7 +557,7 @@ impl HybridRecordDecoder {
             .map_err(|e| Box::new(e) as _)
             .context(DecodeRecordBatch)?;
 
-        Ok(array_data.into())
+        Ok(make_array(array_data))
     }
 
     /// Like `stretch_variable_length_column`, but array value is fixed-size
@@ -601,7 +601,7 @@ impl HybridRecordDecoder {
             .map_err(|e| Box::new(e) as _)
             .context(DecodeRecordBatch)?;
 
-        Ok(array_data.into())
+        Ok(make_array(array_data))
     }
 
     /// Decode offset slices into Vec<i32>
@@ -645,7 +645,7 @@ impl RecordDecoder for HybridRecordDecoder {
                     // are collapsed by hybrid storage format, to differentiate
                     // List column in original records
                     DataType::List(_nested_field) => {
-                        Ok(array_ref.data().child_data()[0].clone().into())
+                        Ok(make_array(array_ref.data().child_data()[0].clone()))
                     }
                     _ => {
                         let datum_kind = DatumKind::from_data_type(data_type).unwrap();

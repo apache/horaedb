@@ -440,7 +440,7 @@ ORDER BY
 
 arch,thetasketch_distinct(02_function_thetasketch_distinct_table.value),
 String("x86"),UInt64(115),
-String("arm"),UInt64(114),
+String("arm"),UInt64(117),
 
 
 DROP TABLE `02_function_thetasketch_distinct_table`;

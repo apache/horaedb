@@ -259,7 +259,7 @@ pub fn make_string_from_decimal<T: DecimalType>(
 ) -> Result<String> {
     let array = column
         .as_any()
-        .downcast_ref::<array::DecimalArray<T>>()
+        .downcast_ref::<array::PrimitiveArray<T>>()
         .unwrap();
 
     let formatted_decimal = array.value_as_string(row);
@@ -389,7 +389,7 @@ pub fn array_value_to_string(column: &array::ArrayRef, row: usize) -> Result<Str
 
             let mut s = String::new();
             s.push('{');
-            let mut kv_iter = st.columns().into_iter().zip(st.column_names().into_iter());
+            let mut kv_iter = st.columns().iter().zip(st.column_names().into_iter());
             if let Some((col, name)) = kv_iter.next() {
                 append_struct_field_string(&mut s, name, col, row)?;
             }

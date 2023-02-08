@@ -17,7 +17,7 @@ use common_util::define_result;
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
-    logical_expr::expr_fn,
+    optimizer::utils::conjunction,
     physical_expr::{self, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };
@@ -171,7 +171,7 @@ pub fn filter_stream(
     input_schema: ArrowSchemaRef,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    let filter = match expr_fn::combine_filters(predicate.exprs()) {
+    let filter = match conjunction(predicate.exprs().to_owned()) {
         Some(filter) => filter,
         None => return Ok(origin_stream),
     };

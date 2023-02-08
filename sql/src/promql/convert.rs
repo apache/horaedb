@@ -11,12 +11,12 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    error::DataFusionError,
-    logical_plan::{
-        avg, col, combine_filters, count, lit, max, min, plan::Extension, sum,
-        Expr as DataFusionExpr, LogicalPlan, LogicalPlanBuilder,
-    },
-    sql::planner::ContextProvider,
+    error::DataFusionError, optimizer::utils::conjunction, sql::planner::ContextProvider,
+};
+use datafusion_expr::{
+    avg, col, count, lit,
+    logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
+    max, min, sum, Expr as DataFusionExpr,
 };
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -331,7 +331,7 @@ impl Expr {
                     };
                     let aggr_expr =
                         Self::aggr_op_expr(&op, &column_name.field, column_name.field.clone())?;
-                    let tag_exprs = groupby_columns.iter().map(|v| col(v)).collect::<Vec<_>>();
+                    let tag_exprs = groupby_columns.iter().map(|v| col(*v)).collect::<Vec<_>>();
                     let udf_args = tag_exprs.clone();
                     let mut groupby_expr = vec![col(&column_name.timestamp)];
                     groupby_expr.extend(udf_args);
@@ -617,7 +617,7 @@ impl Selector {
         filter_exprs.push(timerange_to_expr(query_range, &timestamp_column_name));
 
         let builder = LogicalPlanBuilder::scan(table.clone(), table_provider, None)?
-            .filter(combine_filters(&filter_exprs).expect("at least one filter(timestamp)"))?
+            .filter(conjunction(filter_exprs).expect("at least one filter(timestamp)"))?
             .project(projection)?
             .sort(default_sort_exprs(&timestamp_column_name))?;
         let column_name = Arc::new(ColumnNames {

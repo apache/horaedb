@@ -59,16 +59,18 @@ impl FilterExtractor for KeyExtractor {
             // (Actually, there is type conversion on high-level, but when converted data
             // is overflow, it may take no effect).
             let partition_filter = match filter.clone() {
-                Expr::BinaryExpr { left, op, right } => match (*left, op, *right) {
-                    (Expr::Column(col), Operator::Eq, Expr::Literal(val))
-                    | (Expr::Literal(val), Operator::Eq, Expr::Column(col)) => {
-                        let datum_opt = Datum::from_scalar_value(&val);
-                        datum_opt.map(|datum| {
-                            PartitionFilter::new(col.name, PartitionCondition::Eq(datum))
-                        })
+                Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => {
+                    match (*left, op, *right) {
+                        (Expr::Column(col), Operator::Eq, Expr::Literal(val))
+                        | (Expr::Literal(val), Operator::Eq, Expr::Column(col)) => {
+                            let datum_opt = Datum::from_scalar_value(&val);
+                            datum_opt.map(|datum| {
+                                PartitionFilter::new(col.name, PartitionCondition::Eq(datum))
+                            })
+                        }
+                        _ => None,
                     }
-                    _ => None,
-                },
+                }
                 Expr::InList {
                     expr,
                     list,

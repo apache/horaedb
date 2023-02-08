@@ -11,7 +11,6 @@ use datafusion::{
     physical_plan::Accumulator as DfAccumulator,
     scalar::ScalarValue as DfScalarValue,
 };
-use datafusion_expr::AggregateState as DfAggregateState;
 use snafu::Snafu;
 
 use crate::functions::{ScalarValue, ScalarValueRef};
@@ -35,8 +34,9 @@ define_result!(Error);
 pub struct State(Vec<DfScalarValue>);
 
 impl State {
-    fn into_df_aggregate_states(self) -> Vec<DfAggregateState> {
-        self.0.into_iter().map(DfAggregateState::Scalar).collect()
+    /// Convert to a set of ScalarValues
+    fn into_state(self) -> Vec<DfScalarValue> {
+        self.0
     }
 }
 
@@ -112,11 +112,11 @@ impl<T> ToDfAccumulator<T> {
 }
 
 impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
-    fn state(&self) -> DfResult<Vec<DfAggregateState>> {
+    fn state(&self) -> DfResult<Vec<DfScalarValue>> {
         let state = self.accumulator.state().map_err(|e| {
             DataFusionError::Execution(format!("Accumulator failed to get state, err:{}", e))
         })?;
-        Ok(state.into_df_aggregate_states())
+        Ok(state.into_state())
     }
 
     fn update_batch(&mut self, values: &[DfArrayRef]) -> DfResult<()> {
@@ -159,5 +159,9 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         })?;
 
         Ok(value.into_df_scalar_value())
+    }
+
+    fn size(&self) -> usize {
+        std::mem::size_of_val(self)
     }
 }
