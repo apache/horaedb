@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// Filter for row groups.
+// Row group pruner.
 
 use std::cmp::Ordering;
 
@@ -15,94 +15,92 @@ use parquet_ext::prune::{
 };
 use snafu::ensure;
 
-use crate::sst::{
-    parquet::meta_data::RowGroupFilter,
-    reader::error::{OtherNoCause, Result},
-};
+use super::meta_data::SstFilter;
+use crate::sst::reader::error::{OtherNoCause, Result};
 
-/// A filter to prune row groups according to the provided predicates.
+/// RowGroupPruner is used to prune row groups according to the provided
+/// predicates and filters.
 ///
 /// Currently, two kinds of filters will be applied to such filtering:
 /// min max & bloom filter.
-pub struct RowGroupFilter2<'a> {
+pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
-    blooms: Option<&'a [RowGroupFilter]>,
+    sst_filter: Option<&'a SstFilter>,
     predicates: &'a [Expr],
 }
 
-impl<'a> RowGroupFilter2<'a> {
+impl<'a> RowGroupPruner<'a> {
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
-        blooms: Option<&'a [RowGroupFilter]>,
+        sst_filter: Option<&'a SstFilter>,
         predicates: &'a [Expr],
     ) -> Result<Self> {
-        if let Some(blooms) = blooms {
-            ensure!(blooms.len() == row_groups.len(), OtherNoCause {
-                msg: format!("expect the same number of bloom filter as the number of row groups, num_bloom_filters:{}, num_row_groups:{}", blooms.len(), row_groups.len()),
+        if let Some(f) = sst_filter {
+            ensure!(f.len() == row_groups.len(), OtherNoCause {
+                msg: format!("expect the same number of ss_filter as the number of row groups, num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
             });
         }
 
         Ok(Self {
             schema,
             row_groups,
-            blooms,
+            sst_filter,
             predicates,
         })
     }
 
-    pub fn filter(&self) -> Vec<usize> {
+    pub fn prune(&self) -> Vec<usize> {
         debug!(
-            "Begin to filter row groups, total_row_groups:{}, bloom_filtering:{}, predicates:{:?}",
+            "Begin to prune row groups, total_row_groups:{}, sst_filter:{}, predicates:{:?}",
             self.row_groups.len(),
-            self.blooms.is_some(),
+            self.sst_filter.is_some(),
             self.predicates,
         );
 
-        let filtered0 = self.filter_by_min_max();
-        match self.blooms {
+        let pruned0 = self.prune_by_min_max();
+        match self.sst_filter {
             Some(v) => {
-                // TODO: We can do continuous filtering based on the `filtered0` to reduce the
+                // TODO: We can do continuous prune based on the `pruned0` to reduce the
                 // filtering cost.
-                let filtered1 = self.filter_by_bloom(v);
-                let filtered = Self::intersect_filtered_row_groups(&filtered0, &filtered1);
+                let pruned1 = self.prune_by_filters(v);
+                let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
                 debug!(
-                    "Finish filtering row groups by blooms and min_max, total_row_groups:{}, filtered_by_min_max:{}, filtered_by_blooms:{}, filtered_by_both:{}",
+                    "Finish prune row groups by blooms and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
                     self.row_groups.len(),
-                    filtered0.len(),
-                    filtered1.len(),
-                    filtered.len(),
+                    pruned0.len(),
+                    pruned1.len(),
+                    pruned.len(),
                 );
 
-                filtered
+                pruned
             }
             None => {
                 debug!(
-                    "Finish filtering row groups by min_max, total_row_groups:{}, filtered_row_groups:{}",
+                    "Finish pruning row groups by min_max, total_row_groups:{}, pruned_row_groups:{}",
                     self.row_groups.len(),
-                    filtered0.len(),
+                    pruned0.len(),
                 );
-                filtered0
+                pruned0
             }
         }
     }
 
-    fn filter_by_min_max(&self) -> Vec<usize> {
-        min_max::filter_row_groups(self.schema.clone(), self.predicates, self.row_groups)
+    fn prune_by_min_max(&self) -> Vec<usize> {
+        min_max::prune_row_groups(self.schema.clone(), self.predicates, self.row_groups)
     }
 
-    /// Filter row groups according to the bloom filter.
-    fn filter_by_bloom(&self, row_group_bloom_filters: &[RowGroupFilter]) -> Vec<usize> {
+    /// Prune row groups according to the filter.
+    fn prune_by_filters(&self, sst_filter: &SstFilter) -> Vec<usize> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
-                let exist = row_group_bloom_filters
-                    .get(col_pos.row_group_idx)?
+                let exist = sst_filter[col_pos.row_group_idx]
                     .contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
                 if exist {
-                    // bloom filter has false positivity, that is to say we are unsure whether this
+                    // sst_filter has false positivity, that is to say we are unsure whether this
                     // value exists even if the bloom filter says it exists.
                     None
                 } else {
@@ -110,7 +108,7 @@ impl<'a> RowGroupFilter2<'a> {
                 }
             };
 
-        equal::filter_row_groups(
+        equal::prune_row_groups(
             self.schema.clone(),
             self.predicates,
             self.row_groups.len(),
@@ -120,7 +118,7 @@ impl<'a> RowGroupFilter2<'a> {
 
     /// Compute the intersection of the two row groups which are in increasing
     /// order.
-    fn intersect_filtered_row_groups(row_groups0: &[usize], row_groups1: &[usize]) -> Vec<usize> {
+    fn intersect_pruned_row_groups(row_groups0: &[usize], row_groups1: &[usize]) -> Vec<usize> {
         let mut intersect = Vec::with_capacity(row_groups0.len().min(row_groups1.len()));
 
         let (mut i0, mut i1) = (0, 0);
@@ -159,7 +157,7 @@ mod tests {
 
         for (row_groups0, row_groups1, expect_row_groups) in test_cases {
             let real_row_groups =
-                RowGroupFilter2::intersect_filtered_row_groups(&row_groups0, &row_groups1);
+                RowGroupPruner::intersect_pruned_row_groups(&row_groups0, &row_groups1);
             assert_eq!(real_row_groups, expect_row_groups)
         }
     }

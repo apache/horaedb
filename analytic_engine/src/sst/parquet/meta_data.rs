@@ -2,7 +2,7 @@
 
 // MetaData for SST based on parquet.
 
-use std::{fmt, sync::Arc};
+use std::{fmt, ops::Index, sync::Arc};
 
 use bytes::Bytes;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
@@ -47,7 +47,7 @@ pub enum Error {
         version,
         backtrace
     ))]
-    UnsupportedBloomFilter { version: u32, backtrace: Backtrace },
+    UnsupportedSstFilter { version: u32, backtrace: Backtrace },
 
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
@@ -58,7 +58,7 @@ pub enum Error {
 
 define_result!(Error);
 
-const DEFAULT_BLOOM_FILTER_VERSION: u32 = 0;
+const DEFAULT_FILTER_VERSION: u32 = 0;
 
 /// Filter can be used to test whether an element is a member of a set.
 /// False positive matches are possible if space-efficient probabilistic data
@@ -119,7 +119,9 @@ impl RowGroupFilterBuilder {
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
-        self.builders[col_idx].as_mut().map(|b| b.insert(key));
+        if let Some(b) = self.builders[col_idx].as_mut() {
+            b.insert(key)
+        }
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
@@ -150,15 +152,36 @@ pub struct RowGroupFilter {
 
 impl PartialEq for RowGroupFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.column_filters.len().eq(&other.column_filters.len())
+        if self.column_filters.len() != other.column_filters.len() {
+            return false;
+        }
+
+        for (a, b) in self.column_filters.iter().zip(other.column_filters.iter()) {
+            if !a
+                .as_ref()
+                .map(|a| a.to_bytes())
+                .eq(&b.as_ref().map(|b| b.to_bytes()))
+            {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
-impl Eq for RowGroupFilter {}
-
 impl Clone for RowGroupFilter {
     fn clone(&self) -> Self {
-        todo!()
+        let column_filters = self
+            .column_filters
+            .iter()
+            .map(|f| {
+                f.as_ref()
+                    .map(|f| Box::new(Xor8Filter::from_bytes(f.to_bytes()).unwrap()) as Box<_>)
+            })
+            .collect();
+
+        Self { column_filters }
     }
 }
 
@@ -171,7 +194,8 @@ impl RowGroupFilter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+// TODO: move this to sst module
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SstFilter {
     /// Every filter is a row group filter consists of column filters.
     row_group_filters: Vec<RowGroupFilter>,
@@ -182,8 +206,24 @@ impl SstFilter {
         Self { row_group_filters }
     }
 
+    pub fn len(&self) -> usize {
+        self.row_group_filters.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn row_group_filters(&self) -> &[RowGroupFilter] {
         &self.row_group_filters
+    }
+}
+
+impl Index<usize> for SstFilter {
+    type Output = RowGroupFilter;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.row_group_filters[index]
     }
 }
 
@@ -208,7 +248,7 @@ impl From<SstFilter> for sst_pb::SstFilter {
             .collect::<Vec<_>>();
 
         sst_pb::SstFilter {
-            version: DEFAULT_BLOOM_FILTER_VERSION,
+            version: DEFAULT_FILTER_VERSION,
             row_group_filters,
         }
     }
@@ -219,8 +259,8 @@ impl TryFrom<sst_pb::SstFilter> for SstFilter {
 
     fn try_from(src: sst_pb::SstFilter) -> Result<Self> {
         ensure!(
-            src.version == DEFAULT_BLOOM_FILTER_VERSION,
-            UnsupportedBloomFilter {
+            src.version == DEFAULT_FILTER_VERSION,
+            UnsupportedSstFilter {
                 version: src.version
             }
         );
@@ -349,7 +389,40 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_conversion_sst_bloom_filter() {
+        let sst_filter = SstFilter {
+            row_group_filters: vec![
+                RowGroupFilter {
+                    column_filters: vec![None, Some(Box::new(Xor8Filter::default()))],
+                },
+                RowGroupFilter {
+                    column_filters: vec![Some(Box::new(Xor8Filter::default())), None],
+                },
+            ],
+        };
+
+        let sst_filter_pb: sst_pb::SstFilter = sst_filter.clone().into();
+        assert_eq!(sst_filter_pb.version, DEFAULT_FILTER_VERSION);
+        assert_eq!(sst_filter_pb.row_group_filters.len(), 2);
+        assert_eq!(sst_filter_pb.row_group_filters[0].column_filters.len(), 2);
+        assert_eq!(sst_filter_pb.row_group_filters[1].column_filters.len(), 2);
+        assert!(sst_filter_pb.row_group_filters[0].column_filters[0].is_empty());
+        assert_eq!(
+            sst_filter_pb.row_group_filters[0].column_filters[1].len(),
+            24
+        );
+        assert_eq!(
+            sst_filter_pb.row_group_filters[1].column_filters[0].len(),
+            24
+        );
+        assert!(sst_filter_pb.row_group_filters[1].column_filters[1].is_empty());
+
+        let decoded_bloom_filter = SstFilter::try_from(sst_filter_pb).unwrap();
+        assert_eq!(decoded_bloom_filter, sst_filter);
+    }
+}

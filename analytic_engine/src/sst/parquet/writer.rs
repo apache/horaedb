@@ -150,8 +150,8 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
-    fn build_bloom_filter(&self) -> SstFilter {
-        // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+    fn build_sst_filter(&self) -> SstFilter {
+        // TODO: support sst filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
             return SstFilter::default();
         }
@@ -184,9 +184,9 @@ impl RecordBytesReader {
         self.partition_record_batch().await?;
 
         let parquet_meta_data = {
-            let bloom_filter = self.build_bloom_filter();
+            let sst_filter = self.build_sst_filter();
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.sst_filter = Some(bloom_filter);
+            parquet_meta_data.sst_filter = Some(sst_filter);
             parquet_meta_data
         };
 

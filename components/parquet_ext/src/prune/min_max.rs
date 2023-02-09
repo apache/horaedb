@@ -13,7 +13,7 @@ use parquet::file::{metadata::RowGroupMetaData, statistics::Statistics as Parque
 
 /// Filters row groups according to the predicate function, and returns the
 /// indexes of the filtered row groups.
-pub fn filter_row_groups(
+pub fn prune_row_groups(
     schema: Arc<ArrowSchema>,
     exprs: &[Expr],
     row_groups: &[RowGroupMetaData],
@@ -283,7 +283,7 @@ mod test {
             let schema = prepare_arrow_schema(schema);
             let metadata = prepare_metadata(&schema, stat);
 
-            let actual = filter_row_groups(schema, &[expr], &[metadata]);
+            let actual = prune_row_groups(schema, &[expr], &[metadata]);
             assert_eq!(actual, expected);
         }
     }
