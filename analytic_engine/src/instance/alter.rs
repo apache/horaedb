@@ -31,20 +31,6 @@ use crate::{
     table_options,
 };
 
-/// Policy of how to perform flush operation.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum TableAlterSchemaPolicy {
-    /// Unknown flush policy, this is the default value.
-    #[default]
-    Unknown,
-    /// Perform Alter Schema operation.
-    Alter,
-    // TODO: use this policy and remove "allow(dead_code)"
-    /// Ignore this operation.
-    #[allow(dead_code)]
-    Noop,
-}
-
 impl Instance {
     // Alter schema need to be handled by write worker.
     pub async fn alter_schema_of_table(
@@ -88,7 +74,6 @@ impl Instance {
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
         request: AlterSchemaRequest,
-        #[allow(unused_variables)] policy: TableAlterSchemaPolicy,
     ) -> Result<()> {
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;

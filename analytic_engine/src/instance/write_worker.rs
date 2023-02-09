@@ -29,7 +29,6 @@ use table_engine::{
 };
 use tokio::sync::{mpsc, oneshot, watch, watch::Ref, Mutex, Notify};
 
-use super::alter::TableAlterSchemaPolicy;
 use crate::{
     compaction::{TableCompactionRequest, WaitResult},
     instance::{
@@ -805,13 +804,7 @@ impl WriteWorker {
 
         let write_res = self
             .instance
-            .process_write_table_command(
-                &mut self.local,
-                &space,
-                &table_data,
-                request,
-                write::TableWritePolicy::Unknown,
-            )
+            .process_write_table_command(&mut self.local, &space, &table_data, request)
             .await;
         if let Err(res) = tx.send(write_res) {
             error!(
@@ -900,12 +893,7 @@ impl WriteWorker {
 
         let alter_res = self
             .instance
-            .process_alter_schema_command(
-                &mut self.local,
-                &table_data,
-                request,
-                TableAlterSchemaPolicy::Unknown,
-            )
+            .process_alter_schema_command(&mut self.local, &table_data, request)
             .await
             .map_err(|e| Box::new(e) as GenericError)
             .context(Channel);

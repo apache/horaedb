@@ -9,7 +9,6 @@ mod instance;
 mod manifest;
 pub mod memtable;
 mod payload;
-mod role_table;
 pub mod row_iter;
 mod sampler;
 pub mod setup;
