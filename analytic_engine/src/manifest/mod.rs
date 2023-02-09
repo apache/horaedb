@@ -13,7 +13,7 @@ use common_types::table::ShardId;
 use table_engine::table::TableId;
 
 use crate::{
-    meta::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
+    manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
     space::SpaceId,
 };
 

@@ -31,7 +31,7 @@ use wal::{
 };
 
 use crate::{
-    meta::{
+    manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
         meta_update::{
             AddTableMeta, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, MetaUpdateRequest,
@@ -76,7 +76,7 @@ pub enum Error {
 
     #[snafu(display("Failed to apply table meta update, err:{}", source))]
     ApplyUpdate {
-        source: crate::meta::meta_data::Error,
+        source: crate::manifest::meta_data::Error,
     },
 
     #[snafu(display("Failed to clean wal, err:{}", source))]
@@ -84,7 +84,7 @@ pub enum Error {
 
     #[snafu(display("Failed to parse snapshot, err:{}", source))]
     ParseSnapshot {
-        source: crate::meta::meta_update::Error,
+        source: crate::manifest::meta_update::Error,
     },
 
     #[snafu(display(
@@ -705,7 +705,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        meta::{
+        manifest::{
             details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
             meta_update::{
                 AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaUpdate,
