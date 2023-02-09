@@ -84,7 +84,7 @@ impl OrderByPrimaryKeyRule {
                                 sort_in_asc_order,
                                 skip: *skip,
                                 fetch: *fetch,
-                            });
+                            })?;
                             return Ok(Some(new_plan));
                         }
                     }
@@ -154,7 +154,7 @@ impl OrderByPrimaryKeyRule {
     ///       Project:
     ///         Filter:
     ///           TableScanByPrimaryKey
-    fn rewrite_plan(rewrite_ctx: RewriteContext) -> LogicalPlan {
+    fn rewrite_plan(rewrite_ctx: RewriteContext) -> datafusion::error::Result<LogicalPlan> {
         let order_by_primary_key_scan = Arc::new(LogicalPlan::Extension(Extension {
             node: Arc::new(TableScanByPrimaryKey::new_from_scan_plan(
                 rewrite_ctx.sort_in_asc_order,
@@ -163,21 +163,19 @@ impl OrderByPrimaryKeyRule {
         }));
 
         let filter_plan = if let Some(predicate) = rewrite_ctx.filter_predicate {
-            Arc::new(LogicalPlan::Filter(
-                Filter::try_new(predicate, order_by_primary_key_scan).unwrap(),
-            ))
+            Arc::new(LogicalPlan::Filter(Filter::try_new(
+                predicate,
+                order_by_primary_key_scan,
+            )?))
         } else {
             order_by_primary_key_scan
         };
 
-        let new_project_plan = Arc::new(LogicalPlan::Projection(
-            Projection::try_new_with_schema(
-                rewrite_ctx.projection,
-                filter_plan,
-                rewrite_ctx.schema,
-            )
-            .unwrap(),
-        ));
+        let new_project_plan = Arc::new(LogicalPlan::Projection(Projection::try_new_with_schema(
+            rewrite_ctx.projection,
+            filter_plan,
+            rewrite_ctx.schema,
+        )?));
 
         let new_limit_plan = Arc::new(LogicalPlan::Limit(Limit {
             skip: rewrite_ctx.skip,
@@ -191,11 +189,11 @@ impl OrderByPrimaryKeyRule {
             fetch: rewrite_ctx.sort_fetch,
         }));
 
-        LogicalPlan::Limit(Limit {
+        Ok(LogicalPlan::Limit(Limit {
             skip: rewrite_ctx.skip,
             fetch: rewrite_ctx.fetch,
             input: new_sort_plan,
-        })
+        }))
     }
 }
 

@@ -266,10 +266,10 @@ impl Period {
 
     fn truncate_day(ts: Timestamp, period: u16) -> Option<Timestamp> {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time.
+        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate day
+        // Truncate day. Won't panic.
         let day = datetime.day();
         let day = day - (day % u32::from(period));
         let truncated_datetime = offset
@@ -282,10 +282,10 @@ impl Period {
 
     fn truncate_week(ts: Timestamp) -> Timestamp {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time.
+        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate week.
+        // Truncate week. Won't panic.
         let week_offset = datetime.weekday().num_days_from_monday();
         let week_millis = 7 * 24 * 3600 * 1000;
         let ts_offset = week_offset * week_millis;
@@ -298,10 +298,10 @@ impl Period {
 
     fn truncate_month(ts: Timestamp) -> Timestamp {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time.
+        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate month
+        // Truncate month. Won't panic.
         let truncated_datetime = offset
             .with_ymd_and_hms(datetime.year(), datetime.month(), 1, 0, 0, 0)
             .unwrap();
@@ -312,10 +312,10 @@ impl Period {
 
     fn truncate_year(ts: Timestamp) -> Timestamp {
         let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
-        // Convert to local time.
+        // Convert to local time. Won't panic.
         let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate year
+        // Truncate year. Won't panic.
         let truncated_datetime = offset
             .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
             .unwrap();
