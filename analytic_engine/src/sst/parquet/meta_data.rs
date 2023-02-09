@@ -128,16 +128,12 @@ impl RowGroupFilterBuilder {
         self.builders
             .into_iter()
             .map(|b| {
-                if let Some(mut b) = b {
-                    Some(
-                        b.build()
-                            .context(BuildXor8Filter)
-                            .map(|xor8| Box::new(Xor8Filter { xor8 }) as Box<_>),
-                    )
-                    .transpose()
-                } else {
-                    Ok(None)
-                }
+                b.map(|mut b| {
+                    b.build()
+                        .context(BuildXor8Filter)
+                        .map(|xor8| Box::new(Xor8Filter { xor8 }) as Box<_>)
+                })
+                .transpose()
             })
             .collect::<Result<Vec<_>>>()
             .map(|column_filters| RowGroupFilter { column_filters })
@@ -212,10 +208,6 @@ impl SstFilter {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    pub fn row_group_filters(&self) -> &[RowGroupFilter] {
-        &self.row_group_filters
     }
 }
 
