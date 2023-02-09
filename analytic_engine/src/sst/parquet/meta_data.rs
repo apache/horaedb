@@ -27,7 +27,7 @@ pub enum Error {
         source,
         backtrace
     ))]
-    InvalidXor8Filter {
+    ParseXor8Filter {
         source: std::io::Error,
         backtrace: Backtrace,
     },
@@ -43,7 +43,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Unsupported bloom filter version, version:{}.\nBacktrace\n:{}",
+        "Unsupported sst_filter version, version:{}.\nBacktrace\n:{}",
         version,
         backtrace
     ))]
@@ -102,7 +102,7 @@ impl Filter for Xor8Filter {
         Self: Sized,
     {
         Xor8::from_bytes(buf)
-            .context(InvalidXor8Filter)
+            .context(ParseXor8Filter)
             .map(|xor8| Self { xor8 })
     }
 }
@@ -342,8 +342,8 @@ impl fmt::Debug for ParquetMetaData {
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
-            // Avoid the messy output from bloom filter.
-            .field("has_bloom_filter", &self.sst_filter.is_some())
+            // Avoid the messy output from filter.
+            .field("has_filter", &self.sst_filter.is_some())
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
@@ -394,7 +394,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_conversion_sst_bloom_filter() {
+    fn test_conversion_sst_filter() {
         let sst_filter = SstFilter {
             row_group_filters: vec![
                 RowGroupFilter {
@@ -422,7 +422,7 @@ mod tests {
         );
         assert!(sst_filter_pb.row_group_filters[1].column_filters[1].is_empty());
 
-        let decoded_bloom_filter = SstFilter::try_from(sst_filter_pb).unwrap();
-        assert_eq!(decoded_bloom_filter, sst_filter);
+        let decoded_sst_filter = SstFilter::try_from(sst_filter_pb).unwrap();
+        assert_eq!(decoded_sst_filter, sst_filter);
     }
 }

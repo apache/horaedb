@@ -22,7 +22,7 @@ use crate::sst::reader::error::{OtherNoCause, Result};
 /// predicates and filters.
 ///
 /// Currently, two kinds of filters will be applied to such filtering:
-/// min max & bloom filter.
+/// min max & sst_filter.
 pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
@@ -68,7 +68,7 @@ impl<'a> RowGroupPruner<'a> {
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
                 debug!(
-                    "Finish prune row groups by blooms and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
+                    "Finish prune row groups by sst_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
                     self.row_groups.len(),
                     pruned0.len(),
                     pruned1.len(),
@@ -101,7 +101,7 @@ impl<'a> RowGroupPruner<'a> {
                     .contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
                 if exist {
                     // sst_filter has false positivity, that is to say we are unsure whether this
-                    // value exists even if the bloom filter says it exists.
+                    // value exists even if the sst_filter says it exists.
                     None
                 } else {
                     Some(negated)

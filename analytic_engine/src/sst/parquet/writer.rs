@@ -393,7 +393,7 @@ mod tests {
                     .unwrap()
                     .as_ref()
                     .clone();
-                // bloom filter is built insider sst writer, so overwrite to default for
+                // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
                 sst_meta_readback.sst_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
