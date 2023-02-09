@@ -10,7 +10,7 @@ use common_types::{
     table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
-use common_util::runtime::Runtime;
+use common_util::{error::BoxError, runtime::Runtime};
 pub use error::*;
 use snafu::ResultExt;
 
@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub mod error {
-    use common_util::define_result;
+    use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
     use crate::manager::WalLocation;
@@ -39,13 +39,13 @@ pub mod error {
         ))]
         Open {
             wal_path: String,
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to initialize wal, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Initialization {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
@@ -65,7 +65,7 @@ pub mod error {
             backtrace
         ))]
         CreateWalEncoder {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
@@ -75,7 +75,7 @@ pub mod error {
             backtrace
         ))]
         Write {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
@@ -85,7 +85,7 @@ pub mod error {
             backtrace
         ))]
         Read {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
@@ -95,25 +95,25 @@ pub mod error {
             backtrace
         ))]
         Delete {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to encode, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Encoding {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to decode, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Decoding {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to close wal, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Close {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
@@ -390,7 +390,7 @@ impl BatchLogIteratorAdapter {
                         let mut raw_payload = raw_log_entry.payload;
                         let payload = decoder
                             .decode(&mut raw_payload)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(manager::Decoding)?;
                         let log_entry = LogEntry {
                             table_id: raw_log_entry.table_id,
@@ -428,7 +428,7 @@ impl BatchLogIteratorAdapter {
                 let mut raw_payload = raw_log_entry.payload;
                 let payload = decoder
                     .decode(&mut raw_payload)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(manager::Decoding)?;
                 let log_entry = LogEntry {
                     table_id: raw_log_entry.table_id,

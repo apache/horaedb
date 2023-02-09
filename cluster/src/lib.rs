@@ -16,7 +16,7 @@ use ceresdbproto::meta_event::{
     DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
 };
 use common_types::schema::SchemaName;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
     TablesOfShard,
@@ -58,7 +58,7 @@ pub enum Error {
     #[snafu(display("Fail to open shard, source:{}.", source))]
     OpenShardWithCause {
         shard_id: ShardId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Shard not found, msg:{}.\nBacktrace:\n{}", msg, backtrace))]

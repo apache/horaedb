@@ -5,6 +5,7 @@
 use std::str::FromStr;
 
 use ceresdbproto::storage;
+use common_util::error::GenericError;
 use serde_derive::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
@@ -26,7 +27,7 @@ impl ToString for Endpoint {
 }
 
 impl FromStr for Endpoint {
-    type Err = Box<dyn std::error::Error + Send + Sync>;
+    type Err = GenericError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         let (addr, raw_port) = match s.rsplit_once(':') {

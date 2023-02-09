@@ -15,6 +15,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
+use common_util::error::BoxError;
 use config::Config;
 use futures::{Stream, StreamExt};
 use router::RouterRef;
@@ -31,7 +32,7 @@ use table_engine::{
 use self::client::{Client, ClientReadRecordBatchStream};
 
 pub mod error {
-    use common_util::define_result;
+    use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
     use table_engine::remote::model::TableIdentifier;
 
@@ -50,10 +51,7 @@ pub mod error {
             msg,
             source
         ))]
-        ConvertReadRequest {
-            msg: String,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        ConvertReadRequest { msg: String, source: GenericError },
 
         #[snafu(display(
             "Invalid record batches number in the response, expect only one, given:{}.\nBacktrace:\n{}",
@@ -74,7 +72,7 @@ pub mod error {
         ConvertReadResponse {
             msg: String,
             version: u32,
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
         },
 
         #[snafu(display(
@@ -82,10 +80,7 @@ pub mod error {
             msg,
             source
         ))]
-        ConvertWriteRequest {
-            msg: String,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        ConvertWriteRequest { msg: String, source: GenericError },
 
         #[snafu(display(
             "Failed to connect, table_ident:{:?}, msg:{}, err:{}",
@@ -145,21 +140,12 @@ impl RemoteEngineImpl {
 #[async_trait]
 impl RemoteEngine for RemoteEngineImpl {
     async fn read(&self, request: ReadRequest) -> remote::Result<SendableRecordBatchStream> {
-        let client_read_stream = self
-            .0
-            .read(request)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(remote::Read)?;
+        let client_read_stream = self.0.read(request).await.box_err().context(remote::Read)?;
         Ok(Box::pin(RemoteReadRecordBatchStream(client_read_stream)))
     }
 
     async fn write(&self, request: WriteRequest) -> remote::Result<usize> {
-        self.0
-            .write(request)
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(remote::Write)
+        self.0.write(request).await.box_err().context(remote::Write)
     }
 }
 
@@ -172,7 +158,7 @@ impl Stream for RemoteReadRecordBatchStream {
         let this = self.get_mut();
         match this.0.poll_next_unpin(cx) {
             Poll::Ready(Some(result)) => {
-                let result = result.map_err(|e| Box::new(e) as _).context(ErrWithSource {
+                let result = result.box_err().context(ErrWithSource {
                     msg: "poll read response failed",
                 });
 

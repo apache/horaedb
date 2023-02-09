@@ -23,6 +23,7 @@ pub struct LoadRequest {
     pub cluster_version: u64,
     pub shard_id: ShardId,
 }
+use common_util::error::GenericError;
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
@@ -31,7 +32,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn store_update(
         &self,
         request: MetaUpdateRequest,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<(), GenericError>;
 
     /// Load table meta data from manifest.
     ///
@@ -40,7 +41,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn load_data(
         &self,
         load_request: &LoadRequest,
-    ) -> Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> Result<Option<TableManifestData>, GenericError>;
 }
 
 pub type ManifestRef = Arc<dyn Manifest>;

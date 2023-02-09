@@ -6,7 +6,7 @@ use std::fmt;
 
 use arrow::datatypes::DataType;
 use common_types::datum::DatumKind;
-use common_util::define_result;
+use common_util::{define_result, error::BoxError};
 use hyperloglog::HyperLogLog;
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
@@ -133,9 +133,7 @@ impl fmt::Debug for HllDistinct {
 impl Accumulator for HllDistinct {
     fn state(&self) -> aggregate::Result<State> {
         // Serialize `self.hll` to bytes.
-        let buf = bincode::serialize(&self.hll)
-            .map_err(|e| Box::new(e) as _)
-            .context(GetState)?;
+        let buf = bincode::serialize(&self.hll).box_err().context(GetState)?;
         // HACK: DataFusion does not support creating a scalar from binary, so we need
         // to use base64 to convert a binary into string.
         let hll_string = base64::encode(buf);
@@ -153,9 +151,7 @@ impl Accumulator for HllDistinct {
     }
 
     fn merge(&mut self, states: StateRef) -> aggregate::Result<()> {
-        self.merge_impl(states)
-            .map_err(|e| Box::new(e) as _)
-            .context(MergeState)
+        self.merge_impl(states).box_err().context(MergeState)
     }
 
     fn evaluate(&self) -> aggregate::Result<ScalarValue> {

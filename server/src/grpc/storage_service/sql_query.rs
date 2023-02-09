@@ -13,7 +13,7 @@ use ceresdbproto::{
     },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::time::InstantExt;
+use common_util::{error::BoxError, time::InstantExt};
 use futures::FutureExt;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
@@ -105,7 +105,7 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
                 .sql_query(request)
                 .await
                 .map(|resp| resp.into_inner())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: "Forwarded query failed".to_string(),
@@ -139,7 +139,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
 
     let output = fetch_query_output(ctx, &req).await?;
     convert_output(&output, ctx.resp_compress_min_length)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to convert output, sql:{}", &req.sql),
@@ -178,7 +178,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend
         .parse_sql(&mut sql_ctx, &req.sql)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "failed to parse sql",
@@ -212,7 +212,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
         // return internal server error in those cases
         .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to create plan, query:{}", req.sql),
@@ -221,7 +221,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     ctx.instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Query is blocked",
@@ -250,7 +250,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -262,7 +262,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             interpreter.execute(),
         )
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::REQUEST_TIMEOUT,
             msg: "Query timeout",
@@ -270,7 +270,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     } else {
         interpreter.execute().await
     }
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: format!("Failed to execute interpreter, sql:{}", req.sql),
@@ -323,7 +323,7 @@ impl QueryResponseWriter {
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
         self.encoder
             .write(batch.as_arrow_record_batch())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to encode record batch".to_string(),
@@ -342,7 +342,7 @@ impl QueryResponseWriter {
         let compress_output = self
             .encoder
             .finish()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to encode record batch".to_string(),

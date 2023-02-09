@@ -14,6 +14,7 @@ use std::{
 use common_types::SequenceNumber;
 use common_util::{
     define_result,
+    error::{BoxError, GenericError},
     runtime::{JoinHandle, Runtime},
 };
 use log::{debug, error, info};
@@ -39,22 +40,16 @@ use crate::payload::{ReadPayload, WalDecoder};
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to write to wal, err:{}", source))]
-    WriteLogBatch {
-        source: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
+    WriteLogBatch { source: GenericError },
 
     #[snafu(display("Failed to read wal, err:{}", source))]
     ReadWal { source: wal::manager::Error },
 
     #[snafu(display("Encounter invalid table state, err:{}", source))]
-    InvalidTableState {
-        source: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
+    InvalidTableState { source: GenericError },
 
     #[snafu(display("Failed to stop synchronizer, err:{}", source))]
-    StopSynchronizer {
-        source: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
+    StopSynchronizer { source: GenericError },
 }
 
 define_result!(Error);
@@ -121,10 +116,7 @@ impl WalSynchronizer {
     pub async fn stop(&self) -> Result<()> {
         let _ = self.stop_sender.send(()).await;
         if let Some(handle) = self.join_handle.lock().await.take() {
-            handle
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(StopSynchronizer)?;
+            handle.await.box_err().context(StopSynchronizer)?;
         }
 
         Ok(())
@@ -276,7 +268,7 @@ impl Inner {
                         .table
                         .write(write_req)
                         .await
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(WriteLogBatch)?;
                 }
                 ReadPayload::AlterSchema { schema: _schema } => todo!(),

@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use common_util::error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
@@ -32,7 +33,7 @@ impl Instance {
 
         let mut table_opts =
             table_options::merge_table_options_for_create(&request.options, &self.table_opts)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(InvalidOptions {
                     space_id: space.id,
                     table: &request.table_name,

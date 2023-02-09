@@ -13,7 +13,7 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use common_util::{codec::row, time::InstantExt};
+use common_util::{codec::row, error::BoxError, time::InstantExt};
 use log::trace;
 use skiplist::{ArenaSlice, IterRef, Skiplist};
 use snafu::ResultExt;
@@ -341,7 +341,7 @@ where
                 Ok(mut batch_with_key) => {
                     batch_with_key
                         .reverse_data()
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(IterReverse)?;
 
                     Ok(batch_with_key)

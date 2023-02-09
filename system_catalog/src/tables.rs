@@ -15,6 +15,7 @@ use common_types::{
     schema::Schema,
     time::Timestamp,
 };
+use common_util::error::BoxError;
 use snafu::ResultExt;
 use table_engine::{
     stream::SendableRecordBatchStream,
@@ -137,7 +138,7 @@ impl SystemTable for Tables {
         let catalogs = self
             .catalog_manager
             .all_catalogs()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(table_engine::table::Scan { table: self.name() })?;
         let projected_record_schema = request.projected_schema.to_record_schema_with_key();
         let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
@@ -149,19 +150,19 @@ impl SystemTable for Tables {
         for catalog in &catalogs {
             for schema in &catalog
                 .all_schemas()
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(table_engine::table::Scan { table: self.name() })?
             {
                 for table in &schema
                     .all_tables()
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(table_engine::table::Scan { table: self.name() })?
                 {
                     let row = self.from_table(catalog.clone(), schema.clone(), table.clone());
                     let projected_row = projector.project_row(&row, Vec::new());
                     builder
                         .append_row(projected_row)
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(table_engine::table::Scan { table: self.name() })?;
                 }
             }

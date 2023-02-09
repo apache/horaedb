@@ -2,7 +2,7 @@
 
 //! Error definitions for meta event service.
 
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use proto::remote_engine::ResponseHeader;
 use snafu::Snafu;
 
@@ -20,7 +20,7 @@ pub enum Error {
     ErrWithCause {
         code: StatusCode,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 }
 

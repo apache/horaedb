@@ -23,7 +23,7 @@ use common_types::{
     datum::DatumKind,
     schema::{Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
-use common_util::{runtime::JoinHandle, time::InstantExt};
+use common_util::{error::BoxError, runtime::JoinHandle, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
@@ -124,7 +124,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .get(consts::CATALOG_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "fail to parse catalog name",
@@ -135,7 +135,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             .get(consts::SCHEMA_HEADER)
             .map(|v| String::from_utf8(v.to_vec()))
             .transpose()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "fail to parse schema name",
@@ -144,7 +144,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
 
         let schema_config = schema_config_provider
             .schema_config(&schema)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("fail to fetch schema config, schema_name:{}", schema),
@@ -214,7 +214,7 @@ macro_rules! handle_request {
                 let join_handle = runtime.spawn(async move {
                     let handler_ctx =
                         HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
                                 msg: "invalid header",
@@ -234,7 +234,7 @@ macro_rules! handle_request {
 
                 let res = join_handle
                     .await
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "fail to join the spawn task",
@@ -292,7 +292,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             self.timeout,
             self.resp_compress_min_length,
         )
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid header",
@@ -303,7 +303,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let mut has_err = false;
         let mut stream = request.into_inner();
         while let Some(req) = stream.next().await {
-            let write_req = req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
+            let write_req = req.box_err().context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to fetch request",
             })?;
@@ -356,7 +356,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
             let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
                     msg: "invalid header",
@@ -509,13 +509,10 @@ fn build_column_schema(
         .is_nullable(true)
         .is_tag(is_tag);
 
-    builder
-        .build()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid column schema",
-        })
+    builder.build().box_err().context(ErrWithCause {
+        code: StatusCode::BAD_REQUEST,
+        msg: "invalid column schema",
+    })
 }
 
 fn build_schema_from_write_table_request(
@@ -632,7 +629,7 @@ fn build_schema_from_write_table_request(
     )
     .is_nullable(false)
     .build()
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .context(ErrWithCause {
         code: StatusCode::BAD_REQUEST,
         msg: "invalid timestamp column schema to build",
@@ -643,7 +640,7 @@ fn build_schema_from_write_table_request(
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
             .is_nullable(false)
             .build()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "invalid tsid column schema to build",
@@ -651,35 +648,32 @@ fn build_schema_from_write_table_request(
 
     schema_builder = schema_builder
         .add_key_column(tsid_column_schema)
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid tsid column to add",
-        })?
-        .add_key_column(timestamp_column_schema)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid timestamp column to add",
+        })?
+        .add_key_column(timestamp_column_schema)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "invalid tsid column to add",
         })?;
 
     for col in name_column_map.into_values() {
         schema_builder = schema_builder
             .add_normal_column(col)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "invalid normal column to add",
             })?;
     }
 
-    schema_builder
-        .build()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid schema to build",
-        })
+    schema_builder.build().box_err().context(ErrWithCause {
+        code: StatusCode::BAD_REQUEST,
+        msg: "invalid schema to build",
+    })
 }
 
 fn ensure_data_type_compatible(

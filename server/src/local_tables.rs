@@ -6,7 +6,10 @@ use catalog::{
     schema::{OpenOptions, OpenTableRequest},
     CatalogRef,
 };
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableInfo;
 
@@ -17,10 +20,7 @@ pub enum Error {
         msg,
         source
     ))]
-    RecoverWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    RecoverWithCause { msg: String, source: GenericError },
 
     #[snafu(display(
         "Failed to recover local tables with cause, msg:{}.\nBacktrace:\n{}",
@@ -54,7 +54,7 @@ impl LocalTablesRecoverer {
             let schema = self
                 .catalog
                 .schema_by_name(&table_info.schema_name)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(RecoverWithCause {
                     msg: format!("failed to get schema of table, table_info:{:?}", table_info),
                 })?
@@ -66,7 +66,7 @@ impl LocalTablesRecoverer {
             schema
                 .open_table(open_request.clone(), opts.clone())
                 .await
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(RecoverWithCause {
                     msg: format!("failed to open table, open_request:{:?}", open_request),
                 })?

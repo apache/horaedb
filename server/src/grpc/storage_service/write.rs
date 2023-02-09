@@ -19,6 +19,7 @@ use common_types::{
     schema::Schema,
     time::Timestamp,
 };
+use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
@@ -112,7 +113,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Insert is blocked",
@@ -130,7 +131,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -139,7 +140,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     interpreter
         .execute()
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
@@ -215,7 +216,7 @@ fn try_get_table<Q: QueryExecutor + 'static>(
     instance
         .catalog_manager
         .catalog_by_name(catalog)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find catalog, catalog_name:{}", catalog),
@@ -225,7 +226,7 @@ fn try_get_table<Q: QueryExecutor + 'static>(
             msg: format!("Catalog not found, catalog_name:{}", catalog),
         })?
         .schema_by_name(schema)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find schema, schema_name:{}", schema),
@@ -235,7 +236,7 @@ fn try_get_table<Q: QueryExecutor + 'static>(
             msg: format!("Schema not found, schema_name:{}", schema),
         })?
         .table_by_name(table_name)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find table, table:{}", table_name),
@@ -253,7 +254,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
 ) -> Result<()> {
     let create_table_plan =
         storage_service::write_table_request_to_create_table_plan(schema_config, write_table_req)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!(
@@ -271,7 +272,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Create table is blocked",
@@ -289,7 +290,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -298,7 +299,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     interpreter
         .execute()
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
@@ -332,7 +333,7 @@ fn write_table_request_to_insert_plan(
     }
     // The row group builder will checks nullable.
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),

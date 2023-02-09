@@ -9,7 +9,7 @@ use std::{
 
 use arrow::datatypes::DataType;
 use common_types::{column::ColumnBlock, datum::DatumKind};
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::DataFusionError, physical_plan::ColumnarValue as DfColumnarValue,
     scalar::ScalarValue as DfScalarValue,
@@ -33,14 +33,10 @@ pub enum Error {
     InvalidArray { source: common_types::column::Error },
 
     #[snafu(display("Invalid function arguments, err:{}", source))]
-    InvalidArguments {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidArguments { source: GenericError },
 
     #[snafu(display("Failed to execute function, err:{}", source))]
-    CallFunction {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CallFunction { source: GenericError },
 }
 
 define_result!(Error);

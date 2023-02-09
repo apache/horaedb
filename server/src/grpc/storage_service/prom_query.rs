@@ -16,6 +16,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
+use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
@@ -71,7 +72,7 @@ where
     let mut sql_ctx = SqlContext::new(request_id, deadline);
     let expr = frontend
         .parse_promql(&mut sql_ctx, req)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid request",
@@ -95,7 +96,7 @@ where
     ctx.instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Query is blocked",
@@ -114,7 +115,7 @@ where
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -126,7 +127,7 @@ where
             interpreter.execute(),
         )
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::REQUEST_TIMEOUT,
             msg: "Query timeout",
@@ -134,14 +135,14 @@ where
     } else {
         interpreter.execute().await
     }
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: "Failed to execute interpreter".to_string(),
     })?;
 
     let resp = convert_output(output, column_name)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to convert output",

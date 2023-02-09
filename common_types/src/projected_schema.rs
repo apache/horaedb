@@ -42,7 +42,7 @@ pub enum Error {
 
     #[snafu(display("Failed to covert table schema, err:{}", source))]
     ConvertTableSchema {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 }
 

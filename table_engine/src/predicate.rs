@@ -9,6 +9,7 @@ use common_types::{
     schema::Schema,
     time::{TimeRange, Timestamp},
 };
+use common_util::error::{BoxError, GenericError};
 use datafusion::scalar::ScalarValue;
 use datafusion_expr::{Expr, Operator};
 use datafusion_proto::bytes::Serializeable;
@@ -36,9 +37,7 @@ pub enum Error {
     InvalidTimeRange { backtrace: Backtrace },
 
     #[snafu(display("Expr decode failed., err:{}", source))]
-    DecodeExpr {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    DecodeExpr { source: GenericError },
 }
 
 define_result!(Error);
@@ -115,9 +114,7 @@ impl TryFrom<proto::remote_engine::Predicate> for Predicate {
         let time_range = pb.time_range.context(EmptyTimeRange)?;
         let mut exprs = Vec::with_capacity(pb.exprs.len());
         for pb_expr in pb.exprs {
-            let expr = Expr::from_bytes(&pb_expr)
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeExpr)?;
+            let expr = Expr::from_bytes(&pb_expr).box_err().context(DecodeExpr)?;
             exprs.push(expr);
         }
         Ok(Self {

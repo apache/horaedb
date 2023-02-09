@@ -8,7 +8,7 @@ use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
-use common_util::time::InstantExt;
+use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
 use proto::remote_engine::{
@@ -57,17 +57,14 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             let read_request = request.into_inner();
             handle_stream_read(ctx, read_request).await
         });
-        let streams = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "fail to join task",
-            })??;
+        let streams = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        })??;
 
         for stream in streams.streams {
             let mut stream = stream.map(|result| {
-                result.map_err(|e| Box::new(e) as _).context(ErrWithCause {
+                result.box_err().context(ErrWithCause {
                     code: StatusCode::Internal,
                     msg: "record batch failed",
                 })
@@ -100,13 +97,10 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
             handle_write(ctx, request).await
         });
 
-        let res = handle
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::Internal,
-                msg: "fail to join task",
-            });
+        let res = handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::Internal,
+            msg: "fail to join task",
+        });
 
         let mut resp = WriteResponse::default();
         match res {
@@ -158,7 +152,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 method: ipc::CompressionMethod::Zstd,
                             },
                         )
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(ErrWithCause {
                             code: StatusCode::Internal,
                             msg: "encode record batch failed",
@@ -210,10 +204,8 @@ async fn handle_stream_read(
     ctx: HandlerContext,
     request: ReadRequest,
 ) -> Result<PartitionedStreams> {
-    let read_request: table_engine::remote::model::ReadRequest = request
-        .try_into()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
+    let read_request: table_engine::remote::model::ReadRequest =
+        request.try_into().box_err().context(ErrWithCause {
             code: StatusCode::BadRequest,
             msg: "fail to convert read request",
         })?;
@@ -223,7 +215,7 @@ async fn handle_stream_read(
     let streams = table
         .partitioned_read(read_request.read_request)
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to read table, table:{:?}", read_request.table),
@@ -233,10 +225,8 @@ async fn handle_stream_read(
 }
 
 async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<WriteResponse> {
-    let write_request: table_engine::remote::model::WriteRequest = request
-        .try_into()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
+    let write_request: table_engine::remote::model::WriteRequest =
+        request.try_into().box_err().context(ErrWithCause {
             code: StatusCode::BadRequest,
             msg: "fail to convert write request",
         })?;
@@ -246,7 +236,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
     let affected_rows = table
         .write(write_request.write_request)
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to write table, table:{:?}", write_request.table),
@@ -264,7 +254,7 @@ fn find_table_by_identifier(
     let catalog = ctx
         .catalog_manager
         .catalog_by_name(&table_identifier.catalog)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to get catalog, catalog:{}", table_identifier.catalog),
@@ -275,7 +265,7 @@ fn find_table_by_identifier(
         })?;
     let schema = catalog
         .schema_by_name(&table_identifier.schema)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
@@ -293,7 +283,7 @@ fn find_table_by_identifier(
 
     schema
         .table_by_name(&table_identifier.table)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::Internal,
             msg: format!("fail to get table, table:{}", table_identifier.table),
