@@ -448,7 +448,7 @@ impl Default for Builder {
     }
 }
 
-pub trait EngineContext: Clone {
+pub trait EngineContext: Clone + Default {
     type EngineBuilder: EngineBuilder;
 
     fn engine_builder(&self) -> Self::EngineBuilder;

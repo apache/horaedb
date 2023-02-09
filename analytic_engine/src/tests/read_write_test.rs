@@ -324,24 +324,22 @@ fn test_table_write_get<T: EngineContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_get_override_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
-    test_table_write_get_override(rocksdb_ctx);
+    test_table_write_get_override::<RocksDBEngineContext>();
 }
 
 #[test]
 fn test_table_write_get_override_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
-    test_table_write_get_override(memory_ctx);
+    test_table_write_get_override::<MemoryEngineContext>();
 }
 
-fn test_table_write_get_override<T: EngineContext>(engine_context: T) {
-    test_table_write_get_override_case::<T>(FlushPoint::NoFlush, engine_context.clone());
+fn test_table_write_get_override<T: EngineContext>() {
+    test_table_write_get_override_case::<T>(FlushPoint::NoFlush, T::default());
 
-    test_table_write_get_override_case::<T>(FlushPoint::AfterFirstWrite, engine_context.clone());
+    test_table_write_get_override_case::<T>(FlushPoint::AfterFirstWrite, T::default());
 
-    test_table_write_get_override_case::<T>(FlushPoint::AfterOverwrite, engine_context.clone());
+    test_table_write_get_override_case::<T>(FlushPoint::AfterOverwrite, T::default());
 
-    test_table_write_get_override_case::<T>(FlushPoint::FirstAndOverwrite, engine_context);
+    test_table_write_get_override_case::<T>(FlushPoint::FirstAndOverwrite, T::default());
 }
 
 #[derive(Debug)]

@@ -176,6 +176,6 @@ impl TableEngine for TableEngineImpl {
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.
 #[inline]
-fn build_space_id(schema_id: SchemaId) -> SpaceId {
+pub fn build_space_id(schema_id: SchemaId) -> SpaceId {
     schema_id.as_u32()
 }

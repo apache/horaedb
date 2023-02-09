@@ -145,10 +145,14 @@ pub trait EngineBuilder: Send + Sync + Default {
         context: EngineBuildContext,
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<TableEngineRef> {
-        let (wal, manifest) = self
-            .open_wal_and_manifest(context.config.clone(), engine_runtimes.clone())
-            .await?;
         let opened_storages = open_storage(context.config.storage.clone()).await?;
+        let (wal, manifest) = self
+            .open_wal_and_manifest(
+                context.config.clone(),
+                engine_runtimes.clone(),
+                opened_storages.default_store().clone(),
+            )
+            .await?;
         let instance = open_instance(
             context.config.clone(),
             engine_runtimes,
@@ -165,6 +169,7 @@ pub trait EngineBuilder: Send + Sync + Default {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)>;
 }
 
@@ -178,6 +183,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
         match &config.wal_storage {
             WalStorageConfig::RocksDB => {}
@@ -204,9 +210,13 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
             .build()
             .context(OpenManifestWal)?;
 
-        let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest.clone())
-            .await
-            .context(OpenManifest)?;
+        let manifest = ManifestImpl::open(
+            config.manifest.clone(),
+            Arc::new(manifest_wal),
+            object_store,
+        )
+        .await
+        .context(OpenManifest)?;
 
         Ok((Arc::new(wal_manager), Arc::new(manifest)))
     }
@@ -222,6 +232,7 @@ impl EngineBuilder for ObkvWalEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
         let obkv_wal_config = match &config.wal_storage {
             WalStorageConfig::Obkv(config) => config.clone(),
@@ -249,6 +260,7 @@ impl EngineBuilder for ObkvWalEngineBuilder {
             config.manifest.clone(),
             engine_runtimes,
             obkv,
+            object_store,
         )
         .await
     }
@@ -269,6 +281,7 @@ impl EngineBuilder for MemWalEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
         let obkv_wal_config = match &config.wal_storage {
             WalStorageConfig::Obkv(config) => config.clone(),
@@ -288,6 +301,7 @@ impl EngineBuilder for MemWalEngineBuilder {
             config.manifest.clone(),
             engine_runtimes,
             self.table_kv.clone(),
+            object_store,
         )
         .await
     }
@@ -302,6 +316,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
+        object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
         let kafka_wal_config = match &config.wal_storage {
             WalStorageConfig::Kafka(config) => config.clone(),
@@ -338,7 +353,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             kafka_wal_config.wal_config,
         );
 
-        let manifest = ManifestImpl::open(Arc::new(manifest_wal), config.manifest)
+        let manifest = ManifestImpl::open(config.manifest, Arc::new(manifest_wal), object_store)
             .await
             .context(OpenManifest)?;
 
@@ -351,6 +366,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     manifest_opts: ManifestOptions,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
+    object_store: ObjectStoreRef,
 ) -> Result<(WalManagerRef, ManifestRef)> {
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
@@ -375,7 +391,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     )
     .await
     .context(OpenManifestWal)?;
-    let manifest = ManifestImpl::open(Arc::new(manifest_wal), manifest_opts)
+    let manifest = ManifestImpl::open(manifest_opts, Arc::new(manifest_wal), object_store)
         .await
         .context(OpenManifest)?;
 

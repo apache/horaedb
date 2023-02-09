@@ -108,12 +108,6 @@ message AlterOptionsMeta {
   analytic_common.TableOptions options = 3;
 }
 
-// Meta data of manifest snapshot.
-message SnapshotManifestMeta {
-  uint64 region_id = 1;
-  uint64 sequence = 2;
-}
-
 // Meta update data to persist
 message MetaUpdate {
   oneof meta {
@@ -125,20 +119,8 @@ message MetaUpdate {
   }
 }
 
-message SnapshotFlagLogEntry {
-  uint64 sequence = 1;
-}
-
-message SnapshotLogEntry {
-  uint64 sequence = 1;
-  MetaUpdate meta_update = 2;
-}
-
-message MetaUpdateLogEntry {
-  oneof entry {
-    MetaUpdate normal = 1;
-    SnapshotLogEntry snapshot = 2;
-    SnapshotFlagLogEntry snapshot_start = 3;
-    SnapshotFlagLogEntry snapshot_end = 4;
-  }
+message Snapshot {
+  uint64 end_seq = 1;
+  AddTableMeta meta = 2;
+  VersionEditMeta version_edit = 3;
 }

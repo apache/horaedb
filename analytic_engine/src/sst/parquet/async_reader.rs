@@ -270,8 +270,9 @@ impl<'a> Reader<'a> {
         let meta_data =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeSstMeta)?;
+                .with_context(|| FetchAndDecodeSstMeta {
+                    file_path: self.path.to_string(),
+                })?;
 
         Ok(Arc::new(meta_data))
     }

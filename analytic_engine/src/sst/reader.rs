@@ -29,6 +29,18 @@ pub mod error {
             source: Box<dyn std::error::Error + Send + Sync>,
         },
 
+        #[snafu(display(
+            "Failed to decode sst meta data, file_path:{}, err:{}.\nBacktrace:\n{:?}",
+            file_path,
+            source,
+            backtrace
+        ))]
+        FetchAndDecodeSstMeta {
+            file_path: String,
+            source: parquet::errors::ParquetError,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display("Failed to decode sst meta data, err:{}", source))]
         DecodeSstMeta {
             source: Box<dyn std::error::Error + Send + Sync>,
