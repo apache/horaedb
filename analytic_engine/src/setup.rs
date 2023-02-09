@@ -187,8 +187,8 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        match &config.wal_storage {
-            WalStorageConfig::RocksDB => {}
+        let rocksdb_wal_config = match config.wal_storage {
+            WalStorageConfig::RocksDB(config) => *config,
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
@@ -198,10 +198,10 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
                 }
                 .fail();
             }
-        }
+        };
 
         let write_runtime = engine_runtimes.write_runtime.clone();
-        let data_path = Path::new(&config.wal_path);
+        let data_path = Path::new(&rocksdb_wal_config.path);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
             .build()

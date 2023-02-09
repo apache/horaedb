@@ -84,7 +84,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
     runtimes.bg_runtime.block_on(async {
         match config.analytic.wal_storage {
-            WalStorageConfig::RocksDB => {
+            WalStorageConfig::RocksDB(_) => {
                 run_server_with_runtimes::<RocksDBWalEngineBuilder>(
                     config,
                     engine_runtimes,
