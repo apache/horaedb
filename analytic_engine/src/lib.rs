@@ -9,7 +9,6 @@ mod instance;
 mod manifest;
 pub mod memtable;
 mod payload;
-mod role_table;
 pub mod row_iter;
 mod sampler;
 pub mod setup;
@@ -18,7 +17,6 @@ pub mod sst;
 mod storage_options;
 pub mod table;
 pub mod table_options;
-mod wal_synchronizer;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;

@@ -430,7 +430,7 @@ mod test {
     use datafusion::scalar::ScalarValue;
     use datafusion_expr::{col, Expr};
 
-    use super::TableProviderAdapter;
+    use super::*;
     use crate::{memory::MemoryTable, table::TableId};
 
     fn build_user_defined_primary_key_schema() -> Schema {

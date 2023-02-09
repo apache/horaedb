@@ -9,8 +9,7 @@ use snafu::ResultExt;
 use tokio::sync::RwLock;
 use tonic::transport::{Channel, Endpoint as TonicEndpoint};
 
-use super::config::Config;
-use crate::error::*;
+use crate::{config::Config, error::*};
 
 /// Pool for reusing the built channel
 pub struct ChannelPool {

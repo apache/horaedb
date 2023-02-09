@@ -364,7 +364,7 @@ impl From<TableMetaDataPb> for TableMetaData {
 mod tests {
     use common_types::bytes::BytesMut;
 
-    use super::{MetaEncoding, MetaKey};
+    use super::*;
     use crate::message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData};
 
     #[test]

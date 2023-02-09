@@ -161,20 +161,6 @@ impl EncodeContext {
     }
 }
 
-/// Policy of how to perform flush operation.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum TableWritePolicy {
-    /// Unknown policy, this is the default value.
-    #[default]
-    Unknown,
-    /// A full write operation. Write to both memtable and WAL.
-    Full,
-    // TODO: use this policy and remove "allow(dead_code)"
-    /// Only write to memtable.
-    #[allow(dead_code)]
-    MemOnly,
-}
-
 impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -215,7 +201,6 @@ impl Instance {
         space: &SpaceRef,
         table_data: &TableDataRef,
         request: WriteRequest,
-        #[allow(unused_variables)] policy: TableWritePolicy,
     ) -> Result<usize> {
         let mut encode_ctx = EncodeContext::new(request.row_group);
 

@@ -755,7 +755,7 @@ impl CommonLogEncoding {
 mod tests {
     use common_types::bytes::BytesMut;
 
-    use super::{CommonLogEncoding, LogEncoding};
+    use super::*;
     use crate::{
         kv_encoder::CommonLogKey,
         log_batch::PayloadDecoder,

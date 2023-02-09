@@ -8,10 +8,11 @@ use common_types::time::Timestamp;
 use log::info;
 use table_engine::table::ReadOrder;
 
-use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext, TestContext};
 use crate::{
     table_options,
-    tests::util::{self, TestEnv},
+    tests::util::{
+        self, EngineContext, MemoryEngineContext, RocksDBEngineContext, TestContext, TestEnv,
+    },
 };
 
 #[test]

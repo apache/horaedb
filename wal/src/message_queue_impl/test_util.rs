@@ -7,14 +7,14 @@ use std::sync::Arc;
 use common_types::table::TableId;
 use message_queue::MessageQueue;
 
-use super::{
-    encoding::{format_wal_data_topic_name, format_wal_meta_topic_name},
-    region::Region,
-};
 use crate::{
     kv_encoder::LogBatchEncoder,
     log_batch::LogWriteBatch,
     manager::WalLocation,
+    message_queue_impl::{
+        encoding::{format_wal_data_topic_name, format_wal_meta_topic_name},
+        region::Region,
+    },
     tests::util::{TestPayload, TestPayloadDecoder},
 };
 
