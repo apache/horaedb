@@ -9,6 +9,7 @@ use common_types::{
     row::{Row, RowGroupBuilder},
     schema::Schema,
 };
+use common_util::error::BoxError;
 use futures::future::try_join_all;
 use snafu::{ensure, ResultExt};
 use table_engine::{
@@ -143,7 +144,7 @@ impl Table for PartitionTableImpl {
             .fail()?,
             Some(partition_info) => {
                 DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(CreatePartitionRule)?
             }
         };
@@ -155,7 +156,7 @@ impl Table for PartitionTableImpl {
                 .start_timer();
             df_partition_rule
                 .locate_partitions_for_write(&request.row_group)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(LocatePartitions)?
         };
 
@@ -172,7 +173,7 @@ impl Table for PartitionTableImpl {
         let mut futures = Vec::with_capacity(split_rows.len());
         for (partition, rows) in split_rows {
             let row_group = RowGroupBuilder::with_rows(schema.clone(), rows)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Write {
                     table: self.get_sub_table_ident(partition).table,
                 })?
@@ -191,12 +192,9 @@ impl Table for PartitionTableImpl {
             let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["remote_write", &self.space_table.table_data().name])
                 .start_timer();
-            try_join_all(futures)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(Write {
-                    table: self.name().to_string(),
-                })?
+            try_join_all(futures).await.box_err().context(Write {
+                table: self.name().to_string(),
+            })?
         };
 
         Ok(result.into_iter().sum())
@@ -231,7 +229,7 @@ impl Table for PartitionTableImpl {
             .fail()?,
             Some(partition_info) => {
                 DfPartitionRuleAdapter::new(partition_info, &self.space_table.table_data().schema())
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(CreatePartitionRule)?
             }
         };
@@ -243,7 +241,7 @@ impl Table for PartitionTableImpl {
                 .start_timer();
             df_partition_rule
                 .locate_partitions_for_read(request.predicate.exprs())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(LocatePartitions)?
         };
 
@@ -266,12 +264,9 @@ impl Table for PartitionTableImpl {
             let _remote_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
                 .with_label_values(&["remote_read", &self.space_table.table_data().name])
                 .start_timer();
-            try_join_all(futures)
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(Scan {
-                    table: self.name().to_string(),
-                })?
+            try_join_all(futures).await.box_err().context(Scan {
+                table: self.name().to_string(),
+            })?
         };
 
         Ok(PartitionedStreams { streams })

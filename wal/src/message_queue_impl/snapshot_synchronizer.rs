@@ -5,7 +5,10 @@
 use std::sync::Arc;
 
 use common_types::bytes::BytesMut;
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::info;
 use message_queue::MessageQueue;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -27,7 +30,7 @@ pub enum Error {
     SyncSnapshotWithCause {
         region_id: u64,
         topic: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -87,14 +90,14 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
         let mut value_buf = BytesMut::new();
         self.meta_encoding
             .encode_key(&mut key_buf, &MetaKey(self.region_id))
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(SyncSnapshotWithCause {
                 region_id: self.region_id,
                 topic: self.meta_topic.clone(),
             })?;
         self.meta_encoding
             .encode_value(&mut value_buf, snapshot)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(SyncSnapshotWithCause {
                 region_id: self.region_id,
                 topic: self.meta_topic.clone(),
@@ -109,7 +112,7 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
             .message_queue
             .produce(&self.meta_topic, messages)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(SyncSnapshotWithCause {
                 region_id: self.region_id,
                 topic: self.meta_topic.clone(),
@@ -131,7 +134,7 @@ impl<Mq: MessageQueue> SnapshotSynchronizer<Mq> {
         self.message_queue
             .delete_to(&self.meta_topic, offsets[0])
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(SyncSnapshotWithCause {
                 region_id: self.region_id,
                 topic: self.meta_topic.clone(),

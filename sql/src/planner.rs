@@ -21,6 +21,7 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Schema, TSID_COLUMN},
 };
+use common_util::error::GenericError;
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
@@ -237,10 +238,7 @@ pub enum Error {
         msg,
         source,
     ))]
-    ParsePartitionWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ParsePartitionWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Unsupported partition method, msg:{}", msg,))]
     UnsupportedPartition { msg: String },

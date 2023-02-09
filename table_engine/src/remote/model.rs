@@ -3,7 +3,10 @@
 //! Model for remote table engine
 
 use common_types::schema::Schema;
-use common_util::avro;
+use common_util::{
+    avro,
+    error::{BoxError, GenericError},
+};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest};
@@ -50,19 +53,13 @@ pub enum Error {
     EmptyRowGroup { backtrace: Backtrace },
 
     #[snafu(display("Failed to covert table read request, err:{}", source))]
-    ConvertTableReadRequest {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ConvertTableReadRequest { source: GenericError },
 
     #[snafu(display("Failed to covert table schema, err:{}", source))]
-    ConvertTableSchema {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ConvertTableSchema { source: GenericError },
 
     #[snafu(display("Failed to covert row group, err:{}", source))]
-    ConvertRowGroup {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ConvertRowGroup { source: GenericError },
 
     #[snafu(display(
         "Failed to covert row group, encoding version:{}.\nBacktrace:\n{}",
@@ -116,7 +113,7 @@ impl TryFrom<proto::remote_engine::ReadRequest> for ReadRequest {
             table: table_identifier.into(),
             read_request: table_read_request
                 .try_into()
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ConvertTableReadRequest)?,
         })
     }
@@ -151,11 +148,11 @@ impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
             .table_schema
             .context(EmptyTableSchema)?
             .try_into()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ConvertTableSchema)?;
         let row_group = if row_group_pb.version == ENCODE_ROWS_WITH_AVRO {
             avro::avro_rows_to_row_group(table_schema, &row_group_pb.rows)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ConvertRowGroup)?
         } else {
             UnsupportedConvertRowGroup {

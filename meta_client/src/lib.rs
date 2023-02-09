@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
@@ -35,40 +35,30 @@ pub enum Error {
     ))]
     FailConnect {
         addr: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
         backtrace: Backtrace,
     },
 
     #[snafu(display("Failed to send heartbeat, cluster:{}, err:{}", cluster, source))]
     FailSendHeartbeat {
         cluster: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to alloc schema id, err:{}", source))]
-    FailAllocSchemaId {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    FailAllocSchemaId { source: GenericError },
 
     #[snafu(display("Failed to alloc table id, err:{}", source))]
-    FailCreateTable {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    FailCreateTable { source: GenericError },
 
     #[snafu(display("Failed to drop table, err:{}", source))]
-    FailDropTable {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    FailDropTable { source: GenericError },
 
     #[snafu(display("Failed to get tables, err:{}", source))]
-    FailGetTables {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    FailGetTables { source: GenericError },
 
     #[snafu(display("Failed to route tables, err:{}", source))]
-    FailRouteTables {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    FailRouteTables { source: GenericError },
 
     #[snafu(display(
         "Bad response, resp code:{}, msg:{}.\nBacktrace:\n{}",

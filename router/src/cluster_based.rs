@@ -5,6 +5,7 @@
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
+use common_util::error::BoxError;
 use meta_client::types::RouteTablesRequest;
 use snafu::ResultExt;
 
@@ -42,7 +43,7 @@ impl Router for ClusterBasedRouter {
             .cluster
             .route_tables(&route_tables_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| OtherWithCause {
                 msg: format!(
                     "Failed to route tables by cluster, req:{:?}",

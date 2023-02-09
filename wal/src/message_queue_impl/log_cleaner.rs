@@ -4,7 +4,10 @@
 
 use std::{cmp, sync::Arc};
 
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::info;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -22,7 +25,7 @@ pub enum Error {
     CleanLogsWithCause {
         region_id: u64,
         topic: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -94,7 +97,7 @@ impl<M: MessageQueue> LogCleaner<M> {
             self.message_queue
                 .delete_to(&self.log_topic, safe_delete_offset)
                 .await
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(CleanLogsWithCause {
                     region_id: self.region_id,
                     topic: self.log_topic.clone(),

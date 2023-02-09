@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use snafu::Snafu;
 use table_engine::table::{AlterSchemaRequest, WriteRequest};
 
@@ -17,9 +17,7 @@ mod leader;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to write table, err:{}", source))]
-    WriteTable {
-        source: Box<dyn std::error::Error + Send + Sync + 'static>,
-    },
+    WriteTable { source: GenericError },
 }
 
 define_result!(Error);

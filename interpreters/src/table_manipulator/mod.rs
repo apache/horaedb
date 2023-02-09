@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 use sql::plan::{CreateTablePlan, DropTablePlan};
 use table_engine::engine::TableEngineRef;
@@ -54,16 +55,10 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to create table, msg:{}, err:{}", msg, source))]
-    CreateWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CreateWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Failed to drop table, msg:{}, err:{}", msg, source))]
-    DropWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    DropWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Failed to create partition table without ceresmeta, table:{}", table))]
     PartitionTableNotSupported { table: String },

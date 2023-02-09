@@ -9,7 +9,10 @@ use common_types::{
     row::{Row, RowViewOnBatch, RowWithMeta},
     schema::RecordSchemaWithKey,
 };
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::{info, trace};
 use snafu::{ResultExt, Snafu};
 
@@ -31,9 +34,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to read data from the sub iterator, err:{:?}", source))]
-    ReadFromSubIter {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ReadFromSubIter { source: GenericError },
 }
 
 define_result!(Error);
@@ -170,7 +171,7 @@ impl<I: RecordBatchWithKeyIterator> RecordBatchWithKeyIterator for DedupIterator
             .iter
             .next_batch()
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ReadFromSubIter)?
         {
             Some(record_batch) => {

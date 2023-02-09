@@ -14,7 +14,11 @@ use std::{
 };
 
 use common_types::{bytes::BytesMut, table::TableId};
-use common_util::{define_result, runtime::Runtime};
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+};
 use log::debug;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
@@ -32,10 +36,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to get value, key:{}, err:{}", key, source,))]
-    GetValue {
-        key: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    GetValue { key: String, source: GenericError },
 
     #[snafu(display("Failed to decode entry, key:{}, err:{}", key, source,))]
     Decode {
@@ -59,9 +60,7 @@ pub enum Error {
     LogCodec { source: crate::kv_encoder::Error },
 
     #[snafu(display("Failed to scan table, err:{}", source))]
-    Scan {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Scan { source: GenericError },
 
     #[snafu(display(
         "Failed to write value, key:{}, meta table:{}, err:{}",
@@ -72,7 +71,7 @@ pub enum Error {
     WriteValue {
         key: String,
         meta_table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -92,7 +91,7 @@ pub enum Error {
     ))]
     WriteLog {
         region_id: u64,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -111,7 +110,7 @@ pub enum Error {
     #[snafu(display("Failed to delete table, region_id:{}, err:{}", region_id, source))]
     Delete {
         region_id: u64,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -418,7 +417,7 @@ impl TableUnit {
         let key = encoding::format_table_unit_key(table_id);
         table_kv
             .get(table_unit_meta_table, key.as_bytes())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(GetValue { key: &key })?
             .map(|value| TableUnitEntry::decode(&value).context(Decode { key }))
             .transpose()
@@ -510,7 +509,7 @@ impl TableUnit {
 
         let iter = table_kv
             .scan(scan_ctx, table_name, scan_req)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Scan)?;
 
         if !iter.valid() {
@@ -575,7 +574,7 @@ impl TableUnit {
             let table_name = bucket.wal_shard_table(self.state.region_id);
             let iter = table_kv
                 .scan(scan_ctx.clone(), table_name, scan_req.clone())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Scan)?;
 
             self.clean_logs_from_iter(table_kv, ctx, table_name, iter)?;
@@ -606,13 +605,13 @@ impl TableUnit {
                 write_batch_size = 0;
                 table_kv
                     .write(WriteContext::default(), table_name, wb)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(Delete {
                         region_id: self.state.table_id,
                     })?;
             }
 
-            let has_next = iter.next().map_err(|e| Box::new(e) as _).context(Scan)?;
+            let has_next = iter.next().box_err().context(Scan)?;
             if !has_next {
                 let wb = mem::replace(
                     &mut write_batch,
@@ -620,7 +619,7 @@ impl TableUnit {
                 );
                 table_kv
                     .write(WriteContext::default(), table_name, wb)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(Delete {
                         region_id: self.state.table_id,
                     })?;
@@ -736,7 +735,7 @@ impl<T: TableKv> TableLogIterator<T> {
             let iter = self
                 .table_kv
                 .scan(self.scan_ctx.clone(), table_name, scan_req.clone())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Scan)?;
             if iter.valid() {
                 self.current_iter = Some(iter);
@@ -751,7 +750,7 @@ impl<T: TableKv> TableLogIterator<T> {
 
     fn step_current_iter(&mut self) -> Result<()> {
         if let Some(iter) = &mut self.current_iter {
-            if !iter.next().map_err(|e| Box::new(e) as _).context(Scan)? {
+            if !iter.next().box_err().context(Scan)? {
                 self.current_iter = None;
                 self.current_bucket_index += 1;
             }
@@ -770,10 +769,7 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
         // If `current_iter` is None, scan from current to last bucket util we get a
         // valid iterator.
         if self.current_iter.is_none() {
-            let has_valid_iter = self
-                .scan_buckets()
-                .map_err(|e| Box::new(e) as _)
-                .context(manager::Read)?;
+            let has_valid_iter = self.scan_buckets().box_err().context(manager::Read)?;
             if !has_valid_iter {
                 assert!(self.no_more_data());
                 return Ok(None);
@@ -785,12 +781,12 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
         self.current_log_key = self
             .log_encoding
             .decode_key(current_iter.key())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)?;
         let payload = self
             .log_encoding
             .decode_value(current_iter.value())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Encoding)?;
 
         // To unblock pr#119, we use the following to simple resolve borrow-check error.
@@ -799,9 +795,7 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None
         // and advance `current_bucket_index`.
-        self.step_current_iter()
-            .map_err(|e| Box::new(e) as _)
-            .context(manager::Read)?;
+        self.step_current_iter().box_err().context(manager::Read)?;
 
         let log_entry = LogEntry {
             table_id: self.current_log_key.table_id,
@@ -847,7 +841,7 @@ impl TableUnitWriter {
                         region_id: table_unit_entry.table_id,
                     })
                 } else {
-                    res.map_err(|e| Box::new(e) as _).context(WriteValue {
+                    res.box_err().context(WriteValue {
                         key: &key,
                         meta_table: table_unit_meta_table,
                     })?;
@@ -874,7 +868,7 @@ impl TableUnitWriter {
 
         table_kv
             .write(WriteContext::default(), table_unit_meta_table, batch)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteValue {
                 key: &key,
                 meta_table: table_unit_meta_table,
@@ -950,7 +944,7 @@ impl TableUnitWriter {
                 let table_name = bucket.wal_shard_table(region_id);
                 table_kv
                     .write(WriteContext::default(), table_name, wb)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(WriteLog { region_id })
             })
             .await

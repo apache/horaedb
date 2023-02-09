@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use common_types::schema::SchemaEncoder;
+use common_util::error::BoxError;
 use log::info;
 use meta_client::{
     types::{CreateTableRequest, DropTableRequest, PartitionTableInfo},
@@ -40,7 +41,7 @@ impl TableManipulator for TableManipulatorImpl {
     ) -> Result<Output> {
         let encoded_schema = SchemaEncoder::default()
             .encode(&plan.table_schema)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| CreateWithCause {
                 msg: format!(
                     "fail to encode table schema, ctx:{:?}, plan:{:?}",
@@ -64,7 +65,7 @@ impl TableManipulator for TableManipulatorImpl {
             .meta_client
             .create_table(req.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| CreateWithCause {
                 msg: format!("failed to create table by meta client, req:{:?}", req),
             })?;
@@ -95,7 +96,7 @@ impl TableManipulator for TableManipulatorImpl {
             .meta_client
             .drop_table(req.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(DropWithCause {
                 msg: format!("failed to create table by meta client, req:{:?}", req),
             })?;

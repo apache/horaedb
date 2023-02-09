@@ -10,7 +10,12 @@ use std::{
 };
 
 use common_types::{table::TableId, time::Timestamp};
-use common_util::{config::ReadableDuration, define_result, runtime::Runtime};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+};
 use log::{debug, error, info, trace, warn};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_kv::{
@@ -35,9 +40,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to create table, err:{}", source,))]
-    CreateTable {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CreateTable { source: GenericError },
 
     #[snafu(display(
         "Failed to init table unit meta, namespace:{}, err:{}",
@@ -46,19 +49,19 @@ pub enum Error {
     ))]
     InitTableUnitMeta {
         namespace: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to load buckets, namespace:{}, err:{}", namespace, source,))]
     LoadBuckets {
         namespace: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to open bucket, namespace:{}, err:{}", namespace, source,))]
     BucketMeta {
         namespace: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -76,7 +79,7 @@ pub enum Error {
     #[snafu(display("Failed to drop bucket shard, namespace:{}, err:{}", namespace, source,))]
     DropShard {
         namespace: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to encode entry, namespace:{}, err:{}", namespace, source,))]
@@ -92,10 +95,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to persist value, key:{}, err:{}", key, source,))]
-    PersistValue {
-        key: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    PersistValue { key: String, source: GenericError },
 
     #[snafu(display(
         "Failed to purge bucket, namespace:{}, msg:{}, err:{}",
@@ -106,14 +106,11 @@ pub enum Error {
     PurgeBucket {
         namespace: String,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to get value, key:{}, err:{}", key, source,))]
-    GetValue {
-        key: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    GetValue { key: String, source: GenericError },
 
     #[snafu(display("Value not found, key:{}.\nBacktrace:\n{}", key, backtrace))]
     ValueNotFound { key: String, backtrace: Backtrace },
@@ -267,17 +264,17 @@ impl<T: TableKv> NamespaceInner<T> {
     /// Pre-build all table unit meta tables.
     fn init_table_unit_meta(&self) -> Result<()> {
         for table_name in self.table_unit_meta_tables() {
-            let exists = self
-                .table_kv
-                .table_exists(table_name)
-                .map_err(|e| Box::new(e) as _)
-                .context(InitTableUnitMeta {
-                    namespace: self.name(),
-                })?;
+            let exists =
+                self.table_kv
+                    .table_exists(table_name)
+                    .box_err()
+                    .context(InitTableUnitMeta {
+                        namespace: self.name(),
+                    })?;
             if !exists {
                 self.table_kv
                     .create_table(table_name)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(InitTableUnitMeta {
                         namespace: self.name(),
                     })?;
@@ -298,7 +295,7 @@ impl<T: TableKv> NamespaceInner<T> {
         let mut iter = self
             .table_kv
             .scan(bucket_scan_ctx, &self.meta_table_name, scan_req)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(LoadBuckets {
                 namespace: self.name(),
             })?;
@@ -310,11 +307,12 @@ impl<T: TableKv> NamespaceInner<T> {
                 break;
             }
 
-            let bucket_entry = BucketEntry::decode(iter.value())
-                .map_err(|e| Box::new(e) as _)
-                .context(LoadBuckets {
-                    namespace: self.name(),
-                })?;
+            let bucket_entry =
+                BucketEntry::decode(iter.value())
+                    .box_err()
+                    .context(LoadBuckets {
+                        namespace: self.name(),
+                    })?;
             let bucket = Bucket::new(self.name(), bucket_entry)?;
 
             // Collect the outdated bucket entries for deletion.
@@ -324,11 +322,9 @@ impl<T: TableKv> NamespaceInner<T> {
                         warn!("Encounter expired bucket entry, skip and collect for later purging here, ttl:{}, expired bucket{:?}", ttl, bucket_entry);
                         outdated_buckets.push(bucket);
 
-                        iter.next()
-                            .map_err(|e| Box::new(e) as _)
-                            .context(LoadBuckets {
-                                namespace: self.name(),
-                            })?;
+                        iter.next().box_err().context(LoadBuckets {
+                            namespace: self.name(),
+                        })?;
 
                         continue;
                     }
@@ -343,11 +339,9 @@ impl<T: TableKv> NamespaceInner<T> {
 
             self.open_bucket(bucket)?;
 
-            iter.next()
-                .map_err(|e| Box::new(e) as _)
-                .context(LoadBuckets {
-                    namespace: self.name(),
-                })?;
+            iter.next().box_err().context(LoadBuckets {
+                namespace: self.name(),
+            })?;
         }
 
         // Try to purge the outdated buckets, unnecessary to wait it.
@@ -821,8 +815,7 @@ impl BucketCreator {
             } else {
                 error!("Failed to persist bucket, key:{}, err:{}", key, e);
 
-                res.map_err(|e| Box::new(e) as _)
-                    .context(PersistValue { key })?;
+                res.box_err().context(PersistValue { key })?;
             }
         }
 
@@ -846,7 +839,7 @@ impl BucketCreator {
 fn get_value<T: TableKv>(table_kv: &T, meta_table_name: &str, key: &str) -> Result<Vec<u8>> {
     table_kv
         .get(meta_table_name, key.as_bytes())
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(GetValue { key })?
         .context(ValueNotFound { key })
 }
@@ -958,7 +951,7 @@ impl<T: TableKv> Namespace<T> {
 
             table_kv
                 .create_table(meta_table_name)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(CreateTable)?;
 
             info!(
@@ -978,7 +971,7 @@ impl<T: TableKv> Namespace<T> {
         let key = encoding::format_namespace_key(namespace_name);
         let value_opt = table_kv
             .get(meta_table_name, key.as_bytes())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(GetValue { key: &key })?;
 
         match value_opt {
@@ -1091,8 +1084,7 @@ impl<T: TableKv> Namespace<T> {
             } else {
                 error!("Failed to persist namespace, key:{}, err:{}", key, e);
 
-                res.map_err(|e| Box::new(e) as _)
-                    .context(PersistValue { key })?;
+                res.box_err().context(PersistValue { key })?;
             }
         }
 
@@ -1192,12 +1184,12 @@ impl TableOperator {
     ) -> Result<()> {
         let table_exists = table_kv
             .table_exists(table_name)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(BucketMeta { namespace })?;
         if !table_exists {
             table_kv
                 .create_table(table_name)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(BucketMeta { namespace })?;
         }
 
@@ -1431,7 +1423,7 @@ fn purge_buckets<T: TableKv>(
     namespace: &str,
     meta_table_name: &str,
     table_kv: &T,
-) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> std::result::Result<(), GenericError> {
     let mut batch = T::WriteBatch::with_capacity(buckets.len());
     let mut keys = Vec::with_capacity(buckets.len());
     for bucket in &buckets {

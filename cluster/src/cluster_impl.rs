@@ -13,7 +13,10 @@ use ceresdbproto::{
     },
     meta_service::TableInfo as TableInfoPb,
 };
-use common_util::runtime::{JoinHandle, Runtime};
+use common_util::{
+    error::BoxError,
+    runtime::{JoinHandle, Runtime},
+};
 use log::{error, info, warn};
 use meta_client::{
     types::{
@@ -215,7 +218,7 @@ impl Inner {
             .meta_client
             .get_tables_of_shards(req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenShardWithCause {
                 shard_id: shard_info.id,
             })?;

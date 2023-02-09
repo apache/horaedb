@@ -6,6 +6,7 @@ use std::{fmt, str, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::SequenceNumber;
+use common_util::error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_kv::TableKv;
@@ -59,13 +60,13 @@ impl<T: TableKv> WalNamespaceImpl<T> {
         let namespace = rt
             .spawn_blocking(move || {
                 Namespace::open(&table_kv, runtimes, &namespace_name, config)
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(Open {
                         wal_path: namespace_name,
                     })
             })
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Open { wal_path: name })??;
         let namespace = Arc::new(namespace);
 
@@ -79,11 +80,7 @@ impl<T: TableKv> WalNamespaceImpl<T> {
             self.namespace.name()
         );
 
-        self.namespace
-            .close()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Close)?;
+        self.namespace.close().await.box_err().context(Close)?;
 
         info!("Namespace wal closed, namespace:{}", self.namespace.name());
 
@@ -105,7 +102,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         self.namespace
             .last_sequence(location)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Read)
     }
 
@@ -117,7 +114,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         self.namespace
             .delete_entries(location, sequence_num)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Delete)
     }
 
@@ -139,7 +136,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .namespace
             .read_log(ctx, req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Read)?;
         let runtime = self.namespace.read_runtime().clone();
 
@@ -158,7 +155,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
         self.namespace
             .write_log(ctx, batch)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Write)
     }
 
@@ -167,7 +164,7 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .namespace
             .scan_log(ctx, req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Read)?;
         let runtime = self.namespace.read_runtime().clone();
 

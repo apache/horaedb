@@ -14,7 +14,10 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
 };
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use datafusion::physical_plan::{
     RecordBatchStream as DfRecordBatchStream,
     SendableRecordBatchStream as DfSendableRecordBatchStream,
@@ -27,10 +30,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("Stream error, msg:{}, err:{}", msg, source))]
-    ErrWithSource {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ErrWithSource { msg: String, source: GenericError },
 
     #[snafu(display("Stream error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     ErrNoSource { msg: String, backtrace: Backtrace },
@@ -91,7 +91,7 @@ impl FromDfStream {
     pub fn new(df_stream: DfSendableRecordBatchStream) -> Result<Self> {
         let df_schema = df_stream.schema();
         let schema = RecordSchema::try_from(df_schema)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithSource {
                 msg: "convert record schema",
             })?;
@@ -107,8 +107,8 @@ impl Stream for FromDfStream {
         match self.df_stream.as_mut().poll_next(ctx) {
             Poll::Ready(Some(record_batch_res)) => Poll::Ready(Some(
                 record_batch_res
-                    .map_err(|e| Box::new(e) as _)
-                    .and_then(|batch| RecordBatch::try_from(batch).map_err(|e| Box::new(e) as _))
+                    .box_err()
+                    .and_then(|batch| RecordBatch::try_from(batch).box_err())
                     .context(ErrWithSource {
                         msg: "convert from arrow record batch",
                     }),

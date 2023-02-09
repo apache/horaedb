@@ -5,7 +5,10 @@
 use std::{cmp, sync::Arc};
 
 use common_types::{table::TableId, SequenceNumber};
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::{debug, info};
 use message_queue::{ConsumeIterator, MessageQueue, Offset, OffsetType, StartOffset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -56,7 +59,7 @@ pub enum Error {
         region_id: u64,
         table_id: Option<TableId>,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Failed to get table meta data, err:{}", source))]
@@ -71,9 +74,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to clean logs of region, err:{}", source))]
-    CleanLogs {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CleanLogs { source: GenericError },
 
     #[snafu(display(
         "Failed to open region with cause, namespace:{}, region id:{}, msg:{}, err:{}",
@@ -86,7 +87,7 @@ pub enum Error {
         namespace: String,
         region_id: u64,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -141,7 +142,7 @@ impl<M: MessageQueue> Region<M> {
         message_queue
             .create_topic_if_not_exist(&log_topic)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -150,7 +151,7 @@ impl<M: MessageQueue> Region<M> {
         message_queue
             .create_topic_if_not_exist(&meta_topic)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -226,7 +227,7 @@ impl<M: MessageQueue> Region<M> {
         let high_watermark = message_queue
             .fetch_offset(meta_topic, OffsetType::HighWaterMark)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -242,18 +243,15 @@ impl<M: MessageQueue> Region<M> {
         let mut iter = message_queue
             .consume(meta_topic, StartOffset::At(high_watermark - 1))
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
                 msg: "failed while recover from meta",
             })?;
 
-        let (latest_message_and_offset, returned_high_watermark) = iter
-            .next_message()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(OpenWithCause {
+        let (latest_message_and_offset, returned_high_watermark) =
+            iter.next_message().await.box_err().context(OpenWithCause {
                 namespace,
                 region_id,
                 msg: "failed while recover from meta",
@@ -285,7 +283,7 @@ impl<M: MessageQueue> Region<M> {
 
         let key = meta_encoding
             .decode_key(raw_key.as_slice())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -299,7 +297,7 @@ impl<M: MessageQueue> Region<M> {
 
         let value = meta_encoding
             .decode_value(raw_value.as_slice())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -313,7 +311,7 @@ impl<M: MessageQueue> Region<M> {
 
         builder
             .apply_region_meta_snapshot(value)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -341,7 +339,7 @@ impl<M: MessageQueue> Region<M> {
         let high_watermark = message_queue
             .fetch_offset(log_topic, OffsetType::HighWaterMark)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -362,7 +360,7 @@ impl<M: MessageQueue> Region<M> {
         let mut iter = message_queue
             .consume(log_topic, StartOffset::At(start_offset))
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenWithCause {
                 namespace,
                 region_id,
@@ -370,11 +368,8 @@ impl<M: MessageQueue> Region<M> {
             })?;
 
         loop {
-            let (latest_message_and_offset, returned_high_watermark) = iter
-                .next_message()
-                .await
-                .map_err(|e| Box::new(e) as _)
-                .context(OpenWithCause {
+            let (latest_message_and_offset, returned_high_watermark) =
+                iter.next_message().await.box_err().context(OpenWithCause {
                     namespace,
                     region_id,
                     msg: "failed while recover from log",
@@ -397,7 +392,7 @@ impl<M: MessageQueue> Region<M> {
 
             let key = log_encoding
                 .decode_key(raw_key.as_slice())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(OpenWithCause {
                     namespace,
                     region_id,
@@ -418,7 +413,7 @@ impl<M: MessageQueue> Region<M> {
 
             builder
                 .apply_region_meta_delta(region_meta_delta.clone())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(OpenWithCause {
                     namespace,
                     region_id,
@@ -631,14 +626,14 @@ impl<M: MessageQueue> Region<M> {
         log_cleaner
             .maybe_clean_logs(&snapshot)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(CleanLogs)?;
 
         // Sync snapshot.
         synchronizer
             .sync(snapshot)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(CleanLogs)
     }
 
@@ -703,10 +698,7 @@ impl<M: MessageQueue> RegionInner<M> {
         _ctx: &manager::ReadContext,
         table_id: Option<TableId>,
         scan_range: ScanRange,
-    ) -> std::result::Result<
-        MessageQueueLogIterator<M::ConsumeIterator>,
-        Box<dyn std::error::Error + Send + Sync>,
-    > {
+    ) -> std::result::Result<MessageQueueLogIterator<M::ConsumeIterator>, GenericError> {
         let consume_iter = self
             .message_queue
             .consume(&self.log_topic, StartOffset::At(scan_range.inclusive_start))
@@ -816,7 +808,7 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             .iter
             .next_message()
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ScanWithCause {
                 region_id: self.region_id,
                 table_id: self.table_id,
@@ -841,7 +833,7 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
         let log_key = self
             .log_encoding
             .decode_key(&message_and_offset.message.key.unwrap())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ScanWithCause {
                 region_id: self.region_id,
                 table_id: self.table_id,
@@ -864,7 +856,7 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
         let payload = self
             .log_encoding
             .decode_value(&log_value)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ScanWithCause {
                 region_id: self.region_id,
                 table_id: self.table_id,

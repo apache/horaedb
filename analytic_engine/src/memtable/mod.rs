@@ -16,7 +16,7 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     SequenceNumber,
 };
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, Snafu};
 
 use crate::memtable::key::KeySequence;
@@ -65,14 +65,10 @@ pub enum Error {
     },
 
     #[snafu(display("Invalid row, err:{}", source))]
-    InvalidRow {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidRow { source: GenericError },
 
     #[snafu(display("Fail to iter in reverse order, err:{}", source))]
-    IterReverse {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    IterReverse { source: GenericError },
 
     #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
     IterTimeout { backtrace: Backtrace },

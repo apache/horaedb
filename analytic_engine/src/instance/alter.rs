@@ -4,6 +4,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use common_util::error::BoxError;
 use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
@@ -146,7 +147,7 @@ impl Instance {
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWal {
                 space_id: table_data.space_id,
                 table: &table_data.name,
@@ -277,7 +278,7 @@ impl Instance {
         );
         let mut table_opts =
             table_options::merge_table_options_for_alter(&options, &current_table_options)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(InvalidOptions {
                     space_id: table_data.space_id,
                     table: &table_data.name,
@@ -322,7 +323,7 @@ impl Instance {
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWal {
                 space_id: table_data.space_id,
                 table: &table_data.name,

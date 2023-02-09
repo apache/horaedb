@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use common_types::schema::Version;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, OptionExt, Snafu};
 use table_engine::{
     engine::{CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest},
@@ -36,7 +36,7 @@ pub enum Error {
     #[snafu(display("Failed to read meta update, table_id:{}, err:{}", table_id, source))]
     ReadMetaUpdate {
         table_id: TableId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -106,7 +106,7 @@ pub enum Error {
         space_id: SpaceId,
         table: String,
         table_id: TableId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -120,7 +120,7 @@ pub enum Error {
         space_id: SpaceId,
         table: String,
         table_id: TableId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -134,7 +134,7 @@ pub enum Error {
         space_id: SpaceId,
         table: String,
         table_id: TableId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -187,9 +187,7 @@ pub enum Error {
     AlterDroppedTable { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to store version edit, err:{}", source))]
-    StoreVersionEdit {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
         "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",

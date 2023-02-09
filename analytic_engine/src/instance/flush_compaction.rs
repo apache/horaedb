@@ -12,7 +12,13 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::{config::ReadableDuration, define_result, runtime::Runtime, time};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+    time,
+};
 use futures::{
     channel::{mpsc, mpsc::channel},
     future::try_join_all,
@@ -62,9 +68,7 @@ const DEFAULT_CHANNEL_SIZE: usize = 5;
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
-    StoreVersionEdit {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
@@ -78,9 +82,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to build mem table iterator, source:{}", source))]
-    InvalidMemIter {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidMemIter { source: GenericError },
 
     #[snafu(display(
         "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
@@ -93,10 +95,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to write sst, file_path:{}, source:{}", path, source))]
-    WriteSst {
-        path: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    WriteSst { path: String, source: GenericError },
 
     #[snafu(display("Background flush failed, cannot schedule flush task, err:{}", source))]
     BackgroundFlushFailed {
@@ -125,9 +124,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to split record batch, source:{}", source))]
-    SplitRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    SplitRecordBatch { source: GenericError },
 
     #[snafu(display("Failed to read sst meta, source:{}", source))]
     ReadSstMeta {
@@ -686,7 +683,7 @@ impl Instance {
 
         for data in iter {
             for (idx, record_batch) in split_record_batch_with_time_ranges(
-                data.map_err(|e| Box::new(e) as _).context(InvalidMemIter)?,
+                data.box_err().context(InvalidMemIter)?,
                 &time_ranges,
                 timestamp_idx,
             )?
@@ -777,7 +774,7 @@ impl Instance {
         let sst_info = writer
             .write(request_id, &sst_meta, record_batch_stream)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
@@ -1004,7 +1001,7 @@ impl SpaceStore {
         let sst_info = sst_writer
             .write(request_id, &sst_meta, record_batch_stream)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
@@ -1107,7 +1104,7 @@ fn split_record_batch_with_time_ranges(
             };
             builders[idx]
                 .append_row_view(&view)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(SplitRecordBatch)?;
         } else {
             panic!(
@@ -1118,12 +1115,7 @@ fn split_record_batch_with_time_ranges(
     }
     let mut ret = Vec::with_capacity(builders.len());
     for mut builder in builders {
-        ret.push(
-            builder
-                .build()
-                .map_err(|e| Box::new(e) as _)
-                .context(SplitRecordBatch)?,
-        );
+        ret.push(builder.build().box_err().context(SplitRecordBatch)?);
     }
     Ok(ret)
 }
@@ -1140,7 +1132,7 @@ fn build_mem_table_iter(memtable: MemTableRef, table_data: &TableData) -> Result
     };
     memtable
         .scan(scan_ctx, scan_req)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(InvalidMemIter)
 }
 

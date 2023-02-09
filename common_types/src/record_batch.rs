@@ -82,7 +82,7 @@ pub enum Error {
         backtrace
     ))]
     ReverseRecordBatchData {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 
@@ -92,7 +92,7 @@ pub enum Error {
         backtrace
     ))]
     SelectRecordBatchData {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 }

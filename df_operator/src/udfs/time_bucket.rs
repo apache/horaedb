@@ -10,7 +10,7 @@ use common_types::{
     datum::{Datum, DatumKind},
     time::Timestamp,
 };
-use common_util::define_result;
+use common_util::{define_result, error::BoxError};
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -77,13 +77,10 @@ fn new_udf() -> ScalarUdf {
     // - timestamp output format (ignored now).
     let func = |args: &[ColumnarValue]| {
         let bucket = TimeBucket::parse_args(args)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(InvalidArguments)?;
 
-        let result_column = bucket
-            .call()
-            .map_err(|e| Box::new(e) as _)
-            .context(CallFunction)?;
+        let result_column = bucket.call().box_err().context(CallFunction)?;
 
         Ok(ColumnarValue::Array(result_column))
     };

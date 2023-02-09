@@ -7,7 +7,7 @@ pub mod model;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use model::{ReadRequest, WriteRequest};
 use snafu::Snafu;
 
@@ -17,14 +17,10 @@ use crate::stream::SendableRecordBatchStream;
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("Failed to read from remote, err:{}", source))]
-    Read {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Read { source: GenericError },
 
     #[snafu(display("Failed to write to remote, err:{}", source))]
-    Write {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Write { source: GenericError },
 }
 
 define_result!(Error);

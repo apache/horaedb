@@ -137,7 +137,7 @@ pub enum Error {
     InvalidArrowSchemaMetaValue {
         key: ArrowSchemaMetaKey,
         raw_value: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 

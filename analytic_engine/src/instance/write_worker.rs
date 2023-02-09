@@ -14,6 +14,7 @@ use std::{
 
 use common_util::{
     define_result,
+    error::{BoxError, GenericError},
     runtime::{JoinHandle, Runtime},
     time::InstantExt,
 };
@@ -43,9 +44,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to wait flush completed, channel disconnected, err:{}", source))]
-    WaitFlush {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    WaitFlush { source: GenericError },
 
     #[snafu(display(
         "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
@@ -67,9 +66,7 @@ pub enum Error {
     },
 
     #[snafu(display("Channel error, err:{}", source))]
-    Channel {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Channel { source: GenericError },
 
     #[snafu(display(
         "Disallowed to manipulate table data, table does not belong to the worker, table:{}, worker:{}.\nBacktrace:\n{}",
@@ -232,7 +229,7 @@ impl WorkerLocal {
             self.background_rx
                 .changed()
                 .await
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(WaitFlush)?;
         }
         assert!(!self.data.is_flushing());
@@ -534,7 +531,7 @@ pub async fn process_command_in_write_worker<T, E: std::error::Error + Send + Sy
 
     // Receive alter options result.
     match rx.await {
-        Ok(res) => res.map_err(|e| Box::new(e) as _).context(Channel),
+        Ok(res) => res.box_err().context(Channel),
         Err(_) => ReceiveFromWorker {
             table: &table_data.name,
             worker_id: table_data.write_handle.worker_id(),
@@ -553,7 +550,7 @@ pub async fn join_all<T, E: std::error::Error + Send + Sync + 'static>(
         let table_data = &table_vec[pos];
         match res {
             Ok(res) => {
-                res.map_err(|e| Box::new(e) as _).context(Channel)?;
+                res.box_err().context(Channel)?;
             }
             Err(_) => {
                 return ReceiveFromWorker {
@@ -910,7 +907,7 @@ impl WriteWorker {
                 TableAlterSchemaPolicy::Unknown,
             )
             .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .map_err(|e| Box::new(e) as GenericError)
             .context(Channel);
         if let Err(res) = tx.send(alter_res) {
             error!(

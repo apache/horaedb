@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use common_util::error::BoxError;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -202,19 +203,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     for catalog in instance
                         .catalog_manager
                         .all_catalogs()
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(Internal)?
                     {
-                        for schema in catalog
-                            .all_schemas()
-                            .map_err(|e| Box::new(e) as _)
-                            .context(Internal)?
-                        {
-                            for table in schema
-                                .all_tables()
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Internal)?
-                            {
+                        for schema in catalog.all_schemas().box_err().context(Internal)? {
+                            for table in schema.all_tables().box_err().context(Internal)? {
                                 tables.push(table);
                             }
                         }

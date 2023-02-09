@@ -21,6 +21,7 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchemaWithKey, Schema, Version},
 };
+use common_util::error::{BoxError, GenericError};
 use proto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -74,66 +75,37 @@ pub enum Error {
     },
 
     #[snafu(display("Unexpected error, err:{}", source))]
-    Unexpected {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Unexpected { source: GenericError },
 
     #[snafu(display("Unexpected error, msg:{}", msg))]
     UnexpectedWithMsg { msg: String },
 
     #[snafu(display("Invalid arguments, err:{}", source))]
-    InvalidArguments {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidArguments { table: String, source: GenericError },
 
     #[snafu(display("Failed to write table, table:{}, err:{}", table, source))]
-    Write {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Write { table: String, source: GenericError },
 
     #[snafu(display("Failed to scan table, table:{}, err:{}", table, source))]
-    Scan {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Scan { table: String, source: GenericError },
 
     #[snafu(display("Failed to get table, table:{}, err:{}", table, source))]
-    Get {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Get { table: String, source: GenericError },
 
     #[snafu(display("Failed to alter schema, table:{}, err:{}", table, source))]
-    AlterSchema {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    AlterSchema { table: String, source: GenericError },
 
     #[snafu(display("Failed to alter options, table:{}, err:{}", table, source))]
-    AlterOptions {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    AlterOptions { table: String, source: GenericError },
 
     #[snafu(display("Failed to flush table, table:{}, err:{}", table, source))]
-    Flush {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Flush { table: String, source: GenericError },
 
     #[snafu(display("Failed to compact table, table:{}, err:{}", table, source))]
-    Compact {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Compact { table: String, source: GenericError },
 
     #[snafu(display("Failed to convert read request to pb, msg:{}, err:{}", msg, source))]
-    ReadRequestToPb {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ReadRequestToPb { msg: String, source: GenericError },
 
     #[snafu(display("Empty read options.\nBacktrace:\n{}", backtrace))]
     EmptyReadOptions { backtrace: Backtrace },
@@ -145,24 +117,16 @@ pub enum Error {
     EmptyPredicate { backtrace: Backtrace },
 
     #[snafu(display("Failed to covert projected schema, err:{}", source))]
-    ConvertProjectedSchema {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ConvertProjectedSchema { source: GenericError },
 
     #[snafu(display("Failed to covert predicate, err:{}", source))]
-    ConvertPredicate {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ConvertPredicate { source: GenericError },
 
     #[snafu(display("Failed to create partition rule, err:{}", source))]
-    CreatePartitionRule {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CreatePartitionRule { source: GenericError },
 
     #[snafu(display("Failed to locate partitions, err:{}", source))]
-    LocatePartitions {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    LocatePartitions { source: GenericError },
 }
 
 define_result!(Error);
@@ -430,17 +394,18 @@ impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
-        let predicate_pb = request
-            .predicate
-            .as_ref()
-            .try_into()
-            .map_err(|e| Box::new(e) as _)
-            .context(ReadRequestToPb {
-                msg: format!(
-                    "convert predicate failed, predicate:{:?}",
-                    request.predicate
-                ),
-            })?;
+        let predicate_pb =
+            request
+                .predicate
+                .as_ref()
+                .try_into()
+                .box_err()
+                .context(ReadRequestToPb {
+                    msg: format!(
+                        "convert predicate failed, predicate:{:?}",
+                        request.predicate
+                    ),
+                })?;
 
         Ok(Self {
             request_id: request.request_id.as_u64(),
@@ -461,13 +426,13 @@ impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
             .projected_schema
             .context(EmptyProjectedSchema)?
             .try_into()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ConvertProjectedSchema)?;
         let predicate = Arc::new(
             pb.predicate
                 .context(EmptyPredicate)?
                 .try_into()
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ConvertPredicate)?,
         );
         let order = if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {

@@ -5,7 +5,7 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
@@ -19,14 +19,10 @@ use crate::functions::{ScalarValue, ScalarValueRef};
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to get state, err:{}", source))]
-    GetState {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    GetState { source: GenericError },
 
     #[snafu(display("Failed to merge state, err:{}", source))]
-    MergeState {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    MergeState { source: GenericError },
 }
 
 define_result!(Error);

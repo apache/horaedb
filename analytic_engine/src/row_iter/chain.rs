@@ -7,7 +7,7 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use futures::StreamExt;
 use log::debug;
 use snafu::{ResultExt, Snafu};
@@ -39,9 +39,7 @@ pub enum Error {
     },
 
     #[snafu(display("Fail to poll next record batch, err:{}", source))]
-    PollNextRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    PollNextRecordBatch { source: GenericError },
 }
 
 define_result!(Error);

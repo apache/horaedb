@@ -17,6 +17,7 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchemaRef, DataType, Field, Schema},
 };
+use common_util::error::BoxError;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::sst::writer::{EncodeRecordBatch, Result};
@@ -236,10 +237,7 @@ impl ListArrayBuilder {
             .null_bit_buffer(Some(null_buffer.into()));
 
         builder = self.apply_child_data_buffer(builder, offsets)?;
-        let values_array_data = builder
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+        let values_array_data = builder.build().box_err().context(EncodeRecordBatch)?;
 
         Ok(values_array_data)
     }
@@ -346,7 +344,7 @@ impl ListArrayBuilder {
             ))),
             typ => VariableLengthType { type_name: typ }
                 .fail()
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch),
         }
     }
@@ -436,10 +434,7 @@ impl ListArrayBuilder {
         // TODO: change to unsafe version?
         // https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#192
         // let array_data = unsafe { array_data.build_unchecked() };
-        let array_data = array_data
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+        let array_data = array_data.build().box_err().context(EncodeRecordBatch)?;
 
         Ok(ListArray::from(array_data))
     }
@@ -516,7 +511,7 @@ fn build_hybrid_record(
     .collect::<Vec<_>>();
 
     ArrowRecordBatch::try_new(arrow_schema, all_columns)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(EncodeRecordBatch)
 }
 

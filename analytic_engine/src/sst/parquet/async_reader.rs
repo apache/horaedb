@@ -18,7 +18,7 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use common_util::{
-    error::GenericResult,
+    error::{BoxError, GenericResult},
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
@@ -241,7 +241,7 @@ impl<'a> Reader<'a> {
         let row_projector = self
             .projected_schema
             .try_project_with_key(&meta_data.custom().schema)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Projection)?;
         self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
@@ -301,7 +301,7 @@ impl<'a> Reader<'a> {
 
             let ignore_bloom_filter = avoid_update_cache && empty_predicate;
             MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(DecodeSstMeta)?
         };
 
@@ -451,10 +451,7 @@ struct ChunkReaderAdapter<'a> {
 #[async_trait]
 impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
     async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
-        self.store
-            .get_range(self.path, range)
-            .await
-            .map_err(|e| Box::new(e) as _)
+        self.store.get_range(self.path, range).await.box_err()
     }
 }
 
@@ -505,17 +502,14 @@ impl Stream for RecordBatchProjector {
 
         match projector.stream.poll_next_unpin(cx) {
             Poll::Ready(Some(record_batch)) => {
-                match record_batch
-                    .map_err(|e| Box::new(e) as _)
-                    .context(DecodeRecordBatch {})
-                {
+                match record_batch.box_err().context(DecodeRecordBatch {}) {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
                         let parquet_decoder =
                             ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(DecodeRecordBatch)?;
 
                         projector.row_num += record_batch.num_rows();
@@ -523,7 +517,7 @@ impl Stream for RecordBatchProjector {
                         let projected_batch = projector
                             .row_projector
                             .project_to_record_batch_with_key(record_batch)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
