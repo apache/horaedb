@@ -476,7 +476,7 @@ mod tests {
     use async_trait::async_trait;
     use common_util::runtime::{self, Runtime};
 
-    use super::{AsyncLogIterator, BatchLogIteratorAdapter, SyncLogIterator};
+    use super::*;
     use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
 
     #[derive(Debug, Clone)]

@@ -42,7 +42,6 @@ use crate::{
         file::FilePurger,
     },
     table::data::{TableData, TableDataRef},
-    wal_synchronizer::{WalSynchronizer, WalSynchronizerConfig},
 };
 
 impl Instance {
@@ -74,10 +73,6 @@ impl Instance {
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
 
-        let mut wal_synchronizer =
-            WalSynchronizer::new(WalSynchronizerConfig::default(), wal_manager);
-        wal_synchronizer.start(&bg_runtime).await;
-
         let iter_options = IterOptions {
             batch_size: ctx.config.scan_batch_size,
             sst_background_read_parallelism: ctx.config.sst_background_read_parallelism,
@@ -92,7 +87,6 @@ impl Instance {
             write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
             file_purger,
-            wal_synchronizer,
             meta_cache: ctx.meta_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,

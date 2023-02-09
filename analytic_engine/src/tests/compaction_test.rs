@@ -5,10 +5,9 @@
 use common_types::time::Timestamp;
 use table_engine::table::FlushRequest;
 
-use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
 use crate::{
     compaction::SizeTieredCompactionOptions,
-    tests::util::{self, TestEnv},
+    tests::util::{self, EngineContext, MemoryEngineContext, RocksDBEngineContext, TestEnv},
 };
 
 #[test]

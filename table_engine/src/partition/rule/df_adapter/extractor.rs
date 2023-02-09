@@ -117,7 +117,7 @@ mod tests {
     use datafusion::scalar::ScalarValue;
     use datafusion_expr::{col, Expr::Literal};
 
-    use super::{FilterExtractor, *};
+    use super::*;
 
     #[test]
     fn test_key_extractor_basic() {

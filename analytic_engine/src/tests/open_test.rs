@@ -2,8 +2,7 @@
 
 //! Engine open test.
 
-use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
-use crate::tests::util::TestEnv;
+use crate::tests::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext, TestEnv};
 
 #[test]
 fn test_open_engine_rocks() {

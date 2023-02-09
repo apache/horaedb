@@ -187,7 +187,7 @@ mod test {
         HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
     };
 
-    use super::ShowCreateInterpreter;
+    use super::*;
 
     #[test]
     fn test_render_hash_partition_info() {
