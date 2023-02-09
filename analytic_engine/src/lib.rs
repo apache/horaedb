@@ -44,9 +44,6 @@ pub struct Config {
     /// Storage options of the engine
     pub storage: StorageOptions,
 
-    /// WAL path of the engine
-    pub wal_path: String,
-
     /// Batch size to read records from wal to replay
     pub replay_batch_size: usize,
     /// Batch size to replay tables
@@ -96,7 +93,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             storage: Default::default(),
-            wal_path: "/tmp/ceresdb".to_string(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
@@ -114,7 +110,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
-            wal_storage: WalStorageConfig::RocksDB,
+            wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig::default())),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
     }
@@ -238,11 +234,26 @@ pub struct KafkaWalConfig {
     pub wal_config: MessageQueueWalConfig,
 }
 
+/// Config for wal based on rocksDB
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RocksDBConfig {
+    /// path used by rocksdb
+    pub path: String,
+}
+
+impl Default for RocksDBConfig {
+    fn default() -> Self {
+        Self {
+            path: "/tmp/ceresdb".to_string(),
+        }
+    }
+}
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
-    RocksDB,
+    RocksDB(Box<RocksDBConfig>),
     Obkv(Box<ObkvWalConfig>),
     Kafka(Box<KafkaWalConfig>),
 }
