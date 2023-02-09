@@ -238,7 +238,7 @@ pub struct KafkaWalConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
-    /// path used by rocksdb
+    /// Path used by rocksdb
     pub path: String,
 }
 
