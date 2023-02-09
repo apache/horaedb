@@ -75,8 +75,10 @@ datafusion-optimizer = "17.0.0"
 datafusion-proto = "17.0.0"
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
-ethbloom = "0.13.0"
 futures = "0.3"
+xorfilter-rs = { git = "https://github.com/datafuse-extras/xorfilter", features = [
+    "cbordata",
+], tag = "databend-alpha.4" }
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }

@@ -7,7 +7,7 @@ package sst;
 import "common.proto";
 import "analytic_common.proto";
 
-message SstBloomFilter {
+message SstFilter {
   message RowGroupFilter {
     repeated bytes column_filters = 1;
   };
@@ -33,6 +33,6 @@ message ParquetMetaData {
   // The time range of the sst
   common.TimeRange time_range = 4;
   common.TableSchema schema = 5;
-  SstBloomFilter bloom_filter = 6;
+  SstFilter filter = 6;
   repeated uint32 collapsible_cols_idx = 7;
 }

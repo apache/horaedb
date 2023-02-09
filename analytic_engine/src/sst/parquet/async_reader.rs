@@ -44,8 +44,8 @@ use crate::sst::{
     metrics,
     parquet::{
         encoding::ParquetDecoder,
-        meta_data::{BloomFilter, ParquetMetaDataRef},
-        row_group_filter::RowGroupFilter,
+        meta_data::{ParquetMetaDataRef, SstFilter},
+        row_group_filter::RowGroupFilter2,
     },
     reader::{error::*, Result, SstReader},
 };
@@ -147,9 +147,9 @@ impl<'a> Reader<'a> {
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        bloom_filter: Option<&BloomFilter>,
+        bloom_filter: Option<&SstFilter>,
     ) -> Result<Vec<usize>> {
-        let filter = RowGroupFilter::try_new(
+        let filter = RowGroupFilter2::try_new(
             &schema,
             row_groups,
             bloom_filter.map(|v| v.row_group_filters()),
@@ -172,7 +172,7 @@ impl<'a> Reader<'a> {
         let filtered_row_groups = self.filter_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
-            meta_data.custom().bloom_filter.as_ref(),
+            meta_data.custom().sst_filter.as_ref(),
         )?;
 
         info!(

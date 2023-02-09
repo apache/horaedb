@@ -16,12 +16,13 @@ use log::debug;
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 
+use super::meta_data::RowGroupFilterBuilder;
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
-            meta_data::{BloomFilter, ParquetMetaData, RowGroupBloomFilter},
+            meta_data::{ParquetMetaData, SstFilter},
         },
         writer::{
             self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
@@ -149,33 +150,34 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
-    fn build_bloom_filter(&self) -> BloomFilter {
+    fn build_bloom_filter(&self) -> SstFilter {
         // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
-            return BloomFilter::default();
+            return SstFilter::default();
         }
         let filters = self
             .partitioned_record_batch
             .iter()
             .map(|row_group_batch| {
-                let mut row_group_filter =
-                    RowGroupBloomFilter::with_num_columns(row_group_batch[0].num_columns());
+                let mut builder =
+                    RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
 
                 for partial_batch in row_group_batch {
                     for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                         for row in 0..column.num_rows() {
                             let datum = column.datum(row);
                             let bytes = datum.to_bytes();
-                            row_group_filter.accrue_column_data(col_idx, &bytes);
+                            builder.add_key(col_idx, &bytes);
                         }
                     }
                 }
 
-                row_group_filter
+                // remove unwrap
+                builder.build().unwrap()
             })
             .collect::<Vec<_>>();
 
-        BloomFilter::new(filters)
+        SstFilter::new(filters)
     }
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
@@ -184,7 +186,7 @@ impl RecordBytesReader {
         let parquet_meta_data = {
             let bloom_filter = self.build_bloom_filter();
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.bloom_filter = Some(bloom_filter);
+            parquet_meta_data.sst_filter = Some(bloom_filter);
             parquet_meta_data
         };
 
@@ -393,7 +395,7 @@ mod tests {
                     .clone();
                 // bloom filter is built insider sst writer, so overwrite to default for
                 // comparison.
-                sst_meta_readback.bloom_filter = Default::default();
+                sst_meta_readback.sst_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,

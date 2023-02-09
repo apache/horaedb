@@ -16,7 +16,7 @@ use parquet_ext::prune::{
 use snafu::ensure;
 
 use crate::sst::{
-    parquet::meta_data::RowGroupBloomFilter,
+    parquet::meta_data::RowGroupFilter,
     reader::error::{OtherNoCause, Result},
 };
 
@@ -24,18 +24,18 @@ use crate::sst::{
 ///
 /// Currently, two kinds of filters will be applied to such filtering:
 /// min max & bloom filter.
-pub struct RowGroupFilter<'a> {
+pub struct RowGroupFilter2<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
-    blooms: Option<&'a [RowGroupBloomFilter]>,
+    blooms: Option<&'a [RowGroupFilter]>,
     predicates: &'a [Expr],
 }
 
-impl<'a> RowGroupFilter<'a> {
+impl<'a> RowGroupFilter2<'a> {
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
-        blooms: Option<&'a [RowGroupBloomFilter]>,
+        blooms: Option<&'a [RowGroupFilter]>,
         predicates: &'a [Expr],
     ) -> Result<Self> {
         if let Some(blooms) = blooms {
@@ -94,7 +94,7 @@ impl<'a> RowGroupFilter<'a> {
     }
 
     /// Filter row groups according to the bloom filter.
-    fn filter_by_bloom(&self, row_group_bloom_filters: &[RowGroupBloomFilter]) -> Vec<usize> {
+    fn filter_by_bloom(&self, row_group_bloom_filters: &[RowGroupFilter]) -> Vec<usize> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
@@ -159,7 +159,7 @@ mod tests {
 
         for (row_groups0, row_groups1, expect_row_groups) in test_cases {
             let real_row_groups =
-                RowGroupFilter::intersect_filtered_row_groups(&row_groups0, &row_groups1);
+                RowGroupFilter2::intersect_filtered_row_groups(&row_groups0, &row_groups1);
             assert_eq!(real_row_groups, expect_row_groups)
         }
     }
