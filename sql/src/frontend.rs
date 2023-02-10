@@ -4,7 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::storage::PrometheusQueryRequest;
+use ceresdbproto::prometheus::Expr as PromExpr;
 use common_types::request_id::RequestId;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;
@@ -85,8 +85,8 @@ impl<P> Frontend<P> {
     }
 
     /// Parse the request and returns the Expr
-    pub fn parse_promql(&self, _ctx: &mut Context, req: PrometheusQueryRequest) -> Result<Expr> {
-        let expr = req.expr.context(ExprNotFoundInPromRequest)?;
+    pub fn parse_promql(&self, _ctx: &mut Context, expr: Option<PromExpr>) -> Result<Expr> {
+        let expr = expr.context(ExprNotFoundInPromRequest)?;
         Expr::try_from(expr).context(InvalidPromRequest)
     }
 }

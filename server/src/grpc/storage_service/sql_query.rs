@@ -92,8 +92,9 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
         return None;
     }
 
+    let req_ctx = req.context.as_ref().unwrap();
     let forward_req = ForwardRequest {
-        schema: ctx.schema.clone(),
+        schema: req_ctx.database.clone(),
         table: req.tables[0].clone(),
         req: req.clone().into_request(),
     };
@@ -155,20 +156,21 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     info!(
-        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}, request:{:?}",
+        "Grpc handle query begin, catalog:{}, request_id:{}, request:{:?}",
         ctx.catalog(),
-        ctx.schema(),
         request_id,
         req,
     );
 
+    let req_ctx = req.context.as_ref().unwrap();
+    let schema = &req_ctx.database;
     let instance = &ctx.instance;
     // TODO(yingwen): Privilege check, cannot access data of other tenant
     // TODO(yingwen): Maybe move MetaProvider to instance
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: ctx.schema(),
+        default_schema: &schema,
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
@@ -240,7 +242,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
+        .default_catalog_and_schema(ctx.catalog().to_string(), schema.clone())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
@@ -279,7 +281,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     info!(
         "Grpc handle query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
         ctx.catalog(),
-        ctx.schema(),
+        schema,
         request_id,
         begin_instant.saturating_elapsed().as_millis(),
         req,

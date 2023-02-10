@@ -9,7 +9,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
+use ceresdbproto::storage::{
+    storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
+};
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde_derive::Deserialize;
@@ -18,8 +20,6 @@ use tonic::{
     metadata::errors::InvalidMetadataValue,
     transport::{self, Channel},
 };
-
-use crate::consts::SCHEMA_HEADER;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -286,11 +286,11 @@ impl<B: ClientBuilder> Forwarder<B> {
         } = forward_req;
 
         let route_req = RouteRequest {
-            context: None,
+            context: Some(RequestContext { database: schema }),
             tables: vec![table],
         };
 
-        let endpoint = match self.router.route(&schema, route_req).await {
+        let endpoint = match self.router.route(route_req).await {
             Ok(mut routes) => {
                 if routes.len() != 1 || routes[0].endpoint.is_none() {
                     warn!(
@@ -316,11 +316,6 @@ impl<B: ClientBuilder> Forwarder<B> {
         {
             // TODO: we should use the timeout from the original request.
             req.set_timeout(self.config.forward_timeout);
-            let metadata = req.metadata_mut();
-            metadata.insert(
-                SCHEMA_HEADER,
-                schema.parse().context(InvalidSchema { schema })?,
-            );
         }
 
         // TODO: add metrics to record the forwarding.
@@ -399,7 +394,7 @@ mod tests {
 
     #[async_trait]
     impl Router for MockRouter {
-        async fn route(&self, _schema: &str, req: RouteRequest) -> router::Result<Vec<Route>> {
+        async fn route(&self, req: RouteRequest) -> router::Result<Vec<Route>> {
             let endpoint = self.routing_tables.get(&req.tables[0]);
             match endpoint {
                 None => Ok(vec![]),
@@ -465,7 +460,9 @@ mod tests {
 
         let make_forward_req = |table: &str| {
             let query_request = SqlQueryRequest {
-                context: None,
+                context: Some(RequestContext {
+                    database: DEFAULT_SCHEMA.to_string(),
+                }),
                 tables: vec![table.to_string()],
                 sql: "".to_string(),
             };
@@ -477,9 +474,8 @@ mod tests {
         };
 
         let do_rpc = |_client, req: tonic::Request<SqlQueryRequest>, endpoint: &Endpoint| {
-            let schema = req.metadata().get(SCHEMA_HEADER).unwrap().to_str().unwrap();
-            assert_eq!(schema, DEFAULT_SCHEMA);
             let req = req.into_inner();
+            assert_eq!(req.context.unwrap().database, DEFAULT_SCHEMA);
             let expect_endpoint = mock_router.routing_tables.get(&req.tables[0]).unwrap();
             assert_eq!(expect_endpoint, endpoint);
 

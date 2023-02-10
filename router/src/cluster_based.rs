@@ -34,9 +34,10 @@ fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
 
 #[async_trait]
 impl Router for ClusterBasedRouter {
-    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+        let req_ctx = req.context.unwrap();
         let route_tables_req = RouteTablesRequest {
-            schema_name: schema.to_string(),
+            schema_name: req_ctx.database,
             table_names: req.tables,
         };
         let route_resp = self

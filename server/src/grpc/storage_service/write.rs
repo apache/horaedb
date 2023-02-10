@@ -45,8 +45,16 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
     let catalog = ctx.catalog();
-    let schema = ctx.schema();
-    let schema_config = ctx.schema_config;
+    let req_ctx = req.context.unwrap();
+    let schema = req_ctx.database;
+    let schema_config = ctx
+        .schema_config_provider
+        .schema_config(&schema)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("fail to fetch schema config, schema_name:{}", schema),
+        })?;
 
     debug!(
         "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
@@ -62,7 +70,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let plan_vec = write_request_to_insert_plan(
         request_id,
         catalog,
-        schema,
+        &schema,
         ctx.instance.clone(),
         req.table_requests,
         schema_config,
@@ -75,7 +83,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         success += execute_plan(
             request_id,
             catalog,
-            schema,
+            &schema,
             ctx.instance.clone(),
             insert_plan,
             deadline,

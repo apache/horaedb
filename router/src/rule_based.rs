@@ -138,7 +138,9 @@ impl RuleBasedRouter {
 
 #[async_trait]
 impl Router for RuleBasedRouter {
-    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>> {
+    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
+        let req_ctx = req.context.unwrap();
+        let schema = &req_ctx.database;
         if let Some(shard_nodes) = self.cluster_view.schema_shards.get(schema) {
             ensure!(!shard_nodes.is_empty(), RouteNotFound { schema });
 

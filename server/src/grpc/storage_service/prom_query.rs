@@ -50,13 +50,14 @@ where
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
+    let req_ctx = req.context.unwrap();
+    let schema = req_ctx.database;
 
     debug!(
-        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}, request:{:?}",
+        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}",
         ctx.catalog(),
-        ctx.schema(),
+        &schema,
         request_id,
-        req,
     );
 
     let instance = &ctx.instance;
@@ -65,14 +66,14 @@ where
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: ctx.schema(),
+        default_schema: &schema,
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
 
     let mut sql_ctx = SqlContext::new(request_id, deadline);
     let expr = frontend
-        .parse_promql(&mut sql_ctx, req)
+        .parse_promql(&mut sql_ctx, req.expr)
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
@@ -106,7 +107,7 @@ where
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
+        .default_catalog_and_schema(ctx.catalog().to_string(), schema.to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
