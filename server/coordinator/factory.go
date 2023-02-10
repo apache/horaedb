@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package procedure
+package coordinator
 
 import (
 	"context"
@@ -9,6 +9,14 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/createpartitiontable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/createtable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/droppartitiontable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/dml/droptable"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/split"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/transferleader"
 	"github.com/CeresDB/ceresmeta/server/id"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
@@ -20,7 +28,7 @@ const defaultPartitionTableNum = 1
 type Factory struct {
 	idAllocator    id.Allocator
 	dispatch       eventdispatch.Dispatch
-	storage        Storage
+	storage        procedure.Storage
 	clusterManager cluster.Manager
 	shardPicker    ShardPicker
 
@@ -41,15 +49,8 @@ type CreateTableRequest struct {
 	OnFailed    func(error) error
 }
 
-func (request *CreateTableRequest) isPartitionTable() (bool, error) {
-	if request.SourceReq.PartitionTableInfo != nil {
-		if len(request.SourceReq.PartitionTableInfo.SubTableNames) == 0 {
-			log.Error("fail to create table", zap.Error(ErrEmptyPartitionNames))
-			return false, ErrEmptyPartitionNames
-		}
-		return true, nil
-	}
-	return false, nil
+func (request *CreateTableRequest) isPartitionTable() bool {
+	return request.SourceReq.PartitionTableInfo != nil
 }
 
 type DropTableRequest struct {
@@ -92,7 +93,7 @@ type CreatePartitionTableRequest struct {
 	OnFailed    func(error) error
 }
 
-func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage Storage, manager cluster.Manager, partitionTableProportionOfNodes float32) *Factory {
+func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage, manager cluster.Manager, partitionTableProportionOfNodes float32) *Factory {
 	return &Factory{
 		idAllocator:                     allocator,
 		dispatch:                        dispatch,
@@ -103,20 +104,17 @@ func NewFactory(allocator id.Allocator, dispatch eventdispatch.Dispatch, storage
 	}
 }
 
-func (f *Factory) CreateScatterProcedure(ctx context.Context, request ScatterRequest) (Procedure, error) {
+func (f *Factory) CreateScatterProcedure(ctx context.Context, request ScatterRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	procedure := NewScatterProcedure(f.dispatch, request.Cluster, id, request.ShardIDs)
+	procedure := scatter.NewProcedure(f.dispatch, request.Cluster, id, request.ShardIDs)
 	return procedure, nil
 }
 
-func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
-	isPartitionTable, err := request.isPartitionTable()
-	if err != nil {
-		return nil, err
-	}
+func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (procedure.Procedure, error) {
+	isPartitionTable := request.isPartitionTable()
 
 	if isPartitionTable {
 		return f.makeCreatePartitionTableProcedure(ctx, CreatePartitionTableRequest{
@@ -131,7 +129,7 @@ func (f *Factory) MakeCreateTableProcedure(ctx context.Context, request CreateTa
 	return f.makeCreateTableProcedure(ctx, request)
 }
 
-func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (Procedure, error) {
+func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTableRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -143,10 +141,10 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 	if len(shards) != 1 {
 		log.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
-		return nil, errors.WithMessagef(ErrPickShard, "pick table shard, shards length:%d", len(shards))
+		return nil, errors.WithMessagef(procedure.ErrPickShard, "pick table shard, shards length:%d", len(shards))
 	}
 
-	procedure := NewCreateTableProcedure(CreateTableProcedureRequest{
+	procedure := createtable.NewProcedure(createtable.ProcedureRequest{
 		Dispatch:    f.dispatch,
 		Cluster:     request.Cluster,
 		ID:          id,
@@ -158,7 +156,7 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	return procedure, nil
 }
 
-func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request CreatePartitionTableRequest) (Procedure, error) {
+func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request CreatePartitionTableRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -175,7 +173,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		nodeNames[nodeShard.ShardNode.NodeName] = 1
 	}
 
-	partitionTableNum := Max(defaultPartitionTableNum, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
+	partitionTableNum := procedure.Max(defaultPartitionTableNum, int(float32(len(nodeNames))*request.PartitionTableRatioOfNodes))
 
 	partitionTableShards, err := f.shardPicker.PickShards(ctx, request.Cluster.Name(), partitionTableNum, false)
 	if err != nil {
@@ -187,28 +185,28 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		return nil, errors.WithMessage(err, "pick data table shards")
 	}
 
-	procedure := NewCreatePartitionTableProcedure(CreatePartitionTableProcedureRequest{
-		id:                   id,
-		cluster:              request.Cluster,
-		dispatch:             f.dispatch,
-		storage:              f.storage,
-		req:                  request.SourceReq,
-		partitionTableShards: partitionTableShards,
-		subTablesShards:      subTableShards,
-		onSucceeded:          request.OnSucceeded,
-		onFailed:             request.OnFailed,
+	procedure := createpartitiontable.NewProcedure(createpartitiontable.ProcedureRequest{
+		ID:                   id,
+		Cluster:              request.Cluster,
+		Dispatch:             f.dispatch,
+		Storage:              f.storage,
+		Req:                  request.SourceReq,
+		PartitionTableShards: partitionTableShards,
+		SubTablesShards:      subTableShards,
+		OnSucceeded:          request.OnSucceeded,
+		OnFailed:             request.OnFailed,
 	})
 	return procedure, nil
 }
 
-func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTableRequest) (Procedure, error) {
+func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTableRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if request.IsPartitionTable() {
-		req := DropPartitionTableProcedureRequest{
+		req := droppartitiontable.ProcedureRequest{
 			ID:          id,
 			Cluster:     request.Cluster,
 			Dispatch:    f.dispatch,
@@ -217,16 +215,16 @@ func (f *Factory) CreateDropTableProcedure(ctx context.Context, request DropTabl
 			OnSucceeded: request.OnSucceeded,
 			OnFailed:    request.OnFailed,
 		}
-		procedure := NewDropPartitionTableProcedure(req)
+		procedure := droppartitiontable.NewProcedure(req)
 		return procedure, nil
 	}
 
-	procedure := NewDropTableProcedure(f.dispatch, request.Cluster, id,
+	procedure := droptable.NewDropTableProcedure(f.dispatch, request.Cluster, id,
 		request.SourceReq, request.OnSucceeded, request.OnFailed)
 	return procedure, nil
 }
 
-func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request TransferLeaderRequest) (Procedure, error) {
+func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request TransferLeaderRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -238,11 +236,11 @@ func (f *Factory) CreateTransferLeaderProcedure(ctx context.Context, request Tra
 		return nil, cluster.ErrClusterNotFound
 	}
 
-	return NewTransferLeaderProcedure(f.dispatch, c, f.storage,
+	return transferleader.NewProcedure(f.dispatch, c, f.storage,
 		request.ShardID, request.OldLeaderNodeName, request.NewLeaderNodeName, id)
 }
 
-func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest) (Procedure, error) {
+func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest) (procedure.Procedure, error) {
 	id, err := f.allocProcedureID(ctx)
 	if err != nil {
 		return nil, err
@@ -254,7 +252,7 @@ func (f *Factory) CreateSplitProcedure(ctx context.Context, request SplitRequest
 		return nil, cluster.ErrClusterNotFound
 	}
 
-	procedure := NewSplitProcedure(id, f.dispatch, f.storage, c, request.SchemaName, request.ShardID, request.NewShardID, request.TableNames, request.TargetNodeName)
+	procedure := split.NewProcedure(id, f.dispatch, f.storage, c, request.SchemaName, request.ShardID, request.NewShardID, request.TableNames, request.TargetNodeName)
 	return procedure, nil
 }
 

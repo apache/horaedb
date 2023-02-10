@@ -15,6 +15,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/member"
 	"github.com/CeresDB/ceresmeta/server/storage"
@@ -42,7 +43,7 @@ func NewService(opTimeout time.Duration, h Handler) *Service {
 type Handler interface {
 	GetClusterManager() cluster.Manager
 	GetLeader(ctx context.Context) (*member.GetLeaderResp, error)
-	GetProcedureFactory() *procedure.Factory
+	GetProcedureFactory() *coordinator.Factory
 	GetProcedureManager() procedure.Manager
 
 	// TODO: define the methods for handling other grpc requests.
@@ -157,7 +158,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	log.Info("[CreateTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.GetName()))
 
 	clusterManager := s.h.GetClusterManager()
-	factory := s.h.GetProcedureFactory()
+	f := s.h.GetProcedureFactory()
 	manager := s.h.GetProcedureManager()
 	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
@@ -177,7 +178,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		return nil
 	}
 
-	p, err := factory.MakeCreateTableProcedure(ctx, procedure.CreateTableRequest{
+	p, err := f.MakeCreateTableProcedure(ctx, coordinator.CreateTableRequest{
 		Cluster:     c,
 		SourceReq:   req,
 		OnSucceeded: onSucceeded,
@@ -230,7 +231,7 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 	log.Info("[DropTable]", zap.String("schemaName", req.SchemaName), zap.String("clusterName", req.GetHeader().ClusterName), zap.String("tableName", req.Name))
 
 	clusterManager := s.h.GetClusterManager()
-	factory := s.h.GetProcedureFactory()
+	f := s.h.GetProcedureFactory()
 	manager := s.h.GetProcedureManager()
 	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
@@ -250,7 +251,7 @@ func (s *Service) DropTable(ctx context.Context, req *metaservicepb.DropTableReq
 		return nil
 	}
 
-	procedure, err := factory.CreateDropTableProcedure(ctx, procedure.DropTableRequest{
+	procedure, err := f.CreateDropTableProcedure(ctx, coordinator.DropTableRequest{
 		Cluster:     c,
 		SourceReq:   req,
 		OnSucceeded: onSucceeded,

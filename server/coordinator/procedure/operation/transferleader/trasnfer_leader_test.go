@@ -1,11 +1,13 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package procedure
+package transferleader
 
 import (
 	"context"
 	"testing"
 
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/operation/scatter"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
@@ -13,9 +15,9 @@ import (
 func TestTransferLeader(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
-	dispatch := MockDispatch{}
-	_, c := prepare(t)
-	s := NewTestStorage(t)
+	dispatch := test.MockDispatch{}
+	_, c := scatter.Prepare(t)
+	s := test.NewTestStorage(t)
 
 	getNodeShardsResult, err := c.GetNodeShards(ctx)
 	re.NoError(err)
@@ -36,9 +38,9 @@ func TestTransferLeader(t *testing.T) {
 	}
 	re.Equal(true, found)
 
-	procedure, err := NewTransferLeaderProcedure(dispatch, c, s, shardID, oldLeaderNodeName, newLeaderNodeName, uint64(1))
+	p, err := NewProcedure(dispatch, c, s, shardID, oldLeaderNodeName, newLeaderNodeName, uint64(1))
 	re.NoError(err)
-	err = procedure.Start(ctx)
+	err = p.Start(ctx)
 	re.NoError(err)
 
 	shardNodes, err := c.GetShardNodesByShardID(shardID)

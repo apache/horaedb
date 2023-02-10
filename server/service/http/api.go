@@ -13,6 +13,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/coderr"
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/coordinator"
 	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"go.uber.org/zap"
@@ -28,12 +29,12 @@ const (
 type API struct {
 	clusterManager   cluster.Manager
 	procedureManager procedure.Manager
-	procedureFactory *procedure.Factory
+	procedureFactory *coordinator.Factory
 
 	forwardClient *ForwardClient
 }
 
-func NewAPI(procedureManager procedure.Manager, procedureFactory *procedure.Factory, clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
+func NewAPI(procedureManager procedure.Manager, procedureFactory *coordinator.Factory, clusterManager cluster.Manager, forwardClient *ForwardClient) *API {
 	return &API{
 		procedureManager: procedureManager,
 		procedureFactory: procedureFactory,
@@ -182,7 +183,7 @@ func (a *API) transferLeader(writer http.ResponseWriter, req *http.Request) {
 	}
 	log.Info("transfer leader request", zap.String("request", fmt.Sprintf("%+v", transferLeaderRequest)))
 
-	transferLeaderProcedure, err := a.procedureFactory.CreateTransferLeaderProcedure(req.Context(), procedure.TransferLeaderRequest{
+	transferLeaderProcedure, err := a.procedureFactory.CreateTransferLeaderProcedure(req.Context(), coordinator.TransferLeaderRequest{
 		ClusterName:       transferLeaderRequest.ClusterName,
 		ShardID:           storage.ShardID(transferLeaderRequest.ShardID),
 		OldLeaderNodeName: transferLeaderRequest.OldLeaderNodeName,
@@ -298,7 +299,7 @@ func (a *API) split(writer http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	splitProcedure, err := a.procedureFactory.CreateSplitProcedure(ctx, procedure.SplitRequest{
+	splitProcedure, err := a.procedureFactory.CreateSplitProcedure(ctx, coordinator.SplitRequest{
 		ClusterName:    splitRequest.ClusterName,
 		SchemaName:     splitRequest.SchemaName,
 		TableNames:     splitRequest.SplitTables,

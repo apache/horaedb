@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package procedure
+package transferleader
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
 	"github.com/CeresDB/ceresmeta/server/coordinator/eventdispatch"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
@@ -19,40 +20,40 @@ import (
 // fsm state change: Begin -> UpdateMetadata -> CloseOldLeader -> OpenNewLeader -> Finish
 // TODO: add more detailed comments.
 const (
-	eventTransferLeaderUpdateMetadata = "EventTransferLeaderUpdateMetadata"
-	eventTransferLeaderCloseOldLeader = "EventTransferLeaderCloseOldLeader"
-	eventTransferLeaderOpenNewLeader  = "EventTransferLeaderOpenNewLeader"
-	eventTransferLeaderFinish         = "EventTransferLeaderFinish"
+	eventUpdateMetadata = "EventUpdateMetadata"
+	eventCloseOldLeader = "EventCloseOldLeader"
+	eventOpenNewLeader  = "EventOpenNewLeader"
+	eventFinish         = "EventFinish"
 
-	stateTransferLeaderBegin          = "StateTransferLeaderBegin"
-	stateTransferLeaderUpdateMetadata = "StateTransferLeaderUpdateMetadata"
-	stateTransferLeaderCloseOldLeader = "StateTransferLeaderCloseOldLeader"
-	stateTransferLeaderOpenNewLeader  = "StateTransferLeaderOpenNewLeader"
-	stateTransferLeaderFinish         = "StateTransferLeaderFinish"
+	stateBegin          = "StateBegin"
+	stateUpdateMetadata = "StateUpdateMetadata"
+	stateCloseOldLeader = "StateCloseOldLeader"
+	stateOpenNewLeader  = "StateOpenNewLeader"
+	stateFinish         = "StateFinish"
 )
 
 var (
 	transferLeaderEvents = fsm.Events{
-		{Name: eventTransferLeaderUpdateMetadata, Src: []string{stateTransferLeaderBegin}, Dst: stateTransferLeaderUpdateMetadata},
-		{Name: eventTransferLeaderCloseOldLeader, Src: []string{stateTransferLeaderUpdateMetadata}, Dst: stateTransferLeaderCloseOldLeader},
-		{Name: eventTransferLeaderOpenNewLeader, Src: []string{stateTransferLeaderCloseOldLeader}, Dst: stateTransferLeaderOpenNewLeader},
-		{Name: eventTransferLeaderFinish, Src: []string{stateTransferLeaderOpenNewLeader}, Dst: stateTransferLeaderFinish},
+		{Name: eventUpdateMetadata, Src: []string{stateBegin}, Dst: stateUpdateMetadata},
+		{Name: eventCloseOldLeader, Src: []string{stateUpdateMetadata}, Dst: stateCloseOldLeader},
+		{Name: eventOpenNewLeader, Src: []string{stateCloseOldLeader}, Dst: stateOpenNewLeader},
+		{Name: eventFinish, Src: []string{stateOpenNewLeader}, Dst: stateFinish},
 	}
 	transferLeaderCallbacks = fsm.Callbacks{
-		eventTransferLeaderUpdateMetadata: transferLeaderUpdateMetadataCallback,
-		eventTransferLeaderCloseOldLeader: transferLeaderCloseOldLeaderCallback,
-		eventTransferLeaderOpenNewLeader:  transferLeaderOpenNewShardCallback,
-		eventTransferLeaderFinish:         transferLeaderFinishCallback,
+		eventUpdateMetadata: updateMetadataCallback,
+		eventCloseOldLeader: closeOldLeaderCallback,
+		eventOpenNewLeader:  openNewShardCallback,
+		eventFinish:         finishCallback,
 	}
 )
 
-type TransferLeaderProcedure struct {
+type Procedure struct {
 	id  uint64
 	fsm *fsm.FSM
 
 	cluster  *cluster.Cluster
 	dispatch eventdispatch.Dispatch
-	storage  Storage
+	storage  procedure.Storage
 
 	shardID           storage.ShardID
 	oldLeaderNodeName string
@@ -60,22 +61,22 @@ type TransferLeaderProcedure struct {
 
 	// Protect the state.
 	lock  sync.RWMutex
-	state State
+	state procedure.State
 }
 
-// TransferLeaderProcedurePersistRawData used for storage, procedure will be converted to persist raw data before saved in storage.
-type TransferLeaderProcedurePersistRawData struct {
+// rawData used for storage, procedure will be converted to persist raw data before saved in storage.
+type rawData struct {
 	ID       uint64
 	FsmState string
-	State    State
+	State    procedure.State
 
 	ShardID           storage.ShardID
 	OldLeaderNodeName string
 	NewLeaderNodeName string
 }
 
-// TransferLeaderCallbackRequest is fsm callbacks param.
-type TransferLeaderCallbackRequest struct {
+// callbackRequest is fsm callbacks param.
+type callbackRequest struct {
 	cluster  *cluster.Cluster
 	ctx      context.Context
 	dispatch eventdispatch.Dispatch
@@ -85,7 +86,7 @@ type TransferLeaderCallbackRequest struct {
 	newLeaderNodeName string
 }
 
-func NewTransferLeaderProcedure(dispatch eventdispatch.Dispatch, c *cluster.Cluster, s Storage, shardID storage.ShardID, oldLeaderNodeName string, newLeaderNodeName string, id uint64) (Procedure, error) {
+func NewProcedure(dispatch eventdispatch.Dispatch, c *cluster.Cluster, s procedure.Storage, shardID storage.ShardID, oldLeaderNodeName string, newLeaderNodeName string, id uint64) (procedure.Procedure, error) {
 	shardNodes, err := c.GetShardNodesByShardID(shardID)
 	if err != nil {
 		log.Error("get shard failed", zap.Error(err))
@@ -105,12 +106,12 @@ func NewTransferLeaderProcedure(dispatch eventdispatch.Dispatch, c *cluster.Clus
 		}
 	}
 	transferLeaderOperationFsm := fsm.NewFSM(
-		stateTransferLeaderBegin,
+		stateBegin,
 		transferLeaderEvents,
 		transferLeaderCallbacks,
 	)
 
-	return &TransferLeaderProcedure{
+	return &Procedure{
 		id:                id,
 		fsm:               transferLeaderOperationFsm,
 		dispatch:          dispatch,
@@ -119,22 +120,22 @@ func NewTransferLeaderProcedure(dispatch eventdispatch.Dispatch, c *cluster.Clus
 		shardID:           shardID,
 		oldLeaderNodeName: oldLeaderNodeName,
 		newLeaderNodeName: newLeaderNodeName,
-		state:             StateInit,
+		state:             procedure.StateInit,
 	}, nil
 }
 
-func (p *TransferLeaderProcedure) ID() uint64 {
+func (p *Procedure) ID() uint64 {
 	return p.id
 }
 
-func (p *TransferLeaderProcedure) Typ() Typ {
-	return TransferLeader
+func (p *Procedure) Typ() procedure.Typ {
+	return procedure.TransferLeader
 }
 
-func (p *TransferLeaderProcedure) Start(ctx context.Context) error {
-	p.updateStateWithLock(StateRunning)
+func (p *Procedure) Start(ctx context.Context) error {
+	p.updateStateWithLock(procedure.StateRunning)
 
-	transferLeaderRequest := TransferLeaderCallbackRequest{
+	transferLeaderRequest := callbackRequest{
 		cluster:           p.cluster,
 		ctx:               ctx,
 		dispatch:          p.dispatch,
@@ -145,41 +146,41 @@ func (p *TransferLeaderProcedure) Start(ctx context.Context) error {
 
 	for {
 		switch p.fsm.Current() {
-		case stateTransferLeaderBegin:
+		case stateBegin:
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "transferLeader procedure persist")
 			}
-			if err := p.fsm.Event(eventTransferLeaderUpdateMetadata, transferLeaderRequest); err != nil {
-				p.updateStateWithLock(StateFailed)
+			if err := p.fsm.Event(eventUpdateMetadata, transferLeaderRequest); err != nil {
+				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure update metadata")
 			}
-		case stateTransferLeaderUpdateMetadata:
+		case stateUpdateMetadata:
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "transferLeader procedure persist")
 			}
-			if err := p.fsm.Event(eventTransferLeaderCloseOldLeader, transferLeaderRequest); err != nil {
-				p.updateStateWithLock(StateFailed)
+			if err := p.fsm.Event(eventCloseOldLeader, transferLeaderRequest); err != nil {
+				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure close old leader")
 			}
-		case stateTransferLeaderCloseOldLeader:
+		case stateCloseOldLeader:
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "transferLeader procedure persist")
 			}
-			if err := p.fsm.Event(eventTransferLeaderOpenNewLeader, transferLeaderRequest); err != nil {
-				p.updateStateWithLock(StateFailed)
+			if err := p.fsm.Event(eventOpenNewLeader, transferLeaderRequest); err != nil {
+				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure open new leader")
 			}
-		case stateTransferLeaderOpenNewLeader:
+		case stateOpenNewLeader:
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "transferLeader procedure persist")
 			}
-			if err := p.fsm.Event(eventTransferLeaderFinish, transferLeaderRequest); err != nil {
-				p.updateStateWithLock(StateFailed)
+			if err := p.fsm.Event(eventFinish, transferLeaderRequest); err != nil {
+				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure finish")
 			}
-		case stateTransferLeaderFinish:
+		case stateFinish:
 			// TODO: The state update sequence here is inconsistent with the previous one. Consider reconstructing the state update logic of the state machine.
-			p.updateStateWithLock(StateFinished)
+			p.updateStateWithLock(procedure.StateFinished)
 			if err := p.persist(ctx); err != nil {
 				return errors.WithMessage(err, "transferLeader procedure persist")
 			}
@@ -188,7 +189,7 @@ func (p *TransferLeaderProcedure) Start(ctx context.Context) error {
 	}
 }
 
-func (p *TransferLeaderProcedure) persist(ctx context.Context) error {
+func (p *Procedure) persist(ctx context.Context) error {
 	meta, err := p.convertToMeta()
 	if err != nil {
 		return errors.WithMessage(err, "convert to meta")
@@ -200,33 +201,33 @@ func (p *TransferLeaderProcedure) persist(ctx context.Context) error {
 	return nil
 }
 
-func (p *TransferLeaderProcedure) Cancel(_ context.Context) error {
-	p.updateStateWithLock(StateCancelled)
+func (p *Procedure) Cancel(_ context.Context) error {
+	p.updateStateWithLock(procedure.StateCancelled)
 	return nil
 }
 
-func (p *TransferLeaderProcedure) State() State {
+func (p *Procedure) State() procedure.State {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 	return p.state
 }
 
-func transferLeaderUpdateMetadataCallback(event *fsm.Event) {
-	request, err := getRequestFromEvent[TransferLeaderCallbackRequest](event)
+func updateMetadataCallback(event *fsm.Event) {
+	req, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		cancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
-	ctx := request.ctx
+	ctx := req.ctx
 
-	if request.cluster.GetClusterState() != storage.ClusterStateStable {
-		cancelEventWithLog(event, cluster.ErrClusterStateInvalid, "cluster state must be stable", zap.Int("currentState", int(request.cluster.GetClusterState())))
+	if req.cluster.GetClusterState() != storage.ClusterStateStable {
+		procedure.CancelEventWithLog(event, cluster.ErrClusterStateInvalid, "cluster state must be stable", zap.Int("currentState", int(req.cluster.GetClusterState())))
 		return
 	}
 
-	getNodeShardResult, err := request.cluster.GetNodeShards(ctx)
+	getNodeShardResult, err := req.cluster.GetNodeShards(ctx)
 	if err != nil {
-		cancelEventWithLog(event, err, "get shardNodes by shardID failed")
+		procedure.CancelEventWithLog(event, err, "get shardNodes by shardID failed")
 		return
 	}
 
@@ -236,29 +237,29 @@ func transferLeaderUpdateMetadataCallback(event *fsm.Event) {
 	for _, shardNodeWithVersion := range getNodeShardResult.NodeShards {
 		if shardNodeWithVersion.ShardNode.ShardRole == storage.ShardRoleLeader {
 			leaderShardNode = shardNodeWithVersion.ShardNode
-			if leaderShardNode.ID == request.shardID {
+			if leaderShardNode.ID == req.shardID {
 				found = true
-				leaderShardNode.NodeName = request.newLeaderNodeName
+				leaderShardNode.NodeName = req.newLeaderNodeName
 			}
 			shardNodes = append(shardNodes, leaderShardNode)
 		}
 	}
 	if !found {
-		cancelEventWithLog(event, ErrShardLeaderNotFound, "shard leader not found", zap.Uint32("shardID", uint32(request.shardID)))
+		procedure.CancelEventWithLog(event, procedure.ErrShardLeaderNotFound, "shard leader not found", zap.Uint32("shardID", uint32(req.shardID)))
 		return
 	}
 
-	err = request.cluster.UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
+	err = req.cluster.UpdateClusterView(ctx, storage.ClusterStateStable, shardNodes)
 	if err != nil {
-		cancelEventWithLog(event, storage.ErrUpdateClusterViewConflict, "update cluster view")
+		procedure.CancelEventWithLog(event, storage.ErrUpdateClusterViewConflict, "update cluster view")
 		return
 	}
 }
 
-func transferLeaderCloseOldLeaderCallback(event *fsm.Event) {
-	request, err := getRequestFromEvent[TransferLeaderCallbackRequest](event)
+func closeOldLeaderCallback(event *fsm.Event) {
+	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		cancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
 	ctx := request.ctx
@@ -267,22 +268,22 @@ func transferLeaderCloseOldLeaderCallback(event *fsm.Event) {
 		ShardID: uint32(request.shardID),
 	}
 	if err := request.dispatch.CloseShard(ctx, request.oldLeaderNodeName, closeShardRequest); err != nil {
-		cancelEventWithLog(event, err, "close shard", zap.Uint32("shardID", uint32(request.shardID)), zap.String("oldLeaderName", request.oldLeaderNodeName))
+		procedure.CancelEventWithLog(event, err, "close shard", zap.Uint32("shardID", uint32(request.shardID)), zap.String("oldLeaderName", request.oldLeaderNodeName))
 		return
 	}
 }
 
-func transferLeaderOpenNewShardCallback(event *fsm.Event) {
-	request, err := getRequestFromEvent[TransferLeaderCallbackRequest](event)
+func openNewShardCallback(event *fsm.Event) {
+	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		cancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
 	ctx := request.ctx
 
 	getNodeShardResult, err := request.cluster.GetNodeShards(ctx)
 	if err != nil {
-		cancelEventWithLog(event, err, "get node shards")
+		procedure.CancelEventWithLog(event, err, "get node shards")
 		return
 	}
 	var preVersion uint64
@@ -297,22 +298,22 @@ func transferLeaderOpenNewShardCallback(event *fsm.Event) {
 	}
 
 	if err := request.dispatch.OpenShard(ctx, request.newLeaderNodeName, openShardRequest); err != nil {
-		cancelEventWithLog(event, err, "open shard", zap.Uint32("shardID", uint32(request.shardID)), zap.String("newLeaderNode", request.newLeaderNodeName))
+		procedure.CancelEventWithLog(event, err, "open shard", zap.Uint32("shardID", uint32(request.shardID)), zap.String("newLeaderNode", request.newLeaderNodeName))
 		return
 	}
 }
 
-func transferLeaderFinishCallback(event *fsm.Event) {
-	request, err := getRequestFromEvent[TransferLeaderCallbackRequest](event)
+func finishCallback(event *fsm.Event) {
+	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		cancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
 
 	log.Info("transfer leader finish", zap.Uint32("shardID", uint32(request.shardID)), zap.String("oldLeaderNode", request.oldLeaderNodeName), zap.String("newLeaderNode", request.newLeaderNodeName))
 }
 
-func (p *TransferLeaderProcedure) updateStateWithLock(state State) {
+func (p *Procedure) updateStateWithLock(state procedure.State) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -320,11 +321,11 @@ func (p *TransferLeaderProcedure) updateStateWithLock(state State) {
 }
 
 // TODO: Consider refactor meta procedure convertor function, encapsulate as a tool function.
-func (p *TransferLeaderProcedure) convertToMeta() (Meta, error) {
+func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
-	rawData := TransferLeaderProcedurePersistRawData{
+	rawData := rawData{
 		ID:                p.id,
 		FsmState:          p.fsm.Current(),
 		ShardID:           p.shardID,
@@ -334,12 +335,12 @@ func (p *TransferLeaderProcedure) convertToMeta() (Meta, error) {
 	}
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
-		return Meta{}, ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.shardID, err)
+		return procedure.Meta{}, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.shardID, err)
 	}
 
-	meta := Meta{
+	meta := procedure.Meta{
 		ID:    p.id,
-		Typ:   TransferLeader,
+		Typ:   procedure.TransferLeader,
 		State: p.state,
 
 		RawData: rawDataBytes,

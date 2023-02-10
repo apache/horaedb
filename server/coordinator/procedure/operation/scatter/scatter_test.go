@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-package procedure
+package scatter
 
 import (
 	"context"
@@ -9,54 +9,17 @@ import (
 	"time"
 
 	"github.com/CeresDB/ceresmeta/server/cluster"
+	"github.com/CeresDB/ceresmeta/server/coordinator/procedure/test"
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/stretchr/testify/require"
 )
-
-func newClusterAndRegisterNode(t *testing.T) (cluster.Manager, *cluster.Cluster) {
-	re := require.New(t)
-	ctx := context.Background()
-	dispatch := MockDispatch{}
-	m, c := newTestCluster(ctx, t)
-
-	totalShardNum := c.GetTotalShardNum()
-	shardIDs := make([]storage.ShardID, 0, totalShardNum)
-	for i := uint32(0); i < totalShardNum; i++ {
-		shardID, err := c.AllocShardID(ctx)
-		re.NoError(err)
-		shardIDs = append(shardIDs, storage.ShardID(shardID))
-	}
-	p := NewScatterProcedure(dispatch, c, 1, shardIDs)
-	go func() {
-		err := p.Start(ctx)
-		re.NoError(err)
-	}()
-
-	// Cluster is empty, it should be return and do nothing
-	err := c.RegisterNode(ctx, cluster.RegisteredNode{
-		Node: storage.Node{
-			Name: nodeName0,
-		}, ShardInfos: []cluster.ShardInfo{},
-	})
-	re.NoError(err)
-	re.Equal(storage.ClusterStateEmpty, c.GetClusterState())
-
-	// Register two node, defaultNodeCount is satisfied, Initialize shard topology
-	err = c.RegisterNode(ctx, cluster.RegisteredNode{
-		Node: storage.Node{
-			Name: nodeName1,
-		}, ShardInfos: []cluster.ShardInfo{},
-	})
-	re.NoError(err)
-	return m, c
-}
 
 func checkScatterWithCluster(t *testing.T, cluster *cluster.Cluster) {
 	re := require.New(t)
 	re.Equal(storage.ClusterStateStable, cluster.GetClusterState())
 	shardNodes, err := cluster.GetNodeShards(context.Background())
 	re.NoError(err)
-	re.Equal(len(shardNodes.NodeShards), defaultShardTotal)
+	re.Equal(len(shardNodes.NodeShards), test.DefaultShardTotal)
 	shardNodeMapping := make(map[string][]storage.ShardID, 0)
 	for _, shardNodeWithVersion := range shardNodes.NodeShards {
 		nodeName := shardNodeWithVersion.ShardNode.NodeName
@@ -67,10 +30,10 @@ func checkScatterWithCluster(t *testing.T, cluster *cluster.Cluster) {
 		}
 		shardNodeMapping[nodeName] = append(shardNodeMapping[nodeName], shardID)
 	}
-	// Cluster shard topology should be initialized, shard length in every node should be defaultShardTotal/defaultNodeCount
-	re.Equal(len(shardNodeMapping), defaultNodeCount)
-	re.Equal(len(shardNodeMapping[nodeName0]), defaultShardTotal/defaultNodeCount)
-	re.Equal(len(shardNodeMapping[nodeName1]), defaultShardTotal/defaultNodeCount)
+	// Cluster shard topology should be initialized, shard length in every node should be DefaultShardTotal/DefaultNodeCount
+	re.Equal(len(shardNodeMapping), test.DefaultNodeCount)
+	re.Equal(len(shardNodeMapping[test.NodeName0]), test.DefaultShardTotal/test.DefaultNodeCount)
+	re.Equal(len(shardNodeMapping[test.NodeName1]), test.DefaultShardTotal/test.DefaultNodeCount)
 }
 
 func TestScatter(t *testing.T) {
@@ -98,7 +61,7 @@ func TestAllocNodeShard(t *testing.T) {
 	}
 	// NodeCount = 4, shardTotal = 2
 	// Two shard distributed in node0,node1
-	shardView, err := allocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
+	shardView, err := AllocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].NodeName)
@@ -120,7 +83,7 @@ func TestAllocNodeShard(t *testing.T) {
 	for i := uint32(0); i < uint32(shardTotal); i++ {
 		shardIDs = append(shardIDs, storage.ShardID(i))
 	}
-	shardView, err = allocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
+	shardView, err = AllocNodeShards(uint32(shardTotal), uint32(minNodeCount), nodeList, shardIDs)
 	re.NoError(err)
 	re.Equal(shardTotal, len(shardView))
 	re.Equal("node0", shardView[0].NodeName)

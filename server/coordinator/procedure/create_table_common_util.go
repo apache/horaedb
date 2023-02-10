@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (cluster.CreateTableResult, error) {
+func CreateTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName string, tableName string, shardID storage.ShardID, partitionInfo *clusterpb.PartitionInfo) (cluster.CreateTableResult, error) {
 	_, exists, err := c.GetTable(schemaName, tableName)
 	if err != nil {
 		return cluster.CreateTableResult{}, errors.WithMessage(err, "cluster get table")
@@ -34,7 +34,7 @@ func createTableMetadata(ctx context.Context, c *cluster.Cluster, schemaName str
 	return createTableResult, nil
 }
 
-func createTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
+func CreateTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventdispatch.Dispatch, shardID storage.ShardID, request eventdispatch.CreateTableOnShardRequest) error {
 	shardNodes, err := c.GetShardNodesByShardID(shardID)
 	if err != nil {
 		return errors.WithMessage(err, "cluster get shardNode by id")
@@ -60,7 +60,7 @@ func createTableOnShard(ctx context.Context, c *cluster.Cluster, dispatch eventd
 	return nil
 }
 
-func buildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitionInfo *clusterpb.PartitionInfo) eventdispatch.CreateTableOnShardRequest {
+func BuildCreateTableRequest(createTableResult cluster.CreateTableResult, req *metaservicepb.CreateTableRequest, partitionInfo *clusterpb.PartitionInfo) eventdispatch.CreateTableOnShardRequest {
 	return eventdispatch.CreateTableOnShardRequest{
 		UpdateShardInfo: eventdispatch.UpdateShardInfo{
 			CurrShardInfo: cluster.ShardInfo{

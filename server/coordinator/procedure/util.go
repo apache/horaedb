@@ -9,8 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Cancel event when error is not nil. If error is nil, do nothing.
-func cancelEventWithLog(event *fsm.Event, err error, msg string, fields ...zap.Field) {
+// CancelEventWithLog Cancel event when error is not nil. If error is nil, do nothing.
+func CancelEventWithLog(event *fsm.Event, err error, msg string, fields ...zap.Field) {
 	if err == nil {
 		return
 	}
@@ -20,7 +20,7 @@ func cancelEventWithLog(event *fsm.Event, err error, msg string, fields ...zap.F
 }
 
 // nolint
-func getRequestFromEvent[T any](event *fsm.Event) (T, error) {
+func GetRequestFromEvent[T any](event *fsm.Event) (T, error) {
 	if len(event.Args) != 1 {
 		return *new(T), ErrGetRequest.WithCausef("event args length must be 1, actual length:%v", len(event.Args))
 	}

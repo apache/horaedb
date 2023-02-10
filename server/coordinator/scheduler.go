@@ -29,13 +29,13 @@ type Scheduler struct {
 
 	clusterManager   cluster.Manager
 	procedureManager procedure.Manager
-	procedureFactory *procedure.Factory
+	procedureFactory *Factory
 	dispatch         eventdispatch.Dispatch
 
 	checkNodeTicker *time.Ticker
 }
 
-func NewScheduler(clusterManager cluster.Manager, procedureManager procedure.Manager, procedureFactory *procedure.Factory, dispatch eventdispatch.Dispatch) *Scheduler {
+func NewScheduler(clusterManager cluster.Manager, procedureManager procedure.Manager, procedureFactory *Factory, dispatch eventdispatch.Dispatch) *Scheduler {
 	return &Scheduler{
 		running:          false,
 		clusterManager:   clusterManager,

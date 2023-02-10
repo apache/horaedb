@@ -13,16 +13,10 @@ import (
 
 const (
 	TestClusterID       = 1
-	TestRootPath        = "/rootPath"
 	DefaultTimeout      = time.Second * 10
 	DefaultScanBatchSie = 100
+	TestRootPath        = "/rootPath"
 )
-
-func NewTestStorage(t *testing.T) Storage {
-	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
-	storage := NewEtcdStorageImpl(client, TestRootPath)
-	return storage
-}
 
 func testWrite(t *testing.T, storage Storage) {
 	re := require.New(t)
@@ -84,6 +78,12 @@ func testDelete(t *testing.T, storage Storage) {
 	metas, err := storage.List(ctx, DefaultScanBatchSie)
 	re.NoError(err)
 	re.Equal(1, len(metas))
+}
+
+func NewTestStorage(t *testing.T) Storage {
+	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
+	storage := NewEtcdStorageImpl(client, TestRootPath)
+	return storage
 }
 
 func TestStorage(t *testing.T) {
