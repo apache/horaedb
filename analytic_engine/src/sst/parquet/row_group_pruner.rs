@@ -15,8 +15,10 @@ use parquet_ext::prune::{
 };
 use snafu::ensure;
 
-use super::meta_data::SstFilter;
-use crate::sst::reader::error::{OtherNoCause, Result};
+use crate::sst::{
+    parquet::meta_data::SstFilter,
+    reader::error::{OtherNoCause, Result},
+};
 
 /// RowGroupPruner is used to prune row groups according to the provided
 /// predicates and filters.

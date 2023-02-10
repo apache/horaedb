@@ -16,13 +16,12 @@ use log::debug;
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
 
-use super::meta_data::RowGroupFilterBuilder;
 use crate::{
     sst::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
-            meta_data::{ParquetMetaData, SstFilter},
+            meta_data::{ParquetMetaData, RowGroupFilterBuilder, SstFilter},
         },
         writer::{
             self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,

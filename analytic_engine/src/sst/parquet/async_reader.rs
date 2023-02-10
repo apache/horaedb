@@ -45,7 +45,7 @@ use crate::sst::{
     parquet::{
         encoding::ParquetDecoder,
         meta_data::{ParquetMetaDataRef, SstFilter},
-        row_group_filter::RowGroupPruner,
+        row_group_pruner::RowGroupPruner,
     },
     reader::{error::*, Result, SstReader},
 };
