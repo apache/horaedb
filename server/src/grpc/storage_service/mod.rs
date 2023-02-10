@@ -58,7 +58,7 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 /// Rpc request header
 /// Tenant/token will be saved in header in future
 #[allow(dead_code)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct RequestHeader {
     metas: HashMap<String, Vec<u8>>,
 }
@@ -118,13 +118,6 @@ impl<'a, Q> HandlerContext<'a, Q> {
     ) -> Self {
         // catalog is not exposed to protocol layer
         let catalog = instance.catalog_manager.default_catalog_name().to_string();
-        // let schema_config = schema_config_provider
-        //     .schema_config(&schema)
-        //     .box_err()
-        //     .with_context(|| ErrWithCause {
-        //         code: StatusCode::INTERNAL_SERVER_ERROR,
-        //         msg: format!("fail to fetch schema config, schema_name:{}", schema),
-        //     })?;
 
         Self {
             header,
@@ -259,9 +252,9 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
         let handler_ctx = HandlerContext::new(
-            header.clone(),
-            router.clone(),
-            instance.clone(),
+            header,
+            router,
+            instance,
             &schema_config_provider,
             self.forwarder.clone(),
             self.timeout,

@@ -170,7 +170,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: &schema,
+        default_schema: schema,
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
@@ -242,7 +242,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), schema.clone())
+        .default_catalog_and_schema(ctx.catalog().to_string(), schema.to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
