@@ -9,7 +9,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
+use ceresdbproto::storage::{
+    storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
+};
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde_derive::Deserialize;
@@ -286,6 +288,9 @@ impl<B: ClientBuilder> Forwarder<B> {
         } = forward_req;
 
         let route_req = RouteRequest {
+            context: Some(RequestContext {
+                database: schema.clone(),
+            }),
             tables: vec![table],
         };
 
@@ -364,6 +369,7 @@ impl<B: ClientBuilder> Forwarder<B> {
 
 #[cfg(test)]
 mod tests {
+    use catalog::consts::DEFAULT_SCHEMA;
     use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
     use router::Router;
@@ -463,6 +469,9 @@ mod tests {
 
         let make_forward_req = |table: &str| {
             let query_request = SqlQueryRequest {
+                context: Some(RequestContext {
+                    database: DEFAULT_SCHEMA.to_string(),
+                }),
                 tables: vec![table.to_string()],
                 sql: "".to_string(),
             };

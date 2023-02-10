@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
+use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb, storage as storage_pb};
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
     schema::{SchemaId, SchemaName},
@@ -400,6 +400,15 @@ impl RouteTablesResponse {
         queried_tables
             .iter()
             .all(|table_name| self.entries.contains_key(table_name))
+    }
+}
+
+impl From<storage_pb::RouteRequest> for RouteTablesRequest {
+    fn from(req: storage_pb::RouteRequest) -> Self {
+        Self {
+            schema_name: req.context.unwrap().database.to_string(),
+            table_names: req.tables,
+        }
     }
 }
 

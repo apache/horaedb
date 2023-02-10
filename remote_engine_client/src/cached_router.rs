@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use ceresdbproto::storage;
+use ceresdbproto::storage::{self, RequestContext};
 use log::debug;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
@@ -89,6 +89,9 @@ impl CachedRouter {
         let schema = &table_ident.schema;
         let table = table_ident.table.clone();
         let route_request = storage::RouteRequest {
+            context: Some(RequestContext {
+                database: schema.clone(),
+            }),
             tables: vec![table],
         };
         let route_infos =

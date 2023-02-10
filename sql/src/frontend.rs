@@ -4,7 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::prometheus::PrometheusQueryRequest;
+use ceresdbproto::storage::PrometheusQueryRequest;
 use common_types::request_id::RequestId;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;

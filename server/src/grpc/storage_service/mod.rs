@@ -10,12 +10,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
-    prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
-    storage::{
-        storage_service_server::StorageService, value::Value, RouteRequest, RouteResponse,
-        SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse, WriteTableRequest,
-    },
+use ceresdbproto::storage::{
+    storage_service_server::StorageService, value::Value, PrometheusQueryRequest,
+    PrometheusQueryResponse, RequestContext, RouteRequest, RouteResponse, SqlQueryRequest,
+    SqlQueryResponse, WriteRequest, WriteResponse, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -40,7 +38,6 @@ use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
 use self::sql_query::{QueryResponseBuilder, QueryResponseWriter};
 use crate::{
-    consts,
     grpc::{
         forward::ForwarderRef,
         metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -59,7 +56,9 @@ pub(crate) mod write;
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 /// Rpc request header
-#[derive(Debug, Default)]
+/// Tenant/token will be saved in header in future
+#[allow(dead_code)]
+#[derive(Debug, Default, Clone)]
 pub struct RequestHeader {
     metas: HashMap<String, Vec<u8>>,
 }
@@ -88,6 +87,7 @@ impl From<&MetadataMap> for RequestHeader {
 }
 
 impl RequestHeader {
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&[u8]> {
         self.metas.get(key).map(|v| v.as_slice())
     }
@@ -116,31 +116,19 @@ impl<'a, Q> HandlerContext<'a, Q> {
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
         resp_compress_min_length: usize,
+        request_context: Option<RequestContext>,
     ) -> Result<Self> {
-        let default_catalog = instance.catalog_manager.default_catalog_name();
-        let default_schema = instance.catalog_manager.default_schema_name();
-
-        let catalog = header
-            .get(consts::CATALOG_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .box_err()
-            .context(ErrWithCause {
+        // catalog is not exposed to protocol layer
+        let catalog = instance.catalog_manager.default_catalog_name().to_string();
+        let schema = if let Some(ctx) = request_context {
+            ctx.database
+        } else {
+            return ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse catalog name",
-            })?
-            .unwrap_or_else(|| default_catalog.to_string());
-
-        let schema = header
-            .get(consts::SCHEMA_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse schema name",
-            })?
-            .unwrap_or_else(|| default_schema.to_string());
+                msg: "database is not set",
+            }
+            .fail();
+        };
 
         let schema_config = schema_config_provider
             .schema_config(&schema)
@@ -212,14 +200,16 @@ macro_rules! handle_request {
                 let schema_config_provider = self.schema_config_provider.clone();
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
+                    let mut req = request.into_inner();
+                    let req_ctx = req.context.take();
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length, req_ctx)
                             .box_err()
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
                                 msg: "invalid header",
                             })?;
-                    $mod_name::$handle_fn(&handler_ctx, request.into_inner())
+                    $mod_name::$handle_fn(&handler_ctx, req)
                         .await
                         .map_err(|e| {
                             error!(
@@ -283,29 +273,29 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
 
-        let handler_ctx = HandlerContext::new(
-            header,
-            router,
-            instance,
-            &schema_config_provider,
-            self.forwarder.clone(),
-            self.timeout,
-            self.resp_compress_min_length,
-        )
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid header",
-        })?;
-
         let mut total_success = 0;
         let mut resp = WriteResponse::default();
         let mut has_err = false;
         let mut stream = request.into_inner();
         while let Some(req) = stream.next().await {
-            let write_req = req.box_err().context(ErrWithCause {
+            let mut write_req = req.box_err().context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to fetch request",
+            })?;
+            let handler_ctx = HandlerContext::new(
+                header.clone(),
+                router.clone(),
+                instance.clone(),
+                &schema_config_provider,
+                self.forwarder.clone(),
+                self.timeout,
+                self.resp_compress_min_length,
+                write_req.context.take(),
+            )
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "invalid header",
             })?;
 
             let write_result = write::handle_write(
@@ -355,14 +345,14 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
+            let mut query_req = request.into_inner();
+            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length, query_req.context.take())
                 .box_err()
                 .context(ErrWithCause {
                     code: StatusCode::BAD_REQUEST,
                     msg: "invalid header",
                 })?;
 
-            let query_req = request.into_inner();
             let output = sql_query::fetch_query_output(&handler_ctx, &query_req)
                     .await
                     .map_err(|e| {

@@ -61,5 +61,6 @@ pub type RouterRef = Arc<dyn Router + Sync + Send>;
 
 #[async_trait]
 pub trait Router {
+    // TODO: schema in defined in RouteRequest, remove schema arg
     async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>>;
 }

@@ -8,7 +8,8 @@ use std::{
 
 use ceresdbproto::{
     common::ResponseHeader,
-    prometheus::{Label, PrometheusQueryRequest, PrometheusQueryResponse, Sample, TimeSeries},
+    prometheus::{Label, Sample, TimeSeries},
+    storage::{PrometheusQueryRequest, PrometheusQueryResponse},
 };
 use common_types::{
     datum::DatumKind,
