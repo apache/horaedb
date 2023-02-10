@@ -218,11 +218,14 @@ async fn build_in_cluster_mode<Q: Executor + 'static, T: EngineBuilder>(
         .build();
     let engine_proxy = build_table_engine(build_context, runtimes.clone(), engine_builder).await;
 
-    // Build catalog manager.
-    let catalog_manager = Arc::new(volatile::ManagerImpl::new(
+    let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
         shard_tables_cache,
         meta_client.clone(),
     ));
+
+    // Build catalog manager.
+    let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));
+
     let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
 
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
