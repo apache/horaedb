@@ -132,7 +132,6 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
     req: SqlQueryRequest,
 ) -> Result<SqlQueryResponse> {
-    // let schema = req.
     let req = match maybe_forward_query(ctx, &req).await {
         Some(resp) => return resp,
         None => req,

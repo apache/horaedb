@@ -62,7 +62,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let plan_vec = write_request_to_insert_plan(
         request_id,
         catalog,
-        &schema,
+        schema,
         ctx.instance.clone(),
         req.table_requests,
         schema_config,
@@ -75,7 +75,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         success += execute_plan(
             request_id,
             catalog,
-            &schema,
+            schema,
             ctx.instance.clone(),
             insert_plan,
             deadline,

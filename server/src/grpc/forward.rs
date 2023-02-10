@@ -9,9 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, RequestContext, RouteRequest,
-};
+use ceresdbproto::storage::{storage_service_client::StorageServiceClient, RouteRequest};
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde_derive::Deserialize;
@@ -288,9 +286,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         } = forward_req;
 
         let route_req = RouteRequest {
-            context: Some(RequestContext {
-                database: schema.clone(),
-            }),
+            context: None,
             tables: vec![table],
         };
 
@@ -469,14 +465,12 @@ mod tests {
 
         let make_forward_req = |table: &str| {
             let query_request = SqlQueryRequest {
-                context: Some(RequestContext {
-                    database: DEFAULT_SCHEMA.to_string(),
-                }),
+                context: None,
                 tables: vec![table.to_string()],
                 sql: "".to_string(),
             };
             ForwardRequest {
-                schema: "public".to_string(),
+                schema: DEFAULT_SCHEMA.to_string(),
                 table: table.to_string(),
                 req: query_request.into_request(),
             }
@@ -484,7 +478,7 @@ mod tests {
 
         let do_rpc = |_client, req: tonic::Request<SqlQueryRequest>, endpoint: &Endpoint| {
             let schema = req.metadata().get(SCHEMA_HEADER).unwrap().to_str().unwrap();
-            assert_eq!(schema, "public");
+            assert_eq!(schema, DEFAULT_SCHEMA);
             let req = req.into_inner();
             let expect_endpoint = mock_router.routing_tables.get(&req.tables[0]).unwrap();
             assert_eq!(expect_endpoint, endpoint);

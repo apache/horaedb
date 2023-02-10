@@ -207,7 +207,7 @@ macro_rules! handle_request {
                             .box_err()
                             .context(ErrWithCause {
                                 code: StatusCode::BAD_REQUEST,
-                                msg: "invalid header",
+                                msg: "Invalid request",
                             })?;
                     $mod_name::$handle_fn(&handler_ctx, req)
                         .await
@@ -250,6 +250,9 @@ macro_rules! handle_request {
 }
 
 impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+    // Note: RequestContext inside each request will be taken out, use
+    // HandlerContext to access related fields
+
     handle_request!(route, handle_route, RouteRequest, RouteResponse);
 
     handle_request!(write, handle_write, WriteRequest, WriteResponse);
