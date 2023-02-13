@@ -16,7 +16,7 @@ use parquet_ext::prune::{
 use snafu::ensure;
 
 use crate::sst::{
-    parquet::meta_data::SstFilter,
+    parquet::meta_data::ParquetFilter,
     reader::error::{OtherNoCause, Result},
 };
 
@@ -24,11 +24,11 @@ use crate::sst::{
 /// predicates and filters.
 ///
 /// Currently, two kinds of filters will be applied to such filtering:
-/// min max & sst_filter.
+/// min max & parquet_filter.
 pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
-    sst_filter: Option<&'a SstFilter>,
+    parquet_filter: Option<&'a ParquetFilter>,
     predicates: &'a [Expr],
 }
 
@@ -36,33 +36,33 @@ impl<'a> RowGroupPruner<'a> {
     pub fn try_new(
         schema: &'a SchemaRef,
         row_groups: &'a [RowGroupMetaData],
-        sst_filter: Option<&'a SstFilter>,
+        parquet_filter: Option<&'a ParquetFilter>,
         predicates: &'a [Expr],
     ) -> Result<Self> {
-        if let Some(f) = sst_filter {
+        if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {
-                msg: format!("expect the same number of ss_filter as the number of row groups, num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
+                msg: format!("expect the same number of ss_filter as the number of row groups, num_parquet_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
             });
         }
 
         Ok(Self {
             schema,
             row_groups,
-            sst_filter,
+            parquet_filter,
             predicates,
         })
     }
 
     pub fn prune(&self) -> Vec<usize> {
         debug!(
-            "Begin to prune row groups, total_row_groups:{}, sst_filter:{}, predicates:{:?}",
+            "Begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",
             self.row_groups.len(),
-            self.sst_filter.is_some(),
+            self.parquet_filter.is_some(),
             self.predicates,
         );
 
         let pruned0 = self.prune_by_min_max();
-        match self.sst_filter {
+        match self.parquet_filter {
             Some(v) => {
                 // TODO: We can do continuous prune based on the `pruned0` to reduce the
                 // filtering cost.
@@ -70,7 +70,7 @@ impl<'a> RowGroupPruner<'a> {
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
                 debug!(
-                    "Finish prune row groups by sst_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
+                    "Finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
                     self.row_groups.len(),
                     pruned0.len(),
                     pruned1.len(),
@@ -95,15 +95,16 @@ impl<'a> RowGroupPruner<'a> {
     }
 
     /// Prune row groups according to the filter.
-    fn prune_by_filters(&self, sst_filter: &SstFilter) -> Vec<usize> {
+    fn prune_by_filters(&self, parquet_filter: &ParquetFilter) -> Vec<usize> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
-                let exist = sst_filter[col_pos.row_group_idx]
+                let exist = parquet_filter[col_pos.row_group_idx]
                     .contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
                 if exist {
-                    // sst_filter has false positivity, that is to say we are unsure whether this
-                    // value exists even if the sst_filter says it exists.
+                    // parquet_filter has false positivity, that is to say we are unsure whether
+                    // this value exists even if the parquet_filter says it
+                    // exists.
                     None
                 } else {
                     Some(negated)

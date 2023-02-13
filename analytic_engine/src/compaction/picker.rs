@@ -627,7 +627,7 @@ mod tests {
             time_range,
             max_sequence: 200,
             schema: build_schema(),
-            sst_filter: Default::default(),
+            parquet_filter: Default::default(),
             collapsible_cols_idx: Vec::new(),
         };
 

@@ -47,7 +47,7 @@ impl MetaData {
             let mut sst_meta =
                 encoding::decode_sst_meta_data(&kv_metas[0]).context(DecodeCustomMetaData)?;
             if ignore_sst_filter {
-                sst_meta.sst_filter = None;
+                sst_meta.parquet_filter = None;
             }
 
             Arc::new(sst_meta)

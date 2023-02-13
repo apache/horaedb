@@ -21,11 +21,11 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
-            meta_data::{ParquetMetaData, RowGroupFilterBuilder, SstFilter},
+            meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
-            SstWriter, Storage,
+            self, BuildParquetFilter, EncodeRecordBatch, MetaData, PollRecordBatch,
+            RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table_options::StorageFormat,
@@ -149,10 +149,10 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
-    fn build_sst_filter(&self) -> SstFilter {
-        // TODO: support sst filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+    fn build_parquet_filter(&self) -> Result<ParquetFilter> {
+        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
-            return SstFilter::default();
+            return Ok(ParquetFilter::default());
         }
         let filters = self
             .partitioned_record_batch
@@ -171,21 +171,20 @@ impl RecordBytesReader {
                     }
                 }
 
-                // remove unwrap
-                builder.build().unwrap()
+                builder.build().box_err().context(BuildParquetFilter)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
-        SstFilter::new(filters)
+        Ok(ParquetFilter::new(filters))
     }
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
         self.partition_record_batch().await?;
 
         let parquet_meta_data = {
-            let sst_filter = self.build_sst_filter();
+            let sst_filter = self.build_parquet_filter()?;
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.sst_filter = Some(sst_filter);
+            parquet_meta_data.parquet_filter = Some(sst_filter);
             parquet_meta_data
         };
 
@@ -394,7 +393,7 @@ mod tests {
                     .clone();
                 // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
-                sst_meta_readback.sst_filter = Default::default();
+                sst_meta_readback.parquet_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,

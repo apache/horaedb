@@ -43,11 +43,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Unsupported sst_filter version, version:{}.\nBacktrace\n:{}",
+        "Unsupported parquet_filter version, version:{}.\nBacktrace\n:{}",
         version,
         backtrace
     ))]
-    UnsupportedSstFilter { version: u32, backtrace: Backtrace },
+    UnsupportedParquetFilter { version: u32, backtrace: Backtrace },
 
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
@@ -63,6 +63,7 @@ const DEFAULT_FILTER_VERSION: u32 = 0;
 /// Filter can be used to test whether an element is a member of a set.
 /// False positive matches are possible if space-efficient probabilistic data
 /// structure are used.
+// TODO: move this to sst module, and add a FilterBuild trait
 trait Filter: fmt::Debug {
     /// Check the key is in the bitmap index.
     fn contains(&self, key: &[u8]) -> bool;
@@ -190,14 +191,13 @@ impl RowGroupFilter {
     }
 }
 
-// TODO: move this to sst module
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct SstFilter {
+pub struct ParquetFilter {
     /// Every filter is a row group filter consists of column filters.
     row_group_filters: Vec<RowGroupFilter>,
 }
 
-impl SstFilter {
+impl ParquetFilter {
     pub fn new(row_group_filters: Vec<RowGroupFilter>) -> Self {
         Self { row_group_filters }
     }
@@ -211,7 +211,7 @@ impl SstFilter {
     }
 }
 
-impl Index<usize> for SstFilter {
+impl Index<usize> for ParquetFilter {
     type Output = RowGroupFilter;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -219,9 +219,9 @@ impl Index<usize> for SstFilter {
     }
 }
 
-impl From<SstFilter> for sst_pb::SstFilter {
-    fn from(sst_filter: SstFilter) -> Self {
-        let row_group_filters = sst_filter
+impl From<ParquetFilter> for sst_pb::ParquetFilter {
+    fn from(parquet_filter: ParquetFilter) -> Self {
+        let row_group_filters = parquet_filter
             .row_group_filters
             .into_iter()
             .map(|row_group_filter| {
@@ -235,24 +235,24 @@ impl From<SstFilter> for sst_pb::SstFilter {
                             .unwrap_or_default()
                     })
                     .collect::<Vec<_>>();
-                sst_pb::sst_filter::RowGroupFilter { column_filters }
+                sst_pb::parquet_filter::RowGroupFilter { column_filters }
             })
             .collect::<Vec<_>>();
 
-        sst_pb::SstFilter {
+        sst_pb::ParquetFilter {
             version: DEFAULT_FILTER_VERSION,
             row_group_filters,
         }
     }
 }
 
-impl TryFrom<sst_pb::SstFilter> for SstFilter {
+impl TryFrom<sst_pb::ParquetFilter> for ParquetFilter {
     type Error = Error;
 
-    fn try_from(src: sst_pb::SstFilter) -> Result<Self> {
+    fn try_from(src: sst_pb::ParquetFilter) -> Result<Self> {
         ensure!(
             src.version == DEFAULT_FILTER_VERSION,
-            UnsupportedSstFilter {
+            UnsupportedParquetFilter {
                 version: src.version
             }
         );
@@ -280,7 +280,7 @@ impl TryFrom<sst_pb::SstFilter> for SstFilter {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(SstFilter { row_group_filters })
+        Ok(ParquetFilter { row_group_filters })
     }
 }
 
@@ -294,7 +294,7 @@ pub struct ParquetMetaData {
     /// Max sequence number in the sst
     pub max_sequence: SequenceNumber,
     pub schema: Schema,
-    pub sst_filter: Option<SstFilter>,
+    pub parquet_filter: Option<ParquetFilter>,
     pub collapsible_cols_idx: Vec<u32>,
 }
 
@@ -308,7 +308,7 @@ impl From<MetaData> for ParquetMetaData {
             time_range: meta.time_range,
             max_sequence: meta.max_sequence,
             schema: meta.schema,
-            sst_filter: None,
+            parquet_filter: None,
             collapsible_cols_idx: Vec::new(),
         }
     }
@@ -335,7 +335,7 @@ impl fmt::Debug for ParquetMetaData {
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
             // Avoid the messy output from filter.
-            .field("has_filter", &self.sst_filter.is_some())
+            .field("has_filter", &self.parquet_filter.is_some())
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
@@ -349,7 +349,7 @@ impl From<ParquetMetaData> for sst_pb::ParquetMetaData {
             max_sequence: src.max_sequence,
             time_range: Some(src.time_range.into()),
             schema: Some(common_pb::TableSchema::from(&src.schema)),
-            filter: src.sst_filter.map(|v| v.into()),
+            filter: src.parquet_filter.map(|v| v.into()),
             collapsible_cols_idx: src.collapsible_cols_idx,
         }
     }
@@ -367,7 +367,7 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             let schema = src.schema.context(TableSchemaNotFound)?;
             Schema::try_from(schema).context(ConvertTableSchema)?
         };
-        let sst_filter = src.filter.map(SstFilter::try_from).transpose()?;
+        let parquet_filter = src.filter.map(ParquetFilter::try_from).transpose()?;
 
         Ok(Self {
             min_key: src.min_key.into(),
@@ -375,7 +375,7 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             time_range,
             max_sequence: src.max_sequence,
             schema,
-            sst_filter,
+            parquet_filter,
             collapsible_cols_idx: src.collapsible_cols_idx,
         })
     }
@@ -386,8 +386,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_conversion_sst_filter() {
-        let sst_filter = SstFilter {
+    fn test_conversion_parquet_filter() {
+        let parquet_filter = ParquetFilter {
             row_group_filters: vec![
                 RowGroupFilter {
                     column_filters: vec![None, Some(Box::new(Xor8Filter::default()))],
@@ -398,23 +398,29 @@ mod tests {
             ],
         };
 
-        let sst_filter_pb: sst_pb::SstFilter = sst_filter.clone().into();
-        assert_eq!(sst_filter_pb.version, DEFAULT_FILTER_VERSION);
-        assert_eq!(sst_filter_pb.row_group_filters.len(), 2);
-        assert_eq!(sst_filter_pb.row_group_filters[0].column_filters.len(), 2);
-        assert_eq!(sst_filter_pb.row_group_filters[1].column_filters.len(), 2);
-        assert!(sst_filter_pb.row_group_filters[0].column_filters[0].is_empty());
+        let parquet_filter_pb: sst_pb::ParquetFilter = parquet_filter.clone().into();
+        assert_eq!(parquet_filter_pb.version, DEFAULT_FILTER_VERSION);
+        assert_eq!(parquet_filter_pb.row_group_filters.len(), 2);
         assert_eq!(
-            sst_filter_pb.row_group_filters[0].column_filters[1].len(),
+            parquet_filter_pb.row_group_filters[0].column_filters.len(),
+            2
+        );
+        assert_eq!(
+            parquet_filter_pb.row_group_filters[1].column_filters.len(),
+            2
+        );
+        assert!(parquet_filter_pb.row_group_filters[0].column_filters[0].is_empty());
+        assert_eq!(
+            parquet_filter_pb.row_group_filters[0].column_filters[1].len(),
             24
         );
         assert_eq!(
-            sst_filter_pb.row_group_filters[1].column_filters[0].len(),
+            parquet_filter_pb.row_group_filters[1].column_filters[0].len(),
             24
         );
-        assert!(sst_filter_pb.row_group_filters[1].column_filters[1].is_empty());
+        assert!(parquet_filter_pb.row_group_filters[1].column_filters[1].is_empty());
 
-        let decoded_sst_filter = SstFilter::try_from(sst_filter_pb).unwrap();
-        assert_eq!(decoded_sst_filter, sst_filter);
+        let decoded_parquet_filter = ParquetFilter::try_from(parquet_filter_pb).unwrap();
+        assert_eq!(decoded_parquet_filter, parquet_filter);
     }
 }

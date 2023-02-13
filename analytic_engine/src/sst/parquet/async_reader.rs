@@ -44,7 +44,7 @@ use crate::sst::{
     metrics,
     parquet::{
         encoding::ParquetDecoder,
-        meta_data::{ParquetMetaDataRef, SstFilter},
+        meta_data::{ParquetFilter, ParquetMetaDataRef},
         row_group_pruner::RowGroupPruner,
     },
     reader::{error::*, Result, SstReader},
@@ -147,10 +147,10 @@ impl<'a> Reader<'a> {
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        sst_filter: Option<&SstFilter>,
+        parquet_filter: Option<&ParquetFilter>,
     ) -> Result<Vec<usize>> {
         let pruner =
-            RowGroupPruner::try_new(&schema, row_groups, sst_filter, self.predicate.exprs())?;
+            RowGroupPruner::try_new(&schema, row_groups, parquet_filter, self.predicate.exprs())?;
 
         Ok(pruner.prune())
     }
@@ -165,38 +165,38 @@ impl<'a> Reader<'a> {
         let row_projector = self.row_projector.as_ref().unwrap();
 
         // Get target row groups.
-        let pruned_row_groups = self.prune_row_groups(
+        let target_row_groups = self.prune_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
-            meta_data.custom().sst_filter.as_ref(),
+            meta_data.custom().parquet_filter.as_ref(),
         )?;
 
         info!(
             "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
             meta_data.parquet().num_row_groups(),
-            pruned_row_groups.len(),
+            target_row_groups.len(),
         );
 
-        if pruned_row_groups.is_empty() {
+        if target_row_groups.is_empty() {
             return Ok(Vec::new());
         }
 
         // Partition the batches by `read_parallelism`.
         let suggest_read_parallelism = read_parallelism;
-        let read_parallelism = std::cmp::min(pruned_row_groups.len(), suggest_read_parallelism);
+        let read_parallelism = std::cmp::min(target_row_groups.len(), suggest_read_parallelism);
 
         // TODO: we only support read parallelly when `batch_size` ==
         // `num_rows_per_row_group`, so this placing method is ok, we should
         // adjust it when supporting it other situations.
         let chunks_num = read_parallelism;
-        let chunk_size = pruned_row_groups.len() / read_parallelism + 1;
+        let chunk_size = target_row_groups.len() / read_parallelism + 1;
         info!(
             "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
             suggest_read_parallelism, read_parallelism, chunk_size
         );
         let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
-        for (row_group_idx, row_group) in pruned_row_groups.into_iter().enumerate() {
+        for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
             let chunk_idx = row_group_idx % chunks_num;
             filtered_row_group_chunks[chunk_idx].push(row_group);
         }

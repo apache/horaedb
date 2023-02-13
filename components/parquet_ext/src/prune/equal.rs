@@ -477,9 +477,9 @@ mod tests {
             Field::new("c1", DataType::Int32, false),
             Field::new("c2", DataType::Int32, false),
         ]);
-        let filtered_row_groups =
+        let target_row_groups =
             prune_row_groups(Arc::new(schema), &vec![predicate1, predicate2], 3, is_equal);
 
-        assert_eq!(vec![1, 2], filtered_row_groups)
+        assert_eq!(vec![1, 2], target_row_groups)
     }
 }
