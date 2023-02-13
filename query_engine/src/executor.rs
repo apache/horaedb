@@ -97,8 +97,7 @@ impl Executor for ExecutorImpl {
         let plan = query.plan;
 
         // Register catalogs to datafusion execution context.
-        let catalogs =
-            CatalogProviderAdapter::new_adapters(plan.tables.clone(), self.config.read_parallelism);
+        let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
         let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
