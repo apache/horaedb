@@ -40,6 +40,9 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[snafu(display("Failed to build parquet filter, err:{}", source))]
+        BuildParquetFilter { source: GenericError },
+
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch { source: GenericError },
 

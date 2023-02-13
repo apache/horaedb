@@ -7,19 +7,19 @@ package sst;
 import "common.proto";
 import "analytic_common.proto";
 
-message SstBloomFilter {
+message SstMetaData {
+  oneof MetaData {
+    ParquetMetaData parquet = 1;
+  }
+}
+
+message ParquetFilter {
   message RowGroupFilter {
     repeated bytes column_filters = 1;
   };
 
   uint32 version = 1;
   repeated RowGroupFilter row_group_filters = 2;
-}
-
-message SstMetaData {
-  oneof MetaData {
-    ParquetMetaData parquet = 1;
-  }
 }
 
 /// Used by ssts encoded by parquet, incuding columar&hybrid storage formats.
@@ -33,6 +33,6 @@ message ParquetMetaData {
   // The time range of the sst
   common.TimeRange time_range = 4;
   common.TableSchema schema = 5;
-  SstBloomFilter bloom_filter = 6;
+  ParquetFilter filter = 6;
   repeated uint32 collapsible_cols_idx = 7;
 }

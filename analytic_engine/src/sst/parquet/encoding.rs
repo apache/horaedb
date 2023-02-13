@@ -862,7 +862,7 @@ mod tests {
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
             max_sequence: 200,
             schema: schema.clone(),
-            bloom_filter: Default::default(),
+            parquet_filter: Default::default(),
             collapsible_cols_idx: Vec::new(),
         };
         let mut encoder =

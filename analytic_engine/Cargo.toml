@@ -25,7 +25,6 @@ common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
 datafusion-expr = { workspace = true }
-ethbloom = { workspace = true }
 futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
@@ -49,6 +48,7 @@ table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
 tokio = { workspace = true }
 wal = { workspace = true }
+xorfilter-rs = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }
