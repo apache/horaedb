@@ -226,7 +226,7 @@ macro_rules! handle_request {
 }
 
 impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
-    // RequestContext is ensured in handle_request maroc, so handler
+    // `RequestContext` is ensured in `handle_request` macro, so handler
     // can just use it with unwrap()
 
     handle_request!(route, handle_route, RouteRequest, RouteResponse);
