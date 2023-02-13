@@ -142,7 +142,7 @@ async fn run_server_with_runtimes<T>(
         .limiter(limiter);
 
     let engine_builder = T::default();
-    let builder = match config.deploy_mode {
+    let builder = match config.server.deploy_mode {
         DeployMode::Standalone => {
             build_in_standalone_mode(&config, builder, runtimes.clone(), engine_builder).await
         }
