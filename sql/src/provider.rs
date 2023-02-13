@@ -148,9 +148,6 @@ pub struct ContextProviderAdapter<'a, P> {
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
-    /// Read parallelism for each table.
-    // TODO: to remove this parameter, use the config
-    read_parallelism: usize,
     /// Read config for each table.
     config: ConfigOptions,
 }
@@ -162,11 +159,11 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         let default_schema = meta_provider.default_schema_name().to_string();
         let mut config = ConfigOptions::default();
         config.execution.target_partitions = read_parallelism;
+
         Self {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
-            read_parallelism,
             config,
         }
     }
@@ -194,7 +191,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism));
+        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
 
         Arc::new(DefaultTableSource {
             table_provider: table_adapter,
@@ -299,7 +296,6 @@ struct SchemaProviderAdapter {
     catalog: String,
     schema: String,
     tables: Arc<TableContainer>,
-    read_parallelism: usize,
 }
 
 #[async_trait]
@@ -326,9 +322,9 @@ impl SchemaProvider for SchemaProviderAdapter {
             table: name,
         };
 
-        self.tables.get(name_ref).map(|table_ref| {
-            Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism)) as _
-        })
+        self.tables
+            .get(name_ref)
+            .map(|table_ref| Arc::new(TableProviderAdapter::new(table_ref)) as _)
     }
 
     fn table_exist(&self, name: &str) -> bool {
@@ -342,10 +338,7 @@ pub struct CatalogProviderAdapter {
 }
 
 impl CatalogProviderAdapter {
-    pub fn new_adapters(
-        tables: Arc<TableContainer>,
-        read_parallelism: usize,
-    ) -> HashMap<String, CatalogProviderAdapter> {
+    pub fn new_adapters(tables: Arc<TableContainer>) -> HashMap<String, CatalogProviderAdapter> {
         let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
         let _ = tables.visit::<_, ()>(|name, _| {
             // Get or create catalog
@@ -363,7 +356,6 @@ impl CatalogProviderAdapter {
                         catalog: name.catalog.to_string(),
                         schema: name.schema.to_string(),
                         tables: tables.clone(),
-                        read_parallelism,
                     }),
                 );
             }
@@ -403,5 +395,18 @@ fn format_table_reference(table_ref: TableReference) -> String {
             schema,
             table,
         } => format!("catalog:{}, schema:{}, table:{}", catalog, schema, table),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{provider::ContextProviderAdapter, tests::MockMetaProvider};
+
+    #[test]
+    fn test_config_options_setting() {
+        let provider = MockMetaProvider::default();
+        let read_parallelism = 100;
+        let context = ContextProviderAdapter::new(&provider, read_parallelism);
+        assert_eq!(context.config.execution.target_partitions, read_parallelism);
     }
 }

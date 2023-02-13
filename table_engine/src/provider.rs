@@ -110,19 +110,14 @@ pub struct TableProviderAdapter {
     /// snapshot for read to avoid the reader sees different schema during
     /// query
     read_schema: Schema,
-    read_parallelism: usize,
 }
 
 impl TableProviderAdapter {
-    pub fn new(table: TableRef, read_parallelism: usize) -> Self {
+    pub fn new(table: TableRef) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
 
-        Self {
-            table,
-            read_schema,
-            read_parallelism,
-        }
+        Self { table, read_schema }
     }
 
     pub fn as_table_ref(&self) -> &TableRef {
@@ -160,7 +155,7 @@ impl TableProviderAdapter {
         {
             1
         } else {
-            self.read_parallelism
+            state.config().target_partitions()
         };
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
@@ -524,7 +519,7 @@ mod test {
             user_defined_pk_schema,
             "memory".to_string(),
         );
-        let provider = TableProviderAdapter::new(Arc::new(table), 1);
+        let provider = TableProviderAdapter::new(Arc::new(table));
         let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
 
         let expected_filters = vec![test_filters[0].clone(), test_filters[1].clone()];
@@ -542,7 +537,7 @@ mod test {
             default_pk_schema,
             "memory".to_string(),
         );
-        let provider = TableProviderAdapter::new(Arc::new(table), 1);
+        let provider = TableProviderAdapter::new(Arc::new(table));
         let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
 
         let expected_filters = vec![test_filters[0].clone(), test_filters[2].clone()];
