@@ -6,9 +6,10 @@ use common_types::{row::RowGroup, schema::Schema};
 use datafusion_expr::Expr;
 
 use self::extractor::KeyExtractor;
-use super::factory::PartitionRuleFactory;
 use crate::partition::{
-    rule::{df_adapter::extractor::FilterExtractorRef, PartitionRuleRef},
+    rule::{
+        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
+    },
     BuildPartitionRule, PartitionInfo, Result,
 };
 

@@ -9,14 +9,14 @@ use datafusion::{
     execution::context::default_session_builder,
     optimizer::{
         common_subexpr_eliminate::CommonSubexprEliminate, eliminate_limit::EliminateLimit,
-        filter_push_down::FilterPushDown, limit_push_down::LimitPushDown, optimizer::OptimizerRule,
-        projection_push_down::ProjectionPushDown, simplify_expressions::SimplifyExpressions,
+        optimizer::OptimizerRule, push_down_filter::PushDownFilter, push_down_limit::PushDownLimit,
+        push_down_projection::PushDownProjection, simplify_expressions::SimplifyExpressions,
+        single_distinct_to_groupby::SingleDistinctToGroupBy, type_coercion::TypeCoercion,
     },
     physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
-    scalar::ScalarValue,
 };
-use table_engine::provider::{CERESDB_REQUEST_ID, CERESDB_REQUEST_TIMEOUT};
+use table_engine::provider::CeresdbOptions;
 
 use crate::{
     config::Config,
@@ -46,23 +46,28 @@ impl Context {
     ) -> SessionContext {
         let timeout =
             deadline.map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
-        let df_session_config = SessionConfig::new()
+        let ceresdb_options = CeresdbOptions {
+            request_id: request_id.as_u64(),
+            request_timeout: timeout,
+        };
+        let mut df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(
                 self.default_catalog.clone(),
                 self.default_schema.clone(),
             )
-            .set_u64(CERESDB_REQUEST_ID, request_id.as_u64())
-            .set(CERESDB_REQUEST_TIMEOUT, ScalarValue::UInt64(timeout))
             .with_target_partitions(config.read_parallelism);
+        df_session_config
+            .config_options_mut()
+            .extensions
+            .insert(ceresdb_options);
 
         let logical_optimize_rules = Self::logical_optimize_rules();
-        let mut state = default_session_builder(df_session_config)
+        let state = default_session_builder(df_session_config)
             .with_query_planner(Arc::new(QueryPlannerAdapter))
             .with_optimizer_rules(logical_optimize_rules);
         let physical_optimizer =
-            Self::apply_adapters_for_physical_optimize_rules(&state.physical_optimizers);
-        state.physical_optimizers = physical_optimizer;
-        SessionContext::with_state(state)
+            Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
+        SessionContext::with_state(state.with_physical_optimizer_rules(physical_optimizer))
     }
 
     fn apply_adapters_for_physical_optimize_rules(
@@ -83,11 +88,11 @@ impl Context {
             Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
             Arc::new(EliminateLimit::new()),
-            Arc::new(ProjectionPushDown::new()),
-            Arc::new(FilterPushDown::new()),
-            Arc::new(LimitPushDown::new()),
-            // TODO: Re-enable this. Issue: https://github.com/CeresDB/ceresdb/issues/59
-            // Arc::new(SingleDistinctToGroupBy::new()),
+            Arc::new(PushDownProjection::new()),
+            Arc::new(PushDownFilter::new()),
+            Arc::new(PushDownLimit::new()),
+            Arc::new(TypeCoercion::new()),
+            Arc::new(SingleDistinctToGroupBy::new()),
         ];
 
         // FIXME(xikai): use config to control the optimize rule.

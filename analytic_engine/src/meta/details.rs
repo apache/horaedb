@@ -13,7 +13,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_util::{config::ReadableDuration, define_result};
+use common_util::{config::ReadableDuration, define_result, error::GenericError};
 use log::{debug, info};
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -290,7 +290,7 @@ impl Manifest for ManifestImpl {
     async fn store_update(
         &self,
         request: MetaUpdateRequest,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> std::result::Result<(), GenericError> {
         let location = request.location;
         self.store_update_to_wal(request).await?;
 
@@ -310,8 +310,7 @@ impl Manifest for ManifestImpl {
         &self,
         location: WalLocation,
         do_snapshot: bool,
-    ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
-    {
+    ) -> std::result::Result<Option<TableManifestData>, GenericError> {
         if do_snapshot {
             if let Some(snapshot) = self.maybe_do_snapshot(location).await? {
                 return Ok(snapshot.data);

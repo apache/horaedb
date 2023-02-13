@@ -83,6 +83,9 @@ CREATE TABLE `05_create_tables_t12`(c1 int not null, t1 timestamp NOT NULL TIMES
 show create table `05_create_tables_t12`;
 drop table `05_create_tables_t12`;
 
+-- Timestamp not in primary key
+CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
+
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
 DROP TABLE IF EXISTS `05_create_tables_t3`;

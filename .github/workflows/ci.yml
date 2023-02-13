@@ -31,8 +31,8 @@ env:
   LOCK_FILE: Cargo.lock
 
 jobs:
-  linux-ci:
-    name: linux-ci
+  style-check:
+    name: style-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -59,7 +59,7 @@ jobs:
           restore-keys: |
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
-            debug-${{ runner.os }}
+            debug-
       - name: Ensure Disk Quota
         run: |
           make ensure-disk-quota
@@ -67,9 +67,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Backup Lock File
-        run: |
-          cp ${LOCK_FILE} ${LOCK_FILE}.bak
       - name: Install clippy rustfmt
         run: |
           rustup component add clippy
@@ -81,6 +78,48 @@ jobs:
           make clippy
           make fmt
           make check-cargo-toml
+      - name: Report Disk Usage
+        if: always()
+        run: |
+          du -sh ./target
+          df -h
+
+  unit-test:
+    name: unit-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        rust: [nightly-2022-08-08]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            debug-${{ runner.os }}-
+            debug-
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+      - name: Backup Lock File
+        run: |
+          cp ${LOCK_FILE} ${LOCK_FILE}.bak
       - name: Run Unit Tests
         run: |
           make test-ut
@@ -88,14 +127,42 @@ jobs:
       - name: Check Lock File
         run: |
           diff ${LOCK_FILE} ${LOCK_FILE}.bak
-      - name: Run Sqlness
-        working-directory: integration_tests
+
+  integration-test:
+    name: integration-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        rust: [nightly-2022-08-08]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Release Disk Quota
         run: |
-          make run
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            debug-${{ runner.os }}-
+            debug-
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+      - name: Run black-box tests
+        run: |
+          make test-black
         env:
           RUST_BACKTRACE: "1"
-      - name: Report Disk Usage
-        if: always()
-        run: |
-          du -sh ./target
-          df -h

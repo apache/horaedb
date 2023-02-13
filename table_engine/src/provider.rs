@@ -13,19 +13,18 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
-    config::OPT_BATCH_SIZE,
+    config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::datasource::{TableProvider, TableProviderFilterPushDown},
     error::{DataFusionError, Result},
     execution::context::{SessionState, TaskContext},
-    logical_plan::Expr,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
         DisplayFormatType, ExecutionPlan, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
-    scalar::ScalarValue,
 };
-use datafusion_expr::{TableSource, TableType};
+use datafusion_expr::{Expr, TableSource, TableType};
+use df_operator::visitor;
 use log::debug;
 
 use crate::{
@@ -34,9 +33,71 @@ use crate::{
     table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
 
-// Config keys set in Datafusion's SessionConfig
-pub const CERESDB_REQUEST_TIMEOUT: &str = "ceresdb_request_timeout";
-pub const CERESDB_REQUEST_ID: &str = "ceresdb_request_id";
+#[derive(Clone, Debug)]
+pub struct CeresdbOptions {
+    pub request_id: u64,
+    pub request_timeout: Option<u64>,
+}
+
+impl ConfigExtension for CeresdbOptions {
+    const PREFIX: &'static str = "ceresdb";
+}
+
+impl ExtensionOptions for CeresdbOptions {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn cloned(&self) -> Box<dyn ExtensionOptions> {
+        Box::new(self.clone())
+    }
+
+    fn set(&mut self, key: &str, value: &str) -> Result<()> {
+        match key {
+            "request_id" => {
+                self.request_id = value.parse::<u64>().map_err(|e| {
+                    DataFusionError::External(
+                        format!("could not parse request_id, input:{}, err:{:?}", value, e).into(),
+                    )
+                })?
+            }
+            "request_timeout" => {
+                self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
+                    DataFusionError::External(
+                        format!(
+                            "could not parse request_timeout, input:{}, err:{:?}",
+                            value, e
+                        )
+                        .into(),
+                    )
+                })?)
+            }
+            _ => Err(DataFusionError::External(
+                format!("could not find key, key:{}", key).into(),
+            ))?,
+        }
+        Ok(())
+    }
+
+    fn entries(&self) -> Vec<ConfigEntry> {
+        vec![
+            ConfigEntry {
+                key: "request_id".to_string(),
+                value: Some(self.request_id.to_string()),
+                description: "",
+            },
+            ConfigEntry {
+                key: "request_timeout".to_string(),
+                value: self.request_timeout.map(|v| v.to_string()),
+                description: "",
+            },
+        ]
+    }
+}
 
 /// An adapter to [TableProvider] with schema snapshot.
 ///
@@ -71,16 +132,18 @@ impl TableProviderAdapter {
     pub async fn scan_table(
         &self,
         state: &SessionState,
-        projection: &Option<Vec<usize>>,
+        projection: Option<&Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
         read_order: ReadOrder,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let request_id = RequestId::from(state.config.config_options().get_u64(CERESDB_REQUEST_ID));
-        let deadline = match state.config.config_options().get(CERESDB_REQUEST_TIMEOUT) {
-            Some(ScalarValue::UInt64(Some(n))) => Some(Instant::now() + Duration::from_millis(n)),
-            _ => None,
-        };
+        let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
+        assert!(ceresdb_options.is_some());
+        let ceresdb_options = ceresdb_options.unwrap();
+        let request_id = RequestId::from(ceresdb_options.request_id);
+        let deadline = ceresdb_options
+            .request_timeout
+            .map(|n| Instant::now() + Duration::from_millis(n));
         debug!(
             "scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, read_order:{:?}, deadline:{:?}",
             self.table.name(),
@@ -100,15 +163,15 @@ impl TableProviderAdapter {
             self.read_parallelism
         };
 
-        let predicate = self.predicate_from_filters(filters);
+        let predicate = self.check_and_build_predicate_from_filters(filters);
         let mut scan_table = ScanTable {
-            projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.clone())
+            projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.cloned())
                 .map_err(|e| {
-                    DataFusionError::Internal(format!(
-                        "Invalid projection, plan:{:?}, projection:{:?}, err:{:?}",
-                        self, projection, e
-                    ))
-                })?,
+                DataFusionError::Internal(format!(
+                    "Invalid projection, plan:{:?}, projection:{:?}, err:{:?}",
+                    self, projection, e
+                ))
+            })?,
             table: self.table.clone(),
             request_id,
             read_order,
@@ -122,11 +185,36 @@ impl TableProviderAdapter {
         Ok(Arc::new(scan_table))
     }
 
-    fn predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
+    fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
+        let unique_keys = self.read_schema.unique_keys();
+
+        let push_down_filters = filters
+            .iter()
+            .filter_map(|filter| {
+                if Self::only_filter_unique_key_columns(filter, &unique_keys) {
+                    Some(filter.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
         PredicateBuilder::default()
-            .add_pushdown_exprs(filters)
-            .extract_time_range(&self.read_schema, filters)
+            .add_pushdown_exprs(&push_down_filters)
+            .extract_time_range(&self.read_schema, &push_down_filters)
             .build()
+    }
+
+    fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
+        let filter_cols = visitor::find_columns_by_expr(filter);
+        for filter_col in filter_cols {
+            // If a column which is not part of the unique key occurred in `filter`, the
+            // `filter` shouldn't be pushed down.
+            if !unique_keys.contains(&filter_col.as_str()) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -144,7 +232,7 @@ impl TableProvider for TableProviderAdapter {
     async fn scan(
         &self,
         state: &SessionState,
-        projection: &Option<Vec<usize>>,
+        projection: Option<&Vec<usize>>,
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
@@ -228,7 +316,7 @@ impl ScanTable {
         let req = ReadRequest {
             request_id: self.request_id,
             opts: ReadOptions {
-                batch_size: state.config.config_options.get_u64(OPT_BATCH_SIZE) as usize,
+                batch_size: state.config_options().execution.batch_size,
                 read_parallelism: self.read_parallelism,
                 deadline: self.deadline,
             },
@@ -327,5 +415,137 @@ impl fmt::Debug for ScanTable {
             .field("read_parallelism", &self.read_parallelism)
             .field("predicate", &self.predicate)
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use common_types::{
+        column_schema,
+        datum::DatumKind,
+        schema::{Builder, Schema},
+    };
+    use datafusion::scalar::ScalarValue;
+    use datafusion_expr::{col, Expr};
+
+    use super::*;
+    use crate::{memory::MemoryTable, table::TableId};
+
+    fn build_user_defined_primary_key_schema() -> Schema {
+        Builder::new()
+            .auto_increment_column_id(true)
+            .add_key_column(
+                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_key_column(
+                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("field1".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    fn build_default_primary_key_schema() -> Schema {
+        Builder::new()
+            .auto_increment_column_id(true)
+            .add_key_column(
+                column_schema::Builder::new("tsid".to_string(), DatumKind::UInt64)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_key_column(
+                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("user_define1".to_string(), DatumKind::String)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("field1".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    fn build_filters() -> Vec<Expr> {
+        let filter1 = col("timestamp").lt(Expr::Literal(ScalarValue::UInt64(Some(10086))));
+        let filter2 =
+            col("user_define1").eq(Expr::Literal(ScalarValue::Utf8(Some("10086".to_string()))));
+        let filter3 = col("field1").eq(Expr::Literal(ScalarValue::Utf8(Some("10087".to_string()))));
+        let filter4 = col("field2").eq(Expr::Literal(ScalarValue::Float64(Some(10088.0))));
+
+        vec![filter1, filter2, filter3, filter4]
+    }
+
+    #[test]
+    pub fn test_push_down_in_user_defined_primary_key_case() {
+        let test_filters = build_filters();
+        let user_defined_pk_schema = build_user_defined_primary_key_schema();
+
+        let table = MemoryTable::new(
+            "test_table".to_string(),
+            TableId::new(0),
+            user_defined_pk_schema,
+            "memory".to_string(),
+        );
+        let provider = TableProviderAdapter::new(Arc::new(table), 1);
+        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
+
+        let expected_filters = vec![test_filters[0].clone(), test_filters[1].clone()];
+        assert_eq!(predicate.exprs(), &expected_filters);
+    }
+
+    #[test]
+    pub fn test_push_down_in_default_primary_key_case() {
+        let test_filters = build_filters();
+        let default_pk_schema = build_default_primary_key_schema();
+
+        let table = MemoryTable::new(
+            "test_table".to_string(),
+            TableId::new(0),
+            default_pk_schema,
+            "memory".to_string(),
+        );
+        let provider = TableProviderAdapter::new(Arc::new(table), 1);
+        let predicate = provider.check_and_build_predicate_from_filters(&test_filters);
+
+        let expected_filters = vec![test_filters[0].clone(), test_filters[2].clone()];
+        assert_eq!(predicate.exprs(), &expected_filters);
     }
 }

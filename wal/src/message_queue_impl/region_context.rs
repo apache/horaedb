@@ -8,7 +8,10 @@ use std::{
 };
 
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::debug;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -67,7 +70,7 @@ pub enum Error {
         region_id: u64,
         table_id: TableId,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -595,7 +598,7 @@ impl TableWriter {
             table_write_ctx
                 .log_encoding
                 .encode_key(&mut key_buf, &log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(WriteWithCause {
                     region_id,
                     table_id,
@@ -613,7 +616,7 @@ impl TableWriter {
             .message_queue
             .produce(&table_write_ctx.log_topic, messages)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWithCause {
                 region_id,
                 table_id,

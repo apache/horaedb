@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - '.github/workflows/docker-build-image.yml'
+      - '.github/workflows/**'
       - 'Dockerfile'
       - 'docker/**'
       - 'docs/minimal.toml'
@@ -12,7 +12,7 @@ on:
     branches:
       - main
     paths:
-      - '.github/workflows/docker-build-image.yml'
+      - '.github/workflows/**'
       - 'Dockerfile'
       - 'docker/**'
       - 'docs/minimal.toml'

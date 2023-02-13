@@ -12,7 +12,7 @@ use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
     time::TimeRange,
 };
-use common_util::{define_result, runtime::Runtime};
+use common_util::{define_result, error::BoxError, runtime::Runtime};
 use futures::stream::Stream;
 use log::{debug, error, trace};
 use snafu::{ResultExt, Snafu};
@@ -333,12 +333,9 @@ where
     runtime.spawn(async move {
         for mut iter in collection {
             while let Some(record_batch) = iter.next_batch().await.transpose() {
-                let record_batch =
-                    record_batch
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ErrWithSource {
-                            msg: "read record batch",
-                        });
+                let record_batch = record_batch.box_err().context(ErrWithSource {
+                    msg: "read record batch",
+                });
 
                 // Apply the projection to RecordBatchWithKey and gets the final RecordBatch.
                 let record_batch = record_batch.and_then(|batch_with_key| {
@@ -346,7 +343,7 @@ where
                     // indexes to project.
                     batch_with_key
                         .try_project(&projected_schema)
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(ErrWithSource {
                             msg: "project record batch",
                         })

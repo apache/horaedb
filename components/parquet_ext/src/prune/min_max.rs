@@ -248,10 +248,10 @@ mod test {
         let testcases = vec![
             // (expr, min, max, schema, expected)
             (
-                col("a").eq(lit(5i32)), // a == 5
+                col("a").eq(lit(5i64)), // a == 5
                 10,
                 20,
-                vec![("a", ArrowDataType::Int32)],
+                vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
             (
@@ -273,7 +273,7 @@ mod test {
                 col("a").in_list(vec![lit(17i64), lit(100i64)], false), // a in (17, 100)
                 101,
                 200,
-                vec![("a", ArrowDataType::Int32)],
+                vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
         ];

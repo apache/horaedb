@@ -9,7 +9,7 @@ use common_types::{
     schema::Schema,
     table::{ClusterVersion, ShardId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
 };
-use common_util::runtime::Runtime;
+use common_util::{error::GenericError, runtime::Runtime};
 use proto::sys_catalog as sys_catalog_pb;
 use snafu::{ensure, Backtrace, Snafu};
 
@@ -28,20 +28,13 @@ pub enum Error {
     TableExists { table: String, backtrace: Backtrace },
 
     #[snafu(display("Invalid arguments, err:{}", source))]
-    InvalidArguments {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidArguments { table: String, source: GenericError },
 
     #[snafu(display("Failed to write meta data, err:{}", source))]
-    WriteMeta {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    WriteMeta { source: GenericError },
 
     #[snafu(display("Unexpected error, err:{}", source))]
-    Unexpected {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Unexpected { source: GenericError },
 
     #[snafu(display("Unexpected error, :msg{}", msg))]
     UnexpectedNoCause { msg: String },
@@ -69,9 +62,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to close the table engine, err:{}", source))]
-    Close {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    Close { source: GenericError },
 }
 
 define_result!(Error);

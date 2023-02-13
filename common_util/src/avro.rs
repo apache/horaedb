@@ -21,6 +21,8 @@ use common_types::{
 };
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
+use crate::error::{BoxError, GenericError};
+
 /// Schema name of the record
 const RECORD_NAME: &str = "Result";
 
@@ -37,9 +39,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to convert to avro record, err:{}", source))]
-    ParseAvroRecord {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ParseAvroRecord { source: GenericError },
 
     #[snafu(display(
         "Invalid avro record, expect record, value:{:?}.\nBacktrace:\n{}",
@@ -70,20 +70,14 @@ pub enum Error {
         msg,
         source
     ))]
-    AvroRowsToRecordBatch {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    AvroRowsToRecordBatch { msg: String, source: GenericError },
 
     #[snafu(display(
         "Failed to convert avro rows to row group, msg:{}, err:{}",
         msg,
         source
     ))]
-    AvroRowsToRowGroup {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    AvroRowsToRowGroup { msg: String, source: GenericError },
 
     #[snafu(display(
         "Failed to convert row group to avro rows with no cause, msg:{}.\nBacktrace:\n{}",
@@ -97,10 +91,7 @@ pub enum Error {
         msg,
         source
     ))]
-    RowGroupToAvroRowsWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    RowGroupToAvroRowsWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Unsupported conversion from avro value to datum, value:{:?}, datum_type:{}.\nBacktrace:\n{}", value, datum_type, backtrace))]
     UnsupportedConversion {
@@ -188,7 +179,7 @@ pub fn avro_rows_to_record_batch(
     for raw in raws {
         row_buf.clear();
         avro_row_to_row(&avro_schema, &record_schema, &raw, &mut row_buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(AvroRowsToRecordBatch {
                 msg: format!(
                     "parse avro raw to row failed, avro schema:{:?}, raw:{:?}",
@@ -201,7 +192,7 @@ pub fn avro_rows_to_record_batch(
             let column_block_builder = column_block_builders.get_mut(col_idx).unwrap();
             column_block_builder
                 .append(datum.clone())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(AvroRowsToRecordBatch {
                     msg: format!(
                         "append datum to column block builder failed, datum:{:?}, builder:{:?}",
@@ -217,7 +208,7 @@ pub fn avro_rows_to_record_batch(
         .map(|mut builder| builder.build())
         .collect::<Vec<_>>();
     RecordBatch::new(record_schema, column_blocks)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(AvroRowsToRecordBatch {
             msg: "build record batch failed",
         })
@@ -260,7 +251,7 @@ pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
         }
 
         let row_bytes = avro_rs::to_avro_datum(&avro_schema, avro_record)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(RowGroupToAvroRowsWithCause {
                 msg: format!(
                     "new avro record with schema failed, schema:{:?}",
@@ -399,7 +390,7 @@ fn avro_row_to_row(
     row: &mut Vec<Datum>,
 ) -> Result<()> {
     let record = avro_rs::from_avro_datum(schema, &mut raw, None)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ParseAvroRecord)?;
     if let Value::Record(cols) = record {
         for (column_name, column_value) in cols {

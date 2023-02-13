@@ -9,6 +9,7 @@ use common_types::{
     column_schema::ColumnSchema,
     table::{ClusterVersion, ShardId},
 };
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 use table_engine::{
     engine::{self, TableEngineRef, TableState},
@@ -31,7 +32,7 @@ pub enum Error {
     AllocateTableId {
         schema: String,
         table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -45,7 +46,7 @@ pub enum Error {
         schema: String,
         table_name: String,
         table_id: TableId,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -61,9 +62,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to create table, err:{}", source))]
-    CreateTableWithCause {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CreateTableWithCause { source: GenericError },
 
     #[snafu(display(
         "Failed to drop table, request:{:?}, msg:{}.\nBacktrace:\n{}",
@@ -78,9 +77,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to drop table, err:{}", source))]
-    DropTableWithCause {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    DropTableWithCause { source: GenericError },
 
     #[snafu(display(
         "Failed to open table, request:{:?}, msg:{}.\nBacktrace:\n{}",
@@ -95,9 +92,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to open table, source:{}", source))]
-    OpenTableWithCause {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    OpenTableWithCause { source: GenericError },
 
     #[snafu(display(
         "Failed to close table, request:{:?}, msg:{}.\nBacktrace:\n{}",
@@ -112,9 +107,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to close table, source:{}", source))]
-    CloseTableWithCause {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    CloseTableWithCause { source: GenericError },
 
     #[snafu(display(
         "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
@@ -128,10 +121,7 @@ pub enum Error {
         table,
         source
     ))]
-    WriteTableMeta {
-        table: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    WriteTableMeta { table: String, source: GenericError },
 
     #[snafu(display(
         "Catalog mismatch, expect:{}, given:{}.\nBacktrace:\n{}",
@@ -173,9 +163,7 @@ pub enum Error {
     TableNotFound { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to alter table, err:{}", source))]
-    AlterTable {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    AlterTable { source: GenericError },
 
     #[snafu(display(
         "Too many table, cannot create table, schema:{}, table:{}.\nBacktrace:\n{}",

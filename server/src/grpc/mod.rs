@@ -15,10 +15,7 @@ use ceresdbproto::{
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
-use common_types::{
-    column_schema::{self},
-    schema::Error as SchemaError,
-};
+use common_types::column_schema;
 use common_util::{
     define_result,
     error::GenericError,
@@ -113,9 +110,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Fail to build table schema for metric:{}, err:{}", metric, source))]
-    BuildTableSchema { metric: String, source: SchemaError },
-
     #[snafu(display("Fail to build forwarder, err:{}", source))]
     BuildForwarder { source: forward::Error },
 
@@ -165,7 +159,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
         let serve_addr = self.serve_addr;
         let (stop_tx, stop_rx) = oneshot::channel();
         let join_handle = self.runtime.spawn(async move {
-            info!("Grpc server starts listening on {}", serve_addr);
+            info!("Grpc server tries to listen on {}", serve_addr);
 
             let mut router = Server::builder().add_service(rpc_server);
 
@@ -177,11 +171,12 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
             info!("Grpc server serves remote engine rpc service");
             router = router.add_service(remote_engine_server);
 
-            let serve_res = router
+            router
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
-                .await;
-
-            warn!("Grpc server stops serving, exit result:{:?}", serve_res);
+                .await
+                .unwrap_or_else(|e| {
+                    panic!("Grpc server listens failed, err:{:?}", e);
+                });
         });
         self.join_handle = Some(join_handle);
         self.stop_tx = Some(stop_tx);
@@ -204,7 +199,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
 pub struct Builder<Q> {
     endpoint: String,
     timeout: Option<Duration>,
-    enable_tenant_as_schema: bool,
+    resp_compress_min_length: usize,
     local_endpoint: Option<String>,
     runtimes: Option<Arc<EngineRuntimes>>,
     instance: Option<InstanceRef<Q>>,
@@ -219,7 +214,7 @@ impl<Q> Builder<Q> {
         Self {
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
-            enable_tenant_as_schema: false,
+            resp_compress_min_length: 81920,
             local_endpoint: None,
             runtimes: None,
             instance: None,
@@ -235,8 +230,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn enable_tenant_as_schema(mut self, enable_tenant_as_schema: bool) -> Self {
-        self.enable_tenant_as_schema = enable_tenant_as_schema;
+    pub fn resp_compress_min_length(mut self, threshold: usize) -> Self {
+        self.resp_compress_min_length = threshold;
         self
     }
 
@@ -330,7 +325,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             schema_config_provider,
             forwarder,
             timeout: self.timeout,
-            enable_tenant_as_schema: self.enable_tenant_as_schema,
+            resp_compress_min_length: self.resp_compress_min_length,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

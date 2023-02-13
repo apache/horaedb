@@ -7,10 +7,9 @@ use std::collections::HashMap;
 use common_types::{column_schema, datum::DatumKind, time::Timestamp};
 use table_engine::table::AlterSchemaRequest;
 
-use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
 use crate::tests::{
     table::FixedSchemaTable,
-    util::{self, TestEnv},
+    util::{self, EngineContext, MemoryEngineContext, RocksDBEngineContext, TestEnv},
 };
 
 #[test]

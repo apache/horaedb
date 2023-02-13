@@ -423,7 +423,7 @@ affected_rows: 400
 SELECT thetasketch_distinct(`value`) FROM `02_function_thetasketch_distinct_table`;
 
 thetasketch_distinct(02_function_thetasketch_distinct_table.value),
-Int64(147),
+UInt64(147),
 
 
 SELECT
@@ -439,8 +439,8 @@ ORDER BY
     `arch` DESC;
 
 arch,thetasketch_distinct(02_function_thetasketch_distinct_table.value),
-String(StringBytes(b"x86")),Int64(115),
-String(StringBytes(b"arm")),Int64(114),
+String("x86"),UInt64(115),
+String("arm"),UInt64(117),
 
 
 DROP TABLE `02_function_thetasketch_distinct_table`;

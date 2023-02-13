@@ -13,10 +13,9 @@ use common_types::hash::hash64;
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
     error::{DataFusionError, Result as DataFusionResult},
-    logical_plan::{create_udf, Expr},
     physical_plan::{functions::make_scalar_function, udf::ScalarUDF},
 };
-use datafusion_expr::Volatility;
+use datafusion_expr::{create_udf, Expr, Volatility};
 
 /// The name of the regex_match UDF given to DataFusion.
 pub const REGEX_MATCH_UDF_NAME: &str = "RegexMatch";
@@ -155,12 +154,8 @@ mod tests {
         util::pretty::pretty_format_batches,
     };
     use common_types::schema::{ArrowSchema, ArrowSchemaRef, DataType, Field};
-    use datafusion::{
-        datasource::MemTable,
-        error::DataFusionError,
-        logical_plan::{col, Expr as DataFusionExpr},
-        prelude::SessionContext,
-    };
+    use datafusion::{datasource::MemTable, error::DataFusionError, prelude::SessionContext};
+    use datafusion_expr::{col, Expr};
 
     #[tokio::test]
     async fn regex_match_expr() {
@@ -272,13 +267,13 @@ mod tests {
     async fn run_plan(
         schema: ArrowSchemaRef,
         rb: Vec<Vec<RecordBatch>>,
-        op: DataFusionExpr,
+        op: Expr,
     ) -> Result<Vec<String>, DataFusionError> {
         let provider = MemTable::try_new(Arc::clone(&schema), rb).unwrap();
         let ctx = SessionContext::new();
         ctx.register_table("t", Arc::new(provider)).unwrap();
 
-        let df = ctx.table("t").unwrap();
+        let df = ctx.table("t").await.unwrap();
         let df = df.filter(op).unwrap();
 
         // execute the query

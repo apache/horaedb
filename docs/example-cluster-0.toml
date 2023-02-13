@@ -1,12 +1,10 @@
+[service]
 bind_addr = "0.0.0.0"
 http_port = 5440
 grpc_port = 8831
 mysql_port = 3307
 log_level = "info"
 deploy_mode = "Cluster"
-
-[analytic]
-wal_path = "/tmp/ceresdb0"
 
 [analytic.storage]
 mem_cache_capacity = '1G'
@@ -15,6 +13,10 @@ mem_cache_partition_bits = 0
 [analytic.storage.object_store]
 type = "Local"
 data_path = "/tmp/ceresdb0"
+
+[analytic.wal_storage]
+type = "RocksDB"
+path = "/tmp/ceresdb0"
 
 [cluster]
 cmd_channel_buffer_size = 10

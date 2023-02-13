@@ -9,7 +9,7 @@ use futures::Stream;
 use crate::sst::meta_data::SstMetaData;
 
 pub mod error {
-    use common_util::define_result;
+    use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]
@@ -19,28 +19,31 @@ pub mod error {
         ReadAgain { backtrace: Backtrace, path: String },
 
         #[snafu(display("Fail to read persisted file, path:{}, err:{}", path, source))]
-        ReadPersist {
-            path: String,
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        ReadPersist { path: String, source: GenericError },
 
         #[snafu(display("Failed to decode record batch, err:{}", source))]
-        DecodeRecordBatch {
-            source: Box<dyn std::error::Error + Send + Sync>,
+        DecodeRecordBatch { source: GenericError },
+
+        #[snafu(display(
+            "Failed to decode sst meta data, file_path:{}, err:{}.\nBacktrace:\n{:?}",
+            file_path,
+            source,
+            backtrace
+        ))]
+        FetchAndDecodeSstMeta {
+            file_path: String,
+            source: parquet::errors::ParquetError,
+            backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to decode sst meta data, err:{}", source))]
-        DecodeSstMeta {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        DecodeSstMeta { source: GenericError },
 
         #[snafu(display("Sst meta data is not found.\nBacktrace:\n{}", backtrace))]
         SstMetaNotFound { backtrace: Backtrace },
 
         #[snafu(display("Fail to projection, err:{}", source))]
-        Projection {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        Projection { source: GenericError },
 
         #[snafu(display("Sst meta data is empty.\nBacktrace:\n{}", backtrace))]
         EmptySstMeta { backtrace: Backtrace },
@@ -67,9 +70,7 @@ pub mod error {
         },
 
         #[snafu(display("Other kind of error:{}", source))]
-        Other {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        Other { source: GenericError },
 
         #[snafu(display("Other kind of error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
         OtherNoCause { msg: String, backtrace: Backtrace },

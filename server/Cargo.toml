@@ -22,6 +22,7 @@ cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
@@ -51,5 +52,7 @@ tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
 warp = "0.3"
+zstd = { workspace = true }
+
 [dev-dependencies]
 sql = { workspace = true, features = ["test"] }

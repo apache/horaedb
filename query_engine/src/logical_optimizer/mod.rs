@@ -51,7 +51,11 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
             mut df_plan,
             tables,
         } = plan;
-        df_plan = self.ctx.optimize(&df_plan).context(DataFusionOptimize)?;
+        df_plan = self
+            .ctx
+            .state()
+            .optimize(&df_plan)
+            .context(DataFusionOptimize)?;
 
         Ok(QueryPlan { df_plan, tables })
     }

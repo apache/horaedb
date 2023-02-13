@@ -6,7 +6,9 @@ use std::{collections::HashMap, fmt};
 
 use async_trait::async_trait;
 use common_types::{row::Row, schema::Schema, time::TimeRange};
-use datafusion::logical_plan::{Column, Expr};
+use common_util::error::BoxError;
+use datafusion::common::Column;
+use datafusion_expr::Expr;
 use futures::TryStreamExt;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
@@ -123,7 +125,7 @@ impl Table for TableImpl {
             .instance
             .write_to_table(&self.space_table, request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Write { table: self.name() })?;
         Ok(num_rows)
     }
@@ -134,7 +136,7 @@ impl Table for TableImpl {
             .instance
             .partitioned_read_from_table(&self.space_table, request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Scan { table: self.name() })?;
 
         assert_eq!(streams.streams.len(), 1);
@@ -184,7 +186,7 @@ impl Table for TableImpl {
         let mut batch_stream = self
             .read(read_request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Scan { table: self.name() })?;
 
         let mut result_columns = Vec::with_capacity(schema.num_columns());
@@ -192,7 +194,7 @@ impl Table for TableImpl {
         while let Some(batch) = batch_stream
             .try_next()
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Get { table: self.name() })?
         {
             let row_num = batch.num_rows();
@@ -224,7 +226,7 @@ impl Table for TableImpl {
             .instance
             .partitioned_read_from_table(&self.space_table, request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Scan { table: self.name() })?;
 
         Ok(streams)
@@ -234,7 +236,7 @@ impl Table for TableImpl {
         self.instance
             .alter_schema_of_table(&self.space_table, request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(AlterSchema { table: self.name() })?;
         Ok(0)
     }
@@ -243,7 +245,7 @@ impl Table for TableImpl {
         self.instance
             .alter_options_of_table(&self.space_table, options)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(AlterOptions { table: self.name() })?;
         Ok(0)
     }
@@ -266,12 +268,10 @@ impl Table for TableImpl {
 
         Instance::flush_table(self.space_table.table_data().clone(), flush_opts)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Flush { table: self.name() })?;
         if let Some(rx) = rx_opt {
-            rx.await
-                .map_err(|e| Box::new(e) as _)
-                .context(Flush { table: self.name() })??;
+            rx.await.box_err().context(Flush { table: self.name() })??;
         }
         Ok(())
     }
@@ -280,7 +280,7 @@ impl Table for TableImpl {
         self.instance
             .manual_compact_table(&self.space_table)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Compact { table: self.name() })?;
         Ok(())
     }

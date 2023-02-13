@@ -3,7 +3,7 @@
 //! Error definitions for storage service.
 
 use ceresdbproto::common::ResponseHeader;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use http::StatusCode;
 use snafu::Snafu;
 
@@ -21,7 +21,7 @@ pub enum Error {
     ErrWithCause {
         code: StatusCode,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 }
 

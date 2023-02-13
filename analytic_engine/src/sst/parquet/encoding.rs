@@ -3,7 +3,7 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use arrow::{
-    array::{Array, ArrayData, ArrayRef},
+    array::{make_array, Array, ArrayData, ArrayRef},
     buffer::MutableBuffer,
     compute,
     record_batch::RecordBatch as ArrowRecordBatch,
@@ -14,7 +14,10 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
 };
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::trace;
 use parquet::{
     arrow::ArrowWriter,
@@ -123,7 +126,7 @@ pub enum Error {
         backtrace
     ))]
     EncodeRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
         backtrace: Backtrace,
     },
 
@@ -133,7 +136,7 @@ pub enum Error {
         backtrace
     ))]
     DecodeRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
         backtrace: Backtrace,
     },
 
@@ -244,7 +247,7 @@ impl ColumnarRecordEncoder {
 
         let arrow_writer =
             ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch)?;
 
         Ok(Self {
@@ -259,14 +262,14 @@ impl RecordEncoder for ColumnarRecordEncoder {
         assert!(self.arrow_writer.is_some());
 
         let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
 
         self.arrow_writer
             .as_mut()
             .unwrap()
             .write(&record_batch)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
@@ -278,7 +281,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
         let arrow_writer = self.arrow_writer.take().unwrap();
         let bytes = arrow_writer
             .into_inner()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(bytes)
@@ -347,7 +350,7 @@ impl HybridRecordEncoder {
 
         let arrow_writer =
             ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch)?;
         Ok(Self {
             arrow_writer: Some(arrow_writer),
@@ -370,14 +373,14 @@ impl RecordEncoder for HybridRecordEncoder {
             self.arrow_schema.clone(),
             arrow_record_batch_vec,
         )
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(EncodeRecordBatch)?;
 
         self.arrow_writer
             .as_mut()
             .unwrap()
             .write(&record_batch)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
@@ -389,7 +392,7 @@ impl RecordEncoder for HybridRecordEncoder {
         let arrow_writer = self.arrow_writer.take().unwrap();
         let bytes = arrow_writer
             .into_inner()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
         Ok(bytes)
     }
@@ -554,10 +557,10 @@ impl HybridRecordDecoder {
             .add_buffer(new_values_buffer.into())
             .null_bit_buffer(Some(new_null_buffer.into()))
             .build()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(DecodeRecordBatch)?;
 
-        Ok(array_data.into())
+        Ok(make_array(array_data))
     }
 
     /// Like `stretch_variable_length_column`, but array value is fixed-size
@@ -598,10 +601,10 @@ impl HybridRecordDecoder {
             .null_bit_buffer(Some(new_null_buffer.into()))
             .len(values_num)
             .build()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(DecodeRecordBatch)?;
 
-        Ok(array_data.into())
+        Ok(make_array(array_data))
     }
 
     /// Decode offset slices into Vec<i32>
@@ -645,7 +648,7 @@ impl RecordDecoder for HybridRecordDecoder {
                     // are collapsed by hybrid storage format, to differentiate
                     // List column in original records
                     DataType::List(_nested_field) => {
-                        Ok(array_ref.data().child_data()[0].clone().into())
+                        Ok(make_array(array_ref.data().child_data()[0].clone()))
                     }
                     _ => {
                         let datum_kind = DatumKind::from_data_type(data_type).unwrap();
@@ -663,7 +666,7 @@ impl RecordDecoder for HybridRecordDecoder {
             .collect::<Result<Vec<_>>>()?;
 
         ArrowRecordBatch::try_new(new_arrow_schema, arrays)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)
     }
 }

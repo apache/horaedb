@@ -10,6 +10,7 @@ use common_types::{
 use common_util::{
     codec::{Decoder, Encoder},
     define_result,
+    error::{BoxError, GenericError},
 };
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
@@ -42,9 +43,7 @@ pub enum Error {
     EncodeLogValueHeader { source: bytes::Error },
 
     #[snafu(display("Failed to encode log value payload, err:{}", source))]
-    EncodeLogValuePayload {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    EncodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to decode log key, err:{}", source))]
     DecodeLogKey { source: bytes::Error },
@@ -53,9 +52,7 @@ pub enum Error {
     DecodeLogValueHeader { source: bytes::Error },
 
     #[snafu(display("Failed to decode log value payload, err:{}", source))]
-    DecodeLogValuePayload {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    DecodeLogValuePayload { source: GenericError },
 
     #[snafu(display("Failed to encode meta key, err:{}", source))]
     EncodeMetaKey {
@@ -233,7 +230,7 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
 
         payload
             .encode_to(buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeLogValuePayload)
     }
 
@@ -435,7 +432,7 @@ impl MaxSeqMetaEncoding {
     pub fn is_max_seq_meta_key(&self, mut buf: &[u8]) -> manager::Result<bool> {
         self.key_enc
             .is_valid(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)
     }
 
@@ -444,7 +441,7 @@ impl MaxSeqMetaEncoding {
         buf.reserve(self.key_enc.estimate_encoded_size(meta_key));
         self.key_enc
             .encode(buf, meta_key)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Encoding)?;
 
         Ok(())
@@ -459,21 +456,21 @@ impl MaxSeqMetaEncoding {
         buf.reserve(self.value_enc.estimate_encoded_size(meta_value));
         self.value_enc
             .encode(buf, meta_value)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Encoding)
     }
 
     pub fn decode_key(&self, mut buf: &[u8]) -> manager::Result<MetaKey> {
         self.key_enc
             .decode(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)
     }
 
     pub fn decode_value(&self, mut buf: &[u8]) -> manager::Result<MaxSeqMetaValue> {
         self.value_enc
             .decode(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)
     }
 }
@@ -554,7 +551,7 @@ impl LogBatchEncoder {
         let mut buf = BytesMut::new();
         self.log_encoding
             .encode_value(&mut buf, payload)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Encoding)?;
 
         write_batch.push(LogWriteEntry {
@@ -579,7 +576,7 @@ impl LogBatchEncoder {
         for raw_payload in raw_payload_batch.iter() {
             self.log_encoding
                 .encode_value(&mut buf, &raw_payload.into())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Encoding)?;
 
             write_batch.push(LogWriteEntry {
@@ -758,7 +755,7 @@ impl CommonLogEncoding {
 mod tests {
     use common_types::bytes::BytesMut;
 
-    use super::{CommonLogEncoding, LogEncoding};
+    use super::*;
     use crate::{
         kv_encoder::CommonLogKey,
         log_batch::PayloadDecoder,

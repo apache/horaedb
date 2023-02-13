@@ -5,13 +5,12 @@
 use std::{fmt, ops::Deref};
 
 use arrow::array::ArrayRef as DfArrayRef;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::Accumulator as DfAccumulator,
     scalar::ScalarValue as DfScalarValue,
 };
-use datafusion_expr::AggregateState as DfAggregateState;
 use snafu::Snafu;
 
 use crate::functions::{ScalarValue, ScalarValueRef};
@@ -20,14 +19,10 @@ use crate::functions::{ScalarValue, ScalarValueRef};
 #[snafu(visibility(pub(crate)))]
 pub enum Error {
     #[snafu(display("Failed to get state, err:{}", source))]
-    GetState {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    GetState { source: GenericError },
 
     #[snafu(display("Failed to merge state, err:{}", source))]
-    MergeState {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    MergeState { source: GenericError },
 }
 
 define_result!(Error);
@@ -35,8 +30,9 @@ define_result!(Error);
 pub struct State(Vec<DfScalarValue>);
 
 impl State {
-    fn into_df_aggregate_states(self) -> Vec<DfAggregateState> {
-        self.0.into_iter().map(DfAggregateState::Scalar).collect()
+    /// Convert to a set of ScalarValues
+    fn into_state(self) -> Vec<DfScalarValue> {
+        self.0
     }
 }
 
@@ -112,11 +108,11 @@ impl<T> ToDfAccumulator<T> {
 }
 
 impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
-    fn state(&self) -> DfResult<Vec<DfAggregateState>> {
+    fn state(&self) -> DfResult<Vec<DfScalarValue>> {
         let state = self.accumulator.state().map_err(|e| {
             DataFusionError::Execution(format!("Accumulator failed to get state, err:{}", e))
         })?;
-        Ok(state.into_df_aggregate_states())
+        Ok(state.into_state())
     }
 
     fn update_batch(&mut self, values: &[DfArrayRef]) -> DfResult<()> {
@@ -159,5 +155,9 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
         })?;
 
         Ok(value.into_df_scalar_value())
+    }
+
+    fn size(&self) -> usize {
+        std::mem::size_of_val(self)
     }
 }

@@ -7,9 +7,9 @@ use std::{fmt, sync::Arc};
 use bytes::Bytes;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use ethbloom::Bloom;
+use ethbloom::{Bloom, Input};
 use proto::{common as common_pb, sst as sst_pb};
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::sst::writer::MetaData;
 
@@ -29,6 +29,13 @@ pub enum Error {
     ))]
     InvalidBloomFilterSize { size: usize, backtrace: Backtrace },
 
+    #[snafu(display(
+        "Unsupported bloom filter version, version:{}.\nBacktrace\n:{}",
+        version,
+        backtrace
+    ))]
+    UnsupportedBloomFilter { version: u32, backtrace: Backtrace },
+
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
 
@@ -38,40 +45,79 @@ pub enum Error {
 
 define_result!(Error);
 
+const DEFAULT_BLOOM_FILTER_VERSION: u32 = 0;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RowGroupBloomFilter {
+    // The column filter can be None if the column is not indexed.
+    column_filters: Vec<Option<Bloom>>,
+}
+
+impl RowGroupBloomFilter {
+    pub fn with_num_columns(num_columns: usize) -> Self {
+        Self {
+            column_filters: vec![None; num_columns],
+        }
+    }
+
+    /// Accrue the data belonging to one column.
+    ///
+    /// Caller should ensure the `column_idx` is in the range.
+    pub fn accrue_column_data(&mut self, column_idx: usize, data: &[u8]) {
+        if self.column_filters[column_idx].is_none() {
+            self.column_filters[column_idx] = Some(Bloom::default());
+        }
+
+        let column_filter = self.column_filters[column_idx].as_mut().unwrap();
+        column_filter.accrue(Input::Raw(data));
+    }
+
+    /// Return None if the column is not indexed.
+    pub fn contains_column_data(&self, column_idx: usize, data: &[u8]) -> Option<bool> {
+        self.column_filters[column_idx].map(|v| v.contains_input(Input::Raw(data)))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BloomFilter {
-    // Two level vector means
-    // 1. row group
-    // 2. column
-    filters: Vec<Vec<Bloom>>,
+    /// Every filter is a row group filter consists of column filters.
+    row_group_filters: Vec<RowGroupBloomFilter>,
 }
 
 impl BloomFilter {
-    pub fn new(filters: Vec<Vec<Bloom>>) -> Self {
-        Self { filters }
+    pub fn new(row_group_filters: Vec<RowGroupBloomFilter>) -> Self {
+        Self { row_group_filters }
     }
 
-    #[inline]
-    pub fn filters(&self) -> &[Vec<Bloom>] {
-        &self.filters
+    pub fn row_group_filters(&self) -> &[RowGroupBloomFilter] {
+        &self.row_group_filters
     }
 }
 
 impl From<BloomFilter> for sst_pb::SstBloomFilter {
     fn from(bloom_filter: BloomFilter) -> Self {
         let row_group_filters = bloom_filter
-            .filters
+            .row_group_filters
             .iter()
             .map(|row_group_filter| {
                 let column_filters = row_group_filter
+                    .column_filters
                     .iter()
-                    .map(|column_filter| column_filter.data().to_vec())
+                    .map(|column_filter| {
+                        column_filter
+                            .map(|v| v.data().to_vec())
+                            // If the column filter does not exist, use an empty vector for it.
+                            .unwrap_or_default()
+                    })
                     .collect::<Vec<_>>();
                 sst_pb::sst_bloom_filter::RowGroupFilter { column_filters }
             })
             .collect::<Vec<_>>();
 
-        sst_pb::SstBloomFilter { row_group_filters }
+        sst_pb::SstBloomFilter {
+            version: DEFAULT_BLOOM_FILTER_VERSION,
+            row_group_filters,
+        }
     }
 }
 
@@ -79,27 +125,39 @@ impl TryFrom<sst_pb::SstBloomFilter> for BloomFilter {
     type Error = Error;
 
     fn try_from(src: sst_pb::SstBloomFilter) -> Result<Self> {
-        let filters = src
+        ensure!(
+            src.version == DEFAULT_BLOOM_FILTER_VERSION,
+            UnsupportedBloomFilter {
+                version: src.version
+            }
+        );
+
+        let row_group_filters = src
             .row_group_filters
             .into_iter()
             .map(|row_group_filter| {
-                row_group_filter
+                let column_filters = row_group_filter
                     .column_filters
                     .into_iter()
                     .map(|encoded_bytes| {
-                        let size = encoded_bytes.len();
-                        let bs: [u8; 256] = encoded_bytes
-                            .try_into()
-                            .ok()
-                            .context(InvalidBloomFilterSize { size })?;
+                        if encoded_bytes.is_empty() {
+                            Ok(None)
+                        } else {
+                            let size = encoded_bytes.len();
+                            let bs: [u8; 256] = encoded_bytes
+                                .try_into()
+                                .ok()
+                                .context(InvalidBloomFilterSize { size })?;
 
-                        Ok(Bloom::from(bs))
+                            Ok(Some(Bloom::from(bs)))
+                        }
                     })
-                    .collect::<Result<Vec<_>>>()
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(RowGroupBloomFilter { column_filters })
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(BloomFilter { filters })
+        Ok(BloomFilter { row_group_filters })
     }
 }
 
@@ -197,5 +255,60 @@ impl TryFrom<sst_pb::ParquetMetaData> for ParquetMetaData {
             bloom_filter,
             collapsible_cols_idx: src.collapsible_cols_idx,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_conversion_sst_bloom_filter() {
+        let bloom_filter = BloomFilter {
+            row_group_filters: vec![
+                RowGroupBloomFilter {
+                    column_filters: vec![None, Some(Bloom::default())],
+                },
+                RowGroupBloomFilter {
+                    column_filters: vec![Some(Bloom::default()), None],
+                },
+            ],
+        };
+
+        let sst_bloom_filter: sst_pb::SstBloomFilter = bloom_filter.clone().into();
+        assert_eq!(sst_bloom_filter.version, DEFAULT_BLOOM_FILTER_VERSION);
+        assert_eq!(sst_bloom_filter.row_group_filters.len(), 2);
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[0].column_filters.len(),
+            2
+        );
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[1].column_filters.len(),
+            2
+        );
+        assert!(sst_bloom_filter.row_group_filters[0].column_filters[0].is_empty());
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[0].column_filters[1].len(),
+            256
+        );
+        assert_eq!(
+            sst_bloom_filter.row_group_filters[1].column_filters[0].len(),
+            256
+        );
+        assert!(sst_bloom_filter.row_group_filters[1].column_filters[1].is_empty());
+
+        let decoded_bloom_filter = BloomFilter::try_from(sst_bloom_filter).unwrap();
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters.len(),
+            bloom_filter.row_group_filters().len(),
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[0].column_filters,
+            bloom_filter.row_group_filters()[0].column_filters
+        );
+        assert_eq!(
+            decoded_bloom_filter.row_group_filters[1],
+            bloom_filter.row_group_filters()[1],
+        );
     }
 }

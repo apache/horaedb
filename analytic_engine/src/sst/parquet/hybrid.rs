@@ -8,7 +8,7 @@ use arrow::{
         UInt64Array,
     },
     bitmap::Bitmap,
-    buffer::{Buffer, MutableBuffer},
+    buffer::MutableBuffer,
     datatypes::Schema as ArrowSchema,
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
@@ -17,6 +17,7 @@ use common_types::{
     datum::DatumKind,
     schema::{ArrowSchemaRef, DataType, Field, Schema},
 };
+use common_util::error::BoxError;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::sst::writer::{EncodeRecordBatch, Result};
@@ -153,7 +154,7 @@ trait VariableSizeArray {
     // Returns the length for the element at index i.
     fn value_length(&self, index: usize) -> i32;
     // Returns a clone of the value data buffer.
-    fn value_data(&self) -> Buffer;
+    fn value_data(&self) -> &[u8];
 }
 
 macro_rules! impl_offsets {
@@ -167,7 +168,7 @@ macro_rules! impl_offsets {
                 self.0.value_length(index)
             }
 
-            fn value_data(&self) -> Buffer {
+            fn value_data(&self) -> &[u8] {
                 self.0.value_data()
             }
         }
@@ -236,10 +237,7 @@ impl ListArrayBuilder {
             .null_bit_buffer(Some(null_buffer.into()));
 
         builder = self.apply_child_data_buffer(builder, offsets)?;
-        let values_array_data = builder
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+        let values_array_data = builder.build().box_err().context(EncodeRecordBatch)?;
 
         Ok(values_array_data)
     }
@@ -346,7 +344,7 @@ impl ListArrayBuilder {
             ))),
             typ => VariableLengthType { type_name: typ }
                 .fail()
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch),
         }
     }
@@ -404,9 +402,8 @@ impl ListArrayBuilder {
                         inner_offsets.push(inner_length_so_far);
                     }
 
-                    inner_values.extend_from_slice(
-                        &array.value_data().as_slice()[start as usize..end as usize],
-                    );
+                    inner_values
+                        .extend_from_slice(&array.value_data()[start as usize..end as usize]);
                 }
             }
             // The data in the arrays belong to the same tsid, so the offsets is the total
@@ -437,10 +434,7 @@ impl ListArrayBuilder {
         // TODO: change to unsafe version?
         // https://docs.rs/arrow/20.0.0/src/arrow/array/array_list.rs.html#192
         // let array_data = unsafe { array_data.build_unchecked() };
-        let array_data = array_data
-            .build()
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeRecordBatch)?;
+        let array_data = array_data.build().box_err().context(EncodeRecordBatch)?;
 
         Ok(ListArray::from(array_data))
     }
@@ -517,7 +511,7 @@ fn build_hybrid_record(
     .collect::<Vec<_>>();
 
     ArrowRecordBatch::try_new(arrow_schema, all_columns)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(EncodeRecordBatch)
 }
 

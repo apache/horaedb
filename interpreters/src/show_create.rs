@@ -159,9 +159,6 @@ impl ShowCreateInterpreter {
             }
         }
 
-        // TODO: update datafusion to remove `#`.
-        // Refer to https://github.com/apache/arrow-datafusion/commit/d72eb9a1c4c18bcabbf941541a9c1defa83a592c.
-        res.remove_matches("#");
         res
     }
 
@@ -190,7 +187,7 @@ mod test {
         HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
     };
 
-    use super::ShowCreateInterpreter;
+    use super::*;
 
     #[test]
     fn test_render_hash_partition_info() {

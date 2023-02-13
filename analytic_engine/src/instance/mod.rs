@@ -32,7 +32,7 @@ use wal::manager::{WalLocation, WalManagerRef};
 
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
-    meta::ManifestRef,
+    manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
     sst::{
@@ -41,7 +41,6 @@ use crate::{
         meta_data::cache::MetaCacheRef,
     },
     table::data::{TableDataRef, TableShardInfo},
-    wal_synchronizer::WalSynchronizer,
     TableOptions,
 };
 
@@ -54,11 +53,6 @@ pub enum Error {
     #[snafu(display("Failed to stop compaction scheduler, err:{}", source))]
     StopScheduler {
         source: crate::compaction::scheduler::Error,
-    },
-
-    #[snafu(display("Failed to stop WAL Synchronizer, err:{}", source))]
-    StopWalSynchronizer {
-        source: crate::wal_synchronizer::Error,
     },
 }
 
@@ -166,7 +160,6 @@ pub struct Instance {
     // End of write group options.
     compaction_scheduler: CompactionSchedulerRef,
     file_purger: FilePurger,
-    wal_synchronizer: WalSynchronizer,
 
     meta_cache: Option<MetaCacheRef>,
     /// Engine memtable memory usage collector
@@ -186,11 +179,6 @@ impl Instance {
     /// Close the instance gracefully.
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
-
-        self.wal_synchronizer
-            .stop()
-            .await
-            .context(StopWalSynchronizer)?;
 
         self.space_store.close().await?;
 

@@ -12,6 +12,7 @@ pub mod schema;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 
 use crate::schema::{NameRef, SchemaRef};
@@ -42,7 +43,7 @@ pub enum Error {
     CreateSchemaWithCause {
         catalog: String,
         schema: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display("Unsupported method, msg:{}.\nBacktrace:\n{}", msg, backtrace))]

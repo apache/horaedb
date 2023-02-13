@@ -9,9 +9,21 @@ pub mod meta_update;
 use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
-use wal::manager::WalLocation;
+use common_types::table::ShardId;
+use table_engine::table::TableId;
 
-use crate::meta::{meta_data::TableManifestData, meta_update::MetaUpdateRequest};
+use crate::{
+    manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
+    space::SpaceId,
+};
+
+pub struct LoadRequest {
+    pub space_id: SpaceId,
+    pub table_id: TableId,
+    pub cluster_version: u64,
+    pub shard_id: ShardId,
+}
+use common_util::error::GenericError;
 
 /// Manifest holds meta data of all tables.
 #[async_trait]
@@ -20,7 +32,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn store_update(
         &self,
         request: MetaUpdateRequest,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>;
+    ) -> std::result::Result<(), GenericError>;
 
     /// Load table meta data from manifest.
     ///
@@ -28,9 +40,8 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     /// the manifest data.
     async fn load_data(
         &self,
-        location: WalLocation,
-        do_snapshot: bool,
-    ) -> Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>;
+        load_request: &LoadRequest,
+    ) -> Result<Option<TableManifestData>, GenericError>;
 }
 
 pub type ManifestRef = Arc<dyn Manifest>;

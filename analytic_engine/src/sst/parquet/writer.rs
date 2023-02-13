@@ -9,8 +9,8 @@ use std::sync::{
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
+use common_util::error::BoxError;
 use datafusion::parquet::basic::Compression;
-use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
@@ -21,7 +21,7 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
-            meta_data::{BloomFilter, ParquetMetaData},
+            meta_data::{BloomFilter, ParquetMetaData, RowGroupBloomFilter},
         },
         writer::{
             self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
@@ -158,20 +158,20 @@ impl RecordBytesReader {
             .partitioned_record_batch
             .iter()
             .map(|row_group_batch| {
-                let mut row_group_filters =
-                    vec![Bloom::default(); row_group_batch[0].num_columns()];
+                let mut row_group_filter =
+                    RowGroupBloomFilter::with_num_columns(row_group_batch[0].num_columns());
 
                 for partial_batch in row_group_batch {
                     for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                         for row in 0..column.num_rows() {
                             let datum = column.datum(row);
                             let bytes = datum.to_bytes();
-                            row_group_filters[col_idx].accrue(Input::Raw(&bytes));
+                            row_group_filter.accrue_column_data(col_idx, &bytes);
                         }
                     }
                 }
 
-                row_group_filters
+                row_group_filter
             })
             .collect::<Vec<_>>();
 
@@ -194,7 +194,7 @@ impl RecordBytesReader {
             self.compression,
             parquet_meta_data,
         )
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(EncodeRecordBatch)?;
 
         // process record batch stream
@@ -207,7 +207,7 @@ impl RecordBytesReader {
             let buf_len = arrow_record_batch_vec.len();
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
             arrow_record_batch_vec = Vec::with_capacity(buf_len);
@@ -215,7 +215,7 @@ impl RecordBytesReader {
 
         let bytes = parquet_encoder
             .close()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
         Ok(bytes)
     }

@@ -10,7 +10,7 @@ use common_types::{
     datum::{Datum, DatumKind},
     time::Timestamp,
 };
-use common_util::define_result;
+use common_util::{define_result, error::BoxError};
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -77,13 +77,10 @@ fn new_udf() -> ScalarUdf {
     // - timestamp output format (ignored now).
     let func = |args: &[ColumnarValue]| {
         let bucket = TimeBucket::parse_args(args)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(InvalidArguments)?;
 
-        let result_column = bucket
-            .call()
-            .map_err(|e| Box::new(e) as _)
-            .context(CallFunction)?;
+        let result_column = bucket.call().box_err().context(CallFunction)?;
 
         Ok(ColumnarValue::Array(result_column))
     };
@@ -265,27 +262,27 @@ impl Period {
     }
 
     fn truncate_day(ts: Timestamp, period: u16) -> Option<Timestamp> {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
-        // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        // Convert to local time. Won't panic.
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate day
+        // Truncate day. Won't panic.
         let day = datetime.day();
         let day = day - (day % u32::from(period));
         let truncated_datetime = offset
-            .ymd(datetime.year(), datetime.month(), day)
-            .and_hms(0, 0, 0);
+            .with_ymd_and_hms(datetime.year(), datetime.month(), day, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Some(Timestamp::new(truncated_ts))
     }
 
     fn truncate_week(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
-        // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        // Convert to local time. Won't panic.
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate week.
+        // Truncate week. Won't panic.
         let week_offset = datetime.weekday().num_days_from_monday();
         let week_millis = 7 * 24 * 3600 * 1000;
         let ts_offset = week_offset * week_millis;
@@ -297,26 +294,28 @@ impl Period {
     }
 
     fn truncate_month(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
-        // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        // Convert to local time. Won't panic.
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate month
+        // Truncate month. Won't panic.
         let truncated_datetime = offset
-            .ymd(datetime.year(), datetime.month(), 1)
-            .and_hms(0, 0, 0);
+            .with_ymd_and_hms(datetime.year(), datetime.month(), 1, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Timestamp::new(truncated_ts)
     }
 
     fn truncate_year(ts: Timestamp) -> Timestamp {
-        let offset = FixedOffset::east(DEFAULT_TIMEZONE_OFFSET_SECS);
-        // Convert to local time.
-        let datetime = offset.timestamp_millis(ts.as_i64());
+        let offset = FixedOffset::east_opt(DEFAULT_TIMEZONE_OFFSET_SECS).expect("won't panic");
+        // Convert to local time. Won't panic.
+        let datetime = offset.timestamp_millis_opt(ts.as_i64()).unwrap();
 
-        // Truncate year
-        let truncated_datetime = offset.ymd(datetime.year(), 1, 1).and_hms(0, 0, 0);
+        // Truncate year. Won't panic.
+        let truncated_datetime = offset
+            .with_ymd_and_hms(datetime.year(), 1, 1, 0, 0, 0)
+            .unwrap();
         let truncated_ts = truncated_datetime.timestamp_millis();
 
         Timestamp::new(truncated_ts)

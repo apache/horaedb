@@ -23,6 +23,7 @@ use catalog::{
 };
 use cluster::shard_tables_cache::ShardTablesCache;
 use common_types::schema::SchemaName;
+use common_util::error::BoxError;
 use log::{debug, info};
 use meta_client::{types::AllocSchemaIdRequest, MetaClientRef};
 use snafu::{ensure, OptionExt, ResultExt};
@@ -139,7 +140,7 @@ impl Catalog for CatalogImpl {
                 .meta_client
                 .alloc_schema_id(req)
                 .await
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .with_context(|| CreateSchemaWithCause {
                     catalog: &self.name,
                     schema: name.to_string(),
@@ -320,7 +321,7 @@ impl Schema for SchemaImpl {
             .table_engine
             .create_table(request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(CreateTableWithCause)?;
 
         self.add_new_table(table.clone());
@@ -361,7 +362,7 @@ impl Schema for SchemaImpl {
             .table_engine
             .drop_table(request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(DropTableWithCause)?;
 
         // Remove the table from the memory.
@@ -387,7 +388,7 @@ impl Schema for SchemaImpl {
             .table_engine
             .open_table(request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(OpenTableWithCause)?;
 
         if let Some(table) = &table {
@@ -417,7 +418,7 @@ impl Schema for SchemaImpl {
         opts.table_engine
             .close_table(request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(CloseTableWithCause)?;
 
         self.remove_table(&table_name);

@@ -10,12 +10,13 @@ use common_types::{
     record_batch::RecordBatchWithKey, request_id::RequestId, schema::Schema, time::TimeRange,
     SequenceNumber,
 };
+use common_util::error::GenericError;
 use futures::Stream;
 
 use crate::table_options::StorageFormat;
 
 pub mod error {
-    use common_util::define_result;
+    use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]
@@ -27,9 +28,7 @@ pub mod error {
         },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]
-        EncodeMetaData {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        EncodeMetaData { source: GenericError },
 
         #[snafu(display(
             "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
@@ -37,19 +36,15 @@ pub mod error {
             backtrace
         ))]
         EncodeRecordBatch {
-            source: Box<dyn std::error::Error + Send + Sync>,
+            source: GenericError,
             backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to poll record batch, err:{}", source))]
-        PollRecordBatch {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        PollRecordBatch { source: GenericError },
 
         #[snafu(display("Failed to read data, err:{}", source))]
-        ReadData {
-            source: Box<dyn std::error::Error + Send + Sync>,
-        },
+        ReadData { source: GenericError },
 
         #[snafu(display("Other kind of error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
         OtherNoCause { msg: String, backtrace: Backtrace },
@@ -60,8 +55,7 @@ pub mod error {
 
 pub use error::*;
 
-pub type RecordBatchStreamItem =
-    std::result::Result<RecordBatchWithKey, Box<dyn std::error::Error + Send + Sync>>;
+pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, GenericError>;
 // TODO(yingwen): SstReader also has a RecordBatchStream, can we use same type?
 pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send + Unpin>;
 

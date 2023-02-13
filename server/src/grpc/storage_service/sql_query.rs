@@ -4,19 +4,21 @@
 
 use std::time::Instant;
 
+use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
 use ceresdbproto::{
     common::ResponseHeader,
     storage::{
-        query_response, storage_service_client::StorageServiceClient, QueryRequest, QueryResponse,
+        arrow_payload, sql_query_response, storage_service_client::StorageServiceClient,
+        ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use common_util::{avro, time::InstantExt};
+use common_util::{error::BoxError, time::InstantExt};
 use futures::FutureExt;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
 use snafu::{ensure, ResultExt};
 use sql::{
@@ -33,30 +35,57 @@ use crate::grpc::{
     },
 };
 
-/// Schema name of the record
-const RECORD_NAME: &str = "Result";
+/// Builder for building [`SqlQueryResponse`].
+#[derive(Debug, Default)]
+pub struct QueryResponseBuilder {
+    header: ResponseHeader,
+}
 
-fn empty_ok_resp() -> QueryResponse {
-    let header = ResponseHeader {
-        code: StatusCode::OK.as_u16() as u32,
-        ..Default::default()
-    };
+impl QueryResponseBuilder {
+    pub fn with_ok_header() -> Self {
+        let header = ResponseHeader {
+            code: StatusCode::OK.as_u16() as u32,
+            ..Default::default()
+        };
+        Self { header }
+    }
 
-    QueryResponse {
-        header: Some(header),
-        ..Default::default()
+    pub fn build_with_affected_rows(self, affected_rows: usize) -> SqlQueryResponse {
+        let output = Some(sql_query_response::Output::AffectedRows(
+            affected_rows as u32,
+        ));
+        SqlQueryResponse {
+            header: Some(self.header),
+            output,
+        }
+    }
+
+    pub fn build_with_empty_arrow_payload(self) -> SqlQueryResponse {
+        let payload = ArrowPayload {
+            record_batches: Vec::new(),
+            compression: arrow_payload::Compression::None as i32,
+        };
+        self.build_with_arrow_payload(payload)
+    }
+
+    pub fn build_with_arrow_payload(self, payload: ArrowPayload) -> SqlQueryResponse {
+        let output = Some(sql_query_response::Output::Arrow(payload));
+        SqlQueryResponse {
+            header: Some(self.header),
+            output,
+        }
     }
 }
 
 async fn maybe_forward_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
-    req: &QueryRequest,
-) -> Option<Result<QueryResponse>> {
+    req: &SqlQueryRequest,
+) -> Option<Result<SqlQueryResponse>> {
     let forwarder = ctx.forwarder.as_ref()?;
 
-    if req.metrics.len() != 1 {
+    if req.tables.len() != 1 {
         warn!(
-            "Unable to forward query without exactly one metric, req:{:?}",
+            "Unable to forward query without exactly one table, req:{:?}",
             req
         );
 
@@ -65,18 +94,18 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
 
     let forward_req = ForwardRequest {
         schema: ctx.schema.clone(),
-        metric: req.metrics[0].clone(),
+        table: req.tables[0].clone(),
         req: req.clone().into_request(),
     };
     let do_query = |mut client: StorageServiceClient<Channel>,
-                    request: tonic::Request<QueryRequest>,
+                    request: tonic::Request<SqlQueryRequest>,
                     _: &Endpoint| {
         let query = async move {
             client
-                .query(request)
+                .sql_query(request)
                 .await
                 .map(|resp| resp.into_inner())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
                     msg: "Forwarded query failed".to_string(),
@@ -101,30 +130,26 @@ async fn maybe_forward_query<Q: QueryExecutor + 'static>(
 
 pub async fn handle_query<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
-    req: QueryRequest,
-) -> Result<QueryResponse> {
+    req: SqlQueryRequest,
+) -> Result<SqlQueryResponse> {
     let req = match maybe_forward_query(ctx, &req).await {
         Some(resp) => return resp,
         None => req,
     };
 
-    let output_result = fetch_query_output(ctx, &req).await?;
-    if let Some(output) = output_result {
-        convert_output(&output)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to convert output, query:{}", &req.ql),
-            })
-    } else {
-        Ok(empty_ok_resp())
-    }
+    let output = fetch_query_output(ctx, &req).await?;
+    convert_output(&output, ctx.resp_compress_min_length)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to convert output, sql:{}", &req.sql),
+        })
 }
 
 pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     ctx: &HandlerContext<'_, Q>,
-    req: &QueryRequest,
-) -> Result<Option<Output>> {
+    req: &SqlQueryRequest,
+) -> Result<Output> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -152,16 +177,20 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     // Parse sql, frontend error of invalid sql already contains sql
     // TODO(yingwen): Maybe move sql from frontend error to outer error
     let mut stmts = frontend
-        .parse_sql(&mut sql_ctx, &req.ql)
-        .map_err(|e| Box::new(e) as _)
+        .parse_sql(&mut sql_ctx, &req.sql)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "failed to parse sql",
         })?;
 
-    if stmts.is_empty() {
-        return Ok(None);
-    }
+    ensure!(
+        !stmts.is_empty(),
+        ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: format!("No valid query statement provided, sql:{}", req.sql),
+        }
+    );
 
     // TODO(yingwen): For simplicity, we only support executing one statement now
     // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
@@ -170,9 +199,9 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Only support execute one statement now, current num:{}, query:{}",
+                "Only support execute one statement now, current num:{}, sql:{}",
                 stmts.len(),
-                req.ql
+                req.sql
             ),
         }
     );
@@ -183,16 +212,16 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
         // return internal server error in those cases
         .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to create plan, query:{}", req.ql),
+            msg: format!("Failed to create plan, query:{}", req.sql),
         })?;
 
     ctx.instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Query is blocked",
@@ -221,7 +250,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -233,7 +262,7 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
             interpreter.execute(),
         )
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::REQUEST_TIMEOUT,
             msg: "Query timeout",
@@ -241,10 +270,10 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
     } else {
         interpreter.execute().await
     }
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
-        msg: format!("Failed to execute interpreter, query:{}", req.ql),
+        msg: format!("Failed to execute interpreter, sql:{}", req.sql),
     })?;
 
     info!(
@@ -256,62 +285,82 @@ pub async fn fetch_query_output<Q: QueryExecutor + 'static>(
         req,
     );
 
-    Ok(Some(output))
+    Ok(output)
 }
 
 // TODO(chenxiang): Output can have both `rows` and `affected_rows`
-fn convert_output(output: &Output) -> Result<QueryResponse> {
+fn convert_output(output: &Output, resp_compress_min_length: usize) -> Result<SqlQueryResponse> {
     match output {
-        Output::Records(records) => convert_records(records),
+        Output::Records(batches) => {
+            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
+            writer.write_batches(batches)?;
+            writer.finish()
+        }
         Output::AffectedRows(rows) => {
-            let mut resp = empty_ok_resp();
-            resp.affected_rows = *rows as u32;
-            Ok(resp)
+            Ok(QueryResponseBuilder::with_ok_header().build_with_affected_rows(*rows))
         }
     }
 }
 
-pub fn get_record_batch(op: Option<Output>) -> Option<RecordBatchVec> {
-    if let Some(output) = op {
-        match output {
-            Output::Records(records) => Some(records),
-            _ => unreachable!(),
-        }
-    } else {
-        None
-    }
+/// Writer for encoding multiple [`RecordBatch`]es to the [`SqlQueryResponse`].
+///
+/// Whether to do compression depends on the size of the encoded bytes.
+pub struct QueryResponseWriter {
+    encoder: RecordBatchesEncoder,
 }
 
-/// REQUIRE: records have same schema
-pub fn convert_records(records: &[RecordBatch]) -> Result<QueryResponse> {
-    if records.is_empty() {
-        return Ok(empty_ok_resp());
+impl QueryResponseWriter {
+    pub fn new(compress_min_length: usize) -> Self {
+        let compress_opts = CompressOptions {
+            compress_min_length,
+            method: CompressionMethod::Zstd,
+        };
+        Self {
+            encoder: RecordBatchesEncoder::new(compress_opts),
+        }
     }
 
-    let mut resp = empty_ok_resp();
-    let mut avro_schema_opt = None;
-
-    let total_row = records.iter().map(|v| v.num_rows()).sum();
-    resp.rows = Vec::with_capacity(total_row);
-    for record_batch in records {
-        if avro_schema_opt.as_ref().is_none() {
-            let avro_schema = avro::to_avro_schema(RECORD_NAME, record_batch.schema());
-
-            // We only set schema_json once, so all record batches need to have same schema
-            resp.schema_type = query_response::SchemaType::Avro as i32;
-            resp.schema_content = avro_schema.canonical_form();
-
-            avro_schema_opt = Some(avro_schema);
-        }
-
-        let mut rows = avro::record_batch_to_avro_rows(record_batch)
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
+    pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
+        self.encoder
+            .write(batch.as_arrow_record_batch())
+            .box_err()
+            .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to convert record batch",
-            })?;
-        resp.rows.append(&mut rows);
+                msg: "failed to encode record batch".to_string(),
+            })
     }
 
-    Ok(resp)
+    pub fn write_batches(&mut self, record_batch: &[RecordBatch]) -> Result<()> {
+        for batch in record_batch {
+            self.write(batch)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<SqlQueryResponse> {
+        let compress_output = self
+            .encoder
+            .finish()
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: "failed to encode record batch".to_string(),
+            })?;
+
+        if compress_output.payload.is_empty() {
+            return Ok(QueryResponseBuilder::with_ok_header().build_with_empty_arrow_payload());
+        }
+
+        let compression = match compress_output.method {
+            CompressionMethod::None => arrow_payload::Compression::None,
+            CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+        };
+        let resp = QueryResponseBuilder::with_ok_header().build_with_arrow_payload(ArrowPayload {
+            record_batches: vec![compress_output.payload],
+            compression: compression as i32,
+        });
+
+        Ok(resp)
+    }
 }

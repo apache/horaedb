@@ -99,8 +99,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Timestamp key not exists.\nBacktrace:\n{}", backtrace))]
-    MissingTimestampKey { backtrace: Backtrace },
+    #[snafu(display("Timestamp not in primary key.\nBacktrace:\n{}", backtrace))]
+    TimestampNotInPrimaryKey { backtrace: Backtrace },
 
     #[snafu(display(
         "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
@@ -137,7 +137,7 @@ pub enum Error {
     InvalidArrowSchemaMetaValue {
         key: ArrowSchemaMetaKey,
         raw_value: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 
@@ -855,6 +855,36 @@ impl Schema {
         }
     }
 
+    pub fn unique_keys(&self) -> Vec<&str> {
+        // Only filters on the columns belonging to the unique key can be pushed down.
+        if self.tsid_column().is_some() {
+            // When tsid exists, that means default primary key (tsid, timestamp) is used.
+            // So, all filters of tag columns(tsid is the hash result of all tags),
+            // timestamp key and tsid can be pushed down.
+            let mut keys = self
+                .columns()
+                .iter()
+                .filter_map(|column| {
+                    if column.is_tag {
+                        Some(column.name.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            keys.extend([&self.tsid_column().unwrap().name, self.timestamp_name()]);
+
+            keys
+        } else {
+            // When tsid does not exist, that means user defined primary key is used.
+            // So, only filters of primary key can be pushed down.
+            self.primary_key_indexes()
+                .iter()
+                .map(|key_idx| self.column(*key_idx).name.as_str())
+                .collect()
+        }
+    }
+
     /// Panic if projection is invalid.
     pub(crate) fn project_record_schema_with_key(
         &self,
@@ -1178,7 +1208,7 @@ impl Builder {
 
     /// Build the schema
     pub fn build(self) -> Result<Schema> {
-        let timestamp_index = self.timestamp_index.context(MissingTimestampKey)?;
+        let timestamp_index = self.timestamp_index.context(TimestampNotInPrimaryKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero
         assert!(!self.primary_key_indexes.is_empty());

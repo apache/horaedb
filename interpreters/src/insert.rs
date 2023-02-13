@@ -19,15 +19,15 @@ use common_types::{
 };
 use common_util::codec::{compact::MemCompactEncoder, Encoder};
 use datafusion::{
+    common::ToDFSchema,
     error::DataFusionError,
     logical_expr::ColumnarValue as DfColumnarValue,
-    logical_plan::ToDFSchema,
-    optimizer::simplify_expressions::ConstEvaluator,
     physical_expr::{
         create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
     },
 };
-use datafusion_expr::{expr::Expr as DfLogicalExpr, expr_rewriter::ExprRewritable};
+use datafusion_expr::expr::Expr as DfLogicalExpr;
+use datafusion_optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext};
 use df_operator::visitor::find_columns_by_expr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use sql::plan::InsertPlan;
@@ -206,19 +206,27 @@ fn fill_default_values(
 ) -> Result<()> {
     let mut cached_column_values: HashMap<usize, DfColumnarValue> = HashMap::new();
     let table_arrow_schema = table.schema().to_arrow_schema_ref();
+    let df_schema_ref = table_arrow_schema
+        .clone()
+        .to_dfschema_ref()
+        .context(DatafusionSchema)?;
 
     for (column_idx, default_value_expr) in default_value_map.iter() {
-        // Optimize logical expr
         let execution_props = ExecutionProps::default();
-        let mut const_optimizer =
-            ConstEvaluator::try_new(&execution_props).context(DatafusionExpr)?;
-        let evaluated_expr = default_value_expr
-            .clone()
-            .rewrite(&mut const_optimizer)
+
+        // Optimize logical expr
+        let simplifier = ExprSimplifier::new(
+            SimplifyContext::new(&execution_props).with_schema(df_schema_ref.clone()),
+        );
+        let default_value_expr = simplifier
+            .coerce(default_value_expr.clone(), df_schema_ref.clone())
+            .context(DatafusionExpr)?;
+        let simplified_expr = simplifier
+            .simplify(default_value_expr)
             .context(DatafusionExpr)?;
 
         // Find input columns
-        let required_column_idxes = find_columns_by_expr(&evaluated_expr)
+        let required_column_idxes = find_columns_by_expr(&simplified_expr)
             .iter()
             .map(|column_name| {
                 table
@@ -236,9 +244,8 @@ fn fill_default_values(
             .context(DatafusionSchema)?;
 
         // Create physical expr
-        let execution_props = ExecutionProps::default();
         let physical_expr = create_physical_expr(
-            &evaluated_expr,
+            &simplified_expr,
             &input_df_schema,
             &input_arrow_schema,
             &execution_props,
