@@ -10,12 +10,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
-    prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
-    storage::{
-        storage_service_server::StorageService, value::Value, RouteRequest, RouteResponse,
-        SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse, WriteTableRequest,
-    },
+use ceresdbproto::storage::{
+    storage_service_server::StorageService, value::Value, PrometheusQueryRequest,
+    PrometheusQueryResponse, RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse,
+    WriteRequest, WriteResponse, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -40,7 +38,6 @@ use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
 use self::sql_query::{QueryResponseBuilder, QueryResponseWriter};
 use crate::{
-    consts,
     grpc::{
         forward::ForwarderRef,
         metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -59,6 +56,8 @@ pub(crate) mod write;
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 /// Rpc request header
+/// Tenant/token will be saved in header in future
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct RequestHeader {
     metas: HashMap<String, Vec<u8>>,
@@ -88,6 +87,7 @@ impl From<&MetadataMap> for RequestHeader {
 }
 
 impl RequestHeader {
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&[u8]> {
         self.metas.get(key).map(|v| v.as_slice())
     }
@@ -99,8 +99,7 @@ pub struct HandlerContext<'a, Q> {
     router: RouterRef,
     instance: InstanceRef<Q>,
     catalog: String,
-    schema: String,
-    schema_config: Option<&'a SchemaConfig>,
+    schema_config_provider: &'a SchemaConfigProviderRef,
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
     resp_compress_min_length: usize,
@@ -116,61 +115,25 @@ impl<'a, Q> HandlerContext<'a, Q> {
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
         resp_compress_min_length: usize,
-    ) -> Result<Self> {
-        let default_catalog = instance.catalog_manager.default_catalog_name();
-        let default_schema = instance.catalog_manager.default_schema_name();
+    ) -> Self {
+        // catalog is not exposed to protocol layer
+        let catalog = instance.catalog_manager.default_catalog_name().to_string();
 
-        let catalog = header
-            .get(consts::CATALOG_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse catalog name",
-            })?
-            .unwrap_or_else(|| default_catalog.to_string());
-
-        let schema = header
-            .get(consts::SCHEMA_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse schema name",
-            })?
-            .unwrap_or_else(|| default_schema.to_string());
-
-        let schema_config = schema_config_provider
-            .schema_config(&schema)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("fail to fetch schema config, schema_name:{}", schema),
-            })?;
-
-        Ok(Self {
+        Self {
             header,
             router,
             instance,
             catalog,
-            schema,
-            schema_config,
+            schema_config_provider,
             forwarder,
             timeout,
             resp_compress_min_length,
-        })
+        }
     }
 
     #[inline]
     fn catalog(&self) -> &str {
         &self.catalog
-    }
-
-    #[inline]
-    fn schema(&self) -> &str {
-        &self.schema
     }
 }
 
@@ -212,14 +175,17 @@ macro_rules! handle_request {
                 let schema_config_provider = self.schema_config_provider.clone();
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
+                    let req = request.into_inner();
+                    if req.context.is_none() {
+                        ErrNoCause {
+                            code: StatusCode::BAD_REQUEST,
+                            msg: "database is not set",
+                        }
+                        .fail()?
+                    }
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
-                            .box_err()
-                            .context(ErrWithCause {
-                                code: StatusCode::BAD_REQUEST,
-                                msg: "invalid header",
-                            })?;
-                    $mod_name::$handle_fn(&handler_ctx, request.into_inner())
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length);
+                    $mod_name::$handle_fn(&handler_ctx, req)
                         .await
                         .map_err(|e| {
                             error!(
@@ -260,6 +226,9 @@ macro_rules! handle_request {
 }
 
 impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+    // `RequestContext` is ensured in `handle_request` macro, so handler
+    // can just use it with unwrap()
+
     handle_request!(route, handle_route, RouteRequest, RouteResponse);
 
     handle_request!(write, handle_write, WriteRequest, WriteResponse);
@@ -282,7 +251,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let header = RequestHeader::from(request.metadata());
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
-
         let handler_ctx = HandlerContext::new(
             header,
             router,
@@ -291,12 +259,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             self.forwarder.clone(),
             self.timeout,
             self.resp_compress_min_length,
-        )
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid header",
-        })?;
+        );
 
         let mut total_success = 0;
         let mut resp = WriteResponse::default();
@@ -355,26 +318,28 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length)
-                .box_err()
-                .context(ErrWithCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "invalid header",
-                })?;
-
+            let handler_ctx = HandlerContext::new(
+                header,
+                router,
+                instance,
+                &schema_config_provider,
+                forwarder,
+                timeout,
+                resp_compress_min_length,
+            );
             let query_req = request.into_inner();
             let output = sql_query::fetch_query_output(&handler_ctx, &query_req)
-                    .await
-                    .map_err(|e| {
-                        error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
-                        e
-                    })?;
+                .await
+                .map_err(|e| {
+                    error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
+                    e
+                })?;
             match output {
                 Output::AffectedRows(rows) => {
-                        let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
-                        if tx.send(Ok(resp)).await.is_err() {
-                            error!("Failed to send affected rows resp in stream query");
-                        }
+                    let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
+                    if tx.send(Ok(resp)).await.is_err() {
+                        error!("Failed to send affected rows resp in stream query");
+                    }
                 }
                 Output::Records(batches) => {
                     for batch in &batches {

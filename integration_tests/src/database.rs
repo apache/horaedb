@@ -74,7 +74,10 @@ impl CeresDB {
     }
 
     async fn execute(query: String, client: Arc<dyn DbClient>) -> Box<dyn Display> {
-        let query_ctx = RpcContext::new("public".to_string(), "".to_string());
+        let query_ctx = RpcContext {
+            database: Some("public".to_string()),
+            timeout: None,
+        };
         let query_req = Request {
             tables: vec![],
             sql: query,

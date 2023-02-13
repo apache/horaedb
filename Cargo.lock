@@ -1083,11 +1083,11 @@ dependencies = [
 [[package]]
 name = "ceresdb-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=a72e673103463c7962e01a097592fc7edbcc0b79#a72e673103463c7962e01a097592fc7edbcc0b79"
+source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=5fbd1a1526c3ddd25bb1f38f63f869c892052f7c#5fbd1a1526c3ddd25bb1f38f63f869c892052f7c"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=43939799b2e65e3fc5795118fc77593f7c4b19d7)",
  "dashmap 5.4.0",
  "futures 0.3.25",
  "paste 1.0.8",
@@ -1111,7 +1111,18 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=55495dd395d12a1f97f6c98e355290671d107c44#55495dd395d12a1f97f6c98e355290671d107c44"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=43939799b2e65e3fc5795118fc77593f7c4b19d7#43939799b2e65e3fc5795118fc77593f7c4b19d7"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic",
+ "tonic-build",
+]
+
+[[package]]
+name = "ceresdbproto"
+version = "0.1.0"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415#dd6921dbb59bbe9a2fcc27960e76a8c870b44415"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1250,7 +1261,7 @@ name = "cluster"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "common_types",
  "common_util",
  "log",
@@ -3548,7 +3559,7 @@ name = "meta_client"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "common_types",
  "common_util",
  "futures 0.3.25",
@@ -5218,7 +5229,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "arrow_ext",
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "clru",
  "common_types",
  "common_util",
@@ -5343,7 +5354,7 @@ name = "router"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "cluster",
  "common_types",
  "common_util",
@@ -5683,7 +5694,7 @@ dependencies = [
  "async-trait",
  "bytes 1.2.1",
  "catalog",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "cluster",
  "common_types",
  "common_util",
@@ -6013,7 +6024,7 @@ dependencies = [
  "arrow 31.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "common_types",
  "common_util",
  "datafusion",
@@ -6292,7 +6303,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "arrow 31.0.0",
  "async-trait",
- "ceresdbproto",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
  "common_types",
  "common_util",
  "datafusion",

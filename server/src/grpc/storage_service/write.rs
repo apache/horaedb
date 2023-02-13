@@ -45,7 +45,17 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
     let catalog = ctx.catalog();
-    let schema = ctx.schema();
+    let req_ctx = req.context.unwrap();
+    let schema = req_ctx.database;
+    let schema_config = ctx
+        .schema_config_provider
+        .schema_config(&schema)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("fail to fetch schema config, schema_name:{}", schema),
+        })?;
+
     debug!(
         "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
         catalog,
@@ -60,10 +70,10 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let plan_vec = write_request_to_insert_plan(
         request_id,
         catalog,
-        schema,
+        &schema,
         ctx.instance.clone(),
-        req,
-        ctx.schema_config,
+        req.table_requests,
+        schema_config,
         deadline,
     )
     .await?;
@@ -73,7 +83,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         success += execute_plan(
             request_id,
             catalog,
-            schema,
+            &schema,
             ctx.instance.clone(),
             insert_plan,
             deadline,
@@ -160,13 +170,13 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     catalog: &str,
     schema: &str,
     instance: InstanceRef<Q>,
-    write_request: WriteRequest,
+    table_requests: Vec<WriteTableRequest>,
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<Vec<InsertPlan>> {
-    let mut plan_vec = Vec::with_capacity(write_request.table_requests.len());
+    let mut plan_vec = Vec::with_capacity(table_requests.len());
 
-    for write_table_req in write_request.table_requests {
+    for write_table_req in table_requests {
         let table_name = &write_table_req.table;
         let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
