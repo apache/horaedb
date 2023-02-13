@@ -1083,11 +1083,11 @@ dependencies = [
 [[package]]
 name = "ceresdb-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=a72e673103463c7962e01a097592fc7edbcc0b79#a72e673103463c7962e01a097592fc7edbcc0b79"
+source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=398d4116e41a07ba5e1b39a576aae4453bf59ea3#398d4116e41a07ba5e1b39a576aae4453bf59ea3"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=55495dd395d12a1f97f6c98e355290671d107c44)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=43939799b2e65e3fc5795118fc77593f7c4b19d7)",
  "dashmap 5.4.0",
  "futures 0.3.25",
  "paste 1.0.8",
@@ -1111,7 +1111,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=55495dd395d12a1f97f6c98e355290671d107c44#55495dd395d12a1f97f6c98e355290671d107c44"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=43939799b2e65e3fc5795118fc77593f7c4b19d7#43939799b2e65e3fc5795118fc77593f7c4b19d7"
 dependencies = [
  "prost",
  "protoc-bin-vendored",

@@ -8,6 +8,6 @@ workspace = true
 [dependencies]
 anyhow = "1.0.58"
 async-trait = "0.1"
-ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "a72e673103463c7962e01a097592fc7edbcc0b79" }
+ceresdb-client-rs = { git = "https://github.com/CeresDB/ceresdb-client-rs.git", rev = "398d4116e41a07ba5e1b39a576aae4453bf59ea3" }
 sqlness = "0.3"
 tokio = { workspace = true }
