@@ -121,7 +121,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct ServiceConfig {
+pub struct ServerConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
@@ -132,13 +132,14 @@ pub struct ServiceConfig {
     pub timeout: Option<ReadableDuration>,
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
+    pub deploy_mode: DeployMode,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// Config for service, including http, mysql and grpc.
-    pub service: ServiceConfig,
+    /// Config for service of server, including http, mysql and grpc.
+    pub server: ServerConfig,
     pub runtime: RuntimeConfig,
 
     /// Log related configs:
@@ -161,7 +162,6 @@ pub struct Config {
     pub query: query_engine::Config,
 
     /// Deployment configs:
-    pub deploy_mode: DeployMode,
     pub cluster: ClusterConfig,
 
     /// Config of limiter
@@ -182,7 +182,7 @@ impl Default for RuntimeConfig {
     }
 }
 
-impl Default for ServiceConfig {
+impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             bind_addr: String::from("127.0.0.1"),
@@ -193,6 +193,7 @@ impl Default for ServiceConfig {
             grpc_server_cq_count: 20,
             timeout: None,
             resp_compress_min_length: ReadableSize::mb(4),
+            deploy_mode: DeployMode::Standalone,
         }
     }
 }
@@ -200,7 +201,7 @@ impl Default for ServiceConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            service: ServiceConfig::default(),
+            server: ServerConfig::default(),
             runtime: RuntimeConfig::default(),
             log_level: "debug".to_string(),
             enable_async_log: true,
@@ -211,7 +212,6 @@ impl Default for Config {
             static_route: StaticRouteConfig::default(),
             query: query_engine::Config::default(),
             analytic: analytic_engine::Config::default(),
-            deploy_mode: DeployMode::Standalone,
             cluster: ClusterConfig::default(),
             limiter: LimiterConfig::default(),
             forward: forward::Config::default(),

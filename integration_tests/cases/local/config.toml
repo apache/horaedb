@@ -1,9 +1,8 @@
-[service]
+[server]
 bind_addr = "127.0.0.1"
 http_port = 5440
 grpc_port = 8831
 log_level = "debug"
-enable_cluster = true
 
 [query]
 read_parallelism = 8
