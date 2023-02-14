@@ -13,7 +13,11 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
-use common_util::{config::ReadableDuration, define_result};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    error::{BoxError, GenericError},
+};
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
@@ -30,6 +34,7 @@ use wal::{
     },
 };
 
+use super::SnapshotRequest;
 use crate::{
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
@@ -293,8 +298,8 @@ impl Manifest for ManifestImpl {
     async fn store_update(
         &self,
         request: MetaUpdateRequest,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        debug!("try to store update:{:?}", request);
+    ) -> std::result::Result<(), GenericError> {
+        info!("Manifest store update, request:{:?}", request);
 
         let table_id = request.meta_update.table_id();
         let location = WalLocation::new(
@@ -317,8 +322,9 @@ impl Manifest for ManifestImpl {
     async fn load_data(
         &self,
         load_req: &LoadRequest,
-    ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
-    {
+    ) -> std::result::Result<Option<TableManifestData>, GenericError> {
+        info!("Manifest load data, request:{:?}", load_req);
+
         let location = WalLocation::new(
             // TODO: use shard id as region id.
             load_req.table_id.as_u64(),
@@ -342,7 +348,28 @@ impl Manifest for ManifestImpl {
             snapshot_store,
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
+
         Ok(snapshot.and_then(|v| v.data))
+    }
+
+    async fn do_snapshot(&self, request: SnapshotRequest) -> std::result::Result<(), GenericError> {
+        info!("Manifest do snapshot, request:{:?}", request);
+
+        let table_id = request.table_id;
+        let location = WalLocation::new(
+            // TODO: use shard id as region id.
+            table_id.as_u64(),
+            request.cluster_version,
+            table_id.as_u64(),
+        );
+        let space_id = request.space_id;
+        let table_id = request.table_id;
+
+        self.maybe_do_snapshot(space_id, table_id, location, true)
+            .await
+            .box_err()?;
+
+        Ok(())
     }
 }
 

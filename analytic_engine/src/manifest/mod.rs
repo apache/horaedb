@@ -10,21 +10,22 @@ use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
+use common_util::error::GenericError;
 use table_engine::table::TableId;
 
 use crate::{
     manifest::{meta_data::TableManifestData, meta_update::MetaUpdateRequest},
     space::SpaceId,
 };
-
+#[derive(Debug)]
 pub struct LoadRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub cluster_version: u64,
     pub shard_id: ShardId,
 }
-use common_util::error::GenericError;
 
+pub type SnapshotRequest = LoadRequest;
 /// Manifest holds meta data of all tables.
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
@@ -42,6 +43,8 @@ pub trait Manifest: Send + Sync + fmt::Debug {
         &self,
         load_request: &LoadRequest,
     ) -> Result<Option<TableManifestData>, GenericError>;
+
+    async fn do_snapshot(&self, request: SnapshotRequest) -> Result<(), GenericError>;
 }
 
 pub type ManifestRef = Arc<dyn Manifest>;
