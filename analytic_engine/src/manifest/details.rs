@@ -12,12 +12,12 @@ use std::{
 };
 
 use async_trait::async_trait;
+use ceresdbproto::manifest as manifest_pb;
 use common_util::{config::ReadableDuration, define_result};
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
-use ceresdbproto::manifest as manifest_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;

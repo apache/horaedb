@@ -5,13 +5,13 @@
 use std::convert::TryFrom;
 
 use bytes::{Buf, BufMut};
+use ceresdbproto::{manifest as manifest_pb, schema as schema_pb};
 use common_types::{
     schema::{Schema, Version},
     SequenceNumber,
 };
 use common_util::define_result;
 use prost::Message;
-use ceresdbproto::{schema as schema_pb, manifest as manifest_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{partition::PartitionInfo, table::TableId};
 use wal::log_batch::{Payload, PayloadDecoder};
@@ -396,7 +396,8 @@ impl PayloadDecoder for MetaUpdateDecoder {
     type Target = MetaUpdate;
 
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<Self::Target> {
-        let meta_update_pb = manifest_pb::MetaUpdate::decode(buf.chunk()).context(DecodePayloadPb)?;
+        let meta_update_pb =
+            manifest_pb::MetaUpdate::decode(buf.chunk()).context(DecodePayloadPb)?;
         MetaUpdate::try_from(meta_update_pb)
     }
 }

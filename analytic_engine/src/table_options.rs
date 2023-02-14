@@ -4,6 +4,7 @@
 
 use std::{collections::HashMap, string::ToString, time::Duration};
 
+use ceresdbproto::manifest as manifest_pb;
 use common_types::time::Timestamp;
 use common_util::{
     config::{ReadableDuration, ReadableSize, TimeUnit},
@@ -11,7 +12,6 @@ use common_util::{
     time::DurationExt,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use ceresdbproto::manifest as manifest_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
@@ -587,7 +587,9 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             write_buffer_size: opts.write_buffer_size,
             compression: manifest_pb::Compression::from(opts.compression) as i32,
             sampling_segment_duration,
-            storage_format_hint: Some(manifest_pb::StorageFormatHint::from(opts.storage_format_hint)),
+            storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
+                opts.storage_format_hint,
+            )),
         }
     }
 }

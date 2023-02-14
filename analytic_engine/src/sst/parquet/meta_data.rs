@@ -5,9 +5,9 @@
 use std::{fmt, ops::Index, sync::Arc};
 
 use bytes::Bytes;
+use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::{Xor8, Xor8Builder};
 

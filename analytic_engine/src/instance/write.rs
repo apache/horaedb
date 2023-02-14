@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
     row::RowGroup,
@@ -11,7 +12,6 @@ use common_types::{
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
-use ceresdbproto::{schema as schema_pb, table_requests};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;

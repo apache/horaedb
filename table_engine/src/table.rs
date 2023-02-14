@@ -13,6 +13,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use ceresdbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     column_schema::ColumnSchema,
     datum::Datum,
@@ -22,7 +23,6 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use common_util::error::{BoxError, GenericError};
-use ceresdbproto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 

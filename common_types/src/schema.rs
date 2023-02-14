@@ -17,8 +17,8 @@ use std::{
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
-use prost::Message;
 use ceresdbproto::schema as schema_pb;
+use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{

@@ -4,11 +4,11 @@
 
 use std::{convert::TryFrom, fmt, str};
 
+use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Local, TimeZone};
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
-use ceresdbproto::schema::DataType as DataTypePb;
 
 use crate::{bytes::Bytes, hash::hash64, string::StringBytes, time::Timestamp};
 #[derive(Debug, Snafu)]

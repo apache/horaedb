@@ -4,9 +4,9 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use ceresdbproto::{manifest as manifest_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{

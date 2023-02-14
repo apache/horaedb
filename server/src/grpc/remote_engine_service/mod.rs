@@ -7,14 +7,14 @@ use std::{sync::Arc, time::Instant};
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
-use common_util::{error::BoxError, time::InstantExt};
-use futures::stream::{self, BoxStream, StreamExt};
-use log::error;
 use ceresdbproto::remote_engine::{
     remote_engine_service_server::RemoteEngineService, ReadRequest, ReadResponse, WriteRequest,
     WriteResponse,
 };
+use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_util::{error::BoxError, time::InstantExt};
+use futures::stream::{self, BoxStream, StreamExt};
+use log::error;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{

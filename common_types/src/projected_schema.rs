@@ -176,7 +176,9 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
 impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::schema::ProjectedSchema) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::schema::ProjectedSchema,
+    ) -> std::result::Result<Self, Self::Error> {
         let schema: Schema = pb
             .table_schema
             .context(EmptyTableSchema)?

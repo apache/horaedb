@@ -5,12 +5,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use ceresdbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     schema::Schema,
     table::{ClusterVersion, ShardId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
 };
 use common_util::{error::GenericError, runtime::Runtime};
-use ceresdbproto::sys_catalog as sys_catalog_pb;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{

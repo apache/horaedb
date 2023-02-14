@@ -106,7 +106,9 @@ pub struct ReadRequest {
 impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::remote_engine::ReadRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::remote_engine::ReadRequest,
+    ) -> std::result::Result<Self, Self::Error> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let table_read_request = pb.read_request.context(EmptyTableReadRequest)?;
         Ok(Self {
@@ -141,7 +143,9 @@ pub struct WriteRequest {
 impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::remote_engine::WriteRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::remote_engine::WriteRequest,
+    ) -> std::result::Result<Self, Self::Error> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let row_group_pb = pb.row_group.context(EmptyRowGroup)?;
         let table_schema: Schema = row_group_pb

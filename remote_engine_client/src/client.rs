@@ -8,13 +8,13 @@ use std::{
 };
 
 use arrow_ext::ipc;
+use ceresdbproto::remote_engine::{self, remote_engine_service_client::*};
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
     RemoteEngineVersion,
 };
 use common_util::error::BoxError;
 use futures::{Stream, StreamExt};
-use ceresdbproto::remote_engine::{self, remote_engine_service_client::*};
 use router::RouterRef;
 use snafu::{ensure, ResultExt};
 use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};

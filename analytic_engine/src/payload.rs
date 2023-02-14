@@ -2,6 +2,7 @@
 
 //! Payloads to write to wal
 
+use ceresdbproto::{manifest, table_requests};
 use common_types::{
     bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
@@ -12,7 +13,6 @@ use common_util::{
     define_result,
 };
 use prost::Message;
-use ceresdbproto::{manifest, table_requests};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
