@@ -23,7 +23,7 @@ pub enum Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Profile Error: {:?}", self)
+        write!(f, "Profile Error: {self:?}")
     }
 }
 
@@ -92,7 +92,7 @@ impl Profiler {
     pub fn dump_mem_prof(&self, seconds: u64) -> Result<Vec<u8>> {
         // concurrent profiling is disabled.
         let lock_guard = self.mem_prof_lock.try_lock().map_err(|e| Error::Internal {
-            msg: format!("failed to acquire mem_prof_lock, err:{}", e),
+            msg: format!("failed to acquire mem_prof_lock, err:{e}"),
         })?;
         info!(
             "Profiler::dump_mem_prof start memory profiling {} seconds",

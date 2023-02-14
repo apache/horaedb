@@ -119,7 +119,9 @@ impl<Q> Service<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
-    fn routes(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn routes(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         self.home()
             .or(self.metrics())
             .or(self.sql())
@@ -132,7 +134,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
     /// storage request
-    fn prom_api(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn prom_api(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         let write_api = warp::path!("write")
             .and(web::warp::with_remote_storage(
                 self.prom_remote_storage.clone(),
@@ -153,7 +157,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(write_api.or(query_api))
     }
 
-    fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn home(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
             let mut resp = HashMap::new();
             resp.insert("status", "ok");
@@ -162,7 +166,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     // TODO(yingwen): Avoid boilerplate code if there are more handlers
-    fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
             .or(warp::body::bytes().map(Request::from))
@@ -193,7 +197,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn flush_memtable(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
@@ -238,13 +242,15 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    fn metrics(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn metrics(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("metrics").and(warp::get()).map(metrics::dump)
     }
 
     fn heap_profile(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("debug" / "heap_profile" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
@@ -267,7 +273,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn update_log_level(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("log_level" / String)
             .and(warp::put())
             .and(self.with_log_runtime())
@@ -346,7 +352,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn admin_block(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("block")
             .and(warp::post())
             .and(warp::body::json())
@@ -492,7 +498,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
 
 async fn handle_rejection(
     rejection: warp::Rejection,
-) -> std::result::Result<impl warp::Reply, Infallible> {
+) -> std::result::Result<(impl warp::Reply,), Infallible> {
     let code;
     let message;
 
@@ -514,5 +520,5 @@ async fn handle_rejection(
         message,
     });
 
-    Ok(reply::with_status(json, code))
+    Ok((reply::with_status(json, code),))
 }
