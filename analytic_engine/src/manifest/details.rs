@@ -13,7 +13,11 @@ use std::{
 
 use async_trait::async_trait;
 use ceresdbproto::manifest as manifest_pb;
-use common_util::{config::ReadableDuration, define_result};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    error::{BoxError, GenericResult},
+};
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
@@ -30,6 +34,7 @@ use wal::{
     },
 };
 
+use super::SnapshotRequest;
 use crate::{
     manifest::{
         meta_data::{TableManifestData, TableManifestDataBuilder},
@@ -290,16 +295,13 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    async fn store_update(
-        &self,
-        request: MetaUpdateRequest,
-    ) -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        debug!("try to store update:{:?}", request);
+    async fn store_update(&self, request: MetaUpdateRequest) -> GenericResult<()> {
+        info!("Manifest store update, request:{:?}", request);
 
         let table_id = request.meta_update.table_id();
+        let shard_id = request.shard_info.shard_id;
         let location = WalLocation::new(
-            // TODO: use shard id as region id.
-            table_id.as_u64(),
+            shard_id as u64,
             request.shard_info.cluster_version,
             table_id.as_u64(),
         );
@@ -314,14 +316,11 @@ impl Manifest for ManifestImpl {
         Ok(())
     }
 
-    async fn load_data(
-        &self,
-        load_req: &LoadRequest,
-    ) -> std::result::Result<Option<TableManifestData>, Box<dyn std::error::Error + Send + Sync>>
-    {
+    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<TableManifestData>> {
+        info!("Manifest load data, request:{:?}", load_req);
+
         let location = WalLocation::new(
-            // TODO: use shard id as region id.
-            load_req.table_id.as_u64(),
+            load_req.shard_id as u64,
             load_req.cluster_version,
             load_req.table_id.as_u64(),
         );
@@ -342,7 +341,27 @@ impl Manifest for ManifestImpl {
             snapshot_store,
         };
         let snapshot = snapshotter.create_latest_snapshot().await?;
+
         Ok(snapshot.and_then(|v| v.data))
+    }
+
+    async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()> {
+        info!("Manifest do snapshot, request:{:?}", request);
+
+        let table_id = request.table_id;
+        let location = WalLocation::new(
+            request.shard_id as u64,
+            request.cluster_version,
+            table_id.as_u64(),
+        );
+        let space_id = request.space_id;
+        let table_id = request.table_id;
+
+        self.maybe_do_snapshot(space_id, table_id, location, true)
+            .await
+            .box_err()?;
+
+        Ok(())
     }
 }
 
@@ -1147,7 +1166,7 @@ mod tests {
                 linear: false,
             }));
             let location = WalLocation::new(
-                table_id.as_u64(),
+                DEFAULT_SHARD_ID as u64,
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1222,7 +1241,7 @@ mod tests {
             .await;
 
             let location = WalLocation::new(
-                table_id.as_u64(),
+                DEFAULT_SHARD_ID as u64,
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1355,7 +1374,7 @@ mod tests {
         updates_after_snapshot: Vec<MetaUpdate>,
     ) {
         let location = WalLocation::new(
-            table_id.as_u64(),
+            DEFAULT_SHARD_ID as u64,
             DEFAULT_CLUSTER_VERSION,
             table_id.as_u64(),
         );

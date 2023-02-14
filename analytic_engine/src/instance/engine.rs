@@ -212,6 +212,18 @@ pub enum Error {
         wal_location: WalLocation,
         source: wal::manager::Error,
     },
+
+    #[snafu(display(
+        "Failed to do manifest snapshot for table, space_id:{}, table:{}, err:{}",
+        space_id,
+        table,
+        source
+    ))]
+    DoManifestSnapshot {
+        space_id: SpaceId,
+        table: String,
+        source: GenericError,
+    },
 }
 
 define_result!(Error);
@@ -241,7 +253,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::FlushTable { .. }
             | Error::StoreVersionEdit { .. }
             | Error::GetLogBatchEncoder { .. }
-            | Error::EncodePayloads { .. } => Self::Unexpected {
+            | Error::EncodePayloads { .. }
+            | Error::DoManifestSnapshot { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
