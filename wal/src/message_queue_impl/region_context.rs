@@ -3,6 +3,7 @@
 //! Region context
 
 use std::{
+    cmp,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
@@ -429,6 +430,28 @@ pub struct TableMetaData {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RegionMetaSnapshot {
     pub entries: Vec<TableMetaData>,
+}
+
+impl RegionMetaSnapshot {
+    pub fn safe_delete_offset(&self) -> Offset {
+        let mut safe_delete_offset = Offset::MAX;
+        let mut high_watermark = 0;
+        // Calc the min offset in message queue.
+        for table_meta in &self.entries {
+            if let Some(offset) = table_meta.safe_delete_offset {
+                safe_delete_offset = cmp::min(safe_delete_offset, offset);
+            }
+            high_watermark = cmp::max(high_watermark, table_meta.current_high_watermark);
+        }
+
+        if safe_delete_offset == Offset::MAX {
+            // All tables are in such states: after init/flush, but not written.
+            // So, we can directly delete it up to the high_watermark.
+            high_watermark
+        } else {
+            safe_delete_offset
+        }
+    }
 }
 
 /// Message queue's offset range
