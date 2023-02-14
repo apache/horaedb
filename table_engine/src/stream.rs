@@ -8,19 +8,18 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow::{
-    datatypes::SchemaRef,
-    error::{ArrowError, Result as ArrowResult},
-    record_batch::RecordBatch as ArrowRecordBatch,
-};
+use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use datafusion::physical_plan::{
-    RecordBatchStream as DfRecordBatchStream,
-    SendableRecordBatchStream as DfSendableRecordBatchStream,
+use datafusion::{
+    error::{DataFusionError, Result as DataFusionResult},
+    physical_plan::{
+        RecordBatchStream as DfRecordBatchStream,
+        SendableRecordBatchStream as DfSendableRecordBatchStream,
+    },
 };
 use futures::stream::Stream;
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -60,7 +59,7 @@ impl PartitionedStreams {
 pub struct ToDfStream(pub SendableRecordBatchStream);
 
 impl Stream for ToDfStream {
-    type Item = ArrowResult<ArrowRecordBatch>;
+    type Item = DataFusionResult<ArrowRecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.0.as_mut().poll_next(ctx) {
@@ -68,7 +67,7 @@ impl Stream for ToDfStream {
                 Poll::Ready(Some(Ok(record_batch.into_arrow_record_batch())))
             }
             Poll::Ready(Some(Err(e))) => {
-                Poll::Ready(Some(Err(ArrowError::ExternalError(Box::new(e)))))
+                Poll::Ready(Some(Err(DataFusionError::External(Box::new(e)))))
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

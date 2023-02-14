@@ -823,6 +823,7 @@ pub mod arrow_convert {
                 | DataType::Dictionary(_, _)
                 | DataType::Decimal128(_, _)
                 | DataType::Decimal256(_, _)
+                | DataType::RunEndEncoded(_, _)
                 | DataType::Map(_, _) => None,
             }
         }
