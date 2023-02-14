@@ -12,7 +12,7 @@ use common_util::{
     define_result,
     error::{BoxError, GenericError},
 };
-use log::debug;
+use log::{debug, warn};
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
@@ -292,6 +292,7 @@ impl TableMeta {
     ) -> std::result::Result<(), String> {
         let mut inner = self.inner.lock().await;
 
+        // Check the set sequence num's validity.
         if sequence_num > inner.next_sequence_num {
             return Err(format!(
                 "latest marked deleted should be less than or 
@@ -304,6 +305,17 @@ impl TableMeta {
             return Err(format!("latest marked deleted should be greater than or equal to origin one now are:{} and {}",
                     sequence_num,
                     inner.latest_marked_deleted));
+        }
+
+        // The `start_sequence_offset_mapping` is possible to be incomplete during
+        // recovery.
+        let offset = inner.start_sequence_offset_mapping.get(&sequence_num);
+        if offset.is_none() && inner.next_sequence_num != inner.latest_marked_deleted {
+            warn!("Start sequence offset mapping is incomplete, 
+            just not update the marked deleted sequence in this flush, new marked deleted, sequence num:{}, previous:{}",
+                sequence_num, inner.latest_marked_deleted);
+
+            return Ok(());
         }
 
         inner.latest_marked_deleted = sequence_num;
