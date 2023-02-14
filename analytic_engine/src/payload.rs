@@ -2,7 +2,7 @@
 
 //! Payloads to write to wal
 
-use ceresdbproto::{manifest, table_requests};
+use ceresdbproto::{manifest as manifest_pb, table_requests};
 use common_types::{
     bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
@@ -105,8 +105,8 @@ const HEADER_SIZE: usize = 1;
 #[derive(Debug)]
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),
-    AlterSchema(&'a manifest::AlterSchemaMeta),
-    AlterOption(&'a manifest::AlterOptionsMeta),
+    AlterSchema(&'a manifest_pb::AlterSchemaMeta),
+    AlterOption(&'a manifest_pb::AlterOptionsMeta),
 }
 
 impl<'a> Payload for WritePayload<'a> {
@@ -184,7 +184,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_schema_meta_pb: manifest::AlterSchemaMeta =
+        let alter_schema_meta_pb: manifest_pb::AlterSchemaMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
@@ -198,7 +198,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_option_meta_pb: manifest::AlterOptionsMeta =
+        let alter_option_meta_pb: manifest_pb::AlterOptionsMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert options in pb
