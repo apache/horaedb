@@ -43,9 +43,7 @@ impl TableManipulator for TableManipulatorImpl {
             .encode(&plan.table_schema)
             .box_err()
             .with_context(|| CreateWithCause {
-                msg: format!(
-                    "fail to encode table schema, ctx:{ctx:?}, plan:{plan:?}"
-                ),
+                msg: format!("fail to encode table schema, ctx:{ctx:?}, plan:{plan:?}"),
             })?;
 
         let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);

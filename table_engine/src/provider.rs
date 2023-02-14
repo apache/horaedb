@@ -68,10 +68,7 @@ impl ExtensionOptions for CeresdbOptions {
             "request_timeout" => {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
-                        format!(
-                            "could not parse request_timeout, input:{value}, err:{e:?}"
-                        )
-                        .into(),
+                        format!("could not parse request_timeout, input:{value}, err:{e:?}").into(),
                     )
                 })?)
             }

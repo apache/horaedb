@@ -894,7 +894,9 @@ impl Schema for SchemaImpl {
             .tables
             .read()
             .unwrap()
-            .tables_by_name.values().cloned()
+            .tables_by_name
+            .values()
+            .cloned()
             .collect())
     }
 }

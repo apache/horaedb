@@ -825,9 +825,7 @@ mod tests {
     fn expect_parse_error(sql: &str, expected_error: &str) {
         match Parser::parse_sql(sql) {
             Ok(statements) => {
-                panic!(
-                    "Expected parse error for '{sql}', but was successful: {statements:?}"
-                );
+                panic!("Expected parse error for '{sql}', but was successful: {statements:?}");
             }
             Err(e) => {
                 let error_message = e.to_string();

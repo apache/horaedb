@@ -20,9 +20,7 @@ impl PartitionRuleFactory {
         match partition_info {
             PartitionInfo::Key(key_info) => Self::create_key_rule(key_info, schema),
             _ => BuildPartitionRule {
-                msg: format!(
-                    "unsupported partition strategy, strategy:{partition_info:?}"
-                ),
+                msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
         }

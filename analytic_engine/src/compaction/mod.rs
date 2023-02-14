@@ -57,8 +57,7 @@ pub enum Error {
     InvalidOption { error: String, backtrace: Backtrace },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 pub enum CompactionStrategy {
     #[default]
     Default,
@@ -114,8 +113,6 @@ impl Default for TimeWindowCompactionOptions {
         }
     }
 }
-
-
 
 const BUCKET_LOW_KEY: &str = "compaction_bucket_low";
 const BUCKET_HIGH_KEY: &str = "compaction_bucket_high";

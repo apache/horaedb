@@ -394,9 +394,7 @@ fn write_entry_to_rows(
         let tag_name = &tag_names[name_index];
         let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!(
-                "Can't find tag({tag_name}) in schema, table:{table_name}"
-            ),
+            msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
         })?;
 
         let column_schema = schema.column(tag_index_in_schema);
@@ -404,9 +402,7 @@ fn write_entry_to_rows(
             column_schema.is_tag,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "column({tag_name}) is a field rather than a tag, table:{table_name}"
-                ),
+                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 

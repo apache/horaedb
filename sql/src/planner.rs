@@ -252,6 +252,10 @@ pub enum Error {
 define_result!(Error);
 
 const DEFAULT_QUOTE_CHAR: char = '`';
+const DEFAULT_PARSER_OPTS: ParserOptions = ParserOptions {
+    parse_float_as_decimal: false,
+    enable_ident_normalization: false,
+};
 
 /// Planner produces logical plans from SQL AST
 // TODO(yingwen): Rewrite Planner instead of using datafusion's planner
@@ -339,13 +343,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
-        let df_planner = SqlToRel::new_with_options(
-            &self.meta_provider,
-            ParserOptions {
-                parse_float_as_decimal: false,
-                enable_ident_normalization: false,
-            },
-        );
+        let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
 
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
@@ -657,13 +655,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     .collect::<Vec<_>>();
                 let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
                     .context(CreateDatafusionSchema)?;
-                let df_planner = SqlToRel::new_with_options(
-                    &self.meta_provider,
-                    ParserOptions {
-                        parse_float_as_decimal: false,
-                        enable_ident_normalization: false,
-                    },
-                );
+                let df_planner =
+                    SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
 
                 // Index in insert values stmt of each column in table schema
                 let mut column_index_in_insert = Vec::with_capacity(schema.num_columns());
@@ -1012,13 +1005,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'_, P>,
 ) -> Result<()> {
-    let df_planner = SqlToRel::new_with_options(
-        meta_provider,
-        ParserOptions {
-            parse_float_as_decimal: false,
-            enable_ident_normalization: false,
-        },
-    );
+    let df_planner = SqlToRel::new_with_options(meta_provider, DEFAULT_PARSER_OPTS);
     let mut df_schema = DFSchema::empty();
     let mut arrow_schema = ArrowSchema::empty();
 

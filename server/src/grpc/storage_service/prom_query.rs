@@ -261,9 +261,7 @@ impl RecordConverter {
             field_type.is_f64_castable(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Field type must be f64-compatibile type, current:{field_type}"
-                )
+                msg: format!("Field type must be f64-compatibile type, current:{field_type}")
             }
         );
 

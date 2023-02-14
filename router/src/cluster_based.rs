@@ -46,9 +46,7 @@ impl Router for ClusterBasedRouter {
             .await
             .box_err()
             .with_context(|| OtherWithCause {
-                msg: format!(
-                    "Failed to route tables by cluster, req:{route_tables_req:?}"
-                ),
+                msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
             })?;
 
         let mut routes = Vec::with_capacity(route_resp.entries.len());

@@ -236,9 +236,7 @@ pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
         // Convert `Row` to `Record` in avro.
         let row = row_group.get_row(row_idx).unwrap();
         let mut avro_record = Record::new(&avro_schema).context(RowGroupToAvroRowsNoCause {
-            msg: format!(
-                "new avro record with schema failed, schema:{avro_schema:?}"
-            ),
+            msg: format!("new avro record with schema failed, schema:{avro_schema:?}"),
         })?;
 
         for (col_idx, column_schema) in column_schemas.iter().enumerate() {
@@ -250,9 +248,7 @@ pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
         let row_bytes = avro_rs::to_avro_datum(&avro_schema, avro_record)
             .box_err()
             .context(RowGroupToAvroRowsWithCause {
-                msg: format!(
-                    "new avro record with schema failed, schema:{avro_schema:?}"
-                ),
+                msg: format!("new avro record with schema failed, schema:{avro_schema:?}"),
             })?;
         rows.push(row_bytes);
     }

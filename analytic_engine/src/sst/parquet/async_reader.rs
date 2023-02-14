@@ -751,9 +751,7 @@ mod tests {
     }
 
     fn gen_test_data(amount: usize) -> Vec<u32> {
-        (0..amount)
-            .map(|_| rand::random::<u32>())
-            .collect()
+        (0..amount).map(|_| rand::random::<u32>()).collect()
     }
 
     // We mock a thread model same as the one in `ThreadedReader` to check its

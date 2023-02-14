@@ -55,9 +55,7 @@ impl CeresDB {
         // Wait for a while
         std::thread::sleep(std::time::Duration::from_secs(5));
         let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
-            panic!(
-                "Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}"
-            )
+            panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
         });
 
         let db_client = Builder::new(endpoint, Mode::Proxy).build();

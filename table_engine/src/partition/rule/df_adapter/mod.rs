@@ -53,9 +53,7 @@ impl DfPartitionRuleAdapter {
         match partition_info {
             PartitionInfo::Key(_) => Ok(Box::new(KeyExtractor)),
             PartitionInfo::Hash(_) => BuildPartitionRule {
-                msg: format!(
-                    "unsupported partition strategy, strategy:{partition_info:?}"
-                ),
+                msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
         }

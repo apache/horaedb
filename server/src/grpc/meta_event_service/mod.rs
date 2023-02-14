@@ -185,9 +185,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!(
-                "fail to get topology while opening shard, request:{request:?}"
-            ),
+            msg: format!("fail to get topology while opening shard, request:{request:?}"),
         })?;
 
     let shard_info = tables_of_shard.shard_info;
@@ -276,9 +274,7 @@ async fn handle_create_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!(
-                "fail to create table on shard in cluster, req:{request:?}"
-            ),
+            msg: format!("fail to create table on shard in cluster, req:{request:?}"),
         })?;
 
     let topology = ctx
@@ -288,9 +284,7 @@ async fn handle_create_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!(
-                "fail to get topology while creating table, request:{request:?}"
-            ),
+            msg: format!("fail to get topology while creating table, request:{request:?}"),
         })?;
 
     let shard_info = request
@@ -361,9 +355,7 @@ async fn handle_create_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!(
-                "fail to create table with request:{create_table_request:?}"
-            ),
+            msg: format!("fail to create table with request:{create_table_request:?}"),
         })?;
 
     Ok(())
@@ -436,9 +428,7 @@ async fn handle_open_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!(
-                "fail to get topology while opening table, request:{request:?}"
-            ),
+            msg: format!("fail to get topology while opening table, request:{request:?}"),
         })?;
 
     let shard_info = request

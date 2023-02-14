@@ -79,8 +79,6 @@ pub enum ObLogLevel {
     Debug = 5,
 }
 
-
-
 impl From<u16> for ObLogLevel {
     fn from(level: u16) -> Self {
         match level {
