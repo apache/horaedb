@@ -1,0 +1,59 @@
+DROP TABLE IF EXISTS `demo`;
+
+affected_rows: 0
+
+CREATE TABLE demo (
+    name string TAG,
+    value double NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067000, 'ceresdb', 100);
+
+affected_rows: 1
+
+SELECT * FROM demo;
+
+tsid,t,name,value,
+UInt64(12128845460635970325),Timestamp(1651737067000),String("ceresdb"),Double(100.0),
+
+
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067001, "ceresdb", 100);
+
+affected_rows: 1
+
+SELECT * FROM demo;
+
+tsid,t,name,value,
+UInt64(12128845460635970325),Timestamp(1651737067000),String("ceresdb"),Double(100.0),
+UInt64(12128845460635970325),Timestamp(1651737067001),String("ceresdb"),Double(100.0),
+
+
+DROP TABLE IF EXISTS `demo`;
+
+affected_rows: 0
+
+CREATE TABLE `DeMo` (
+    `nAmE` string TAG,
+    value double NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+SELECT `nAmE` FROM `DeMo`;
+
+affected_rows: 0
+
+DROP TABLE `DeMo`;
+
+affected_rows: 0
+

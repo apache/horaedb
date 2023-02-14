@@ -1104,7 +1104,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "ceresdb-client-rs",
+ "sql",
  "sqlness",
+ "sqlparser",
  "tokio 1.25.0",
 ]
 

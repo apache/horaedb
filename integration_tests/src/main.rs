@@ -1,4 +1,5 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+#![feature(let_chains)]
 
 use std::{env, path::Path};
 
@@ -6,6 +7,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use database::CeresDB;
 use sqlness::{EnvController, Runner};
+
+use crate::database::DeployMode;
 
 mod database;
 
@@ -17,12 +20,22 @@ pub struct CeresDBController;
 impl EnvController for CeresDBController {
     type DB = CeresDB;
 
-    async fn start(&self, _env: &str, config: Option<&Path>) -> Self::DB {
-        CeresDB::new(config)
+    async fn start(&self, env: &str, config: Option<&Path>) -> Self::DB {
+        println!("start with env {env}");
+        match env {
+            "local" => CeresDB::new(config, DeployMode::Standalone),
+            "cluster" => CeresDB::new(config, DeployMode::Cluster),
+            _ => panic!("invalid env {env}"),
+        }
     }
 
-    async fn stop(&self, _env: &str, database: Self::DB) {
-        database.stop();
+    async fn stop(&self, env: &str, database: Self::DB) {
+        println!("stop with env {env}");
+        match env {
+            "local" => database.stop(DeployMode::Standalone),
+            "cluster" => database.stop(DeployMode::Cluster),
+            _ => panic!("invalid env {env}"),
+        }
     }
 }
 

@@ -1,0 +1,70 @@
+DROP TABLE IF EXISTS `05_alter_table_t0`;
+
+affected_rows: 0
+
+CREATE TABLE `05_alter_table_t0`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (enable_ttl='false');
+
+affected_rows: 0
+
+INSERT INTO TABLE `05_alter_table_t0`(a, t) values(1,1);
+
+affected_rows: 1
+
+SELECT * FROM `05_alter_table_t0`;
+
+tsid,t,a,
+UInt64(0),Timestamp(1),Int32(1),
+
+
+ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: ALTER TABLE `05_alter_table_t0` RENAME TO `t1`;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+
+ALTER TABLE `05_alter_table_t0` add COLUMN (b string);
+
+affected_rows: 0
+
+DESCRIBE TABLE `05_alter_table_t0`;
+
+name,type,is_primary,is_nullable,is_tag,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),
+String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),
+String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),
+
+
+INSERT INTO TABLE `05_alter_table_t0`(a, b, t) values (2, '2', 2);
+
+affected_rows: 1
+
+SELECT * FROM `05_alter_table_t0`;
+
+tsid,t,a,b,
+UInt64(0),Timestamp(1),Int32(1),String(""),
+UInt64(0),Timestamp(2),Int32(2),String("2"),
+
+
+ALTER TABLE `05_alter_table_t0` DROP COLUMN b;
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan, query: ALTER TABLE `05_alter_table_t0` DROP COLUMN b;. Caused by: Failed to create plan, err:Unsupported SQL statement" })
+
+DESCRIBE TABLE `05_alter_table_t0`;
+
+name,type,is_primary,is_nullable,is_tag,
+String("tsid"),String("uint64"),Boolean(true),Boolean(false),Boolean(false),
+String("t"),String("timestamp"),Boolean(true),Boolean(false),Boolean(false),
+String("a"),String("int"),Boolean(false),Boolean(true),Boolean(false),
+String("b"),String("string"),Boolean(false),Boolean(true),Boolean(false),
+
+
+SELECT * FROM `05_alter_table_t0`;
+
+tsid,t,a,b,
+UInt64(0),Timestamp(1),Int32(1),String(""),
+UInt64(0),Timestamp(2),Int32(2),String("2"),
+
+
+DROP TABLE `05_alter_table_t0`;
+
+affected_rows: 0
+

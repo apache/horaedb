@@ -28,6 +28,11 @@ env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  CERESDB_ADDR: 127.0.0.1
+  CERESDB_PORT: 5440
+  CERESMETA_IMAGE_NAME: ceresmeta-server:latest
+  CERESDB_IMAGE_NAME: ceresdb-server:latest
+  SERVER_NAME: standalone-server
   LOCK_FILE: Cargo.lock
 
 jobs:
@@ -136,6 +141,25 @@ jobs:
       matrix:
         rust: [nightly-2022-08-08]
     steps:
+      - name: Download CeresMeta Code
+        uses: actions/checkout@v3
+        with:
+          repository: CeresDB/ceresmeta
+          ref: refs/heads/main
+      - name: Build CeresMeta Docker image
+        run: docker build -t ${CERESMETA_IMAGE_NAME} .
+      - name: Download CeresDB Code
+        uses: actions/checkout@v3
+      - name: Build CeresDB Docker image
+        run: docker build -t ${CERESDB_IMAGE_NAME} .
+      - name: Run Docker Compose
+        run: docker-compose up -d
+      - name: Add CeresDB0 host
+        run: |
+          sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
+      - name: Add CeresDB1 host
+        run: |
+          sudo echo "127.0.0.1 ceresdb1" | sudo tee -a /etc/hosts
       - uses: actions/checkout@v3
         with:
           submodules: true
@@ -161,6 +185,14 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+      - name: Show docker and netstat
+        run: |
+          docker image ls
+          docker ps
+          netstat
+          cat /etc/hosts
+          docker logs ceresdb_ceresmeta_1
+          docker logs ceresdb_ceresdb0_1
       - name: Run black-box tests
         run: |
           make test-black
