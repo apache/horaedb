@@ -50,8 +50,8 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-arrow = { version = "31.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "31.0.0" }
+arrow = { version = "32.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "32.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -68,10 +68,10 @@ cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
-datafusion = "17.0.0"
-datafusion-expr = "17.0.0"
-datafusion-optimizer = "17.0.0"
-datafusion-proto = "17.0.0"
+datafusion = "18.0.0"
+datafusion-expr = "18.0.0"
+datafusion-optimizer = "18.0.0"
+datafusion-proto = "18.0.0"
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
 futures = "0.3"
