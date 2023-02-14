@@ -740,7 +740,7 @@ mod tests {
             true,
         ))))
         .len(2)
-        .add_buffer(Buffer::from_slice_ref(&offsets))
+        .add_buffer(Buffer::from_slice_ref(offsets))
         .add_child_data(string_data.data().to_owned())
         .build()
         .unwrap();

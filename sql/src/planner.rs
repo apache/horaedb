@@ -990,7 +990,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 // Ensure default value option of columns are valid.
 fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
-    meta_provider: &ContextProviderAdapter<'a, P>,
+    meta_provider: &ContextProviderAdapter<'_, P>,
 ) -> Result<()> {
     let df_planner = SqlToRel::new(meta_provider);
     let mut df_schema = DFSchema::empty();

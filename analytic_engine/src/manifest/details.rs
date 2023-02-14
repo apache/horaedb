@@ -786,7 +786,7 @@ mod tests {
         }
 
         fn table_name_from_id(table_id: TableId) -> String {
-            format!("table_{:?}", table_id)
+            format!("table_{table_id:?}")
         }
 
         async fn open_manifest(&self) -> ManifestImpl {

@@ -70,7 +70,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
                 })
             });
             let tx = tx.clone();
-            let _ = self.runtimes.read_runtime.spawn(async move {
+            self.runtimes.read_runtime.spawn(async move {
                 while let Some(batch) = stream.next().await {
                     if let Err(e) = tx.send(batch).await {
                         error!("Failed to send handler result, err:{}.", e);

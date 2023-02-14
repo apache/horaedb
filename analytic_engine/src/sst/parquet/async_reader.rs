@@ -752,7 +752,6 @@ mod tests {
 
     fn gen_test_data(amount: usize) -> Vec<u32> {
         (0..amount)
-            .into_iter()
             .map(|_| rand::random::<u32>())
             .collect()
     }
@@ -768,7 +767,6 @@ mod tests {
         let channel_cap_per_sub_reader = 10;
         let reader_num = 5;
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..reader_num)
-            .into_iter()
             .map(|_| mpsc::channel::<u32>(channel_cap_per_sub_reader))
             .unzip();
 
