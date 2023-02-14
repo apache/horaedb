@@ -302,9 +302,9 @@ impl Manifest for ManifestImpl {
         info!("Manifest store update, request:{:?}", request);
 
         let table_id = request.meta_update.table_id();
+        let shard_id = request.shard_info.shard_id;
         let location = WalLocation::new(
-            // TODO: use shard id as region id.
-            table_id.as_u64(),
+            shard_id as u64,
             request.shard_info.cluster_version,
             table_id.as_u64(),
         );
@@ -326,8 +326,7 @@ impl Manifest for ManifestImpl {
         info!("Manifest load data, request:{:?}", load_req);
 
         let location = WalLocation::new(
-            // TODO: use shard id as region id.
-            load_req.table_id.as_u64(),
+            load_req.shard_id as u64,
             load_req.cluster_version,
             load_req.table_id.as_u64(),
         );
@@ -357,8 +356,7 @@ impl Manifest for ManifestImpl {
 
         let table_id = request.table_id;
         let location = WalLocation::new(
-            // TODO: use shard id as region id.
-            table_id.as_u64(),
+            request.shard_id as u64,
             request.cluster_version,
             table_id.as_u64(),
         );
@@ -1174,7 +1172,7 @@ mod tests {
                 linear: false,
             }));
             let location = WalLocation::new(
-                table_id.as_u64(),
+                DEFAULT_SHARD_ID as u64,
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1249,7 +1247,7 @@ mod tests {
             .await;
 
             let location = WalLocation::new(
-                table_id.as_u64(),
+                DEFAULT_SHARD_ID as u64,
                 DEFAULT_CLUSTER_VERSION,
                 table_id.as_u64(),
             );
@@ -1382,7 +1380,7 @@ mod tests {
         updates_after_snapshot: Vec<MetaUpdate>,
     ) {
         let location = WalLocation::new(
-            table_id.as_u64(),
+            DEFAULT_SHARD_ID as u64,
             DEFAULT_CLUSTER_VERSION,
             table_id.as_u64(),
         );

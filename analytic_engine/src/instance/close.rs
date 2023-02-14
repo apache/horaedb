@@ -88,7 +88,7 @@ impl Instance {
                 table: &table_data.name,
             })?;
 
-        // Table has been closed so remove it from the space
+        // Table has been closed so remove it from the space.
         let removed_table = space.remove_table(&request.table_name);
         assert!(removed_table.is_some());
 
