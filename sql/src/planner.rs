@@ -3,6 +3,7 @@
 //! Planner converts a SQL AST into logical plans
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     mem,
@@ -14,6 +15,7 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
     error::ArrowError,
 };
+use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::{Datum, DatumKind},
@@ -27,7 +29,10 @@ use datafusion::{
     error::DataFusionError,
     optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    sql::planner::{ParserOptions, PlannerContext, SqlToRel},
+    sql::{
+        planner::{ParserOptions, PlannerContext, SqlToRel},
+        ResolvedTableReference,
+    },
 };
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -550,10 +555,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // ensure default value options are valid
         ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
 
-        // TODO(yingwen): Maybe support create table on other schema?
+        // TODO: support create table on other catalog/schema
         let table_name = stmt.table_name.to_string();
-        let table_ref = TableReference::from(table_name.as_str());
-        // Now we only takes the table name and ignore the schema and catalog name
+        let table_ref = get_table_ref(&table_name);
         let table = table_ref.table().to_string();
 
         let plan = CreateTablePlan {
@@ -572,6 +576,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
+        debug!("Drop table to plan, stmt:{:?}", stmt);
+
         let (table_name, partition_info) =
             if let Some(table) = self.find_table(&stmt.table_name.to_string())? {
                 let table_name = table.name().to_string();
@@ -587,12 +593,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 .fail();
             };
 
-        Ok(Plan::Drop(DropTablePlan {
+        let plan = DropTablePlan {
             engine: stmt.engine,
             if_exists: stmt.if_exists,
             table: table_name,
             partition_info,
-        }))
+        };
+        debug!("Drop table to plan, plan:{:?}", plan);
+
+        Ok(Plan::Drop(plan))
     }
 
     fn describe_table_to_plan(&self, stmt: DescribeTable) -> Result<Plan> {
@@ -773,8 +782,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
-        let table_ref = TableReference::from(table_name);
-
+        let table_ref = get_table_ref(table_name);
         self.meta_provider
             .table(table_ref)
             .context(MetaProviderFindTable)
@@ -1069,6 +1077,17 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     }
 
     Ok(())
+}
+
+// Workaroud for TableReference::from(&str)
+// it will always convert table to lowercase when not quoted
+// TODO: support catalog/schema
+pub fn get_table_ref(table_name: &str) -> TableReference {
+    TableReference::from(ResolvedTableReference {
+        catalog: Cow::from(DEFAULT_CATALOG),
+        schema: Cow::from(DEFAULT_SCHEMA),
+        table: Cow::from(table_name),
+    })
 }
 
 #[cfg(test)]
