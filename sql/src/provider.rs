@@ -2,7 +2,7 @@
 
 //! Adapter to providers in datafusion
 
-use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
+use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
@@ -101,7 +101,7 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
 
         let catalog = match self
             .manager
-            .catalog_by_name(resolved.catalog)
+            .catalog_by_name(resolved.catalog.as_ref())
             .context(FindCatalog {
                 name: resolved.catalog,
             })? {
@@ -110,21 +110,21 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
         };
 
         let schema = match catalog
-            .schema_by_name(resolved.schema)
+            .schema_by_name(resolved.schema.as_ref())
             .context(FindSchema {
-                name: resolved.schema,
+                name: resolved.schema.to_string(),
             })? {
             Some(s) => s,
             None => {
                 return SchemaNotFound {
-                    name: resolved.schema,
+                    name: resolved.schema.to_string(),
                 }
                 .fail();
             }
         };
 
         schema
-            .table_by_name(resolved.table)
+            .table_by_name(resolved.table.as_ref())
             .map_err(Box::new)
             .context(FindTable {
                 name: resolved.table,
@@ -227,12 +227,13 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(table_ref) = self.table_cache.borrow().get(name) {
+        if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
             return Ok(self.table_source(table_ref));
         }
 
         // Find in meta provider
-        match self.meta_provider.table(name) {
+        // TODO: possible to remove this clone?
+        match self.meta_provider.table(name.clone()) {
             Ok(Some(table)) => {
                 self.table_cache.borrow_mut().insert(name, table.clone());
                 Ok(self.table_source(table))
@@ -317,9 +318,9 @@ impl SchemaProvider for SchemaProviderAdapter {
 
     async fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let name_ref = TableReference::Full {
-            catalog: &self.catalog,
-            schema: &self.schema,
-            table: name,
+            catalog: Cow::from(&self.catalog),
+            schema: Cow::from(&self.schema),
+            table: Cow::from(name),
         };
 
         self.tables
@@ -342,14 +343,14 @@ impl CatalogProviderAdapter {
         let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
         let _ = tables.visit::<_, ()>(|name, _| {
             // Get or create catalog
-            let catalog = match catalog_adapters.get_mut(name.catalog) {
+            let catalog = match catalog_adapters.get_mut(name.catalog.as_ref()) {
                 Some(v) => v,
                 None => catalog_adapters
                     .entry(name.catalog.to_string())
                     .or_insert_with(CatalogProviderAdapter::default),
             };
             // Get or create schema
-            if catalog.schemas.get(name.schema).is_none() {
+            if catalog.schemas.get(name.schema.as_ref()).is_none() {
                 catalog.schemas.insert(
                     name.schema.to_string(),
                     Arc::new(SchemaProviderAdapter {

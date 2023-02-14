@@ -2,6 +2,8 @@
 
 //! Remote table engine implementation
 
+#![feature(let_chains)]
+
 mod cached_router;
 mod channel;
 mod client;
