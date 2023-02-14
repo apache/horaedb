@@ -117,6 +117,7 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::CreateView(_)
             | LogicalPlan::CreateCatalogSchema(_)
             | LogicalPlan::CreateCatalog(_)
+            | LogicalPlan::Unnest(_)
             | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
         }
     }

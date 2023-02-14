@@ -482,7 +482,7 @@ impl PromAlignReader {
 }
 
 impl Stream for PromAlignReader {
-    type Item = std::result::Result<RecordBatch, ArrowError>;
+    type Item = datafusion::error::Result<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.done {
@@ -497,9 +497,12 @@ impl Stream for PromAlignReader {
                 }
                 let tsid_samples = self
                     .accumulate_record_batch(batch)
-                    .map_err(|e| ArrowError::SchemaError(e.to_string()))?; // convert all Error enum to SchemaError
+                    .map_err(|e| DataFusionError::External(Box::new(e) as Box<_>))?; // convert all Error enum to SchemaError
                 if !tsid_samples.is_empty() {
-                    Poll::Ready(Some(self.samples_to_record_batch(schema, tsid_samples)))
+                    Poll::Ready(Some(
+                        self.samples_to_record_batch(schema, tsid_samples)
+                            .map_err(|e| DataFusionError::ArrowError(e)),
+                    ))
                 } else {
                     Poll::Ready(Some(Ok(RecordBatch::new_empty(schema))))
                 }
@@ -509,10 +512,11 @@ impl Stream for PromAlignReader {
                 if let Some(schema) = mem::take(&mut self.record_schema) {
                     let tsid_samples = self
                         .accumulate_record_batch(RecordBatch::new_empty(schema.clone()))
-                        .map_err(|e| ArrowError::SchemaError(e.to_string()))?;
+                        .map_err(|e| DataFusionError::External(Box::new(e) as Box<_>))?;
                     if !tsid_samples.is_empty() {
                         return Poll::Ready(Some(
-                            self.samples_to_record_batch(schema, tsid_samples),
+                            self.samples_to_record_batch(schema, tsid_samples)
+                                .map_err(|e| DataFusionError::ArrowError(e)),
                         ));
                     }
                 }
