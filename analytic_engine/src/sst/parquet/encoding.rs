@@ -9,6 +9,7 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
 };
+use ceresdbproto::sst as sst_pb;
 use common_types::{
     bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
@@ -25,7 +26,6 @@ use parquet::{
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
-use proto::sst as sst_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::sst::parquet::{

@@ -5,9 +5,9 @@
 use std::{fmt, ops::Index, sync::Arc};
 
 use bytes::Bytes;
+use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::{common as common_pb, sst as sst_pb};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::{Xor8, Xor8Builder};
 
@@ -348,7 +348,7 @@ impl From<ParquetMetaData> for sst_pb::ParquetMetaData {
             max_key: src.max_key.to_vec(),
             max_sequence: src.max_sequence,
             time_range: Some(src.time_range.into()),
-            schema: Some(common_pb::TableSchema::from(&src.schema)),
+            schema: Some(schema_pb::TableSchema::from(&src.schema)),
             filter: src.parquet_filter.map(|v| v.into()),
             collapsible_cols_idx: src.collapsible_cols_idx,
         }

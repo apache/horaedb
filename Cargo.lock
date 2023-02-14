@@ -90,6 +90,7 @@ dependencies = [
  "async-trait",
  "base64 0.13.0",
  "bytes 1.2.1",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "datafusion",
@@ -105,7 +106,6 @@ dependencies = [
  "parquet_ext",
  "prometheus 0.12.0",
  "prost",
- "proto",
  "rand 0.7.3",
  "remote_engine_client",
  "router",
@@ -1122,7 +1122,7 @@ dependencies = [
 [[package]]
 name = "ceresdbproto"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415#dd6921dbb59bbe9a2fcc27960e76a8c870b44415"
+source = "git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b#81a6d9ead104b2910f5c4484135054d51095090b"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
@@ -1261,7 +1261,7 @@ name = "cluster"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "log",
@@ -1313,12 +1313,12 @@ dependencies = [
  "arrow_ext",
  "byteorder",
  "bytes_ext",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "chrono",
  "datafusion",
  "murmur3",
  "paste 1.0.8",
  "prost",
- "proto",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1333,6 +1333,7 @@ dependencies = [
  "arrow 31.0.0",
  "avro-rs",
  "backtrace",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "chrono",
  "common_types",
  "crossbeam-utils 0.8.11",
@@ -1345,7 +1346,6 @@ dependencies = [
  "nix 0.22.3",
  "pin-project-lite",
  "prometheus 0.12.0",
- "proto",
  "serde",
  "serde_derive",
  "serde_json",
@@ -3559,7 +3559,7 @@ name = "meta_client"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "futures 0.3.25",
@@ -4055,6 +4055,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
  "bytes 1.2.1",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "chrono",
  "clru",
  "common_util",
@@ -4068,7 +4069,6 @@ dependencies = [
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
- "proto",
  "serde",
  "serde_derive",
  "serde_json",
@@ -4792,16 +4792,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proto"
-version = "1.0.0-alpha02"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
 name = "protobuf"
 version = "2.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5229,13 +5219,12 @@ version = "1.0.0-alpha02"
 dependencies = [
  "arrow_ext",
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "clru",
  "common_types",
  "common_util",
  "futures 0.3.25",
  "log",
- "proto",
  "router",
  "serde",
  "serde_derive",
@@ -5354,7 +5343,7 @@ name = "router"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "cluster",
  "common_types",
  "common_util",
@@ -5694,7 +5683,7 @@ dependencies = [
  "async-trait",
  "bytes 1.2.1",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "cluster",
  "common_types",
  "common_util",
@@ -5715,7 +5704,6 @@ dependencies = [
  "prometheus 0.12.0",
  "prometheus-static-metric",
  "prost",
- "proto",
  "query_engine",
  "router",
  "serde",
@@ -6024,7 +6012,7 @@ dependencies = [
  "arrow 31.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "datafusion",
@@ -6286,12 +6274,12 @@ dependencies = [
  "arrow 31.0.0",
  "async-trait",
  "catalog",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "futures 0.3.25",
  "log",
  "prost",
- "proto",
  "snafu 0.6.10",
  "table_engine",
  "tokio 1.25.0",
@@ -6303,7 +6291,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "arrow 31.0.0",
  "async-trait",
- "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=dd6921dbb59bbe9a2fcc27960e76a8c870b44415)",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "common_types",
  "common_util",
  "datafusion",
@@ -6317,7 +6305,6 @@ dependencies = [
  "parquet",
  "parquet_ext",
  "prost",
- "proto",
  "serde",
  "serde_derive",
  "smallvec 1.9.0",
@@ -7227,6 +7214,7 @@ name = "wal"
 version = "1.0.0-alpha02"
 dependencies = [
  "async-trait",
+ "ceresdbproto 0.1.0 (git+https://github.com/CeresDB/ceresdbproto.git?rev=81a6d9ead104b2910f5c4484135054d51095090b)",
  "chrono",
  "common_types",
  "common_util",
@@ -7235,7 +7223,6 @@ dependencies = [
  "log",
  "message_queue",
  "prost",
- "proto",
  "rand 0.8.5",
  "rocksdb",
  "serde",

@@ -4,9 +4,9 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::{analytic_common as analytic_common_pb, meta_update as meta_pb};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -48,25 +48,25 @@ pub struct AddFile {
     pub file: FileMeta,
 }
 
-impl From<AddFile> for meta_pb::AddFileMeta {
+impl From<AddFile> for manifest_pb::AddFileMeta {
     /// Convert into protobuf struct
-    fn from(v: AddFile) -> meta_pb::AddFileMeta {
-        meta_pb::AddFileMeta {
+    fn from(v: AddFile) -> manifest_pb::AddFileMeta {
+        manifest_pb::AddFileMeta {
             level: v.level as u32,
             file_id: v.file.id,
             time_range: Some(v.file.time_range.into()),
             max_seq: v.file.max_seq,
             size: v.file.size,
             row_num: v.file.row_num,
-            storage_format: analytic_common_pb::StorageFormat::from(v.file.storage_format) as i32,
+            storage_format: manifest_pb::StorageFormat::from(v.file.storage_format) as i32,
         }
     }
 }
 
-impl TryFrom<meta_pb::AddFileMeta> for AddFile {
+impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
     type Error = Error;
 
-    fn try_from(src: meta_pb::AddFileMeta) -> Result<Self> {
+    fn try_from(src: manifest_pb::AddFileMeta) -> Result<Self> {
         let storage_format = src.storage_format();
         let time_range = {
             let time_range = src.time_range.context(TimeRangeNotFound)?;
@@ -101,19 +101,19 @@ pub struct DeleteFile {
     pub file_id: FileId,
 }
 
-impl From<DeleteFile> for meta_pb::DeleteFileMeta {
+impl From<DeleteFile> for manifest_pb::DeleteFileMeta {
     fn from(v: DeleteFile) -> Self {
-        meta_pb::DeleteFileMeta {
+        manifest_pb::DeleteFileMeta {
             level: v.level as u32,
             file_id: v.file_id,
         }
     }
 }
 
-impl TryFrom<meta_pb::DeleteFileMeta> for DeleteFile {
+impl TryFrom<manifest_pb::DeleteFileMeta> for DeleteFile {
     type Error = Error;
 
-    fn try_from(src: meta_pb::DeleteFileMeta) -> Result<Self> {
+    fn try_from(src: manifest_pb::DeleteFileMeta) -> Result<Self> {
         let level = src
             .level
             .try_into()

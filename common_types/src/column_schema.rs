@@ -5,7 +5,7 @@
 use std::{collections::HashMap, convert::TryFrom, str::FromStr};
 
 use arrow::datatypes::{DataType, Field};
-use proto::common as common_pb;
+use ceresdbproto::schema as schema_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::Expr;
 
@@ -246,10 +246,10 @@ impl ColumnSchema {
     }
 }
 
-impl TryFrom<common_pb::ColumnSchema> for ColumnSchema {
+impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
     type Error = Error;
 
-    fn try_from(column_schema: common_pb::ColumnSchema) -> Result<Self> {
+    fn try_from(column_schema: schema_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let data_type = column_schema.data_type();
         let default_value = if column_schema.default_value.is_empty() {
@@ -439,16 +439,16 @@ impl Builder {
     }
 }
 
-impl From<ColumnSchema> for common_pb::ColumnSchema {
+impl From<ColumnSchema> for schema_pb::ColumnSchema {
     fn from(src: ColumnSchema) -> Self {
         let default_value = src
             .default_value
             .map(|v| serde_json::to_vec(&v).unwrap())
             .unwrap_or_default();
 
-        common_pb::ColumnSchema {
+        schema_pb::ColumnSchema {
             name: src.name,
-            data_type: common_pb::DataType::from(src.data_type) as i32,
+            data_type: schema_pb::DataType::from(src.data_type) as i32,
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn test_pb_convert() {
         let column_schema = new_test_column_schema();
-        let pb_schema = common_pb::ColumnSchema::from(column_schema.clone());
+        let pb_schema = schema_pb::ColumnSchema::from(column_schema.clone());
         // Check pb specific fields
         assert!(pb_schema.is_tag);
 

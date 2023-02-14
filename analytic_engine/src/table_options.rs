@@ -4,6 +4,7 @@
 
 use std::{collections::HashMap, string::ToString, time::Duration};
 
+use ceresdbproto::manifest as manifest_pb;
 use common_types::time::Timestamp;
 use common_util::{
     config::{ReadableDuration, ReadableSize, TimeUnit},
@@ -11,7 +12,6 @@ use common_util::{
     time::DurationExt,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use proto::analytic_common as common_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
@@ -187,24 +187,24 @@ impl ToString for Compression {
     }
 }
 
-impl From<Compression> for common_pb::Compression {
+impl From<Compression> for manifest_pb::Compression {
     fn from(compression: Compression) -> Self {
         match compression {
-            Compression::Uncompressed => common_pb::Compression::Uncompressed,
-            Compression::Lz4 => common_pb::Compression::Lz4,
-            Compression::Snappy => common_pb::Compression::Snappy,
-            Compression::Zstd => common_pb::Compression::Zstd,
+            Compression::Uncompressed => manifest_pb::Compression::Uncompressed,
+            Compression::Lz4 => manifest_pb::Compression::Lz4,
+            Compression::Snappy => manifest_pb::Compression::Snappy,
+            Compression::Zstd => manifest_pb::Compression::Zstd,
         }
     }
 }
 
-impl From<common_pb::Compression> for Compression {
-    fn from(compression: common_pb::Compression) -> Self {
+impl From<manifest_pb::Compression> for Compression {
+    fn from(compression: manifest_pb::Compression) -> Self {
         match compression {
-            common_pb::Compression::Uncompressed => Compression::Uncompressed,
-            common_pb::Compression::Lz4 => Compression::Lz4,
-            common_pb::Compression::Snappy => Compression::Snappy,
-            common_pb::Compression::Zstd => Compression::Zstd,
+            manifest_pb::Compression::Uncompressed => Compression::Uncompressed,
+            manifest_pb::Compression::Lz4 => Compression::Lz4,
+            manifest_pb::Compression::Snappy => Compression::Snappy,
+            manifest_pb::Compression::Zstd => Compression::Zstd,
         }
     }
 }
@@ -269,16 +269,16 @@ pub enum StorageFormat {
     Hybrid,
 }
 
-impl From<StorageFormatHint> for common_pb::StorageFormatHint {
+impl From<StorageFormatHint> for manifest_pb::StorageFormatHint {
     fn from(hint: StorageFormatHint) -> Self {
         match hint {
             StorageFormatHint::Auto => Self {
-                hint: Some(common_pb::storage_format_hint::Hint::Auto(0)),
+                hint: Some(manifest_pb::storage_format_hint::Hint::Auto(0)),
             },
             StorageFormatHint::Specific(format) => {
-                let format = common_pb::StorageFormat::from(format);
+                let format = manifest_pb::StorageFormat::from(format);
                 Self {
-                    hint: Some(common_pb::storage_format_hint::Hint::Specific(
+                    hint: Some(manifest_pb::storage_format_hint::Hint::Specific(
                         format as i32,
                     )),
                 }
@@ -287,14 +287,14 @@ impl From<StorageFormatHint> for common_pb::StorageFormatHint {
     }
 }
 
-impl TryFrom<common_pb::StorageFormatHint> for StorageFormatHint {
+impl TryFrom<manifest_pb::StorageFormatHint> for StorageFormatHint {
     type Error = Error;
 
-    fn try_from(hint: common_pb::StorageFormatHint) -> Result<Self> {
+    fn try_from(hint: manifest_pb::StorageFormatHint) -> Result<Self> {
         let format_hint = match hint.hint.context(MissingStorageFormatHint)? {
-            common_pb::storage_format_hint::Hint::Auto(_) => StorageFormatHint::Auto,
-            common_pb::storage_format_hint::Hint::Specific(format) => {
-                let storage_format = common_pb::StorageFormat::from_i32(format)
+            manifest_pb::storage_format_hint::Hint::Auto(_) => StorageFormatHint::Auto,
+            manifest_pb::storage_format_hint::Hint::Specific(format) => {
+                let storage_format = manifest_pb::StorageFormat::from_i32(format)
                     .context(UnknownStorageFormatType { value: format })?;
                 StorageFormatHint::Specific(storage_format.into())
             }
@@ -327,7 +327,7 @@ impl TryFrom<&str> for StorageFormatHint {
     }
 }
 
-impl From<StorageFormat> for common_pb::StorageFormat {
+impl From<StorageFormat> for manifest_pb::StorageFormat {
     fn from(format: StorageFormat) -> Self {
         match format {
             StorageFormat::Columnar => Self::Columnar,
@@ -336,11 +336,11 @@ impl From<StorageFormat> for common_pb::StorageFormat {
     }
 }
 
-impl From<common_pb::StorageFormat> for StorageFormat {
-    fn from(format: common_pb::StorageFormat) -> Self {
+impl From<manifest_pb::StorageFormat> for StorageFormat {
+    fn from(format: manifest_pb::StorageFormat) -> Self {
         match format {
-            common_pb::StorageFormat::Columnar => Self::Columnar,
-            common_pb::StorageFormat::Hybrid => Self::Hybrid,
+            manifest_pb::StorageFormat::Columnar => Self::Columnar,
+            manifest_pb::StorageFormat::Hybrid => Self::Hybrid,
         }
     }
 }
@@ -504,22 +504,22 @@ impl TableOptions {
     }
 }
 
-impl From<SizeTieredCompactionOptions> for common_pb::CompactionOptions {
+impl From<SizeTieredCompactionOptions> for manifest_pb::CompactionOptions {
     fn from(opts: SizeTieredCompactionOptions) -> Self {
-        common_pb::CompactionOptions {
+        manifest_pb::CompactionOptions {
             bucket_low: opts.bucket_low,
             bucket_high: opts.bucket_high,
             min_sstable_size: opts.min_sstable_size.0 as u32,
             min_threshold: opts.min_threshold as u32,
             max_threshold: opts.max_threshold as u32,
             // FIXME: Is it ok to use the default timestamp resolution here?
-            timestamp_resolution: common_pb::TimeUnit::Nanoseconds as i32,
+            timestamp_resolution: manifest_pb::TimeUnit::Nanoseconds as i32,
         }
     }
 }
 
-impl From<common_pb::CompactionOptions> for SizeTieredCompactionOptions {
-    fn from(opts: common_pb::CompactionOptions) -> Self {
+impl From<manifest_pb::CompactionOptions> for SizeTieredCompactionOptions {
+    fn from(opts: manifest_pb::CompactionOptions) -> Self {
         Self {
             bucket_low: opts.bucket_low,
             bucket_high: opts.bucket_high,
@@ -531,21 +531,21 @@ impl From<common_pb::CompactionOptions> for SizeTieredCompactionOptions {
     }
 }
 
-impl From<TimeWindowCompactionOptions> for common_pb::CompactionOptions {
+impl From<TimeWindowCompactionOptions> for manifest_pb::CompactionOptions {
     fn from(v: TimeWindowCompactionOptions) -> Self {
-        common_pb::CompactionOptions {
+        manifest_pb::CompactionOptions {
             bucket_low: v.size_tiered.bucket_low,
             bucket_high: v.size_tiered.bucket_high,
             min_sstable_size: v.size_tiered.min_sstable_size.0 as u32,
             min_threshold: v.size_tiered.min_threshold as u32,
             max_threshold: v.size_tiered.max_threshold as u32,
-            timestamp_resolution: common_pb::TimeUnit::from(v.timestamp_resolution) as i32,
+            timestamp_resolution: manifest_pb::TimeUnit::from(v.timestamp_resolution) as i32,
         }
     }
 }
 
-impl From<common_pb::CompactionOptions> for TimeWindowCompactionOptions {
-    fn from(opts: common_pb::CompactionOptions) -> Self {
+impl From<manifest_pb::CompactionOptions> for TimeWindowCompactionOptions {
+    fn from(opts: manifest_pb::CompactionOptions) -> Self {
         let size_tiered: SizeTieredCompactionOptions = opts.clone().into();
 
         Self {
@@ -555,7 +555,7 @@ impl From<common_pb::CompactionOptions> for TimeWindowCompactionOptions {
     }
 }
 
-impl From<TableOptions> for common_pb::TableOptions {
+impl From<TableOptions> for manifest_pb::TableOptions {
     fn from(opts: TableOptions) -> Self {
         let segment_duration = opts
             .segment_duration
@@ -564,18 +564,18 @@ impl From<TableOptions> for common_pb::TableOptions {
         let sampling_segment_duration = opts.segment_duration.is_none();
 
         let (compaction_strategy, compaction_options) = match opts.compaction_strategy {
-            CompactionStrategy::Default => (common_pb::CompactionStrategy::Default, None),
+            CompactionStrategy::Default => (manifest_pb::CompactionStrategy::Default, None),
             CompactionStrategy::SizeTiered(v) => (
-                common_pb::CompactionStrategy::SizeTiered,
-                Some(common_pb::CompactionOptions::from(v)),
+                manifest_pb::CompactionStrategy::SizeTiered,
+                Some(manifest_pb::CompactionOptions::from(v)),
             ),
             CompactionStrategy::TimeWindow(v) => (
-                common_pb::CompactionStrategy::TimeWindow,
-                Some(common_pb::CompactionOptions::from(v)),
+                manifest_pb::CompactionStrategy::TimeWindow,
+                Some(manifest_pb::CompactionOptions::from(v)),
             ),
         };
 
-        common_pb::TableOptions {
+        manifest_pb::TableOptions {
             segment_duration,
             enable_ttl: opts.enable_ttl,
             ttl: opts.ttl.0.as_millis_u64(),
@@ -583,50 +583,52 @@ impl From<TableOptions> for common_pb::TableOptions {
             num_rows_per_row_group: opts.num_rows_per_row_group as u64,
             compaction_strategy: compaction_strategy as i32,
             compaction_options,
-            update_mode: common_pb::UpdateMode::from(opts.update_mode) as i32,
+            update_mode: manifest_pb::UpdateMode::from(opts.update_mode) as i32,
             write_buffer_size: opts.write_buffer_size,
-            compression: common_pb::Compression::from(opts.compression) as i32,
+            compression: manifest_pb::Compression::from(opts.compression) as i32,
             sampling_segment_duration,
-            storage_format_hint: Some(common_pb::StorageFormatHint::from(opts.storage_format_hint)),
+            storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
+                opts.storage_format_hint,
+            )),
         }
     }
 }
 
-impl From<UpdateMode> for common_pb::UpdateMode {
+impl From<UpdateMode> for manifest_pb::UpdateMode {
     fn from(v: UpdateMode) -> Self {
         match v {
-            UpdateMode::Overwrite => common_pb::UpdateMode::Overwrite,
-            UpdateMode::Append => common_pb::UpdateMode::Append,
+            UpdateMode::Overwrite => manifest_pb::UpdateMode::Overwrite,
+            UpdateMode::Append => manifest_pb::UpdateMode::Append,
         }
     }
 }
 
-impl From<common_pb::UpdateMode> for UpdateMode {
-    fn from(v: common_pb::UpdateMode) -> Self {
+impl From<manifest_pb::UpdateMode> for UpdateMode {
+    fn from(v: manifest_pb::UpdateMode) -> Self {
         match v {
-            common_pb::UpdateMode::Overwrite => UpdateMode::Overwrite,
-            common_pb::UpdateMode::Append => UpdateMode::Append,
+            manifest_pb::UpdateMode::Overwrite => UpdateMode::Overwrite,
+            manifest_pb::UpdateMode::Append => UpdateMode::Append,
         }
     }
 }
 
-impl TryFrom<common_pb::TableOptions> for TableOptions {
+impl TryFrom<manifest_pb::TableOptions> for TableOptions {
     type Error = Error;
 
-    fn try_from(opts: common_pb::TableOptions) -> Result<Self> {
+    fn try_from(opts: manifest_pb::TableOptions) -> Result<Self> {
         let compression = opts.compression();
         let update_mode = opts.update_mode();
 
         let compaction_strategy = match opts.compaction_strategy() {
-            common_pb::CompactionStrategy::Default => CompactionStrategy::default(),
-            common_pb::CompactionStrategy::SizeTiered => {
+            manifest_pb::CompactionStrategy::Default => CompactionStrategy::default(),
+            manifest_pb::CompactionStrategy::SizeTiered => {
                 let opts = opts
                     .compaction_options
                     .map(SizeTieredCompactionOptions::from)
                     .unwrap_or_default();
                 CompactionStrategy::SizeTiered(opts)
             }
-            common_pb::CompactionStrategy::TimeWindow => {
+            manifest_pb::CompactionStrategy::TimeWindow => {
                 let opts = opts
                     .compaction_options
                     .map(TimeWindowCompactionOptions::from)

@@ -12,6 +12,7 @@ use std::{
 
 use ceresdbproto::{
     meta_event::meta_event_service_server::MetaEventServiceServer,
+    remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
     storage::storage_service_server::StorageServiceServer,
 };
 use cluster::ClusterRef;
@@ -23,7 +24,6 @@ use common_util::{
 };
 use futures::FutureExt;
 use log::{info, warn};
-use proto::remote_engine::remote_engine_service_server::RemoteEngineServiceServer;
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

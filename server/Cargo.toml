@@ -38,7 +38,6 @@ prom-remote-api = { version = "0.2.1", features = ["warp"] }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }

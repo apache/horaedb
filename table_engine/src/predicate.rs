@@ -84,7 +84,7 @@ impl Predicate {
     }
 }
 
-impl TryFrom<&Predicate> for proto::remote_engine::Predicate {
+impl TryFrom<&Predicate> for ceresdbproto::remote_engine::Predicate {
     type Error = Error;
 
     fn try_from(predicate: &Predicate) -> std::result::Result<Self, Self::Error> {
@@ -107,10 +107,12 @@ impl TryFrom<&Predicate> for proto::remote_engine::Predicate {
     }
 }
 
-impl TryFrom<proto::remote_engine::Predicate> for Predicate {
+impl TryFrom<ceresdbproto::remote_engine::Predicate> for Predicate {
     type Error = Error;
 
-    fn try_from(pb: proto::remote_engine::Predicate) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::remote_engine::Predicate,
+    ) -> std::result::Result<Self, Self::Error> {
         let time_range = pb.time_range.context(EmptyTimeRange)?;
         let mut exprs = Vec::with_capacity(pb.exprs.len());
         for pb_expr in pb.exprs {

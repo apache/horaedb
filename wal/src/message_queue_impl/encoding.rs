@@ -2,6 +2,10 @@
 
 //! Meta encoding of wal's message queue implementation
 
+use ceresdbproto::wal_on_mq::{
+    table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
+    TableMetaData as TableMetaDataPb,
+};
 use common_types::bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use common_util::{
     codec::{Decoder, Encoder},
@@ -9,10 +13,6 @@ use common_util::{
     error::{BoxError, GenericError},
 };
 use prost::Message;
-use proto::wal_on_mq::{
-    table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
-    TableMetaData as TableMetaDataPb,
-};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{

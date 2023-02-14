@@ -78,8 +78,8 @@ pub struct TableIdentifier {
     pub table: String,
 }
 
-impl From<proto::remote_engine::TableIdentifier> for TableIdentifier {
-    fn from(pb: proto::remote_engine::TableIdentifier) -> Self {
+impl From<ceresdbproto::remote_engine::TableIdentifier> for TableIdentifier {
+    fn from(pb: ceresdbproto::remote_engine::TableIdentifier) -> Self {
         Self {
             catalog: pb.catalog,
             schema: pb.schema,
@@ -88,7 +88,7 @@ impl From<proto::remote_engine::TableIdentifier> for TableIdentifier {
     }
 }
 
-impl From<TableIdentifier> for proto::remote_engine::TableIdentifier {
+impl From<TableIdentifier> for ceresdbproto::remote_engine::TableIdentifier {
     fn from(table_ident: TableIdentifier) -> Self {
         Self {
             catalog: table_ident.catalog,
@@ -103,10 +103,12 @@ pub struct ReadRequest {
     pub read_request: TableReadRequest,
 }
 
-impl TryFrom<proto::remote_engine::ReadRequest> for ReadRequest {
+impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: proto::remote_engine::ReadRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::remote_engine::ReadRequest,
+    ) -> std::result::Result<Self, Self::Error> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let table_read_request = pb.read_request.context(EmptyTableReadRequest)?;
         Ok(Self {
@@ -119,7 +121,7 @@ impl TryFrom<proto::remote_engine::ReadRequest> for ReadRequest {
     }
 }
 
-impl TryFrom<ReadRequest> for proto::remote_engine::ReadRequest {
+impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::ReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Self::Error> {
@@ -138,10 +140,12 @@ pub struct WriteRequest {
     pub write_request: TableWriteRequest,
 }
 
-impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
+impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
     type Error = Error;
 
-    fn try_from(pb: proto::remote_engine::WriteRequest) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::remote_engine::WriteRequest,
+    ) -> std::result::Result<Self, Self::Error> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let row_group_pb = pb.row_group.context(EmptyRowGroup)?;
         let table_schema: Schema = row_group_pb
@@ -167,7 +171,7 @@ impl TryFrom<proto::remote_engine::WriteRequest> for WriteRequest {
     }
 }
 
-impl TryFrom<WriteRequest> for proto::remote_engine::WriteRequest {
+impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
     type Error = Error;
 
     fn try_from(request: WriteRequest) -> std::result::Result<Self, Self::Error> {
@@ -181,7 +185,7 @@ impl TryFrom<WriteRequest> for proto::remote_engine::WriteRequest {
                 table_ident: request.table.clone(),
             })?;
 
-        let row_group_pb = proto::remote_engine::RowGroup {
+        let row_group_pb = ceresdbproto::remote_engine::RowGroup {
             version: ENCODE_ROWS_WITH_AVRO,
             table_schema: Some(table_schema_pb),
             rows: avro_rows,

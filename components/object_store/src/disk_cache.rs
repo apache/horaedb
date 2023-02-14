@@ -191,7 +191,7 @@ impl DiskCache {
         })?;
 
         let bytes = value.to_vec();
-        let pb_bytes = proto::oss_cache::Bytes {
+        let pb_bytes = ceresdbproto::oss_cache::Bytes {
             crc: CASTAGNOLI.checksum(&bytes),
             value: bytes,
         };
@@ -220,7 +220,7 @@ impl DiskCache {
             file: file_path.clone(),
         })?;
 
-        let bytes = proto::oss_cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
+        let bytes = ceresdbproto::oss_cache::Bytes::decode(&*buf).with_context(|| DecodeCache {
             file: file_path.clone(),
         })?;
         // TODO: CRC checking

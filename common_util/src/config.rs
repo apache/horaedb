@@ -4,7 +4,7 @@
 
 //! Configure utils
 
-//This module is forked from tikv and remove unnessary code.
+//This module is forked from tikv and remove unnecessary code.
 //https://github.com/tikv/tikv/blob/HEAD/src/util/config.rs
 use std::{
     fmt::{self, Write},
@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use proto::analytic_common;
+use ceresdbproto::manifest as manifest_pb;
 use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -61,30 +61,30 @@ pub enum TimeUnit {
     Days,
 }
 
-impl From<TimeUnit> for analytic_common::TimeUnit {
+impl From<TimeUnit> for manifest_pb::TimeUnit {
     fn from(unit: TimeUnit) -> Self {
         match unit {
-            TimeUnit::Nanoseconds => analytic_common::TimeUnit::Nanoseconds,
-            TimeUnit::Microseconds => analytic_common::TimeUnit::Microseconds,
-            TimeUnit::Milliseconds => analytic_common::TimeUnit::Milliseconds,
-            TimeUnit::Seconds => analytic_common::TimeUnit::Seconds,
-            TimeUnit::Minutes => analytic_common::TimeUnit::Minutes,
-            TimeUnit::Hours => analytic_common::TimeUnit::Hours,
-            TimeUnit::Days => analytic_common::TimeUnit::Days,
+            TimeUnit::Nanoseconds => manifest_pb::TimeUnit::Nanoseconds,
+            TimeUnit::Microseconds => manifest_pb::TimeUnit::Microseconds,
+            TimeUnit::Milliseconds => manifest_pb::TimeUnit::Milliseconds,
+            TimeUnit::Seconds => manifest_pb::TimeUnit::Seconds,
+            TimeUnit::Minutes => manifest_pb::TimeUnit::Minutes,
+            TimeUnit::Hours => manifest_pb::TimeUnit::Hours,
+            TimeUnit::Days => manifest_pb::TimeUnit::Days,
         }
     }
 }
 
-impl From<analytic_common::TimeUnit> for TimeUnit {
-    fn from(unit: analytic_common::TimeUnit) -> Self {
+impl From<manifest_pb::TimeUnit> for TimeUnit {
+    fn from(unit: manifest_pb::TimeUnit) -> Self {
         match unit {
-            analytic_common::TimeUnit::Nanoseconds => TimeUnit::Nanoseconds,
-            analytic_common::TimeUnit::Microseconds => TimeUnit::Microseconds,
-            analytic_common::TimeUnit::Milliseconds => TimeUnit::Milliseconds,
-            analytic_common::TimeUnit::Seconds => TimeUnit::Seconds,
-            analytic_common::TimeUnit::Minutes => TimeUnit::Minutes,
-            analytic_common::TimeUnit::Hours => TimeUnit::Hours,
-            analytic_common::TimeUnit::Days => TimeUnit::Days,
+            manifest_pb::TimeUnit::Nanoseconds => TimeUnit::Nanoseconds,
+            manifest_pb::TimeUnit::Microseconds => TimeUnit::Microseconds,
+            manifest_pb::TimeUnit::Milliseconds => TimeUnit::Milliseconds,
+            manifest_pb::TimeUnit::Seconds => TimeUnit::Seconds,
+            manifest_pb::TimeUnit::Minutes => TimeUnit::Minutes,
+            manifest_pb::TimeUnit::Hours => TimeUnit::Hours,
+            manifest_pb::TimeUnit::Days => TimeUnit::Days,
         }
     }
 }

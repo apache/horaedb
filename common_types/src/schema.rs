@@ -17,8 +17,8 @@ use std::{
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
+use ceresdbproto::schema as schema_pb;
 use prost::Message;
-use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -945,10 +945,10 @@ impl Schema {
     }
 }
 
-impl TryFrom<common_pb::TableSchema> for Schema {
+impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
-    fn try_from(schema: common_pb::TableSchema) -> Result<Self> {
+    fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
         let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_indexes = schema.primary_key_indexes;
 
@@ -966,15 +966,15 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     }
 }
 
-impl From<&Schema> for common_pb::TableSchema {
+impl From<&Schema> for schema_pb::TableSchema {
     fn from(schema: &Schema) -> Self {
         let columns: Vec<_> = schema
             .columns()
             .iter()
-            .map(|v| common_pb::ColumnSchema::from(v.clone()))
+            .map(|v| schema_pb::ColumnSchema::from(v.clone()))
             .collect();
 
-        let table_schema = common_pb::TableSchema {
+        let table_schema = schema_pb::TableSchema {
             timestamp_index: schema.timestamp_index as u32,
             version: schema.version,
             columns,
@@ -1253,7 +1253,7 @@ impl SchemaEncoder {
     }
 
     pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
-        let pb_schema = common_pb::TableSchema::from(schema);
+        let pb_schema = schema_pb::TableSchema::from(schema);
         let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len() as usize);
         buf.push(self.version);
 
@@ -1268,7 +1268,7 @@ impl SchemaEncoder {
         self.ensure_version(buf[0])?;
 
         let pb_schema =
-            common_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
+            schema_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
         Schema::try_from(pb_schema)
     }
 
@@ -1378,7 +1378,7 @@ mod tests {
         assert!(schema.index_of("not exists").is_none());
 
         // Test pb convert
-        let schema_pb = common_pb::TableSchema::from(&schema);
+        let schema_pb = schema_pb::TableSchema::from(&schema);
         let schema_from_pb = Schema::try_from(schema_pb).unwrap();
         assert_eq!(schema, schema_from_pb);
     }
