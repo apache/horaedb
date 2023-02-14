@@ -108,7 +108,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
-            wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig::default())),
+            wal_storage: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
     }

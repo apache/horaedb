@@ -280,7 +280,7 @@ mod tests {
             let prefix = prefix.map(|v| v.to_string()).unwrap_or_default();
             let mut objects = Vec::with_capacity(self.file_num);
             for file_idx in 0..self.file_num {
-                let raw_filepath = format!("{}/{}", prefix, file_idx);
+                let raw_filepath = format!("{prefix}/{file_idx}");
                 let filepath = Path::from(raw_filepath);
                 let object = ObjectMeta {
                     location: filepath,
@@ -376,7 +376,7 @@ mod tests {
             let prefix_store =
                 StoreWithPrefix::new(prefix.to_string(), local_store.clone()).unwrap();
             let real_loc = prefix_store.add_prefix_to_loc(&Path::from(filename));
-            assert_eq!(expect_loc, real_loc.as_ref(), "prefix:{}", prefix);
+            assert_eq!(expect_loc, real_loc.as_ref(), "prefix:{prefix}");
         }
 
         for (prefix, expect_filename, loc) in cases {
@@ -385,7 +385,7 @@ mod tests {
             let real_filename = prefix_store
                 .remove_prefix_from_loc(&Path::from(loc))
                 .unwrap();
-            assert_eq!(expect_filename, real_filename.as_ref(), "prefix:{}", prefix);
+            assert_eq!(expect_filename, real_filename.as_ref(), "prefix:{prefix}");
         }
     }
 }

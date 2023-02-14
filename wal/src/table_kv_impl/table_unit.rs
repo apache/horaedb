@@ -458,8 +458,7 @@ impl TableUnit {
                         table_id,
                         msg: format!(
                             "found last sequence, but last sequence + 1 < start sequence,
-                            last sequence:{}, start sequence:{}",
-                            sequence, start_sequence,
+                            last sequence:{sequence}, start sequence:{start_sequence}",
                         )
                     }
                 );

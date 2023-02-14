@@ -43,21 +43,20 @@ impl CeresDB {
         let stdout = File::create(stdout).expect("Cannot create stdout");
         let stderr = File::create(stderr).expect("Cannot create stderr");
 
-        println!("Start {} with {}...", bin, config);
+        println!("Start {bin} with {config}...");
 
         let server_process = Command::new(&bin)
             .args(["--config", &config])
             .stdout(stdout)
             .stderr(stderr)
             .spawn()
-            .unwrap_or_else(|_| panic!("Failed to start server at {:?}", bin));
+            .unwrap_or_else(|_| panic!("Failed to start server at {bin:?}"));
 
         // Wait for a while
         std::thread::sleep(std::time::Duration::from_secs(5));
         let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
             panic!(
-                "Cannot read server endpoint from env {:?}",
-                SERVER_ENDPOINT_ENV
+                "Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}"
             )
         });
 
@@ -92,7 +91,7 @@ impl CeresDB {
                     format!("{}", CsvFormatter { resp })
                 }
             }
-            Err(e) => format!("Failed to execute query, err: {:?}", e),
+            Err(e) => format!("Failed to execute query, err: {e:?}"),
         })
     }
 }

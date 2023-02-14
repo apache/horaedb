@@ -164,7 +164,7 @@ impl PartitionRule for KeyRule {
     }
 
     fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>> {
-        let all_partitions = (0..self.partition_num as usize).into_iter().collect();
+        let all_partitions = (0..self.partition_num).collect();
 
         // Filters are empty.
         if filters.is_empty() {
@@ -221,7 +221,7 @@ fn expand_partition_keys_group(
             PartitionCondition::In(datums) => datums.clone(),
             _ => {
                 return Internal {
-                    msg: format!("invalid partition filter found, filter:{:?},", filter),
+                    msg: format!("invalid partition filter found, filter:{filter:?},"),
                 }
                 .fail()
             }

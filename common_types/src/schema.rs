@@ -328,7 +328,7 @@ pub struct IndexInWriterSchema(Vec<Option<usize>>);
 impl IndexInWriterSchema {
     /// Create a index mapping for same schema with `num_columns` columns.
     pub fn for_same_schema(num_columns: usize) -> Self {
-        let indexes = (0..num_columns).into_iter().map(Some).collect();
+        let indexes = (0..num_columns).map(Some).collect();
         Self(indexes)
     }
 
@@ -1254,7 +1254,7 @@ impl SchemaEncoder {
 
     pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
         let pb_schema = schema_pb::TableSchema::from(schema);
-        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len() as usize);
+        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len());
         buf.push(self.version);
 
         pb_schema.encode(&mut buf).context(EncodeSchemaToPb)?;

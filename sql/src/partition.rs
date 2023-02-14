@@ -42,7 +42,7 @@ impl PartitionParser {
         if let SqlExpr::Identifier(id) = expr {
             let expr = Expr::Column(Column::from_name(id.value));
             let expr = expr.to_bytes().box_err().context(ParsePartitionWithCause {
-                msg: format!("found invalid expr in hash, expr:{}", expr),
+                msg: format!("found invalid expr in hash, expr:{expr}"),
             })?;
 
             Ok(HashPartitionInfo {
@@ -53,7 +53,7 @@ impl PartitionParser {
             })
         } else {
             UnsupportedPartition {
-                msg: format!("unsupported expr:{}", expr),
+                msg: format!("unsupported expr:{expr}"),
             }
             .fail()
         }
@@ -79,7 +79,6 @@ impl PartitionParser {
 
 fn make_partition_definitions(partition_num: u64) -> Vec<PartitionDefinition> {
     (0..partition_num)
-        .into_iter()
         .map(|p| PartitionDefinition {
             name: p.to_string(),
             origin_name: None,

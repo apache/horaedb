@@ -169,8 +169,7 @@ impl<'a> TypeRewriter<'a> {
                 );
                 if casted_right.is_null() {
                     return Err(DataFusionError::Plan(format!(
-                        "column:{:?} value:{:?} is invalid",
-                        col, value
+                        "column:{col:?} value:{value:?} is invalid"
                     )));
                 }
                 if reverse {

@@ -54,8 +54,7 @@ impl DfPartitionRuleAdapter {
             PartitionInfo::Key(_) => Ok(Box::new(KeyExtractor)),
             PartitionInfo::Hash(_) => BuildPartitionRule {
                 msg: format!(
-                    "unsupported partition strategy, strategy:{:?}",
-                    partition_info
+                    "unsupported partition strategy, strategy:{partition_info:?}"
                 ),
             }
             .fail(),
@@ -158,7 +157,7 @@ mod tests {
             .unwrap();
 
         // Expected
-        let all_partitions = (0..partition_num).into_iter().collect::<Vec<_>>();
+        let all_partitions = (0..partition_num).collect::<Vec<_>>();
         assert_eq!(partitions_1, all_partitions);
         assert_eq!(partitions_2, all_partitions);
     }

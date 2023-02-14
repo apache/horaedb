@@ -541,7 +541,7 @@ impl Datum {
             Datum::Timestamp(v) => Local.timestamp_millis_opt(v.as_i64()).unwrap().to_rfc3339(),
             Datum::Double(v) => v.to_string(),
             Datum::Float(v) => v.to_string(),
-            Datum::Varbinary(v) => format!("{:?}", v),
+            Datum::Varbinary(v) => format!("{v:?}"),
             Datum::String(v) => v.to_string(),
             Datum::UInt64(v) => v.to_string(),
             Datum::UInt32(v) => v.to_string(),

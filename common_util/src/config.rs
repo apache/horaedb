@@ -95,7 +95,7 @@ impl FromStr for TimeUnit {
     fn from_str(tu_str: &str) -> Result<TimeUnit, String> {
         let tu_str = tu_str.trim();
         if !tu_str.is_ascii() {
-            return Err(format!("unexpect ascii string: {}", tu_str));
+            return Err(format!("unexpect ascii string: {tu_str}"));
         }
 
         match tu_str.to_lowercase().as_str() {
@@ -106,7 +106,7 @@ impl FromStr for TimeUnit {
             "minutes" => Ok(TimeUnit::Minutes),
             "hours" => Ok(TimeUnit::Hours),
             "days" => Ok(TimeUnit::Days),
-            _ => Err(format!("unexpect TimeUnit: {}", tu_str)),
+            _ => Err(format!("unexpect TimeUnit: {tu_str}")),
         }
     }
 }
@@ -122,7 +122,7 @@ impl fmt::Display for TimeUnit {
             TimeUnit::Hours => "hours",
             TimeUnit::Days => "days",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -183,16 +183,16 @@ impl Serialize for ReadableSize {
         let size = self.0;
         let mut buffer = String::new();
         if size == 0 {
-            write!(buffer, "{}KiB", size).unwrap();
+            write!(buffer, "{size}KiB").unwrap();
         } else if size % PIB == 0 {
             write!(buffer, "{}PiB", size / PIB).unwrap();
         } else if size % TIB == 0 {
             write!(buffer, "{}TiB", size / TIB).unwrap();
-        } else if size % GIB as u64 == 0 {
+        } else if size % GIB == 0 {
             write!(buffer, "{}GiB", size / GIB).unwrap();
-        } else if size % MIB as u64 == 0 {
+        } else if size % MIB == 0 {
             write!(buffer, "{}MiB", size / MIB).unwrap();
-        } else if size % KIB as u64 == 0 {
+        } else if size % KIB == 0 {
             write!(buffer, "{}KiB", size / KIB).unwrap();
         } else {
             return serializer.serialize_u64(size);
@@ -208,11 +208,11 @@ impl FromStr for ReadableSize {
     fn from_str(s: &str) -> Result<ReadableSize, String> {
         let size_str = s.trim();
         if size_str.is_empty() {
-            return Err(format!("{:?} is not a valid size.", s));
+            return Err(format!("{s:?} is not a valid size."));
         }
 
         if !size_str.is_ascii() {
-            return Err(format!("ASCII string is expected, but got {:?}", s));
+            return Err(format!("ASCII string is expected, but got {s:?}"));
         }
 
         // size: digits and '.' as decimal separator
@@ -234,15 +234,14 @@ impl FromStr for ReadableSize {
             "B" | "" => UNIT,
             _ => {
                 return Err(format!(
-                    "only B, KB, KiB, MB, MiB, GB, GiB, TB, TiB, PB, and PiB are supported: {:?}",
-                    s
+                    "only B, KB, KiB, MB, MiB, GB, GiB, TB, TiB, PB, and PiB are supported: {s:?}"
                 ));
             }
         };
 
         match size.parse::<f64>() {
             Ok(n) => Ok(ReadableSize((n * unit as f64) as u64)),
-            Err(_) => Err(format!("invalid size string: {:?}", s)),
+            Err(_) => Err(format!("invalid size string: {s:?}")),
         }
     }
 }
@@ -369,7 +368,7 @@ impl FromStr for ReadableDuration {
     fn from_str(dur_str: &str) -> Result<ReadableDuration, String> {
         let dur_str = dur_str.trim();
         if !dur_str.is_ascii() {
-            return Err(format!("unexpect ascii string: {}", dur_str));
+            return Err(format!("unexpect ascii string: {dur_str}"));
         }
         let err_msg = "valid duration, only d, h, m, s, ms are supported.".to_owned();
         let mut left = dur_str.as_bytes();
@@ -408,8 +407,8 @@ impl FromStr for ReadableDuration {
         if dur.is_sign_negative() {
             return Err("duration should be positive.".to_owned());
         }
-        let secs = dur as u64 / SECOND as u64;
-        let millis = (dur as u64 % SECOND as u64) as u32 * 1_000_000;
+        let secs = dur as u64 / SECOND;
+        let millis = (dur as u64 % SECOND) as u32 * 1_000_000;
         Ok(ReadableDuration(Duration::new(secs, millis)))
     }
 }
@@ -475,7 +474,7 @@ impl fmt::Display for ReadableDuration {
         }
         if dur > 0 {
             written = true;
-            write!(f, "{}ms", dur)?;
+            write!(f, "{dur}ms")?;
         }
         if !written {
             write!(f, "0s")?;
@@ -490,7 +489,7 @@ impl Serialize for ReadableDuration {
         S: Serializer,
     {
         let mut buffer = String::new();
-        write!(buffer, "{}", self).unwrap();
+        write!(buffer, "{self}").unwrap();
         serializer.serialize_str(&buffer)
     }
 }
@@ -562,7 +561,7 @@ mod tests {
                 s: ReadableSize(size),
             };
             let res_str = toml::to_string(&c).unwrap();
-            let exp_str = format!("s = {:?}\n", exp);
+            let exp_str = format!("s = {exp:?}\n");
             assert_eq!(res_str, exp_str);
             let res_size: SizeHolder = toml::from_str(&exp_str).unwrap();
             assert_eq!(res_size.s.0, size);
@@ -612,7 +611,7 @@ mod tests {
             ("0e+10MB", 0),
         ];
         for (src, exp) in decode_cases {
-            let src = format!("s = {:?}", src);
+            let src = format!("s = {src:?}");
             let res: SizeHolder = toml::from_str(&src).unwrap();
             assert_eq!(res.s.0, exp);
         }
@@ -622,7 +621,7 @@ mod tests {
             "4B7", "5M_",
         ];
         for src in illegal_cases {
-            let src_str = format!("s = {:?}", src);
+            let src_str = format!("s = {src:?}");
             assert!(toml::from_str::<SizeHolder>(&src_str).is_err(), "{}", src);
         }
     }
@@ -672,7 +671,7 @@ mod tests {
                 d: ReadableDuration(Duration::new(secs, ms * 1_000_000)),
             };
             let res_str = toml::to_string(&d).unwrap();
-            let exp_str = format!("d = {:?}\n", exp);
+            let exp_str = format!("d = {exp:?}\n");
             assert_eq!(res_str, exp_str);
             let res_dur: DurHolder = toml::from_str(&exp_str).unwrap();
             assert_eq!(res_dur.d.0, d.d.0);
@@ -680,14 +679,14 @@ mod tests {
 
         let decode_cases = vec![(" 0.5 h2m ", 3600 / 2 + 2 * 60, 0)];
         for (src, secs, ms) in decode_cases {
-            let src = format!("d = {:?}", src);
+            let src = format!("d = {src:?}");
             let res: DurHolder = toml::from_str(&src).unwrap();
             assert_eq!(res.d.0, Duration::new(secs, ms * 1_000_000));
         }
 
         let illegal_cases = vec!["1H", "1M", "1S", "1MS", "1h1h", "h"];
         for src in illegal_cases {
-            let src_str = format!("d = {:?}", src);
+            let src_str = format!("d = {src:?}");
             assert!(toml::from_str::<DurHolder>(&src_str).is_err(), "{}", src);
         }
         assert!(toml::from_str::<DurHolder>("d = 23").is_err());

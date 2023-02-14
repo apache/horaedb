@@ -42,7 +42,7 @@ pub fn regex_match_expr(input: Expr, pattern: String, matches: bool) -> Expr {
         let input_arr = &args[0].as_any().downcast_ref::<StringArray>().unwrap();
 
         let pattern = regex::Regex::new(&pattern).map_err(|e| {
-            DataFusionError::Internal(format!("error compiling regex pattern: {}", e))
+            DataFusionError::Internal(format!("error compiling regex pattern: {e}"))
         })?;
 
         let results = input_arr
@@ -257,8 +257,7 @@ mod tests {
 
             assert_eq!(
                 expected, actual,
-                "\n\nEXPECTED:\n{:#?}\nACTUAL:\n{:#?}\n",
-                expected, actual
+                "\n\nEXPECTED:\n{expected:#?}\nACTUAL:\n{actual:#?}\n"
             );
         }
     }

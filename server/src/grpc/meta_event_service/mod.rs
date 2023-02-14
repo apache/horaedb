@@ -186,8 +186,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
-                "fail to get topology while opening shard, request:{:?}",
-                request
+                "fail to get topology while opening shard, request:{request:?}"
             ),
         })?;
 
@@ -216,11 +215,11 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
-                msg: format!("fail to open table, open_request:{:?}", open_request),
+                msg: format!("fail to open table, open_request:{open_request:?}"),
             })?
             .with_context(|| ErrNoCause {
                 code: StatusCode::Internal,
-                msg: format!("no table is opened, open_request:{:?}", open_request),
+                msg: format!("no table is opened, open_request:{open_request:?}"),
             })?;
     }
 
@@ -260,7 +259,7 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::Internal,
-                msg: format!("fail to close table, close_request:{:?}", close_request),
+                msg: format!("fail to close table, close_request:{close_request:?}"),
             })?;
     }
 
@@ -278,8 +277,7 @@ async fn handle_create_table_on_shard(
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
-                "fail to create table on shard in cluster, req:{:?}",
-                request
+                "fail to create table on shard in cluster, req:{request:?}"
             ),
         })?;
 
@@ -291,8 +289,7 @@ async fn handle_create_table_on_shard(
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
-                "fail to get topology while creating table, request:{:?}",
-                request
+                "fail to get topology while creating table, request:{request:?}"
             ),
         })?;
 
@@ -334,7 +331,7 @@ async fn handle_create_table_on_shard(
                 .box_err()
                 .with_context(|| ErrWithCause {
                     code: StatusCode::BadRequest,
-                    msg: format!("fail to parse partition info, partition_info:{:?}", v),
+                    msg: format!("fail to parse partition info, partition_info:{v:?}"),
                 })?,
         ),
         None => None,
@@ -365,8 +362,7 @@ async fn handle_create_table_on_shard(
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
-                "fail to create table with request:{:?}",
-                create_table_request
+                "fail to create table with request:{create_table_request:?}"
             ),
         })?;
 
@@ -383,7 +379,7 @@ async fn handle_drop_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to drop table on shard in cluster, req:{:?}", request),
+            msg: format!("fail to drop table on shard in cluster, req:{request:?}"),
         })?;
 
     let table = request.table_info.context(ErrNoCause {
@@ -414,7 +410,7 @@ async fn handle_drop_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to drop table with request:{:?}", drop_table_request),
+            msg: format!("fail to drop table with request:{drop_table_request:?}"),
         })?;
 
     Ok(())
@@ -430,7 +426,7 @@ async fn handle_open_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to open table on shard in cluster, req:{:?}", request),
+            msg: format!("fail to open table on shard in cluster, req:{request:?}"),
         })?;
 
     let topology = ctx
@@ -441,8 +437,7 @@ async fn handle_open_table_on_shard(
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
             msg: format!(
-                "fail to get topology while opening table, request:{:?}",
-                request
+                "fail to get topology while opening table, request:{request:?}"
             ),
         })?;
 
@@ -488,7 +483,7 @@ async fn handle_open_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to open table with request:{:?}", open_table_request),
+            msg: format!("fail to open table with request:{open_table_request:?}"),
         })?;
 
     Ok(())
@@ -504,7 +499,7 @@ async fn handle_close_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to close table on shard in cluster, req:{:?}", request),
+            msg: format!("fail to close table on shard in cluster, req:{request:?}"),
         })?;
 
     let table = request.table_info.context(ErrNoCause {
@@ -536,7 +531,7 @@ async fn handle_close_table_on_shard(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to close table with request:{:?}", close_table_request),
+            msg: format!("fail to close table with request:{close_table_request:?}"),
         })?;
 
     Ok(())
@@ -549,11 +544,11 @@ fn find_schema(catalog: CatalogRef, schema_name: NameRef) -> Result<SchemaRef> {
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::Internal,
-            msg: format!("fail to get schema, schema:{:?}", schema_name),
+            msg: format!("fail to get schema, schema:{schema_name:?}"),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::NotFound,
-            msg: format!("schema is not found, schema:{:?}", schema_name),
+            msg: format!("schema is not found, schema:{schema_name:?}"),
         })
 }
 

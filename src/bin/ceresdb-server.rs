@@ -21,8 +21,7 @@ fn fetch_version() -> String {
     let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("NONE");
 
     format!(
-        "\nCeresDB Version: {}\nGit branch: {}\nGit commit: {}\nBuild: {}",
-        build_version, git_branch, git_commit_id, build_time
+        "\nCeresDB Version: {build_version}\nGit branch: {git_branch}\nGit commit: {git_commit_id}\nBuild: {build_time}"
     )
 }
 

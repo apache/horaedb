@@ -1071,7 +1071,7 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
-        assert_eq!(format!("{:#?}", plan), expected);
+        assert_eq!(format!("{plan:#?}"), expected);
         Ok(())
     }
 

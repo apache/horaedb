@@ -94,7 +94,7 @@ impl TryFrom<&Predicate> for ceresdbproto::remote_engine::Predicate {
             let expr = expr
                 .to_bytes()
                 .context(PredicateToPb {
-                    msg: format!("convert expr failed, expr:{}", expr),
+                    msg: format!("convert expr failed, expr:{expr}"),
                 })?
                 .to_vec();
             exprs.push(expr);

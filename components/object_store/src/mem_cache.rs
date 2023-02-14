@@ -140,7 +140,7 @@ impl MemCache {
         .await
         .into_iter()
         .enumerate()
-        .map(|(part_no, keys)| format!("{}: [{}]", part_no, keys))
+        .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
         .collect::<Vec<_>>()
         .join("\n")
     }

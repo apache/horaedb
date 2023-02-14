@@ -208,8 +208,7 @@ impl ScalarFunction {
             for df_arg in df_args {
                 let value = ColumnarValue::try_from_df_columnar_value(df_arg).map_err(|e| {
                     DataFusionError::Internal(format!(
-                        "Failed to convert datafusion columnar value, err:{}",
-                        e
+                        "Failed to convert datafusion columnar value, err:{e}"
                     ))
                 })?;
                 values.push(value);
@@ -217,7 +216,7 @@ impl ScalarFunction {
 
             // Execute our function.
             let result_value = func(&values).map_err(|e| {
-                DataFusionError::Execution(format!("Failed to execute function, err:{}", e))
+                DataFusionError::Execution(format!("Failed to execute function, err:{e}"))
             })?;
 
             // Convert the result value to DfColumnarValue.
@@ -270,7 +269,7 @@ impl AggregateFunction {
         // Create accumulator.
         let df_adapter = move |data_type: &DataType| {
             let accumulator = accumulator_fn(data_type).map_err(|e| {
-                DataFusionError::Execution(format!("Failed to create accumulator, err:{}", e))
+                DataFusionError::Execution(format!("Failed to create accumulator, err:{e}"))
             })?;
             let accumulator = Box::new(ToDfAccumulator::new(accumulator));
 

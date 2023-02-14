@@ -1084,7 +1084,7 @@ dependencies = [
 [[package]]
 name = "ceresdb-client-rs"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/ceresdb-client-rs.git?rev=5fbd1a1526c3ddd25bb1f38f63f869c892052f7c#5fbd1a1526c3ddd25bb1f38f63f869c892052f7c"
+source = "git+https://github.com/jiacai2050/ceresdb-client-rs.git?rev=80411cd1597105c19a1a41582b929c58b8bae11f#80411cd1597105c19a1a41582b929c58b8bae11f"
 dependencies = [
  "arrow 23.0.0",
  "async-trait",

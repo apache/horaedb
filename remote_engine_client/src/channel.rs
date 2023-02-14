@@ -86,5 +86,5 @@ impl ChannelBuilder {
 }
 
 fn make_formatted_endpoint(endpoint: &str) -> String {
-    format!("http://{}", endpoint)
+    format!("http://{endpoint}")
 }

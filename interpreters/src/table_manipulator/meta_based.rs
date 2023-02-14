@@ -44,8 +44,7 @@ impl TableManipulator for TableManipulatorImpl {
             .box_err()
             .with_context(|| CreateWithCause {
                 msg: format!(
-                    "fail to encode table schema, ctx:{:?}, plan:{:?}",
-                    ctx, plan
+                    "fail to encode table schema, ctx:{ctx:?}, plan:{plan:?}"
                 ),
             })?;
 
@@ -67,7 +66,7 @@ impl TableManipulator for TableManipulatorImpl {
             .await
             .box_err()
             .with_context(|| CreateWithCause {
-                msg: format!("failed to create table by meta client, req:{:?}", req),
+                msg: format!("failed to create table by meta client, req:{req:?}"),
             })?;
 
         info!(
@@ -98,7 +97,7 @@ impl TableManipulator for TableManipulatorImpl {
             .await
             .box_err()
             .context(DropWithCause {
-                msg: format!("failed to create table by meta client, req:{:?}", req),
+                msg: format!("failed to create table by meta client, req:{req:?}"),
             })?;
 
         info!(

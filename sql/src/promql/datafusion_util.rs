@@ -64,7 +64,7 @@ impl UserDefinedLogicalNode for PromAlignNode {
     }
 
     fn expressions(&self) -> Vec<Expr> {
-        let qualified_name = |n| col(&format!("{}.{}", self.table_name, n));
+        let qualified_name = |n| col(format!("{}.{}", self.table_name, n));
 
         let mut exprs = self
             .column_name

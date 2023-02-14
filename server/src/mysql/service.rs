@@ -76,7 +76,7 @@ impl<Q: QueryExecutor + 'static> MysqlService<Q> {
         let listener = tokio::net::TcpListener::bind(socket_addr)
             .await
             .unwrap_or_else(|e| {
-                panic!("Mysql server listens failed, err:{}", e);
+                panic!("Mysql server listens failed, err:{e}");
             });
         loop {
             tokio::select! {

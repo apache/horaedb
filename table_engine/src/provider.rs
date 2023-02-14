@@ -61,7 +61,7 @@ impl ExtensionOptions for CeresdbOptions {
             "request_id" => {
                 self.request_id = value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
-                        format!("could not parse request_id, input:{}, err:{:?}", value, e).into(),
+                        format!("could not parse request_id, input:{value}, err:{e:?}").into(),
                     )
                 })?
             }
@@ -69,15 +69,14 @@ impl ExtensionOptions for CeresdbOptions {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
                         format!(
-                            "could not parse request_timeout, input:{}, err:{:?}",
-                            value, e
+                            "could not parse request_timeout, input:{value}, err:{e:?}"
                         )
                         .into(),
                     )
                 })?)
             }
             _ => Err(DataFusionError::External(
-                format!("could not find key, key:{}", key).into(),
+                format!("could not find key, key:{key}").into(),
             ))?,
         }
         Ok(())
@@ -163,8 +162,7 @@ impl TableProviderAdapter {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.cloned())
                 .map_err(|e| {
                 DataFusionError::Internal(format!(
-                    "Invalid projection, plan:{:?}, projection:{:?}, err:{:?}",
-                    self, projection, e
+                    "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
                 ))
             })?,
             table: self.table.clone(),
@@ -278,16 +276,14 @@ impl ScanStreamState {
     fn take_stream(&mut self, index: usize) -> Result<SendableRecordBatchStream> {
         if let Some(e) = &self.err {
             return Err(DataFusionError::Execution(format!(
-                "Failed to read table, partition:{}, err:{}",
-                index, e
+                "Failed to read table, partition:{index}, err:{e}"
             )));
         }
 
         // TODO(yingwen): Return an empty stream if index is out of bound.
         self.streams[index].take().ok_or_else(|| {
             DataFusionError::Execution(format!(
-                "Read partition multiple times is not supported, partition:{}",
-                index
+                "Read partition multiple times is not supported, partition:{index}"
             ))
         })
     }
@@ -369,8 +365,7 @@ impl ExecutionPlan for ScanTable {
         _: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         Err(DataFusionError::Internal(format!(
-            "Children cannot be replaced in {:?}",
-            self
+            "Children cannot be replaced in {self:?}"
         )))
     }
 

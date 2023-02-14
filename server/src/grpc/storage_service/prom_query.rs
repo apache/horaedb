@@ -262,8 +262,7 @@ impl RecordConverter {
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "Field type must be f64-compatibile type, current:{}",
-                    field_type
+                    "Field type must be f64-compatibile type, current:{field_type}"
                 )
             }
         );

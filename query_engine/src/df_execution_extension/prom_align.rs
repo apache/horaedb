@@ -501,7 +501,7 @@ impl Stream for PromAlignReader {
                 if !tsid_samples.is_empty() {
                     Poll::Ready(Some(
                         self.samples_to_record_batch(schema, tsid_samples)
-                            .map_err(|e| DataFusionError::ArrowError(e)),
+                            .map_err(DataFusionError::ArrowError),
                     ))
                 } else {
                     Poll::Ready(Some(Ok(RecordBatch::new_empty(schema))))
@@ -516,7 +516,7 @@ impl Stream for PromAlignReader {
                     if !tsid_samples.is_empty() {
                         return Poll::Ready(Some(
                             self.samples_to_record_batch(schema, tsid_samples)
-                                .map_err(|e| DataFusionError::ArrowError(e)),
+                                .map_err(DataFusionError::ArrowError),
                         ));
                     }
                 }

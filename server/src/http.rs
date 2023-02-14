@@ -512,7 +512,7 @@ async fn handle_rejection(
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {:?}", rejection);
+        message = format!("UNKNOWN_ERROR: {rejection:?}");
     }
 
     let json = reply::json(&ErrorResponse {

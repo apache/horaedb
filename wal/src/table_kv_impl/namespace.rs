@@ -1223,9 +1223,7 @@ impl BucketSet {
 
         assert!(
             old_bucket.is_none(),
-            "Try to overwrite old bucket, old_bucket:{:?}, new_bucket:{:?}",
-            old_bucket,
-            bucket,
+            "Try to overwrite old bucket, old_bucket:{old_bucket:?}, new_bucket:{bucket:?}",
         );
     }
 

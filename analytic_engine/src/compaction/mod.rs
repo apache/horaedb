@@ -58,7 +58,9 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum CompactionStrategy {
+    #[default]
     Default,
     TimeWindow(TimeWindowCompactionOptions),
     SizeTiered(SizeTieredCompactionOptions),
@@ -113,11 +115,7 @@ impl Default for TimeWindowCompactionOptions {
     }
 }
 
-impl Default for CompactionStrategy {
-    fn default() -> Self {
-        CompactionStrategy::Default
-    }
-}
+
 
 const BUCKET_LOW_KEY: &str = "compaction_bucket_low";
 const BUCKET_HIGH_KEY: &str = "compaction_bucket_high";

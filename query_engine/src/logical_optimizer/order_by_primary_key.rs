@@ -66,8 +66,7 @@ impl OrderByPrimaryKeyRule {
                     {
                         let schema = Schema::try_from(source.schema()).map_err(|e| {
                             let err_msg = format!(
-                                "fail to convert arrow schema to schema, table:{}, err:{:?}",
-                                table_name, e
+                                "fail to convert arrow schema to schema, table:{table_name}, err:{e:?}"
                             );
                             datafusion::error::DataFusionError::Plan(err_msg)
                         })?;

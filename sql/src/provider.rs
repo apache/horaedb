@@ -389,13 +389,13 @@ impl CatalogProvider for CatalogProviderAdapter {
 /// [`Debug`] or implement [`std::fmt::Display`].
 fn format_table_reference(table_ref: TableReference) -> String {
     match table_ref {
-        TableReference::Bare { table } => format!("table:{}", table),
-        TableReference::Partial { schema, table } => format!("schema:{}, table:{}", schema, table),
+        TableReference::Bare { table } => format!("table:{table}"),
+        TableReference::Partial { schema, table } => format!("schema:{schema}, table:{table}"),
         TableReference::Full {
             catalog,
             schema,
             table,
-        } => format!("catalog:{}, schema:{}, table:{}", catalog, schema, table),
+        } => format!("catalog:{catalog}, schema:{schema}, table:{table}"),
     }
 }
 

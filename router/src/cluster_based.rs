@@ -47,8 +47,7 @@ impl Router for ClusterBasedRouter {
             .box_err()
             .with_context(|| OtherWithCause {
                 msg: format!(
-                    "Failed to route tables by cluster, req:{:?}",
-                    route_tables_req
+                    "Failed to route tables by cluster, req:{route_tables_req:?}"
                 ),
             })?;
 

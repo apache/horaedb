@@ -396,7 +396,7 @@ impl ListArrayBuilder {
                     let end = array.value_offsets()[slice_arg.offset + slice_arg.length];
 
                     for i in
-                        (slice_arg.offset as usize)..(slice_arg.offset + slice_arg.length as usize)
+                        slice_arg.offset..(slice_arg.offset + slice_arg.length)
                     {
                         inner_length_so_far += array.value_length(i);
                         inner_offsets.push(inner_length_so_far);

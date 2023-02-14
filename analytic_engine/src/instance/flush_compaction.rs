@@ -1082,7 +1082,6 @@ fn split_record_batch_with_time_ranges(
     timestamp_idx: usize,
 ) -> Result<Vec<RecordBatchWithKey>> {
     let mut builders: Vec<RecordBatchWithKeyBuilder> = (0..time_ranges.len())
-        .into_iter()
         .map(|_| RecordBatchWithKeyBuilder::new(record_batch.schema_with_key().clone()))
         .collect();
 
@@ -1108,8 +1107,7 @@ fn split_record_batch_with_time_ranges(
                 .context(SplitRecordBatch)?;
         } else {
             panic!(
-                "Record timestamp is not in time_ranges, timestamp:{:?}, time_ranges:{:?}",
-                timestamp, time_ranges
+                "Record timestamp is not in time_ranges, timestamp:{timestamp:?}, time_ranges:{time_ranges:?}"
             );
         }
     }

@@ -169,7 +169,7 @@ pub const META_VALUE_HEADER: u8 = 0;
 pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
-    let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() as usize + 1);
+    let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
     buf.try_put_u8(META_VALUE_HEADER)
         .expect("Should write header into the buffer successfully");
 
@@ -588,7 +588,7 @@ impl HybridRecordDecoder {
             if let Some(bitmap) = old_null_bitmap {
                 if !bitmap.is_set(idx) {
                     for i in 0..value_num {
-                        bit_util::unset_bit(null_slice, length_so_far + i as usize);
+                        bit_util::unset_bit(null_slice, length_so_far + i);
                     }
                 }
             }

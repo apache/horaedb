@@ -38,7 +38,7 @@ impl Arrow2Bench {
 
     pub fn init_for_bench(&mut self, i: usize) {
         let projection = if i < self.max_projections {
-            (0..i + 1).into_iter().collect()
+            (0..i + 1).collect()
         } else {
             Vec::new()
         };

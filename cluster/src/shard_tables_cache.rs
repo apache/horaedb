@@ -225,7 +225,7 @@ impl Inner {
             .iter()
             .position(|v| v.id == new_table.id)
             .with_context(|| TableNotFound {
-                msg: format!("the table to remove is not found, table:{:?}", new_table),
+                msg: format!("the table to remove is not found, table:{new_table:?}"),
             })?;
 
         // Update tables of shard.

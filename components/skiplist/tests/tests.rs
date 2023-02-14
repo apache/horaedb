@@ -13,11 +13,11 @@ use skiplist::*;
 use yatp::task::callback::Handle;
 
 fn new_value(v: usize) -> Bytes {
-    Bytes::from(format!("{:05}", v))
+    Bytes::from(format!("{v:05}"))
 }
 
 fn key_with_ts(key: &str, ts: u64) -> Bytes {
-    Bytes::from(format!("{}{:08}", key, ts))
+    Bytes::from(format!("{key}{ts:08}"))
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn test_basic() {
     assert!(!list.is_empty());
     for (key, value) in &table {
         let get_key = key_with_ts(key, 0);
-        assert_eq!(list.get(&get_key), Some(&value[..]), "{}", key);
+        assert_eq!(list.get(&get_key), Some(&value[..]), "{key}");
     }
 }
 
@@ -74,8 +74,8 @@ fn test_concurrent_basic(n: usize, value_len: usize) {
     let kvs: Vec<_> = (0..n)
         .map(|i| {
             (
-                key_with_ts(format!("{:05}", i).as_str(), 0),
-                Bytes::from(format!("{1:00$}", value_len, i)),
+                key_with_ts(format!("{i:05}").as_str(), 0),
+                Bytes::from(format!("{i:0value_len$}")),
             )
         })
         .collect();
@@ -96,7 +96,7 @@ fn test_concurrent_basic(n: usize, value_len: usize) {
         let list = list.clone();
         pool.spawn(move |_: &mut Handle<'_>| {
             let val = list.get(&k);
-            assert_eq!(val, Some(&v[..]), "{:?}", k);
+            assert_eq!(val, Some(&v[..]), "{k:?}");
             tx.send(()).unwrap();
         });
     }
@@ -163,7 +163,7 @@ fn test_one_key() {
         match rx.recv_timeout(Duration::from_secs(3)) {
             Ok("w") => w += 1,
             Ok("r") => r += 1,
-            Err(err) => panic!("timeout on receiving r{} w{} msg {:?}", r, w, err),
+            Err(err) => panic!("timeout on receiving r{r} w{w} msg {err:?}"),
             _ => panic!("unexpected value"),
         }
     }
@@ -182,7 +182,7 @@ fn test_iterator_next() {
     iter_ref.seek_to_first();
     assert!(!iter_ref.valid());
     for i in (0..n).rev() {
-        let key = key_with_ts(format!("{:05}", i).as_str(), 0);
+        let key = key_with_ts(format!("{i:05}").as_str(), 0);
         list.put(&key, &new_value(i));
     }
     iter_ref.seek_to_first();
@@ -206,7 +206,7 @@ fn test_iterator_prev() {
     iter_ref.seek_to_last();
     assert!(!iter_ref.valid());
     for i in (0..n).rev() {
-        let key = key_with_ts(format!("{:05}", i).as_str(), 0);
+        let key = key_with_ts(format!("{i:05}").as_str(), 0);
         list.put(&key, &new_value(i));
     }
     iter_ref.seek_to_last();
@@ -231,7 +231,7 @@ fn test_iterator_seek() {
     assert!(!iter_ref.valid());
     for i in (0..n).rev() {
         let v = i * 10 + 1000;
-        let key = key_with_ts(format!("{:05}", v).as_str(), 0);
+        let key = key_with_ts(format!("{v:05}").as_str(), 0);
         list.put(&key, &new_value(v));
     }
     iter_ref.seek_to_first();

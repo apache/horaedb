@@ -38,12 +38,12 @@ pub fn scan_request_for_prefix(prefix: &str) -> ScanRequest {
 
 #[inline]
 pub fn format_namespace_key(namespace: &str) -> String {
-    format!("{}/{}", META_NAMESPACE_PREFIX, namespace)
+    format!("{META_NAMESPACE_PREFIX}/{namespace}")
 }
 
 #[inline]
 pub fn bucket_key_prefix(namespace: &str) -> String {
-    format!("{}/{}/", META_BUCKET_PREFIX, namespace)
+    format!("{META_BUCKET_PREFIX}/{namespace}/")
 }
 
 pub fn format_timed_bucket_key(
@@ -69,12 +69,12 @@ pub fn format_timed_bucket_key(
 }
 
 pub fn format_permanent_bucket_key(namespace: &str) -> String {
-    format!("{}/{}/permanent", META_BUCKET_PREFIX, namespace)
+    format!("{META_BUCKET_PREFIX}/{namespace}/permanent")
 }
 
 #[inline]
 pub fn format_table_unit_meta_name(namespace: &str, shard_id: usize) -> String {
-    format!("table_unit_meta_{}_{:0>6}", namespace, shard_id)
+    format!("table_unit_meta_{namespace}_{shard_id:0>6}")
 }
 
 #[inline]
@@ -100,12 +100,12 @@ pub fn format_timed_wal_name(
 
 #[inline]
 pub fn format_permanent_wal_name(namespace: &str, shard_id: usize) -> String {
-    format!("wal_{}_permanent_{:0>6}", namespace, shard_id)
+    format!("wal_{namespace}_permanent_{shard_id:0>6}")
 }
 
 #[inline]
 pub fn format_table_unit_key(table_id: TableId) -> String {
-    format!("{}/{}", TABLE_UNIT_META_PREFIX, table_id)
+    format!("{TABLE_UNIT_META_PREFIX}/{table_id}")
 }
 
 #[cfg(test)]

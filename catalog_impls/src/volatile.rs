@@ -67,9 +67,7 @@ impl Manager for ManagerImpl {
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
         Ok(self
-            .catalogs
-            .iter()
-            .map(|(_, v)| v.clone() as CatalogRef)
+            .catalogs.values().map(|v| v.clone() as CatalogRef)
             .collect())
     }
 }
