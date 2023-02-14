@@ -11,11 +11,12 @@ use tokio::sync::oneshot;
 
 use crate::{
     instance::{
-        engine::{FlushTable, OperateByWriteWorker, Result},
+        engine::{DoManifestSnapshot, FlushTable, OperateByWriteWorker, Result},
         flush_compaction::TableFlushOptions,
         write_worker::{self, CloseTableCommand, WorkerLocal},
         Instance,
     },
+    manifest::SnapshotRequest,
     space::SpaceRef,
 };
 
@@ -56,6 +57,7 @@ impl Instance {
             }
         };
 
+        // Flush table.
         let opts = TableFlushOptions {
             block_on_write_thread: true,
             // The table will be dropped, no need to trigger a compaction.
@@ -70,7 +72,23 @@ impl Instance {
                 table_id: table_data.id,
             })?;
 
-        // table has been closed so remove it from the space
+        // Force manifest to do snapshot.
+        let snapshot_request = SnapshotRequest {
+            space_id: space.id,
+            table_id: table_data.id,
+            cluster_version: table_data.shard_info.cluster_version,
+            shard_id: table_data.shard_info.shard_id,
+        };
+        self.space_store
+            .manifest
+            .do_snapshot(snapshot_request)
+            .await
+            .context(DoManifestSnapshot {
+                space_id: space.id,
+                table: &table_data.name,
+            })?;
+
+        // Table has been closed so remove it from the space
         let removed_table = space.remove_table(&request.table_name);
         assert!(removed_table.is_some());
 
