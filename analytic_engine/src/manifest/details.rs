@@ -16,7 +16,7 @@ use ceresdbproto::manifest as manifest_pb;
 use common_util::{
     config::ReadableDuration,
     define_result,
-    error::{BoxError, GenericError},
+    error::{BoxError, GenericResult},
 };
 use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
@@ -295,10 +295,7 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    async fn store_update(
-        &self,
-        request: MetaUpdateRequest,
-    ) -> std::result::Result<(), GenericError> {
+    async fn store_update(&self, request: MetaUpdateRequest) -> GenericResult<()> {
         info!("Manifest store update, request:{:?}", request);
 
         let table_id = request.meta_update.table_id();
@@ -319,10 +316,7 @@ impl Manifest for ManifestImpl {
         Ok(())
     }
 
-    async fn load_data(
-        &self,
-        load_req: &LoadRequest,
-    ) -> std::result::Result<Option<TableManifestData>, GenericError> {
+    async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<TableManifestData>> {
         info!("Manifest load data, request:{:?}", load_req);
 
         let location = WalLocation::new(
@@ -351,7 +345,7 @@ impl Manifest for ManifestImpl {
         Ok(snapshot.and_then(|v| v.data))
     }
 
-    async fn do_snapshot(&self, request: SnapshotRequest) -> std::result::Result<(), GenericError> {
+    async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()> {
         info!("Manifest do snapshot, request:{:?}", request);
 
         let table_id = request.table_id;
