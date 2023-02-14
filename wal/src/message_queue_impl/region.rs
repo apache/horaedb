@@ -621,17 +621,18 @@ impl<M: MessageQueue> Region<M> {
             )
         };
 
-        // Check and maybe clean logs.
-        let mut log_cleaner = self.log_cleaner.lock().await;
-        log_cleaner
-            .maybe_clean_logs(&snapshot)
+        let safe_delete_offset = snapshot.safe_delete_offset();
+        // Sync snapshot first.
+        synchronizer
+            .sync(snapshot)
             .await
             .box_err()
             .context(CleanLogs)?;
 
-        // Sync snapshot.
-        synchronizer
-            .sync(snapshot)
+        // Check and maybe clean logs then.
+        let mut log_cleaner = self.log_cleaner.lock().await;
+        log_cleaner
+            .maybe_clean_logs(safe_delete_offset)
             .await
             .box_err()
             .context(CleanLogs)

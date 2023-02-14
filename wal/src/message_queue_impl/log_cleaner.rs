@@ -2,7 +2,7 @@
 
 //! Log cleaner
 
-use std::{cmp, sync::Arc};
+use std::sync::Arc;
 
 use common_util::{
     define_result,
@@ -11,8 +11,6 @@ use common_util::{
 use log::info;
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
-
-use crate::message_queue_impl::region_context::RegionMetaSnapshot;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -68,14 +66,11 @@ impl<M: MessageQueue> LogCleaner<M> {
         }
     }
 
-    pub async fn maybe_clean_logs(&mut self, snapshot: &RegionMetaSnapshot) -> Result<()> {
+    pub async fn maybe_clean_logs(&mut self, safe_delete_offset: Offset) -> Result<()> {
         info!(
-            "Begin to check and clean logs, region id:{} snapshot:{:?}, topic:{}",
-            self.region_id, snapshot, self.log_topic
+            "Begin to check and clean logs, region id:{}, topic:{}, safe delete offset:{:?}",
+            self.region_id, self.log_topic, safe_delete_offset
         );
-
-        // Get offset preparing to delete to.
-        let safe_delete_offset = Self::calc_safe_delete_offset(snapshot);
 
         // Decide whether cleaning should be done.
         let mut do_clean = true;
@@ -112,25 +107,5 @@ impl<M: MessageQueue> LogCleaner<M> {
         );
 
         Ok(())
-    }
-
-    fn calc_safe_delete_offset(snapshot: &RegionMetaSnapshot) -> Offset {
-        let mut safe_delete_offset = Offset::MAX;
-        let mut high_watermark = 0;
-        // Calc the min offset in message queue.
-        for table_meta in &snapshot.entries {
-            if let Some(offset) = table_meta.safe_delete_offset {
-                safe_delete_offset = cmp::min(safe_delete_offset, offset);
-            }
-            high_watermark = cmp::max(high_watermark, table_meta.current_high_watermark);
-        }
-
-        if safe_delete_offset == Offset::MAX {
-            // All tables are in such states: after init/flush, but not written.
-            // So, we can directly delete it up to the high_watermark.
-            high_watermark
-        } else {
-            safe_delete_offset
-        }
     }
 }
