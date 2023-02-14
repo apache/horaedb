@@ -9,7 +9,7 @@ use common_util::{
     error::{BoxError, GenericError},
 };
 use prost::Message;
-use proto::wal_on_mq::{
+use ceresdbproto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };

@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use proto::analytic_common;
+use ceresdbproto::manifest;
 use serde::{
     de::{self, Unexpected, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -61,30 +61,30 @@ pub enum TimeUnit {
     Days,
 }
 
-impl From<TimeUnit> for analytic_common::TimeUnit {
+impl From<TimeUnit> for manifest::TimeUnit {
     fn from(unit: TimeUnit) -> Self {
         match unit {
-            TimeUnit::Nanoseconds => analytic_common::TimeUnit::Nanoseconds,
-            TimeUnit::Microseconds => analytic_common::TimeUnit::Microseconds,
-            TimeUnit::Milliseconds => analytic_common::TimeUnit::Milliseconds,
-            TimeUnit::Seconds => analytic_common::TimeUnit::Seconds,
-            TimeUnit::Minutes => analytic_common::TimeUnit::Minutes,
-            TimeUnit::Hours => analytic_common::TimeUnit::Hours,
-            TimeUnit::Days => analytic_common::TimeUnit::Days,
+            TimeUnit::Nanoseconds => manifest::TimeUnit::Nanoseconds,
+            TimeUnit::Microseconds => manifest::TimeUnit::Microseconds,
+            TimeUnit::Milliseconds => manifest::TimeUnit::Milliseconds,
+            TimeUnit::Seconds => manifest::TimeUnit::Seconds,
+            TimeUnit::Minutes => manifest::TimeUnit::Minutes,
+            TimeUnit::Hours => manifest::TimeUnit::Hours,
+            TimeUnit::Days => manifest::TimeUnit::Days,
         }
     }
 }
 
-impl From<analytic_common::TimeUnit> for TimeUnit {
-    fn from(unit: analytic_common::TimeUnit) -> Self {
+impl From<manifest::TimeUnit> for TimeUnit {
+    fn from(unit: manifest::TimeUnit) -> Self {
         match unit {
-            analytic_common::TimeUnit::Nanoseconds => TimeUnit::Nanoseconds,
-            analytic_common::TimeUnit::Microseconds => TimeUnit::Microseconds,
-            analytic_common::TimeUnit::Milliseconds => TimeUnit::Milliseconds,
-            analytic_common::TimeUnit::Seconds => TimeUnit::Seconds,
-            analytic_common::TimeUnit::Minutes => TimeUnit::Minutes,
-            analytic_common::TimeUnit::Hours => TimeUnit::Hours,
-            analytic_common::TimeUnit::Days => TimeUnit::Days,
+            manifest::TimeUnit::Nanoseconds => TimeUnit::Nanoseconds,
+            manifest::TimeUnit::Microseconds => TimeUnit::Microseconds,
+            manifest::TimeUnit::Milliseconds => TimeUnit::Milliseconds,
+            manifest::TimeUnit::Seconds => TimeUnit::Seconds,
+            manifest::TimeUnit::Minutes => TimeUnit::Minutes,
+            manifest::TimeUnit::Hours => TimeUnit::Hours,
+            manifest::TimeUnit::Days => TimeUnit::Days,
         }
     }
 }

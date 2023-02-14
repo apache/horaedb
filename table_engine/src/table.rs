@@ -22,7 +22,7 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use common_util::error::{BoxError, GenericError};
-use proto::sys_catalog as sys_catalog_pb;
+use ceresdbproto::sys_catalog as sys_catalog_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -298,8 +298,8 @@ impl Default for ReadOptions {
     }
 }
 
-impl From<proto::remote_engine::ReadOptions> for ReadOptions {
-    fn from(pb: proto::remote_engine::ReadOptions) -> Self {
+impl From<ceresdbproto::remote_engine::ReadOptions> for ReadOptions {
+    fn from(pb: ceresdbproto::remote_engine::ReadOptions) -> Self {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
@@ -312,7 +312,7 @@ impl From<proto::remote_engine::ReadOptions> for ReadOptions {
     }
 }
 
-impl From<ReadOptions> for proto::remote_engine::ReadOptions {
+impl From<ReadOptions> for ceresdbproto::remote_engine::ReadOptions {
     fn from(opts: ReadOptions) -> Self {
         Self {
             batch_size: opts.batch_size as u64,
@@ -390,7 +390,7 @@ pub struct ReadRequest {
     pub order: ReadOrder,
 }
 
-impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
+impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
@@ -417,10 +417,10 @@ impl TryFrom<ReadRequest> for proto::remote_engine::TableReadRequest {
     }
 }
 
-impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
+impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: proto::remote_engine::TableReadRequest) -> Result<Self> {
+    fn try_from(pb: ceresdbproto::remote_engine::TableReadRequest) -> Result<Self> {
         let opts = pb.opts.context(EmptyReadOptions)?.into();
         let projected_schema = pb
             .projected_schema
@@ -435,9 +435,9 @@ impl TryFrom<proto::remote_engine::TableReadRequest> for ReadRequest {
                 .box_err()
                 .context(ConvertPredicate)?,
         );
-        let order = if pb.order == proto::remote_engine::ReadOrder::Asc as i32 {
+        let order = if pb.order == ceresdbproto::remote_engine::ReadOrder::Asc as i32 {
             ReadOrder::Asc
-        } else if pb.order == proto::remote_engine::ReadOrder::Desc as i32 {
+        } else if pb.order == ceresdbproto::remote_engine::ReadOrder::Desc as i32 {
             ReadOrder::Desc
         } else {
             ReadOrder::None

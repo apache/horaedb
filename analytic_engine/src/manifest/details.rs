@@ -17,7 +17,7 @@ use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
-use proto::meta_update;
+use ceresdbproto::manifest as manifest_pb;
 use serde_derive::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -398,7 +398,7 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
     /// Store the latest snapshot to the underlying store by overwriting the old
     /// snapshot.
     async fn store(&self, snapshot: &Snapshot) -> Result<()> {
-        let snapshot_pb = meta_update::Snapshot::from(snapshot.clone());
+        let snapshot_pb = manifest_pb::Snapshot::from(snapshot.clone());
         let payload = snapshot_pb.encode_to_vec();
         // The atomic write is ensured by the [`ObjectStore`] implementation.
         self.store
@@ -426,7 +426,7 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
             .bytes()
             .await
             .context(FetchSnapshot)?;
-        let snapshot = meta_update::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
+        let snapshot = manifest_pb::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
         Ok(Some(Snapshot::try_from(snapshot)?))
     }
 }
@@ -519,10 +519,10 @@ struct Snapshot {
     data: Option<TableManifestData>,
 }
 
-impl TryFrom<meta_update::Snapshot> for Snapshot {
+impl TryFrom<manifest_pb::Snapshot> for Snapshot {
     type Error = Error;
 
-    fn try_from(src: meta_update::Snapshot) -> Result<Self> {
+    fn try_from(src: manifest_pb::Snapshot) -> Result<Self> {
         let meta = src
             .meta
             .map(AddTableMeta::try_from)
@@ -553,12 +553,12 @@ impl TryFrom<meta_update::Snapshot> for Snapshot {
     }
 }
 
-impl From<Snapshot> for meta_update::Snapshot {
+impl From<Snapshot> for manifest_pb::Snapshot {
     fn from(src: Snapshot) -> Self {
         if let Some((meta, version_edit)) = src.data.map(|v| {
             let space_id = v.table_meta.space_id;
             let table_id = v.table_meta.table_id;
-            let table_meta = meta_update::AddTableMeta::from(v.table_meta);
+            let table_meta = manifest_pb::AddTableMeta::from(v.table_meta);
             let version_edit = v.version_meta.map(|version_meta| VersionEditMeta {
                 space_id,
                 table_id,
@@ -568,7 +568,7 @@ impl From<Snapshot> for meta_update::Snapshot {
             });
             (
                 table_meta,
-                version_edit.map(meta_update::VersionEditMeta::from),
+                version_edit.map(manifest_pb::VersionEditMeta::from),
             )
         }) {
             Self {

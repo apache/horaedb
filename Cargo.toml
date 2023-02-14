@@ -34,7 +34,6 @@ members = [
     "integration_tests",
     "interpreters",
     "meta_client",
-    "proto",
     "query_engine",
     "remote_engine_client",
     "router",
@@ -92,7 +91,6 @@ paste = "1.0"
 profile = { path = "components/profile" }
 prometheus = "0.12"
 prometheus-static-metric = "0.5"
-proto = { path = "proto" }
 prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
@@ -119,8 +117,8 @@ message_queue = { path = "components/message_queue" }
 zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
-git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "dd6921dbb59bbe9a2fcc27960e76a8c870b44415"
+git = "https://github.com/chunshao90/ceresdbproto.git"
+rev = "f9dc6536db1841f819736440e6f3ffe6ce4e1a95"
 
 [dependencies]
 analytic_engine = { workspace = true }

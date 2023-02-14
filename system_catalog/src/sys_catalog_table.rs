@@ -25,7 +25,7 @@ use common_util::{
 use futures::TryStreamExt;
 use log::{debug, info, warn};
 use prost::Message;
-use proto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
+use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,

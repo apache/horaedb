@@ -25,7 +25,7 @@ use parquet::{
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use prost::Message;
-use proto::sst as sst_pb;
+use ceresdbproto::sst as sst_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::sst::parquet::{

@@ -35,7 +35,7 @@ parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
+ceresdbproto = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }

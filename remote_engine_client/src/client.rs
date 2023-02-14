@@ -14,7 +14,7 @@ use common_types::{
 };
 use common_util::error::BoxError;
 use futures::{Stream, StreamExt};
-use proto::remote_engine::{self, remote_engine_service_client::*};
+use ceresdbproto::remote_engine::{self, remote_engine_service_client::*};
 use router::RouterRef;
 use snafu::{ensure, ResultExt};
 use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};
@@ -41,7 +41,7 @@ impl Client {
         let table_ident = request.table.clone();
         let projected_schema = request.read_request.projected_schema.clone();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
-        let request_pb = proto::remote_engine::ReadRequest::try_from(request)
+        let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
             .context(ConvertReadRequest {
                 msg: "convert to pb failed",
@@ -80,7 +80,7 @@ impl Client {
         // Write to remote.
         let table_ident = request.table.clone();
 
-        let request_pb = proto::remote_engine::WriteRequest::try_from(request)
+        let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
             .box_err()
             .context(ConvertWriteRequest {
                 msg: "convert to pb failed",

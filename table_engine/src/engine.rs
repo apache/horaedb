@@ -10,7 +10,7 @@ use common_types::{
     table::{ClusterVersion, ShardId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
 };
 use common_util::{error::GenericError, runtime::Runtime};
-use proto::sys_catalog as sys_catalog_pb;
+use ceresdbproto::sys_catalog as sys_catalog_pb;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{

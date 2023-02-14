@@ -26,7 +26,7 @@ futures = { workspace = true, features = ["async-await"], optional = true }
 log = { workspace = true }
 message_queue = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
+ceresdbproto = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }

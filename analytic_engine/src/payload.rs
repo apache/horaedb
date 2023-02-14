@@ -12,7 +12,7 @@ use common_util::{
     define_result,
 };
 use prost::Message;
-use proto::{meta_update, table_requests};
+use ceresdbproto::{manifest, table_requests};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
@@ -105,8 +105,8 @@ const HEADER_SIZE: usize = 1;
 #[derive(Debug)]
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),
-    AlterSchema(&'a meta_update::AlterSchemaMeta),
-    AlterOption(&'a meta_update::AlterOptionsMeta),
+    AlterSchema(&'a manifest::AlterSchemaMeta),
+    AlterOption(&'a manifest::AlterOptionsMeta),
 }
 
 impl<'a> Payload for WritePayload<'a> {
@@ -184,7 +184,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_schema_meta_pb: meta_update::AlterSchemaMeta =
+        let alter_schema_meta_pb: manifest::AlterSchemaMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
@@ -198,7 +198,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_option_meta_pb: meta_update::AlterOptionsMeta =
+        let alter_option_meta_pb: manifest::AlterOptionsMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert options in pb

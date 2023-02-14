@@ -20,7 +20,7 @@ common_util = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
+ceresdbproto = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }

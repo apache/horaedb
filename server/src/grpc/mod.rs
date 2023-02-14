@@ -23,7 +23,7 @@ use common_util::{
 };
 use futures::FutureExt;
 use log::{info, warn};
-use proto::remote_engine::remote_engine_service_server::RemoteEngineServiceServer;
+use ceresdbproto::remote_engine::remote_engine_service_server::RemoteEngineServiceServer;
 use query_engine::executor::Executor as QueryExecutor;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

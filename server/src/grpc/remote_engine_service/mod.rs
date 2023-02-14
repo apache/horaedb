@@ -11,7 +11,7 @@ use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
 use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
-use proto::remote_engine::{
+use ceresdbproto::remote_engine::{
     remote_engine_service_server::RemoteEngineService, ReadRequest, ReadResponse, WriteRequest,
     WriteResponse,
 };
