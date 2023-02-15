@@ -909,7 +909,7 @@ mod tests {
     async fn test_region_kafka_impl() {
         // Test region
         let mut config = Config::default();
-        config.client_config.boost_broker = Some("127.0.0.1:9011".to_string());
+        config.client.boost_broker = Some("127.0.0.1:9011".to_string());
         let kafka_impl = KafkaImpl::new(config).await.unwrap();
         let message_queue = Arc::new(kafka_impl);
         test_region(message_queue).await;

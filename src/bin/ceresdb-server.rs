@@ -4,11 +4,10 @@
 
 use std::{env, net::SocketAddr};
 
-use ceresdb::setup;
+use ceresdb::{config::Config, setup};
 use clap::{App, Arg};
 use common_util::{panic, toml};
 use log::info;
-use server::config::Config;
 
 /// The ip address of current node.
 const NODE_ADDR: &str = "CSE_CERES_META_NODE_ADDR";
@@ -63,7 +62,7 @@ fn main() {
     }
 
     // Setup log.
-    let runtime_level = setup::setup_log(&config);
+    let runtime_level = setup::setup_logger(&config);
     // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 

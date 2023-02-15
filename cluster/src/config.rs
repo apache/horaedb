@@ -2,7 +2,7 @@
 
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::{meta_impl::MetaClientConfig, types::NodeMetaInfo};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 #[derive(Debug, Clone, Deserialize)]

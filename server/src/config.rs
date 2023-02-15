@@ -4,8 +4,7 @@
 
 use std::collections::HashMap;
 
-use analytic_engine;
-use cluster::config::{ClusterConfig, SchemaConfig};
+use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
@@ -13,36 +12,10 @@ use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE, limiter::LimiterConfig};
-
-/// The deployment mode decides how to start the CeresDB.
-///
-/// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
-/// alone without CeresMeta.
-///
-/// [DeployMode::Cluster] means to start one or multiple CeresDB instance(s)
-/// under the control of CeresMeta.
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub enum DeployMode {
-    Standalone,
-    Cluster,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct RuntimeConfig {
-    // Runtime for reading data
-    pub read_thread_num: usize,
-    // Runtime for writing data
-    pub write_thread_num: usize,
-    // Runtime for communicating with meta cluster
-    pub meta_thread_num: usize,
-    // Runtime for background tasks
-    pub background_thread_num: usize,
-}
+use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -119,6 +92,19 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
+/// The deployment mode decides how to start the CeresDB.
+///
+/// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
+/// alone without CeresMeta.
+///
+/// [DeployMode::Cluster] means to start one or multiple CeresDB instance(s)
+/// under the control of CeresMeta.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum DeployMode {
+    Standalone,
+    Cluster,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
@@ -132,54 +118,12 @@ pub struct ServerConfig {
     pub timeout: Option<ReadableDuration>,
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
+
+    /// The mode of the deployment.
     pub deploy_mode: DeployMode,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct Config {
-    /// Config for service of server, including http, mysql and grpc.
-    pub server: ServerConfig,
-    pub runtime: RuntimeConfig,
-
-    /// Log related configs:
-    pub log_level: String,
-    pub enable_async_log: bool,
-    pub async_log_channel_len: i32,
-
-    /// Tracing related configs:
-    pub tracing_log_dir: String,
-    pub tracing_log_name: String,
-    pub tracing_level: String,
-
-    /// Config of static router.
-    pub static_route: StaticRouteConfig,
-
-    /// Analytic engine configs.
-    pub analytic: analytic_engine::Config,
-
-    /// Query engine config.
-    pub query: query_engine::Config,
-
-    /// Deployment configs:
-    pub cluster: ClusterConfig,
-
-    /// Config of limiter
-    pub limiter: LimiterConfig,
 
     /// Config for forwarding
     pub forward: forward::Config,
-}
-
-impl Default for RuntimeConfig {
-    fn default() -> Self {
-        Self {
-            read_thread_num: 8,
-            write_thread_num: 8,
-            meta_thread_num: 2,
-            background_thread_num: 8,
-        }
-    }
 }
 
 impl Default for ServerConfig {
@@ -194,26 +138,6 @@ impl Default for ServerConfig {
             timeout: None,
             resp_compress_min_length: ReadableSize::mb(4),
             deploy_mode: DeployMode::Standalone,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            runtime: RuntimeConfig::default(),
-            log_level: "debug".to_string(),
-            enable_async_log: true,
-            async_log_channel_len: 102400,
-            tracing_log_dir: String::from("/tmp/ceresdb"),
-            tracing_log_name: String::from("tracing"),
-            tracing_level: String::from("info"),
-            static_route: StaticRouteConfig::default(),
-            query: query_engine::Config::default(),
-            analytic: analytic_engine::Config::default(),
-            cluster: ClusterConfig::default(),
-            limiter: LimiterConfig::default(),
             forward: forward::Config::default(),
         }
     }

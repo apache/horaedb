@@ -9,7 +9,7 @@ use common_types::{
     table::{TableId, TableName},
 };
 use common_util::config::ReadableDuration;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::OptionExt;
 use table_engine::partition::PartitionInfo;
 

@@ -11,7 +11,6 @@ workspace = true
 workspace = true
 
 [dependencies]
-# Workspace dependencies, in alphabetical order
 async-trait = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }

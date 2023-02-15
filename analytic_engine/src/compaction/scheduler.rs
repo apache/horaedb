@@ -21,7 +21,7 @@ use common_util::{
     time::DurationExt,
 };
 use log::{debug, error, info, warn};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{

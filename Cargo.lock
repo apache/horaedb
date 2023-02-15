@@ -1073,6 +1073,7 @@ dependencies = [
  "meta_client",
  "query_engine",
  "router",
+ "serde",
  "server",
  "signal-hook",
  "sort",
@@ -3422,6 +3423,7 @@ version = "1.0.0-alpha02"
 dependencies = [
  "chrono",
  "log",
+ "serde",
  "slog",
  "slog-async",
  "slog-global",
@@ -6983,6 +6985,7 @@ name = "tracing_util"
 version = "1.0.0-alpha02"
 dependencies = [
  "lazy_static",
+ "serde",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",

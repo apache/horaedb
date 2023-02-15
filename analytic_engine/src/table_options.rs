@@ -12,7 +12,7 @@ use common_util::{
     time::DurationExt,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
 

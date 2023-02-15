@@ -23,7 +23,7 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use common_util::error::{BoxError, GenericError};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{

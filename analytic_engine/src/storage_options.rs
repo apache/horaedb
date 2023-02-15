@@ -30,9 +30,7 @@ impl Default for StorageOptions {
             disk_cache_path: root_path.clone(),
             disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
-            object_store: ObjectStoreOptions::Local(LocalOptions {
-                data_path: root_path,
-            }),
+            object_store: ObjectStoreOptions::Local(LocalOptions { dir: root_path }),
         }
     }
 }
@@ -46,7 +44,7 @@ pub enum ObjectStoreOptions {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LocalOptions {
-    pub data_path: String,
+    pub dir: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -201,7 +201,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         };
 
         let write_runtime = engine_runtimes.write_runtime.clone();
-        let data_path = Path::new(&rocksdb_wal_config.path);
+        let data_path = Path::new(&rocksdb_wal_config.dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
             .build()
@@ -334,7 +334,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
 
         let bg_runtime = &engine_runtimes.bg_runtime;
 
-        let kafka = KafkaImpl::new(kafka_wal_config.kafka_config.clone())
+        let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
         let wal_manager = MessageQueueImpl::new(
@@ -344,7 +344,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             kafka_wal_config.wal_config.clone(),
         );
 
-        let kafka_for_manifest = KafkaImpl::new(kafka_wal_config.kafka_config.clone())
+        let kafka_for_manifest = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
         let manifest_wal = MessageQueueImpl::new(
@@ -477,7 +477,7 @@ fn open_storage(
     Box::pin(async move {
         let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
-                let data_path = Path::new(&local_opts.data_path);
+                let data_path = Path::new(&local_opts.dir);
                 let sst_path = data_path.join(STORE_DIR_NAME);
                 tokio::fs::create_dir_all(&sst_path)
                     .await

@@ -3,8 +3,7 @@
 use std::{collections::HashSet, sync::RwLock};
 
 use datafusion_expr::logical_plan::LogicalPlan;
-use serde::Serialize;
-use serde_derive::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 use sql::plan::Plan;
 

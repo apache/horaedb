@@ -24,7 +24,7 @@ use meta_client::meta_impl;
 use query_engine::executor::{Executor, ExecutorImpl};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
-    config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
+    config::{DeployMode, StaticTopologyConfig},
     limiter::Limiter,
     local_tables::LocalTablesRecoverer,
     schema_config_provider::{
@@ -39,21 +39,19 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 
-use crate::signal_handler;
+use crate::{
+    config::{Config, RuntimeConfig},
+    signal_handler,
+};
 
 /// Setup log with given `config`, returns the runtime log level switch.
-pub fn setup_log(config: &Config) -> RuntimeLevel {
-    server::logger::init_log(config).expect("Failed to init log.")
+pub fn setup_logger(config: &Config) -> RuntimeLevel {
+    logger::init_log(&config.logger).expect("Failed to init log.")
 }
 
 /// Setup tracing with given `config`, returns the writer guard.
 pub fn setup_tracing(config: &Config) -> WorkerGuard {
-    tracing_util::init_tracing_with_file(
-        &config.tracing_log_name,
-        &config.tracing_log_dir,
-        &config.tracing_level,
-        Rotation::NEVER,
-    )
+    tracing_util::init_tracing_with_file(&config.tracing, Rotation::NEVER)
 }
 
 fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
@@ -134,7 +132,7 @@ async fn run_server_with_runtimes<T>(
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
 
-    let builder = Builder::new(config.clone())
+    let builder = Builder::new(config.server.clone())
         .engine_runtimes(runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)

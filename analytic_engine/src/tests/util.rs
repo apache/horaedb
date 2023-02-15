@@ -414,11 +414,11 @@ impl Builder {
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
             wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-                path: dir.path().to_str().unwrap().to_string(),
+                dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
         };
@@ -473,12 +473,12 @@ impl Default for RocksDBEngineContext {
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
 
             wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-                path: dir.path().to_str().unwrap().to_string(),
+                dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
         };
@@ -499,13 +499,13 @@ impl Clone for RocksDBEngineContext {
             disk_cache_capacity: ReadableSize::mb(0),
             disk_cache_page_size: ReadableSize::mb(0),
             object_store: ObjectStoreOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
+                dir: dir.path().to_str().unwrap().to_string(),
             }),
         };
 
         config.storage = storage;
         config.wal_storage = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-            path: dir.path().to_str().unwrap().to_string(),
+            dir: dir.path().to_str().unwrap().to_string(),
         }));
 
         Self { config }
@@ -541,7 +541,7 @@ impl Default for MemoryEngineContext {
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
             wal_storage: WalStorageConfig::Obkv(Box::default()),

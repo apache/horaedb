@@ -16,7 +16,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::Config,
+    config::ServerConfig,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
@@ -163,7 +163,8 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 
 #[must_use]
 pub struct Builder<Q> {
-    config: Config,
+    config: ServerConfig,
+    node_addr: String,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
@@ -179,9 +180,10 @@ pub struct Builder<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: ServerConfig) -> Self {
         Self {
             config,
+            node_addr: "".to_string(),
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
@@ -283,14 +285,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         // Create http config
         let endpoint = Endpoint {
-            addr: self.config.server.bind_addr.clone(),
-            port: self.config.server.http_port,
+            addr: self.config.bind_addr.clone(),
+            port: self.config.http_port,
         };
 
         let http_config = HttpConfig {
             endpoint,
-            max_body_size: self.config.server.http_max_body_size,
-            timeout: self.config.server.timeout.map(|v| v.0),
+            max_body_size: self.config.http_max_body_size,
+            timeout: self.config.timeout.map(|v| v.0),
         };
 
         // Start http service
@@ -308,9 +310,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(StartHttpService)?;
 
         let mysql_config = mysql::MysqlConfig {
-            ip: self.config.server.bind_addr.clone(),
-            port: self.config.server.mysql_port,
-            timeout: self.config.server.timeout.map(|v| v.0),
+            ip: self.config.bind_addr.clone(),
+            port: self.config.mysql_port,
+            timeout: self.config.timeout.map(|v| v.0),
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
@@ -321,24 +323,16 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let router = self.router.context(MissingRouter)?;
         let rpc_services = grpc::Builder::new()
-            .endpoint(
-                Endpoint::new(self.config.server.bind_addr, self.config.server.grpc_port)
-                    .to_string(),
-            )
-            .local_endpoint(
-                Endpoint::new(self.config.cluster.node.addr, self.config.server.grpc_port)
-                    .to_string(),
-            )
-            .resp_compress_min_length(
-                self.config.server.resp_compress_min_length.as_bytes() as usize
-            )
+            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
+            .local_endpoint(Endpoint::new(self.node_addr, self.config.grpc_port).to_string())
+            .resp_compress_min_length(self.config.resp_compress_min_length.as_bytes() as usize)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
-            .timeout(self.config.server.timeout.map(|v| v.0))
+            .timeout(self.config.timeout.map(|v| v.0))
             .build()
             .context(BuildGrpcService)?;
 
