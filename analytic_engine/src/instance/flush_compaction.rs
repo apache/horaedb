@@ -1026,6 +1026,9 @@ impl SpaceStore {
             sst_info,
         );
 
+        // Update the flushed sequence number.
+        edit_meta.flushed_sequence = cmp::max(sst_meta.max_sequence, edit_meta.flushed_sequence);
+
         // Store updates to edit_meta.
         edit_meta.files_to_delete.reserve(input.files.len());
         // The compacted file can be deleted later.
@@ -1035,6 +1038,7 @@ impl SpaceStore {
                 file_id: file.id(),
             });
         }
+
         // Add the newly created file to meta.
         edit_meta.files_to_add.push(AddFile {
             level: input.output_level,
