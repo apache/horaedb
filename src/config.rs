@@ -9,9 +9,32 @@ use server::{
     limiter::LimiterConfig,
 };
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct NodeInfo {
+    pub addr: String,
+    pub zone: String,
+    pub idc: String,
+    pub binary_version: String,
+}
+
+impl Default for NodeInfo {
+    fn default() -> Self {
+        Self {
+            addr: "127.0.0.1".to_string(),
+            zone: "".to_string(),
+            idc: "".to_string(),
+            binary_version: "".to_string(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    /// The information of the host node.
+    pub node: NodeInfo,
+
     /// Config for service of server, including http, mysql and grpc.
     pub server: ServerConfig,
 
@@ -28,16 +51,27 @@ pub struct Config {
     pub analytic: analytic_engine::Config,
 
     /// Query engine config.
-    pub query: query_engine::Config,
+    pub query_engine: query_engine::Config,
 
-    /// Cluster config.
-    pub cluster: ClusterConfig,
-
-    /// Config for static route.
-    pub static_route: StaticRouteConfig,
+    /// The deployment of the server.
+    pub cluster_deployment: Option<ClusterDeployment>,
 
     /// Config of limiter
     pub limiter: LimiterConfig,
+}
+
+/// The cluster deployment decides how to deploy the CeresDB cluster.
+///
+/// [ClusterDeployment::NoMeta] means to start one or multiple CeresDB
+/// instance(s) without CeresMeta.
+///
+/// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
+/// instance(s) under the control of CeresMeta.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum ClusterDeployment {
+    NoMeta(StaticRouteConfig),
+    WithMeta(ClusterConfig),
 }
 
 #[derive(Clone, Debug, Deserialize)]

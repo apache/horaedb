@@ -92,19 +92,6 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-/// The deployment mode decides how to start the CeresDB.
-///
-/// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
-/// alone without CeresMeta.
-///
-/// [DeployMode::Cluster] means to start one or multiple CeresDB instance(s)
-/// under the control of CeresMeta.
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub enum DeployMode {
-    Standalone,
-    Cluster,
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
@@ -112,15 +99,13 @@ pub struct ServerConfig {
     pub bind_addr: String,
     pub mysql_port: u16,
     pub http_port: u16,
-    pub http_max_body_size: u64,
     pub grpc_port: u16,
-    pub grpc_server_cq_count: usize,
+
     pub timeout: Option<ReadableDuration>,
+    pub http_max_body_size: u64,
+    pub grpc_server_cq_count: usize,
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
-
-    /// The mode of the deployment.
-    pub deploy_mode: DeployMode,
 
     /// Config for forwarding
     pub forward: forward::Config,
@@ -129,15 +114,14 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: String::from("127.0.0.1"),
-            http_port: 5000,
-            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            bind_addr: String::from("0.0.0.0"),
+            http_port: 5440,
             mysql_port: 3307,
             grpc_port: 8831,
-            grpc_server_cq_count: 20,
             timeout: None,
+            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
-            deploy_mode: DeployMode::Standalone,
             forward: forward::Config::default(),
         }
     }

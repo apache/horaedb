@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use common_types::schema::TIMESTAMP_COLUMN;
-use meta_client::{meta_impl::MetaClientConfig, types::NodeMetaInfo};
+use meta_client::meta_impl::MetaClientConfig;
 use serde::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
@@ -26,7 +26,6 @@ impl Default for SchemaConfig {
 #[derive(Default, Clone, Deserialize, Debug)]
 #[serde(default)]
 pub struct ClusterConfig {
-    pub node: NodeMetaInfo,
     pub cmd_channel_buffer_size: usize,
     pub meta_client: MetaClientConfig,
 }

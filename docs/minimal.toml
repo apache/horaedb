@@ -10,19 +10,8 @@ mem_cache_partition_bits = 0
 
 [analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb"
+data_dir = "/tmp/ceresdb"
 
 [analytic.wal_storage]
 type = "RocksDB"
-path = "/tmp/ceresdb"
-
-[[static_route.topology.schema_shards]]
-schema = 'public'
-auto_create_tables = true
-
-[[static_route.topology.schema_shards.shard_views]]
-shard_id = 0
-
-[static_route.topology.schema_shards.shard_views.endpoint]
-addr = "127.0.0.1"
-port = 8831
+data_dir = "/tmp/ceresdb"

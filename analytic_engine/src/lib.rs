@@ -119,10 +119,10 @@ impl Default for Config {
 pub struct ObkvWalConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
-    /// Wal (stores data) namespace config
-    pub wal: WalNamespaceConfig,
-    /// Manifest (stores meta data) namespace config
-    pub manifest: ManifestNamespaceConfig,
+    /// Namespace config for data.
+    pub data_namespace: WalNamespaceConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: ManifestNamespaceConfig,
 }
 
 /// Config of obkv wal based manifest
@@ -227,8 +227,8 @@ pub struct KafkaWalConfig {
     /// Kafka client config
     pub kafka: KafkaConfig,
 
-    /// Wal config
-    pub wal_config: MessageQueueWalConfig,
+    /// Common config for message queue config.
+    pub message_queue: MessageQueueWalConfig,
 }
 
 /// Config for wal based on RocksDB.
@@ -236,13 +236,13 @@ pub struct KafkaWalConfig {
 #[serde(default)]
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
-    pub dir: String,
+    pub data_dir: String,
 }
 
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
-            dir: "/tmp/ceresdb".to_string(),
+            data_dir: "/tmp/ceresdb".to_string(),
         }
     }
 }

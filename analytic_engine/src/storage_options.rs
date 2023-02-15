@@ -16,7 +16,7 @@ pub struct StorageOptions {
     // Note: disk_cache_capacity % disk_cache_page_size should be 0
     pub disk_cache_capacity: ReadableSize,
     pub disk_cache_page_size: ReadableSize,
-    pub disk_cache_path: String,
+    pub disk_cache_dir: String,
     pub object_store: ObjectStoreOptions,
 }
 
@@ -27,10 +27,12 @@ impl Default for StorageOptions {
         StorageOptions {
             mem_cache_capacity: ReadableSize::mb(512),
             mem_cache_partition_bits: 6,
-            disk_cache_path: root_path.clone(),
+            disk_cache_dir: root_path.clone(),
             disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
-            object_store: ObjectStoreOptions::Local(LocalOptions { dir: root_path }),
+            object_store: ObjectStoreOptions::Local(LocalOptions {
+                data_dir: root_path,
+            }),
         }
     }
 }
@@ -44,7 +46,7 @@ pub enum ObjectStoreOptions {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LocalOptions {
-    pub dir: String,
+    pub data_dir: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

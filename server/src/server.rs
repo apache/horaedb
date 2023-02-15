@@ -199,6 +199,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         }
     }
 
+    pub fn node_addr(mut self, node_addr: String) -> Self {
+        self.node_addr = node_addr;
+        self
+    }
+
     pub fn engine_runtimes(mut self, engine_runtimes: Arc<EngineRuntimes>) -> Self {
         self.engine_runtimes = Some(engine_runtimes);
         self

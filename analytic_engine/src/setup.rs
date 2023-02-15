@@ -201,7 +201,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         };
 
         let write_runtime = engine_runtimes.write_runtime.clone();
-        let data_path = Path::new(&rocksdb_wal_config.dir);
+        let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
         let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
             .build()
@@ -341,7 +341,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             WAL_DIR_NAME.to_string(),
             kafka,
             bg_runtime.clone(),
-            kafka_wal_config.wal_config.clone(),
+            kafka_wal_config.message_queue.clone(),
         );
 
         let kafka_for_manifest = KafkaImpl::new(kafka_wal_config.kafka.clone())
@@ -351,7 +351,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             MANIFEST_DIR_NAME.to_string(),
             kafka_for_manifest,
             bg_runtime.clone(),
-            kafka_wal_config.wal_config,
+            kafka_wal_config.message_queue,
         );
 
         let manifest = ManifestImpl::open(config.manifest, Arc::new(manifest_wal), object_store)
@@ -379,7 +379,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv.clone(),
         runtimes.clone(),
         WAL_DIR_NAME,
-        config.wal.clone().into(),
+        config.data_namespace.clone().into(),
     )
     .await
     .context(OpenWal)?;
@@ -388,7 +388,7 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         table_kv,
         runtimes,
         MANIFEST_DIR_NAME,
-        config.manifest.clone().into(),
+        config.meta_namespace.clone().into(),
     )
     .await
     .context(OpenManifestWal)?;
@@ -477,7 +477,7 @@ fn open_storage(
     Box::pin(async move {
         let mut store = match opts.object_store {
             ObjectStoreOptions::Local(local_opts) => {
-                let data_path = Path::new(&local_opts.dir);
+                let data_path = Path::new(&local_opts.data_dir);
                 let sst_path = data_path.join(STORE_DIR_NAME);
                 tokio::fs::create_dir_all(&sst_path)
                     .await
@@ -505,7 +505,7 @@ fn open_storage(
         };
 
         if opts.disk_cache_capacity.as_bytes() > 0 {
-            let path = Path::new(&opts.disk_cache_path).join(DISK_CACHE_DIR_NAME);
+            let path = Path::new(&opts.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
             })?;
