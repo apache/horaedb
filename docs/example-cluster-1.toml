@@ -1,3 +1,6 @@
+[node]
+addr = "127.0.0.1"
+
 [server]
 bind_addr = "0.0.0.0"
 http_port = 5441
@@ -12,20 +15,17 @@ mem_cache_partition_bits = 0
 
 [analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb1"
+data_dir = "/tmp/ceresdb1"
 
 [analytic.wal_storage]
 type = "RocksDB"
-path = "/tmp/ceresdb1"
+data_dir = "/tmp/ceresdb1"
 
-[cluster]
+[cluster_deployment]
+type = "WithMeta"
 cmd_channel_buffer_size = 10
 
-[cluster.node]
-addr = "127.0.0.1"
-port = 8832
-
-[cluster.meta_client]
+[cluster_deployment.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
 meta_addr = "http://127.0.0.1:2379"
