@@ -53,7 +53,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("fail to fetch schema config, schema_name:{}", schema),
+            msg: format!("fail to fetch schema config, schema_name:{schema}"),
         })?;
 
     debug!(
@@ -207,7 +207,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             None => {
                 return ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!("Table not found, schema:{}, table:{}", schema, table_name),
+                    msg: format!("Table not found, schema:{schema}, table:{table_name}"),
                 }
                 .fail();
             }
@@ -229,27 +229,27 @@ fn try_get_table<Q: QueryExecutor + 'static>(
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find catalog, catalog_name:{}", catalog),
+            msg: format!("Failed to find catalog, catalog_name:{catalog}"),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Catalog not found, catalog_name:{}", catalog),
+            msg: format!("Catalog not found, catalog_name:{catalog}"),
         })?
         .schema_by_name(schema)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find schema, schema_name:{}", schema),
+            msg: format!("Failed to find schema, schema_name:{schema}"),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Schema not found, schema_name:{}", schema),
+            msg: format!("Schema not found, schema_name:{schema}"),
         })?
         .table_by_name(table_name)
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find table, table:{}", table_name),
+            msg: format!("Failed to find table, table:{table_name}"),
         })
 }
 
@@ -386,8 +386,7 @@ fn write_entry_to_rows(
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag index {} is not found in tag_names:{:?}, table:{}",
-                    name_index, tag_names, table_name,
+                    "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );
@@ -395,10 +394,7 @@ fn write_entry_to_rows(
         let tag_name = &tag_names[name_index];
         let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!(
-                "Can't find tag({}) in schema, table:{}",
-                tag_name, table_name
-            ),
+            msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
         })?;
 
         let column_schema = schema.column(tag_index_in_schema);
@@ -406,10 +402,7 @@ fn write_entry_to_rows(
             column_schema.is_tag,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "column({}) is a field rather than a tag, table:{}",
-                    tag_name, table_name
-                ),
+                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 
@@ -417,14 +410,13 @@ fn write_entry_to_rows(
             .value
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("Tag({}) value is needed, table:{}", tag_name, table_name),
+                msg: format!("Tag({tag_name}) value is needed, table:{table_name}"),
             })?
             .value
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "Tag({}) value type is not supported, table_name:{}",
-                    tag_name, table_name
+                    "Tag({tag_name}) value type is not supported, table_name:{table_name}"
                 ),
             })?;
         for row in &mut rows {
@@ -455,8 +447,7 @@ fn write_entry_to_rows(
                         schema.index_of(field_name).with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
                             msg: format!(
-                                "Can't find field in schema, table:{}, field_name:{}",
-                                table_name, field_name
+                                "Can't find field in schema, table:{table_name}, field_name:{field_name}"
                             ),
                         })?;
                     field_name_index.insert(field_name.to_string(), index_in_schema);
@@ -468,8 +459,7 @@ fn write_entry_to_rows(
                     ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
                         msg: format!(
-                            "Column {} is a tag rather than a field, table:{}",
-                            field_name, table_name
+                            "Column {field_name} is a tag rather than a field, table:{table_name}"
                         )
                     }
                 );
@@ -477,14 +467,13 @@ fn write_entry_to_rows(
                     .value
                     .with_context(|| ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
-                        msg: format!("Field({}) is needed, table:{}", field_name, table_name),
+                        msg: format!("Field({field_name}) is needed, table:{table_name}"),
                     })?
                     .value
                     .with_context(|| ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
                         msg: format!(
-                            "Field({}) value type is not supported, table:{}",
-                            field_name, table_name
+                            "Field({field_name}) value type is not supported, table:{table_name}"
                         ),
                     })?;
 
@@ -526,11 +515,7 @@ fn convert_proto_value_to_datum(
         (v, _) => ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Value type is not same, table:{}, value_name:{}, schema_type:{:?}, actual_value:{:?}",
-                table_name,
-                name,
-                data_type,
-                v
+                "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
             ),
         }
         .fail(),

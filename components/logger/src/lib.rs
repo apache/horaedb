@@ -229,7 +229,7 @@ impl RuntimeLevel {
 
     pub fn set_level_by_str(&self, level_str: &str) -> Result<(), String> {
         Level::from_str(level_str)
-            .map_err(|_| format!("Invalid level {}", level_str))
+            .map_err(|_| format!("Invalid level {level_str}"))
             .and_then(|level| match level {
                 Level::Trace | Level::Debug | Level::Info => Ok(level),
                 _ => Err("Only allow to change log level to <trace|debug|info>".to_owned()),
@@ -355,7 +355,7 @@ impl<'a> slog::Serializer for Serializer<'a> {
         // Write key
         write!(self.decorator, "[")?;
         self.decorator.start_key()?;
-        write!(self.decorator, "{}", key)?;
+        write!(self.decorator, "{key}")?;
 
         // Write separator
         self.decorator.start_separator()?;
@@ -363,7 +363,7 @@ impl<'a> slog::Serializer for Serializer<'a> {
 
         // Write value
         self.decorator.start_value()?;
-        write!(self.decorator, "{}", val)?;
+        write!(self.decorator, "{val}")?;
         self.decorator.reset()?;
         write!(self.decorator, "]")?;
 

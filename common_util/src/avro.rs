@@ -182,8 +182,7 @@ pub fn avro_rows_to_record_batch(
             .box_err()
             .context(AvroRowsToRecordBatch {
                 msg: format!(
-                    "parse avro raw to row failed, avro schema:{:?}, raw:{:?}",
-                    avro_schema, raw
+                    "parse avro raw to row failed, avro schema:{avro_schema:?}, raw:{raw:?}"
                 ),
             })?;
         assert_eq!(row_buf.len(), column_block_builders.len());
@@ -195,8 +194,7 @@ pub fn avro_rows_to_record_batch(
                 .box_err()
                 .context(AvroRowsToRecordBatch {
                     msg: format!(
-                        "append datum to column block builder failed, datum:{:?}, builder:{:?}",
-                        datum, column_block_builder
+                        "append datum to column block builder failed, datum:{datum:?}, builder:{column_block_builder:?}"
                     ),
                 })?
         }
@@ -238,10 +236,7 @@ pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
         // Convert `Row` to `Record` in avro.
         let row = row_group.get_row(row_idx).unwrap();
         let mut avro_record = Record::new(&avro_schema).context(RowGroupToAvroRowsNoCause {
-            msg: format!(
-                "new avro record with schema failed, schema:{:?}",
-                avro_schema
-            ),
+            msg: format!("new avro record with schema failed, schema:{avro_schema:?}"),
         })?;
 
         for (col_idx, column_schema) in column_schemas.iter().enumerate() {
@@ -253,10 +248,7 @@ pub fn row_group_to_avro_rows(row_group: RowGroup) -> Result<Vec<Vec<u8>>> {
         let row_bytes = avro_rs::to_avro_datum(&avro_schema, avro_record)
             .box_err()
             .context(RowGroupToAvroRowsWithCause {
-                msg: format!(
-                    "new avro record with schema failed, schema:{:?}",
-                    avro_schema
-                ),
+                msg: format!("new avro record with schema failed, schema:{avro_schema:?}"),
             })?;
         rows.push(row_bytes);
     }

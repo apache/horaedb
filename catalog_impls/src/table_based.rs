@@ -111,7 +111,7 @@ impl Manager for TableBasedManager {
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
-        Ok(self.catalogs.iter().map(|(_, v)| v.clone() as _).collect())
+        Ok(self.catalogs.values().map(|v| v.clone() as _).collect())
     }
 }
 
@@ -895,8 +895,8 @@ impl Schema for SchemaImpl {
             .read()
             .unwrap()
             .tables_by_name
-            .iter()
-            .map(|(_, v)| v.clone())
+            .values()
+            .cloned()
             .collect())
     }
 }

@@ -383,6 +383,6 @@ mod test {
     fn test_bucket_of_negative_timestamp() {
         let ts = Timestamp::new(-126316800000);
         let range = TimeRange::bucket_of(ts, Duration::from_millis(25920000000)).unwrap();
-        assert!(range.contains(ts), "range:{:?}", range);
+        assert!(range.contains(ts), "range:{range:?}");
     }
 }

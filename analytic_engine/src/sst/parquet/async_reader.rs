@@ -400,8 +400,7 @@ impl AsyncFileReader for ObjectStoreReader {
             .get_range(&self.path, range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch range from object store, err:{}",
-                    e
+                    "Failed to fetch range from object store, err:{e}"
                 ))
             })
             .boxed()
@@ -423,8 +422,7 @@ impl AsyncFileReader for ObjectStoreReader {
                 .get_ranges(&self.path, &ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{}",
-                        e
+                        "Failed to fetch ranges from object store, err:{e}"
                     ))
                 })
                 .await
@@ -572,8 +570,7 @@ impl Stream for RecordBatchReceiver {
         let rx_group_len = self.rx_group.len();
         let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap_or_else(|| {
             panic!(
-                "cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{}, rx_group len:{}",
-                cur_rx_idx, rx_group_len
+                "cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{cur_rx_idx}, rx_group len:{rx_group_len}"
             )
         });
         let poll_result = cur_rx.poll_recv(cx);
@@ -673,7 +670,6 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
         let channel_cap_per_sub_reader = self.channel_cap / self.read_parallelism + 1;
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
-            .into_iter()
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
 
@@ -755,10 +751,7 @@ mod tests {
     }
 
     fn gen_test_data(amount: usize) -> Vec<u32> {
-        (0..amount)
-            .into_iter()
-            .map(|_| rand::random::<u32>())
-            .collect()
+        (0..amount).map(|_| rand::random::<u32>()).collect()
     }
 
     // We mock a thread model same as the one in `ThreadedReader` to check its
@@ -772,7 +765,6 @@ mod tests {
         let channel_cap_per_sub_reader = 10;
         let reader_num = 5;
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..reader_num)
-            .into_iter()
             .map(|_| mpsc::channel::<u32>(channel_cap_per_sub_reader))
             .unzip();
 

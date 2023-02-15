@@ -92,13 +92,13 @@ define_result!(Error);
 /// Generate wal data topic name
 #[allow(unused)]
 pub fn format_wal_data_topic_name(namespace: &str, region_id: u64) -> String {
-    format!("{}_data_{}", namespace, region_id)
+    format!("{namespace}_data_{region_id}")
 }
 
 /// Generate wal meta topic name
 #[allow(unused)]
 pub fn format_wal_meta_topic_name(namespace: &str, region_id: u64) -> String {
-    format!("{}_meta_{}", namespace, region_id)
+    format!("{namespace}_meta_{region_id}")
 }
 
 #[allow(unused)]

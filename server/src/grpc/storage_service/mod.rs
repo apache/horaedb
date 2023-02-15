@@ -21,7 +21,7 @@ use common_types::{
     datum::DatumKind,
     schema::{Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
-use common_util::{error::BoxError, runtime::JoinHandle, time::InstantExt};
+use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use http::StatusCode;
 use interpreters::interpreter::Output;
@@ -36,7 +36,10 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
-use self::sql_query::{QueryResponseBuilder, QueryResponseWriter};
+use self::{
+    error::Error,
+    sql_query::{QueryResponseBuilder, QueryResponseWriter},
+};
 use crate::{
     grpc::{
         forward::ForwarderRef,
@@ -293,7 +296,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         if !has_err {
             resp.header = Some(error::build_ok_header());
-            resp.success = total_success as u32;
+            resp.success = total_success;
         }
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -317,7 +320,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let resp_compress_min_length = self.resp_compress_min_length;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
+        self.runtimes.read_runtime.spawn(async move {
             let handler_ctx = HandlerContext::new(
                 header,
                 router,
@@ -357,7 +360,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 }
             }
 
-            Ok(())
+            Ok::<(), Error>(())
         });
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -498,7 +501,7 @@ fn build_schema_from_write_table_request(
         !write_entries.is_empty(),
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("empty write entires to write table:{}", table),
+            msg: format!("empty write entires to write table:{table}"),
         }
     );
 
@@ -512,8 +515,7 @@ fn build_schema_from_write_table_request(
                 ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
                     msg: format!(
-                        "tag index {} is not found in tag_names:{:?}, table:{}",
-                        name_index, tag_names, table,
+                        "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table}",
                     ),
                 }
             );
@@ -525,16 +527,13 @@ fn build_schema_from_write_table_request(
                 .as_ref()
                 .with_context(|| ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!("Tag({}) value is needed, table_name:{} ", tag_name, table),
+                    msg: format!("Tag({tag_name}) value is needed, table_name:{table} "),
                 })?
                 .value
                 .as_ref()
                 .with_context(|| ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!(
-                        "Tag({}) value type is not supported, table_name:{}",
-                        tag_name, table
-                    ),
+                    msg: format!("Tag({tag_name}) value type is not supported, table_name:{table}"),
                 })?;
 
             let data_type = try_get_data_type_from_value(tag_value)?;
@@ -556,15 +555,14 @@ fn build_schema_from_write_table_request(
                         .as_ref()
                         .with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
-                            msg: format!("Field({}) value is needed, table:{}", field_name, table),
+                            msg: format!("Field({field_name}) value is needed, table:{table}"),
                         })?
                         .value
                         .as_ref()
                         .with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
                             msg: format!(
-                                "Field({}) value type is not supported, table:{}",
-                                field_name, table
+                                "Field({field_name}) value type is not supported, table:{table}"
                             ),
                         })?;
 
@@ -653,8 +651,7 @@ fn ensure_data_type_compatible(
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Duplicated column: {} in fields and tags for table: {}",
-                column_name, table_name,
+                "Duplicated column: {column_name} in fields and tags for table: {table_name}",
             ),
         }
     );

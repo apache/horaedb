@@ -385,7 +385,7 @@ impl Expr {
             "avg" => avg(col(field)),
             _ => {
                 return InvalidExpr {
-                    msg: format!("aggr {} not supported now", aggr_op),
+                    msg: format!("aggr {aggr_op} not supported now"),
                 }
                 .fail()
             }
@@ -642,7 +642,7 @@ impl Selector {
             );
         } else {
             return InvalidExpr {
-                msg: format!("field:{} not found", field),
+                msg: format!("field:{field} not found"),
             }
             .fail();
         };
@@ -665,7 +665,7 @@ impl Selector {
             .tsid_column()
             .map(|c| col(&c.name))
             .context(InvalidExpr {
-                msg: format!("{} not found", TSID_COLUMN),
+                msg: format!("{TSID_COLUMN} not found"),
             })?;
         let field_expr = col(field);
         projection.extend(vec![timestamp_expr, tsid_expr, field_expr]);

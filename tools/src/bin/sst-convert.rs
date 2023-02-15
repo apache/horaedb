@@ -63,7 +63,7 @@ fn main() {
     let rt2 = rt.clone();
     rt.block_on(async move {
         if let Err(e) = run(args, rt2).await {
-            eprintln!("Convert failed, err:{}", e);
+            eprintln!("Convert failed, err:{e}");
         }
     });
 }
@@ -119,7 +119,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         .write(RequestId::next_id(), &sst_meta, sst_stream)
         .await?;
 
-    println!("Write success, info:{:?}", sst_info);
+    println!("Write success, info:{sst_info:?}");
 
     Ok(())
 }

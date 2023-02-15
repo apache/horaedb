@@ -18,7 +18,7 @@ fn main() {
             .expect("Convert git branch env to string");
         if !branch.is_empty() {
             *config.git_mut().branch_mut() = false;
-            println!("cargo:rustc-env=VERGEN_GIT_BRANCH={}", branch);
+            println!("cargo:rustc-env=VERGEN_GIT_BRANCH={branch}");
         }
     }
 

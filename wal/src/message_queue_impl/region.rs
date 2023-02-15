@@ -259,7 +259,7 @@ impl<M: MessageQueue> Region<M> {
 
         ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
             "failed while recover from meta, high watermark shouldn't changed while opening region, 
-            origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
+            origin high watermark:{high_watermark}, returned high watermark:{returned_high_watermark}")
         });
 
         // Decode and apply it to builder.
@@ -347,8 +347,7 @@ impl<M: MessageQueue> Region<M> {
             })?;
 
         ensure!(start_offset <= high_watermark, OpenNoCause { namespace , region_id, msg: format!(
-            "failed while recover from log, start offset should be less than or equal to high watermark, now are:{} and {}",
-            start_offset, high_watermark)
+            "failed while recover from log, start offset should be less than or equal to high watermark, now are:{start_offset} and {high_watermark}")
         });
 
         if start_offset == high_watermark {
@@ -377,7 +376,7 @@ impl<M: MessageQueue> Region<M> {
 
             ensure!(returned_high_watermark == high_watermark, OpenNoCause { namespace , region_id, msg: format!(
                 "failed while recover from log, high watermark shouldn't changed while opening region, 
-                origin high watermark:{}, returned high watermark:{}", high_watermark, returned_high_watermark)
+                origin high watermark:{high_watermark}, returned high watermark:{returned_high_watermark}")
             });
 
             // Decode and apply it to builder.
@@ -418,8 +417,7 @@ impl<M: MessageQueue> Region<M> {
                     namespace,
                     region_id,
                     msg: format!(
-                        "failed while recover from log, region meta delta:{:?}",
-                        region_meta_delta
+                        "failed while recover from log, region meta delta:{region_meta_delta:?}"
                     ),
                 })?;
 
@@ -502,8 +500,7 @@ impl<M: MessageQueue> Region<M> {
                             region_id: inner.region_context.region_id(),
                             table_id: None,
                             msg: format!(
-                                "failed while creating iterator, scan range:{:?}",
-                                scan_range
+                                "failed while creating iterator, scan range:{scan_range:?}"
                             ),
                         })?,
                 ))
@@ -562,8 +559,7 @@ impl<M: MessageQueue> Region<M> {
                             region_id: inner.region_context.region_id(),
                             table_id: Some(table_id),
                             msg: format!(
-                                "failed while creating iterator, scan range:{:?}",
-                                scan_range
+                                "failed while creating iterator, scan range:{scan_range:?}"
                             ),
                         })?,
                 ))
@@ -820,8 +816,7 @@ impl<C: ConsumeIterator> MessageQueueLogIterator<C> {
             ensure!(*terminate_offset <= high_watermark, ScanNoCause {
                 region_id: self.region_id,
                 table_id: self.table_id,
-                msg: format!("the setting terminate offset is invalid, it should be less than or equals to high watermark, terminate offset:{}, high watermark:{}",
-                    terminate_offset, high_watermark),
+                msg: format!("the setting terminate offset is invalid, it should be less than or equals to high watermark, terminate offset:{terminate_offset}, high watermark:{high_watermark}"),
             });
 
             if message_and_offset.offset + 1 == *terminate_offset {

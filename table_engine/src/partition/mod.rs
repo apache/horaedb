@@ -233,10 +233,7 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
 }
 
 pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -> String {
-    format!(
-        "{}{}_{}",
-        PARTITION_TABLE_PREFIX, table_name, partition_name
-    )
+    format!("{PARTITION_TABLE_PREFIX}{table_name}_{partition_name}")
 }
 
 pub fn is_sub_partition_table(table_name: &str) -> bool {

@@ -117,6 +117,7 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::CreateView(_)
             | LogicalPlan::CreateCatalogSchema(_)
             | LogicalPlan::CreateCatalog(_)
+            | LogicalPlan::Unnest(_)
             | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
         }
     }
@@ -168,8 +169,7 @@ impl<'a> TypeRewriter<'a> {
                 );
                 if casted_right.is_null() {
                     return Err(DataFusionError::Plan(format!(
-                        "column:{:?} value:{:?} is invalid",
-                        col, value
+                        "column:{col:?} value:{value:?} is invalid"
                     )));
                 }
                 if reverse {

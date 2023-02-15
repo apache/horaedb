@@ -145,8 +145,7 @@ impl RegionContext {
                 region_id: self.region_id,
                 table_id,
                 msg: format!(
-                    "table not found while mark it delete to, table id:{}, sequence number:{}",
-                    table_id, sequence_num
+                    "table not found while mark it delete to, table id:{table_id}, sequence number:{sequence_num}"
                 ),
             })?;
 
@@ -494,7 +493,7 @@ impl RegionContextBuilder {
                 .table_metas
                 .insert(entry.table_id, entry.clone().into());
             ensure!(old_meta.is_none(),
-                Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{:?}", entry) }
+                Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{entry:?}") }
             );
         }
 
@@ -679,7 +678,7 @@ impl TableWriter {
             WriteNoCause {
                 region_id,
                 table_id,
-                msg: format!("invalid offset range, offset range:{:?}", offset_range),
+                msg: format!("invalid offset range, offset range:{offset_range:?}"),
             }
         );
 

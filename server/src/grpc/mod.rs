@@ -175,7 +175,7 @@ impl<Q: QueryExecutor + 'static> RpcServices<Q> {
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
                 .await
                 .unwrap_or_else(|e| {
-                    panic!("Grpc server listens failed, err:{:?}", e);
+                    panic!("Grpc server listens failed, err:{e:?}");
                 });
         });
         self.join_handle = Some(join_handle);

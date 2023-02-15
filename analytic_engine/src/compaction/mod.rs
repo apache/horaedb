@@ -57,8 +57,9 @@ pub enum Error {
     InvalidOption { error: String, backtrace: Backtrace },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
 pub enum CompactionStrategy {
+    #[default]
     Default,
     TimeWindow(TimeWindowCompactionOptions),
     SizeTiered(SizeTieredCompactionOptions),
@@ -110,12 +111,6 @@ impl Default for TimeWindowCompactionOptions {
             size_tiered: SizeTieredCompactionOptions::default(),
             timestamp_resolution: TimeUnit::Milliseconds,
         }
-    }
-}
-
-impl Default for CompactionStrategy {
-    fn default() -> Self {
-        CompactionStrategy::Default
     }
 }
 

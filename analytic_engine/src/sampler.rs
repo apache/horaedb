@@ -257,8 +257,7 @@ mod tests {
             assert_eq!(
                 *expect,
                 pick_duration(*interval).as_millis() as u64,
-                "Case {}",
-                i
+                "Case {i}"
             );
         }
     }

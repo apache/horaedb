@@ -36,7 +36,7 @@ use crate::{
     },
     storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
-    Config, ObkvWalConfig, RocksDBConfig, WalStorageConfig,
+    Config, RocksDBConfig, WalStorageConfig,
 };
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
@@ -544,7 +544,7 @@ impl Default for MemoryEngineContext {
                     data_path: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal_storage: WalStorageConfig::Obkv(Box::new(ObkvWalConfig::default())),
+            wal_storage: WalStorageConfig::Obkv(Box::default()),
             ..Default::default()
         };
 

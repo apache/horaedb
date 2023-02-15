@@ -68,19 +68,15 @@ impl ObkvConfig {
 /// Obkv server log level.
 #[derive(Copy, Clone, Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ObLogLevel {
+    #[default]
     None = 7,
     Error = 0,
     Warn = 2,
     Info = 3,
     Trace = 4,
     Debug = 5,
-}
-
-impl Default for ObLogLevel {
-    fn default() -> ObLogLevel {
-        ObLogLevel::None
-    }
 }
 
 impl From<u16> for ObLogLevel {

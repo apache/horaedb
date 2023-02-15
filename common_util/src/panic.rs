@@ -95,13 +95,13 @@ mod tests {
         match unsafe { fork() } {
             Ok(ForkResult::Parent { .. }) => match wait().unwrap() {
                 WaitStatus::Exited(_, status) => Ok(status),
-                v => Err(format!("{:?}", v)),
+                v => Err(format!("{v:?}")),
             },
             Ok(ForkResult::Child) => {
                 child();
                 std::process::exit(0);
             }
-            Err(e) => Err(format!("Fork failed: {}", e)),
+            Err(e) => Err(format!("Fork failed: {e}")),
         }
     }
 

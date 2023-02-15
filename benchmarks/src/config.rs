@@ -31,10 +31,7 @@ pub struct BenchConfig {
 pub fn bench_config_from_env() -> BenchConfig {
     let path = match env::var(BENCH_CONFIG_PATH_KEY) {
         Ok(v) => v,
-        Err(e) => panic!(
-            "Env {} is required to run benches, err:{}.",
-            BENCH_CONFIG_PATH_KEY, e
-        ),
+        Err(e) => panic!("Env {BENCH_CONFIG_PATH_KEY} is required to run benches, err:{e}."),
     };
 
     let mut toml_buf = String::new();

@@ -85,7 +85,7 @@ pub fn projected_schema_by_number(
     max_projections: usize,
 ) -> ProjectedSchema {
     if num_columns < max_projections {
-        let projection = (0..num_columns + 1).into_iter().collect();
+        let projection = (0..num_columns + 1).collect();
 
         ProjectedSchema::new(schema.clone(), Some(projection)).unwrap()
     } else {
@@ -202,7 +202,7 @@ impl<'a> Payload for WritePayload<'a> {
 
     fn encode_size(&self) -> usize {
         let body_size = self.0.len();
-        HEADER_SIZE + body_size as usize
+        HEADER_SIZE + body_size
     }
 
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {

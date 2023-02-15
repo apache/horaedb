@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
 
     // Report unexpected token
     fn expected<T>(&self, expected: &str, found: Token) -> Result<T> {
-        parser_err!(format!("Expected {}, found: {}", expected, found))
+        parser_err!(format!("Expected {expected}, found: {found}"))
     }
 
     // Parse a new expression
@@ -258,8 +258,7 @@ impl<'a> Parser<'a> {
         let obj_type = match self.parser.expect_one_of_keywords(&[Keyword::TABLE])? {
             Keyword::TABLE => Ok(ShowCreateObject::Table),
             keyword => parser_err!(format!(
-                "Unable to map keyword to ShowCreateObject: {:?}",
-                keyword
+                "Unable to map keyword to ShowCreateObject: {keyword:?}"
             )),
         }?;
 
@@ -599,7 +598,7 @@ impl<'a> Parser<'a> {
             .parser
             .parse_parenthesized_column_list(Mandatory, false)
             .map_err(|e| {
-                ParserError::ParserError(format!("Fail to parse partition key, err:{}", e))
+                ParserError::ParserError(format!("Fail to parse partition key, err:{e}"))
             })?;
 
         // Ensure at least one column for partition key.
@@ -650,10 +649,10 @@ impl<'a> Parser<'a> {
                 sqlparser::ast::Value::Number(v, _) => match v.parse::<u64>() {
                     Ok(v) => v,
                     Err(e) => {
-                        return parser_err!(format!("invalid partition num, raw:{}, err:{}", v, e))
+                        return parser_err!(format!("invalid partition num, raw:{v}, err:{e}"))
                     }
                 },
-                v => return parser_err!(format!("expect partition number, found:{}", v)),
+                v => return parser_err!(format!("expect partition number, found:{v}")),
             }
         } else {
             1
@@ -677,16 +676,16 @@ impl<'a> Parser<'a> {
                     if check_column_expr_validity_in_hash(id, columns) {
                         Ok(*inner)
                     } else {
-                        parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{}", id))
+                        parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{id}"))
                     }
                 },
 
                 other => parser_err!(
-                    format!("Only column expr in hash partition now, example: HASH(column name), found:{:?}", other)
+                    format!("Only column expr in hash partition now, example: HASH(column name), found:{other:?}")
                 ),
             }
         } else {
-            parser_err!(format!("Expect nested expr, found:{:?}", expr))
+            parser_err!(format!("Expect nested expr, found:{expr:?}"))
         }
     }
 
@@ -826,18 +825,13 @@ mod tests {
     fn expect_parse_error(sql: &str, expected_error: &str) {
         match Parser::parse_sql(sql) {
             Ok(statements) => {
-                panic!(
-                    "Expected parse error for '{}', but was successful: {:?}",
-                    sql, statements
-                );
+                panic!("Expected parse error for '{sql}', but was successful: {statements:?}");
             }
             Err(e) => {
                 let error_message = e.to_string();
                 assert!(
                     error_message.contains(expected_error),
-                    "Expected error '{}' not found in actual error '{}'",
-                    expected_error,
-                    error_message
+                    "Expected error '{expected_error}' not found in actual error '{error_message}'"
                 );
             }
         }
@@ -1212,7 +1206,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
 
                     true
@@ -1227,7 +1221,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
 
                     true
@@ -1242,7 +1236,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
                     assert!(standard_statement_str.contains("`TEstB`"));
                     assert!(standard_statement_str.contains("`TESTC`"));
@@ -1337,22 +1331,22 @@ mod tests {
             // Unsupported expr
             let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint TAG) PARTITION BY HASH(c2, c3) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect nested expr"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect nested expr"))
             );
 
             // Column of invalid type
             let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c1) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect column"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect column"))
             );
 
             // Column not tag
             let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect column"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect column"))
             );
         }
 
@@ -1360,8 +1354,8 @@ mod tests {
         fn invalid_partitions_num() {
             let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 'string'"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expected literal number"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expected literal number"))
             );
         }
     }
@@ -1440,9 +1434,8 @@ mod tests {
     fn create_sql_with_partition_num(partition_num: u64) -> String {
         format!(
             r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL,
-            `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS {}
-            ENGINE=Analytic with (enable_ttl="false")"#,
-            partition_num
+            `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS {partition_num}
+            ENGINE=Analytic with (enable_ttl="false")"#
         )
     }
 }

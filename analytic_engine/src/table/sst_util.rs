@@ -14,7 +14,7 @@ const SST_FILE_SUFFIX: &str = "sst";
 #[inline]
 /// Generate the sst file name.
 pub fn sst_file_name(id: FileId) -> String {
-    format!("{}.{}", id, SST_FILE_SUFFIX)
+    format!("{id}.{SST_FILE_SUFFIX}")
 }
 
 pub fn new_sst_file_path(space_id: SpaceId, table_id: TableId, file_id: FileId) -> Path {

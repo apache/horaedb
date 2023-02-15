@@ -493,15 +493,13 @@ mod tests {
                 assert!(forwarder.is_local_endpoint(endpoint));
                 assert!(
                     matches!(forward_res, ForwardResult::Original),
-                    "endpoint is:{:?}",
-                    endpoint
+                    "endpoint is:{endpoint:?}"
                 );
             } else {
                 assert!(!forwarder.is_local_endpoint(endpoint));
                 assert!(
                     matches!(forward_res, ForwardResult::Forwarded(_)),
-                    "endpoint is:{:?}",
-                    endpoint
+                    "endpoint is:{endpoint:?}"
                 );
             }
         }

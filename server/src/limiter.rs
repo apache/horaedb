@@ -2,7 +2,6 @@
 
 use std::{collections::HashSet, sync::RwLock};
 
-use datafusion::catalog::TableReference;
 use datafusion_expr::logical_plan::LogicalPlan;
 use serde::Serialize;
 use serde_derive::Deserialize;
@@ -106,7 +105,7 @@ impl Limiter {
                     .try_for_each(|blocked_table| {
                         if query
                             .tables
-                            .get(TableReference::from(blocked_table.as_str()))
+                            .get(sql::planner::get_table_ref(blocked_table))
                             .is_some()
                         {
                             BlockedTable {

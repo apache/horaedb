@@ -25,7 +25,7 @@ pub async fn fetch_parquet_metadata(
     const FOOTER_LEN: usize = 8;
 
     if file_size < FOOTER_LEN {
-        let err_msg = format!("file size of {} is less than footer", file_size);
+        let err_msg = format!("file size of {file_size} is less than footer");
         return Err(ParquetError::General(err_msg));
     }
 
@@ -35,7 +35,7 @@ pub async fn fetch_parquet_metadata(
         .get_bytes(footer_start..file_size)
         .await
         .map_err(|e| {
-            let err_msg = format!("failed to get footer bytes, err:{}", e);
+            let err_msg = format!("failed to get footer bytes, err:{e}");
             ParquetError::General(err_msg)
         })?;
 
@@ -59,7 +59,7 @@ pub async fn fetch_parquet_metadata(
         .get_bytes(metadata_start..footer_start)
         .await
         .map_err(|e| {
-            let err_msg = format!("failed to get metadata bytes, err:{}", e);
+            let err_msg = format!("failed to get metadata bytes, err:{e}");
             ParquetError::General(err_msg)
         })?;
 

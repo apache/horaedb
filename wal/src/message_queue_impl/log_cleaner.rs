@@ -79,7 +79,7 @@ impl<M: MessageQueue> LogCleaner<M> {
                 region_id: self.region_id,
                 topic: self.log_topic.clone(),
                 msg: format!("the new safe delete offset should be larger than the last deleted offset, inner state inconsistent, 
-                safe delete offset:{}, last deleted offset:{}", safe_delete_offset, last_deleted_offset),
+                safe delete offset:{safe_delete_offset}, last deleted offset:{last_deleted_offset}"),
             });
 
             if safe_delete_offset == last_deleted_offset {

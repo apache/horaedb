@@ -84,7 +84,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
                         }
                         (_, v) => Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
-                            format!("Unsupported column type, val: {:?}", v),
+                            format!("Unsupported column type, val: {v:?}"),
                         )),
                     }?
                 }

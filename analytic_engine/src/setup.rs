@@ -325,8 +325,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
-                        "invalid wal storage config while opening kafka wal, config:{:?}",
-                        config
+                        "invalid wal storage config while opening kafka wal, config:{config:?}"
                     ),
                 }
                 .fail();

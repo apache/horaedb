@@ -20,10 +20,7 @@ impl PartitionRuleFactory {
         match partition_info {
             PartitionInfo::Key(key_info) => Self::create_key_rule(key_info, schema),
             _ => BuildPartitionRule {
-                msg: format!(
-                    "unsupported partition strategy, strategy:{:?}",
-                    partition_info
-                ),
+                msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
         }
@@ -47,8 +44,7 @@ impl PartitionRuleFactory {
                     .column_with_name(col.as_str())
                     .with_context(|| BuildPartitionRule {
                         msg: format!(
-                            "column in key partition info not found in schema, column:{}",
-                            col
+                            "column in key partition info not found in schema, column:{col}"
                         ),
                     })
                     .map(|col_schema| ColumnWithType::new(col, col_schema.data_type))

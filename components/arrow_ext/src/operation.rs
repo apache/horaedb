@@ -23,7 +23,7 @@ pub fn reverse_record_batch(batch: &RecordBatch) -> Result<RecordBatch> {
             ))
         })?;
         // TODO(xikai): avoid this memory allocation.
-        let indices = UInt32Array::from_iter_values((0..num_rows).into_iter().rev());
+        let indices = UInt32Array::from_iter_values((0..num_rows).rev());
 
         let mut cols = Vec::with_capacity(batch.num_columns());
         for orig_col_data in batch.columns() {

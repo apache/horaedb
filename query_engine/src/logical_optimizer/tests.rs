@@ -163,7 +163,7 @@ impl LogicalPlanNodeBuilder {
 
 /// Check whether the logical plans are equal.
 pub fn assert_logical_plan_eq(left: &LogicalPlan, right: &LogicalPlan) {
-    let left_plan_str = format!("{:#?}", left);
-    let right_plan_str = format!("{:#?}", right);
+    let left_plan_str = format!("{left:#?}");
+    let right_plan_str = format!("{right:#?}");
     assert_eq!(left_plan_str, right_plan_str)
 }

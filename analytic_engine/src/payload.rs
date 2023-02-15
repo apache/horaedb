@@ -119,7 +119,7 @@ impl<'a> Payload for WritePayload<'a> {
             WritePayload::AlterOption(req) => req.encoded_len(),
         };
 
-        HEADER_SIZE + body_size as usize
+        HEADER_SIZE + body_size
     }
 
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {

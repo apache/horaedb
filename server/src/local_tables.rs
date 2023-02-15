@@ -56,10 +56,10 @@ impl LocalTablesRecoverer {
                 .schema_by_name(&table_info.schema_name)
                 .box_err()
                 .context(RecoverWithCause {
-                    msg: format!("failed to get schema of table, table_info:{:?}", table_info),
+                    msg: format!("failed to get schema of table, table_info:{table_info:?}"),
                 })?
                 .with_context(|| RecoverNoCause {
-                    msg: format!("schema of table not found, table_info:{:?}", table_info),
+                    msg: format!("schema of table not found, table_info:{table_info:?}"),
                 })?;
 
             let open_request = OpenTableRequest::from(table_info.clone());
@@ -68,10 +68,10 @@ impl LocalTablesRecoverer {
                 .await
                 .box_err()
                 .context(RecoverWithCause {
-                    msg: format!("failed to open table, open_request:{:?}", open_request),
+                    msg: format!("failed to open table, open_request:{open_request:?}"),
                 })?
                 .with_context(|| RecoverNoCause {
-                    msg: format!("no table is opened, open_request:{:?}", open_request),
+                    msg: format!("no table is opened, open_request:{open_request:?}"),
                 })?;
         }
 

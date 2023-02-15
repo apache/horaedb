@@ -110,7 +110,7 @@ impl<T> ToDfAccumulator<T> {
 impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
     fn state(&self) -> DfResult<Vec<DfScalarValue>> {
         let state = self.accumulator.state().map_err(|e| {
-            DataFusionError::Execution(format!("Accumulator failed to get state, err:{}", e))
+            DataFusionError::Execution(format!("Accumulator failed to get state, err:{e}"))
         })?;
         Ok(state.into_state())
     }
@@ -127,7 +127,7 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
             let input = Input(&v);
 
             self.accumulator.update(input).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to update, err:{}", e))
+                DataFusionError::Execution(format!("Accumulator failed to update, err:{e}"))
             })
         })
     }
@@ -144,14 +144,14 @@ impl<T: Accumulator> DfAccumulator for ToDfAccumulator<T> {
             let state_ref = StateRef(Input(&v));
 
             self.accumulator.merge(state_ref).map_err(|e| {
-                DataFusionError::Execution(format!("Accumulator failed to merge, err:{}", e))
+                DataFusionError::Execution(format!("Accumulator failed to merge, err:{e}"))
             })
         })
     }
 
     fn evaluate(&self) -> DfResult<DfScalarValue> {
         let value = self.accumulator.evaluate().map_err(|e| {
-            DataFusionError::Execution(format!("Accumulator failed to evaluate, err:{}", e))
+            DataFusionError::Execution(format!("Accumulator failed to evaluate, err:{e}"))
         })?;
 
         Ok(value.into_df_scalar_value())
