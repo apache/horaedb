@@ -21,7 +21,6 @@ futures = { workspace = true }
 log = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 tokio = { workspace = true }

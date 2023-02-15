@@ -2,7 +2,7 @@
 
 //! Kafka implementation's config
 
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// Generic client config that is used for consumers, producers as well as admin
 /// operations (like "create topic").

@@ -22,7 +22,6 @@ df_operator = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
 table_engine = { workspace = true }
