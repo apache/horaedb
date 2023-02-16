@@ -46,6 +46,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Invalid date, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    InvalidDate {
+        source: std::num::ParseIntError,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Invalid integer, err:{}.\nBacktrace:\n{}", source, backtrace))]
     InvalidInt {
         source: std::num::ParseIntError,
@@ -397,6 +403,7 @@ impl Datum {
             Datum::UInt8(_) => DatumKind::UInt8,
             Datum::Int64(_) => DatumKind::Int64,
             Datum::Int32(_) => DatumKind::Int32,
+            Datum::Date(_) => DatumKind::Date,
             Datum::Int16(_) => DatumKind::Int16,
             Datum::Int8(_) => DatumKind::Int8,
             Datum::Boolean(_) => DatumKind::Boolean,
@@ -421,6 +428,7 @@ impl Datum {
             Datum::Int16(v) => *v as u64,
             Datum::Int8(v) => *v as u64,
             Datum::Boolean(v) => *v as u64,
+            Datum::Date(v) => *v as u64,
         }
     }
 
@@ -485,6 +493,7 @@ impl Datum {
             Datum::UInt8(v) => Some(*v as f64),
             Datum::Int64(v) => Some(*v as f64),
             Datum::Int32(v) => Some(*v as f64),
+            Datum::Date(v) => Some(*v as f64),
             Datum::Int16(v) => Some(*v as f64),
             Datum::Int8(v) => Some(*v as f64),
             Datum::Boolean(_)
@@ -566,7 +575,7 @@ impl Datum {
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
             // todo date format
-            Datum::Date(v) => Local.timestamp_millis(v.as_i64()*86400).to_rfc3339(),
+            Datum::Date(v) => Local.timestamp_millis((v*86400).into()).to_rfc3339(),
         }
     }
 
@@ -576,6 +585,10 @@ impl Datum {
             (DatumKind::Timestamp, Value::Number(n, _long)) => {
                 let n = n.parse::<i64>().context(InvalidTimestamp)?;
                 Ok(Datum::Timestamp(Timestamp::new(n)))
+            }
+            (DatumKind::Date, Value::SingleQuotedString(s)) => {
+                let n = n.parse::<i64>().context(InvalidDate)?;
+                Ok(Datum::Date(Local.from_local_date()));
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
@@ -743,6 +756,7 @@ impl Serialize for Datum {
             Datum::Int16(v) => serializer.serialize_i16(*v),
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
+            Datum::Date(v) => serializer.serialize_i32(*v),
         }
     }
 }
@@ -989,6 +1003,7 @@ pub mod arrow_convert {
                 DatumKind::Int16 => DataType::Int16,
                 DatumKind::Int8 => DataType::Int8,
                 DatumKind::Boolean => DataType::Boolean,
+                DatumKind::Date => DataType::Date32,
             }
         }
     }

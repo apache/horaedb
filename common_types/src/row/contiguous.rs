@@ -263,6 +263,11 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 Self::write_byte_to_offset(inner, byte_offset, DatumKind::Boolean.into_u8());
                 Self::write_slice_to_offset(inner, datum_offset, &[*v as u8]);
             }
+            Datum::Date(v) => {
+                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Date.into_u8());
+                let value_buf = v.to_ne_bytes();
+                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+            }
         }
 
         Ok(())
