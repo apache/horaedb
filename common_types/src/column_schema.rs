@@ -254,11 +254,9 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
         let data_type = column_schema.data_type();
         let default_value = column_schema
             .default_value
-            .and_then(|v| match v {
+            .map(|v| match v {
                 schema_pb::column_schema::DefaultValue::SerdeJson(raw_bytes) => {
-                    let default_value =
-                        serde_json::from_slice::<Expr>(&raw_bytes).context(InvalidDefaultValueData);
-                    Some(default_value)
+                    serde_json::from_slice::<Expr>(&raw_bytes).context(InvalidDefaultValueData)
                 }
             })
             .transpose()?;

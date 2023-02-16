@@ -397,7 +397,6 @@ mod tests {
         };
 
         let parquet_filter_pb: sst_pb::ParquetFilter = parquet_filter.clone().into();
-        assert_eq!(parquet_filter_pb.version, DEFAULT_FILTER_VERSION);
         assert_eq!(parquet_filter_pb.row_group_filters.len(), 2);
         assert_eq!(
             parquet_filter_pb.row_group_filters[0].column_filters.len(),
@@ -407,16 +406,18 @@ mod tests {
             parquet_filter_pb.row_group_filters[1].column_filters.len(),
             2
         );
-        assert!(parquet_filter_pb.row_group_filters[0].column_filters[0].is_empty());
-        assert_eq!(
-            parquet_filter_pb.row_group_filters[0].column_filters[1].len(),
-            24
-        );
-        assert_eq!(
-            parquet_filter_pb.row_group_filters[1].column_filters[0].len(),
-            24
-        );
-        assert!(parquet_filter_pb.row_group_filters[1].column_filters[1].is_empty());
+        assert!(parquet_filter_pb.row_group_filters[0].column_filters[0]
+            .filter
+            .is_none());
+        assert!(parquet_filter_pb.row_group_filters[0].column_filters[1]
+            .filter
+            .is_some(),);
+        assert!(parquet_filter_pb.row_group_filters[1].column_filters[0]
+            .filter
+            .is_some(),);
+        assert!(parquet_filter_pb.row_group_filters[1].column_filters[1]
+            .filter
+            .is_none());
 
         let decoded_parquet_filter = ParquetFilter::try_from(parquet_filter_pb).unwrap();
         assert_eq!(decoded_parquet_filter, parquet_filter);
