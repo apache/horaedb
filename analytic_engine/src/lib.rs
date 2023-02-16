@@ -227,8 +227,10 @@ pub struct KafkaWalConfig {
     /// Kafka client config
     pub kafka: KafkaConfig,
 
-    /// Common config for message queue config.
-    pub message_queue: MessageQueueWalConfig,
+    /// Namespace config for data.
+    pub data_namespace: MessageQueueWalConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: MessageQueueWalConfig,
 }
 
 /// Config for wal based on RocksDB
