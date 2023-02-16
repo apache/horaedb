@@ -231,7 +231,7 @@ pub struct KafkaWalConfig {
     pub message_queue: MessageQueueWalConfig,
 }
 
-/// Config for wal based on RocksDB.
+/// Config for wal based on RocksDB
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RocksDBConfig {

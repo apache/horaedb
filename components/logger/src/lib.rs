@@ -77,7 +77,7 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
     }
 }
 
-/// Dispatcher for log.
+/// Dispatcher for logs
 pub struct LogDispatcher<N: Drain> {
     normal: N,
 }
