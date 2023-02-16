@@ -108,7 +108,7 @@ impl<'a> Builder<'a> {
         self
     }
 
-    pub fn filtered_row_groups(mut self, row_groups: Option<Vec<usize>>) -> Self {
+    pub fn target_row_groups(mut self, row_groups: Option<Vec<usize>>) -> Self {
         self.row_groups = row_groups;
 
         self

@@ -952,7 +952,7 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
         let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
         let primary_key_ids = schema.primary_key_ids;
 
-        for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
+        for column_schema_pb in schema.columns.into_iter() {
             let column =
                 ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
             if primary_key_ids.contains(&column.id) {
@@ -980,14 +980,13 @@ impl From<&Schema> for schema_pb::TableSchema {
             .iter()
             .map(|i| schema.column(*i).id)
             .collect();
-        let table_schema = schema_pb::TableSchema {
+
+        schema_pb::TableSchema {
             timestamp_id,
             version: schema.version,
             columns,
             primary_key_ids,
-        };
-
-        table_schema
+        }
     }
 }
 
