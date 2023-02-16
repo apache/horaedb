@@ -213,6 +213,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::Int(_) => Ok(Self::Int32),
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
             SqlDataType::String => Ok(Self::String),
+            SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
             SqlDataType::Custom(objects, _) if objects.0.len() == 1 => {
                 match objects.0[0].value.as_str() {
                     "UINT64" | "uint64" => Ok(Self::UInt64),
@@ -223,7 +224,6 @@ impl TryFrom<&SqlDataType> for DatumKind {
                     "INT32" | "int32" => Ok(Self::Int32),
                     "INT16" | "int16" => Ok(Self::Int16),
                     "TINYINT" | "INT8" | "tinyint" | "int8" => Ok(Self::Int8),
-                    "VARBINARY" | "varbinary" => Ok(Self::Varbinary),
                     _ => UnsupportedDataType {
                         sql_type: sql_type.clone(),
                     }

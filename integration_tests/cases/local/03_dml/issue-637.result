@@ -1,0 +1,31 @@
+DROP TABLE IF EXISTS `issue637`;
+
+affected_rows: 0
+
+CREATE TABLE IF NOT EXISTS `issue637`
+(
+    str_tag string TAG,
+    int_tag int32 TAG,
+    var_tag VARBINARY TAG,
+    str_field string,
+    int_field int32,
+    bin_field string,
+    t timestamp NOT NULL,
+     TIMESTAMP KEY (t)
+) ENGINE=Analytic with(enable_ttl = 'false');
+
+affected_rows: 0
+
+INSERT INTO issue637
+    (`str_tag`,`int_tag`,`var_tag`,`str_field`,`int_field`,`bin_field`,`t`)
+VALUES
+    ("t1",1,"v1","s1",1,"b1",1651737067000);
+
+affected_rows: 1
+
+select * from `issue637`;
+
+tsid,t,str_tag,int_tag,var_tag,str_field,int_field,bin_field,
+UInt64(15527369105987057363),Timestamp(1651737067000),String("t1"),Int32(1),Varbinary([118, 49]),String("s1"),Int32(1),String("b1"),
+
+
