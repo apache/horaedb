@@ -18,15 +18,15 @@ pub fn prune_row_groups(
     exprs: &[Expr],
     row_groups: &[RowGroupMetaData],
 ) -> Vec<usize> {
-    let mut filtered_row_groups = Vec::with_capacity(row_groups.len());
+    let mut target_row_groups = Vec::with_capacity(row_groups.len());
     let should_reads = filter_row_groups_inner(schema, exprs, row_groups);
     for (i, should_read) in should_reads.iter().enumerate() {
         if *should_read {
-            filtered_row_groups.push(i);
+            target_row_groups.push(i);
         }
     }
 
-    filtered_row_groups
+    target_row_groups
 }
 
 /// Determine whether a row group should be read according to the meta data

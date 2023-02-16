@@ -195,10 +195,10 @@ impl<'a> Reader<'a> {
             "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
             suggest_read_parallelism, read_parallelism, chunk_size
         );
-        let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
+        let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
         for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
             let chunk_idx = row_group_idx % chunks_num;
-            filtered_row_group_chunks[chunk_idx].push(row_group);
+            target_row_group_chunks[chunk_idx].push(row_group);
         }
 
         let proj_mask = ProjectionMask::leaves(
@@ -206,8 +206,8 @@ impl<'a> Reader<'a> {
             row_projector.existed_source_projection().iter().copied(),
         );
 
-        let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
-        for chunk in filtered_row_group_chunks {
+        let mut streams = Vec::with_capacity(target_row_group_chunks.len());
+        for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
             let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
