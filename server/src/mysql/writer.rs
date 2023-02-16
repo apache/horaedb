@@ -124,6 +124,7 @@ fn convert_datum_kind_type(data_type: &DatumKind) -> ColumnType {
         DatumKind::Int8 => ColumnType::MYSQL_TYPE_LONG,
         DatumKind::Boolean => ColumnType::MYSQL_TYPE_SHORT,
         DatumKind::Null => ColumnType::MYSQL_TYPE_NULL,
+        DatumKind::Date => ColumnType::MYSQL_TYPE_DATE,
     }
 }
 

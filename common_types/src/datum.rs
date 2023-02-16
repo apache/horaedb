@@ -554,7 +554,7 @@ impl Datum {
             Datum::Int16(v) => 0i16.checked_sub(v).map(Datum::Int16),
             Datum::Int8(v) => 0i8.checked_sub(v).map(Datum::Int8),
             Datum::Boolean(v) => Some(Datum::Boolean(!v)),
-            Datum::Date(v) => None,
+            Datum::Date(_) => None,
         }
     }
 

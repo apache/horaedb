@@ -288,6 +288,7 @@ fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
         | DatumKind::Int16
         | DatumKind::Int8 => avro_rs::Schema::Int,
         DatumKind::Boolean => avro_rs::Schema::Boolean,
+        DatumKind::Date => avro_rs::Schema::Date,
     }
 }
 
@@ -346,6 +347,7 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         Datum::Int16(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Int8(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Boolean(v) => may_union(Value::Boolean(v), is_nullable),
+        Datum::Date(v) => may_union(Value::Date(v), is_nullable),
     }
 }
 
