@@ -10,7 +10,7 @@ use arrow::{
         Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
         TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
-        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
+        UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,Date32Array
     },
     datatypes::DataType,
     error::ArrowError,
@@ -118,6 +118,9 @@ define_numeric_column!(
 pub struct TimestampColumn(TimestampMillisecondArray);
 
 #[derive(Debug)]
+pub struct DateColumn(Date32Array);
+
+#[derive(Debug)]
 pub struct VarbinaryColumn(BinaryArray);
 
 #[derive(Debug)]
@@ -144,6 +147,12 @@ fn get_varbinary_datum_view(array: &BinaryArray, index: usize) -> DatumView {
 fn get_string_datum_view(array: &StringArray, index: usize) -> DatumView {
     let value = array.value(index);
     DatumView::String(value)
+}
+
+#[inline]
+fn get_date_datum_view(array: &Date32Array, index: usize) -> DatumView {
+    let value = array.value(index);
+    DatumView::Date(value)
 }
 
 #[inline]
@@ -593,7 +602,7 @@ macro_rules! define_column_block {
 // Define column blocks, Null is defined explicitly in macro.
 define_column_block!(
     Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean
+    Int16, Int8, Boolean, Date
 );
 
 impl ColumnBlock {
@@ -619,7 +628,7 @@ impl ColumnBlock {
 
 impl_column_block!(
     Null, Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean
+    Int16, Int8, Boolean, Date
 );
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {

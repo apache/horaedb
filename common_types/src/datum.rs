@@ -4,7 +4,7 @@
 
 use std::{convert::TryFrom, fmt, str};
 
-use chrono::{Local, TimeZone};
+use chrono::{Local, DateTime, TimeZone, Datelike};
 use proto::common::DataType as DataTypePb;
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -362,6 +362,7 @@ pub enum Datum {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
+    /// Map to arrow::datatypes::DataType::Date32
     Date(i32),
 }
 
@@ -587,8 +588,11 @@ impl Datum {
                 Ok(Datum::Timestamp(Timestamp::new(n)))
             }
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
-                let n = n.parse::<i64>().context(InvalidDate)?;
-                Ok(Datum::Date(Local.from_local_date()));
+                // let n = n.parse::<i64>().context(InvalidDate)?;
+                let time = DateTime::parse_from_rfc3339(&s).unwrap();
+                let days = time.num_days_from_ce();
+                // let days = time.timestamp_millis()/86400;
+                Ok(Datum::Date(days))
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
@@ -958,6 +962,7 @@ pub mod arrow_convert {
                 ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
                 ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
                 ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
+                ScalarValue::Date32(v) => v.map(DatumView::Date),
                 ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
                     v.as_ref().map(|v| DatumView::String(v.as_str()))
                 }
@@ -968,7 +973,6 @@ pub mod arrow_convert {
                     v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
                 }
                 ScalarValue::List(_, _)
-                | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time64(_)
                 | ScalarValue::TimestampSecond(_, _)
@@ -1030,6 +1034,7 @@ mod tests {
         assert!(DatumKind::Int16.is_key_kind());
         assert!(DatumKind::Int8.is_key_kind());
         assert!(DatumKind::Boolean.is_key_kind());
+        assert!(DatumKind::Date.is_key_kind());
     }
 
     #[test]
@@ -1069,6 +1074,7 @@ mod tests {
         assert_eq!(12, DatumKind::Int16.into_u8());
         assert_eq!(13, DatumKind::Int8.into_u8());
         assert_eq!(14, DatumKind::Boolean.into_u8());
+        assert_eq!(15, DatumKind::Date.into_u8());
     }
 
     #[test]
