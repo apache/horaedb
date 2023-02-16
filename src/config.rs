@@ -30,7 +30,7 @@ impl Default for NodeInfo {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// The information of the host node.
     pub node: NodeInfo,
