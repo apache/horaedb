@@ -410,15 +410,15 @@ impl Builder {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
-                disk_cache_path: "".to_string(),
+                disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
             wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-                path: dir.path().to_str().unwrap().to_string(),
+                data_dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
         };
@@ -469,16 +469,16 @@ impl Default for RocksDBEngineContext {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
-                disk_cache_path: "".to_string(),
+                disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
 
             wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-                path: dir.path().to_str().unwrap().to_string(),
+                data_dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
         };
@@ -495,17 +495,17 @@ impl Clone for RocksDBEngineContext {
         let storage = StorageOptions {
             mem_cache_capacity: ReadableSize::mb(0),
             mem_cache_partition_bits: 0,
-            disk_cache_path: "".to_string(),
+            disk_cache_dir: "".to_string(),
             disk_cache_capacity: ReadableSize::mb(0),
             disk_cache_page_size: ReadableSize::mb(0),
             object_store: ObjectStoreOptions::Local(LocalOptions {
-                data_path: dir.path().to_str().unwrap().to_string(),
+                data_dir: dir.path().to_str().unwrap().to_string(),
             }),
         };
 
         config.storage = storage;
         config.wal_storage = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
-            path: dir.path().to_str().unwrap().to_string(),
+            data_dir: dir.path().to_str().unwrap().to_string(),
         }));
 
         Self { config }
@@ -537,11 +537,11 @@ impl Default for MemoryEngineContext {
             storage: StorageOptions {
                 mem_cache_capacity: ReadableSize::mb(0),
                 mem_cache_partition_bits: 0,
-                disk_cache_path: "".to_string(),
+                disk_cache_dir: "".to_string(),
                 disk_cache_capacity: ReadableSize::mb(0),
                 disk_cache_page_size: ReadableSize::mb(0),
                 object_store: ObjectStoreOptions::Local(LocalOptions {
-                    data_path: dir.path().to_str().unwrap().to_string(),
+                    data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
             wal_storage: WalStorageConfig::Obkv(Box::default()),

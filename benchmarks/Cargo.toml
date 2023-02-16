@@ -29,7 +29,6 @@ parquet_ext = { workspace = true }
 pprof = { version = "0.10", features = ["flamegraph", "criterion"] }
 rand = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }

@@ -39,7 +39,6 @@ prost = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 skiplist = { path = "../components/skiplist" }
 smallvec = { workspace = true }
 snafu = { workspace = true }

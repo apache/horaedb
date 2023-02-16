@@ -27,7 +27,6 @@ murmur3 = "0.4.1"
 paste = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }

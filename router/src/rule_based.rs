@@ -9,7 +9,7 @@ use ceresdbproto::storage::{self, Route, RouteRequest};
 use cluster::config::SchemaConfig;
 use log::info;
 use meta_client::types::ShardId;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{ensure, OptionExt};
 
 use crate::{endpoint::Endpoint, hash, Result, RouteNotFound, Router, ShardNotFound};

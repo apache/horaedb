@@ -14,7 +14,7 @@ use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
-use serde_derive::Serialize;
+use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, Sender};

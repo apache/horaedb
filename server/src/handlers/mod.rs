@@ -10,7 +10,7 @@ pub mod sql;
 mod prelude {
     pub use catalog::manager::Manager as CatalogManager;
     pub use query_engine::executor::Executor as QueryExecutor;
-    pub use serde_derive::{Deserialize, Serialize};
+    pub use serde::{Deserialize, Serialize};
     pub use snafu::ResultExt;
     pub use warp::Filter;
 

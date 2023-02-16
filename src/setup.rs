@@ -14,17 +14,19 @@ use analytic_engine::{
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::{cluster_impl::ClusterImpl, shard_tables_cache::ShardTablesCache};
+use cluster::{
+    cluster_impl::ClusterImpl, config::ClusterConfig, shard_tables_cache::ShardTablesCache,
+};
 use common_util::runtime;
 use df_operator::registry::FunctionRegistryImpl;
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
 use logger::RuntimeLevel;
-use meta_client::meta_impl;
+use meta_client::{meta_impl, types::NodeMetaInfo};
 use query_engine::executor::{Executor, ExecutorImpl};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
-    config::{Config, DeployMode, RuntimeConfig, StaticTopologyConfig},
+    config::{StaticRouteConfig, StaticTopologyConfig},
     limiter::Limiter,
     local_tables::LocalTablesRecoverer,
     schema_config_provider::{
@@ -39,21 +41,19 @@ use tracing_util::{
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
 };
 
-use crate::signal_handler;
+use crate::{
+    config::{ClusterDeployment, Config, RuntimeConfig},
+    signal_handler,
+};
 
 /// Setup log with given `config`, returns the runtime log level switch.
-pub fn setup_log(config: &Config) -> RuntimeLevel {
-    server::logger::init_log(config).expect("Failed to init log.")
+pub fn setup_logger(config: &Config) -> RuntimeLevel {
+    logger::init_log(&config.logger).expect("Failed to init log.")
 }
 
 /// Setup tracing with given `config`, returns the writer guard.
 pub fn setup_tracing(config: &Config) -> WorkerGuard {
-    tracing_util::init_tracing_with_file(
-        &config.tracing_log_name,
-        &config.tracing_log_dir,
-        &config.tracing_level,
-        Rotation::NEVER,
-    )
+    tracing_util::init_tracing_with_file(&config.tracing, Rotation::NEVER)
 }
 
 fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
@@ -129,12 +129,13 @@ async fn run_server_with_runtimes<T>(
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
-    let query_executor = ExecutorImpl::new(config.query.clone());
+    let query_executor = ExecutorImpl::new(config.query_engine.clone());
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
 
-    let builder = Builder::new(config.clone())
+    let builder = Builder::new(config.server.clone())
+        .node_addr(config.node.addr.clone())
         .engine_runtimes(runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
@@ -142,12 +143,29 @@ async fn run_server_with_runtimes<T>(
         .limiter(limiter);
 
     let engine_builder = T::default();
-    let builder = match config.server.deploy_mode {
-        DeployMode::Standalone => {
-            build_in_standalone_mode(&config, builder, runtimes.clone(), engine_builder).await
+    let builder = match &config.cluster_deployment {
+        None => {
+            build_without_meta(
+                &config,
+                &StaticRouteConfig::default(),
+                builder,
+                runtimes.clone(),
+                engine_builder,
+            )
+            .await
         }
-        DeployMode::Cluster => {
-            build_in_cluster_mode(&config, builder, runtimes.clone(), engine_builder).await
+        Some(ClusterDeployment::NoMeta(v)) => {
+            build_without_meta(&config, v, builder, runtimes.clone(), engine_builder).await
+        }
+        Some(ClusterDeployment::WithMeta(cluster_config)) => {
+            build_with_meta(
+                &config,
+                cluster_config,
+                builder,
+                runtimes.clone(),
+                engine_builder,
+            )
+            .await
         }
     };
 
@@ -183,26 +201,32 @@ async fn build_table_engine<T: EngineBuilder>(
     })
 }
 
-async fn build_in_cluster_mode<Q: Executor + 'static, T: EngineBuilder>(
+async fn build_with_meta<Q: Executor + 'static, T: EngineBuilder>(
     config: &Config,
+    cluster_config: &ClusterConfig,
     builder: Builder<Q>,
     runtimes: Arc<EngineRuntimes>,
     engine_builder: T,
 ) -> Builder<Q> {
     // Build meta related modules.
-    let meta_client = meta_impl::build_meta_client(
-        config.cluster.meta_client.clone(),
-        config.cluster.node.clone(),
-    )
-    .await
-    .expect("fail to build meta client");
+    let node_meta_info = NodeMetaInfo {
+        addr: config.node.addr.clone(),
+        port: config.server.grpc_port,
+        zone: config.node.zone.clone(),
+        idc: config.node.idc.clone(),
+        binary_version: config.node.binary_version.clone(),
+    };
+    let meta_client =
+        meta_impl::build_meta_client(cluster_config.meta_client.clone(), node_meta_info)
+            .await
+            .expect("fail to build meta client");
 
     let shard_tables_cache = ShardTablesCache::default();
     let cluster = {
         let cluster_impl = ClusterImpl::new(
             shard_tables_cache.clone(),
             meta_client.clone(),
-            config.cluster.clone(),
+            cluster_config.clone(),
             runtimes.meta_runtime.clone(),
         )
         .unwrap();
@@ -238,8 +262,9 @@ async fn build_in_cluster_mode<Q: Executor + 'static, T: EngineBuilder>(
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_in_standalone_mode<Q: Executor + 'static, T: EngineBuilder>(
+async fn build_without_meta<Q: Executor + 'static, T: EngineBuilder>(
     config: &Config,
+    static_route_config: &StaticRouteConfig,
     builder: Builder<Q>,
     runtimes: Arc<EngineRuntimes>,
     engine_builder: T,
@@ -280,16 +305,16 @@ async fn build_in_standalone_mode<Q: Executor + 'static, T: EngineBuilder>(
     // Create schema in default catalog.
     create_static_topology_schema(
         catalog_manager.clone(),
-        config.static_route.topology.clone(),
+        static_route_config.topology.clone(),
     )
     .await;
 
     // Build static router and schema config provider
-    let cluster_view = ClusterView::from(&config.static_route.topology);
+    let cluster_view = ClusterView::from(&static_route_config.topology);
     let schema_configs = cluster_view.schema_configs.clone();
     let router = Arc::new(RuleBasedRouter::new(
         cluster_view,
-        config.static_route.rules.clone(),
+        static_route_config.rules.clone(),
     ));
     let schema_config_provider = Arc::new(ConfigBasedProvider::new(schema_configs));
 

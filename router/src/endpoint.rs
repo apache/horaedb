@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use ceresdbproto::storage;
 use common_util::error::GenericError;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 pub struct Endpoint {

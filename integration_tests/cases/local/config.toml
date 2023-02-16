@@ -4,30 +4,20 @@ http_port = 5440
 grpc_port = 8831
 log_level = "debug"
 
-[query]
+[query_engine]
 read_parallelism = 8
 
-[analytic]
-wal_path = "/tmp/ceresdb"
-sst_meta_cache_cap = 10000
+[analytic.wal_storage]
+type = "RocksDB"
+data_dir = "/tmp/ceresdb"
 
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0
-disk_cache_path = "/tmp/ceresdb"
+disk_cache_dir = "/tmp/ceresdb"
 disk_cache_capacity = '2G'
 disk_cache_page_size = '1M'
 
 [analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb"
-
-[[meta_client.cluster_view.schema_shards]]
-schema = 'public'
-
-[[meta_client.cluster_view.schema_shards.shard_views]]
-shard_id = 0
-
-[meta_client.cluster_view.schema_shards.shard_views.node]
-addr = "127.0.0.1"
-port = 8831
+data_dir = "/tmp/ceresdb"

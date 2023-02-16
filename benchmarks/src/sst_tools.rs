@@ -30,7 +30,7 @@ use common_util::runtime::Runtime;
 use futures::TryStreamExt;
 use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;
 

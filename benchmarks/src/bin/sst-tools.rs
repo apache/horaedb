@@ -9,7 +9,7 @@ use benchmarks::{
 use clap::{App, Arg};
 use common_util::toml;
 use log::info;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]

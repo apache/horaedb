@@ -5,7 +5,7 @@
 use std::str::FromStr;
 
 use common_util::config::ReadableDuration;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]

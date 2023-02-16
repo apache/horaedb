@@ -9,6 +9,7 @@ workspace = true
 
 [package.edition]
 workspace = true
+
 [dependencies.slog-global]
 version = "0.1"
 git = "https://github.com/tikv/slog-global.git"
@@ -17,6 +18,7 @@ rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
 [dependencies]
 chrono = { workspace = true }
 log = { workspace = true }
+serde = { workspace = true }
 slog = { workspace = true }
 slog-async = "2.6"
 slog-term = "2.8"

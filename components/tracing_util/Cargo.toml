@@ -10,8 +10,9 @@ workspace = true
 [package.edition]
 workspace = true
 
-[dependencies] # In alphabetical order
+[dependencies]
 lazy_static = { workspace = true }
+serde = { workspace = true }
 tracing = "0.1.26"
 tracing-appender = "0.1.2"
 tracing-subscriber = "0.2.20"

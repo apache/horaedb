@@ -127,13 +127,13 @@ impl KafkaImpl {
     pub async fn new(config: Config) -> Result<Self> {
         info!("Kafka init, config:{:?}", config);
 
-        if config.client_config.boost_broker.is_none() {
+        if config.client.boost_broker.is_none() {
             panic!("The boost broker must be set");
         }
 
         let mut client_builder =
-            ClientBuilder::new(vec![config.client_config.boost_broker.clone().unwrap()]);
-        if let Some(max_message_size) = config.client_config.max_message_size {
+            ClientBuilder::new(vec![config.client.boost_broker.clone().unwrap()]);
+        if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }
 
@@ -199,7 +199,7 @@ impl MessageQueue for KafkaImpl {
         }
 
         // Create topic in Kafka.
-        let topic_management_config = &self.config.topic_management_config;
+        let topic_management_config = &self.config.topic_management;
         info!("Try to create topic, name:{}.", topic_name);
         let result = self
             .controller_client
@@ -280,7 +280,7 @@ impl MessageQueue for KafkaImpl {
             })?;
         Ok(KafkaConsumeIterator::new(
             topic_name,
-            self.config.consumer_config.clone(),
+            self.config.consumer.clone(),
             topic_client,
             start_offset,
         ))
@@ -296,10 +296,7 @@ impl MessageQueue for KafkaImpl {
                 })?;
 
         topic_client
-            .delete_records(
-                offset,
-                self.config.topic_management_config.delete_max_wait_ms,
-            )
+            .delete_records(offset, self.config.topic_management.delete_max_wait_ms)
             .await
             .context(DeleteUpTo {
                 topic_name: topic_name.to_string(),

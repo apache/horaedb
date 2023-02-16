@@ -9,7 +9,7 @@ use ceresdbproto::{
 };
 use common_util::{config::ReadableDuration, error::BoxError};
 use log::{debug, info};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{

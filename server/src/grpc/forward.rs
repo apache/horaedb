@@ -14,7 +14,7 @@ use ceresdbproto::storage::{
 };
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tonic::{
     metadata::errors::InvalidMetadataValue,

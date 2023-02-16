@@ -30,7 +30,6 @@ logger = { workspace = true }
 pin-project-lite = "0.2.8"
 prometheus = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 time = "0.1"

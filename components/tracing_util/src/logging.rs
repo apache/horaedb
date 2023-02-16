@@ -22,6 +22,7 @@ use std::{
 
 use fmt::format::FmtSpan;
 use lazy_static::lazy_static;
+use serde::Deserialize;
 use tracing::Subscriber;
 use tracing_appender::{
     non_blocking::WorkerGuard,
@@ -79,14 +80,31 @@ fn init_tracing_stdout() {
         .expect("error setting global tracing subscriber");
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+/// The configurations for tracing.
+pub struct Config {
+    /// The prefix of tracing log files.
+    pub prefix: String,
+    /// The directory of tracing log files.
+    pub dir: String,
+    /// The level of tracing.
+    pub level: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            prefix: String::from("tracing"),
+            dir: String::from("/tmp/ceresdb"),
+            level: String::from("info"),
+        }
+    }
+}
+
 /// Write logs to file and rotation.
-pub fn init_tracing_with_file(
-    app_name: &str,
-    dir: impl AsRef<Path>,
-    level: &str,
-    rotation: Rotation,
-) -> WorkerGuard {
-    let file_appender = RollingFileAppender::new(rotation, dir, app_name);
+pub fn init_tracing_with_file(config: &Config, rotation: Rotation) -> WorkerGuard {
+    let file_appender = RollingFileAppender::new(rotation, &config.dir, &config.prefix);
     let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
     let f_layer = Layer::new()
         .with_timer(ChronoLocal::rfc3339())
@@ -97,7 +115,7 @@ pub fn init_tracing_with_file(
         .with_span_events(FmtSpan::ENTER | FmtSpan::CLOSE);
 
     let subscriber = Registry::default()
-        .with(EnvFilter::new(level))
+        .with(EnvFilter::new(&config.level))
         .with(f_layer);
 
     tracing::subscriber::set_global_default(subscriber)

@@ -5,7 +5,7 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use tokio::sync::oneshot;
 

@@ -10,7 +10,7 @@ use common_util::{
     config::{ReadableDuration, ReadableSize},
     toml,
 };
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use table_engine::{
     predicate::{PredicateBuilder, PredicateRef},
     table::TableId,

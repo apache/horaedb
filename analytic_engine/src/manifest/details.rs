@@ -22,7 +22,7 @@ use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;

@@ -98,7 +98,6 @@ remote_engine_client = { path = "remote_engine_client" }
 router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
-serde_derive = "1.0"
 serde_json = "1.0.60"
 server = { path = "server" }
 smallvec = "1.6"
@@ -134,6 +133,7 @@ logger = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
+serde = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"

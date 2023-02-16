@@ -2,16 +2,16 @@
 
 //! Kafka implementation's config
 
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// Generic client config that is used for consumers, producers as well as admin
 /// operations (like "create topic").
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    pub client_config: ClientConfig,
-    pub topic_management_config: TopicManagementConfig,
-    pub consumer_config: ConsumerConfig,
+    pub client: ClientConfig,
+    pub topic_management: TopicManagementConfig,
+    pub consumer: ConsumerConfig,
     // TODO: may need some config options for producer,
     // but it seems nothing needed now.
 }

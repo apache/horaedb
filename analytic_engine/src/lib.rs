@@ -24,8 +24,7 @@ pub mod tests;
 use common_util::config::ReadableDuration;
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
-use serde::Serialize;
-use serde_derive::Deserialize;
+use serde::{Deserialize, Serialize};
 use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
@@ -120,10 +119,10 @@ impl Default for Config {
 pub struct ObkvWalConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
-    /// Wal (stores data) namespace config
-    pub wal: WalNamespaceConfig,
-    /// Manifest (stores meta data) namespace config
-    pub manifest: ManifestNamespaceConfig,
+    /// Namespace config for data.
+    pub data_namespace: WalNamespaceConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: ManifestNamespaceConfig,
 }
 
 /// Config of obkv wal based manifest
@@ -226,24 +225,24 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
 #[serde(default)]
 pub struct KafkaWalConfig {
     /// Kafka client config
-    pub kafka_config: KafkaConfig,
+    pub kafka: KafkaConfig,
 
-    /// Wal config
-    pub wal_config: MessageQueueWalConfig,
+    /// Common config for message queue config.
+    pub message_queue: MessageQueueWalConfig,
 }
 
-/// Config for wal based on rocksDB
+/// Config for wal based on RocksDB
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
-    /// Path used by rocksdb
-    pub path: String,
+    /// Data directory used by RocksDB.
+    pub data_dir: String,
 }
 
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
-            path: "/tmp/ceresdb".to_string(),
+            data_dir: "/tmp/ceresdb".to_string(),
         }
     }
 }
