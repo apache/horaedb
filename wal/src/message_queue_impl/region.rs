@@ -894,7 +894,7 @@ mod tests {
 
     use common_types::table::TableId;
     use message_queue::{
-        kafka::{config::Config, kafka_impl::KafkaImpl},
+        kafka::{config::Config, kafka_impl::KafkaImplInner},
         ConsumeIterator, MessageQueue, OffsetType, StartOffset,
     };
 
@@ -910,7 +910,7 @@ mod tests {
         // Test region
         let mut config = Config::default();
         config.client.boost_broker = Some("127.0.0.1:9011".to_string());
-        let kafka_impl = KafkaImpl::new(config).await.unwrap();
+        let kafka_impl = KafkaImplInner::new(config).await.unwrap();
         let message_queue = Arc::new(kafka_impl);
         test_region(message_queue).await;
     }

@@ -19,7 +19,7 @@ use common_util::{
     config::ReadableDuration,
     runtime::{self, Runtime},
 };
-use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImpl};
+use message_queue::kafka::{config::Config as KafkaConfig, kafka_impl::KafkaImplInner};
 use snafu::Snafu;
 use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
@@ -139,12 +139,12 @@ impl Default for KafkaWalBuilder {
 
 #[async_trait]
 impl WalBuilder for KafkaWalBuilder {
-    type Wal = MessageQueueImpl<KafkaImpl>;
+    type Wal = MessageQueueImpl<KafkaImplInner>;
 
     async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let mut config = KafkaConfig::default();
         config.client.boost_broker = Some("127.0.0.1:9011".to_string());
-        let kafka_impl = KafkaImpl::new(config).await.unwrap();
+        let kafka_impl = KafkaImplInner::new(config).await.unwrap();
         let message_queue_impl = MessageQueueImpl::new(
             self.namespace.clone(),
             kafka_impl,

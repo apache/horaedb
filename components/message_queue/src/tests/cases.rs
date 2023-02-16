@@ -13,7 +13,7 @@ use std::{
 use tokio::time::timeout;
 
 use crate::{
-    kafka::{config::Config, kafka_impl::KafkaImpl},
+    kafka::{config::Config, kafka_impl::KafkaImplInner},
     tests::util::{generate_test_data, random_topic_name},
     ConsumeIterator, Message, MessageQueue, OffsetType, StartOffset,
 };
@@ -23,7 +23,7 @@ use crate::{
 async fn test_kafka() {
     let mut config = Config::default();
     config.client.boost_broker = Some("127.0.0.1:9011".to_string());
-    let kafka_impl = Arc::new(KafkaImpl::new(config).await.unwrap());
+    let kafka_impl = Arc::new(KafkaImplInner::new(config).await.unwrap());
 
     run_message_queue_test(kafka_impl).await;
 }
