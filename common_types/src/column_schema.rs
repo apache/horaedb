@@ -252,13 +252,16 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
     fn try_from(column_schema: schema_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let data_type = column_schema.data_type();
-        let default_value = if column_schema.default_value.is_empty() {
-            None
-        } else {
-            let default_value = serde_json::from_slice::<Expr>(&column_schema.default_value)
-                .context(InvalidDefaultValueData)?;
-            Some(default_value)
-        };
+        let default_value = column_schema
+            .default_value
+            .and_then(|v| match v {
+                schema_pb::column_schema::DefaultValue::SerdeJson(raw_bytes) => {
+                    let default_value =
+                        serde_json::from_slice::<Expr>(&raw_bytes).context(InvalidDefaultValueData);
+                    Some(default_value)
+                }
+            })
+            .transpose()?;
 
         Ok(Self {
             id: column_schema.id,
@@ -441,10 +444,13 @@ impl Builder {
 
 impl From<ColumnSchema> for schema_pb::ColumnSchema {
     fn from(src: ColumnSchema) -> Self {
-        let default_value = src
+        let encoded_default_value = src
             .default_value
             .map(|v| serde_json::to_vec(&v).unwrap())
             .unwrap_or_default();
+        let default_value = Some(schema_pb::column_schema::DefaultValue::SerdeJson(
+            encoded_default_value,
+        ));
 
         schema_pb::ColumnSchema {
             name: src.name,
