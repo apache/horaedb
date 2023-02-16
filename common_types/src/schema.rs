@@ -950,12 +950,12 @@ impl TryFrom<schema_pb::TableSchema> for Schema {
 
     fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
         let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
-        let primary_key_indexes = schema.primary_key_indexes;
+        let primary_key_ids = schema.primary_key_ids;
 
         for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
             let column =
                 ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
-            if primary_key_indexes.contains(&(i as u64)) {
+            if primary_key_ids.contains(&column.id) {
                 builder = builder.add_key_column(column)?;
             } else {
                 builder = builder.add_normal_column(column)?;
@@ -974,15 +974,17 @@ impl From<&Schema> for schema_pb::TableSchema {
             .map(|v| schema_pb::ColumnSchema::from(v.clone()))
             .collect();
 
+        let timestamp_id = schema.column(schema.timestamp_index()).id;
+        let primary_key_ids = schema
+            .primary_key_indexes()
+            .iter()
+            .map(|i| schema.column(*i).id)
+            .collect();
         let table_schema = schema_pb::TableSchema {
-            timestamp_index: schema.timestamp_index as u32,
+            timestamp_id,
             version: schema.version,
             columns,
-            primary_key_indexes: schema
-                .primary_key_indexes
-                .iter()
-                .map(|i| *i as u64)
-                .collect(),
+            primary_key_ids,
         };
 
         table_schema
