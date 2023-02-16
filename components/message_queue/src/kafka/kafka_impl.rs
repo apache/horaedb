@@ -209,9 +209,10 @@ impl MessageQueue for KafkaImpl {
         }
 
         // Create topic in Kafka.
-        let topic_management_config = &self.config.topic_management;
+        let topic_management_config = &self.0.config.topic_management;
         info!("Try to create topic, name:{}.", topic_name);
         let result = self
+            .0
             .controller_client
             .create_topic(
                 topic_name,
@@ -310,7 +311,7 @@ impl MessageQueue for KafkaImpl {
             })?;
 
         topic_client
-            .delete_records(offset, self.config.topic_management.delete_max_wait_ms)
+            .delete_records(offset, self.0.config.topic_management.delete_max_wait_ms)
             .await
             .context(DeleteUpTo {
                 topic_name: topic_name.to_string(),
@@ -433,10 +434,10 @@ impl From<OffsetType> for OffsetAt {
     }
 }
 
-impl Debug for KafkaImplInner {
+impl Debug for KafkaImpl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KafkaImpl")
-            .field("config", &self.config)
+            .field("config", &self.0.config)
             .field("client", &"rskafka".to_string())
             .finish()
     }

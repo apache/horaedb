@@ -341,14 +341,14 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             WAL_DIR_NAME.to_string(),
             kafka.clone(),
             bg_runtime.clone(),
-            kafka_wal_config.message_queue.clone(),
+            kafka_wal_config.data_namespace,
         );
 
         let manifest_wal = MessageQueueImpl::new(
             MANIFEST_DIR_NAME.to_string(),
             kafka,
             bg_runtime.clone(),
-            kafka_wal_config.message_queue,
+            kafka_wal_config.meta_namespace,
         );
 
         let manifest = ManifestImpl::open(config.manifest, Arc::new(manifest_wal), object_store)
