@@ -274,7 +274,7 @@ impl RowGroup {
 
     /// Get the max timestamp of rows
     #[inline]
-    pub fn max_timestmap(&self) -> Timestamp {
+    pub fn max_timestamp(&self) -> Timestamp {
         self.max_timestamp
     }
 }
