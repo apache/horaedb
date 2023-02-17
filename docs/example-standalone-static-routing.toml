@@ -2,7 +2,9 @@
 bind_addr = "0.0.0.0"
 http_port = 5440
 grpc_port = 8831
-log_level = "info"
+
+[logger]
+level = "info"
 
 [runtime]
 read_thread_num = 4
@@ -33,7 +35,7 @@ schedule_interval = "30m"
 max_ongoing_tasks = 4
 
 [cluster_deployment]
-type = "NoMeta"
+mode = "NoMeta"
 
 # Route&Shard: public
 [[cluster_deployment.topology.schema_shards]]

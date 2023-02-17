@@ -2,11 +2,12 @@
 bind_addr = "0.0.0.0"
 http_port = 5440
 grpc_port = 8831
-log_level = "info"
 
-[analytic.storage]
-mem_cache_capacity = '1G'
-mem_cache_partition_bits = 0
+[logger]
+level = "info"
+
+[tracing]
+dir = "/tmp/ceresdb"
 
 [analytic.storage.object_store]
 type = "Local"
