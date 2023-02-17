@@ -18,5 +18,31 @@ INSERT INTO issue637
 VALUES
     ("t1",1,"v1","s1",1,"b1",1651737067000);
 
-select * from `issue637`;
+SELECT * FROM `issue637`;
 
+-- Test all data types mentioned in our user document.
+CREATE TABLE IF NOT EXISTS `issue637_1`
+(
+    t timestamp NOT NULL,
+    double_filed double,
+    float_filed float,
+    str_field string,
+    var_field varbinary,
+    u64_field uint64,
+    u32_field uint32,
+    u16_field uint16,
+    u8_field uint8,
+    i64_field int64,
+    i32_field int32,
+    i16_field int16,
+    i8_field int8,
+    bool_field boolean,
+    TIMESTAMP KEY (t)
+) ENGINE=Analytic with(enable_ttl = 'false');
+
+INSERT INTO issue637_1
+    (`t`,`double_filed`,`float_filed`,`str_field`,`var_field`,`u64_field`,`u32_field`,`u16_field`,`u8_field`,`i64_field`,`i32_field`,`i16_field`,`i8_field`,`bool_field`)
+VALUES
+    (1651737067000,100,100,"s","v",100,100,100,100,100,100,100,100,false);
+
+SELECT * FROM `issue637_1`;
