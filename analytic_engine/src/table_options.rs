@@ -251,7 +251,7 @@ pub enum StorageFormat {
 
     /// Design for time-series data
     /// Collapsible Columns within same primary key are collapsed
-    /// into list, other columns are the same format with columar's.
+    /// into list, other columns are the same format with columnar's.
     ///
     /// Whether a column is collapsible is decided by
     /// `Schema::is_collapsible_column`

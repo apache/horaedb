@@ -85,7 +85,7 @@ pub fn get_default_value(opt: &ColumnOption) -> Option<Expr> {
 }
 
 /// Returns true when is a TIMESTAMP KEY table constraint
-pub fn is_timestamp_key_constraint(constrait: &TableConstraint) -> bool {
+pub fn is_timestamp_key_constraint(constraint: &TableConstraint) -> bool {
     if let TableConstraint::Unique {
         name: Some(Ident {
             value,
@@ -93,7 +93,7 @@ pub fn is_timestamp_key_constraint(constrait: &TableConstraint) -> bool {
         }),
         columns: _,
         is_primary: false,
-    } = constrait
+    } = constraint
     {
         return value == TS_KEY;
     }
@@ -698,8 +698,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_tokens(&mut self, expecteds: &[&str]) -> bool {
-        for expected in expecteds {
+    fn consume_tokens(&mut self, expected_tokens: &[&str]) -> bool {
+        for expected in expected_tokens {
             if !self.consume_token(expected) {
                 return false;
             }

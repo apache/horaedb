@@ -1066,7 +1066,7 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     Ok(())
 }
 
-// Workaroud for TableReference::from(&str)
+// Workaround for TableReference::from(&str)
 // it will always convert table to lowercase when not quoted
 // TODO: support catalog/schema
 pub fn get_table_ref(table_name: &str) -> TableReference {

@@ -68,7 +68,7 @@ pub struct Config {
 /// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
 /// instance(s) under the control of CeresMeta.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "mode")]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),

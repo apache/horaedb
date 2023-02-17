@@ -179,7 +179,7 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
         let row_group = request.write_request.row_group;
         let table_schema_pb = row_group.schema().into();
         let min_timestamp = row_group.min_timestamp().as_i64();
-        let max_timestamp = row_group.max_timestmap().as_i64();
+        let max_timestamp = row_group.max_timestamp().as_i64();
         let avro_rows =
             avro::row_group_to_avro_rows(row_group).context(WriteRequestToPbWithCause {
                 table_ident: request.table.clone(),

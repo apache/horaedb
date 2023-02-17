@@ -62,12 +62,15 @@ pub enum Error {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
+
     #[snafu(display(
-        "Can not deserialize default-value-option from pb data, err:{}.\nBacktrace:\n{}",
+        "Failed to decode default value, encoded_val:{:?}, err:{}.\nBacktrace:\n{}",
+        encoded_val,
         source,
         backtrace
     ))]
-    InvalidDefaultValueData {
+    DecodeDefaultValue {
+        encoded_val: Vec<u8>,
         source: serde_json::error::Error,
         backtrace: Backtrace,
     },
@@ -252,13 +255,15 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
     fn try_from(column_schema: schema_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let data_type = column_schema.data_type();
-        let default_value = if column_schema.default_value.is_empty() {
-            None
-        } else {
-            let default_value = serde_json::from_slice::<Expr>(&column_schema.default_value)
-                .context(InvalidDefaultValueData)?;
-            Some(default_value)
-        };
+        let default_value = column_schema
+            .default_value
+            .map(|v| match v {
+                schema_pb::column_schema::DefaultValue::SerdeJson(encoded_val) => {
+                    serde_json::from_slice::<Expr>(&encoded_val)
+                        .context(DecodeDefaultValue { encoded_val })
+                }
+            })
+            .transpose()?;
 
         Ok(Self {
             id: column_schema.id,
@@ -441,10 +446,11 @@ impl Builder {
 
 impl From<ColumnSchema> for schema_pb::ColumnSchema {
     fn from(src: ColumnSchema) -> Self {
-        let default_value = src
-            .default_value
-            .map(|v| serde_json::to_vec(&v).unwrap())
-            .unwrap_or_default();
+        let default_value = src.default_value.map(|v| {
+            // FIXME: Maybe we should throw this error rather than panic here.
+            let encoded_value = serde_json::to_vec(&v).unwrap();
+            schema_pb::column_schema::DefaultValue::SerdeJson(encoded_value)
+        });
 
         schema_pb::ColumnSchema {
             name: src.name,
@@ -460,6 +466,8 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
 
 #[cfg(test)]
 mod tests {
+    use sqlparser::ast::Value;
+
     use super::*;
 
     /// Create a column schema for test, each field is filled with non-default
@@ -470,6 +478,7 @@ mod tests {
             .is_nullable(true)
             .is_tag(true)
             .comment("Comment of this column".to_string())
+            .default_value(Some(Expr::Value(Value::Boolean(true))))
             .build()
             .expect("should succeed to build column schema")
     }
@@ -485,7 +494,7 @@ mod tests {
             is_tag: true,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
-            default_value: None,
+            default_value: Some(Expr::Value(Value::Boolean(true))),
         };
 
         assert_eq!(&lhs, &rhs);

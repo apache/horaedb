@@ -417,7 +417,7 @@ impl Builder {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+            wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
@@ -477,7 +477,7 @@ impl Default for RocksDBEngineContext {
                 }),
             },
 
-            wal_storage: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+            wal: WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
                 data_dir: dir.path().to_str().unwrap().to_string(),
             })),
             ..Default::default()
@@ -504,7 +504,7 @@ impl Clone for RocksDBEngineContext {
         };
 
         config.storage = storage;
-        config.wal_storage = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
+        config.wal = WalStorageConfig::RocksDB(Box::new(RocksDBConfig {
             data_dir: dir.path().to_str().unwrap().to_string(),
         }));
 
@@ -544,7 +544,7 @@ impl Default for MemoryEngineContext {
                     data_dir: dir.path().to_str().unwrap().to_string(),
                 }),
             },
-            wal_storage: WalStorageConfig::Obkv(Box::default()),
+            wal: WalStorageConfig::Obkv(Box::default()),
             ..Default::default()
         };
 

@@ -8,7 +8,7 @@ use bytes::Bytes;
 use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::{Xor8, Xor8Builder};
 
 use crate::sst::writer::MetaData;
@@ -42,13 +42,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Unsupported parquet_filter version, version:{}.\nBacktrace\n:{}",
-        version,
-        backtrace
-    ))]
-    UnsupportedParquetFilter { version: u32, backtrace: Backtrace },
-
     #[snafu(display("Failed to convert time range, err:{}", source))]
     ConvertTimeRange { source: common_types::time::Error },
 
@@ -58,13 +51,13 @@ pub enum Error {
 
 define_result!(Error);
 
-const DEFAULT_FILTER_VERSION: u32 = 0;
-
 /// Filter can be used to test whether an element is a member of a set.
 /// False positive matches are possible if space-efficient probabilistic data
 /// structure are used.
 // TODO: move this to sst module, and add a FilterBuild trait
 trait Filter: fmt::Debug {
+    fn r#type(&self) -> FilterType;
+
     /// Check the key is in the bitmap index.
     fn contains(&self, key: &[u8]) -> bool;
 
@@ -75,6 +68,11 @@ trait Filter: fmt::Debug {
     fn from_bytes(buf: Vec<u8>) -> Result<Self>
     where
         Self: Sized;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FilterType {
+    Xor8,
 }
 
 /// Filter based on https://docs.rs/xorfilter-rs/latest/xorfilter/struct.Xor8.html
@@ -90,6 +88,10 @@ impl fmt::Debug for Xor8Filter {
 }
 
 impl Filter for Xor8Filter {
+    fn r#type(&self) -> FilterType {
+        FilterType::Xor8
+    }
+
     fn contains(&self, key: &[u8]) -> bool {
         self.xor8.contains(key)
     }
@@ -132,7 +134,7 @@ impl RowGroupFilterBuilder {
                 b.map(|mut b| {
                     b.build()
                         .context(BuildXor8Filter)
-                        .map(|xor8| Box::new(Xor8Filter { xor8 }) as Box<_>)
+                        .map(|xor8| Box::new(Xor8Filter { xor8 }) as _)
                 })
                 .transpose()
             })
@@ -228,21 +230,26 @@ impl From<ParquetFilter> for sst_pb::ParquetFilter {
                 let column_filters = row_group_filter
                     .column_filters
                     .into_iter()
-                    .map(|column_filter| {
-                        column_filter
-                            .map(|v| v.to_bytes())
-                            // If the column filter does not exist, use an empty vector for it.
-                            .unwrap_or_default()
+                    .map(|column_filter| match column_filter {
+                        Some(v) => {
+                            let encoded_filter = v.to_bytes();
+                            match v.r#type() {
+                                FilterType::Xor8 => sst_pb::ColumnFilter {
+                                    filter: Some(sst_pb::column_filter::Filter::Xor(
+                                        encoded_filter,
+                                    )),
+                                },
+                            }
+                        }
+                        None => sst_pb::ColumnFilter { filter: None },
                     })
                     .collect::<Vec<_>>();
-                sst_pb::parquet_filter::RowGroupFilter { column_filters }
+
+                sst_pb::RowGroupFilter { column_filters }
             })
             .collect::<Vec<_>>();
 
-        sst_pb::ParquetFilter {
-            version: DEFAULT_FILTER_VERSION,
-            row_group_filters,
-        }
+        sst_pb::ParquetFilter { row_group_filters }
     }
 }
 
@@ -250,13 +257,6 @@ impl TryFrom<sst_pb::ParquetFilter> for ParquetFilter {
     type Error = Error;
 
     fn try_from(src: sst_pb::ParquetFilter) -> Result<Self> {
-        ensure!(
-            src.version == DEFAULT_FILTER_VERSION,
-            UnsupportedParquetFilter {
-                version: src.version
-            }
-        );
-
         let row_group_filters = src
             .row_group_filters
             .into_iter()
@@ -264,16 +264,14 @@ impl TryFrom<sst_pb::ParquetFilter> for ParquetFilter {
                 let column_filters = row_group_filter
                     .column_filters
                     .into_iter()
-                    .map(|encoded_bytes| {
-                        if encoded_bytes.is_empty() {
-                            Ok(None)
-                        } else {
-                            Some(
+                    .map(|column_filter| match column_filter.filter {
+                        Some(v) => match v {
+                            sst_pb::column_filter::Filter::Xor(encoded_bytes) => {
                                 Xor8Filter::from_bytes(encoded_bytes)
-                                    .map(|e| Box::new(e) as Box<_>),
-                            )
-                            .transpose()
-                        }
+                                    .map(|v| Some(Box::new(v) as _))
+                            }
+                        },
+                        None => Ok(None),
                     })
                     .collect::<Result<Vec<_>>>()?;
                 Ok(RowGroupFilter { column_filters })
@@ -399,7 +397,6 @@ mod tests {
         };
 
         let parquet_filter_pb: sst_pb::ParquetFilter = parquet_filter.clone().into();
-        assert_eq!(parquet_filter_pb.version, DEFAULT_FILTER_VERSION);
         assert_eq!(parquet_filter_pb.row_group_filters.len(), 2);
         assert_eq!(
             parquet_filter_pb.row_group_filters[0].column_filters.len(),
@@ -409,16 +406,18 @@ mod tests {
             parquet_filter_pb.row_group_filters[1].column_filters.len(),
             2
         );
-        assert!(parquet_filter_pb.row_group_filters[0].column_filters[0].is_empty());
-        assert_eq!(
-            parquet_filter_pb.row_group_filters[0].column_filters[1].len(),
-            24
-        );
-        assert_eq!(
-            parquet_filter_pb.row_group_filters[1].column_filters[0].len(),
-            24
-        );
-        assert!(parquet_filter_pb.row_group_filters[1].column_filters[1].is_empty());
+        assert!(parquet_filter_pb.row_group_filters[0].column_filters[0]
+            .filter
+            .is_none());
+        assert!(parquet_filter_pb.row_group_filters[0].column_filters[1]
+            .filter
+            .is_some(),);
+        assert!(parquet_filter_pb.row_group_filters[1].column_filters[0]
+            .filter
+            .is_some(),);
+        assert!(parquet_filter_pb.row_group_filters[1].column_filters[1]
+            .filter
+            .is_none());
 
         let decoded_parquet_filter = ParquetFilter::try_from(parquet_filter_pb).unwrap();
         assert_eq!(decoded_parquet_filter, parquet_filter);

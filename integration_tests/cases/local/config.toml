@@ -2,12 +2,11 @@
 bind_addr = "127.0.0.1"
 http_port = 5440
 grpc_port = 8831
-log_level = "debug"
 
 [query_engine]
 read_parallelism = 8
 
-[analytic.wal_storage]
+[analytic.wal]
 type = "RocksDB"
 data_dir = "/tmp/ceresdb"
 

@@ -83,7 +83,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
     info!("Server starts up, config:{:#?}", config);
 
     runtimes.bg_runtime.block_on(async {
-        match config.analytic.wal_storage {
+        match config.analytic.wal {
             WalStorageConfig::RocksDB(_) => {
                 run_server_with_runtimes::<RocksDBWalEngineBuilder>(
                     config,
