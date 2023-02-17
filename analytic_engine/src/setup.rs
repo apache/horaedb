@@ -187,13 +187,13 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        let rocksdb_wal_config = match config.wal_storage {
+        let rocksdb_wal_config = match config.wal {
             WalStorageConfig::RocksDB(config) => *config,
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
                         "invalid wal storage config while opening rocksDB wal, config:{:?}",
-                        config.wal_storage
+                        config.wal
                     ),
                 }
                 .fail();
@@ -236,13 +236,13 @@ impl EngineBuilder for ObkvWalEngineBuilder {
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        let obkv_wal_config = match &config.wal_storage {
+        let obkv_wal_config = match &config.wal {
             WalStorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
                         "invalid wal storage config while opening obkv wal, config:{:?}",
-                        config.wal_storage
+                        config.wal
                     ),
                 }
                 .fail();
@@ -285,13 +285,13 @@ impl EngineBuilder for MemWalEngineBuilder {
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        let obkv_wal_config = match &config.wal_storage {
+        let obkv_wal_config = match &config.wal {
             WalStorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
                         "invalid wal storage config while opening memory wal, config:{:?}",
-                        config.wal_storage
+                        config.wal
                     ),
                 }
                 .fail();
@@ -320,7 +320,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
     ) -> Result<(WalManagerRef, ManifestRef)> {
-        let kafka_wal_config = match &config.wal_storage {
+        let kafka_wal_config = match &config.wal {
             WalStorageConfig::Kafka(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {

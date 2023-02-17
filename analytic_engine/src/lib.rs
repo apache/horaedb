@@ -81,7 +81,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal_storage: WalStorageConfig,
+    pub wal: WalStorageConfig,
 
     pub remote_engine_client: remote_engine_client::config::Config,
 }
@@ -107,7 +107,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
-            wal_storage: WalStorageConfig::RocksDB(Box::default()),
+            wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
     }

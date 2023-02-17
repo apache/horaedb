@@ -6,7 +6,7 @@ grpc_port = 8831
 [query_engine]
 read_parallelism = 8
 
-[analytic.wal_storage]
+[analytic.wal]
 type = "RocksDB"
 data_dir = "/tmp/ceresdb"
 
