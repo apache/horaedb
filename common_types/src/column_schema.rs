@@ -184,6 +184,7 @@ impl ColumnSchema {
             DatumKind::Int8 => true,
             DatumKind::Boolean => true,
             DatumKind::Date => true,
+            DatumKind::Time => true,
         }
     }
 

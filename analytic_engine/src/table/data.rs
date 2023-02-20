@@ -399,8 +399,9 @@ impl TableData {
                 Ok(MemTableForWrite::Normal(mem_state))
             }
             None => {
-                let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
 
+                let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
+                debug!("create sampling mem table:{},schema:{:#?}",sampling_mem.id, table_schema );
                 // Set sampling memtables of current version.
                 self.current_version.set_sampling(sampling_mem.clone());
 

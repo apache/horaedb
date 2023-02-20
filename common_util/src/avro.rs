@@ -289,6 +289,7 @@ fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
         | DatumKind::Int8 => avro_rs::Schema::Int,
         DatumKind::Boolean => avro_rs::Schema::Boolean,
         DatumKind::Date => avro_rs::Schema::Date,
+        DatumKind::Time => avro_rs::Schema::TimeMicros,
     }
 }
 
@@ -347,7 +348,11 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         Datum::Int16(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Int8(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Boolean(v) => may_union(Value::Boolean(v), is_nullable),
+        // TODO: Value::Date in avro(https://docs.rs/avro-rs/latest/avro_rs/schema/enum.Schema.html) is the number of days since the unix epoch
+        // But Datum::Date is is the number of days since ce
         Datum::Date(v) => may_union(Value::Date(v), is_nullable),
+        // this will lose some accuracy
+        Datum::Time(v) => may_union(Value::TimeMicros(v/1000), is_nullable),
     }
 }
 
@@ -372,6 +377,8 @@ fn avro_value_to_datum(value: Value, datum_type: DatumKind) -> Result<Datum> {
         (Value::Int(v), DatumKind::Int16) => Datum::Int16(v as i16),
         (Value::Int(v), DatumKind::UInt16) => Datum::UInt16(v as u16),
         (Value::Int(v), DatumKind::Int32) => Datum::Int32(v),
+        (Value::Date(v), DatumKind::Date) => Datum::Date(v),
+        (Value::TimeMicros(v), DatumKind::Time) => Datum::Time(v*1000),
         (Value::Union(inner_val), _) => avro_value_to_datum(*inner_val, datum_type)?,
         (other_value, _) => {
             return UnsupportedConversion {

@@ -22,6 +22,8 @@ enum DataType {
   UINT16 = 12;
   UINT8 = 13;
   BOOL = 14;
+  DATE = 15;
+  TIME = 16;
 }
 
 // Column schema

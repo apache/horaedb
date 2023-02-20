@@ -168,8 +168,11 @@ impl Instance {
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
+
         let mut iters = Vec::with_capacity(read_views.len());
         for read_view in read_views {
+            // debug!("build read view: project_schema:{:#?}, sample_schema:{:#?}", projected_schema,t.mem.schema());
+
             let merge_config = MergeConfig {
                 request_id: request.request_id,
                 deadline: request.opts.deadline,

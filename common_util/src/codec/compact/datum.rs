@@ -85,6 +85,10 @@ impl Encoder<Datum> for MemCompactEncoder {
                 buf.try_put_u8(consts::VARINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
             }
+            Datum::Time(v) => {
+                buf.try_put_u8(consts::VARINT_FLAG).context(EncodeKey)?;
+                self.encode(buf, v)
+            }
         }
     }
 
@@ -107,6 +111,7 @@ impl Encoder<Datum> for MemCompactEncoder {
             Datum::Int8(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Boolean(v) => self.estimate_encoded_size(&(u64::from(*v))),
             Datum::Date(v) => self.estimate_encoded_size(&(i64::from(*v))),
+            Datum::Time(v) => self.estimate_encoded_size(v),
         }
     }
 }
@@ -204,6 +209,10 @@ impl DecodeTo<Datum> for MemCompactDecoder {
             Datum::Int8(v) => decode_var_i64_into!(self, v, actual, buf, i8),
             Datum::Boolean(v) => decode_var_u64_into_bool!(self, v, actual, buf),
             Datum::Date(v) => decode_var_i64_into!(self, v, actual, buf, i32),
+            Datum::Time(v) =>  {
+                Self::ensure_flag(consts::VARINT_FLAG, actual)?;
+                self.decode_to(buf, v)?;
+            }
         }
         Ok(())
     }

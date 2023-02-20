@@ -61,10 +61,6 @@ impl Encoder<Datum> for MemComparable {
                 buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
             }
-            Datum::Date(v) => {
-                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
-                self.encode(buf, &(i64::from(*v)))
-            }
             Datum::Int16(v) => {
                 buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(i64::from(*v)))
@@ -76,6 +72,14 @@ impl Encoder<Datum> for MemComparable {
             Datum::Boolean(v) => {
                 buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
+            }
+            Datum::Date(v) => {
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
+                self.encode(buf, &(i64::from(*v)))
+            }
+            Datum::Time(v) => {
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
+                self.encode(buf, &(i64::from(*v)))
             }
             Datum::Double(_) => UnsupportedKind {
                 kind: DatumKind::Double,
@@ -102,6 +106,7 @@ impl Encoder<Datum> for MemComparable {
             Datum::Int64(v) => self.estimate_encoded_size(v),
             Datum::Int32(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Date(v) => self.estimate_encoded_size(&(i64::from(*v))),
+            Datum::Time(v) => self.estimate_encoded_size(v),
             Datum::Int16(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Int8(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Boolean(v) => self.estimate_encoded_size(&(u64::from(*v))),
@@ -185,6 +190,10 @@ impl DecodeTo<Datum> for MemComparable {
             }
             Datum::Int32(v) => decode_i64_into!(self, v, buf, i32),
             Datum::Date(v) => decode_i64_into!(self, v, buf, i32),
+            Datum::Time(v) => {
+                Self::ensure_flag(buf, consts::INT_FLAG)?;
+                self.decode_to(buf, v)?;
+            }
             Datum::Int16(v) => decode_i64_into!(self, v, buf, i16),
             Datum::Int8(v) => decode_i64_into!(self, v, buf, i8),
             Datum::Boolean(v) => decode_u64_into_bool!(self, v, buf),
