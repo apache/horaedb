@@ -1147,6 +1147,8 @@ mod tests {
         let cases = [
             (Datum::Null, None),
             (Datum::Timestamp(Timestamp::ZERO), None),
+            (Datum::Date(10), None),
+            (Datum::Time(10), None),
             (Datum::Double(1.0), Some(Datum::Double(-1.0))),
             (Datum::Float(1.0), Some(Datum::Float(-1.0))),
             (Datum::Varbinary(Bytes::new()), None),

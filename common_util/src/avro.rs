@@ -9,6 +9,7 @@ use avro_rs::{
     types::{Record, Value},
     Schema as AvroSchema,
 };
+use chrono::Datelike;
 use common_types::{
     bytes::{ByteVec, Bytes},
     column::{ColumnBlock, ColumnBlockBuilder},
@@ -331,12 +332,24 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         Datum::Int16(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Int8(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Boolean(v) => may_union(Value::Boolean(v), is_nullable),
-        // TODO: Value::Date in avro(https://docs.rs/avro-rs/latest/avro_rs/schema/enum.Schema.html) is the number of days since the unix epoch
-        // But Datum::Date is is the number of days since ce
-        Datum::Date(v) => may_union(Value::Date(v), is_nullable),
+        // Value::Date in avro(https://docs.rs/avro-rs/latest/avro_rs/schema/enum.Schema.html) is the number of days since the unix epoch
+        // But Datum::Date is the number of days since ce
+        Datum::Date(v) => {
+            let days = days_from_ce_to_ue();
+            may_union(Value::Date(v-days), is_nullable)},
         // this will lose some accuracy
-        Datum::Time(v) => may_union(Value::TimeMicros(v/1000), is_nullable),
+        Datum::Time(v) => {
+            let nanos = (v >> 32) * 1_000_000_000 + (v & 0xFFFF_FFFF);
+            may_union(Value::TimeMicros(nanos / 1000), is_nullable)
+        },
     }
+}
+
+// days from ce to unix epoch
+fn days_from_ce_to_ue() -> i32 {
+    let option = chrono::NaiveDate::from_ymd_opt(1970, 1, 1);
+    let days = option.unwrap().num_days_from_ce();
+    days
 }
 
 /// Convert the avro `Value` into the `Datum`.
@@ -360,8 +373,14 @@ fn avro_value_to_datum(value: Value, datum_type: DatumKind) -> Result<Datum> {
         (Value::Int(v), DatumKind::Int16) => Datum::Int16(v as i16),
         (Value::Int(v), DatumKind::UInt16) => Datum::UInt16(v as u16),
         (Value::Int(v), DatumKind::Int32) => Datum::Int32(v),
-        (Value::Date(v), DatumKind::Date) => Datum::Date(v),
-        (Value::TimeMicros(v), DatumKind::Time) => Datum::Time(v*1000),
+        (Value::Date(v), DatumKind::Date) => {
+            let days = days_from_ce_to_ue();
+            Datum::Date(v+days)},
+        (Value::TimeMicros(v), DatumKind::Time) =>{
+            let secs= v/1_000_000;
+            let nans = (v%1_000_000)*1000;
+            Datum::Time((secs<<32)+nans)
+        },
         (Value::Union(inner_val), _) => avro_value_to_datum(*inner_val, datum_type)?,
         (other_value, _) => {
             return UnsupportedConversion {
@@ -413,6 +432,8 @@ fn avro_row_to_row(
 
 #[cfg(test)]
 mod tests {
+    use avro_rs::types::Value::TimeMicros;
+    use chrono::Timelike;
     use super::*;
 
     #[test]
@@ -422,6 +443,29 @@ mod tests {
         let datum = avro_value_to_datum(avro_value, DatumKind::UInt64).unwrap();
         let expected = Datum::UInt64(overflow_value);
 
+        assert_eq!(datum, expected);
+    }
+
+    #[test]
+    fn test_avro_value_to_datum_date() {
+        let date =  chrono::NaiveDate::from_ymd_opt(2022,12,31).unwrap();
+        let days = date.num_days_from_ce();
+        let expected = Datum::Date(days);
+        let value = datum_to_avro_value(expected, true);
+        let datum = avro_value_to_datum(value, DatumKind::Date).unwrap();
+        let expected = Datum::Date(days);
+        assert_eq!(datum, expected);
+    }
+
+    #[test]
+    fn test_avro_value_to_datum_time() {
+       let time =  chrono::NaiveTime::from_hms_milli_opt(23,59,59,999).unwrap();
+        let secs = time.num_seconds_from_midnight() as i64;
+        let nanos = time.nanosecond() as i64;
+        let expected = Datum::Time((secs << 32) + nanos);
+        let value = datum_to_avro_value(expected, true);
+        let datum = avro_value_to_datum(value, DatumKind::Time).unwrap();
+        let expected = Datum::Time((secs << 32) + nanos);
         assert_eq!(datum, expected);
     }
 }
