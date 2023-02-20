@@ -3,8 +3,8 @@
 //! Datum holds different kind of data
 
 use std::{convert::TryFrom, fmt, str};
-use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE,NANOSECONDS};
 
+use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
 use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
@@ -629,7 +629,7 @@ impl Datum {
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
                 let date =
                     chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT).context(InvalidDate)?;
-                let days = date.num_days_from_ce()-EPOCH_DAYS_FROM_CE;
+                let days = date.num_days_from_ce() - EPOCH_DAYS_FROM_CE;
                 Ok(Datum::Date(days))
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
