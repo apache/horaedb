@@ -615,22 +615,16 @@ impl Datum {
                 Ok(Datum::Timestamp(Timestamp::new(n)))
             }
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
-                println!("parse from date:{}", &s);
-
                 let date = chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT)
                     .context(InvalidDate)?;
                 let days = date.num_days_from_ce();
-                println!("parse from date:{}, time:{}, days:{}", &s, date, days);
                 Ok(Datum::Date(days))
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
-                println!("parse from date:{}", &s);
-
                 let time = chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT)
                     .context(InvalidTime)?;
                 let sec = time.num_seconds_from_midnight() as i64;
                 let nan = time.nanosecond() as i64;
-                println!("parse from time:{}, sec:{}, nan:{}", &s, sec.clone(), nan);
                 Ok(Datum::Time((sec << 32) + nan) )
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
