@@ -808,7 +808,7 @@ impl Serialize for Datum {
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
             Datum::Date(v) => serializer.serialize_str(
-                NaiveDate::from_num_days_from_ce_opt(*v)
+                NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
                     .unwrap()
                     .format(DATE_FORMAT)
                     .to_string()
@@ -816,8 +816,8 @@ impl Serialize for Datum {
             ),
             Datum::Time(v) => serializer.serialize_str(
                 NaiveTime::from_num_seconds_from_midnight_opt(
-                    ((*v) >> 32) as u32,
-                    ((*v) & 0xFFFF_FFFF) as u32,
+                    ((*v) / NANOSECONDS) as u32,
+                    ((*v) % NANOSECONDS) as u32,
                 )
                 .unwrap()
                 .to_string()
