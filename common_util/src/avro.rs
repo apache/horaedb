@@ -412,8 +412,8 @@ fn avro_row_to_row(
 
 #[cfg(test)]
 mod tests {
-    use arrow::temporal_conversions::NANOSECONDS;
-    use chrono::Timelike;
+    use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
+    use chrono::{Datelike, Timelike};
 
     use super::*;
 
@@ -430,11 +430,10 @@ mod tests {
     #[test]
     fn test_avro_value_to_datum_date() {
         let date = chrono::NaiveDate::from_ymd_opt(2022, 12, 31).unwrap();
-        let days = date.num_days_from_ce();
-        let expected = Datum::Date(days);
+        let expected = Datum::Date(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE);
         let value = datum_to_avro_value(expected, true);
         let datum = avro_value_to_datum(value, DatumKind::Date).unwrap();
-        let expected = Datum::Date(days);
+        let expected = Datum::Date(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE);
         assert_eq!(datum, expected);
     }
 
