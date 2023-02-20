@@ -3,6 +3,7 @@
 //! Datum comparable codec
 
 use std::i64;
+
 use common_types::{
     bytes::{Buf, BufMut, BytesMut, SafeBufMut},
     datum::{Datum, DatumKind},
@@ -79,7 +80,7 @@ impl Encoder<Datum> for MemComparable {
             }
             Datum::Time(v) => {
                 buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
-                self.encode(buf, &(i64::from(*v)))
+                self.encode(buf, v)
             }
             Datum::Double(_) => UnsupportedKind {
                 kind: DatumKind::Double,

@@ -3,9 +3,9 @@
 //! Datum holds different kind of data
 
 use std::{convert::TryFrom, fmt, str};
-use ceresdbproto::schema::DataType as DataTypePb;
 
-use chrono::{Local, TimeZone, Datelike, NaiveDate, NaiveTime, Timelike};
+use ceresdbproto::schema::DataType as DataTypePb;
+use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
@@ -602,8 +602,19 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
-            Datum::Date(v) => format!("{:?}", NaiveDate::from_num_days_from_ce_opt(*v).unwrap().to_string()),
-            Datum::Time(v) => format!("{:?}",NaiveTime::from_num_seconds_from_midnight_opt(((*v) >> 32) as u32, ((*v)&0xFFFF_FFFF) as u32)),
+            Datum::Date(v) => format!(
+                "{:?}",
+                NaiveDate::from_num_days_from_ce_opt(*v)
+                    .unwrap()
+                    .to_string()
+            ),
+            Datum::Time(v) => format!(
+                "{:?}",
+                NaiveTime::from_num_seconds_from_midnight_opt(
+                    ((*v) >> 32) as u32,
+                    ((*v) & 0xFFFF_FFFF) as u32
+                )
+            ),
         }
     }
 
@@ -615,17 +626,17 @@ impl Datum {
                 Ok(Datum::Timestamp(Timestamp::new(n)))
             }
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
-                let date = chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT)
-                    .context(InvalidDate)?;
+                let date =
+                    chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT).context(InvalidDate)?;
                 let days = date.num_days_from_ce();
                 Ok(Datum::Date(days))
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
-                let time = chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT)
-                    .context(InvalidTime)?;
+                let time =
+                    chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT).context(InvalidTime)?;
                 let sec = time.num_seconds_from_midnight() as i64;
                 let nan = time.nanosecond() as i64;
-                Ok(Datum::Time((sec << 32) + nan) )
+                Ok(Datum::Time((sec << 32) + nan))
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
@@ -796,11 +807,21 @@ impl Serialize for Datum {
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
             Datum::Date(v) => serializer.serialize_str(
-                NaiveDate::from_num_days_from_ce_opt(*v).unwrap()
-                .format(DATE_FORMAT).to_string().as_ref()),
+                NaiveDate::from_num_days_from_ce_opt(*v)
+                    .unwrap()
+                    .format(DATE_FORMAT)
+                    .to_string()
+                    .as_ref(),
+            ),
             Datum::Time(v) => serializer.serialize_str(
-                NaiveTime::from_num_seconds_from_midnight_opt(((*v) >> 32) as u32, ((*v) & 0xFFFF_FFFF) as u32).unwrap()
-                    .to_string().as_ref()),
+                NaiveTime::from_num_seconds_from_midnight_opt(
+                    ((*v) >> 32) as u32,
+                    ((*v) & 0xFFFF_FFFF) as u32,
+                )
+                .unwrap()
+                .to_string()
+                .as_ref(),
+            ),
         }
     }
 }

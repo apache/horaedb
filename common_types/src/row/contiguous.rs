@@ -421,12 +421,12 @@ fn must_read_view<'a>(
             let value_buf = datum_buf[..mem::size_of::<i32>()].try_into().unwrap();
             let v = i32::from_ne_bytes(value_buf);
             DatumView::Date(v)
-        },
+        }
         DatumKind::Time => {
             let value_buf = datum_buf[..mem::size_of::<i64>()].try_into().unwrap();
             let v = i64::from_ne_bytes(value_buf);
             DatumView::Time(v)
-        },
+        }
     }
 }
 

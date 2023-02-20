@@ -6,13 +6,13 @@ use std::sync::Arc;
 use arrow::{
     array::{
         Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
-        Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
+        Date32Array as DateArray, Date32Builder as DateBuilder, Float32Array as FloatArray,
+        Float32Builder as FloatBuilder, Float64Array as DoubleArray,
         Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
+        Time64NanosecondArray as TimeArray, Time64NanosecondBuilder as TimeBuilder,
         TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
         UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
-        Date32Builder as DateBuilder, Date32Array as DateArray,
-        Time64NanosecondBuilder as TimeBuilder, Time64NanosecondArray as TimeArray
     },
     datatypes::DataType,
     error::ArrowError,
@@ -30,10 +30,10 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-    "Invalid array type, datum_kind:{:?}, data_type:{:?}.\nBacktrace:\n{}",
-    datum_kind,
-    data_type,
-    backtrace
+        "Invalid array type, datum_kind:{:?}, data_type:{:?}.\nBacktrace:\n{}",
+        datum_kind,
+        data_type,
+        backtrace
     ))]
     InvalidArrayType {
         datum_kind: DatumKind,
@@ -48,10 +48,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-    "Data type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-    expect,
-    given,
-    backtrace
+        "Data type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+        expect,
+        given,
+        backtrace
     ))]
     ConflictType {
         expect: DatumKind,
@@ -60,9 +60,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-    "Failed to convert arrow data type, data_type:{}.\nBacktrace:\n{}",
-    data_type,
-    backtrace
+        "Failed to convert arrow data type, data_type:{}.\nBacktrace:\n{}",
+        data_type,
+        backtrace
     ))]
     UnsupportedArray {
         data_type: DataType,
@@ -364,7 +364,6 @@ impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
 impl_from_array_and_slice!(VarbinaryColumn, BinaryArray);
 impl_from_array_and_slice!(StringColumn, StringArray);
 
-
 macro_rules! impl_iter {
     ($Column: ident, $Value: ident) => {
         impl $Column {
@@ -657,7 +656,6 @@ impl ColumnBlock {
         }
     }
 }
-
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
     array

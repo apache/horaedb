@@ -209,7 +209,7 @@ impl DecodeTo<Datum> for MemCompactDecoder {
             Datum::Int8(v) => decode_var_i64_into!(self, v, actual, buf, i8),
             Datum::Boolean(v) => decode_var_u64_into_bool!(self, v, actual, buf),
             Datum::Date(v) => decode_var_i64_into!(self, v, actual, buf, i32),
-            Datum::Time(v) =>  {
+            Datum::Time(v) => {
                 Self::ensure_flag(consts::VARINT_FLAG, actual)?;
                 self.decode_to(buf, v)?;
             }

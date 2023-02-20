@@ -336,20 +336,20 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         // But Datum::Date is the number of days since ce
         Datum::Date(v) => {
             let days = days_from_ce_to_ue();
-            may_union(Value::Date(v-days), is_nullable)},
+            may_union(Value::Date(v - days), is_nullable)
+        }
         // this will lose some accuracy
         Datum::Time(v) => {
             let nanos = (v >> 32) * 1_000_000_000 + (v & 0xFFFF_FFFF);
             may_union(Value::TimeMicros(nanos / 1000), is_nullable)
-        },
+        }
     }
 }
 
 // days from ce to unix epoch
 fn days_from_ce_to_ue() -> i32 {
     let option = chrono::NaiveDate::from_ymd_opt(1970, 1, 1);
-    let days = option.unwrap().num_days_from_ce();
-    days
+    option.unwrap().num_days_from_ce()
 }
 
 /// Convert the avro `Value` into the `Datum`.
@@ -375,12 +375,13 @@ fn avro_value_to_datum(value: Value, datum_type: DatumKind) -> Result<Datum> {
         (Value::Int(v), DatumKind::Int32) => Datum::Int32(v),
         (Value::Date(v), DatumKind::Date) => {
             let days = days_from_ce_to_ue();
-            Datum::Date(v+days)},
-        (Value::TimeMicros(v), DatumKind::Time) =>{
-            let secs= v/1_000_000;
-            let nans = (v%1_000_000)*1000;
-            Datum::Time((secs<<32)+nans)
-        },
+            Datum::Date(v + days)
+        }
+        (Value::TimeMicros(v), DatumKind::Time) => {
+            let secs = v / 1_000_000;
+            let nans = (v % 1_000_000) * 1000;
+            Datum::Time((secs << 32) + nans)
+        }
         (Value::Union(inner_val), _) => avro_value_to_datum(*inner_val, datum_type)?,
         (other_value, _) => {
             return UnsupportedConversion {
@@ -432,8 +433,8 @@ fn avro_row_to_row(
 
 #[cfg(test)]
 mod tests {
-    use avro_rs::types::Value::TimeMicros;
     use chrono::Timelike;
+
     use super::*;
 
     #[test]
@@ -448,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_avro_value_to_datum_date() {
-        let date =  chrono::NaiveDate::from_ymd_opt(2022,12,31).unwrap();
+        let date = chrono::NaiveDate::from_ymd_opt(2022, 12, 31).unwrap();
         let days = date.num_days_from_ce();
         let expected = Datum::Date(days);
         let value = datum_to_avro_value(expected, true);
@@ -459,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_avro_value_to_datum_time() {
-       let time =  chrono::NaiveTime::from_hms_milli_opt(23,59,59,999).unwrap();
+        let time = chrono::NaiveTime::from_hms_milli_opt(23, 59, 59, 999).unwrap();
         let secs = time.num_seconds_from_midnight() as i64;
         let nanos = time.nanosecond() as i64;
         let expected = Datum::Time((secs << 32) + nanos);
