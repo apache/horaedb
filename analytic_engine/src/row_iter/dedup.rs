@@ -212,18 +212,18 @@ mod tests {
                 build_record_batch_with_key(
                     schema.clone(),
                     vec![
-                        build_row(b"a", 1, 10.0, "v1",1000,1_000_000),
-                        build_row(b"a", 1, 10.0, "v",1000,1_000_000),
-                        build_row(b"a", 2, 10.0, "v2",2000,2_000_000),
+                        build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
+                        build_row(b"a", 1, 10.0, "v", 1000, 1_000_000),
+                        build_row(b"a", 2, 10.0, "v2", 2000, 2_000_000),
                     ],
                 ),
                 build_record_batch_with_key(
                     schema,
                     vec![
-                        build_row(b"a", 2, 10.0, "v",2000,2_000_000),
-                        build_row(b"a", 3, 10.0, "v3",3000,3_000_000),
-                        build_row(b"a", 3, 10.0, "v",3000,3_000_000),
-                        build_row(b"a", 4, 10.0, "v4",4000,4_000_000),
+                        build_row(b"a", 2, 10.0, "v", 2000, 2_000_000),
+                        build_row(b"a", 3, 10.0, "v3", 3000, 3_000_000),
+                        build_row(b"a", 3, 10.0, "v", 3000, 3_000_000),
+                        build_row(b"a", 4, 10.0, "v4", 4000, 4_000_000),
                     ],
                 ),
             ],
@@ -233,10 +233,10 @@ mod tests {
         check_iterator(
             &mut iter,
             vec![
-                build_row(b"a", 1, 10.0, "v1",1000,1_000_000),
-                build_row(b"a", 2, 10.0, "v2",2000,2_000_000),
-                build_row(b"a", 3, 10.0, "v3",3000,3_000_000),
-                build_row(b"a", 4, 10.0, "v4",4000,4_000_000),
+                build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
+                build_row(b"a", 2, 10.0, "v2", 2000, 2_000_000),
+                build_row(b"a", 3, 10.0, "v3", 3000, 3_000_000),
+                build_row(b"a", 4, 10.0, "v4", 4000, 4_000_000),
             ],
         )
         .await;

@@ -152,7 +152,14 @@ pub fn build_projected_schema() -> ProjectedSchema {
     ProjectedSchema::new(schema, Some(projection)).unwrap()
 }
 
-pub fn build_row(key1: &[u8], key2: i64, field1: f64, field2: &str, field3:i32, field4: i64) -> Row {
+pub fn build_row(
+    key1: &[u8],
+    key2: i64,
+    field1: f64,
+    field2: &str,
+    field3: i32,
+    field4: i64,
+) -> Row {
     let datums = vec![
         Datum::Varbinary(Bytes::copy_from_slice(key1)),
         Datum::Timestamp(Timestamp::new(key2)),
@@ -165,7 +172,14 @@ pub fn build_row(key1: &[u8], key2: i64, field1: f64, field2: &str, field3:i32, 
     Row::from_datums(datums)
 }
 
-pub fn build_row_opt(key1: &[u8], key2: i64, field1: Option<f64>, field2: Option<&str>,field3: Option<i32>, field4: Option<i64>) -> Row {
+pub fn build_row_opt(
+    key1: &[u8],
+    key2: i64,
+    field1: Option<f64>,
+    field2: Option<&str>,
+    field3: Option<i32>,
+    field4: Option<i64>,
+) -> Row {
     let datums = vec![
         Datum::Varbinary(Bytes::copy_from_slice(key1)),
         Datum::Timestamp(Timestamp::new(key2)),
@@ -182,11 +196,25 @@ pub fn build_row_opt(key1: &[u8], key2: i64, field1: Option<f64>, field2: Option
 
 pub fn build_rows() -> Vec<Row> {
     vec![
-        build_row(b"binary key", 1000000, 10.0, "string value",0,0),
-        build_row(b"binary key1", 1000001, 11.0, "string value 1",1000,1000000),
-        build_row_opt(b"binary key2", 1000002, None, Some("string value 2"),Some(1000),Some(1000000)),
-        build_row_opt(b"binary key3", 1000003, Some(13.0), None,Some(1000),None),
-        build_row_opt(b"binary key4", 1000004, None, None,None, Some(1000000)),
+        build_row(b"binary key", 1000000, 10.0, "string value", 0, 0),
+        build_row(
+            b"binary key1",
+            1000001,
+            11.0,
+            "string value 1",
+            1000,
+            1000000,
+        ),
+        build_row_opt(
+            b"binary key2",
+            1000002,
+            None,
+            Some("string value 2"),
+            Some(1000),
+            Some(1000000),
+        ),
+        build_row_opt(b"binary key3", 1000003, Some(13.0), None, Some(1000), None),
+        build_row_opt(b"binary key4", 1000004, None, None, None, Some(1000000)),
     ]
 }
 
