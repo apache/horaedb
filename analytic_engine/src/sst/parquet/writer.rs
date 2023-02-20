@@ -348,9 +348,9 @@ mod tests {
                 // reach here when counter is 9 7 5 3 1
                 let ts = 100 + counter;
                 let rows = vec![
-                    build_row(b"a", ts, 10.0, "v4"),
-                    build_row(b"b", ts, 10.0, "v4"),
-                    build_row(b"c", ts, 10.0, "v4"),
+                    build_row(b"a", ts, 10.0, "v4",1000,1_000_000),
+                    build_row(b"b", ts, 10.0, "v4",1000,1_000_000),
+                    build_row(b"c", ts, 10.0, "v4",1000,1_000_000),
                 ];
                 let batch = build_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
@@ -411,9 +411,9 @@ mod tests {
             let mut stream = reader.read().await.unwrap();
             let mut expect_rows = vec![];
             for counter in &[4, 3, 2, 1, 0] {
-                expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4"));
-                expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4"));
-                expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4"));
+                expect_rows.push(build_row(b"a", 100 + counter, 10.0, "v4",1000,1_000_000));
+                expect_rows.push(build_row(b"b", 100 + counter, 10.0, "v4",1000,1_000_000));
+                expect_rows.push(build_row(b"c", 100 + counter, 10.0, "v4",1000,1_000_000));
             }
             check_stream(&mut stream, expect_rows).await;
         });
@@ -457,7 +457,7 @@ mod tests {
             }
 
             let rows = (0..input_row_nums[poll_cnt])
-                .map(|_| build_row(b"a", 100, 10.0, "v4"))
+                .map(|_| build_row(b"a", 100, 10.0, "v4",1000,1_000_000))
                 .collect::<Vec<_>>();
 
             let batch = build_record_batch_with_key(schema_clone.clone(), rows);

@@ -750,7 +750,7 @@ mod tests {
         }
         builder
             .add_normal_column(
-                column_schema::Builder::new("field3".to_string(), DatumKind::String)
+                column_schema::Builder::new("field5".to_string(), DatumKind::String)
                     .build()
                     .expect("should succeed build column schema"),
             )
