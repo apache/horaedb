@@ -3,6 +3,7 @@
 //! Datum holds different kind of data
 
 use std::{convert::TryFrom, fmt, str};
+use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE,NANOSECONDS};
 
 use ceresdbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
@@ -604,15 +605,15 @@ impl Datum {
             Datum::Boolean(v) => v.to_string(),
             Datum::Date(v) => format!(
                 "{:?}",
-                NaiveDate::from_num_days_from_ce_opt(*v)
+                NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
                     .unwrap()
                     .to_string()
             ),
             Datum::Time(v) => format!(
                 "{:?}",
                 NaiveTime::from_num_seconds_from_midnight_opt(
-                    ((*v) >> 32) as u32,
-                    ((*v) & 0xFFFF_FFFF) as u32
+                    ((*v) / NANOSECONDS) as u32,
+                    ((*v) % NANOSECONDS) as u32
                 )
             ),
         }
@@ -628,7 +629,7 @@ impl Datum {
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
                 let date =
                     chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT).context(InvalidDate)?;
-                let days = date.num_days_from_ce();
+                let days = date.num_days_from_ce()-EPOCH_DAYS_FROM_CE;
                 Ok(Datum::Date(days))
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
@@ -636,7 +637,7 @@ impl Datum {
                     chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT).context(InvalidTime)?;
                 let sec = time.num_seconds_from_midnight() as i64;
                 let nan = time.nanosecond() as i64;
-                Ok(Datum::Time((sec << 32) + nan))
+                Ok(Datum::Time((sec * NANOSECONDS) + nan))
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;

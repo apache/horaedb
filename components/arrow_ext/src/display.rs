@@ -174,7 +174,7 @@ macro_rules! make_string_time {
             array
                 .value_as_time($row)
                 .map(|d| d.to_string())
-                .unwrap_or_else(|| "ERROR CONVERTING DATE".to_string())
+                .unwrap_or_else(|| "ERROR CONVERTING TIME".to_string())
         };
 
         Ok(s)

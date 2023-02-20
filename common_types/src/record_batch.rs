@@ -649,9 +649,9 @@ mod tests {
     fn test_append_projected_contiguous_row() {
         let record_batch_with_key = build_record_batch_with_key();
         assert_eq!(record_batch_with_key.num_rows(), 5);
-        assert_eq!(record_batch_with_key.num_columns(), 3);
+        assert_eq!(record_batch_with_key.num_columns(), 5);
 
-        check_record_batch_with_key(record_batch_with_key, 5, 3);
+        check_record_batch_with_key(record_batch_with_key, 5, 5);
     }
 
     #[test]
@@ -671,9 +671,9 @@ mod tests {
         builder.append_row_view(&view).unwrap();
         let record_batch_with_key = builder.build().unwrap();
         assert_eq!(record_batch_with_key.num_rows(), 1);
-        assert_eq!(record_batch_with_key.num_columns(), 3);
+        assert_eq!(record_batch_with_key.num_columns(), 5);
 
-        check_record_batch_with_key(record_batch_with_key, 1, 3);
+        check_record_batch_with_key(record_batch_with_key, 1, 5);
     }
 
     #[test]
@@ -691,8 +691,8 @@ mod tests {
             .unwrap();
         let record_batch_with_key = builder.build().unwrap();
         assert_eq!(record_batch_with_key.num_rows(), 2);
-        assert_eq!(record_batch_with_key.num_columns(), 3);
+        assert_eq!(record_batch_with_key.num_columns(), 5);
 
-        check_record_batch_with_key(record_batch_with_key, 2, 3);
+        check_record_batch_with_key(record_batch_with_key, 2, 5);
     }
 }
