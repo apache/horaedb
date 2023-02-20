@@ -171,7 +171,7 @@ impl Instance {
 
         let mut iters = Vec::with_capacity(read_views.len());
         for read_view in read_views {
-            // debug!("build read view: project_schema:{:#?}, sample_schema:{:#?}", projected_schema,t.mem.schema());
+            debug!("build read view: project_schema:{:#?}, sample_schema:{:#?}", projected_schema,t.mem.schema());
 
             let merge_config = MergeConfig {
                 request_id: request.request_id,

@@ -157,16 +157,12 @@ fn get_string_datum_view(array: &StringArray, index: usize) -> DatumView {
 #[inline]
 fn get_date_datum_view(array: &DateArray, index: usize) -> DatumView {
     let value = array.value(index);
-    // TODO(lee): convert to real date format
-    // DatumView::Date(value.to_string().as_ref())
     DatumView::Date(value)
 }
 
 #[inline]
 fn get_time_datum_view(array: &TimeArray, index: usize) -> DatumView {
     let value = array.value(index);
-    // TODO(lee): convert to real date format
-    // DatumView::Date(value.to_string().as_ref())
     DatumView::Time(value)
 }
 
