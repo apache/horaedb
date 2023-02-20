@@ -2,6 +2,7 @@
 
 //! Payloads to write to wal
 
+use ceresdbproto::{manifest as manifest_pb, table_requests};
 use common_types::{
     bytes::{Buf, BufMut, SafeBuf, SafeBufMut},
     row::{RowGroup, RowGroupBuilder},
@@ -12,7 +13,6 @@ use common_util::{
     define_result,
 };
 use prost::Message;
-use proto::{meta_update, table_requests};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use wal::log_batch::{Payload, PayloadDecoder};
 
@@ -105,8 +105,8 @@ const HEADER_SIZE: usize = 1;
 #[derive(Debug)]
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),
-    AlterSchema(&'a meta_update::AlterSchemaMeta),
-    AlterOption(&'a meta_update::AlterOptionsMeta),
+    AlterSchema(&'a manifest_pb::AlterSchemaMeta),
+    AlterOption(&'a manifest_pb::AlterOptionsMeta),
 }
 
 impl<'a> Payload for WritePayload<'a> {
@@ -119,7 +119,7 @@ impl<'a> Payload for WritePayload<'a> {
             WritePayload::AlterOption(req) => req.encoded_len(),
         };
 
-        HEADER_SIZE + body_size as usize
+        HEADER_SIZE + body_size
     }
 
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
@@ -184,7 +184,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_schema_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_schema_meta_pb: meta_update::AlterSchemaMeta =
+        let alter_schema_meta_pb: manifest_pb::AlterSchemaMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert schema in pb
@@ -198,7 +198,7 @@ impl ReadPayload {
     }
 
     fn decode_alter_option_from_pb(buf: &[u8]) -> Result<Self> {
-        let alter_option_meta_pb: meta_update::AlterOptionsMeta =
+        let alter_option_meta_pb: manifest_pb::AlterOptionsMeta =
             Message::decode(buf).context(DecodeBody)?;
 
         // Consume and convert options in pb

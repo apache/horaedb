@@ -3,13 +3,17 @@
 //! Region context
 
 use std::{
+    cmp,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
 
 use common_types::{bytes::BytesMut, table::TableId, SequenceNumber};
-use common_util::define_result;
-use log::debug;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
+use log::{debug, warn};
 use message_queue::{MessageQueue, Offset};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use tokio::sync::{Mutex, RwLock};
@@ -67,7 +71,7 @@ pub enum Error {
         region_id: u64,
         table_id: TableId,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 
     #[snafu(display(
@@ -141,8 +145,7 @@ impl RegionContext {
                 region_id: self.region_id,
                 table_id,
                 msg: format!(
-                    "table not found while mark it delete to, table id:{}, sequence number:{}",
-                    table_id, sequence_num
+                    "table not found while mark it delete to, table id:{table_id}, sequence number:{sequence_num}"
                 ),
             })?;
 
@@ -289,6 +292,7 @@ impl TableMeta {
     ) -> std::result::Result<(), String> {
         let mut inner = self.inner.lock().await;
 
+        // Check the set sequence num's validity.
         if sequence_num > inner.next_sequence_num {
             return Err(format!(
                 "latest marked deleted should be less than or 
@@ -301,6 +305,17 @@ impl TableMeta {
             return Err(format!("latest marked deleted should be greater than or equal to origin one now are:{} and {}",
                     sequence_num,
                     inner.latest_marked_deleted));
+        }
+
+        // The `start_sequence_offset_mapping` is possible to be incomplete during
+        // recovery.
+        let offset = inner.start_sequence_offset_mapping.get(&sequence_num);
+        if offset.is_none() && inner.next_sequence_num != inner.latest_marked_deleted {
+            warn!("Start sequence offset mapping is incomplete, 
+            just not update the marked deleted sequence in this flush, new marked deleted, sequence num:{}, previous:{}",
+                sequence_num, inner.latest_marked_deleted);
+
+            return Ok(());
         }
 
         inner.latest_marked_deleted = sequence_num;
@@ -416,6 +431,28 @@ pub struct RegionMetaSnapshot {
     pub entries: Vec<TableMetaData>,
 }
 
+impl RegionMetaSnapshot {
+    pub fn safe_delete_offset(&self) -> Offset {
+        let mut safe_delete_offset = Offset::MAX;
+        let mut high_watermark = 0;
+        // Calc the min offset in message queue.
+        for table_meta in &self.entries {
+            if let Some(offset) = table_meta.safe_delete_offset {
+                safe_delete_offset = cmp::min(safe_delete_offset, offset);
+            }
+            high_watermark = cmp::max(high_watermark, table_meta.current_high_watermark);
+        }
+
+        if safe_delete_offset == Offset::MAX {
+            // All tables are in such states: after init/flush, but not written.
+            // So, we can directly delete it up to the high_watermark.
+            high_watermark
+        } else {
+            safe_delete_offset
+        }
+    }
+}
+
 /// Message queue's offset range
 ///
 /// The range should be [start, end], and it will never be empty.
@@ -456,7 +493,7 @@ impl RegionContextBuilder {
                 .table_metas
                 .insert(entry.table_id, entry.clone().into());
             ensure!(old_meta.is_none(),
-                Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{:?}", entry) }
+                Build { msg: format!("apply snapshot failed, shouldn't exist duplicated entry in snapshot, duplicated entry:{entry:?}") }
             );
         }
 
@@ -595,7 +632,7 @@ impl TableWriter {
             table_write_ctx
                 .log_encoding
                 .encode_key(&mut key_buf, &log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(WriteWithCause {
                     region_id,
                     table_id,
@@ -613,7 +650,7 @@ impl TableWriter {
             .message_queue
             .produce(&table_write_ctx.log_topic, messages)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWithCause {
                 region_id,
                 table_id,
@@ -641,7 +678,7 @@ impl TableWriter {
             WriteNoCause {
                 region_id,
                 table_id,
-                msg: format!("invalid offset range, offset range:{:?}", offset_range),
+                msg: format!("invalid offset range, offset range:{offset_range:?}"),
             }
         );
 

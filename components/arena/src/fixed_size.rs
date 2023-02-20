@@ -39,7 +39,7 @@ impl Core {
     /// - new_unchecked
     /// `ptr` is allocated from allocator.
     fn with_capacity(cap: usize) -> Self {
-        let layout = Layout::from_size_align(cap as usize, DEFAULT_ALIGN).unwrap();
+        let layout = Layout::from_size_align(cap, DEFAULT_ALIGN).unwrap();
         let ptr = unsafe { alloc(layout) };
 
         Self {
@@ -55,7 +55,7 @@ impl Core {
         let layout = layout.pad_to_align();
         let size = layout.size();
 
-        let offset = self.len.fetch_add(size, Ordering::SeqCst) as usize;
+        let offset = self.len.fetch_add(size, Ordering::SeqCst);
         if offset + size > self.cap {
             self.len.fetch_sub(size, Ordering::SeqCst);
             return None;
@@ -87,7 +87,7 @@ impl Arena for FixedSizeArena {
     fn stats(&self) -> Self::Stats {
         Self::Stats {
             bytes_used: self.core.cap,
-            bytes_allocated: self.core.len.load(Ordering::SeqCst) as usize,
+            bytes_allocated: self.core.len.load(Ordering::SeqCst),
         }
     }
 }

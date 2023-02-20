@@ -4,9 +4,9 @@ pub mod cache;
 
 use std::sync::Arc;
 
+use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
 use common_util::define_result;
-use proto::sst as sst_pb;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 

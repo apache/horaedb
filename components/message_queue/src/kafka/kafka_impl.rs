@@ -115,7 +115,17 @@ impl Display for ConsumeWhen {
     }
 }
 
-pub struct KafkaImpl {
+#[derive(Clone)]
+pub struct KafkaImpl(Arc<KafkaImplInner>);
+
+impl KafkaImpl {
+    pub async fn new(config: Config) -> Result<Self> {
+        let inner = KafkaImplInner::new(config).await?;
+        Ok(Self(Arc::new(inner)))
+    }
+}
+
+struct KafkaImplInner {
     config: Config,
     client: Client,
     controller_client: ControllerClient,
@@ -123,17 +133,17 @@ pub struct KafkaImpl {
     topic_client_pool: RwLock<HashMap<String, TopicClientRef>>,
 }
 
-impl KafkaImpl {
-    pub async fn new(config: Config) -> Result<Self> {
+impl KafkaImplInner {
+    async fn new(config: Config) -> Result<Self> {
         info!("Kafka init, config:{:?}", config);
 
-        if config.client_config.boost_broker.is_none() {
+        if config.client.boost_broker.is_none() {
             panic!("The boost broker must be set");
         }
 
         let mut client_builder =
-            ClientBuilder::new(vec![config.client_config.boost_broker.clone().unwrap()]);
-        if let Some(max_message_size) = config.client_config.max_message_size {
+            ClientBuilder::new(vec![config.client.boost_broker.clone().unwrap()]);
+        if let Some(max_message_size) = config.client.max_message_size {
             client_builder = client_builder.max_message_size(max_message_size);
         }
 
@@ -187,7 +197,7 @@ impl MessageQueue for KafkaImpl {
     async fn create_topic_if_not_exist(&self, topic_name: &str) -> Result<()> {
         // Check in partition_client_pool first, maybe has exist.
         {
-            let topic_client_pool = self.topic_client_pool.read().await;
+            let topic_client_pool = self.0.topic_client_pool.read().await;
 
             if topic_client_pool.contains_key(topic_name) {
                 info!(
@@ -199,9 +209,10 @@ impl MessageQueue for KafkaImpl {
         }
 
         // Create topic in Kafka.
-        let topic_management_config = &self.config.topic_management_config;
-        info!("Try to create topic:{} in kafka", topic_name);
+        let topic_management_config = &self.0.config.topic_management;
+        info!("Try to create topic, name:{}.", topic_name);
         let result = self
+            .0
             .controller_client
             .create_topic(
                 topic_name,
@@ -211,6 +222,10 @@ impl MessageQueue for KafkaImpl {
             )
             .await;
 
+        info!(
+            "Create topic finish, name:{}, result:{:?}",
+            topic_name, result
+        );
         match result {
             // Race condition between check and creation action, that's OK.
             Ok(_)
@@ -227,6 +242,7 @@ impl MessageQueue for KafkaImpl {
 
     async fn produce(&self, topic_name: &str, messages: Vec<Message>) -> Result<Vec<Offset>> {
         let topic_client = self
+            .0
             .get_or_create_topic_client(topic_name)
             .await
             .context(Produce {
@@ -243,13 +259,14 @@ impl MessageQueue for KafkaImpl {
     }
 
     async fn fetch_offset(&self, topic_name: &str, offset_type: OffsetType) -> Result<Offset> {
-        let topic_client =
-            self.get_or_create_topic_client(topic_name)
-                .await
-                .context(FetchOffset {
-                    topic_name: topic_name.to_string(),
-                    offset_type,
-                })?;
+        let topic_client = self
+            .0
+            .get_or_create_topic_client(topic_name)
+            .await
+            .context(FetchOffset {
+                topic_name: topic_name.to_string(),
+                offset_type,
+            })?;
 
         topic_client
             .get_offset(offset_type.into())
@@ -268,6 +285,7 @@ impl MessageQueue for KafkaImpl {
         info!("Consume data in kafka topic:{}", topic_name);
 
         let topic_client = self
+            .0
             .get_or_create_topic_client(topic_name)
             .await
             .context(Consume {
@@ -276,26 +294,24 @@ impl MessageQueue for KafkaImpl {
             })?;
         Ok(KafkaConsumeIterator::new(
             topic_name,
-            self.config.consumer_config.clone(),
+            self.0.config.consumer.clone(),
             topic_client,
             start_offset,
         ))
     }
 
     async fn delete_to(&self, topic_name: &str, offset: Offset) -> Result<()> {
-        let topic_client =
-            self.get_or_create_topic_client(topic_name)
-                .await
-                .context(DeleteUpTo {
-                    topic_name: topic_name.to_string(),
-                    offset,
-                })?;
+        let topic_client = self
+            .0
+            .get_or_create_topic_client(topic_name)
+            .await
+            .context(DeleteUpTo {
+                topic_name: topic_name.to_string(),
+                offset,
+            })?;
 
         topic_client
-            .delete_records(
-                offset,
-                self.config.topic_management_config.delete_max_wait_ms,
-            )
+            .delete_records(offset, self.0.config.topic_management.delete_max_wait_ms)
             .await
             .context(DeleteUpTo {
                 topic_name: topic_name.to_string(),
@@ -421,7 +437,7 @@ impl From<OffsetType> for OffsetAt {
 impl Debug for KafkaImpl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KafkaImpl")
-            .field("config", &self.config)
+            .field("config", &self.0.config)
             .field("client", &"rskafka".to_string())
             .finish()
     }

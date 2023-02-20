@@ -17,7 +17,6 @@ pub fn assert_record_batches_eq(expected: &[&str], record_batches: Vec<RecordBat
     let actual_lines: Vec<&str> = formatted.trim().lines().collect();
     assert_eq!(
         expected_lines, actual_lines,
-        "\n\nexpected:\n\n{:#?}\nactual:\n\n{:#?}\n\n",
-        expected_lines, actual_lines
+        "\n\nexpected:\n\n{expected_lines:#?}\nactual:\n\n{actual_lines:#?}\n\n"
     );
 }

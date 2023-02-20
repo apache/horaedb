@@ -327,7 +327,6 @@ impl FileHandleSet {
         let seek_key = FileOrdKey::for_seek(time_range.inclusive_start());
         self.file_map
             .range(seek_key..)
-            .into_iter()
             .filter_map(|(_key, file)| {
                 if file.intersect_with_time_range(time_range) {
                     Some(file.clone())

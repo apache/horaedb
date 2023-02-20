@@ -10,14 +10,13 @@ use common_types::{
     SequenceNumber,
 };
 
-use super::util::{KafkaWalBuilder, TestTableData};
 use crate::{
     manager::{
         ReadBoundary, ReadRequest, ScanRequest, VersionedRegionId, WalLocation, WalManagerRef,
     },
     tests::util::{
-        MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv, TestEnv, TestPayload,
-        WalBuilder,
+        KafkaWalBuilder, MemoryTableWalBuilder, RocksTestEnv, RocksWalBuilder, TableKvTestEnv,
+        TestEnv, TestPayload, TestTableData, WalBuilder,
     },
 };
 

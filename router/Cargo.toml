@@ -19,6 +19,5 @@ common_util = { workspace = true }
 log = { workspace = true }
 meta_client = { workspace = true }
 serde = { workspace = true }
-serde_derive  = { workspace = true }
 snafu = { workspace = true }
 twox-hash = "1.6"

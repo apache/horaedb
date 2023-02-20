@@ -2,12 +2,14 @@
 
 //! Adapter to providers in datafusion
 
-use std::{any::Any, cell::RefCell, collections::HashMap, sync::Arc};
+use std::{any::Any, borrow::Cow, cell::RefCell, collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use catalog::manager::ManagerRef;
 use datafusion::{
     catalog::{catalog::CatalogProvider, schema::SchemaProvider},
     common::DataFusionError,
+    config::ConfigOptions,
     datasource::{DefaultTableSource, TableProvider},
     physical_plan::{udaf::AggregateUDF, udf::ScalarUDF},
     sql::planner::ContextProvider,
@@ -99,7 +101,7 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
 
         let catalog = match self
             .manager
-            .catalog_by_name(resolved.catalog)
+            .catalog_by_name(resolved.catalog.as_ref())
             .context(FindCatalog {
                 name: resolved.catalog,
             })? {
@@ -108,21 +110,21 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
         };
 
         let schema = match catalog
-            .schema_by_name(resolved.schema)
+            .schema_by_name(resolved.schema.as_ref())
             .context(FindSchema {
-                name: resolved.schema,
+                name: resolved.schema.to_string(),
             })? {
             Some(s) => s,
             None => {
                 return SchemaNotFound {
-                    name: resolved.schema,
+                    name: resolved.schema.to_string(),
                 }
                 .fail();
             }
         };
 
         schema
-            .table_by_name(resolved.table)
+            .table_by_name(resolved.table.as_ref())
             .map_err(Box::new)
             .context(FindTable {
                 name: resolved.table,
@@ -146,8 +148,8 @@ pub struct ContextProviderAdapter<'a, P> {
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
     meta_provider: &'a P,
-    /// Read parallelism for each table.
-    read_parallelism: usize,
+    /// Read config for each table.
+    config: ConfigOptions,
 }
 
 impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
@@ -155,12 +157,14 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
         let default_schema = meta_provider.default_schema_name().to_string();
+        let mut config = ConfigOptions::default();
+        config.execution.target_partitions = read_parallelism;
 
         Self {
             table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
             meta_provider,
-            read_parallelism,
+            config,
         }
     }
 
@@ -187,7 +191,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism));
+        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
 
         Arc::new(DefaultTableSource {
             table_provider: table_adapter,
@@ -223,12 +227,13 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
-        if let Some(table_ref) = self.table_cache.borrow().get(name) {
+        if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
             return Ok(self.table_source(table_ref));
         }
 
         // Find in meta provider
-        match self.meta_provider.table(name) {
+        // TODO: possible to remove this clone?
+        match self.meta_provider.table(name.clone()) {
             Ok(Some(table)) => {
                 self.table_cache.borrow_mut().insert(name, table.clone());
                 Ok(self.table_source(table))
@@ -282,15 +287,19 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     ) -> Option<common_types::schema::DataType> {
         None
     }
+
+    fn options(&self) -> &ConfigOptions {
+        &self.config
+    }
 }
 
 struct SchemaProviderAdapter {
     catalog: String,
     schema: String,
     tables: Arc<TableContainer>,
-    read_parallelism: usize,
 }
 
+#[async_trait]
 impl SchemaProvider for SchemaProviderAdapter {
     fn as_any(&self) -> &dyn Any {
         self
@@ -307,20 +316,20 @@ impl SchemaProvider for SchemaProviderAdapter {
         names
     }
 
-    fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
+    async fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let name_ref = TableReference::Full {
-            catalog: &self.catalog,
-            schema: &self.schema,
-            table: name,
+            catalog: Cow::from(&self.catalog),
+            schema: Cow::from(&self.schema),
+            table: Cow::from(name),
         };
 
-        self.tables.get(name_ref).map(|table_ref| {
-            Arc::new(TableProviderAdapter::new(table_ref, self.read_parallelism)) as _
-        })
+        self.tables
+            .get(name_ref)
+            .map(|table_ref| Arc::new(TableProviderAdapter::new(table_ref)) as _)
     }
 
     fn table_exist(&self, name: &str) -> bool {
-        self.table(name).is_some()
+        self.tables.get(TableReference::parse_str(name)).is_some()
     }
 }
 
@@ -330,28 +339,24 @@ pub struct CatalogProviderAdapter {
 }
 
 impl CatalogProviderAdapter {
-    pub fn new_adapters(
-        tables: Arc<TableContainer>,
-        read_parallelism: usize,
-    ) -> HashMap<String, CatalogProviderAdapter> {
+    pub fn new_adapters(tables: Arc<TableContainer>) -> HashMap<String, CatalogProviderAdapter> {
         let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
         let _ = tables.visit::<_, ()>(|name, _| {
             // Get or create catalog
-            let catalog = match catalog_adapters.get_mut(name.catalog) {
+            let catalog = match catalog_adapters.get_mut(name.catalog.as_ref()) {
                 Some(v) => v,
                 None => catalog_adapters
                     .entry(name.catalog.to_string())
                     .or_insert_with(CatalogProviderAdapter::default),
             };
             // Get or create schema
-            if catalog.schemas.get(name.schema).is_none() {
+            if catalog.schemas.get(name.schema.as_ref()).is_none() {
                 catalog.schemas.insert(
                     name.schema.to_string(),
                     Arc::new(SchemaProviderAdapter {
                         catalog: name.catalog.to_string(),
                         schema: name.schema.to_string(),
                         tables: tables.clone(),
-                        read_parallelism,
                     }),
                 );
             }
@@ -384,12 +389,25 @@ impl CatalogProvider for CatalogProviderAdapter {
 /// [`Debug`] or implement [`std::fmt::Display`].
 fn format_table_reference(table_ref: TableReference) -> String {
     match table_ref {
-        TableReference::Bare { table } => format!("table:{}", table),
-        TableReference::Partial { schema, table } => format!("schema:{}, table:{}", schema, table),
+        TableReference::Bare { table } => format!("table:{table}"),
+        TableReference::Partial { schema, table } => format!("schema:{schema}, table:{table}"),
         TableReference::Full {
             catalog,
             schema,
             table,
-        } => format!("catalog:{}, schema:{}, table:{}", catalog, schema, table),
+        } => format!("catalog:{catalog}, schema:{schema}, table:{table}"),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{provider::ContextProviderAdapter, tests::MockMetaProvider};
+
+    #[test]
+    fn test_config_options_setting() {
+        let provider = MockMetaProvider::default();
+        let read_parallelism = 100;
+        let context = ContextProviderAdapter::new(&provider, read_parallelism);
+        assert_eq!(context.config.execution.target_partitions, read_parallelism);
     }
 }

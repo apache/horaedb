@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 clru = { workspace = true }
 common_util = { workspace = true }
@@ -25,13 +26,11 @@ oss-rust-sdk = "0.6.1"
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
-upstream = { package = "object_store", version = "0.5.1" }
+upstream = { package = "object_store", version = "0.5.3" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

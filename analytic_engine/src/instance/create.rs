@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use common_util::error::BoxError;
 use log::info;
 use snafu::ResultExt;
 use table_engine::engine::CreateTableRequest;
@@ -15,7 +16,7 @@ use crate::{
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_update::{AddTableMeta, MetaUpdate, MetaUpdateRequest},
     space::SpaceRef,
     table::data::{TableData, TableDataRef},
     table_options,
@@ -32,7 +33,7 @@ impl Instance {
 
         let mut table_opts =
             table_options::merge_table_options_for_create(&request.options, &self.table_opts)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(InvalidOptions {
                     space_id: space.id,
                     table: &request.table_name,
@@ -95,17 +96,23 @@ impl Instance {
         };
 
         // Store table info into meta
-        let update = MetaUpdate::AddTable(AddTableMeta {
-            space_id: space.id,
-            table_id: table_data.id,
-            table_name: table_data.name.clone(),
-            schema: table_data.schema(),
-            opts: table_data.table_options().as_ref().clone(),
-            partition_info: table_data.partition_info.clone(),
-        });
+        let update_req = {
+            let meta_update = MetaUpdate::AddTable(AddTableMeta {
+                space_id: space.id,
+                table_id: table_data.id,
+                table_name: table_data.name.clone(),
+                schema: table_data.schema(),
+                opts: table_data.table_options().as_ref().clone(),
+                partition_info: table_data.partition_info.clone(),
+            });
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: space.id,

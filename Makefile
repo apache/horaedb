@@ -54,7 +54,9 @@ check-license:
 	cd $(DIR); sh scripts/check-license.sh
 
 clippy:
-	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings
+	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings \
+	-A clippy::result_large_err -A clippy::box_default -A clippy::extra-unused-lifetimes \
+	-A clippy::only-used-in-recursion
 
 # test with address sanitizer
 asan-test:

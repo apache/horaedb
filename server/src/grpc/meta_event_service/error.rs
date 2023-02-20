@@ -3,7 +3,7 @@
 //! Error definitions for meta event service.
 
 use ceresdbproto::common::ResponseHeader;
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use snafu::Snafu;
 
 use crate::error_util;
@@ -20,7 +20,7 @@ pub enum Error {
     ErrWithCause {
         code: StatusCode,
         msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: GenericError,
     },
 }
 
@@ -40,7 +40,7 @@ impl Error {
             Error::ErrWithCause { msg, source, .. } => {
                 let err_string = source.to_string();
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
-                format!("{}. Caused by: {}", msg, first_line)
+                format!("{msg}. Caused by: {first_line}")
             }
         }
     }

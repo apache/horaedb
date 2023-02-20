@@ -14,12 +14,13 @@ use table_engine::{engine::OpenTableRequest, remote::RemoteEngineRef};
 use tokio::sync::oneshot;
 use wal::{
     log_batch::LogEntry,
-    manager::{ReadBoundary, ReadContext, ReadRequest, WalLocation, WalManagerRef},
+    manager::{ReadBoundary, ReadContext, ReadRequest, WalManagerRef},
 };
 
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
+    engine,
     instance::{
         self,
         engine::{
@@ -32,7 +33,7 @@ use crate::{
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
         Instance, SpaceStore, Spaces,
     },
-    meta::{meta_data::TableManifestData, ManifestRef},
+    manifest::{meta_data::TableManifestData, LoadRequest, ManifestRef},
     payload::{ReadPayload, WalDecoder},
     row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},
@@ -41,7 +42,6 @@ use crate::{
         file::FilePurger,
     },
     table::data::{TableData, TableDataRef},
-    wal_synchronizer::{WalSynchronizer, WalSynchronizerConfig},
 };
 
 impl Instance {
@@ -73,10 +73,6 @@ impl Instance {
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
 
-        let mut wal_synchronizer =
-            WalSynchronizer::new(WalSynchronizerConfig::default(), wal_manager);
-        wal_synchronizer.start(&bg_runtime).await;
-
         let iter_options = IterOptions {
             batch_size: ctx.config.scan_batch_size,
             sst_background_read_parallelism: ctx.config.sst_background_read_parallelism,
@@ -91,7 +87,6 @@ impl Instance {
             write_group_command_channel_cap: ctx.config.write_group_command_channel_cap,
             compaction_scheduler,
             file_purger,
-            wal_synchronizer,
             meta_cache: ctx.meta_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
             db_write_buffer_size: ctx.config.db_write_buffer_size,
@@ -216,14 +211,18 @@ impl Instance {
         info!("Instance recover table:{} meta begin", request.table_id);
 
         // Load manifest, also create a new snapshot at startup.
-        let table_id = request.table_id.as_u64();
+        let table_id = request.table_id;
+        let space_id = engine::build_space_id(request.schema_id);
+        let load_req = LoadRequest {
+            space_id,
+            table_id,
+            cluster_version: request.cluster_version,
+            shard_id: request.shard_id,
+        };
         let manifest_data = self
             .space_store
             .manifest
-            .load_data(
-                WalLocation::new(table_id, request.cluster_version, table_id),
-                true,
-            )
+            .load_data(&load_req)
             .await
             .context(ReadMetaUpdate {
                 table_id: request.table_id,

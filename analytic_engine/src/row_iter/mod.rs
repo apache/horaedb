@@ -9,7 +9,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
-use common_util::runtime::Runtime;
+use common_util::{error::BoxError, runtime::Runtime};
 use futures::stream::Stream;
 use log::{debug, error};
 use tokio::sync::mpsc::{self, Receiver};
@@ -80,7 +80,7 @@ pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + 'sta
     let (tx, rx) = mpsc::channel(RECORD_BATCH_READ_BUF_SIZE);
     runtime.spawn(async move {
         while let Some(record_batch) = iter.next_batch().await.transpose() {
-            let record_batch = record_batch.map_err(|e| Box::new(e) as _);
+            let record_batch = record_batch.box_err();
 
             debug!(
                 "compact table send next record batch, batch:{:?}",

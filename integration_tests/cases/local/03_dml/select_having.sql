@@ -21,25 +21,6 @@ VALUES
 
 
 SELECT
-    `timestamp`,
-    `value`
-FROM
-    `03_dml_select_having_table1`
-    having `value` > 500
-ORDER BY
-    `value` ASC;
-
-
-SELECT
-    `timestamp`,
-    `value`
-FROM
-    `03_dml_select_having_table1`
-HAVING
-    1 = 2;
-
-
-SELECT
     `value` % 3,
     MAX(`value`) AS max
 FROM

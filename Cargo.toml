@@ -34,7 +34,6 @@ members = [
     "integration_tests",
     "interpreters",
     "meta_client",
-    "proto",
     "query_engine",
     "remote_engine_client",
     "router",
@@ -51,8 +50,8 @@ name = "ceresdb-server"
 path = "src/bin/ceresdb-server.rs"
 
 [workspace.dependencies]
-arrow = { version = "23.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "23.0.0" }
+arrow = { version = "32.0.0", features = ["prettyprint"] }
+arrow_ipc = { version = "32.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
@@ -69,10 +68,16 @@ cluster = { path = "cluster" }
 criterion = "0.3"
 common_types = { path = "common_types" }
 common_util = { path = "common_util" }
+datafusion = "18.0.0"
+datafusion-expr = "18.0.0"
+datafusion-optimizer = "18.0.0"
+datafusion-proto = "18.0.0"
 df_operator = { path = "df_operator" }
 env_logger = "0.6"
-ethbloom = "0.13.0"
 futures = "0.3"
+xorfilter-rs = { git = "https://github.com/datafuse-extras/xorfilter", features = [
+    "cbordata",
+], tag = "databend-alpha.4" }
 lazy_static = "1.4.0"
 log = "0.4"
 logger = { path = "components/logger" }
@@ -81,12 +86,11 @@ interpreters = { path = "interpreters" }
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
 parquet_ext = { path = "components/parquet_ext" }
-parquet = { version = "23.0.0" }
+parquet = { version = "32.0.0" }
 paste = "1.0"
 profile = { path = "components/profile" }
 prometheus = "0.12"
 prometheus-static-metric = "0.5"
-proto = { path = "proto" }
 prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
@@ -94,12 +98,12 @@ remote_engine_client = { path = "remote_engine_client" }
 router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
-serde_derive = "1.0"
 serde_json = "1.0.60"
 server = { path = "server" }
 smallvec = "1.6"
 slog = "2.7"
 sql = { path = "sql" }
+sqlparser = { version = "0.30", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
@@ -113,19 +117,7 @@ zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
 git = "https://github.com/CeresDB/ceresdbproto.git"
-rev = "9430fe7d321955878ca06c431b115d73640f5d8f"
-
-[workspace.dependencies.datafusion]
-git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
-
-[workspace.dependencies.datafusion-expr]
-git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
-
-[workspace.dependencies.datafusion-proto]
-git = "https://github.com/CeresDB/arrow-datafusion.git"
-rev = "d84ea9c79c9e83ff0b4dadf8880a4983af59ef48"
+rev = "4dbd2b36262affd83f8a2d4a99273e43aebcb067"
 
 [dependencies]
 analytic_engine = { workspace = true }
@@ -141,6 +133,7 @@ logger = { workspace = true }
 meta_client = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
+serde = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"

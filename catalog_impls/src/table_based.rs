@@ -19,7 +19,7 @@ use catalog::{
     },
     Catalog, CatalogRef,
 };
-use common_util::define_result;
+use common_util::{define_result, error::BoxError};
 use log::{debug, error, info};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use system_catalog::sys_catalog_table::{
@@ -111,7 +111,7 @@ impl Manager for TableBasedManager {
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
-        Ok(self.catalogs.iter().map(|(_, v)| v.clone() as _).collect())
+        Ok(self.catalogs.values().map(|v| v.clone() as _).collect())
     }
 }
 
@@ -508,7 +508,7 @@ impl Catalog for CatalogImpl {
         self.catalog_table
             .create_schema(request)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(catalog::CreateSchemaWithCause {
                 catalog: &self.name,
                 schema: &name.to_string(),
@@ -651,7 +651,7 @@ impl SchemaImpl {
                 schema_id: self.schema_id,
                 table_seq,
             })
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(AllocateTableId {
                 schema: &self.schema_name,
                 table: name,
@@ -739,14 +739,14 @@ impl Schema for SchemaImpl {
             .table_engine
             .create_table(request.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(CreateTableWithCause)?;
         assert_eq!(table_name, table.name());
 
         self.catalog_table
             .create_table(request.clone().into())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteTableMeta {
                 table: &request.table_name,
             })?;
@@ -791,7 +791,7 @@ impl Schema for SchemaImpl {
         self.catalog_table
             .prepare_drop_table(request.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteTableMeta {
                 table: &request.table_name,
             })?;
@@ -800,7 +800,7 @@ impl Schema for SchemaImpl {
             .table_engine
             .drop_table(request.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(DropTableWithCause)?;
 
         info!(
@@ -812,7 +812,7 @@ impl Schema for SchemaImpl {
         self.catalog_table
             .drop_table(request.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteTableMeta {
                 table: &request.table_name,
             })?;
@@ -849,7 +849,7 @@ impl Schema for SchemaImpl {
             .table_engine
             .open_table(request.clone())
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(schema::OpenTableWithCause)?;
 
         match table_opt {
@@ -895,8 +895,8 @@ impl Schema for SchemaImpl {
             .read()
             .unwrap()
             .tables_by_name
-            .iter()
-            .map(|(_, v)| v.clone())
+            .values()
+            .cloned()
             .collect())
     }
 }

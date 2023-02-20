@@ -22,6 +22,7 @@ cluster = { workspace = true }
 common_types = { workspace = true }
 common_util = { workspace = true }
 datafusion = { workspace = true }
+datafusion-expr = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
 http = "0.2"
@@ -37,11 +38,9 @@ prom-remote-api = { version = "0.2.1", features = ["warp"] }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sql = { workspace = true }
@@ -51,5 +50,7 @@ tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
 warp = "0.3"
+zstd = { workspace = true }
+
 [dev-dependencies]
 sql = { workspace = true, features = ["test"] }

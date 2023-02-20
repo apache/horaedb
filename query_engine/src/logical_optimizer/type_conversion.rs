@@ -5,15 +5,17 @@ use std::{mem, sync::Arc};
 use arrow::{compute, compute::kernels::cast_utils::string_to_timestamp_nanos};
 use datafusion::{
     arrow::datatypes::DataType,
+    common::DFSchemaRef,
     error::{DataFusionError, Result},
-    logical_plan::{
-        plan::Filter, DFSchemaRef, Expr, ExprRewritable, ExprRewriter, LogicalPlan, Operator,
-        TableScan,
-    },
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
     scalar::ScalarValue,
 };
-use datafusion_expr::{utils, ExprSchemable};
+use datafusion_expr::{
+    expr::Expr,
+    expr_rewriter::{ExprRewritable, ExprRewriter},
+    logical_plan::{Filter, LogicalPlan, TableScan},
+    utils, Between, BinaryExpr, ExprSchemable, Operator,
+};
 use log::debug;
 
 /// Optimizer that cast literal value to target column's type
@@ -27,20 +29,28 @@ use log::debug;
 pub struct TypeConversion;
 
 impl OptimizerRule for TypeConversion {
-    fn optimize(
+    fn try_optimize(
         &self,
         plan: &LogicalPlan,
-        optimizer_config: &mut OptimizerConfig,
-    ) -> Result<LogicalPlan> {
+        optimizer_config: &dyn OptimizerConfig,
+    ) -> Result<Option<LogicalPlan>> {
         let mut rewriter = TypeRewriter {
             schemas: plan.all_schemas(),
         };
 
         match plan {
-            LogicalPlan::Filter(Filter { predicate, input }) => Ok(LogicalPlan::Filter(Filter {
-                predicate: predicate.clone().rewrite(&mut rewriter)?,
-                input: Arc::new(self.optimize(input, optimizer_config)?),
-            })),
+            LogicalPlan::Filter(Filter {
+                predicate, input, ..
+            }) => {
+                let predicate = predicate.clone().rewrite(&mut rewriter)?;
+                let input = self
+                    .try_optimize(input, optimizer_config)?
+                    .unwrap_or_else(|| input.as_ref().clone());
+                Ok(Some(LogicalPlan::Filter(Filter::try_new(
+                    predicate,
+                    Arc::new(input),
+                )?)))
+            }
             LogicalPlan::TableScan(TableScan {
                 table_name,
                 source,
@@ -54,14 +64,14 @@ impl OptimizerRule for TypeConversion {
                     .into_iter()
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
-                Ok(LogicalPlan::TableScan(TableScan {
+                Ok(Some(LogicalPlan::TableScan(TableScan {
                     table_name: table_name.clone(),
                     source: source.clone(),
                     projection: projection.clone(),
                     projected_schema: projected_schema.clone(),
                     filters: rewrite_filters,
                     fetch: *fetch,
-                }))
+                })))
             }
             LogicalPlan::Projection { .. }
             | LogicalPlan::Window { .. }
@@ -80,11 +90,18 @@ impl OptimizerRule for TypeConversion {
             | LogicalPlan::DropView { .. }
             | LogicalPlan::Values { .. }
             | LogicalPlan::Analyze { .. }
-            | LogicalPlan::Distinct { .. } => {
+            | LogicalPlan::Distinct { .. }
+            | LogicalPlan::SetVariable { .. }
+            | LogicalPlan::Prepare { .. }
+            | LogicalPlan::DescribeTable { .. }
+            | LogicalPlan::Dml { .. } => {
                 let inputs = plan.inputs();
                 let new_inputs = inputs
                     .iter()
-                    .map(|plan| self.optimize(plan, optimizer_config))
+                    .map(|plan| {
+                        self.try_optimize(plan, optimizer_config)
+                            .map(|v| v.unwrap_or_else(|| (*plan).clone()))
+                    })
                     .collect::<Result<Vec<_>>>()?;
 
                 let expr = plan
@@ -93,15 +110,15 @@ impl OptimizerRule for TypeConversion {
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
 
-                utils::from_plan(plan, &expr, &new_inputs)
+                Ok(Some(utils::from_plan(plan, &expr, &new_inputs)?))
             }
-
             LogicalPlan::Subquery(_)
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::CreateView(_)
             | LogicalPlan::CreateCatalogSchema(_)
             | LogicalPlan::CreateCatalog(_)
-            | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
+            | LogicalPlan::Unnest(_)
+            | LogicalPlan::EmptyRelation { .. } => Ok(Some(plan.clone())),
         }
     }
 
@@ -152,8 +169,7 @@ impl<'a> TypeRewriter<'a> {
                 );
                 if casted_right.is_null() {
                     return Err(DataFusionError::Plan(format!(
-                        "column:{:?} value:{:?} is invalid",
-                        col, value
+                        "column:{col:?} value:{value:?} is invalid"
                     )));
                 }
                 if reverse {
@@ -195,7 +211,7 @@ impl<'a> TypeRewriter<'a> {
 impl<'a> ExprRewriter for TypeRewriter<'a> {
     fn mutate(&mut self, expr: Expr) -> Result<Expr> {
         let new_expr = match expr {
-            Expr::BinaryExpr { left, op, right } => match op {
+            Expr::BinaryExpr(BinaryExpr { left, op, right }) => match op {
                 Operator::Eq
                 | Operator::NotEq
                 | Operator::Lt
@@ -203,28 +219,28 @@ impl<'a> ExprRewriter for TypeRewriter<'a> {
                 | Operator::Gt
                 | Operator::GtEq => {
                     let (left, right) = self.convert_type(&left, &right)?;
-                    Expr::BinaryExpr {
+                    Expr::BinaryExpr(BinaryExpr {
                         left: Box::new(left),
                         op,
                         right: Box::new(right),
-                    }
+                    })
                 }
-                _ => Expr::BinaryExpr { left, op, right },
+                _ => Expr::BinaryExpr(BinaryExpr { left, op, right }),
             },
-            Expr::Between {
+            Expr::Between(Between {
                 expr,
                 negated,
                 low,
                 high,
-            } => {
+            }) => {
                 let (expr, low) = self.convert_type(&expr, &low)?;
                 let (expr, high) = self.convert_type(&expr, &high)?;
-                Expr::Between {
+                Expr::Between(Between {
                     expr: Box::new(expr),
                     negated,
                     low: Box::new(low),
                     high: Box::new(high),
-                }
+                })
             }
             Expr::InList {
                 expr,
@@ -299,7 +315,7 @@ mod tests {
 
     use arrow::datatypes::TimeUnit;
     use datafusion::{
-        logical_plan::{DFField, DFSchema},
+        common::{DFField, DFSchema},
         prelude::col,
     };
 
@@ -482,16 +498,16 @@ mod tests {
 
         // Timestamp c6 between "2021-09-07 16:00:00" and "2021-09-07 17:00:00"
         let date_string2 = "2021-09-07 17:00:00".to_string();
-        let exp = Expr::Between {
+        let exp = Expr::Between(Between {
             expr: Box::new(col("c6")),
             negated: false,
             low: Box::new(Expr::Literal(ScalarValue::Utf8(Some(date_string.clone())))),
             high: Box::new(Expr::Literal(ScalarValue::Utf8(Some(date_string2.clone())))),
-        };
+        });
         let rewrite_exp = exp.rewrite(&mut rewriter).unwrap();
         assert_eq!(
             rewrite_exp,
-            Expr::Between {
+            Expr::Between(Between {
                 expr: Box::new(col("c6")),
                 negated: false,
                 low: Box::new(Expr::Literal(ScalarValue::TimestampMillisecond(
@@ -510,7 +526,7 @@ mod tests {
                     ),
                     None
                 ),))
-            }
+            })
         );
     }
 }

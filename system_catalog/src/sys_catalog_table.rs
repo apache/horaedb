@@ -6,6 +6,7 @@ use std::{collections::HashMap, mem};
 
 use async_trait::async_trait;
 use catalog::consts;
+use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use common_types::{
     bytes::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut},
     column_schema,
@@ -25,7 +26,6 @@ use common_util::{
 use futures::TryStreamExt;
 use log::{debug, info, warn};
 use prost::Message;
-use proto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,

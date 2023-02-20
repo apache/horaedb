@@ -4,45 +4,18 @@
 
 use std::collections::HashMap;
 
-use analytic_engine;
-use cluster::config::{ClusterConfig, SchemaConfig};
+use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use meta_client::types::ShardId;
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
-use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE, limiter::LimiterConfig};
-
-/// The deployment mode decides how to start the CeresDB.
-///
-/// [DeployMode::Standalone] means to start one or multiple CeresDB instance(s)
-/// alone without CeresMeta.
-///
-/// [DeployMode::Cluster] means to start one or multiple CeresDB instance(s)
-/// under the control of CeresMeta.
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub enum DeployMode {
-    Standalone,
-    Cluster,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct RuntimeConfig {
-    // Runtime for reading data
-    pub read_thread_num: usize,
-    // Runtime for writing data
-    pub write_thread_num: usize,
-    // Runtime for communicating with meta cluster
-    pub meta_thread_num: usize,
-    // Runtime for background tasks
-    pub background_thread_num: usize,
-}
+use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -119,90 +92,36 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-// TODO(yingwen): Split config into several sub configs.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct Config {
+pub struct ServerConfig {
     /// The address to listen.
     pub bind_addr: String,
     pub mysql_port: u16,
     pub http_port: u16,
-    pub http_max_body_size: u64,
     pub grpc_port: u16,
-    pub grpc_server_cq_count: usize,
+
     pub timeout: Option<ReadableDuration>,
-    /// Enable that use tenant as the schema if schema is not provided.
-    pub enable_tenant_as_schema: bool,
-
-    /// Engine related configs:
-    pub runtime: RuntimeConfig,
-
-    /// Log related configs:
-    pub log_level: String,
-    pub enable_async_log: bool,
-    pub async_log_channel_len: i32,
-
-    /// Tracing related configs:
-    pub tracing_log_dir: String,
-    pub tracing_log_name: String,
-    pub tracing_level: String,
-
-    /// Config of static router.
-    pub static_route: StaticRouteConfig,
-
-    /// Analytic engine configs.
-    pub analytic: analytic_engine::Config,
-
-    /// Query engine config.
-    pub query: query_engine::Config,
-
-    /// Deployment configs:
-    pub deploy_mode: DeployMode,
-    pub cluster: ClusterConfig,
-
-    /// Config of limiter
-    pub limiter: LimiterConfig,
+    pub http_max_body_size: u64,
+    pub grpc_server_cq_count: usize,
+    /// The minimum length of the response body to compress.
+    pub resp_compress_min_length: ReadableSize,
 
     /// Config for forwarding
     pub forward: forward::Config,
 }
 
-impl Default for RuntimeConfig {
+impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            read_thread_num: 8,
-            write_thread_num: 8,
-            meta_thread_num: 2,
-            background_thread_num: 8,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        let grpc_port = 8831;
-        Self {
-            bind_addr: String::from("127.0.0.1"),
-            http_port: 5000,
-            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            bind_addr: String::from("0.0.0.0"),
+            http_port: 5440,
             mysql_port: 3307,
-            grpc_port,
-            grpc_server_cq_count: 20,
+            grpc_port: 8831,
             timeout: None,
-            enable_tenant_as_schema: true,
-            runtime: RuntimeConfig::default(),
-            log_level: "debug".to_string(),
-            enable_async_log: true,
-            async_log_channel_len: 102400,
-            tracing_log_dir: String::from("/tmp/ceresdb"),
-            tracing_log_name: String::from("tracing"),
-            tracing_level: String::from("info"),
-            static_route: StaticRouteConfig::default(),
-            query: query_engine::Config::default(),
-            analytic: analytic_engine::Config::default(),
-            deploy_mode: DeployMode::Standalone,
-            cluster: ClusterConfig::default(),
-            limiter: LimiterConfig::default(),
+            http_max_body_size: DEFAULT_MAX_BODY_SIZE,
+            grpc_server_cq_count: 20,
+            resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
         }
     }

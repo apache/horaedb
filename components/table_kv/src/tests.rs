@@ -148,7 +148,7 @@ fn random_table_name(prefix: &str) -> String {
     let mut rng = thread_rng();
     let v: u32 = rng.gen_range(0, MAX_TABLE_ID);
 
-    format!("{}_{}", prefix, v)
+    format!("{prefix}_{v}")
 }
 
 fn new_scan_ctx(batch_size: i32) -> ScanContext {
@@ -293,7 +293,7 @@ fn test_insert_duplicate<T: TableKv>(tester: &TableKvTester<T>, table_name: &str
     if let Err(err) = ret {
         assert!(err.is_primary_key_duplicate());
     } else {
-        panic!("Unexpected insert result, ret:{:?}", ret);
+        panic!("Unexpected insert result, ret:{ret:?}");
     }
 }
 

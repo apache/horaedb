@@ -4,6 +4,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use common_util::error::BoxError;
 use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
@@ -23,26 +24,12 @@ use crate::{
         write_worker::{AlterOptionsCommand, AlterSchemaCommand, WorkerLocal},
         Instance,
     },
-    meta::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
+    manifest::meta_update::{AlterOptionsMeta, AlterSchemaMeta, MetaUpdate, MetaUpdateRequest},
     payload::WritePayload,
     space::SpaceAndTable,
     table::data::TableDataRef,
     table_options,
 };
-
-/// Policy of how to perform flush operation.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum TableAlterSchemaPolicy {
-    /// Unknown flush policy, this is the default value.
-    #[default]
-    Unknown,
-    /// Perform Alter Schema operation.
-    Alter,
-    // TODO: use this policy and remove "allow(dead_code)"
-    /// Ignore this operation.
-    #[allow(dead_code)]
-    Noop,
-}
 
 impl Instance {
     // Alter schema need to be handled by write worker.
@@ -87,7 +74,6 @@ impl Instance {
         worker_local: &mut WorkerLocal,
         table_data: &TableDataRef,
         request: AlterSchemaRequest,
-        #[allow(unused_variables)] policy: TableAlterSchemaPolicy,
     ) -> Result<()> {
         // Validate alter schema request.
         self.validate_before_alter(table_data, &request)?;
@@ -146,7 +132,7 @@ impl Instance {
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWal {
                 space_id: table_data.space_id,
                 table: &table_data.name,
@@ -159,10 +145,16 @@ impl Instance {
         );
 
         // Write to Manifest
-        let update = MetaUpdate::AlterSchema(manifest_update);
+        let update_req = {
+            let meta_update = MetaUpdate::AlterSchema(manifest_update);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(table_data.table_location(), update))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,
@@ -271,7 +263,7 @@ impl Instance {
         );
         let mut table_opts =
             table_options::merge_table_options_for_alter(&options, &current_table_options)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(InvalidOptions {
                     space_id: table_data.space_id,
                     table: &table_data.name,
@@ -316,7 +308,7 @@ impl Instance {
             .wal_manager
             .write(&write_ctx, &log_batch)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(WriteWal {
                 space_id: table_data.space_id,
                 table: &table_data.name,
@@ -324,13 +316,16 @@ impl Instance {
             })?;
 
         // Write to Manifest
-        let meta_update = MetaUpdate::AlterOptions(manifest_update);
+        let update_req = {
+            let meta_update = MetaUpdate::AlterOptions(manifest_update);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
+        };
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
-                meta_update,
-            ))
+            .store_update(update_req)
             .await
             .context(WriteManifest {
                 space_id: table_data.space_id,

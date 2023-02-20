@@ -61,5 +61,5 @@ pub type RouterRef = Arc<dyn Router + Sync + Send>;
 
 #[async_trait]
 pub trait Router {
-    async fn route(&self, schema: &str, req: RouteRequest) -> Result<Vec<Route>>;
+    async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
 }

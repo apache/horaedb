@@ -13,11 +13,14 @@ use arrow::{
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, SequenceNumber,
 };
-use common_util::define_result;
+use common_util::{
+    define_result,
+    error::{BoxError, GenericError},
+};
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
-    logical_expr::expr_fn,
+    optimizer::utils::conjunction,
     physical_expr::{self, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };
@@ -125,15 +128,8 @@ impl SequencedRecordBatch {
     }
 }
 
-pub type SequencedRecordBatchStream = Box<
-    dyn Stream<
-            Item = std::result::Result<
-                SequencedRecordBatch,
-                Box<dyn std::error::Error + Send + Sync>,
-            >,
-        > + Send
-        + Unpin,
->;
+pub type SequencedRecordBatchStream =
+    Box<dyn Stream<Item = std::result::Result<SequencedRecordBatch, GenericError>> + Send + Unpin>;
 
 /// Filter the `sequenced_record_batch` according to the `predicate`.
 fn filter_record_batch(
@@ -171,7 +167,7 @@ pub fn filter_stream(
     input_schema: ArrowSchemaRef,
     predicate: &Predicate,
 ) -> Result<SequencedRecordBatchStream> {
-    let filter = match expr_fn::combine_filters(predicate.exprs()) {
+    let filter = match conjunction(predicate.exprs().to_owned()) {
         Some(filter) => filter,
         None => return Ok(origin_stream),
     };
@@ -192,7 +188,7 @@ pub fn filter_stream(
     let stream = origin_stream.filter_map(move |sequence_record_batch| {
         let v = match sequence_record_batch {
             Ok(v) => filter_record_batch(v, predicate.clone())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .transpose(),
             Err(e) => Some(Err(e)),
         };
@@ -259,7 +255,7 @@ pub fn stream_from_memtable(
             record_batch,
             sequence: max_seq,
         })
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
     });
 
     Ok(Box::new(stream))
@@ -325,7 +321,7 @@ pub async fn stream_from_sst_file(
             record_batch,
             sequence: max_seq,
         })
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
     }));
 
     Ok(stream)

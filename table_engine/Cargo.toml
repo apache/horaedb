@@ -27,9 +27,7 @@ log = { workspace = true }
 parquet = { workspace = true }
 parquet_ext = { workspace = true }
 prost = { workspace = true }
-proto = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }

@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use common_util::error::BoxError;
 use log::info;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -58,11 +59,7 @@ impl TableEngine for TableEngineImpl {
         info!("Try to close table engine");
 
         // Close the instance.
-        self.instance
-            .close()
-            .await
-            .map_err(|e| Box::new(e) as _)
-            .context(Close)?;
+        self.instance.close().await.box_err().context(Close)?;
 
         info!("Table engine closed");
 
@@ -99,7 +96,7 @@ impl TableEngine for TableEngineImpl {
                     ANALYTIC_ENGINE_TYPE.to_string(),
                     space_table,
                 )
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Unexpected)?,
             ),
         };
@@ -151,7 +148,7 @@ impl TableEngine for TableEngineImpl {
                     ANALYTIC_ENGINE_TYPE.to_string(),
                     space_table,
                 )
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Unexpected)?,
             ),
         };
@@ -176,6 +173,6 @@ impl TableEngine for TableEngineImpl {
 /// Generate the space id from the schema id with assumption schema id is unique
 /// globally.
 #[inline]
-fn build_space_id(schema_id: SchemaId) -> SpaceId {
+pub fn build_space_id(schema_id: SchemaId) -> SpaceId {
     schema_id.as_u32()
 }

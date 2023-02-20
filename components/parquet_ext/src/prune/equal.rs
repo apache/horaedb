@@ -1,8 +1,8 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use arrow::datatypes::SchemaRef;
-use datafusion::{logical_plan::Column, scalar::ScalarValue};
-use datafusion_expr::{Expr, Operator};
+use datafusion::{common::Column, scalar::ScalarValue};
+use datafusion_expr::{self, Expr, Operator};
 
 const MAX_ELEMS_IN_LIST_FOR_FILTER: usize = 100;
 
@@ -22,7 +22,7 @@ pub struct ColumnPosition {
 /// - Whether this compare is negated;
 /// And it should return the result of this comparison, and None denotes
 /// unknown.
-pub fn filter_row_groups<E>(
+pub fn prune_row_groups<E>(
     schema: SchemaRef,
     exprs: &[Expr],
     num_row_groups: usize,
@@ -149,7 +149,7 @@ fn normalize_predicate_expression(expr: &Expr) -> NormalizedExpr {
     let unhandled = NormalizedExpr::True;
 
     match expr {
-        Expr::BinaryExpr { left, op, right } => match op {
+        Expr::BinaryExpr(datafusion_expr::BinaryExpr { left, op, right }) => match op {
             Operator::And => {
                 let left = normalize_predicate_expression(left);
                 let right = normalize_predicate_expression(right);
@@ -477,9 +477,9 @@ mod tests {
             Field::new("c1", DataType::Int32, false),
             Field::new("c2", DataType::Int32, false),
         ]);
-        let filtered_row_groups =
-            filter_row_groups(Arc::new(schema), &vec![predicate1, predicate2], 3, is_equal);
+        let target_row_groups =
+            prune_row_groups(Arc::new(schema), &vec![predicate1, predicate2], 3, is_equal);
 
-        assert_eq!(vec![1, 2], filtered_row_groups)
+        assert_eq!(vec![1, 2], target_row_groups)
     }
 }

@@ -6,7 +6,6 @@ pub mod rule;
 
 use ceresdbproto::cluster::partition_info::Info;
 use common_types::bytes::Bytes;
-use proto::{meta_update as meta_pb, meta_update::partition_info::PartitionInfoEnum};
 use snafu::{Backtrace, Snafu};
 
 const PARTITION_TABLE_PREFIX: &str = "__";
@@ -102,134 +101,6 @@ pub struct KeyPartitionInfo {
     pub definitions: Vec<PartitionDefinition>,
     pub partition_key: Vec<String>,
     pub linear: bool,
-}
-
-// TODO: remove PartitionInfo from proto, see https://github.com/CeresDB/ceresdb/issues/571
-impl From<PartitionDefinition> for meta_pb::PartitionDefinition {
-    fn from(definition: PartitionDefinition) -> Self {
-        Self {
-            name: definition.name,
-            origin_name: definition
-                .origin_name
-                .map(meta_pb::partition_definition::OriginName::Origin),
-        }
-    }
-}
-
-impl From<meta_pb::PartitionDefinition> for PartitionDefinition {
-    fn from(pb: meta_pb::PartitionDefinition) -> Self {
-        let mut origin_name = None;
-        if let Some(v) = pb.origin_name {
-            match v {
-                meta_pb::partition_definition::OriginName::Origin(name) => origin_name = Some(name),
-            }
-        }
-        Self {
-            name: pb.name,
-            origin_name,
-        }
-    }
-}
-
-impl From<meta_pb::HashPartitionInfo> for HashPartitionInfo {
-    fn from(partition_info_pb: meta_pb::HashPartitionInfo) -> Self {
-        HashPartitionInfo {
-            version: partition_info_pb.version,
-            definitions: partition_info_pb
-                .partition_definitions
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
-            expr: Bytes::from(partition_info_pb.expr),
-            linear: partition_info_pb.linear,
-        }
-    }
-}
-
-impl From<HashPartitionInfo> for meta_pb::HashPartitionInfo {
-    fn from(partition_info: HashPartitionInfo) -> Self {
-        meta_pb::HashPartitionInfo {
-            version: partition_info.version,
-            partition_definitions: partition_info
-                .definitions
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
-            expr: Bytes::into(partition_info.expr),
-            linear: partition_info.linear,
-        }
-    }
-}
-
-impl From<meta_pb::KeyPartitionInfo> for KeyPartitionInfo {
-    fn from(partition_info_pb: meta_pb::KeyPartitionInfo) -> Self {
-        KeyPartitionInfo {
-            version: partition_info_pb.version,
-            definitions: partition_info_pb
-                .partition_definitions
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
-            partition_key: partition_info_pb.partition_key,
-            linear: partition_info_pb.linear,
-        }
-    }
-}
-
-impl From<KeyPartitionInfo> for meta_pb::KeyPartitionInfo {
-    fn from(partition_info: KeyPartitionInfo) -> Self {
-        meta_pb::KeyPartitionInfo {
-            version: partition_info.version,
-            partition_definitions: partition_info
-                .definitions
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
-            partition_key: partition_info.partition_key,
-            linear: partition_info.linear,
-        }
-    }
-}
-
-impl From<PartitionInfo> for meta_pb::PartitionInfo {
-    fn from(partition_info: PartitionInfo) -> Self {
-        match partition_info {
-            PartitionInfo::Hash(v) => {
-                let hash_partition_info = meta_pb::HashPartitionInfo::from(v);
-                meta_pb::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnum::Hash(hash_partition_info)),
-                }
-            }
-            PartitionInfo::Key(v) => {
-                let key_partition_info = meta_pb::KeyPartitionInfo::from(v);
-                meta_pb::PartitionInfo {
-                    partition_info_enum: Some(PartitionInfoEnum::Key(key_partition_info)),
-                }
-            }
-        }
-    }
-}
-
-impl TryFrom<meta_pb::PartitionInfo> for PartitionInfo {
-    type Error = Error;
-
-    fn try_from(
-        partition_info_pb: meta_pb::PartitionInfo,
-    ) -> std::result::Result<Self, Self::Error> {
-        match partition_info_pb.partition_info_enum {
-            Some(partition_info_enum) => match partition_info_enum {
-                PartitionInfoEnum::Hash(v) => {
-                    let hash_partition_info = HashPartitionInfo::from(v);
-                    Ok(Self::Hash(hash_partition_info))
-                }
-                PartitionInfoEnum::Key(v) => {
-                    let key_partition_info = KeyPartitionInfo::from(v);
-                    Ok(Self::Key(key_partition_info))
-                }
-            },
-            None => Err(Error::EmptyPartitionInfo {}),
-        }
-    }
 }
 
 impl From<PartitionDefinition> for ceresdbproto::cluster::PartitionDefinition {
@@ -362,10 +233,7 @@ impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
 }
 
 pub fn format_sub_partition_table_name(table_name: &str, partition_name: &str) -> String {
-    format!(
-        "{}{}_{}",
-        PARTITION_TABLE_PREFIX, table_name, partition_name
-    )
+    format!("{PARTITION_TABLE_PREFIX}{table_name}_{partition_name}")
 }
 
 pub fn is_sub_partition_table(table_name: &str) -> bool {

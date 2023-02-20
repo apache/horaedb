@@ -55,7 +55,7 @@ pub fn set_panic_hook(panic_abort: bool) {
         // finish of the remaining logs in the async logger.
         if let Some(level) = ::log::max_level().to_level() {
             let drainer = logger::term_drainer();
-            let _ = logger::init_log(
+            let _ = logger::init_log_from_drain(
                 drainer,
                 logger::convert_log_level_to_slog_level(level),
                 false, // Use sync logger to avoid an unnecessary log thread.
@@ -95,13 +95,13 @@ mod tests {
         match unsafe { fork() } {
             Ok(ForkResult::Parent { .. }) => match wait().unwrap() {
                 WaitStatus::Exited(_, status) => Ok(status),
-                v => Err(format!("{:?}", v)),
+                v => Err(format!("{v:?}")),
             },
             Ok(ForkResult::Child) => {
                 child();
                 std::process::exit(0);
             }
-            Err(e) => Err(format!("Fork failed: {}", e)),
+            Err(e) => Err(format!("Fork failed: {e}")),
         }
     }
 
@@ -134,7 +134,7 @@ mod tests {
         let status = run_and_wait_child_process(|| {
             set_panic_hook(false);
             let drainer = logger::term_drainer();
-            let _ = logger::init_log(
+            let _ = logger::init_log_from_drain(
                 drainer,
                 Level::Debug,
                 true, // use async drainer

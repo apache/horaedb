@@ -3,6 +3,7 @@
 //! Datum holds different kind of data
 
 use std::{convert::TryFrom, fmt, str};
+use ceresdbproto::schema::DataType as DataTypePb;
 
 use chrono::{Local, TimeZone, Datelike, NaiveDate, NaiveTime, Timelike};
 use proto::common::DataType as DataTypePb;
@@ -157,6 +158,7 @@ impl DatumKind {
                 | DatumKind::Int8
                 | DatumKind::Boolean
                 | DatumKind::Date
+                | DatumKind::Time
         )
     }
 
@@ -230,7 +232,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
     fn try_from(sql_type: &SqlDataType) -> Result<Self> {
         match sql_type {
             // TODO(yingwen): Consider timezone
-            SqlDataType::Timestamp => Ok(Self::Timestamp),
+            SqlDataType::Timestamp(_, _) => Ok(Self::Timestamp),
             SqlDataType::Real | SqlDataType::Float(_) => Ok(Self::Float),
             SqlDataType::Double => Ok(Self::Double),
             SqlDataType::Boolean => Ok(Self::Boolean),
@@ -238,9 +240,10 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::Int(_) => Ok(Self::Int32),
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
             SqlDataType::String => Ok(Self::String),
+            SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
             SqlDataType::Date => Ok(Self::Date),
             SqlDataType::Time => Ok(Self::Time),
-            SqlDataType::Custom(objects) if objects.0.len() == 1 => {
+            SqlDataType::Custom(objects, _) if objects.0.len() == 1 => {
                 match objects.0[0].value.as_str() {
                     "UINT64" | "uint64" => Ok(Self::UInt64),
                     "UINT32" | "uint32" => Ok(Self::UInt32),
@@ -250,7 +253,6 @@ impl TryFrom<&SqlDataType> for DatumKind {
                     "INT32" | "int32" => Ok(Self::Int32),
                     "INT16" | "int16" => Ok(Self::Int16),
                     "TINYINT" | "INT8" | "tinyint" | "int8" => Ok(Self::Int8),
-                    "VARBINARY" | "varbinary" => Ok(Self::Varbinary),
                     _ => UnsupportedDataType {
                         sql_type: sql_type.clone(),
                     }
@@ -587,10 +589,10 @@ impl Datum {
     pub fn display_string(&self) -> String {
         match self {
             Datum::Null => "null".to_string(),
-            Datum::Timestamp(v) => Local.timestamp_millis(v.as_i64()).to_rfc3339(),
+            Datum::Timestamp(v) => Local.timestamp_millis_opt(v.as_i64()).unwrap().to_rfc3339(),
             Datum::Double(v) => v.to_string(),
             Datum::Float(v) => v.to_string(),
-            Datum::Varbinary(v) => format!("{:?}", v),
+            Datum::Varbinary(v) => format!("{v:?}"),
             Datum::String(v) => v.to_string(),
             Datum::UInt64(v) => v.to_string(),
             Datum::UInt32(v) => v.to_string(),
@@ -906,6 +908,7 @@ pub mod arrow_convert {
                 | DataType::Dictionary(_, _)
                 | DataType::Decimal128(_, _)
                 | DataType::Decimal256(_, _)
+                | DataType::RunEndEncoded(_, _)
                 | DataType::Map(_, _) => None,
             }
         }
@@ -974,7 +977,9 @@ pub mod arrow_convert {
                 ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => v
                     .as_ref()
                     .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str()))),
-                ScalarValue::Binary(v) | ScalarValue::LargeBinary(v) => v
+                ScalarValue::Binary(v)
+                | ScalarValue::FixedSizeBinary(_, v)
+                | ScalarValue::LargeBinary(v) => v
                     .as_ref()
                     .map(|v| Datum::Varbinary(Bytes::copy_from_slice(v.as_slice()))),
                 ScalarValue::TimestampMillisecond(v, _) => {
@@ -984,6 +989,10 @@ pub mod arrow_convert {
                 ScalarValue::Time64(v) => v.map(Datum::Time),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time32Second(_)
+                | ScalarValue::Time32Millisecond(_)
+                | ScalarValue::Time64Microsecond(_)
+                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -1017,7 +1026,9 @@ pub mod arrow_convert {
                 ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
                     v.as_ref().map(|v| DatumView::String(v.as_str()))
                 }
-                ScalarValue::Binary(v) | ScalarValue::LargeBinary(v) => {
+                ScalarValue::Binary(v)
+                | ScalarValue::FixedSizeBinary(_, v)
+                | ScalarValue::LargeBinary(v) => {
                     v.as_ref().map(|v| DatumView::Varbinary(v.as_slice()))
                 }
                 ScalarValue::TimestampMillisecond(v, _) => {
@@ -1025,6 +1036,10 @@ pub mod arrow_convert {
                 }
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
+                | ScalarValue::Time32Second(_)
+                | ScalarValue::Time32Millisecond(_)
+                | ScalarValue::Time64Microsecond(_)
+                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)

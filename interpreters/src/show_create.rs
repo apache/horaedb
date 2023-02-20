@@ -91,7 +91,7 @@ impl ShowCreateInterpreter {
             }
 
             if let Some(expr) = &col.default_value {
-                res += format!(" DEFAULT {}", expr).as_str();
+                res += format!(" DEFAULT {expr}").as_str();
             }
 
             if !col.comment.is_empty() {
@@ -101,7 +101,7 @@ impl ShowCreateInterpreter {
         }
         let keys: Vec<String> = key_columns.iter().map(|col| col.name.to_string()).collect();
         res += format!("PRIMARY KEY({}), ", keys.join(",")).as_str();
-        res += format!("TIMESTAMP KEY({})", timestamp_key).as_str();
+        res += format!("TIMESTAMP KEY({timestamp_key})").as_str();
 
         res
     }
@@ -159,9 +159,6 @@ impl ShowCreateInterpreter {
             }
         }
 
-        // TODO: update datafusion to remove `#`.
-        // Refer to https://github.com/apache/arrow-datafusion/commit/d72eb9a1c4c18bcabbf941541a9c1defa83a592c.
-        res.remove_matches("#");
         res
     }
 
@@ -169,7 +166,7 @@ impl ShowCreateInterpreter {
         if !opts.is_empty() {
             let mut v: Vec<String> = opts
                 .into_iter()
-                .map(|(k, v)| format!("{}='{}'", k, v))
+                .map(|(k, v)| format!("{k}='{v}'"))
                 .collect();
             // sorted by option name
             v.sort();
@@ -190,7 +187,7 @@ mod test {
         HashPartitionInfo, KeyPartitionInfo, PartitionDefinition, PartitionInfo,
     };
 
-    use super::ShowCreateInterpreter;
+    use super::*;
 
     #[test]
     fn test_render_hash_partition_info() {

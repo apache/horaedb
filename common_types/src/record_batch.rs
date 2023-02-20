@@ -82,7 +82,7 @@ pub enum Error {
         backtrace
     ))]
     ReverseRecordBatchData {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 
@@ -92,7 +92,7 @@ pub enum Error {
         backtrace
     ))]
     SelectRecordBatchData {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 }
@@ -245,6 +245,10 @@ impl RecordBatch {
 
     pub fn num_rows(&self) -> usize {
         self.data.num_rows()
+    }
+
+    pub fn as_arrow_record_batch(&self) -> &ArrowRecordBatch {
+        &self.data.arrow_record_batch
     }
 
     pub fn into_arrow_record_batch(self) -> ArrowRecordBatch {

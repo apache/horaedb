@@ -14,13 +14,14 @@ use common_types::{
 use log::info;
 use table_engine::table::AlterSchemaRequest;
 
-use super::util::{EngineContext, MemoryEngineContext, RocksDBEngineContext};
 use crate::{
     table_options::TableOptions,
     tests::{
         row_util,
         table::{self, FixedSchemaTable},
-        util::{Null, TestContext, TestEnv},
+        util::{
+            EngineContext, MemoryEngineContext, Null, RocksDBEngineContext, TestContext, TestEnv,
+        },
     },
 };
 

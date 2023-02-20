@@ -655,7 +655,7 @@ mod tests {
         let list = Skiplist::with_arena(comp, arena);
         for i in 0..1000 {
             let key = Bytes::from(format!("{:05}{:08}", i * 10 + 5, 0));
-            let value = Bytes::from(format!("{:05}", i));
+            let value = Bytes::from(format!("{i:05}"));
             list.put(&key, &value);
         }
         let mut cases = vec![
@@ -692,7 +692,7 @@ mod tests {
                 continue;
             }
             let e = format!("{}{:08}", exp.unwrap(), 0);
-            assert_eq!(unsafe { (*res).key() }, e.as_bytes(), "{}", i);
+            assert_eq!(unsafe { (*res).key() }, e.as_bytes(), "{i}");
         }
     }
 }

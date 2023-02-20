@@ -707,24 +707,18 @@ fn row_to_key_value(
 
 fn format_create_table_sql(table_name: &str) -> String {
     format!(
-        "CREATE TABLE IF NOT EXISTS {}(
-            {} VARBINARY({}),
-            {} {} NOT NULL,
-            PRIMARY KEY({})
-        );",
-        table_name,
-        KEY_COLUMN_NAME,
-        KEY_COLUMN_LEN,
-        VALUE_COLUMN_NAME,
-        VALUE_COLUMN_TYPE,
-        KEY_COLUMN_NAME
+        "CREATE TABLE IF NOT EXISTS {table_name}(
+            {KEY_COLUMN_NAME} VARBINARY({KEY_COLUMN_LEN}),
+            {VALUE_COLUMN_NAME} {VALUE_COLUMN_TYPE} NOT NULL,
+            PRIMARY KEY({KEY_COLUMN_NAME})
+        );"
     )
 }
 
 fn format_drop_table_sql(table_name: &str, purge_recyclebin: bool) -> String {
     if purge_recyclebin {
-        format!("DROP TABLE IF EXISTS {}; PURGE RECYCLEBIN;", table_name)
+        format!("DROP TABLE IF EXISTS {table_name}; PURGE RECYCLEBIN;")
     } else {
-        format!("DROP TABLE IF EXISTS {};", table_name)
+        format!("DROP TABLE IF EXISTS {table_name};")
     }
 }

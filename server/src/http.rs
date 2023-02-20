@@ -7,13 +7,14 @@ use std::{
     time::Duration,
 };
 
-use log::error;
+use common_util::error::BoxError;
+use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
 use prom_remote_api::{types::RemoteStorageRef, web};
 use query_engine::executor::Executor as QueryExecutor;
 use router::endpoint::Endpoint;
-use serde_derive::Serialize;
+use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
 use tokio::sync::oneshot::{self, Sender};
@@ -108,7 +109,6 @@ pub struct Service<Q> {
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     tx: Sender<()>,
     config: HttpConfig,
-    enable_tenant_as_schema: bool,
 }
 
 impl<Q> Service<Q> {
@@ -119,7 +119,9 @@ impl<Q> Service<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
-    fn routes(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn routes(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         self.home()
             .or(self.metrics())
             .or(self.sql())
@@ -132,7 +134,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
     /// storage request
-    fn prom_api(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn prom_api(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         let write_api = warp::path!("write")
             .and(web::warp::with_remote_storage(
                 self.prom_remote_storage.clone(),
@@ -153,7 +157,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(write_api.or(query_api))
     }
 
-    fn home(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn home(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
             let mut resp = HashMap::new();
             resp.insert("status", "ok");
@@ -162,7 +166,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     // TODO(yingwen): Avoid boilerplate code if there are more handlers
-    fn sql(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
             .or(warp::body::bytes().map(Request::from))
@@ -193,7 +197,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn flush_memtable(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
@@ -203,19 +207,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     for catalog in instance
                         .catalog_manager
                         .all_catalogs()
-                        .map_err(|e| Box::new(e) as _)
+                        .box_err()
                         .context(Internal)?
                     {
-                        for schema in catalog
-                            .all_schemas()
-                            .map_err(|e| Box::new(e) as _)
-                            .context(Internal)?
-                        {
-                            for table in schema
-                                .all_tables()
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Internal)?
-                            {
+                        for schema in catalog.all_schemas().box_err().context(Internal)? {
+                            for table in schema.all_tables().box_err().context(Internal)? {
                                 tables.push(table);
                             }
                         }
@@ -246,13 +242,15 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    fn metrics(&self) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    fn metrics(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("metrics").and(warp::get()).map(metrics::dump)
     }
 
     fn heap_profile(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("debug" / "heap_profile" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
@@ -275,7 +273,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn update_log_level(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("log_level" / String)
             .and(warp::put())
             .and(self.with_log_runtime())
@@ -308,24 +306,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
-        let enable_tenant_as_schema = self.enable_tenant_as_schema;
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
             .and(header::optional::<String>(consts::TENANT_HEADER))
             .and_then(
-                move |catalog: Option<_>, schema: Option<_>, tenant: Option<_>| {
+                move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
-                    let default_schema = default_schema.clone();
                     let runtime = runtime.clone();
-                    // For compatibility, we may use tenant as the schema if schema is
-                    // missing.
-                    let schema = if enable_tenant_as_schema {
-                        schema.or(tenant).unwrap_or(default_schema)
-                    } else {
-                        schema.unwrap_or(default_schema)
-                    };
+                    let schema = schema.unwrap_or_else(|| default_schema.clone());
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -362,7 +352,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn admin_block(
         &self,
-    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("block")
             .and(warp::post())
             .and(warp::body::json())
@@ -387,7 +377,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
 /// Service builder
 pub struct Builder<Q> {
-    enable_tenant_as_schema: bool,
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
@@ -398,7 +387,6 @@ pub struct Builder<Q> {
 impl<Q> Builder<Q> {
     pub fn new(config: HttpConfig) -> Self {
         Self {
-            enable_tenant_as_schema: false,
             config,
             engine_runtimes: None,
             log_runtime: None,
@@ -419,11 +407,6 @@ impl<Q> Builder<Q> {
 
     pub fn instance(mut self, instance: InstanceRef<Q>) -> Self {
         self.instance = Some(instance);
-        self
-    }
-
-    pub fn enable_tenant_as_schema(mut self, enable_tenant_as_schema: bool) -> Self {
-        self.enable_tenant_as_schema = enable_tenant_as_schema;
         self
     }
 
@@ -456,8 +439,12 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
-            enable_tenant_as_schema: self.enable_tenant_as_schema,
         };
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
 
         let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
             ip: self.config.endpoint.addr,
@@ -511,7 +498,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
 
 async fn handle_rejection(
     rejection: warp::Rejection,
-) -> std::result::Result<impl warp::Reply, Infallible> {
+) -> std::result::Result<(impl warp::Reply,), Infallible> {
     let code;
     let message;
 
@@ -525,7 +512,7 @@ async fn handle_rejection(
     } else {
         error!("handle error: {:?}", rejection);
         code = StatusCode::INTERNAL_SERVER_ERROR;
-        message = format!("UNKNOWN_ERROR: {:?}", rejection);
+        message = format!("UNKNOWN_ERROR: {rejection:?}");
     }
 
     let json = reply::json(&ErrorResponse {
@@ -533,5 +520,5 @@ async fn handle_rejection(
         message,
     });
 
-    Ok(reply::with_status(json, code))
+    Ok((reply::with_status(json, code),))
 }

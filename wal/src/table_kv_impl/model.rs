@@ -6,7 +6,7 @@ use std::{str, time::Duration};
 
 use common_types::{table::TableId, time::Timestamp};
 use common_util::{config::ReadableDuration, define_result};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::ScanContext;
 

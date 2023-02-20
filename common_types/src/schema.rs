@@ -17,8 +17,8 @@ use std::{
 // use a new type pattern to wrap Schema/SchemaRef and not allow to use
 // the data type we not supported
 pub use arrow::datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef};
+use ceresdbproto::schema as schema_pb;
 use prost::Message;
-use proto::common as common_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -99,8 +99,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Timestamp key not exists.\nBacktrace:\n{}", backtrace))]
-    MissingTimestampKey { backtrace: Backtrace },
+    #[snafu(display("Timestamp not in primary key.\nBacktrace:\n{}", backtrace))]
+    TimestampNotInPrimaryKey { backtrace: Backtrace },
 
     #[snafu(display(
         "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
@@ -137,7 +137,7 @@ pub enum Error {
     InvalidArrowSchemaMetaValue {
         key: ArrowSchemaMetaKey,
         raw_value: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 
@@ -328,7 +328,7 @@ pub struct IndexInWriterSchema(Vec<Option<usize>>);
 impl IndexInWriterSchema {
     /// Create a index mapping for same schema with `num_columns` columns.
     pub fn for_same_schema(num_columns: usize) -> Self {
-        let indexes = (0..num_columns).into_iter().map(Some).collect();
+        let indexes = (0..num_columns).map(Some).collect();
         Self(indexes)
     }
 
@@ -855,6 +855,36 @@ impl Schema {
         }
     }
 
+    pub fn unique_keys(&self) -> Vec<&str> {
+        // Only filters on the columns belonging to the unique key can be pushed down.
+        if self.tsid_column().is_some() {
+            // When tsid exists, that means default primary key (tsid, timestamp) is used.
+            // So, all filters of tag columns(tsid is the hash result of all tags),
+            // timestamp key and tsid can be pushed down.
+            let mut keys = self
+                .columns()
+                .iter()
+                .filter_map(|column| {
+                    if column.is_tag {
+                        Some(column.name.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            keys.extend([&self.tsid_column().unwrap().name, self.timestamp_name()]);
+
+            keys
+        } else {
+            // When tsid does not exist, that means user defined primary key is used.
+            // So, only filters of primary key can be pushed down.
+            self.primary_key_indexes()
+                .iter()
+                .map(|key_idx| self.column(*key_idx).name.as_str())
+                .collect()
+        }
+    }
+
     /// Panic if projection is invalid.
     pub(crate) fn project_record_schema_with_key(
         &self,
@@ -915,17 +945,17 @@ impl Schema {
     }
 }
 
-impl TryFrom<common_pb::TableSchema> for Schema {
+impl TryFrom<schema_pb::TableSchema> for Schema {
     type Error = Error;
 
-    fn try_from(schema: common_pb::TableSchema) -> Result<Self> {
+    fn try_from(schema: schema_pb::TableSchema) -> Result<Self> {
         let mut builder = Builder::with_capacity(schema.columns.len()).version(schema.version);
-        let primary_key_indexes = schema.primary_key_indexes;
+        let primary_key_ids = schema.primary_key_ids;
 
-        for (i, column_schema_pb) in schema.columns.into_iter().enumerate() {
+        for column_schema_pb in schema.columns.into_iter() {
             let column =
                 ColumnSchema::try_from(column_schema_pb).context(ColumnSchemaDeserializeFailed)?;
-            if primary_key_indexes.contains(&(i as u64)) {
+            if primary_key_ids.contains(&column.id) {
                 builder = builder.add_key_column(column)?;
             } else {
                 builder = builder.add_normal_column(column)?;
@@ -936,26 +966,27 @@ impl TryFrom<common_pb::TableSchema> for Schema {
     }
 }
 
-impl From<&Schema> for common_pb::TableSchema {
+impl From<&Schema> for schema_pb::TableSchema {
     fn from(schema: &Schema) -> Self {
         let columns: Vec<_> = schema
             .columns()
             .iter()
-            .map(|v| common_pb::ColumnSchema::from(v.clone()))
+            .map(|v| schema_pb::ColumnSchema::from(v.clone()))
             .collect();
 
-        let table_schema = common_pb::TableSchema {
-            timestamp_index: schema.timestamp_index as u32,
+        let timestamp_id = schema.column(schema.timestamp_index()).id;
+        let primary_key_ids = schema
+            .primary_key_indexes()
+            .iter()
+            .map(|i| schema.column(*i).id)
+            .collect();
+
+        schema_pb::TableSchema {
+            timestamp_id,
             version: schema.version,
             columns,
-            primary_key_indexes: schema
-                .primary_key_indexes
-                .iter()
-                .map(|i| *i as u64)
-                .collect(),
-        };
-
-        table_schema
+            primary_key_ids,
+        }
     }
 }
 
@@ -1178,7 +1209,7 @@ impl Builder {
 
     /// Build the schema
     pub fn build(self) -> Result<Schema> {
-        let timestamp_index = self.timestamp_index.context(MissingTimestampKey)?;
+        let timestamp_index = self.timestamp_index.context(TimestampNotInPrimaryKey)?;
 
         // Timestamp key column is exists, so key columns should not be zero
         assert!(!self.primary_key_indexes.is_empty());
@@ -1223,8 +1254,8 @@ impl SchemaEncoder {
     }
 
     pub fn encode(&self, schema: &Schema) -> Result<Vec<u8>> {
-        let pb_schema = common_pb::TableSchema::from(schema);
-        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len() as usize);
+        let pb_schema = schema_pb::TableSchema::from(schema);
+        let mut buf = Vec::with_capacity(1 + pb_schema.encoded_len());
         buf.push(self.version);
 
         pb_schema.encode(&mut buf).context(EncodeSchemaToPb)?;
@@ -1238,7 +1269,7 @@ impl SchemaEncoder {
         self.ensure_version(buf[0])?;
 
         let pb_schema =
-            common_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
+            schema_pb::TableSchema::decode(&buf[1..]).context(DecodeSchemaFromPb { buf })?;
         Schema::try_from(pb_schema)
     }
 
@@ -1348,7 +1379,7 @@ mod tests {
         assert!(schema.index_of("not exists").is_none());
 
         // Test pb convert
-        let schema_pb = common_pb::TableSchema::from(&schema);
+        let schema_pb = schema_pb::TableSchema::from(&schema);
         let schema_from_pb = Schema::try_from(schema_pb).unwrap();
         assert_eq!(schema, schema_from_pb);
     }

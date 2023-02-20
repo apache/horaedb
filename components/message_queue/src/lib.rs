@@ -19,7 +19,7 @@ pub type Offset = i64;
 
 /// Message queue interface supporting the methods needed in wal module.
 #[async_trait]
-pub trait MessageQueue: Debug + Send + Sync + 'static {
+pub trait MessageQueue: Clone + Debug + Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
     type ConsumeIterator: ConsumeIterator + Send;
 

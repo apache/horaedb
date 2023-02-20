@@ -91,8 +91,8 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let sql= format!("CREATE TABLE IF NOT EXISTS {}(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
-        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')", table_name);
+        let sql= format!("CREATE TABLE IF NOT EXISTS {table_name}(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
+        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')");
 
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         assert!(
@@ -112,7 +112,7 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let sql = format!("INSERT INTO {}(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');", table_name);
+        let sql = format!("INSERT INTO {table_name}(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');");
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         assert!(
             matches!(output, Output::AffectedRows(v) if v == 2),
@@ -131,15 +131,15 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let sql = format!("select * from {}", table_name);
+        let sql = format!("select * from {table_name}");
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
             "+------------+---------------------+--------+--------+",
             "| key1       | key2                | field1 | field2 |",
             "+------------+---------------------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 100    | hello3 |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 100    | hello3 |",
+            "| 7461676b   | 2021-12-02T07:00:34 | 100    | hello3 |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 100    | hello3 |",
             "+------------+---------------------+--------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -254,8 +254,8 @@ where
             "+------------+---------------------+--------+--------+--------+--------+--------+",
             "| key1       | key2                | field1 | field2 | field3 | field4 | field5 |",
             "+------------+---------------------+--------+--------+--------+--------+--------+",
-            "| 7461676b   | 2021-12-02 07:00:34 | 10     | 20     | 3      | 1      | 3      |",
-            "| 7461676b32 | 2021-12-02 07:00:34 | 10     | 20     | 3      | 10     | 12     |",
+            "| 7461676b   | 2021-12-02T07:00:34 | 10     | 20     | 3      | 1      | 3      |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 10     | 20     | 3      | 10     | 12     |",
             "+------------+---------------------+--------+--------+--------+--------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -310,13 +310,13 @@ where
         // Disable partition table access, all of create, insert and select about sub
         // table(in table partition) directly will failed.
         let res = self.create_table_and_check("__test_table", false).await;
-        assert!(format!("{:?}", res)
+        assert!(format!("{res:?}")
             .contains("only can process sub tables in table partition directly when enable partition table access"));
         let res1 = self.insert_table_and_check("__test_table", false).await;
-        assert!(format!("{:?}", res1)
+        assert!(format!("{res1:?}")
             .contains("only can process sub tables in table partition directly when enable partition table access"));
         let res2 = self.select_table_and_check("__test_table", false).await;
-        assert!(format!("{:?}", res2)
+        assert!(format!("{res2:?}")
             .contains("only can process sub tables in table partition directly when enable partition table access"));
 
         // Enable partition table access, operations above will success.
@@ -334,6 +334,7 @@ where
 
 #[tokio::test]
 async fn test_interpreters_rocks() {
+    common_util::tests::init_log_for_test();
     let rocksdb_ctx = RocksDBEngineContext::default();
     test_interpreters(rocksdb_ctx).await;
 }
@@ -362,8 +363,6 @@ async fn test_interpreters<T: EngineContext>(engine_context: T) {
     env.test_show_create_table().await;
     env.test_alter_table().await;
     env.test_drop_table().await;
-
     env.test_insert_table_with_missing_columns().await;
-
     env.test_enable_partition_table_access().await;
 }

@@ -8,15 +8,15 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::schema::Schema;
 use datafusion::{
+    common::{DFSchemaRef, ToDFSchema},
     datasource::TableProvider,
     execution::context::SessionState,
-    logical_plan::{
-        plan::{Extension, Filter, Projection, Sort},
-        DFSchemaRef, Expr, Limit, LogicalPlan, TableScan, ToDFSchema,
-    },
     physical_plan::ExecutionPlan,
 };
-use datafusion_expr::{TableSource, TableType};
+use datafusion_expr::{
+    Expr, Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan, TableSource,
+    TableType,
+};
 
 use crate::df_planner_extension::table_scan_by_primary_key::TableScanByPrimaryKey;
 
@@ -49,7 +49,7 @@ impl TableProvider for MockTableProvider {
     async fn scan(
         &self,
         _state: &SessionState,
-        _projection: &Option<Vec<usize>>,
+        _projection: Option<&Vec<usize>>,
         _filters: &[Expr],
         _limit: Option<usize>,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
@@ -89,10 +89,7 @@ impl LogicalPlanNodeBuilder {
     }
 
     pub fn filter(mut self, predicate: Expr) -> Self {
-        let plan = LogicalPlan::Filter(Filter {
-            predicate,
-            input: self.take_plan(),
-        });
+        let plan = LogicalPlan::Filter(Filter::try_new(predicate, self.take_plan()).unwrap());
 
         self.plan = Some(Arc::new(plan));
 
@@ -100,12 +97,8 @@ impl LogicalPlanNodeBuilder {
     }
 
     pub fn projection(mut self, proj_exprs: Vec<Expr>) -> Self {
-        let plan = LogicalPlan::Projection(Projection {
-            expr: proj_exprs,
-            input: self.take_plan(),
-            schema: self.df_schema_ref(),
-            alias: None,
-        });
+        let plan =
+            LogicalPlan::Projection(Projection::try_new(proj_exprs, self.take_plan()).unwrap());
 
         self.plan = Some(Arc::new(plan));
 
@@ -128,6 +121,7 @@ impl LogicalPlanNodeBuilder {
         let plan = LogicalPlan::Sort(Sort {
             expr: sort_exprs,
             input: self.take_plan(),
+            fetch: None,
         });
 
         self.plan = Some(Arc::new(plan));
@@ -169,7 +163,7 @@ impl LogicalPlanNodeBuilder {
 
 /// Check whether the logical plans are equal.
 pub fn assert_logical_plan_eq(left: &LogicalPlan, right: &LogicalPlan) {
-    let left_plan_str = format!("{:#?}", left);
-    let right_plan_str = format!("{:#?}", right);
+    let left_plan_str = format!("{left:#?}");
+    let right_plan_str = format!("{right:#?}");
     assert_eq!(left_plan_str, right_plan_str)
 }

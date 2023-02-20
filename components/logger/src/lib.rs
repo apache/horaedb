@@ -12,13 +12,13 @@ use std::{
 };
 
 use log::{info, SetLoggerError};
+use serde::Deserialize;
 pub use slog::Level;
 use slog::{slog_o, Drain, Key, OwnedKVList, Record, KV};
 use slog_async::{Async, OverflowStrategy};
 use slog_term::{Decorator, PlainDecorator, RecordDecorator, TermDecorator};
 
 const ASYNC_CHAN_SIZE: usize = 102400;
-// This format is required for xflush monitor
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.3f";
 
 // Thanks to tikv
@@ -77,7 +77,7 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
     }
 }
 
-// dispacher
+/// Dispatcher for logs
 pub struct LogDispatcher<N: Drain> {
     normal: N,
 }
@@ -100,7 +100,51 @@ where
     }
 }
 
-pub fn init_log<D>(
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+/// The config for logger.
+pub struct Config {
+    pub level: String,
+    pub enable_async: bool,
+    pub async_channel_len: i32,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            level: "debug".to_string(),
+            enable_async: true,
+            async_channel_len: 102400,
+        }
+    }
+}
+
+/// Initialize the logger, configured by the [Config].
+pub fn init_log(config: &Config) -> Result<RuntimeLevel, SetLoggerError> {
+    let level = match Level::from_str(&config.level) {
+        Ok(v) => v,
+        Err(e) => {
+            panic!(
+                "Parse log level failed, level: {}, err: {:?}",
+                &config.level, e
+            );
+        }
+    };
+
+    let term_drain = term_drainer();
+    let drain = LogDispatcher::new(term_drain);
+
+    // Use async and init stdlog
+    init_log_from_drain(
+        drain,
+        level,
+        config.enable_async,
+        config.async_channel_len,
+        true,
+    )
+}
+
+pub fn init_log_from_drain<D>(
     drain: D,
     level: Level,
     use_async: bool,
@@ -229,7 +273,7 @@ impl RuntimeLevel {
 
     pub fn set_level_by_str(&self, level_str: &str) -> Result<(), String> {
         Level::from_str(level_str)
-            .map_err(|_| format!("Invalid level {}", level_str))
+            .map_err(|_| format!("Invalid level {level_str}"))
             .and_then(|level| match level {
                 Level::Trace | Level::Debug | Level::Info => Ok(level),
                 _ => Err("Only allow to change log level to <trace|debug|info>".to_owned()),
@@ -355,7 +399,7 @@ impl<'a> slog::Serializer for Serializer<'a> {
         // Write key
         write!(self.decorator, "[")?;
         self.decorator.start_key()?;
-        write!(self.decorator, "{}", key)?;
+        write!(self.decorator, "{key}")?;
 
         // Write separator
         self.decorator.start_separator()?;
@@ -363,7 +407,7 @@ impl<'a> slog::Serializer for Serializer<'a> {
 
         // Write value
         self.decorator.start_value()?;
-        write!(self.decorator, "{}", val)?;
+        write!(self.decorator, "{val}")?;
         self.decorator.reset()?;
         write!(self.decorator, "]")?;
 
@@ -380,7 +424,7 @@ pub fn init_test_logger() {
     let drain = LogDispatcher::new(term_drain);
 
     // Use async and init stdlog
-    let _ = init_log(drain, level, false, 12400, true);
+    let _ = init_log_from_drain(drain, level, false, 12400, true);
 }
 
 #[cfg(test)]

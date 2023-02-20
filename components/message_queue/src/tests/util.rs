@@ -10,10 +10,10 @@ use crate::Message;
 
 pub fn generate_test_data(cnt: usize) -> Vec<Message> {
     let mut messages = Vec::with_capacity(cnt);
-    let base_ts = Utc.timestamp_millis(1337);
+    let base_ts = Utc.timestamp_millis_opt(1337).unwrap();
     for i in 0..cnt {
-        let key = format!("test_key_{}", i);
-        let val = format!("test_val_{}", i);
+        let key = format!("test_key_{i}");
+        let val = format!("test_val_{i}");
         let timestamp = base_ts + Duration::milliseconds(i as i64);
 
         messages.push(message(key.as_bytes(), val.as_bytes(), timestamp));

@@ -18,7 +18,7 @@ use common_types::{
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
 use common_util::{
-    error::GenericResult,
+    error::{BoxError, GenericResult},
     runtime::{AbortOnDropMany, JoinHandle, Runtime},
     time::InstantExt,
 };
@@ -44,8 +44,8 @@ use crate::sst::{
     metrics,
     parquet::{
         encoding::ParquetDecoder,
-        meta_data::{BloomFilter, ParquetMetaDataRef},
-        row_group_filter::RowGroupFilter,
+        meta_data::{ParquetFilter, ParquetMetaDataRef},
+        row_group_pruner::RowGroupPruner,
     },
     reader::{error::*, Result, SstReader},
 };
@@ -143,20 +143,16 @@ impl<'a> Reader<'a> {
         Ok(streams)
     }
 
-    fn filter_row_groups(
+    fn prune_row_groups(
         &self,
         schema: SchemaRef,
         row_groups: &[RowGroupMetaData],
-        bloom_filter: Option<&BloomFilter>,
+        parquet_filter: Option<&ParquetFilter>,
     ) -> Result<Vec<usize>> {
-        let filter = RowGroupFilter::try_new(
-            &schema,
-            row_groups,
-            bloom_filter.map(|v| v.filters()),
-            self.predicate.exprs(),
-        )?;
+        let pruner =
+            RowGroupPruner::try_new(&schema, row_groups, parquet_filter, self.predicate.exprs())?;
 
-        Ok(filter.filter())
+        Ok(pruner.prune())
     }
 
     async fn fetch_record_batch_streams(
@@ -169,40 +165,40 @@ impl<'a> Reader<'a> {
         let row_projector = self.row_projector.as_ref().unwrap();
 
         // Get target row groups.
-        let filtered_row_groups = self.filter_row_groups(
+        let target_row_groups = self.prune_row_groups(
             meta_data.custom().schema.to_arrow_schema_ref(),
             meta_data.parquet().row_groups(),
-            meta_data.custom().bloom_filter.as_ref(),
+            meta_data.custom().parquet_filter.as_ref(),
         )?;
 
         info!(
-            "Reader fetch record batches, path:{}, row_groups total:{}, after filter:{}",
+            "Reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",
             self.path,
             meta_data.parquet().num_row_groups(),
-            filtered_row_groups.len(),
+            target_row_groups.len(),
         );
 
-        if filtered_row_groups.is_empty() {
+        if target_row_groups.is_empty() {
             return Ok(Vec::new());
         }
 
         // Partition the batches by `read_parallelism`.
         let suggest_read_parallelism = read_parallelism;
-        let read_parallelism = std::cmp::min(filtered_row_groups.len(), suggest_read_parallelism);
+        let read_parallelism = std::cmp::min(target_row_groups.len(), suggest_read_parallelism);
 
         // TODO: we only support read parallelly when `batch_size` ==
         // `num_rows_per_row_group`, so this placing method is ok, we should
         // adjust it when supporting it other situations.
         let chunks_num = read_parallelism;
-        let chunk_size = filtered_row_groups.len() / read_parallelism + 1;
+        let chunk_size = target_row_groups.len() / read_parallelism + 1;
         info!(
             "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
             suggest_read_parallelism, read_parallelism, chunk_size
         );
-        let mut filtered_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
-        for (row_group_idx, row_group) in filtered_row_groups.into_iter().enumerate() {
+        let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
+        for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
             let chunk_idx = row_group_idx % chunks_num;
-            filtered_row_group_chunks[chunk_idx].push(row_group);
+            target_row_group_chunks[chunk_idx].push(row_group);
         }
 
         let proj_mask = ProjectionMask::leaves(
@@ -210,8 +206,8 @@ impl<'a> Reader<'a> {
             row_projector.existed_source_projection().iter().copied(),
         );
 
-        let mut streams = Vec::with_capacity(filtered_row_group_chunks.len());
-        for chunk in filtered_row_group_chunks {
+        let mut streams = Vec::with_capacity(target_row_group_chunks.len());
+        for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
             let builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
@@ -241,7 +237,7 @@ impl<'a> Reader<'a> {
         let row_projector = self
             .projected_schema
             .try_project_with_key(&meta_data.custom().schema)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Projection)?;
         self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
@@ -270,8 +266,9 @@ impl<'a> Reader<'a> {
         let meta_data =
             parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
                 .await
-                .map_err(|e| Box::new(e) as _)
-                .context(DecodeSstMeta)?;
+                .with_context(|| FetchAndDecodeSstMeta {
+                    file_path: self.path.to_string(),
+                })?;
 
         Ok(Arc::new(meta_data))
     }
@@ -298,9 +295,9 @@ impl<'a> Reader<'a> {
         let meta_data = {
             let parquet_meta_data = self.load_meta_data_from_storage().await?;
 
-            let ignore_bloom_filter = avoid_update_cache && empty_predicate;
-            MetaData::try_new(&parquet_meta_data, ignore_bloom_filter)
-                .map_err(|e| Box::new(e) as _)
+            let ignore_sst_filter = avoid_update_cache && empty_predicate;
+            MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
+                .box_err()
                 .context(DecodeSstMeta)?
         };
 
@@ -403,8 +400,7 @@ impl AsyncFileReader for ObjectStoreReader {
             .get_range(&self.path, range)
             .map_err(|e| {
                 parquet::errors::ParquetError::General(format!(
-                    "Failed to fetch range from object store, err:{}",
-                    e
+                    "Failed to fetch range from object store, err:{e}"
                 ))
             })
             .boxed()
@@ -426,8 +422,7 @@ impl AsyncFileReader for ObjectStoreReader {
                 .get_ranges(&self.path, &ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
-                        "Failed to fetch ranges from object store, err:{}",
-                        e
+                        "Failed to fetch ranges from object store, err:{e}"
                     ))
                 })
                 .await
@@ -450,10 +445,7 @@ struct ChunkReaderAdapter<'a> {
 #[async_trait]
 impl<'a> ChunkReader for ChunkReaderAdapter<'a> {
     async fn get_bytes(&self, range: Range<usize>) -> GenericResult<Bytes> {
-        self.store
-            .get_range(self.path, range)
-            .await
-            .map_err(|e| Box::new(e) as _)
+        self.store.get_range(self.path, range).await.box_err()
     }
 }
 
@@ -504,17 +496,14 @@ impl Stream for RecordBatchProjector {
 
         match projector.stream.poll_next_unpin(cx) {
             Poll::Ready(Some(record_batch)) => {
-                match record_batch
-                    .map_err(|e| Box::new(e) as _)
-                    .context(DecodeRecordBatch {})
-                {
+                match record_batch.box_err().context(DecodeRecordBatch {}) {
                     Err(e) => Poll::Ready(Some(Err(e))),
                     Ok(record_batch) => {
                         let parquet_decoder =
                             ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
                         let record_batch = parquet_decoder
                             .decode_record_batch(record_batch)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(DecodeRecordBatch)?;
 
                         projector.row_num += record_batch.num_rows();
@@ -522,7 +511,7 @@ impl Stream for RecordBatchProjector {
                         let projected_batch = projector
                             .row_projector
                             .project_to_record_batch_with_key(record_batch)
-                            .map_err(|e| Box::new(e) as _)
+                            .box_err()
                             .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
@@ -581,8 +570,7 @@ impl Stream for RecordBatchReceiver {
         let rx_group_len = self.rx_group.len();
         let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap_or_else(|| {
             panic!(
-                "cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{}, rx_group len:{}",
-                cur_rx_idx, rx_group_len
+                "cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{cur_rx_idx}, rx_group len:{rx_group_len}"
             )
         });
         let poll_result = cur_rx.poll_recv(cx);
@@ -682,7 +670,6 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
         let channel_cap_per_sub_reader = self.channel_cap / self.read_parallelism + 1;
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
-            .into_iter()
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();
 
@@ -764,10 +751,7 @@ mod tests {
     }
 
     fn gen_test_data(amount: usize) -> Vec<u32> {
-        (0..amount)
-            .into_iter()
-            .map(|_| rand::random::<u32>())
-            .collect()
+        (0..amount).map(|_| rand::random::<u32>()).collect()
     }
 
     // We mock a thread model same as the one in `ThreadedReader` to check its
@@ -781,7 +765,6 @@ mod tests {
         let channel_cap_per_sub_reader = 10;
         let reader_num = 5;
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..reader_num)
-            .into_iter()
             .map(|_| mpsc::channel::<u32>(channel_cap_per_sub_reader))
             .unzip();
 

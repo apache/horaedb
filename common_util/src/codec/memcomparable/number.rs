@@ -301,7 +301,7 @@ mod test {
                 ret: Ordering::Less,
             },
             TblU64 {
-                arg1: u64::MAX as u64,
+                arg1: u64::MAX,
                 arg2: i64::MAX as u64,
                 ret: Ordering::Greater,
             },

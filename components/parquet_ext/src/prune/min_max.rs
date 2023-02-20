@@ -13,20 +13,20 @@ use parquet::file::{metadata::RowGroupMetaData, statistics::Statistics as Parque
 
 /// Filters row groups according to the predicate function, and returns the
 /// indexes of the filtered row groups.
-pub fn filter_row_groups(
+pub fn prune_row_groups(
     schema: Arc<ArrowSchema>,
     exprs: &[Expr],
     row_groups: &[RowGroupMetaData],
 ) -> Vec<usize> {
-    let mut filtered_row_groups = Vec::with_capacity(row_groups.len());
+    let mut target_row_groups = Vec::with_capacity(row_groups.len());
     let should_reads = filter_row_groups_inner(schema, exprs, row_groups);
     for (i, should_read) in should_reads.iter().enumerate() {
         if *should_read {
-            filtered_row_groups.push(i);
+            target_row_groups.push(i);
         }
     }
 
-    filtered_row_groups
+    target_row_groups
 }
 
 /// Determine whether a row group should be read according to the meta data
@@ -248,10 +248,10 @@ mod test {
         let testcases = vec![
             // (expr, min, max, schema, expected)
             (
-                col("a").eq(lit(5i32)), // a == 5
+                col("a").eq(lit(5i64)), // a == 5
                 10,
                 20,
-                vec![("a", ArrowDataType::Int32)],
+                vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
             (
@@ -273,7 +273,7 @@ mod test {
                 col("a").in_list(vec![lit(17i64), lit(100i64)], false), // a in (17, 100)
                 101,
                 200,
-                vec![("a", ArrowDataType::Int32)],
+                vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
         ];
@@ -283,7 +283,7 @@ mod test {
             let schema = prepare_arrow_schema(schema);
             let metadata = prepare_metadata(&schema, stat);
 
-            let actual = filter_row_groups(schema, &[expr], &[metadata]);
+            let actual = prune_row_groups(schema, &[expr], &[metadata]);
             assert_eq!(actual, expected);
         }
     }

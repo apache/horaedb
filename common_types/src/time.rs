@@ -9,7 +9,7 @@ use std::{
     time::{self, Duration, SystemTime},
 };
 
-use proto::common as common_pb;
+use ceresdbproto::time_range;
 use snafu::{Backtrace, OptionExt, Snafu};
 
 /// Error of time module.
@@ -278,19 +278,19 @@ impl TimeRange {
     }
 }
 
-impl From<TimeRange> for common_pb::TimeRange {
+impl From<TimeRange> for time_range::TimeRange {
     fn from(src: TimeRange) -> Self {
-        common_pb::TimeRange {
+        time_range::TimeRange {
             start: src.inclusive_start.as_i64(),
             end: src.exclusive_end.as_i64(),
         }
     }
 }
 
-impl TryFrom<common_pb::TimeRange> for TimeRange {
+impl TryFrom<time_range::TimeRange> for TimeRange {
     type Error = Error;
 
-    fn try_from(src: common_pb::TimeRange) -> Result<Self, Error> {
+    fn try_from(src: time_range::TimeRange) -> Result<Self, Error> {
         Self::new(Timestamp::new(src.start), Timestamp::new(src.end)).context(InvalidTimeRange {
             start: src.start,
             end: src.end,
@@ -383,6 +383,6 @@ mod test {
     fn test_bucket_of_negative_timestamp() {
         let ts = Timestamp::new(-126316800000);
         let range = TimeRange::bucket_of(ts, Duration::from_millis(25920000000)).unwrap();
-        assert!(range.contains(ts), "range:{:?}", range);
+        assert!(range.contains(ts), "range:{range:?}");
     }
 }

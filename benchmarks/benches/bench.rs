@@ -73,14 +73,14 @@ fn bench_merge_sst(c: &mut Criterion) {
     for i in 0..bench.num_benches() {
         bench.init_for_bench(i, true);
         group.bench_with_input(
-            BenchmarkId::new("merge_sst", format!("{}/{}/dedup", sst_file_ids, i)),
+            BenchmarkId::new("merge_sst", format!("{sst_file_ids}/{i}/dedup")),
             &bench,
             bench_merge_sst_iter,
         );
 
         bench.init_for_bench(i, false);
         group.bench_with_input(
-            BenchmarkId::new("merge_sst", format!("{}/{}/no-dedup", sst_file_ids, i)),
+            BenchmarkId::new("merge_sst", format!("{sst_file_ids}/{i}/no-dedup")),
             &bench,
             bench_merge_sst_iter,
         );
@@ -155,14 +155,14 @@ fn bench_merge_memtable(c: &mut Criterion) {
     for i in 0..bench.num_benches() {
         bench.init_for_bench(i, true);
         group.bench_with_input(
-            BenchmarkId::new("merge_memtable", format!("{}/{}/dedup", sst_file_ids, i)),
+            BenchmarkId::new("merge_memtable", format!("{sst_file_ids}/{i}/dedup")),
             &bench,
             bench_merge_memtable_iter,
         );
 
         bench.init_for_bench(i, false);
         group.bench_with_input(
-            BenchmarkId::new("merge_memtable", format!("{}/{}/no-dedup", sst_file_ids, i)),
+            BenchmarkId::new("merge_memtable", format!("{sst_file_ids}/{i}/no-dedup")),
             &bench,
             bench_merge_memtable_iter,
         );

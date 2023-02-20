@@ -18,7 +18,7 @@ use common_types::{
     schema::RecordSchemaWithKey,
     SequenceNumber,
 };
-use common_util::define_result;
+use common_util::{define_result, error::GenericError};
 use futures::{future::try_join_all, StreamExt};
 use log::{debug, info, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -54,9 +54,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to pull record batch, error:{}", source))]
-    PullRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    PullRecordBatch { source: GenericError },
 
     #[snafu(display("Failed to build record batch, error:{}", source))]
     BuildRecordBatch {

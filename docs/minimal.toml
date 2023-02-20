@@ -1,26 +1,18 @@
+[server]
 bind_addr = "0.0.0.0"
 http_port = 5440
 grpc_port = 8831
-log_level = "info"
 
-[analytic]
-wal_path = "/tmp/ceresdb"
+[logger]
+level = "info"
 
-[analytic.storage]
-mem_cache_capacity = '1G'
-mem_cache_partition_bits = 0
+[tracing]
+dir = "/tmp/ceresdb"
 
 [analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb"
+data_dir = "/tmp/ceresdb"
 
-[[static_route.topology.schema_shards]]
-schema = 'public'
-auto_create_tables = true
-
-[[static_route.topology.schema_shards.shard_views]]
-shard_id = 0
-
-[static_route.topology.schema_shards.shard_views.endpoint]
-addr = "127.0.0.1"
-port = 8831
+[analytic.wal]
+type = "RocksDB"
+data_dir = "/tmp/ceresdb"

@@ -4,11 +4,12 @@ use std::{convert::TryFrom, sync::Arc};
 
 use common_types::schema::Schema;
 use datafusion::{
-    logical_plan::{
-        plan::{Extension, Filter, Projection, Sort},
-        DFSchemaRef, Expr, Limit, LogicalPlan, TableScan,
-    },
+    common::DFSchemaRef,
     optimizer::{optimizer::OptimizerRule, OptimizerConfig},
+};
+use datafusion_expr::{
+    expr::{Expr, Sort as ExprSort},
+    logical_plan::{Extension, Filter, Limit, LogicalPlan, Projection, Sort, TableScan},
 };
 use log::info;
 
@@ -38,18 +39,20 @@ impl OrderByPrimaryKeyRule {
             if let LogicalPlan::Sort(Sort {
                 expr: sort_exprs,
                 input: projection_plan,
+                fetch: sort_fetch,
             }) = sort_plan.as_ref()
             {
                 if let LogicalPlan::Projection(Projection {
                     expr: projection_exprs,
                     input: scan_or_filter_plan,
                     schema: projection_schema,
-                    alias,
+                    ..
                 }) = projection_plan.as_ref()
                 {
                     let (scan_plan, filter_predicate) = if let LogicalPlan::Filter(Filter {
                         predicate,
                         input: scan_plan,
+                        ..
                     }) = scan_or_filter_plan.as_ref()
                     {
                         (scan_plan, Some(predicate))
@@ -63,8 +66,7 @@ impl OrderByPrimaryKeyRule {
                     {
                         let schema = Schema::try_from(source.schema()).map_err(|e| {
                             let err_msg = format!(
-                                "fail to convert arrow schema to schema, table:{}, err:{:?}",
-                                table_name, e
+                                "fail to convert arrow schema to schema, table:{table_name}, err:{e:?}"
                             );
                             datafusion::error::DataFusionError::Plan(err_msg)
                         })?;
@@ -75,13 +77,13 @@ impl OrderByPrimaryKeyRule {
                                 projection: projection_exprs.clone(),
                                 filter_predicate: filter_predicate.cloned(),
                                 schema: projection_schema.clone(),
-                                alias: alias.clone(),
                                 scan_plan: scan_plan.clone(),
                                 sort_exprs: sort_exprs.clone(),
+                                sort_fetch: *sort_fetch,
                                 sort_in_asc_order,
                                 skip: *skip,
                                 fetch: *fetch,
-                            });
+                            })?;
                             return Ok(Some(new_plan));
                         }
                     }
@@ -111,7 +113,7 @@ impl OrderByPrimaryKeyRule {
 
         let mut in_asc_order = None;
         for (sort_expr, key_col) in sort_exprs.iter().zip(sub_key_cols.iter()) {
-            if let Expr::Sort { expr, asc, .. } = sort_expr {
+            if let Expr::Sort(ExprSort { expr, asc, .. }) = sort_expr {
                 if let Some(in_asc_order) = in_asc_order.as_mut() {
                     if in_asc_order != asc {
                         return None;
@@ -151,7 +153,7 @@ impl OrderByPrimaryKeyRule {
     ///       Project:
     ///         Filter:
     ///           TableScanByPrimaryKey
-    fn rewrite_plan(rewrite_ctx: RewriteContext) -> LogicalPlan {
+    fn rewrite_plan(rewrite_ctx: RewriteContext) -> datafusion::error::Result<LogicalPlan> {
         let order_by_primary_key_scan = Arc::new(LogicalPlan::Extension(Extension {
             node: Arc::new(TableScanByPrimaryKey::new_from_scan_plan(
                 rewrite_ctx.sort_in_asc_order,
@@ -160,20 +162,19 @@ impl OrderByPrimaryKeyRule {
         }));
 
         let filter_plan = if let Some(predicate) = rewrite_ctx.filter_predicate {
-            Arc::new(LogicalPlan::Filter(Filter {
+            Arc::new(LogicalPlan::Filter(Filter::try_new(
                 predicate,
-                input: order_by_primary_key_scan,
-            }))
+                order_by_primary_key_scan,
+            )?))
         } else {
             order_by_primary_key_scan
         };
 
-        let new_project_plan = Arc::new(LogicalPlan::Projection(Projection {
-            expr: rewrite_ctx.projection,
-            input: filter_plan,
-            schema: rewrite_ctx.schema,
-            alias: rewrite_ctx.alias,
-        }));
+        let new_project_plan = Arc::new(LogicalPlan::Projection(Projection::try_new_with_schema(
+            rewrite_ctx.projection,
+            filter_plan,
+            rewrite_ctx.schema,
+        )?));
 
         let new_limit_plan = Arc::new(LogicalPlan::Limit(Limit {
             skip: rewrite_ctx.skip,
@@ -184,30 +185,32 @@ impl OrderByPrimaryKeyRule {
         let new_sort_plan = Arc::new(LogicalPlan::Sort(Sort {
             expr: rewrite_ctx.sort_exprs,
             input: new_limit_plan,
+            fetch: rewrite_ctx.sort_fetch,
         }));
-        LogicalPlan::Limit(Limit {
+
+        Ok(LogicalPlan::Limit(Limit {
             skip: rewrite_ctx.skip,
             fetch: rewrite_ctx.fetch,
             input: new_sort_plan,
-        })
+        }))
     }
 }
 
 impl OptimizerRule for OrderByPrimaryKeyRule {
-    fn optimize(
+    fn try_optimize(
         &self,
         plan: &LogicalPlan,
-        _optimizer_config: &mut OptimizerConfig,
-    ) -> datafusion::error::Result<LogicalPlan> {
+        _optimizer_config: &dyn OptimizerConfig,
+    ) -> datafusion::error::Result<Option<LogicalPlan>> {
         match self.do_optimize(plan)? {
             Some(new_plan) => {
                 info!(
                      "optimize plan by OrderByPrimaryKeyRule, original plan:\n{:?}\n optimized plan:\n{:?}",
                      plan, new_plan
                  );
-                Ok(new_plan)
+                Ok(Some(new_plan))
             }
-            None => Ok(plan.clone()),
+            None => Ok(Some(plan.clone())),
         }
     }
 
@@ -216,13 +219,14 @@ impl OptimizerRule for OrderByPrimaryKeyRule {
     }
 }
 
+#[derive(Debug)]
 struct RewriteContext {
     projection: Vec<Expr>,
     filter_predicate: Option<Expr>,
     schema: DFSchemaRef,
-    alias: Option<String>,
     scan_plan: Arc<LogicalPlan>,
     sort_exprs: Vec<Expr>,
+    sort_fetch: Option<usize>,
     sort_in_asc_order: bool,
     skip: usize,
     fetch: Option<usize>,
@@ -231,7 +235,8 @@ struct RewriteContext {
 #[cfg(test)]
 mod tests {
     use common_types::{column_schema, datum::DatumKind, schema};
-    use datafusion::{logical_plan::Column, scalar::ScalarValue};
+    use datafusion::{common::Column, scalar::ScalarValue};
+    use datafusion_expr::expr::Sort as ExprSort;
 
     use super::*;
     use crate::logical_optimizer::tests::LogicalPlanNodeBuilder;
@@ -290,11 +295,11 @@ mod tests {
 
     fn build_sort_expr(sort_col: &str, asc: bool) -> Expr {
         let col_expr = Expr::Column(Column::from(sort_col));
-        Expr::Sort {
+        Expr::Sort(ExprSort {
             expr: Box::new(col_expr),
             asc,
             nulls_first: false,
-        }
+        })
     }
 
     fn build_primary_key_sort_exprs(schema: &Schema, asc: bool) -> Vec<Expr> {
@@ -369,7 +374,7 @@ mod tests {
     #[test]
     fn test_optimize_applied_with_filter() {
         let schema = build_optimized_schema();
-        let filter_expr = Expr::Literal(ScalarValue::Int8(None));
+        let filter_expr = Expr::Literal(ScalarValue::Boolean(None));
         let sort_in_asc_order = false;
         let sort_exprs = build_primary_key_sort_exprs(&schema, sort_in_asc_order);
 

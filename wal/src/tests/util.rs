@@ -143,7 +143,7 @@ impl WalBuilder for KafkaWalBuilder {
 
     async fn build(&self, _data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let mut config = KafkaConfig::default();
-        config.client_config.boost_broker = Some("127.0.0.1:9011".to_string());
+        config.client.boost_broker = Some("127.0.0.1:9011".to_string());
         let kafka_impl = KafkaImpl::new(config).await.unwrap();
         let message_queue_impl = MessageQueueImpl::new(
             self.namespace.clone(),

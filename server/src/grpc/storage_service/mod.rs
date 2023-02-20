@@ -10,12 +10,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
-    prometheus::{PrometheusQueryRequest, PrometheusQueryResponse},
-    storage::{
-        storage_service_server::StorageService, value::Value, QueryRequest, QueryResponse,
-        RouteRequest, RouteResponse, WriteMetric, WriteRequest, WriteResponse,
-    },
+use ceresdbproto::storage::{
+    storage_service_server::StorageService, value::Value, PrometheusQueryRequest,
+    PrometheusQueryResponse, RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse,
+    WriteRequest, WriteResponse, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
@@ -23,9 +21,10 @@ use common_types::{
     datum::DatumKind,
     schema::{Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
-use common_util::{runtime::JoinHandle, time::InstantExt};
+use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use http::StatusCode;
+use interpreters::interpreter::Output;
 use log::{error, warn};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
@@ -37,8 +36,11 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 
+use self::{
+    error::Error,
+    sql_query::{QueryResponseBuilder, QueryResponseWriter},
+};
 use crate::{
-    consts,
     grpc::{
         forward::ForwarderRef,
         metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -50,13 +52,15 @@ use crate::{
 
 pub(crate) mod error;
 mod prom_query;
-mod query;
 mod route;
+mod sql_query;
 pub(crate) mod write;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 /// Rpc request header
+/// Tenant/token will be saved in header in future
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 pub struct RequestHeader {
     metas: HashMap<String, Vec<u8>>,
@@ -86,6 +90,7 @@ impl From<&MetadataMap> for RequestHeader {
 }
 
 impl RequestHeader {
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&[u8]> {
         self.metas.get(key).map(|v| v.as_slice())
     }
@@ -97,13 +102,14 @@ pub struct HandlerContext<'a, Q> {
     router: RouterRef,
     instance: InstanceRef<Q>,
     catalog: String,
-    schema: String,
-    schema_config: Option<&'a SchemaConfig>,
+    schema_config_provider: &'a SchemaConfigProviderRef,
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
+    resp_compress_min_length: usize,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         header: RequestHeader,
         router: Arc<dyn Router + Sync + Send>,
@@ -111,77 +117,26 @@ impl<'a, Q> HandlerContext<'a, Q> {
         schema_config_provider: &'a SchemaConfigProviderRef,
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
-        enable_tenant_as_schema: bool,
-    ) -> Result<Self> {
-        let default_catalog = instance.catalog_manager.default_catalog_name();
-        let default_schema = instance.catalog_manager.default_schema_name();
+        resp_compress_min_length: usize,
+    ) -> Self {
+        // catalog is not exposed to protocol layer
+        let catalog = instance.catalog_manager.default_catalog_name().to_string();
 
-        let catalog = header
-            .get(consts::CATALOG_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse catalog name",
-            })?
-            .unwrap_or_else(|| default_catalog.to_string());
-
-        let schema = header
-            .get(consts::SCHEMA_HEADER)
-            .map(|v| String::from_utf8(v.to_vec()))
-            .transpose()
-            .map_err(|e| Box::new(e) as _)
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "fail to parse schema name",
-            })?;
-
-        let schema = if enable_tenant_as_schema {
-            let tenant = header
-                .get(consts::TENANT_HEADER)
-                .map(|v| String::from_utf8(v.to_vec()))
-                .transpose()
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "fail to parse tenant name",
-                })?;
-            schema
-                .or(tenant)
-                .unwrap_or_else(|| default_schema.to_string())
-        } else {
-            schema.unwrap_or_else(|| default_schema.to_string())
-        };
-
-        let schema_config = schema_config_provider
-            .schema_config(&schema)
-            .map_err(|e| Box::new(e) as _)
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("fail to fetch schema config, schema_name:{}", schema),
-            })?;
-
-        Ok(Self {
+        Self {
             header,
             router,
             instance,
             catalog,
-            schema,
-            schema_config,
+            schema_config_provider,
             forwarder,
             timeout,
-        })
+            resp_compress_min_length,
+        }
     }
 
     #[inline]
     fn catalog(&self) -> &str {
         &self.catalog
-    }
-
-    #[inline]
-    fn schema(&self) -> &str {
-        &self.schema
     }
 }
 
@@ -193,7 +148,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub schema_config_provider: SchemaConfigProviderRef,
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
-    pub enable_tenant_as_schema: bool,
+    pub resp_compress_min_length: usize,
 }
 
 macro_rules! handle_request {
@@ -210,12 +165,12 @@ macro_rules! handle_request {
                 let instance = self.instance.clone();
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
-                let enable_tenant_as_schema = self.enable_tenant_as_schema;
+                let resp_compress_min_length = self.resp_compress_min_length;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
                 let runtime = match stringify!($mod_name) {
-                    "query" => &self.runtimes.read_runtime,
+                    "sql_query" | "prom_query" => &self.runtimes.read_runtime,
                     "write" => &self.runtimes.write_runtime,
                     _ => &self.runtimes.bg_runtime,
                 };
@@ -223,14 +178,17 @@ macro_rules! handle_request {
                 let schema_config_provider = self.schema_config_provider.clone();
                 // we need to pass the result via channel
                 let join_handle = runtime.spawn(async move {
+                    let req = request.into_inner();
+                    if req.context.is_none() {
+                        ErrNoCause {
+                            code: StatusCode::BAD_REQUEST,
+                            msg: "database is not set",
+                        }
+                        .fail()?
+                    }
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
-                            .map_err(|e| Box::new(e) as _)
-                            .context(ErrWithCause {
-                                code: StatusCode::BAD_REQUEST,
-                                msg: "invalid header",
-                            })?;
-                    $mod_name::$handle_fn(&handler_ctx, request.into_inner())
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length);
+                    $mod_name::$handle_fn(&handler_ctx, req)
                         .await
                         .map_err(|e| {
                             error!(
@@ -245,7 +203,7 @@ macro_rules! handle_request {
 
                 let res = join_handle
                     .await
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: "fail to join the spawn task",
@@ -271,11 +229,14 @@ macro_rules! handle_request {
 }
 
 impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+    // `RequestContext` is ensured in `handle_request` macro, so handler
+    // can just use it with unwrap()
+
     handle_request!(route, handle_route, RouteRequest, RouteResponse);
 
     handle_request!(write, handle_write, WriteRequest, WriteResponse);
 
-    handle_request!(query, handle_query, QueryRequest, QueryResponse);
+    handle_request!(sql_query, handle_query, SqlQueryRequest, SqlQueryResponse);
 
     handle_request!(
         prom_query,
@@ -293,7 +254,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let header = RequestHeader::from(request.metadata());
         let instance = self.instance.clone();
         let schema_config_provider = self.schema_config_provider.clone();
-
         let handler_ctx = HandlerContext::new(
             header,
             router,
@@ -301,20 +261,15 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             &schema_config_provider,
             self.forwarder.clone(),
             self.timeout,
-            self.enable_tenant_as_schema,
-        )
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid header",
-        })?;
+            self.resp_compress_min_length,
+        );
 
         let mut total_success = 0;
         let mut resp = WriteResponse::default();
         let mut has_err = false;
         let mut stream = request.into_inner();
         while let Some(req) = stream.next().await {
-            let write_req = req.map_err(|e| Box::new(e) as _).context(ErrWithCause {
+            let write_req = req.box_err().context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to fetch request",
             })?;
@@ -341,7 +296,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
         if !has_err {
             resp.header = Some(error::build_ok_header());
-            resp.success = total_success as u32;
+            resp.success = total_success;
         }
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -351,10 +306,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         Ok(resp)
     }
 
-    async fn stream_query_internal(
+    async fn stream_sql_query_internal(
         &self,
-        request: tonic::Request<QueryRequest>,
-    ) -> Result<ReceiverStream<Result<QueryResponse>>> {
+        request: tonic::Request<SqlQueryRequest>,
+    ) -> Result<ReceiverStream<Result<SqlQueryResponse>>> {
         let begin_instant = Instant::now();
         let router = self.router.clone();
         let header = RequestHeader::from(request.metadata());
@@ -362,46 +317,50 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let schema_config_provider = self.schema_config_provider.clone();
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
-        let enable_tenant_as_schema = self.enable_tenant_as_schema;
+        let resp_compress_min_length = self.resp_compress_min_length;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        let _: JoinHandle<Result<()>> = self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, enable_tenant_as_schema)
-                .map_err(|e| Box::new(e) as _)
-                .context(ErrWithCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "invalid header",
-                })?;
-
+        self.runtimes.read_runtime.spawn(async move {
+            let handler_ctx = HandlerContext::new(
+                header,
+                router,
+                instance,
+                &schema_config_provider,
+                forwarder,
+                timeout,
+                resp_compress_min_length,
+            );
             let query_req = request.into_inner();
-            let output = query::fetch_query_output(&handler_ctx, &query_req)
-                    .await
-                    .map_err(|e| {
-                        error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
-                        e
-                    })?;
-            if let Some(batch) = query::get_record_batch(output) {
-                for i in 0..batch.len() {
-                    let resp = query::convert_records(&batch[i..i + 1]);
-                    if tx.send(resp).await.is_err() {
-                        error!("Failed to send handler result, mod:stream_query, handler:handle_stream_query");
-                        break;
+            let output = sql_query::fetch_query_output(&handler_ctx, &query_req)
+                .await
+                .map_err(|e| {
+                    error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
+                    e
+                })?;
+            match output {
+                Output::AffectedRows(rows) => {
+                    let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
+                    if tx.send(Ok(resp)).await.is_err() {
+                        error!("Failed to send affected rows resp in stream query");
                     }
                 }
-            } else {
-                let resp = QueryResponse {
-                    header: Some(error::build_ok_header()),
-                    ..Default::default()
-                };
+                Output::Records(batches) => {
+                    for batch in &batches {
+                        let resp = {
+                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
+                            writer.write(batch)?;
+                            writer.finish()
+                        };
 
-                if tx.send(Result::Ok(resp)).await.is_err() {
-                    error!(
-                        "Failed to send handler result, mod:stream_query, handler:handle_stream_query"
-                    );
+                        if tx.send(resp).await.is_err() {
+                            error!("Failed to send record batches resp in stream query");
+                            break;
+                        }
+                    }
                 }
             }
 
-            Ok(())
+            Ok::<(), Error>(())
         });
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -414,7 +373,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
 #[async_trait]
 impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
-    type StreamQueryStream = BoxStream<'static, std::result::Result<QueryResponse, tonic::Status>>;
+    type StreamSqlQueryStream =
+        BoxStream<'static, std::result::Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
         &self,
@@ -430,11 +390,11 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         self.write_internal(request).await
     }
 
-    async fn query(
+    async fn sql_query(
         &self,
-        request: tonic::Request<QueryRequest>,
-    ) -> std::result::Result<tonic::Response<QueryResponse>, tonic::Status> {
-        self.query_internal(request).await
+        request: tonic::Request<SqlQueryRequest>,
+    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+        self.sql_query_internal(request).await
     }
 
     async fn prom_query(
@@ -458,27 +418,28 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
         Ok(tonic::Response::new(resp))
     }
 
-    async fn stream_query(
+    async fn stream_sql_query(
         &self,
-        request: tonic::Request<QueryRequest>,
-    ) -> std::result::Result<tonic::Response<Self::StreamQueryStream>, tonic::Status> {
-        match self.stream_query_internal(request).await {
+        request: tonic::Request<SqlQueryRequest>,
+    ) -> std::result::Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
+        match self.stream_sql_query_internal(request).await {
             Ok(stream) => {
-                let new_stream: Self::StreamQueryStream = Box::pin(stream.map(|res| match res {
-                    Ok(resp) => Ok(resp),
-                    Err(e) => {
-                        let resp = QueryResponse {
-                            header: Some(error::build_err_header(e)),
-                            ..Default::default()
-                        };
-                        Ok(resp)
-                    }
-                }));
+                let new_stream: Self::StreamSqlQueryStream =
+                    Box::pin(stream.map(|res| match res {
+                        Ok(resp) => Ok(resp),
+                        Err(e) => {
+                            let resp = SqlQueryResponse {
+                                header: Some(error::build_err_header(e)),
+                                ..Default::default()
+                            };
+                            Ok(resp)
+                        }
+                    }));
 
                 Ok(tonic::Response::new(new_stream))
             }
             Err(e) => {
-                let resp = QueryResponse {
+                let resp = SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()
                 };
@@ -490,17 +451,18 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 }
 
 /// Create CreateTablePlan from a write metric.
-// The caller must ENSURE that the HandlerContext's schema_config is not None.
-pub fn write_metric_to_create_table_plan(
+///
+/// The caller must ENSURE that the HandlerContext's schema_config is not None.
+pub fn write_table_request_to_create_table_plan(
     schema_config: Option<&SchemaConfig>,
-    write_metric: &WriteMetric,
+    write_table: &WriteTableRequest,
 ) -> Result<CreateTablePlan> {
     let schema_config = schema_config.unwrap();
     Ok(CreateTablePlan {
         engine: schema_config.default_engine_type.clone(),
         if_not_exists: true,
-        table: write_metric.metric.clone(),
-        table_schema: build_schema_from_metric(schema_config, write_metric)?,
+        table: write_table.table.clone(),
+        table_schema: build_schema_from_write_table_request(schema_config, write_table)?,
         options: HashMap::default(),
         partition_info: None,
     })
@@ -515,22 +477,22 @@ fn build_column_schema(
         .is_nullable(true)
         .is_tag(is_tag);
 
-    builder
-        .build()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid column schema",
-        })
+    builder.build().box_err().context(ErrWithCause {
+        code: StatusCode::BAD_REQUEST,
+        msg: "invalid column schema",
+    })
 }
 
-fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) -> Result<Schema> {
-    let WriteMetric {
-        metric: table_name,
+fn build_schema_from_write_table_request(
+    schema_config: &SchemaConfig,
+    write_table_req: &WriteTableRequest,
+) -> Result<Schema> {
+    let WriteTableRequest {
+        table,
         field_names,
         tag_names,
         entries: write_entries,
-    } = metric;
+    } = write_table_req;
 
     let mut schema_builder =
         SchemaBuilder::with_capacity(field_names.len()).auto_increment_column_id(true);
@@ -539,7 +501,7 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
         !write_entries.is_empty(),
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("empty write entires to write table:{}", table_name),
+            msg: format!("empty write entires to write table:{table}"),
         }
     );
 
@@ -553,8 +515,7 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                 ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
                     msg: format!(
-                        "tag index {} is not found in tag_names:{:?}, table:{}",
-                        name_index, tag_names, table_name,
+                        "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table}",
                     ),
                 }
             );
@@ -566,25 +527,19 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                 .as_ref()
                 .with_context(|| ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!(
-                        "Tag({}) value is needed, table_name:{} ",
-                        tag_name, table_name
-                    ),
+                    msg: format!("Tag({tag_name}) value is needed, table_name:{table} "),
                 })?
                 .value
                 .as_ref()
                 .with_context(|| ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!(
-                        "Tag({}) value type is not supported, table_name:{}",
-                        tag_name, table_name
-                    ),
+                    msg: format!("Tag({tag_name}) value type is not supported, table_name:{table}"),
                 })?;
 
             let data_type = try_get_data_type_from_value(tag_value)?;
 
             if let Some(column_schema) = name_column_map.get(tag_name) {
-                ensure_data_type_compatible(table_name, tag_name, true, data_type, column_schema)?;
+                ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
             }
             let column_schema = build_column_schema(tag_name, data_type, true)?;
             name_column_map.insert(tag_name, column_schema);
@@ -600,18 +555,14 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
                         .as_ref()
                         .with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
-                            msg: format!(
-                                "Field({}) value is needed, table:{}",
-                                field_name, table_name
-                            ),
+                            msg: format!("Field({field_name}) value is needed, table:{table}"),
                         })?
                         .value
                         .as_ref()
                         .with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
                             msg: format!(
-                                "Field({}) value type is not supported, table:{}",
-                                field_name, table_name
+                                "Field({field_name}) value type is not supported, table:{table}"
                             ),
                         })?;
 
@@ -619,7 +570,7 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
 
                     if let Some(column_schema) = name_column_map.get(field_name) {
                         ensure_data_type_compatible(
-                            table_name,
+                            table,
                             field_name,
                             false,
                             data_type,
@@ -641,32 +592,32 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
     )
     .is_nullable(false)
     .build()
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .context(ErrWithCause {
         code: StatusCode::BAD_REQUEST,
         msg: "invalid timestamp column schema to build",
     })?;
 
-    // Use (timestamp, tsid) as primary key.
+    // Use (tsid, timestamp) as primary key.
     let tsid_column_schema =
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
             .is_nullable(false)
             .build()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "invalid tsid column schema to build",
             })?;
 
     schema_builder = schema_builder
-        .add_key_column(timestamp_column_schema)
-        .map_err(|e| Box::new(e) as _)
+        .add_key_column(tsid_column_schema)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid timestamp column to add",
         })?
-        .add_key_column(tsid_column_schema)
-        .map_err(|e| Box::new(e) as _)
+        .add_key_column(timestamp_column_schema)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid tsid column to add",
@@ -675,20 +626,17 @@ fn build_schema_from_metric(schema_config: &SchemaConfig, metric: &WriteMetric) 
     for col in name_column_map.into_values() {
         schema_builder = schema_builder
             .add_normal_column(col)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "invalid normal column to add",
             })?;
     }
 
-    schema_builder
-        .build()
-        .map_err(|e| Box::new(e) as _)
-        .context(ErrWithCause {
-            code: StatusCode::BAD_REQUEST,
-            msg: "invalid schema to build",
-        })
+    schema_builder.build().box_err().context(ErrWithCause {
+        code: StatusCode::BAD_REQUEST,
+        msg: "invalid schema to build",
+    })
 }
 
 fn ensure_data_type_compatible(
@@ -703,8 +651,7 @@ fn ensure_data_type_compatible(
         ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Duplicated column: {} in fields and tags for table: {}",
-                column_name, table_name,
+                "Duplicated column: {column_name} in fields and tags for table: {table_name}",
             ),
         }
     );
@@ -744,7 +691,7 @@ fn try_get_data_type_from_value(value: &Value) -> Result<DatumKind> {
 
 #[cfg(test)]
 mod tests {
-    use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteEntry, WriteMetric};
+    use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use cluster::config::SchemaConfig;
     use common_types::datum::DatumKind;
 
@@ -756,7 +703,7 @@ mod tests {
     const FIELD2: &str = "memory";
     const FIELD3: &str = "log";
     const FIELD4: &str = "ping_ok";
-    const METRIC: &str = "pod_system_metric";
+    const TABLE: &str = "pod_system_table";
     const TIMESTAMP_COLUMN: &str = "custom_timestamp";
 
     fn make_tag(name_index: u32, val: &str) -> Tag {
@@ -775,7 +722,7 @@ mod tests {
         }
     }
 
-    fn generate_write_metric() -> WriteMetric {
+    fn generate_write_table_request() -> WriteTableRequest {
         let tag1 = make_tag(0, "test.host");
         let tag2 = make_tag(1, "test.idc");
         let tags = vec![tag1, tag2];
@@ -798,7 +745,7 @@ mod tests {
             fields: vec![field3],
         };
 
-        let write_entry = WriteEntry {
+        let write_entry = WriteSeriesEntry {
             tags,
             field_groups: vec![field_group1, field_group2, field_group3],
         };
@@ -811,8 +758,8 @@ mod tests {
             FIELD4.to_string(),
         ];
 
-        WriteMetric {
-            metric: METRIC.to_string(),
+        WriteTableRequest {
+            table: TABLE.to_string(),
             tag_names,
             field_names,
             entries: vec![write_entry],
@@ -820,15 +767,15 @@ mod tests {
     }
 
     #[test]
-    fn test_build_schema_from_metric() {
+    fn test_build_schema_from_write_table_request() {
         let schema_config = SchemaConfig {
             auto_create_tables: true,
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             ..SchemaConfig::default()
         };
-        let write_metric = generate_write_metric();
+        let write_table_request = generate_write_table_request();
 
-        let schema = build_schema_from_metric(&schema_config, &write_metric);
+        let schema = build_schema_from_write_table_request(&schema_config, &write_table_request);
         assert!(schema.is_ok());
 
         let schema = schema.unwrap();
@@ -841,8 +788,8 @@ mod tests {
 
         let key_columns = schema.key_columns();
         assert_eq!(2, key_columns.len());
-        assert_eq!(TIMESTAMP_COLUMN, key_columns[0].name);
-        assert_eq!("tsid", key_columns[1].name);
+        assert_eq!("tsid", key_columns[0].name);
+        assert_eq!(TIMESTAMP_COLUMN, key_columns[1].name);
 
         let columns = schema.normal_columns();
         assert_eq!(6, columns.len());

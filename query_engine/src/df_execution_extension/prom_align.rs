@@ -59,7 +59,7 @@ define_result!(Error);
 
 /// Limits Extrapolation range.
 /// Refer to https://github.com/prometheus/prometheus/pull/1295
-const PROMTHEUS_EXTRAPOLATION_THRESHOLD_COEFFICIENT: f64 = 1.1;
+const PROMETHEUS_EXTRAPOLATION_THRESHOLD_COEFFICIENT: f64 = 1.1;
 
 #[derive(Debug)]
 struct ExtractTsidExpr {}
@@ -67,6 +67,27 @@ struct ExtractTsidExpr {}
 impl fmt::Display for ExtractTsidExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(ExtractTsid)")
+    }
+}
+
+impl PartialEq<dyn Any> for ExtractTsidExpr {
+    fn eq(&self, other: &dyn Any) -> bool {
+        down_cast_any_ref(other).downcast_ref::<Self>().is_some()
+    }
+}
+
+// Copy from https://github.com/apache/arrow-datafusion/blob/71353bb9ad99a0688a9ae36a5cda77a5ab6af00b/datafusion/physical-expr/src/physical_expr.rs#L237
+fn down_cast_any_ref(any: &dyn Any) -> &dyn Any {
+    if any.is::<Arc<dyn PhysicalExpr>>() {
+        any.downcast_ref::<Arc<dyn PhysicalExpr>>()
+            .unwrap()
+            .as_any()
+    } else if any.is::<Box<dyn PhysicalExpr>>() {
+        any.downcast_ref::<Box<dyn PhysicalExpr>>()
+            .unwrap()
+            .as_any()
+    } else {
+        any
     }
 }
 
@@ -89,6 +110,17 @@ impl PhysicalExpr for ExtractTsidExpr {
             .index_of(TSID_COLUMN)
             .expect("checked in plan build");
         Ok(ColumnarValue::Array(batch.column(tsid_idx).clone()))
+    }
+
+    fn children(&self) -> Vec<Arc<dyn PhysicalExpr>> {
+        vec![]
+    }
+
+    fn with_new_children(
+        self: Arc<Self>,
+        _children: Vec<Arc<dyn PhysicalExpr>>,
+    ) -> ArrowResult<Arc<dyn PhysicalExpr>> {
+        Ok(self)
     }
 }
 
@@ -450,7 +482,7 @@ impl PromAlignReader {
 }
 
 impl Stream for PromAlignReader {
-    type Item = std::result::Result<RecordBatch, ArrowError>;
+    type Item = datafusion::error::Result<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.done {
@@ -465,9 +497,12 @@ impl Stream for PromAlignReader {
                 }
                 let tsid_samples = self
                     .accumulate_record_batch(batch)
-                    .map_err(|e| ArrowError::SchemaError(e.to_string()))?; // convert all Error enum to SchemaError
+                    .map_err(|e| DataFusionError::External(Box::new(e) as Box<_>))?; // convert all Error enum to SchemaError
                 if !tsid_samples.is_empty() {
-                    Poll::Ready(Some(self.samples_to_record_batch(schema, tsid_samples)))
+                    Poll::Ready(Some(
+                        self.samples_to_record_batch(schema, tsid_samples)
+                            .map_err(DataFusionError::ArrowError),
+                    ))
                 } else {
                     Poll::Ready(Some(Ok(RecordBatch::new_empty(schema))))
                 }
@@ -477,10 +512,11 @@ impl Stream for PromAlignReader {
                 if let Some(schema) = mem::take(&mut self.record_schema) {
                     let tsid_samples = self
                         .accumulate_record_batch(RecordBatch::new_empty(schema.clone()))
-                        .map_err(|e| ArrowError::SchemaError(e.to_string()))?;
+                        .map_err(|e| DataFusionError::External(Box::new(e) as Box<_>))?;
                     if !tsid_samples.is_empty() {
                         return Poll::Ready(Some(
-                            self.samples_to_record_batch(schema, tsid_samples),
+                            self.samples_to_record_batch(schema, tsid_samples)
+                                .map_err(DataFusionError::ArrowError),
                         ));
                     }
                 }
@@ -744,7 +780,7 @@ fn extrapolate_fn_helper(
     }
 
     let extrapolation_threshold =
-        average_duration_between_data * PROMTHEUS_EXTRAPOLATION_THRESHOLD_COEFFICIENT;
+        average_duration_between_data * PROMETHEUS_EXTRAPOLATION_THRESHOLD_COEFFICIENT;
 
     // if lots of data is absent (`range_to_start` or `range_to_end` is longer than
     // `extrapolation_threshold`), Prometheus will not estimate all time range. Use

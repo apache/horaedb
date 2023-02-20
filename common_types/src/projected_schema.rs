@@ -42,7 +42,7 @@ pub enum Error {
 
     #[snafu(display("Failed to covert table schema, err:{}", source))]
     ConvertTableSchema {
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
 }
 
@@ -155,7 +155,7 @@ impl ProjectedSchema {
     }
 }
 
-impl From<ProjectedSchema> for proto::common::ProjectedSchema {
+impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
     fn from(request: ProjectedSchema) -> Self {
         let table_schema_pb = (&request.0.original_schema).into();
         let projection_pb = request.0.projection.as_ref().map(|project| {
@@ -163,7 +163,7 @@ impl From<ProjectedSchema> for proto::common::ProjectedSchema {
                 .iter()
                 .map(|one_project| *one_project as u64)
                 .collect::<Vec<u64>>();
-            proto::common::Projection { idx: project }
+            ceresdbproto::schema::Projection { idx: project }
         });
 
         Self {
@@ -173,10 +173,12 @@ impl From<ProjectedSchema> for proto::common::ProjectedSchema {
     }
 }
 
-impl TryFrom<proto::common::ProjectedSchema> for ProjectedSchema {
+impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
-    fn try_from(pb: proto::common::ProjectedSchema) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        pb: ceresdbproto::schema::ProjectedSchema,
+    ) -> std::result::Result<Self, Self::Error> {
         let schema: Schema = pb
             .table_schema
             .context(EmptyTableSchema)?

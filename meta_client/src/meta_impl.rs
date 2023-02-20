@@ -7,9 +7,9 @@ use ceresdbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
-use common_util::config::ReadableDuration;
+use common_util::{config::ReadableDuration, error::BoxError};
 use log::{debug, info};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
@@ -58,14 +58,14 @@ impl MetaClientImpl {
     pub async fn connect(config: MetaClientConfig, node_meta_info: NodeMetaInfo) -> Result<Self> {
         let client = {
             let endpoint = tonic::transport::Endpoint::from_shared(config.meta_addr.to_string())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(FailConnect {
                     addr: &config.meta_addr,
                 })?
                 .timeout(config.timeout.0);
             MetaServiceGrpcClient::connect(endpoint)
                 .await
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(FailConnect {
                     addr: &config.meta_addr,
                 })?
@@ -103,7 +103,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .alloc_schema_id(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailAllocSchemaId)?
             .into_inner();
 
@@ -126,7 +126,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .create_table(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailCreateTable)?
             .into_inner();
 
@@ -146,7 +146,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .drop_table(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailDropTable)?
             .into_inner();
 
@@ -169,7 +169,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .get_tables_of_shards(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailGetTables)?
             .into_inner();
 
@@ -190,7 +190,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .route_tables(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailRouteTables)?
             .into_inner();
 
@@ -210,7 +210,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .get_nodes(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailRouteTables)?
             .into_inner();
 
@@ -236,7 +236,7 @@ impl MetaClient for MetaClientImpl {
             .client()
             .node_heartbeat(pb_req)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(FailSendHeartbeat {
                 cluster: &self.config.cluster_name,
             })?

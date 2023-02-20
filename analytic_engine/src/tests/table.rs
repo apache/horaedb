@@ -211,9 +211,7 @@ pub fn assert_batch_eq_to_row_group(record_batches: &[RecordBatch], row_group: &
             assert_eq!(
                 &cursor.datum(column_idx),
                 datum,
-                "record_batches:{:?}, row_group:{:?}",
-                record_batches,
-                row_group
+                "record_batches:{record_batches:?}, row_group:{row_group:?}"
             );
         }
         cursor.step();

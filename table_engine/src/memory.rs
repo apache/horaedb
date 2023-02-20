@@ -18,6 +18,7 @@ use common_types::{
     row::{Row, RowGroup},
     schema::{RecordSchema, Schema},
 };
+use common_util::error::BoxError;
 use futures::stream::Stream;
 use snafu::{OptionExt, ResultExt};
 
@@ -228,7 +229,7 @@ fn row_group_to_record_batch(
     }
 
     RecordBatch::new(record_schema.clone(), column_blocks)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithSource {
             msg: "failed to create RecordBatch",
         })
@@ -242,7 +243,7 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     for datum in iter {
         builder
             .append(datum.clone())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(ErrWithSource {
                 msg: "append datum",
             })?;

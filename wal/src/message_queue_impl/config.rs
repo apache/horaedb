@@ -3,7 +3,7 @@
 //! Config for wal on message queue
 
 use common_util::config::ReadableDuration;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 // TODO: add more needed config items.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,10 +2,10 @@
 
 //! Schema of column
 
-use std::{collections::BTreeMap, convert::TryFrom, str::FromStr};
+use std::{collections::HashMap, convert::TryFrom, str::FromStr};
 
 use arrow::datatypes::{DataType, Field};
-use proto::common as common_pb;
+use ceresdbproto::schema as schema_pb;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::Expr;
 
@@ -59,15 +59,18 @@ pub enum Error {
     InvalidArrowFieldMetaValue {
         key: ArrowFieldMetaKey,
         raw_value: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
+
     #[snafu(display(
-        "Can not deserialize default-value-option from pb data, err:{}.\nBacktrace:\n{}",
+        "Failed to decode default value, encoded_val:{:?}, err:{}.\nBacktrace:\n{}",
+        encoded_val,
         source,
         backtrace
     ))]
-    InvalidDefaultValueData {
+    DecodeDefaultValue {
+        encoded_val: Vec<u8>,
         source: serde_json::error::Error,
         backtrace: Backtrace,
     },
@@ -248,19 +251,21 @@ impl ColumnSchema {
     }
 }
 
-impl TryFrom<common_pb::ColumnSchema> for ColumnSchema {
+impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
     type Error = Error;
 
-    fn try_from(column_schema: common_pb::ColumnSchema) -> Result<Self> {
+    fn try_from(column_schema: schema_pb::ColumnSchema) -> Result<Self> {
         let escaped_name = column_schema.name.escape_debug().to_string();
         let data_type = column_schema.data_type();
-        let default_value = if column_schema.default_value.is_empty() {
-            None
-        } else {
-            let default_value = serde_json::from_slice::<Expr>(&column_schema.default_value)
-                .context(InvalidDefaultValueData)?;
-            Some(default_value)
-        };
+        let default_value = column_schema
+            .default_value
+            .map(|v| match v {
+                schema_pb::column_schema::DefaultValue::SerdeJson(encoded_val) => {
+                    serde_json::from_slice::<Expr>(&encoded_val)
+                        .context(DecodeDefaultValue { encoded_val })
+                }
+            })
+            .transpose()?;
 
         Ok(Self {
             id: column_schema.id,
@@ -283,11 +288,7 @@ impl TryFrom<&Field> for ColumnSchema {
             id,
             is_tag,
             comment,
-        } = field
-            .metadata()
-            .map(decode_arrow_field_meta_data)
-            .transpose()?
-            .unwrap_or_default();
+        } = decode_arrow_field_meta_data(field.metadata())?;
         Ok(Self {
             id,
             name: field.name().clone(),
@@ -313,14 +314,14 @@ impl From<&ColumnSchema> for Field {
             col_schema.data_type.into(),
             col_schema.is_nullable,
         );
-        field.set_metadata(Some(metadata));
+        field.set_metadata(metadata);
 
         field
     }
 }
 
 fn parse_arrow_field_meta_value<T>(
-    meta: &BTreeMap<String, String>,
+    meta: &HashMap<String, String>,
     key: ArrowFieldMetaKey,
 ) -> Result<T>
 where
@@ -335,16 +336,20 @@ where
         .context(InvalidArrowFieldMetaValue { key, raw_value })
 }
 
-fn decode_arrow_field_meta_data(meta: &BTreeMap<String, String>) -> Result<ArrowFieldMeta> {
-    Ok(ArrowFieldMeta {
-        id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
-        is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
-        comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
-    })
+fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowFieldMeta> {
+    if meta.is_empty() {
+        Ok(ArrowFieldMeta::default())
+    } else {
+        Ok(ArrowFieldMeta {
+            id: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Id)?,
+            is_tag: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsTag)?,
+            comment: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::Comment)?,
+        })
+    }
 }
 
-fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> BTreeMap<String, String> {
-    let mut meta = BTreeMap::new();
+fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, String> {
+    let mut meta = HashMap::new();
 
     meta.insert(ArrowFieldMetaKey::Id.to_string(), col_schema.id.to_string());
     meta.insert(
@@ -441,16 +446,17 @@ impl Builder {
     }
 }
 
-impl From<ColumnSchema> for common_pb::ColumnSchema {
+impl From<ColumnSchema> for schema_pb::ColumnSchema {
     fn from(src: ColumnSchema) -> Self {
-        let default_value = src
-            .default_value
-            .map(|v| serde_json::to_vec(&v).unwrap())
-            .unwrap_or_default();
+        let default_value = src.default_value.map(|v| {
+            // FIXME: Maybe we should throw this error rather than panic here.
+            let encoded_value = serde_json::to_vec(&v).unwrap();
+            schema_pb::column_schema::DefaultValue::SerdeJson(encoded_value)
+        });
 
-        common_pb::ColumnSchema {
+        schema_pb::ColumnSchema {
             name: src.name,
-            data_type: common_pb::DataType::from(src.data_type) as i32,
+            data_type: schema_pb::DataType::from(src.data_type) as i32,
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,
@@ -462,6 +468,8 @@ impl From<ColumnSchema> for common_pb::ColumnSchema {
 
 #[cfg(test)]
 mod tests {
+    use sqlparser::ast::Value;
+
     use super::*;
 
     /// Create a column schema for test, each field is filled with non-default
@@ -472,6 +480,7 @@ mod tests {
             .is_nullable(true)
             .is_tag(true)
             .comment("Comment of this column".to_string())
+            .default_value(Some(Expr::Value(Value::Boolean(true))))
             .build()
             .expect("should succeed to build column schema")
     }
@@ -487,7 +496,7 @@ mod tests {
             is_tag: true,
             comment: "Comment of this column".to_string(),
             escaped_name: "test_column_schema".escape_debug().to_string(),
-            default_value: None,
+            default_value: Some(Expr::Value(Value::Boolean(true))),
         };
 
         assert_eq!(&lhs, &rhs);
@@ -496,7 +505,7 @@ mod tests {
     #[test]
     fn test_pb_convert() {
         let column_schema = new_test_column_schema();
-        let pb_schema = common_pb::ColumnSchema::from(column_schema.clone());
+        let pb_schema = schema_pb::ColumnSchema::from(column_schema.clone());
         // Check pb specific fields
         assert!(pb_schema.is_tag);
 

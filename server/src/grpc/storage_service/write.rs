@@ -7,7 +7,9 @@ use std::{
     time::Instant,
 };
 
-use ceresdbproto::storage::{value, WriteEntry, WriteMetric, WriteRequest, WriteResponse};
+use ceresdbproto::storage::{
+    value, WriteRequest, WriteResponse, WriteSeriesEntry, WriteTableRequest,
+};
 use cluster::config::SchemaConfig;
 use common_types::{
     bytes::Bytes,
@@ -17,6 +19,7 @@ use common_types::{
     schema::Schema,
     time::Timestamp,
 };
+use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
@@ -42,25 +45,35 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
     let catalog = ctx.catalog();
-    let schema = ctx.schema();
+    let req_ctx = req.context.unwrap();
+    let schema = req_ctx.database;
+    let schema_config = ctx
+        .schema_config_provider
+        .schema_config(&schema)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("fail to fetch schema config, schema_name:{schema}"),
+        })?;
+
     debug!(
         "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
         catalog,
         schema,
         request_id,
-        req.metrics
+        req.table_requests
             .first()
-            .map(|m| (&m.metric, &m.tag_names, &m.field_names)),
-        req.metrics.len(),
+            .map(|m| (&m.table, &m.tag_names, &m.field_names)),
+        req.table_requests.len(),
     );
 
     let plan_vec = write_request_to_insert_plan(
         request_id,
         catalog,
-        schema,
+        &schema,
         ctx.instance.clone(),
-        req,
-        ctx.schema_config,
+        req.table_requests,
+        schema_config,
         deadline,
     )
     .await?;
@@ -70,7 +83,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         success += execute_plan(
             request_id,
             catalog,
-            schema,
+            &schema,
             ctx.instance.clone(),
             insert_plan,
             deadline,
@@ -110,7 +123,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Insert is blocked",
@@ -128,7 +141,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -137,7 +150,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     interpreter
         .execute()
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
@@ -157,14 +170,14 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     catalog: &str,
     schema: &str,
     instance: InstanceRef<Q>,
-    write_request: WriteRequest,
+    table_requests: Vec<WriteTableRequest>,
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<Vec<InsertPlan>> {
-    let mut plan_vec = Vec::with_capacity(write_request.metrics.len());
+    let mut plan_vec = Vec::with_capacity(table_requests.len());
 
-    for write_metric in write_request.metrics {
-        let table_name = &write_metric.metric;
+    for write_table_req in table_requests {
+        let table_name = &write_table_req.table;
         let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
         if table.is_none() {
@@ -175,7 +188,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                         catalog,
                         schema,
                         instance.clone(),
-                        &write_metric,
+                        &write_table_req,
                         schema_config,
                         deadline,
                     )
@@ -188,13 +201,13 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
 
         match table {
             Some(table) => {
-                let plan = write_metric_to_insert_plan(table, write_metric)?;
+                let plan = write_table_request_to_insert_plan(table, write_table_req)?;
                 plan_vec.push(plan);
             }
             None => {
                 return ErrNoCause {
                     code: StatusCode::BAD_REQUEST,
-                    msg: format!("Table not found, schema:{}, table:{}", schema, table_name),
+                    msg: format!("Table not found, schema:{schema}, table:{table_name}"),
                 }
                 .fail();
             }
@@ -213,30 +226,30 @@ fn try_get_table<Q: QueryExecutor + 'static>(
     instance
         .catalog_manager
         .catalog_by_name(catalog)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find catalog, catalog_name:{}", catalog),
+            msg: format!("Failed to find catalog, catalog_name:{catalog}"),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Catalog not found, catalog_name:{}", catalog),
+            msg: format!("Catalog not found, catalog_name:{catalog}"),
         })?
         .schema_by_name(schema)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find schema, schema_name:{}", schema),
+            msg: format!("Failed to find schema, schema_name:{schema}"),
         })?
         .with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!("Schema not found, schema_name:{}", schema),
+            msg: format!("Schema not found, schema_name:{schema}"),
         })?
         .table_by_name(table_name)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to find table, table:{}", table_name),
+            msg: format!("Failed to find table, table:{table_name}"),
         })
 }
 
@@ -245,18 +258,18 @@ async fn create_table<Q: QueryExecutor + 'static>(
     catalog: &str,
     schema: &str,
     instance: InstanceRef<Q>,
-    write_metric: &WriteMetric,
+    write_table_req: &WriteTableRequest,
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
 ) -> Result<()> {
     let create_table_plan =
-        storage_service::write_metric_to_create_table_plan(schema_config, write_metric)
-            .map_err(|e| Box::new(e) as _)
+        storage_service::write_table_request_to_create_table_plan(schema_config, write_table_req)
+            .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!(
-                    "Failed to build creating table plan from metric, table:{}",
-                    write_metric.metric
+                    "Failed to build creating table plan, table:{}",
+                    write_table_req.table
                 ),
             })?;
 
@@ -269,7 +282,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Create table is blocked",
@@ -287,7 +300,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -296,7 +309,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     interpreter
         .execute()
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
@@ -311,23 +324,26 @@ async fn create_table<Q: QueryExecutor + 'static>(
         })
 }
 
-fn write_metric_to_insert_plan(table: TableRef, write_metric: WriteMetric) -> Result<InsertPlan> {
+fn write_table_request_to_insert_plan(
+    table: TableRef,
+    write_table_req: WriteTableRequest,
+) -> Result<InsertPlan> {
     let schema = table.schema();
 
     let mut rows_total = Vec::new();
-    for write_entry in write_metric.entries {
+    for write_entry in write_table_req.entries {
         let mut rows = write_entry_to_rows(
-            &write_metric.metric,
+            &write_table_req.table,
             &schema,
-            &write_metric.tag_names,
-            &write_metric.field_names,
+            &write_table_req.tag_names,
+            &write_table_req.field_names,
             write_entry,
         )?;
         rows_total.append(&mut rows);
     }
     // The row group builder will checks nullable.
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
@@ -345,12 +361,12 @@ fn write_entry_to_rows(
     schema: &Schema,
     tag_names: &[String],
     field_names: &[String],
-    write_entry: WriteEntry,
+    write_series_entry: WriteSeriesEntry,
 ) -> Result<Vec<Row>> {
     // Init all columns by null.
     let mut rows = vec![
         Row::from_datums(vec![Datum::Null; schema.num_columns()]);
-        write_entry.field_groups.len()
+        write_series_entry.field_groups.len()
     ];
 
     // Fill tsid by default value.
@@ -363,15 +379,14 @@ fn write_entry_to_rows(
     }
 
     // Fill tags.
-    for tag in write_entry.tags {
+    for tag in write_series_entry.tags {
         let name_index = tag.name_index as usize;
         ensure!(
             name_index < tag_names.len(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag index {} is not found in tag_names:{:?}, table:{}",
-                    name_index, tag_names, table_name,
+                    "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );
@@ -379,10 +394,7 @@ fn write_entry_to_rows(
         let tag_name = &tag_names[name_index];
         let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
             code: StatusCode::BAD_REQUEST,
-            msg: format!(
-                "Can't find tag({}) in schema, table:{}",
-                tag_name, table_name
-            ),
+            msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
         })?;
 
         let column_schema = schema.column(tag_index_in_schema);
@@ -390,10 +402,7 @@ fn write_entry_to_rows(
             column_schema.is_tag,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "column({}) is a field rather than a tag, table:{}",
-                    tag_name, table_name
-                ),
+                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 
@@ -401,14 +410,13 @@ fn write_entry_to_rows(
             .value
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("Tag({}) value is needed, table:{}", tag_name, table_name),
+                msg: format!("Tag({tag_name}) value is needed, table:{table_name}"),
             })?
             .value
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "Tag({}) value type is not supported, table_name:{}",
-                    tag_name, table_name
+                    "Tag({tag_name}) value type is not supported, table_name:{table_name}"
                 ),
             })?;
         for row in &mut rows {
@@ -423,7 +431,7 @@ fn write_entry_to_rows(
 
     // Fill fields.
     let mut field_name_index: HashMap<String, usize> = HashMap::new();
-    for (i, field_group) in write_entry.field_groups.into_iter().enumerate() {
+    for (i, field_group) in write_series_entry.field_groups.into_iter().enumerate() {
         // timestamp
         let timestamp_index_in_schema = schema.timestamp_index();
         rows[i][timestamp_index_in_schema] =
@@ -439,8 +447,7 @@ fn write_entry_to_rows(
                         schema.index_of(field_name).with_context(|| ErrNoCause {
                             code: StatusCode::BAD_REQUEST,
                             msg: format!(
-                                "Can't find field in schema, table:{}, field_name:{}",
-                                table_name, field_name
+                                "Can't find field in schema, table:{table_name}, field_name:{field_name}"
                             ),
                         })?;
                     field_name_index.insert(field_name.to_string(), index_in_schema);
@@ -452,8 +459,7 @@ fn write_entry_to_rows(
                     ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
                         msg: format!(
-                            "Column {} is a tag rather than a field, table:{}",
-                            field_name, table_name
+                            "Column {field_name} is a tag rather than a field, table:{table_name}"
                         )
                     }
                 );
@@ -461,14 +467,13 @@ fn write_entry_to_rows(
                     .value
                     .with_context(|| ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
-                        msg: format!("Field({}) is needed, table:{}", field_name, table_name),
+                        msg: format!("Field({field_name}) is needed, table:{table_name}"),
                     })?
                     .value
                     .with_context(|| ErrNoCause {
                         code: StatusCode::BAD_REQUEST,
                         msg: format!(
-                            "Field({}) value type is not supported, table:{}",
-                            field_name, table_name
+                            "Field({field_name}) value type is not supported, table:{table_name}"
                         ),
                     })?;
 
@@ -510,11 +515,7 @@ fn convert_proto_value_to_datum(
         (v, _) => ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: format!(
-                "Value type is not same, table:{}, value_name:{}, schema_type:{:?}, actual_value:{:?}",
-                table_name,
-                name,
-                data_type,
-                v
+                "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
             ),
         }
         .fail(),
@@ -541,7 +542,7 @@ mod test {
     const FIELD_VALUE_STRING: &str = "stringValue";
 
     // tag_names field_names write_entry
-    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteEntry) {
+    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteSeriesEntry) {
         let tag_names = vec![TAG_K.to_string(), TAG_K1.to_string()];
         let field_names = vec![FIELD_NAME.to_string(), FIELD_NAME1.to_string()];
 
@@ -584,7 +585,7 @@ mod test {
             fields: vec![field1],
         };
 
-        let write_entry = WriteEntry {
+        let write_entry = WriteSeriesEntry {
             tags,
             field_groups: vec![field_group, field_group1, field_group2],
         };

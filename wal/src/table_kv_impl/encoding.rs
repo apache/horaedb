@@ -4,8 +4,17 @@
 
 use chrono::{TimeZone, Utc};
 use common_types::{table::TableId, time::Timestamp};
-use common_util::config::ReadableDuration;
+use common_util::{config::ReadableDuration, define_result};
+use snafu::Snafu;
 use table_kv::{KeyBoundary, ScanRequest};
+
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Timestamp is invalid, timestamp:{}", timestamp))]
+    InValidTimestamp { timestamp: i64 },
+}
+
+define_result!(Error);
 
 /// Key prefix for namespace in meta table.
 const META_NAMESPACE_PREFIX: &str = "v1/namespace";
@@ -29,60 +38,74 @@ pub fn scan_request_for_prefix(prefix: &str) -> ScanRequest {
 
 #[inline]
 pub fn format_namespace_key(namespace: &str) -> String {
-    format!("{}/{}", META_NAMESPACE_PREFIX, namespace)
+    format!("{META_NAMESPACE_PREFIX}/{namespace}")
 }
 
 #[inline]
 pub fn bucket_key_prefix(namespace: &str) -> String {
-    format!("{}/{}/", META_BUCKET_PREFIX, namespace)
+    format!("{META_BUCKET_PREFIX}/{namespace}/")
 }
 
 pub fn format_timed_bucket_key(
     namespace: &str,
     bucket_duration: ReadableDuration,
     gmt_start_ms: Timestamp,
-) -> String {
+) -> Result<String> {
     let duration = bucket_duration.to_string();
-
-    let dt = Utc.timestamp_millis(gmt_start_ms.as_i64());
-    format!(
+    let dt = match Utc.timestamp_millis_opt(gmt_start_ms.as_i64()).single() {
+        None => InValidTimestamp {
+            timestamp: gmt_start_ms.as_i64(),
+        }
+        .fail()?,
+        Some(v) => v,
+    };
+    Ok(format!(
         "{}/{}/{}/{}",
         META_BUCKET_PREFIX,
         namespace,
         duration,
         dt.format(BUCKET_TIMESTAMP_FORMAT)
-    )
+    ))
 }
 
 pub fn format_permanent_bucket_key(namespace: &str) -> String {
-    format!("{}/{}/permanent", META_BUCKET_PREFIX, namespace)
+    format!("{META_BUCKET_PREFIX}/{namespace}/permanent")
 }
 
 #[inline]
 pub fn format_table_unit_meta_name(namespace: &str, shard_id: usize) -> String {
-    format!("table_unit_meta_{}_{:0>6}", namespace, shard_id)
+    format!("table_unit_meta_{namespace}_{shard_id:0>6}")
 }
 
 #[inline]
-pub fn format_timed_wal_name(namespace: &str, gmt_start_ms: Timestamp, shard_id: usize) -> String {
-    let dt = Utc.timestamp_millis(gmt_start_ms.as_i64());
-
-    format!(
+pub fn format_timed_wal_name(
+    namespace: &str,
+    gmt_start_ms: Timestamp,
+    shard_id: usize,
+) -> Result<String> {
+    let dt = match Utc.timestamp_millis_opt(gmt_start_ms.as_i64()).single() {
+        None => InValidTimestamp {
+            timestamp: gmt_start_ms.as_i64(),
+        }
+        .fail()?,
+        Some(v) => v,
+    };
+    Ok(format!(
         "wal_{}_{}_{:0>6}",
         namespace,
         dt.format(WAL_SHARD_TIMESTAMP_FORMAT),
         shard_id
-    )
+    ))
 }
 
 #[inline]
 pub fn format_permanent_wal_name(namespace: &str, shard_id: usize) -> String {
-    format!("wal_{}_permanent_{:0>6}", namespace, shard_id)
+    format!("wal_{namespace}_permanent_{shard_id:0>6}")
 }
 
 #[inline]
 pub fn format_table_unit_key(table_id: TableId) -> String {
-    format!("{}/{}", TABLE_UNIT_META_PREFIX, table_id)
+    format!("{TABLE_UNIT_META_PREFIX}/{table_id}")
 }
 
 #[cfg(test)]
@@ -109,7 +132,7 @@ mod tests {
         let ts = Timestamp::new(1648425600000);
         let bucket_duration =
             ReadableDuration(Duration::from_millis(namespace::BUCKET_DURATION_MS as u64));
-        let key = format_timed_bucket_key(ns, bucket_duration, ts);
+        let key = format_timed_bucket_key(ns, bucket_duration, ts).unwrap();
         assert_eq!("v1/bucket/aabbcc/1d/2022-03-28T00:00:00", key);
 
         let key = format_permanent_bucket_key(ns);
@@ -152,19 +175,19 @@ mod tests {
     fn test_format_timed_wal_name() {
         let ns = "mywal";
 
-        let name = format_timed_wal_name(ns, Timestamp::ZERO, 0);
+        let name = format_timed_wal_name(ns, Timestamp::ZERO, 0).unwrap();
         assert_eq!("wal_mywal_19700101000000_000000", name);
 
         // gmt time 2022-03-28T00:00:00
         let ts = Timestamp::new(1648425600000);
 
-        let name = format_timed_wal_name(ns, ts, 124);
+        let name = format_timed_wal_name(ns, ts, 124).unwrap();
         assert_eq!("wal_mywal_20220328000000_000124", name);
 
-        let name = format_timed_wal_name(ns, ts, 999999);
+        let name = format_timed_wal_name(ns, ts, 999999).unwrap();
         assert_eq!("wal_mywal_20220328000000_999999", name);
 
-        let name = format_timed_wal_name(ns, ts, 1234567);
+        let name = format_timed_wal_name(ns, ts, 1234567).unwrap();
         assert_eq!("wal_mywal_20220328000000_1234567", name);
     }
 

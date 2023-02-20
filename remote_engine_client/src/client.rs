@@ -8,14 +8,15 @@ use std::{
 };
 
 use arrow_ext::ipc;
+use ceresdbproto::remote_engine::{self, remote_engine_service_client::*};
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
     RemoteEngineVersion,
 };
+use common_util::error::BoxError;
 use futures::{Stream, StreamExt};
-use proto::remote_engine::{self, remote_engine_service_client::*};
 use router::RouterRef;
-use snafu::ResultExt;
+use snafu::{ensure, ResultExt};
 use table_engine::remote::model::{ReadRequest, TableIdentifier, WriteRequest};
 use tonic::{transport::Channel, Request, Streaming};
 
@@ -40,8 +41,8 @@ impl Client {
         let table_ident = request.table.clone();
         let projected_schema = request.read_request.projected_schema.clone();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
-        let request_pb = proto::remote_engine::ReadRequest::try_from(request)
-            .map_err(|e| Box::new(e) as _)
+        let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
+            .box_err()
             .context(ConvertReadRequest {
                 msg: "convert to pb failed",
             })?;
@@ -79,8 +80,8 @@ impl Client {
         // Write to remote.
         let table_ident = request.table.clone();
 
-        let request_pb = proto::remote_engine::WriteRequest::try_from(request)
-            .map_err(|e| Box::new(e) as _)
+        let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
+            .box_err()
             .context(ConvertWriteRequest {
                 msg: "convert to pb failed",
             })?;
@@ -161,15 +162,22 @@ impl Stream for ClientReadRecordBatchStream {
                     .context(ConvertVersion)?
                 {
                     RemoteEngineVersion::ArrowIPCWithZstd => {
-                        ipc::decode_record_batch(response.rows, ipc::Compression::Zstd)
-                            .map_err(|e| Box::new(e) as _)
+                        ipc::decode_record_batches(response.rows, ipc::CompressionMethod::Zstd)
+                            .box_err()
                             .context(ConvertReadResponse {
                                 msg: "decode record batch failed",
                                 version: response.version,
                             })
-                            .and_then(|v| {
-                                RecordBatch::try_from(v)
-                                    .map_err(|e| Box::new(e) as _)
+                            .and_then(|mut batches| {
+                                ensure!(
+                                    batches.len() == 1,
+                                    InvalidRecordBatchNumber {
+                                        batch_num: batches.len()
+                                    }
+                                );
+
+                                RecordBatch::try_from(batches.swap_remove(0))
+                                    .box_err()
                                     .context(ConvertReadResponse {
                                         msg: "convert record batch failed",
                                         version: response.version,

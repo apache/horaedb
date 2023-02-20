@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use common_types::{
     bytes::BytesMut, table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
-use common_util::runtime::Runtime;
+use common_util::{error::BoxError, runtime::Runtime};
 use log::{debug, info, warn};
 use rocksdb::{DBIterator, DBOptions, ReadOptions, SeekKey, Writable, WriteBatch, DB};
 use snafu::ResultExt;
@@ -111,11 +111,11 @@ impl TableUnit {
             let (mut start_key_buf, mut end_key_buf) = (BytesMut::new(), BytesMut::new());
             self.log_encoding
                 .encode_key(&mut start_key_buf, &start_log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Encoding)?;
             self.log_encoding
                 .encode_key(&mut end_key_buf, &end_log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Encoding)?;
             wb.delete_range(&start_key_buf, &end_key_buf)
                 .map_err(|e| e.into())
@@ -140,7 +140,7 @@ impl TableUnit {
         self.runtime
             .spawn_blocking(move || db.write(&wb).map_err(|e| e.into()).context(Delete))
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Delete)?
     }
 
@@ -193,7 +193,7 @@ impl TableUnit {
                         &mut key_buf,
                         &CommonLogKey::new(region_id, batch.location.table_id, next_sequence_num),
                     )
-                    .map_err(|e| Box::new(e) as _)
+                    .box_err()
                     .context(Encoding)?;
                 wb.put(&key_buf, &entry.payload)
                     .map_err(|e| e.into())
@@ -214,7 +214,7 @@ impl TableUnit {
                     .context(Write)
             })
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Write)?
     }
 }
@@ -291,7 +291,7 @@ impl RocksImpl {
             let log_key = CommonLogKey::new(current_region_id, TableId::MAX, MAX_SEQUENCE_NUMBER);
             self.log_encoding
                 .encode_key(&mut end_boundary_key_buf, &log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Encoding)?;
             let mut iter = self.db.iter();
             let seek_key = SeekKey::Key(&end_boundary_key_buf);
@@ -311,7 +311,7 @@ impl RocksImpl {
             if !self
                 .log_encoding
                 .is_log_key(iter.key())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Decoding)?
             {
                 debug!(
@@ -323,7 +323,7 @@ impl RocksImpl {
             let log_key = self
                 .log_encoding
                 .decode_key(iter.key())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Decoding)?;
 
             // The max valid log key in a region is found, search table sequences by table
@@ -358,7 +358,7 @@ impl RocksImpl {
             let log_key = CommonLogKey::new(region_id, current_table_id, MAX_SEQUENCE_NUMBER);
             self.log_encoding
                 .encode_key(&mut end_boundary_key_buf, &log_key)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Encoding)?;
 
             let mut iter = self.db.iter();
@@ -378,7 +378,7 @@ impl RocksImpl {
             if !self
                 .log_encoding
                 .is_log_key(iter.key())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Decoding)?
             {
                 debug!(
@@ -392,7 +392,7 @@ impl RocksImpl {
             let log_key = self
                 .log_encoding
                 .decode_key(iter.key())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Decoding)?;
             debug!(
                 "RocksImpl has found log key by table id, log key:{:?}",
@@ -647,7 +647,7 @@ impl RocksLogIterator {
         let mut seek_key_buf = BytesMut::new();
         self.log_encoding
             .encode_key(&mut seek_key_buf, &self.min_log_key)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Encoding)?;
         let seek_key = SeekKey::Key(&seek_key_buf);
         self.iter
@@ -684,7 +684,7 @@ impl SyncLogIterator for RocksLogIterator {
         let curr_log_key = self
             .log_encoding
             .decode_key(self.iter.key())
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(Decoding)?;
         self.no_more_data = self.is_end_reached(&curr_log_key);
 
@@ -692,7 +692,7 @@ impl SyncLogIterator for RocksLogIterator {
             let payload = self
                 .log_encoding
                 .decode_value(self.iter.value())
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(Decoding)?;
             let log_entry = LogEntry {
                 table_id: curr_log_key.table_id,

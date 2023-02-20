@@ -16,7 +16,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 
 use crate::{
-    config::Config,
+    config::ServerConfig,
     grpc::{self, RpcServices},
     http::{self, HttpConfig, Service},
     instance::{Instance, InstanceRef},
@@ -163,7 +163,8 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 
 #[must_use]
 pub struct Builder<Q> {
-    config: Config,
+    config: ServerConfig,
+    node_addr: String,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
@@ -179,9 +180,10 @@ pub struct Builder<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: ServerConfig) -> Self {
         Self {
             config,
+            node_addr: "".to_string(),
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
@@ -195,6 +197,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             schema_config_provider: None,
             local_tables_recoverer: None,
         }
+    }
+
+    pub fn node_addr(mut self, node_addr: String) -> Self {
+        self.node_addr = node_addr;
+        self
     }
 
     pub fn engine_runtimes(mut self, engine_runtimes: Arc<EngineRuntimes>) -> Self {
@@ -296,16 +303,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
-        let schema_config_provider = self
+        let provider = self
             .schema_config_provider
-            .clone()
             .context(MissingSchemaConfigProvider)?;
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .instance(instance.clone())
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
-            .schema_config_provider(schema_config_provider)
+            .schema_config_provider(provider.clone())
             .build()
             .context(StartHttpService)?;
 
@@ -322,15 +327,10 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(BuildMysqlService)?;
 
         let router = self.router.context(MissingRouter)?;
-        let provider = self
-            .schema_config_provider
-            .context(MissingSchemaConfigProvider)?;
         let rpc_services = grpc::Builder::new()
             .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .local_endpoint(
-                Endpoint::new(self.config.cluster.node.addr, self.config.grpc_port).to_string(),
-            )
-            .enable_tenant_as_schema(self.config.enable_tenant_as_schema)
+            .local_endpoint(Endpoint::new(self.node_addr, self.config.grpc_port).to_string())
+            .resp_compress_min_length(self.config.resp_compress_min_length.as_bytes() as usize)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)

@@ -2,16 +2,17 @@
 
 //! Meta encoding of wal's message queue implementation
 
+use ceresdbproto::wal_on_mq::{
+    table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
+    TableMetaData as TableMetaDataPb,
+};
 use common_types::bytes::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use common_util::{
     codec::{Decoder, Encoder},
     define_result,
+    error::{BoxError, GenericError},
 };
 use prost::Message;
-use proto::wal_on_mq::{
-    table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
-    TableMetaData as TableMetaDataPb,
-};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -35,9 +36,7 @@ pub enum Error {
         "Failed to encode meta value of message queue implementation, err:{}",
         source
     ))]
-    EncodeMetaValue {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    EncodeMetaValue { source: GenericError },
 
     #[snafu(display(
         "Failed to decode meta key of message queue implementation, err:{}",
@@ -49,9 +48,7 @@ pub enum Error {
         "Failed to decode meta value of message queue implementation, err:{}",
         source
     ))]
-    DecodeMetaValue {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    DecodeMetaValue { source: GenericError },
 
     #[snafu(display(
         "Found invalid meta key magic of message queue implementation, expect:{}, given:{}.\nBacktrace:\n{}",
@@ -95,13 +92,13 @@ define_result!(Error);
 /// Generate wal data topic name
 #[allow(unused)]
 pub fn format_wal_data_topic_name(namespace: &str, region_id: u64) -> String {
-    format!("{}_data_{}", namespace, region_id)
+    format!("{namespace}_data_{region_id}")
 }
 
 /// Generate wal meta topic name
 #[allow(unused)]
 pub fn format_wal_meta_topic_name(namespace: &str, region_id: u64) -> String {
-    format!("{}_meta_{}", namespace, region_id)
+    format!("{namespace}_meta_{region_id}")
 }
 
 #[allow(unused)]
@@ -118,7 +115,7 @@ impl MetaEncoding {
         buf.reserve(self.key_enc.estimate_encoded_size(meta_key));
         self.key_enc
             .encode(buf, meta_key)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Encoding)?;
 
         Ok(())
@@ -135,14 +132,14 @@ impl MetaEncoding {
         buf.reserve(self.value_enc.estimate_encoded_size(&meta_value));
         self.value_enc
             .encode(buf, &meta_value)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Encoding)
     }
 
     pub fn decode_key(&self, mut buf: &[u8]) -> manager::Result<MetaKey> {
         self.key_enc
             .decode(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)
     }
 
@@ -150,7 +147,7 @@ impl MetaEncoding {
         let meta_value = self
             .value_enc
             .decode(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)?;
 
         Ok(meta_value.into())
@@ -159,7 +156,7 @@ impl MetaEncoding {
     pub fn is_meta_key(&self, mut buf: &[u8]) -> manager::Result<bool> {
         self.key_enc
             .is_valid(&mut buf)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(manager::Decoding)
     }
 
@@ -279,13 +276,9 @@ impl Encoder<MetaValue> for MetaValueEncoder {
     /// More information can be extended after the incremented `version header`.
     fn encode<B: BufMut>(&self, buf: &mut B, meta_value: &MetaValue) -> Result<()> {
         buf.try_put_u8(self.version)
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeMetaValue)?;
-        meta_value
-            .0
-            .encode(buf)
-            .map_err(|e| Box::new(e) as _)
-            .context(EncodeMetaValue)
+        meta_value.0.encode(buf).box_err().context(EncodeMetaValue)
     }
 
     fn estimate_encoded_size(&self, meta_value: &MetaValue) -> usize {
@@ -299,10 +292,7 @@ impl Decoder<MetaValue> for MetaValueEncoder {
 
     fn decode<B: Buf>(&self, buf: &mut B) -> Result<MetaValue> {
         // Check version.
-        let version = buf
-            .try_get_u8()
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeMetaValue)?;
+        let version = buf.try_get_u8().box_err().context(DecodeMetaValue)?;
         ensure!(
             version == self.version,
             InvalidVersion {
@@ -311,9 +301,7 @@ impl Decoder<MetaValue> for MetaValueEncoder {
             }
         );
 
-        let region_meta_snapshot = Message::decode(buf)
-            .map_err(|e| Box::new(e) as _)
-            .context(DecodeMetaValue)?;
+        let region_meta_snapshot = Message::decode(buf).box_err().context(DecodeMetaValue)?;
 
         Ok(MetaValue(region_meta_snapshot))
     }
@@ -376,7 +364,7 @@ impl From<TableMetaDataPb> for TableMetaData {
 mod tests {
     use common_types::bytes::BytesMut;
 
-    use super::{MetaEncoding, MetaKey};
+    use super::*;
     use crate::message_queue_impl::region_context::{RegionMetaSnapshot, TableMetaData};
 
     #[test]

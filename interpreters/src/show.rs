@@ -176,7 +176,7 @@ fn to_pattern_re(pattern: &str) -> Result<Regex> {
     // so replace those meta character to regexp syntax
     // TODO: support escape char to match exact those two chars
     let pattern = pattern.replace('_', ".").replace('%', ".*");
-    let pattern = format!("^{}$", pattern);
+    let pattern = format!("^{pattern}$");
     Regex::new(&pattern).context(InvalidRegexp)
 }
 

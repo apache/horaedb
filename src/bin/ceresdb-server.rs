@@ -2,13 +2,18 @@
 
 //! The main entry point to start the server
 
-use std::{env, net::SocketAddr};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr},
+};
 
-use ceresdb::setup;
+use ceresdb::{
+    config::{ClusterDeployment, Config},
+    setup,
+};
 use clap::{App, Arg};
 use common_util::{panic, toml};
 use log::info;
-use server::config::Config;
 
 /// The ip address of current node.
 const NODE_ADDR: &str = "CSE_CERES_META_NODE_ADDR";
@@ -21,15 +26,14 @@ fn fetch_version() -> String {
     let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("NONE");
 
     format!(
-        "\nCeresDB Version: {}\nGit branch: {}\nGit commit: {}\nBuild: {}",
-        build_version, git_branch, git_commit_id, build_time
+        "\nCeresDB Version: {build_version}\nGit branch: {git_branch}\nGit commit: {git_commit_id}\nBuild: {build_time}"
     )
 }
 
 // Parse the raw addr and panic if it is invalid.
-fn parse_node_addr_or_fail(raw_addr: &str) -> (String, u16) {
+fn parse_node_addr_or_fail(raw_addr: &str) -> IpAddr {
     let socket_addr: SocketAddr = raw_addr.parse().expect("invalid node addr");
-    (socket_addr.ip().to_string(), socket_addr.port())
+    socket_addr.ip()
 }
 
 fn main() {
@@ -55,16 +59,20 @@ fn main() {
     };
 
     if let Ok(node_addr) = env::var(NODE_ADDR) {
-        let (ip, port) = parse_node_addr_or_fail(&node_addr);
-        config.cluster.node.addr = ip;
-        config.cluster.node.port = port;
+        let ip = parse_node_addr_or_fail(&node_addr);
+        config.node.addr = ip.to_string();
     }
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
-        config.cluster.meta_client.cluster_name = cluster;
+        if let Some(ClusterDeployment::WithMeta(v)) = &mut config.cluster_deployment {
+            v.meta_client.cluster_name = cluster;
+        }
     }
 
+    println!("CeresDB server tries starting with config:{config:?}");
+
     // Setup log.
-    let runtime_level = setup::setup_log(&config);
+    let runtime_level = setup::setup_logger(&config);
+
     // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 

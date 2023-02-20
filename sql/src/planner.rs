@@ -3,6 +3,7 @@
 //! Planner converts a SQL AST into logical plans
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     convert::TryFrom,
     mem,
@@ -14,6 +15,7 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
     error::ArrowError,
 };
+use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
 use common_types::{
     column_schema::{self, ColumnSchema},
     datum::{Datum, DatumKind},
@@ -21,13 +23,17 @@ use common_types::{
     row::{RowGroup, RowGroupBuilder},
     schema::{self, Schema, TSID_COLUMN},
 };
+use common_util::error::GenericError;
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
+    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    sql::planner::SqlToRel,
+    sql::{
+        planner::{ParserOptions, PlannerContext, SqlToRel},
+        ResolvedTableReference,
+    },
 };
-use hashbrown::HashMap as NoStdHashMap;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -237,10 +243,7 @@ pub enum Error {
         msg,
         source,
     ))]
-    ParsePartitionWithCause {
-        msg: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    ParsePartitionWithCause { msg: String, source: GenericError },
 
     #[snafu(display("Unsupported partition method, msg:{}", msg,))]
     UnsupportedPartition { msg: String },
@@ -249,6 +252,10 @@ pub enum Error {
 define_result!(Error);
 
 const DEFAULT_QUOTE_CHAR: char = '`';
+const DEFAULT_PARSER_OPTS: ParserOptions = ParserOptions {
+    parse_float_as_decimal: false,
+    enable_ident_normalization: false,
+};
 
 /// Planner produces logical plans from SQL AST
 // TODO(yingwen): Rewrite Planner instead of using datafusion's planner
@@ -336,7 +343,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
-        let df_planner = SqlToRel::new(&self.meta_provider);
+        let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
 
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
@@ -546,10 +553,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // ensure default value options are valid
         ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
 
-        // TODO(yingwen): Maybe support create table on other schema?
+        // TODO: support create table on other catalog/schema
         let table_name = stmt.table_name.to_string();
-        let table_ref = TableReference::from(table_name.as_str());
-        // Now we only takes the table name and ignore the schema and catalog name
+        let table_ref = get_table_ref(&table_name);
         let table = table_ref.table().to_string();
 
         let plan = CreateTablePlan {
@@ -568,6 +574,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
+        debug!("Drop table to plan, stmt:{:?}", stmt);
+
         let (table_name, partition_info) =
             if let Some(table) = self.find_table(&stmt.table_name.to_string())? {
                 let table_name = table.name().to_string();
@@ -583,12 +591,15 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 .fail();
             };
 
-        Ok(Plan::Drop(DropTablePlan {
+        let plan = DropTablePlan {
             engine: stmt.engine,
             if_exists: stmt.if_exists,
             table: table_name,
             partition_info,
-        }))
+        };
+        debug!("Drop table to plan, plan:{:?}", plan);
+
+        Ok(Plan::Drop(plan))
     }
 
     fn describe_table_to_plan(&self, stmt: DescribeTable) -> Result<Plan> {
@@ -644,7 +655,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     .collect::<Vec<_>>();
                 let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
                     .context(CreateDatafusionSchema)?;
-                let df_planner = SqlToRel::new(&self.meta_provider);
+                let df_planner =
+                    SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
 
                 // Index in insert values stmt of each column in table schema
                 let mut column_index_in_insert = Vec::with_capacity(schema.num_columns());
@@ -670,7 +682,11 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                             // This column in schema is not in insert stmt
                             if let Some(expr) = &column.default_value {
                                 let expr = df_planner
-                                    .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
+                                    .sql_to_expr(
+                                        expr.clone(),
+                                        &df_schema,
+                                        &mut PlannerContext::new(),
+                                    )
                                     .context(DatafusionExpr)?;
 
                                 default_value_map.insert(idx, expr);
@@ -759,8 +775,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
-        let table_ref = TableReference::from(table_name);
-
+        let table_ref = get_table_ref(table_name);
         self.meta_provider
             .table(table_ref)
             .context(MetaProviderFindTable)
@@ -794,7 +809,7 @@ fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<D
                 UnaryOperator::Plus => false,
                 _ => InsertExprNotValue {
                     source_expr: Expr::UnaryOp {
-                        op: op.clone(),
+                        op: *op,
                         expr: child_expr.clone(),
                     },
                 }
@@ -825,10 +840,12 @@ fn build_row_group(
 ) -> Result<RowGroup> {
     // Build row group by schema
     match *source.body {
-        SetExpr::Values(Values(values)) => {
-            let mut row_group_builder =
-                RowGroupBuilder::with_capacity(schema.clone(), values.len());
-            for mut exprs in values {
+        SetExpr::Values(Values {
+            explicit_row: _,
+            rows,
+        }) => {
+            let mut row_group_builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+            for mut exprs in rows {
                 // Try to build row
                 let mut row_builder = row_group_builder.row_builder();
 
@@ -915,19 +932,18 @@ fn parse_options(options: Vec<SqlOption>) -> Result<HashMap<String, String>> {
 pub fn parse_for_option(value: Value) -> Result<Option<String>> {
     let value_opt = match value {
         Value::Number(n, _long) => Some(n),
-        Value::SingleQuotedString(v) | Value::DoubleQuotedString(v) => Some(v),
+        Value::SingleQuotedString(v) | Value::DoubleQuotedString(v) | Value::UnQuotedString(v) => {
+            Some(v)
+        }
         Value::NationalStringLiteral(v) | Value::HexStringLiteral(v) => {
             return UnsupportedOption { value: v }.fail();
         }
         Value::Boolean(v) => Some(v.to_string()),
-        Value::Interval { value, .. } => {
-            return UnsupportedOption {
-                value: value.to_string(),
-            }
-            .fail();
-        }
         // Ignore this option if value is null.
-        Value::Null | Value::Placeholder(_) | Value::EscapedStringLiteral(_) => None,
+        Value::Null
+        | Value::Placeholder(_)
+        | Value::EscapedStringLiteral(_)
+        | Value::DollarQuotedString(_) => None,
     };
 
     Ok(value_opt)
@@ -987,20 +1003,32 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 // Ensure default value option of columns are valid.
 fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     columns: &[ColumnSchema],
-    meta_provider: &ContextProviderAdapter<'a, P>,
+    meta_provider: &ContextProviderAdapter<'_, P>,
 ) -> Result<()> {
-    let df_planner = SqlToRel::new(meta_provider);
+    let df_planner = SqlToRel::new_with_options(meta_provider, DEFAULT_PARSER_OPTS);
     let mut df_schema = DFSchema::empty();
     let mut arrow_schema = ArrowSchema::empty();
 
     for column_def in columns.iter() {
         if let Some(expr) = &column_def.default_value {
             let df_logical_expr = df_planner
-                .sql_to_rex(expr.clone(), &df_schema, &mut NoStdHashMap::new())
+                .sql_to_expr(expr.clone(), &df_schema, &mut PlannerContext::new())
                 .context(DatafusionExpr)?;
 
             // Create physical expr
             let execution_props = ExecutionProps::default();
+            let df_schema_ref = Arc::new(df_schema.clone());
+            let simplifier = ExprSimplifier::new(
+                SimplifyContext::new(&execution_props).with_schema(df_schema_ref.clone()),
+            );
+            let df_logical_expr = simplifier
+                .coerce(df_logical_expr, df_schema_ref.clone())
+                .context(DatafusionExpr)?;
+
+            let df_logical_expr = simplifier
+                .simplify(df_logical_expr)
+                .context(DatafusionExpr)?;
+
             let physical_expr = create_physical_expr(
                 &df_logical_expr,
                 &df_schema,
@@ -1038,10 +1066,21 @@ fn ensure_column_default_value_valid<'a, P: MetaProvider>(
     Ok(())
 }
 
+// Workaround for TableReference::from(&str)
+// it will always convert table to lowercase when not quoted
+// TODO: support catalog/schema
+pub fn get_table_ref(table_name: &str) -> TableReference {
+    TableReference::from(ResolvedTableReference {
+        catalog: Cow::from(DEFAULT_CATALOG),
+        schema: Cow::from(DEFAULT_SCHEMA),
+        table: Cow::from(table_name),
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
-    use sqlparser::ast::{Ident, Value};
+    use sqlparser::ast::Value;
 
     use super::*;
     use crate::{
@@ -1056,7 +1095,7 @@ mod tests {
         let mut statements = Parser::parse_sql(sql).unwrap();
         assert_eq!(statements.len(), 1);
         let plan = planner.statement_to_plan(statements.remove(0))?;
-        assert_eq!(format!("{:#?}", plan), expected);
+        assert_eq!(format!("{plan:#?}"), expected);
         Ok(())
     }
 
@@ -1089,22 +1128,8 @@ mod tests {
                 true,
                 None,
             ),
-            (Value::HexStringLiteral(test_string.clone()), true, None),
+            (Value::HexStringLiteral(test_string), true, None),
             (Value::Boolean(true), false, Some("true".to_string())),
-            (
-                Value::Interval {
-                    value: Box::new(Expr::Identifier(Ident {
-                        value: test_string,
-                        quote_style: None,
-                    })),
-                    leading_field: None,
-                    leading_precision: None,
-                    last_field: None,
-                    fractional_seconds_precision: None,
-                },
-                true,
-                None,
-            ),
             (Value::Null, false, None),
         ];
 
@@ -1278,12 +1303,16 @@ mod tests {
         assert!(quick_test(sql, "").is_err());
 
         let sql = "select * from test_table;";
-        quick_test(sql, "Query(
+        quick_test(
+            sql,
+            "Query(
     QueryPlan {
-        df_plan: Projection: #test_table.key1, #test_table.key2, #test_table.field1, #test_table.field2
+        df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2
           TableScan: test_table,
     },
-)").unwrap();
+)",
+        )
+        .unwrap();
     }
 
     #[test]

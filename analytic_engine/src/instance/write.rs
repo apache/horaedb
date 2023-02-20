@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
     row::RowGroup,
@@ -11,7 +12,6 @@ use common_types::{
 };
 use common_util::{codec::row, define_result};
 use log::{debug, error, info, trace, warn};
-use proto::{common as common_pb, table_requests};
 use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
@@ -161,20 +161,6 @@ impl EncodeContext {
     }
 }
 
-/// Policy of how to perform flush operation.
-#[derive(Default, Debug, Clone, Copy)]
-pub enum TableWritePolicy {
-    /// Unknown policy, this is the default value.
-    #[default]
-    Unknown,
-    /// A full write operation. Write to both memtable and WAL.
-    Full,
-    // TODO: use this policy and remove "allow(dead_code)"
-    /// Only write to memtable.
-    #[allow(dead_code)]
-    MemOnly,
-}
-
 impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -215,7 +201,6 @@ impl Instance {
         space: &SpaceRef,
         table_data: &TableDataRef,
         request: WriteRequest,
-        #[allow(unused_variables)] policy: TableWritePolicy,
     ) -> Result<usize> {
         let mut encode_ctx = EncodeContext::new(request.row_group);
 
@@ -396,7 +381,7 @@ impl Instance {
             version: 0,
             // Use the table schema instead of the schema in request to avoid schema
             // mismatch during replaying
-            schema: Some(common_pb::TableSchema::from(&table_data.schema())),
+            schema: Some(schema_pb::TableSchema::from(&table_data.schema())),
             rows: encoded_rows,
         };
 

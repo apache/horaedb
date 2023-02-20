@@ -12,7 +12,13 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use common_util::{config::ReadableDuration, define_result, runtime::Runtime, time};
+use common_util::{
+    config::ReadableDuration,
+    define_result,
+    error::{BoxError, GenericError},
+    runtime::Runtime,
+    time,
+};
 use futures::{
     channel::{mpsc, mpsc::channel},
     future::try_join_all,
@@ -33,8 +39,8 @@ use crate::{
         write_worker::{self, CompactTableCommand, FlushTableCommand, WorkerLocal},
         Instance, SpaceStore,
     },
+    manifest::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
-    meta::meta_update::{AlterOptionsMeta, MetaUpdate, MetaUpdateRequest, VersionEditMeta},
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -62,9 +68,7 @@ const DEFAULT_CHANNEL_SIZE: usize = 5;
 #[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Failed to store version edit, err:{}", source))]
-    StoreVersionEdit {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
@@ -78,9 +82,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to build mem table iterator, source:{}", source))]
-    InvalidMemIter {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    InvalidMemIter { source: GenericError },
 
     #[snafu(display(
         "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
@@ -93,10 +95,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to write sst, file_path:{}, source:{}", path, source))]
-    WriteSst {
-        path: String,
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    WriteSst { path: String, source: GenericError },
 
     #[snafu(display("Background flush failed, cannot schedule flush task, err:{}", source))]
     BackgroundFlushFailed {
@@ -125,9 +124,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to split record batch, source:{}", source))]
-    SplitRecordBatch {
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
+    SplitRecordBatch { source: GenericError },
 
     #[snafu(display("Failed to read sst meta, source:{}", source))]
     ReadSstMeta {
@@ -304,17 +301,20 @@ impl Instance {
 
             // Now persist the new options, the `worker_local` ensure there is no race
             // condition.
-            let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
-                space_id: table_data.space_id,
-                table_id: table_data.id,
-                options: new_table_opts.clone(),
-            });
+            let update_req = {
+                let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
+                    space_id: table_data.space_id,
+                    table_id: table_data.id,
+                    options: new_table_opts.clone(),
+                });
+                MetaUpdateRequest {
+                    shard_info: table_data.shard_info,
+                    meta_update,
+                }
+            };
             self.space_store
                 .manifest
-                .store_update(MetaUpdateRequest::new(
-                    table_data.table_location(),
-                    meta_update,
-                ))
+                .store_update(update_req)
                 .await
                 .context(StoreVersionEdit)?;
 
@@ -544,20 +544,23 @@ impl Instance {
         );
 
         // Persist the flush result to manifest.
-        let edit_meta = VersionEditMeta {
-            space_id: table_data.space_id,
-            table_id: table_data.id,
-            flushed_sequence,
-            files_to_add: files_to_level0.clone(),
-            files_to_delete: vec![],
+        let update_req = {
+            let edit_meta = VersionEditMeta {
+                space_id: table_data.space_id,
+                table_id: table_data.id,
+                flushed_sequence,
+                files_to_add: files_to_level0.clone(),
+                files_to_delete: vec![],
+            };
+            let meta_update = MetaUpdate::VersionEdit(edit_meta);
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
+                meta_update,
+            }
         };
-        let meta_update = MetaUpdate::VersionEdit(edit_meta);
         self.space_store
             .manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
-                meta_update,
-            ))
+            .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
 
@@ -680,7 +683,7 @@ impl Instance {
 
         for data in iter {
             for (idx, record_batch) in split_record_batch_with_time_ranges(
-                data.map_err(|e| Box::new(e) as _).context(InvalidMemIter)?,
+                data.box_err().context(InvalidMemIter)?,
                 &time_ranges,
                 timestamp_idx,
             )?
@@ -771,7 +774,7 @@ impl Instance {
         let sst_info = writer
             .write(request_id, &sst_meta, record_batch_stream)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
@@ -846,12 +849,15 @@ impl SpaceStore {
             .await?;
         }
 
-        let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
-        self.manifest
-            .store_update(MetaUpdateRequest::new(
-                table_data.table_location(),
+        let update_req = {
+            let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
+            MetaUpdateRequest {
+                shard_info: table_data.shard_info,
                 meta_update,
-            ))
+            }
+        };
+        self.manifest
+            .store_update(update_req)
             .await
             .context(StoreVersionEdit)?;
 
@@ -995,7 +1001,7 @@ impl SpaceStore {
         let sst_info = sst_writer
             .write(request_id, &sst_meta, record_batch_stream)
             .await
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .with_context(|| WriteSst {
                 path: sst_file_path.to_string(),
             })?;
@@ -1020,6 +1026,9 @@ impl SpaceStore {
             sst_info,
         );
 
+        // Update the flushed sequence number.
+        edit_meta.flushed_sequence = cmp::max(sst_meta.max_sequence, edit_meta.flushed_sequence);
+
         // Store updates to edit_meta.
         edit_meta.files_to_delete.reserve(input.files.len());
         // The compacted file can be deleted later.
@@ -1029,6 +1038,7 @@ impl SpaceStore {
                 file_id: file.id(),
             });
         }
+
         // Add the newly created file to meta.
         edit_meta.files_to_add.push(AddFile {
             level: input.output_level,
@@ -1076,7 +1086,6 @@ fn split_record_batch_with_time_ranges(
     timestamp_idx: usize,
 ) -> Result<Vec<RecordBatchWithKey>> {
     let mut builders: Vec<RecordBatchWithKeyBuilder> = (0..time_ranges.len())
-        .into_iter()
         .map(|_| RecordBatchWithKeyBuilder::new(record_batch.schema_with_key().clone()))
         .collect();
 
@@ -1098,23 +1107,17 @@ fn split_record_batch_with_time_ranges(
             };
             builders[idx]
                 .append_row_view(&view)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(SplitRecordBatch)?;
         } else {
             panic!(
-                "Record timestamp is not in time_ranges, timestamp:{:?}, time_ranges:{:?}",
-                timestamp, time_ranges
+                "Record timestamp is not in time_ranges, timestamp:{timestamp:?}, time_ranges:{time_ranges:?}"
             );
         }
     }
     let mut ret = Vec::with_capacity(builders.len());
     for mut builder in builders {
-        ret.push(
-            builder
-                .build()
-                .map_err(|e| Box::new(e) as _)
-                .context(SplitRecordBatch)?,
-        );
+        ret.push(builder.build().box_err().context(SplitRecordBatch)?);
     }
     Ok(ret)
 }
@@ -1131,7 +1134,7 @@ fn build_mem_table_iter(memtable: MemTableRef, table_data: &TableData) -> Result
     };
     memtable
         .scan(scan_ctx, scan_req)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(InvalidMemIter)
 }
 

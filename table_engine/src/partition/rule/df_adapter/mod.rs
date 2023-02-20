@@ -6,9 +6,10 @@ use common_types::{row::RowGroup, schema::Schema};
 use datafusion_expr::Expr;
 
 use self::extractor::KeyExtractor;
-use super::factory::PartitionRuleFactory;
 use crate::partition::{
-    rule::{df_adapter::extractor::FilterExtractorRef, PartitionRuleRef},
+    rule::{
+        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRuleRef,
+    },
     BuildPartitionRule, PartitionInfo, Result,
 };
 
@@ -52,10 +53,7 @@ impl DfPartitionRuleAdapter {
         match partition_info {
             PartitionInfo::Key(_) => Ok(Box::new(KeyExtractor)),
             PartitionInfo::Hash(_) => BuildPartitionRule {
-                msg: format!(
-                    "unsupported partition strategy, strategy:{:?}",
-                    partition_info
-                ),
+                msg: format!("unsupported partition strategy, strategy:{partition_info:?}"),
             }
             .fail(),
         }
@@ -157,7 +155,7 @@ mod tests {
             .unwrap();
 
         // Expected
-        let all_partitions = (0..partition_num).into_iter().collect::<Vec<_>>();
+        let all_partitions = (0..partition_num).collect::<Vec<_>>();
         assert_eq!(partitions_1, all_partitions);
         assert_eq!(partitions_2, all_partitions);
     }

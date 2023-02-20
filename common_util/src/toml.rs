@@ -64,7 +64,7 @@ where
 mod tests {
     use std::io::Write;
 
-    use serde_derive::Deserialize;
+    use serde::Deserialize;
     use tempfile::tempdir;
 
     use super::*;

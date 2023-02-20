@@ -9,8 +9,8 @@ use std::sync::{
 
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
+use common_util::error::BoxError;
 use datafusion::parquet::basic::Compression;
-use ethbloom::{Bloom, Input};
 use futures::StreamExt;
 use log::debug;
 use object_store::{ObjectStoreRef, Path};
@@ -21,11 +21,11 @@ use crate::{
         factory::{ObjectStorePickerRef, SstWriteOptions},
         parquet::{
             encoding::ParquetEncoder,
-            meta_data::{BloomFilter, ParquetMetaData},
+            meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
         },
         writer::{
-            self, EncodeRecordBatch, MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo,
-            SstWriter, Storage,
+            self, BuildParquetFilter, EncodeRecordBatch, MetaData, PollRecordBatch,
+            RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table_options::StorageFormat,
@@ -149,42 +149,42 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
-    fn build_bloom_filter(&self) -> BloomFilter {
-        // TODO: support bloom filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
+    fn build_parquet_filter(&self) -> Result<ParquetFilter> {
+        // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
-            return BloomFilter::default();
+            return Ok(ParquetFilter::default());
         }
         let filters = self
             .partitioned_record_batch
             .iter()
             .map(|row_group_batch| {
-                let mut row_group_filters =
-                    vec![Bloom::default(); row_group_batch[0].num_columns()];
+                let mut builder =
+                    RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
 
                 for partial_batch in row_group_batch {
                     for (col_idx, column) in partial_batch.columns().iter().enumerate() {
                         for row in 0..column.num_rows() {
                             let datum = column.datum(row);
                             let bytes = datum.to_bytes();
-                            row_group_filters[col_idx].accrue(Input::Raw(&bytes));
+                            builder.add_key(col_idx, &bytes);
                         }
                     }
                 }
 
-                row_group_filters
+                builder.build().box_err().context(BuildParquetFilter)
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
-        BloomFilter::new(filters)
+        Ok(ParquetFilter::new(filters))
     }
 
     async fn read_all(mut self) -> Result<Vec<u8>> {
         self.partition_record_batch().await?;
 
         let parquet_meta_data = {
-            let bloom_filter = self.build_bloom_filter();
+            let sst_filter = self.build_parquet_filter()?;
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.bloom_filter = Some(bloom_filter);
+            parquet_meta_data.parquet_filter = Some(sst_filter);
             parquet_meta_data
         };
 
@@ -194,7 +194,7 @@ impl RecordBytesReader {
             self.compression,
             parquet_meta_data,
         )
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(EncodeRecordBatch)?;
 
         // process record batch stream
@@ -207,7 +207,7 @@ impl RecordBytesReader {
             let buf_len = arrow_record_batch_vec.len();
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
-                .map_err(|e| Box::new(e) as _)
+                .box_err()
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
             arrow_record_batch_vec = Vec::with_capacity(buf_len);
@@ -215,7 +215,7 @@ impl RecordBytesReader {
 
         let bytes = parquet_encoder
             .close()
-            .map_err(|e| Box::new(e) as _)
+            .box_err()
             .context(EncodeRecordBatch)?;
         Ok(bytes)
     }
@@ -391,9 +391,9 @@ mod tests {
                     .unwrap()
                     .as_ref()
                     .clone();
-                // bloom filter is built insider sst writer, so overwrite to default for
+                // sst filter is built insider sst writer, so overwrite to default for
                 // comparison.
-                sst_meta_readback.bloom_filter = Default::default();
+                sst_meta_readback.parquet_filter = Default::default();
                 assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
                 assert_eq!(
                     expected_num_rows,

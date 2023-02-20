@@ -6,10 +6,9 @@ mod compaction;
 mod context;
 mod engine;
 mod instance;
+mod manifest;
 pub mod memtable;
-mod meta;
 mod payload;
-mod role_table;
 pub mod row_iter;
 mod sampler;
 pub mod setup;
@@ -18,16 +17,14 @@ pub mod sst;
 mod storage_options;
 pub mod table;
 pub mod table_options;
-mod wal_synchronizer;
 
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
 use common_util::config::ReadableDuration;
+use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
-use meta::details::Options as ManifestOptions;
-use serde::Serialize;
-use serde_derive::Deserialize;
+use serde::{Deserialize, Serialize};
 use storage_options::StorageOptions;
 use table_kv::config::ObkvConfig;
 use wal::{
@@ -43,9 +40,6 @@ pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOpti
 pub struct Config {
     /// Storage options of the engine
     pub storage: StorageOptions,
-
-    /// WAL path of the engine
-    pub wal_path: String,
 
     /// Batch size to read records from wal to replay
     pub replay_batch_size: usize,
@@ -87,7 +81,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal_storage: WalStorageConfig,
+    pub wal: WalStorageConfig,
 
     pub remote_engine_client: remote_engine_client::config::Config,
 }
@@ -96,7 +90,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             storage: Default::default(),
-            wal_path: "/tmp/ceresdb".to_string(),
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             write_group_worker_num: 8,
@@ -114,7 +107,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
-            wal_storage: WalStorageConfig::RocksDB,
+            wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
     }
@@ -126,10 +119,10 @@ impl Default for Config {
 pub struct ObkvWalConfig {
     /// Obkv client config
     pub obkv: ObkvConfig,
-    /// Wal (stores data) namespace config
-    pub wal: WalNamespaceConfig,
-    /// Manifest (stores meta data) namespace config
-    pub manifest: ManifestNamespaceConfig,
+    /// Namespace config for data.
+    pub data_namespace: WalNamespaceConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: ManifestNamespaceConfig,
 }
 
 /// Config of obkv wal based manifest
@@ -232,17 +225,34 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
 #[serde(default)]
 pub struct KafkaWalConfig {
     /// Kafka client config
-    pub kafka_config: KafkaConfig,
+    pub kafka: KafkaConfig,
 
-    /// Wal config
-    pub wal_config: MessageQueueWalConfig,
+    /// Namespace config for data.
+    pub data_namespace: MessageQueueWalConfig,
+    /// Namespace config for meta data
+    pub meta_namespace: MessageQueueWalConfig,
 }
 
+/// Config for wal based on RocksDB
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RocksDBConfig {
+    /// Data directory used by RocksDB.
+    pub data_dir: String,
+}
+
+impl Default for RocksDBConfig {
+    fn default() -> Self {
+        Self {
+            data_dir: "/tmp/ceresdb".to_string(),
+        }
+    }
+}
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
-    RocksDB,
+    RocksDB(Box<RocksDBConfig>),
     Obkv(Box<ObkvWalConfig>),
     Kafka(Box<KafkaWalConfig>),
 }

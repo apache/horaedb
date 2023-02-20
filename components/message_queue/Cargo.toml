@@ -12,7 +12,6 @@ common_util = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
-serde_derive = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
 

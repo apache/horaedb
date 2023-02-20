@@ -7,7 +7,7 @@ use log::debug;
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
-    meta::meta_update::{AddTableMeta, MetaUpdate},
+    manifest::meta_update::{AddTableMeta, MetaUpdate},
     table::version::TableVersionMeta,
 };
 
@@ -39,6 +39,13 @@ pub struct TableManifestDataBuilder {
 }
 
 impl TableManifestDataBuilder {
+    pub fn new(table_meta: Option<AddTableMeta>, version_meta: Option<TableVersionMeta>) -> Self {
+        Self {
+            table_meta,
+            version_meta,
+        }
+    }
+
     pub fn build(mut self) -> Option<TableManifestData> {
         let version_meta = self.version_meta.take();
         self.table_meta.map(|v| TableManifestData {

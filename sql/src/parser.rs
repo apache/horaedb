@@ -85,7 +85,7 @@ pub fn get_default_value(opt: &ColumnOption) -> Option<Expr> {
 }
 
 /// Returns true when is a TIMESTAMP KEY table constraint
-pub fn is_timestamp_key_constraint(constrait: &TableConstraint) -> bool {
+pub fn is_timestamp_key_constraint(constraint: &TableConstraint) -> bool {
     if let TableConstraint::Unique {
         name: Some(Ident {
             value,
@@ -93,7 +93,7 @@ pub fn is_timestamp_key_constraint(constrait: &TableConstraint) -> bool {
         }),
         columns: _,
         is_primary: false,
-    } = constrait
+    } = constraint
     {
         return value == TS_KEY;
     }
@@ -111,8 +111,10 @@ impl<'a> Parser<'a> {
         let mut tokenizer = Tokenizer::new(dialect, sql);
         let tokens = tokenizer.tokenize()?;
 
+        let parser = SqlParser::new(dialect);
+
         Ok(Parser {
-            parser: SqlParser::new(tokens, dialect),
+            parser: parser.with_tokens(tokens),
         })
     }
 
@@ -133,7 +135,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             if expecting_statement_delimiter {
-                return parser.expected("end of statement", parser.parser.peek_token());
+                return parser.expected("end of statement", parser.parser.peek_token().token);
             }
 
             let statement = parser.parse_statement()?;
@@ -148,12 +150,12 @@ impl<'a> Parser<'a> {
 
     // Report unexpected token
     fn expected<T>(&self, expected: &str, found: Token) -> Result<T> {
-        parser_err!(format!("Expected {}, found: {}", expected, found))
+        parser_err!(format!("Expected {expected}, found: {found}"))
     }
 
     // Parse a new expression
     fn parse_statement(&mut self) -> Result<Statement> {
-        match self.parser.peek_token() {
+        match self.parser.peek_token().token {
             Token::Word(w) => {
                 match w.keyword {
                     Keyword::CREATE => {
@@ -202,9 +204,9 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_alter(&mut self) -> Result<Statement> {
-        let nth1_token = self.parser.peek_token();
-        let nth2_token = self.parser.peek_nth_token(2);
-        let nth3_token = self.parser.peek_nth_token(3);
+        let nth1_token = self.parser.peek_token().token;
+        let nth2_token = self.parser.peek_nth_token(2).token;
+        let nth3_token = self.parser.peek_nth_token(3).token;
         if let (Token::Word(nth1_word), Token::Word(nth2_word), Token::Word(nth3_word)) =
             (nth1_token, nth2_token, nth3_token)
         {
@@ -236,18 +238,18 @@ impl<'a> Parser<'a> {
         } else if self.consume_token("CREATE") {
             Ok(self.parse_show_create()?)
         } else {
-            self.expected("create/tables/databases", self.parser.peek_token())
+            self.expected("create/tables/databases", self.parser.peek_token().token)
         }
     }
 
     fn parse_show_tables(&mut self) -> Result<Statement> {
-        let pattern = match self.parser.next_token() {
+        let pattern = match self.parser.next_token().token {
             Token::Word(w) => match w.keyword {
                 Keyword::LIKE => Some(self.parser.parse_literal_string()?),
-                _ => return self.expected("like", self.parser.peek_token()),
+                _ => return self.expected("like", self.parser.peek_token().token),
             },
             Token::SemiColon | Token::EOF => None,
-            _ => return self.expected(";", self.parser.peek_token()),
+            _ => return self.expected(";", self.parser.peek_token().token),
         };
         Ok(Statement::ShowTables(ShowTables { pattern }))
     }
@@ -256,8 +258,7 @@ impl<'a> Parser<'a> {
         let obj_type = match self.parser.expect_one_of_keywords(&[Keyword::TABLE])? {
             Keyword::TABLE => Ok(ShowCreateObject::Table),
             keyword => parser_err!(format!(
-                "Unable to map keyword to ShowCreateObject: {:?}",
-                keyword
+                "Unable to map keyword to ShowCreateObject: {keyword:?}"
             )),
         }?;
 
@@ -366,12 +367,12 @@ impl<'a> Parser<'a> {
         loop {
             if let Some(constraint) = self.parse_optional_table_constraint()? {
                 constraints.push(constraint);
-            } else if let Token::Word(_) = self.parser.peek_token() {
+            } else if let Token::Word(_) = self.parser.peek_token().token {
                 columns.push(self.parse_column_def()?);
             } else {
                 return self.expected(
                     "column name or constraint definition",
-                    self.parser.peek_token(),
+                    self.parser.peek_token().token,
                 );
             }
             let comma = self.parser.consume_token(&Token::Comma);
@@ -381,7 +382,7 @@ impl<'a> Parser<'a> {
             } else if !comma {
                 return self.expected(
                     "',' or ')' after column definition",
-                    self.parser.peek_token(),
+                    self.parser.peek_token().token,
                 );
             }
         }
@@ -400,7 +401,7 @@ impl<'a> Parser<'a> {
 
         self.parser.expect_token(&Token::Eq)?;
 
-        match self.parser.next_token() {
+        match self.parser.next_token().token {
             Token::Word(w) => Ok(w.value),
             unexpected => self.expected("Engine is missing", unexpected),
         }
@@ -424,7 +425,7 @@ impl<'a> Parser<'a> {
                 } else {
                     return self.expected(
                         "constraint details after CONSTRAINT <name>",
-                        self.parser.peek_token(),
+                        self.parser.peek_token().token,
                     );
                 }
             } else if let Some(option) = self.parse_optional_column_option()? {
@@ -448,10 +449,12 @@ impl<'a> Parser<'a> {
         } else {
             None
         };
-        match self.parser.next_token() {
+        match self.parser.next_token().token {
             Token::Word(w) if w.keyword == Keyword::PRIMARY => {
                 self.parser.expect_keyword(Keyword::KEY)?;
-                let columns = self.parser.parse_parenthesized_column_list(Mandatory)?;
+                let columns = self
+                    .parser
+                    .parse_parenthesized_column_list(Mandatory, false)?;
                 Ok(Some(TableConstraint::Unique {
                     name,
                     columns,
@@ -460,7 +463,9 @@ impl<'a> Parser<'a> {
             }
             Token::Word(w) if w.keyword == Keyword::TIMESTAMP => {
                 self.parser.expect_keyword(Keyword::KEY)?;
-                let columns = self.parser.parse_parenthesized_column_list(Mandatory)?;
+                let columns = self
+                    .parser
+                    .parse_parenthesized_column_list(Mandatory, false)?;
                 // TODO(boyan), TableConstraint doesn't support dialect right now
                 // we use unique constraint as TIMESTAMP KEY constraint.
                 Ok(Some(TableConstraint::Unique {
@@ -591,9 +596,9 @@ impl<'a> Parser<'a> {
 
         let key_columns = self
             .parser
-            .parse_parenthesized_column_list(Mandatory)
+            .parse_parenthesized_column_list(Mandatory, false)
             .map_err(|e| {
-                ParserError::ParserError(format!("Fail to parse partition key, err:{}", e))
+                ParserError::ParserError(format!("Fail to parse partition key, err:{e}"))
             })?;
 
         // Ensure at least one column for partition key.
@@ -644,10 +649,10 @@ impl<'a> Parser<'a> {
                 sqlparser::ast::Value::Number(v, _) => match v.parse::<u64>() {
                     Ok(v) => v,
                     Err(e) => {
-                        return parser_err!(format!("invalid partition num, raw:{}, err:{}", v, e))
+                        return parser_err!(format!("invalid partition num, raw:{v}, err:{e}"))
                     }
                 },
-                v => return parser_err!(format!("expect partition number, found:{}", v)),
+                v => return parser_err!(format!("expect partition number, found:{v}")),
             }
         } else {
             1
@@ -671,16 +676,16 @@ impl<'a> Parser<'a> {
                     if check_column_expr_validity_in_hash(id, columns) {
                         Ok(*inner)
                     } else {
-                        parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{}", id))
+                        parser_err!(format!("Expect column(tag, type: int, tiny int, small int, big int), search by column name:{id}"))
                     }
                 },
 
                 other => parser_err!(
-                    format!("Only column expr in hash partition now, example: HASH(column name), found:{:?}", other)
+                    format!("Only column expr in hash partition now, example: HASH(column name), found:{other:?}")
                 ),
             }
         } else {
-            parser_err!(format!("Expect nested expr, found:{:?}", expr))
+            parser_err!(format!("Expect nested expr, found:{expr:?}"))
         }
     }
 
@@ -693,8 +698,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_tokens(&mut self, expecteds: &[&str]) -> bool {
-        for expected in expecteds {
+    fn consume_tokens(&mut self, expected_tokens: &[&str]) -> bool {
+        for expected in expected_tokens {
             if !self.consume_token(expected) {
                 return false;
             }
@@ -798,7 +803,7 @@ fn maybe_convert_table_name(object_name: &mut ObjectName) {
 #[cfg(test)]
 mod tests {
     use sqlparser::{
-        ast::{ColumnOptionDef, DataType, Ident, ObjectName, Value},
+        ast::{ColumnOptionDef, DataType, Ident, ObjectName, TimezoneInfo, Value},
         parser::ParserError::ParserError,
     };
 
@@ -820,18 +825,13 @@ mod tests {
     fn expect_parse_error(sql: &str, expected_error: &str) {
         match Parser::parse_sql(sql) {
             Ok(statements) => {
-                panic!(
-                    "Expected parse error for '{}', but was successful: {:?}",
-                    sql, statements
-                );
+                panic!("Expected parse error for '{sql}', but was successful: {statements:?}");
             }
             Err(e) => {
                 let error_message = e.to_string();
                 assert!(
                     error_message.contains(expected_error),
-                    "Expected error '{}' not found in actual error '{}'",
-                    expected_error,
-                    error_message
+                    "Expected error '{expected_error}' not found in actual error '{error_message}'"
                 );
             }
         }
@@ -908,7 +908,7 @@ mod tests {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
-                make_column_def("c1", DataType::Timestamp),
+                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
                 make_column_def("c2", DataType::Double),
                 make_column_def("c3", DataType::String),
             ],
@@ -925,7 +925,7 @@ mod tests {
             if_not_exists: false,
             table_name: make_table_name("mytbl"),
             columns: vec![
-                make_column_def("c1", DataType::Timestamp),
+                make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
                 make_comment_column_def("c2", DataType::Double, "id".to_string()),
                 make_comment_column_def("c3", DataType::String, "name".to_string()),
             ],
@@ -1206,7 +1206,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
 
                     true
@@ -1221,7 +1221,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
 
                     true
@@ -1236,7 +1236,7 @@ mod tests {
             let statements = Parser::parse_sql(sql).unwrap();
             assert!(
                 if let Statement::Standard(standard_statement) = &statements[0] {
-                    let standard_statement_str = format!("{}", standard_statement);
+                    let standard_statement_str = format!("{standard_statement}");
                     assert!(standard_statement_str.contains("`testa`"));
                     assert!(standard_statement_str.contains("`TEstB`"));
                     assert!(standard_statement_str.contains("`TESTC`"));
@@ -1331,22 +1331,22 @@ mod tests {
             // Unsupported expr
             let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint TAG) PARTITION BY HASH(c2, c3) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect nested expr"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect nested expr"))
             );
 
             // Column of invalid type
             let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c1) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect column"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect column"))
             );
 
             // Column not tag
             let sql = r#"CREATE TABLE t(c1 string, c2 int, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 4"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expect column"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expect column"))
             );
         }
 
@@ -1354,8 +1354,8 @@ mod tests {
         fn invalid_partitions_num() {
             let sql = r#"CREATE TABLE t(c1 string, c2 int TAG, c3 bigint) PARTITION BY HASH(c2) PARTITIONS 'string'"#;
             assert!(
-                matches!(Parser::parse_sql(sql), Err(e) if format!("{:?}", e).contains("ParserError")
-                    && format!("{:?}", e).contains("Expected literal number"))
+                matches!(Parser::parse_sql(sql), Err(e) if format!("{e:?}").contains("ParserError")
+                    && format!("{e:?}").contains("Expected literal number"))
             );
         }
     }
@@ -1434,9 +1434,8 @@ mod tests {
     fn create_sql_with_partition_num(partition_num: u64) -> String {
         format!(
             r#"CREATE TABLE `demo` (`name` string TAG, `value` double NOT NULL,
-            `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS {}
-            ENGINE=Analytic with (enable_ttl="false")"#,
-            partition_num
+            `t` timestamp NOT NULL, TIMESTAMP KEY(t)) PARTITION BY KEY(name) PARTITIONS {partition_num}
+            ENGINE=Analytic with (enable_ttl="false")"#
         )
     }
 }

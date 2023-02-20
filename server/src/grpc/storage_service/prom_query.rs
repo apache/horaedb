@@ -8,7 +8,8 @@ use std::{
 
 use ceresdbproto::{
     common::ResponseHeader,
-    prometheus::{Label, PrometheusQueryRequest, PrometheusQueryResponse, Sample, TimeSeries},
+    prometheus::{Label, Sample, TimeSeries},
+    storage::{PrometheusQueryRequest, PrometheusQueryResponse},
 };
 use common_types::{
     datum::DatumKind,
@@ -16,6 +17,7 @@ use common_types::{
     request_id::RequestId,
     schema::{RecordSchema, TSID_COLUMN},
 };
+use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
@@ -48,13 +50,14 @@ where
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
+    let req_ctx = req.context.unwrap();
+    let schema = req_ctx.database;
 
     debug!(
-        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}, request:{:?}",
+        "Grpc handle query begin, catalog:{}, schema:{}, request_id:{}",
         ctx.catalog(),
-        ctx.schema(),
+        &schema,
         request_id,
-        req,
     );
 
     let instance = &ctx.instance;
@@ -63,15 +66,15 @@ where
     let provider = CatalogMetaProvider {
         manager: instance.catalog_manager.clone(),
         default_catalog: ctx.catalog(),
-        default_schema: ctx.schema(),
+        default_schema: &schema,
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
 
     let mut sql_ctx = SqlContext::new(request_id, deadline);
     let expr = frontend
-        .parse_promql(&mut sql_ctx, req)
-        .map_err(|e| Box::new(e) as _)
+        .parse_promql(&mut sql_ctx, req.expr)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::BAD_REQUEST,
             msg: "invalid request",
@@ -95,7 +98,7 @@ where
     ctx.instance
         .limiter
         .try_limit(&plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::FORBIDDEN,
             msg: "Query is blocked",
@@ -104,7 +107,7 @@ where
     // Execute in interpreter
     let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
         // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(ctx.catalog().to_string(), ctx.schema().to_string())
+        .default_catalog_and_schema(ctx.catalog().to_string(), schema.to_string())
         .build();
     let interpreter_factory = Factory::new(
         instance.query_executor.clone(),
@@ -114,7 +117,7 @@ where
     );
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
@@ -126,7 +129,7 @@ where
             interpreter.execute(),
         )
         .await
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .context(ErrWithCause {
             code: StatusCode::REQUEST_TIMEOUT,
             msg: "Query timeout",
@@ -134,14 +137,14 @@ where
     } else {
         interpreter.execute().await
     }
-    .map_err(|e| Box::new(e) as _)
+    .box_err()
     .with_context(|| ErrWithCause {
         code: StatusCode::INTERNAL_SERVER_ERROR,
         msg: "Failed to execute interpreter".to_string(),
     })?;
 
     let resp = convert_output(output, column_name)
-        .map_err(|e| Box::new(e) as _)
+        .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to convert output",
@@ -258,10 +261,7 @@ impl RecordConverter {
             field_type.is_f64_castable(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Field type must be f64-compatibile type, current:{}",
-                    field_type
-                )
+                msg: format!("Field type must be f64-compatibile type, current:{field_type}")
             }
         );
 
