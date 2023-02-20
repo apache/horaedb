@@ -6,7 +6,6 @@ use std::{convert::TryFrom, fmt, str};
 use ceresdbproto::schema::DataType as DataTypePb;
 
 use chrono::{Local, TimeZone, Datelike, NaiveDate, NaiveTime, Timelike};
-use proto::common::DataType as DataTypePb;
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
@@ -603,7 +602,7 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
-            Datum::Date(v) => format!("{:?}", NaiveDate::from_num_days_from_ce(*v).to_string()),
+            Datum::Date(v) => format!("{:?}", NaiveDate::from_num_days_from_ce_opt(*v).unwrap().to_string()),
             Datum::Time(v) => format!("{:?}",NaiveTime::from_num_seconds_from_midnight_opt(((*v) >> 32) as u32, ((*v)&0xFFFF_FFFF) as u32)),
         }
     }
@@ -803,7 +802,7 @@ impl Serialize for Datum {
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
             Datum::Date(v) => serializer.serialize_str(
-                NaiveDate::from_num_days_from_ce(*v)
+                NaiveDate::from_num_days_from_ce_opt(*v).unwrap()
                 .format(DATE_FORMAT).to_string().as_ref()),
             Datum::Time(v) => serializer.serialize_str(
                 NaiveTime::from_num_seconds_from_midnight_opt(((*v) >> 32) as u32, ((*v) & 0xFFFF_FFFF) as u32).unwrap()
@@ -957,7 +956,7 @@ pub mod arrow_convert {
                 Datum::Int8(v) => Some(ScalarValue::Int8(Some(*v))),
                 Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
                 Datum::Date(v) => Some(ScalarValue::Date32(Some(*v))),
-                Datum::Time(v) => Some(ScalarValue::Time64(Some(*v))),
+                Datum::Time(v) => Some(ScalarValue::Time64Nanosecond(Some(*v))),
             }
         }
 
@@ -986,13 +985,12 @@ pub mod arrow_convert {
                     v.map(|v| Datum::Timestamp(Timestamp::new(v)))
                 }
                 ScalarValue::Date32(v) => v.map(Datum::Date),
-                ScalarValue::Time64(v) => v.map(Datum::Time),
+                ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
                 ScalarValue::List(_, _)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
                 | ScalarValue::Time32Millisecond(_)
                 | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -1022,7 +1020,7 @@ pub mod arrow_convert {
                 ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
                 ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
                 ScalarValue::Date32(v) => v.map(DatumView::Date),
-                ScalarValue::Time64(v) => v.map(DatumView::Time),
+                ScalarValue::Time64Nanosecond(v) => v.map(DatumView::Time),
                 ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
                     v.as_ref().map(|v| DatumView::String(v.as_str()))
                 }
@@ -1039,7 +1037,6 @@ pub mod arrow_convert {
                 | ScalarValue::Time32Second(_)
                 | ScalarValue::Time32Millisecond(_)
                 | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
