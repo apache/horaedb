@@ -242,7 +242,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::String => Ok(Self::String),
             SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
             SqlDataType::Date => Ok(Self::Date),
-            SqlDataType::Time => Ok(Self::Time),
+            SqlDataType::Time(_, _) => Ok(Self::Time),
             SqlDataType::Custom(objects, _) if objects.0.len() == 1 => {
                 match objects.0[0].value.as_str() {
                     "UINT64" | "uint64" => Ok(Self::UInt64),
