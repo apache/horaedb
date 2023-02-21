@@ -116,8 +116,8 @@ message_queue = { path = "components/message_queue" }
 zstd = { version = "0.12", default-features = false }
 
 [workspace.dependencies.ceresdbproto]
-git = "https://github.com/MachaelLee/ceresdbproto.git"
-rev = "75ff07ce275b8f67b82b3f8b4c6f5419bda3e546"
+git = "https://github.com/CeresDB/ceresdbproto.git"
+rev = "9244c64da637bc1cb30feacb9165a9414d9a53c5"
 
 [dependencies]
 analytic_engine = { workspace = true }

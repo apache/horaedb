@@ -609,7 +609,9 @@ impl Datum {
             Datum::Time(v) => NaiveTime::from_num_seconds_from_midnight_opt(
                 ((*v) / NANOSECONDS) as u32,
                 ((*v) % NANOSECONDS) as u32,
-            ).unwrap().to_string(),
+            )
+            .unwrap()
+            .to_string(),
         }
     }
 

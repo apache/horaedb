@@ -385,6 +385,7 @@ macro_rules! impl_iter_map {
         }
     };
 }
+
 impl_iter_map!(TimestampColumn, Timestamp);
 
 impl VarbinaryColumn {
