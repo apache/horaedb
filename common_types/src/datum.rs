@@ -382,7 +382,8 @@ pub enum Datum {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
-    /// The Date representing the elapsed time since UNIX epoch in days(32 bits)
+    /// Date represents the elapsed days since UNIX epoch.
+    ///
     /// It is mapped to [`arrow::datatypes::DataType::Date32`].
     /// The supported date range is '-9999-01-01' to '9999-12-31'.
     Date(i32),
