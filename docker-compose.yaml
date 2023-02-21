@@ -2,14 +2,14 @@ version: '2'
 
 services:
   ceresmeta:
-    image: ceresmeta-server:latest
+    image: ceresdb/ceresmeta-server:latest
     ports:
       - "2379:2379"
     volumes:
       - ./docker/ceresmeta.toml:/etc/ceresmeta/ceresmeta.toml
 
   ceresdb0:
-    image: ceresdb-server:latest
+    image: ceresdb/ceresdb-server:latest
     restart: always
     ports:
       - "8832:8832"
@@ -20,7 +20,7 @@ services:
       - ceresmeta
 
   ceresdb1:
-    image: ceresdb-server:latest
+    image: ceresdb/ceresdb-server:latest
     restart: always
     ports:
       - "8833:8833"

@@ -30,8 +30,8 @@ env:
   RUST_BACKTRACE: "1"
   CERESDB_ADDR: 127.0.0.1
   CERESDB_PORT: 5440
-  CERESMETA_IMAGE_NAME: ceresmeta-server:latest
-  CERESDB_IMAGE_NAME: ceresdb-server:latest
+  CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
+  CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
   SERVER_NAME: standalone-server
   LOCK_FILE: Cargo.lock
 
@@ -152,8 +152,8 @@ jobs:
         uses: actions/checkout@v3
       - name: Build CeresDB Docker image
         run: docker build -t ${CERESDB_IMAGE_NAME} .
-      - name: Run Docker Compose
-        run: docker-compose up -d
+#      - name: Run Docker Compose
+#        run: docker-compose up -d
       - name: Add CeresDB0 host
         run: |
           sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts

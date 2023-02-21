@@ -79,6 +79,13 @@ impl CeresDB {
                 }
             }
             DeployMode::Cluster => {
+                Command::new("docker-compose")
+                    .args(["up", "-d"])
+                    .stdout(stdout)
+                    .stderr(stderr)
+                    .spawn()
+                    .unwrap_or_else(|_| panic!("Failed to start server"));
+
                 let endpoint = env::var(CLUSTER_SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
                     panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
                 });
@@ -94,7 +101,18 @@ impl CeresDB {
     pub fn stop(self, mode: DeployMode) {
         match mode {
             DeployMode::Standalone => self.server_process.unwrap().kill().unwrap(),
-            DeployMode::Cluster => {}
+            DeployMode::Cluster => {
+                let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
+                let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
+                let stdout = File::create(stdout).expect("Cannot create stdout");
+                let stderr = File::create(stderr).expect("Cannot create stderr");
+                Command::new("docker-compose")
+                    .args(["rm", "fsv"])
+                    .stdout(stdout)
+                    .stderr(stderr)
+                    .spawn()
+                    .unwrap_or_else(|_| panic!("Failed to stop server"));
+            }
         }
     }
 
