@@ -386,8 +386,9 @@ pub enum Datum {
     /// It is mapped to [`arrow::datatypes::DataType::Date32`].
     /// The supported date range is '-9999-01-01' to '9999-12-31'.
     Date(i32),
-    /// The Time representing the elapsed time since midnight in nanoseconds(64
-    /// bits) It is mapped to [`arrow::datatypes::DataType::Time64`].
+    /// Time represents the elapsed nanoseconds since midnight. 
+    ///
+    /// It is mapped to [`arrow::datatypes::DataType::Time64`].
     /// The supported time range is '00:00:00.000' to '23:59:59.999'.
     Time(i64),
 }
