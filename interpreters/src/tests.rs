@@ -336,7 +336,7 @@ where
 
 #[tokio::test]
 async fn test_interpreters_rocks() {
-    // common_util::tests::init_log_for_test();
+    common_util::tests::init_log_for_test();
     let rocksdb_ctx = RocksDBEngineContext::default();
     test_interpreters(rocksdb_ctx).await;
 }

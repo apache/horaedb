@@ -603,19 +603,13 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
-            Datum::Date(v) => format!(
-                "{:?}",
-                NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
-                    .unwrap()
-                    .to_string()
-            ),
-            Datum::Time(v) => format!(
-                "{:?}",
-                NaiveTime::from_num_seconds_from_midnight_opt(
-                    ((*v) / NANOSECONDS) as u32,
-                    ((*v) % NANOSECONDS) as u32
-                )
-            ),
+            Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
+                .unwrap()
+                .to_string(),
+            Datum::Time(v) => NaiveTime::from_num_seconds_from_midnight_opt(
+                ((*v) / NANOSECONDS) as u32,
+                ((*v) % NANOSECONDS) as u32,
+            ).unwrap().to_string(),
         }
     }
 
