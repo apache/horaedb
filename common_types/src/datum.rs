@@ -383,14 +383,12 @@ pub enum Datum {
     Int8(i8),
     Boolean(bool),
     /// Date represents the elapsed days since UNIX epoch.
-    ///
     /// It is mapped to [`arrow::datatypes::DataType::Date32`].
     /// The supported date range is '-9999-01-01' to '9999-12-31'.
     Date(i32),
-    /// Time represents the elapsed nanoseconds since midnight. 
-    ///
+    /// Time represents the elapsed nanoseconds since midnight.
     /// It is mapped to [`arrow::datatypes::DataType::Time64`].
-    /// The supported time range is '00:00:00.000' to '23:59:59.999'.
+    /// The supported time range is '-23:59:59.999' to '23:59:59.999'.
     Time(i64),
 }
 
@@ -616,17 +614,25 @@ impl Datum {
             Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
                 .unwrap()
                 .to_string(),
-            // Display the Time(64 bits) as String.
-            // Time(v) represent the nanoseconds from midnight,
-            // so it is necessary to split `v` into seconds and nanoseconds to
-            // generate `NaiveTime`.
-            Datum::Time(v) => NaiveTime::from_num_seconds_from_midnight_opt(
-                ((*v) / NANOSECONDS) as u32,
-                ((*v) % NANOSECONDS) as u32,
-            )
-            .unwrap()
-            .to_string(),
+
+            Datum::Time(v) => Datum::format_datum_time(v),
         }
+    }
+
+    /// format the `Datum::Time`(64 bits) as String.
+    /// Time represent the nanoseconds from midnight,
+    /// so it is necessary to split `v` into seconds and nanoseconds to
+    /// generate `NaiveTime`.
+    pub fn format_datum_time(v: &i64) -> String {
+        let abs_nanos = (*v).abs();
+        let time = NaiveTime::from_num_seconds_from_midnight_opt(
+            (abs_nanos / NANOSECONDS) as u32,
+            (abs_nanos % NANOSECONDS) as u32,
+        )
+        .unwrap();
+        let fmt = time.to_string();
+        let positive = if (*v) < 0 { "-" } else { "" };
+        format!("{positive}{fmt}")
     }
 
     pub fn try_from_sql_value(kind: &DatumKind, value: Value) -> Result<Datum> {
@@ -637,23 +643,12 @@ impl Datum {
                 Ok(Datum::Timestamp(Timestamp::new(n)))
             }
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
-                // `NaiveDate::num_days_from_ce()` returns the elapsed time
-                // since 0001-01-01 in days, it is necessary to
-                // subtract `EPOCH_DAYS_FROM_CE` to generate `Datum::Date`
-                let date =
-                    chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT).context(InvalidDate)?;
-                let days = date.num_days_from_ce() - EPOCH_DAYS_FROM_CE;
-                Ok(Datum::Date(days))
+                let date = Self::parse_datum_date_from_str(&s)?;
+                Ok(date)
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
-                // `NaiveTime` contains two parts: `num_seconds_from_midnight`
-                // and `nanoseconds`, it is necessary to
-                // calculate them into number of nanoseconds from midnight.
-                let time =
-                    chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT).context(InvalidTime)?;
-                let sec = time.num_seconds_from_midnight() as i64;
-                let nano = time.nanosecond() as i64;
-                Ok(Datum::Time((sec * NANOSECONDS) + nano))
+                let datum_time = Self::parse_datum_time_from_str(&s)?;
+                Ok(datum_time)
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
@@ -711,6 +706,35 @@ impl Datum {
             (DatumKind::Boolean, Value::Boolean(b)) => Ok(Datum::Boolean(b)),
             (_, value) => InvalidValueType { kind: *kind, value }.fail(),
         }
+    }
+
+    fn parse_datum_time_from_str(s: &str) -> Result<Datum> {
+        // `NaiveTime` contains two parts: `num_seconds_from_midnight`
+        // and `nanoseconds`, it is necessary to
+        // calculate them into number of nanoseconds from midnight.
+        let (time, positive) = match s.as_bytes().first() {
+            Some(b'-') => (
+                NaiveTime::parse_from_str(&s[1..], TIME_FORMAT).context(InvalidTime)?,
+                -1,
+            ),
+            _ => (
+                NaiveTime::parse_from_str(s, TIME_FORMAT).context(InvalidTime)?,
+                1,
+            ),
+        };
+
+        let sec = time.num_seconds_from_midnight() as i64;
+        let nano = time.nanosecond() as i64;
+        Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+    }
+
+    fn parse_datum_date_from_str(s: &str) -> Result<Datum> {
+        // `NaiveDate::num_days_from_ce()` returns the elapsed time
+        // since 0001-01-01 in days, it is necessary to
+        // subtract `EPOCH_DAYS_FROM_CE` to generate `Datum::Date`
+        let date = chrono::NaiveDate::parse_from_str(s, DATE_FORMAT).context(InvalidDate)?;
+        let days = date.num_days_from_ce() - EPOCH_DAYS_FROM_CE;
+        Ok(Datum::Date(days))
     }
 
     #[cfg(test)]
@@ -830,15 +854,7 @@ impl Serialize for Datum {
                     .to_string()
                     .as_ref(),
             ),
-            Datum::Time(v) => serializer.serialize_str(
-                NaiveTime::from_num_seconds_from_midnight_opt(
-                    ((*v) / NANOSECONDS) as u32,
-                    ((*v) % NANOSECONDS) as u32,
-                )
-                .unwrap()
-                .to_string()
-                .as_ref(),
-            ),
+            Datum::Time(v) => serializer.serialize_str(Datum::format_datum_time(v).as_ref()),
         }
     }
 }

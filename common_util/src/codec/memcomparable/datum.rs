@@ -241,6 +241,8 @@ mod tests {
             (Datum::Int8(-120), 9),
             (Datum::Boolean(true), 9),
             (Datum::Boolean(false), 9),
+            (Datum::Date(1000), 9),
+            (Datum::Time(100000000), 9),
         ];
         let mut decoded = vec![
             Datum::Null,
@@ -257,6 +259,8 @@ mod tests {
             Datum::Int8(0),
             Datum::Boolean(false),
             Datum::Boolean(false),
+            Datum::Date(0),
+            Datum::Time(0),
         ];
         let c = MemComparable;
         for (index, x) in data.iter().enumerate() {
@@ -294,6 +298,12 @@ mod tests {
                 Ordering::Less,
             ),
             (Datum::UInt64(888), Datum::UInt64(889), Ordering::Less),
+            (Datum::Date(1000), Datum::Date(2000), Ordering::Less),
+            (
+                Datum::Time(2000000000),
+                Datum::Time(1000000000),
+                Ordering::Greater,
+            ),
         ];
         let c = MemComparable;
         for x in &data {

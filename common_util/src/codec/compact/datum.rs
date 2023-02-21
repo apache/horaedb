@@ -245,6 +245,8 @@ mod tests {
             (Datum::Int8(-120), 10),
             (Datum::Boolean(true), 10),
             (Datum::Boolean(false), 10),
+            (Datum::Date(1000), 10),
+            (Datum::Time(1_000_000_000), 10),
         ];
         let mut decoded = vec![
             Datum::Null,
@@ -263,6 +265,8 @@ mod tests {
             Datum::Int8(0),
             Datum::Boolean(false),
             Datum::Boolean(false),
+            Datum::Date(0),
+            Datum::Time(0),
         ];
         let encoder = MemCompactEncoder;
         let decoder = MemCompactDecoder;
