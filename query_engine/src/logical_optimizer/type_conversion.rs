@@ -29,6 +29,7 @@ use log::debug;
 pub struct TypeConversion;
 
 impl OptimizerRule for TypeConversion {
+    #[allow(clippy::only_used_in_recursion)]
     fn try_optimize(
         &self,
         plan: &LogicalPlan,
