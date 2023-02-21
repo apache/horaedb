@@ -382,9 +382,13 @@ pub enum Datum {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
-    /// Map to arrow::datatypes::DataType::Date32
+    /// The Date representing the elapsed time since UNIX epoch in days(32 bits)
+    /// It is mapped to [`arrow::datatypes::DataType::Date32`].
+    /// The supported date range is '-9999-01-01' to '9999-12-31'.
     Date(i32),
-    /// Map to arrow::datatypes::DataType::Time64
+    /// The Time representing the elapsed time since midnight in nanoseconds(64
+    /// bits) It is mapped to [`arrow::datatypes::DataType::Time64`].
+    /// The supported time range is '00:00:00.000' to '23:59:59.999'.
     Time(i64),
 }
 
@@ -603,9 +607,17 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
+            // Display the Date(32 bits) as String.
+            // Date(v) represent the days from Unix epoch(1970-01-01),
+            // so it is necessary to add `EPOCH_DAYS_FROM_CE` to generate
+            // `NaiveDate`.
             Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
                 .unwrap()
                 .to_string(),
+            // Display the Time(64 bits) as String.
+            // Time(v) represent the nanoseconds from midnight,
+            // so it is necessary to split `v` into seconds and nanoseconds to
+            // generate `NaiveTime`.
             Datum::Time(v) => NaiveTime::from_num_seconds_from_midnight_opt(
                 ((*v) / NANOSECONDS) as u32,
                 ((*v) % NANOSECONDS) as u32,
@@ -623,17 +635,23 @@ impl Datum {
                 Ok(Datum::Timestamp(Timestamp::new(n)))
             }
             (DatumKind::Date, Value::SingleQuotedString(s)) => {
+                // `NaiveDate::num_days_from_ce()` returns the elapsed time
+                // since 0001-01-01 in days, it is necessary to
+                // subtract `EPOCH_DAYS_FROM_CE` to generate `Datum::Date`
                 let date =
                     chrono::NaiveDate::parse_from_str(&s, DATE_FORMAT).context(InvalidDate)?;
                 let days = date.num_days_from_ce() - EPOCH_DAYS_FROM_CE;
                 Ok(Datum::Date(days))
             }
             (DatumKind::Time, Value::SingleQuotedString(s)) => {
+                // `NaiveTime` contains two parts: `num_seconds_from_midnight`
+                // and `nanoseconds`, it is necessary to
+                // calculate them into number of nanoseconds from midnight.
                 let time =
                     chrono::NaiveTime::parse_from_str(&s, TIME_FORMAT).context(InvalidTime)?;
                 let sec = time.num_seconds_from_midnight() as i64;
-                let nan = time.nanosecond() as i64;
-                Ok(Datum::Time((sec * NANOSECONDS) + nan))
+                let nano = time.nanosecond() as i64;
+                Ok(Datum::Time((sec * NANOSECONDS) + nano))
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
