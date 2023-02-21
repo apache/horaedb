@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
     let env = CeresDBController;
     let config = sqlness::ConfigBuilder::default()
         .case_dir(case_dir)
+        .follow_links(true)
         .build()?;
     let runner = Runner::new_with_config(config, env).await?;
     runner.run().await?;
