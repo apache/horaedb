@@ -401,7 +401,7 @@ impl TableData {
             None => {
                 let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
                 debug!(
-                    "create sampling mem table:{},schema:{:#?}",
+                    "create sampling mem table:{}, schema:{:#?}",
                     sampling_mem.id, table_schema
                 );
                 // Set sampling memtables of current version.
