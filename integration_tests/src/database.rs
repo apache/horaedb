@@ -1,13 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{
-    env,
-    fmt::Display,
-    fs::File,
-    path::Path,
-    process::{Child, Command},
-    sync::Arc,
-};
+use std::{env, fmt::Display, fs, fs::File, path::Path, process::{Child, Command}, sync::Arc};
+use std::borrow::Cow;
 
 use async_trait::async_trait;
 use ceresdb_client_rs::{
@@ -50,42 +44,35 @@ impl CeresDB {
     pub fn new(config: Option<&Path>, mode: DeployMode) -> Self {
         let config = config.unwrap().to_string_lossy();
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
-        let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
-        let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-        let stdout = File::create(stdout).expect("Cannot create stdout");
-        let stderr = File::create(stderr).expect("Cannot create stderr");
+        let stdout_file = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
+        let stderr_file = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
+        let stdout = File::create(stdout_file.clone()).expect("Cannot create stdout");
+        let stderr = File::create(stderr_file.clone()).expect("Cannot create stderr");
 
         println!("Start {bin} with {config}...");
 
         match mode {
             DeployMode::Standalone => {
-                let server_process = Command::new(&bin)
-                    .args(["--config", &config])
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn()
-                    .unwrap_or_else(|_| panic!("Failed to start server at {bin:?}"));
-
+                let server_process = Self::start_standalone(stdout, stderr, bin, config);
                 // Wait for a while
                 std::thread::sleep(std::time::Duration::from_secs(5));
                 let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
                     panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
                 });
                 let db_client = Builder::new(endpoint, Mode::Proxy).build();
-
                 CeresDB {
                     server_process: Some(server_process),
                     db_client,
                 }
             }
             DeployMode::Cluster => {
-                Command::new("docker-compose")
-                    .args(["up", "-d"])
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn()
-                    .unwrap_or_else(|_| panic!("Failed to start server"));
-
+                Self::start_cluster(stdout, stderr);
+                // Wait for a while
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                let stdout_content = fs::read_to_string(Path::new(&stdout_file))
+                    .expect("Should have been able to read the file");
+                let stderr_content = fs::read_to_string(Path::new(&stderr_file))
+                    .expect("Should have been able to read the file");
                 let endpoint = env::var(CLUSTER_SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
                     panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
                 });
@@ -100,18 +87,13 @@ impl CeresDB {
 
     pub fn stop(self, mode: DeployMode) {
         match mode {
-            DeployMode::Standalone => self.server_process.unwrap().kill().unwrap(),
+            DeployMode::Standalone => self.stop_standalone(),
             DeployMode::Cluster => {
                 let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
                 let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-                let stdout = File::create(stdout).expect("Cannot create stdout");
-                let stderr = File::create(stderr).expect("Cannot create stderr");
-                Command::new("docker-compose")
-                    .args(["rm", "fsv"])
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn()
-                    .unwrap_or_else(|_| panic!("Failed to stop server"));
+                let stdout = File::open(stdout).expect("Cannot create stdout");
+                let stderr = File::open(stderr).expect("Cannot create stderr");
+                Self::stop_cluster(stdout, stderr)
             }
         }
     }
@@ -149,6 +131,38 @@ impl CeresDB {
         })
     }
 
+    fn start_standalone(stdout: File, stderr: File, bin: String,config: Cow<str>) -> Child{
+         let server_process = Command::new(&bin)
+            .args(["--config", &config])
+            .stdout(stdout)
+            .stderr(stderr)
+            .spawn()
+            .unwrap_or_else(|_| panic!("Failed to start server at {bin:?}"));
+        server_process
+    }
+
+    fn stop_standalone(self){
+        self.server_process.unwrap().kill().unwrap()
+    }
+
+    fn start_cluster(stdout: File, stderr: File){
+        Command::new("docker-compose")
+            .args(["up", "-d"])
+            .stdout(stdout)
+            .stderr(stderr)
+            .spawn()
+            .unwrap_or_else(|_| panic!("Failed to start server"));
+    }
+
+    fn stop_cluster(stdout: File, stderr: File){
+        Command::new("docker-compose")
+            .args(["rm", "-fsv"])
+            .stdout(stdout)
+            .stderr(stderr)
+            .spawn()
+            .unwrap_or_else(|_| panic!("Failed to stop server"));
+    }
+
     fn parse_table_name(query: &str) -> Option<String> {
         let statements = Parser::parse_sql(query).unwrap();
 
@@ -156,23 +170,11 @@ impl CeresDB {
             Statement::Standard(s) => match *s.clone() {
                 SqlStatement::Insert {
                     table_name,
-                    or: _,
-                    into: _,
-                    columns: _,
-                    overwrite: _,
-                    source: _,
-                    partitioned: _,
-                    after_columns: _,
-                    table: _,
-                    on: _,
-                    returning: _,
+                    ..
                 } => Some(TableName::from(table_name).to_string()),
                 SqlStatement::Explain {
                     statement,
-                    describe_alias: _,
-                    analyze: _,
-                    verbose: _,
-                    format: _,
+                    ..
                 } => {
                     if let SqlStatement::Query(q) = *statement {
                         match *q.body {

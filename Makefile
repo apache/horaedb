@@ -6,6 +6,10 @@ init:
 	echo "init"
 	echo "Git branch: $GITBRANCH"
 
+build-debug:
+	ls -alh
+	cd $(DIR); cargo build
+
 build:
 	ls -alh
 	cd $(DIR); cargo build --release
