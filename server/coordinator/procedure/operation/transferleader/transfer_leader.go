@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/CeresDB/ceresmeta/pkg/log"
 	"github.com/CeresDB/ceresmeta/server/cluster"
@@ -263,6 +264,12 @@ func closeOldLeaderCallback(event *fsm.Event) {
 		return
 	}
 	ctx := request.ctx
+
+	// If the node is expired, skip close old leader shard.
+	oldLeaderNode, exists := request.cluster.GetRegisteredNodeByName(request.oldLeaderNodeName)
+	if !exists || oldLeaderNode.IsExpired(uint64(time.Now().Unix()), cluster.HeartbeatKeepAliveIntervalSec) {
+		return
+	}
 
 	closeShardRequest := eventdispatch.CloseShardRequest{
 		ShardID: uint32(request.shardID),

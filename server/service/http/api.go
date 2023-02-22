@@ -52,6 +52,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/split", a.split)
 	router.Post("/route", a.route)
 	router.Post("/dropTable", a.dropTable)
+	router.Post("/getNodeShards", a.getNodeShards)
 
 	return router
 }
@@ -236,6 +237,40 @@ func (a *API) route(writer http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Error("route tables failed", zap.Error(err))
 		a.respondError(writer, ErrRouteTable, "route tables failed")
+		return
+	}
+
+	a.respond(writer, result)
+}
+
+type NodeShardsRequest struct {
+	ClusterName string `json:"clusterName"`
+}
+
+func (a *API) getNodeShards(writer http.ResponseWriter, req *http.Request) {
+	resp, isLeader, err := a.forwardClient.forwardToLeader(req)
+	if err != nil {
+		log.Error("forward to leader failed", zap.Error(err))
+		a.respondError(writer, ErrForwardToLeader, "forward to leader failed")
+		return
+	}
+
+	if !isLeader {
+		a.respondForward(writer, resp)
+		return
+	}
+	var nodeShardsRequest NodeShardsRequest
+	err = json.NewDecoder(req.Body).Decode(&nodeShardsRequest)
+	if err != nil {
+		log.Error("decode request body failed", zap.Error(err))
+		a.respondError(writer, ErrParseRequest, "decode request body failed")
+		return
+	}
+
+	result, err := a.clusterManager.GetNodeShards(context.Background(), nodeShardsRequest.ClusterName)
+	if err != nil {
+		log.Error("get node shards failed", zap.Error(err))
+		a.respondError(writer, ErrGetNodeShards, "get node shards failed")
 		return
 	}
 

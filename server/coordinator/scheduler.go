@@ -15,11 +15,11 @@ import (
 	"github.com/CeresDB/ceresmeta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	heartbeatCheckInterval               = 10 * time.Second
-	heartbeatKeepAliveIntervalSec uint64 = 15
+	heartbeatCheckInterval = 10 * time.Second
 )
 
 type Scheduler struct {
@@ -102,17 +102,26 @@ func (s *Scheduler) checkNode(ctx context.Context, ticker *time.Ticker) {
 }
 
 func (s *Scheduler) processNodes(ctx context.Context, nodes []cluster.RegisteredNode, t time.Time, nodeShardsMapping map[string][]cluster.ShardInfo) {
+	group := new(errgroup.Group)
 	for _, node := range nodes {
+		// Refer to: https://go.dev/doc/faq#closures_and_goroutines
+		node := node
 		// Determines whether node is expired.
-		if !node.IsExpired(uint64(t.Unix()), heartbeatKeepAliveIntervalSec) {
+		if !node.IsExpired(uint64(t.Unix()), cluster.HeartbeatKeepAliveIntervalSec) {
 			// Shard versions of CeresDB and CeresMeta may be inconsistent. And close extra shards and open missing shards if so.
-			realShards := node.ShardInfos
-			expectShards := nodeShardsMapping[node.Node.Name]
-			err := s.applyMetadataShardInfo(ctx, node.Node.Name, realShards, expectShards)
-			if err != nil {
-				log.Error("apply metadata failed", zap.Error(err))
-			}
+			group.Go(func() error {
+				realShards := node.ShardInfos
+				expectShards := nodeShardsMapping[node.Node.Name]
+				err := s.applyMetadataShardInfo(ctx, node.Node.Name, realShards, expectShards)
+				if err != nil {
+					log.Error("apply metadata failed", zap.Error(err))
+				}
+				return nil
+			})
 		}
+	}
+	if err := group.Wait(); err != nil {
+		log.Error("error group wait", zap.Error(err))
 	}
 }
 
@@ -147,13 +156,9 @@ func (s *Scheduler) applyMetadataShardInfo(ctx context.Context, node string, rea
 		}
 
 		// 3. Shard exists in both metadata and node, versions are inconsistent, close and reopen invalid shard on node.
+		// TODO: In the current implementation mode, the scheduler will close and reopen Shard during the table creation process, which will cause Shard to be unavailable for a short time, temporarily close the detection of version inconsistency, and then open it after repair.
+		// Related issue: https://github.com/CeresDB/ceresmeta/issues/140
 		log.Info("Shard exists in both metadata and node, versions are inconsistent, close and reopen invalid shard on node.", zap.String("node", node), zap.Uint32("shardID", uint32(expectShard.ID)))
-		if err := s.dispatch.CloseShard(ctx, node, eventdispatch.CloseShardRequest{ShardID: uint32(expectShard.ID)}); err != nil {
-			return errors.WithMessagef(err, "close shard failed, shardInfo:%d", expectShard.ID)
-		}
-		if err := s.dispatch.OpenShard(ctx, node, eventdispatch.OpenShardRequest{Shard: expectShard}); err != nil {
-			return errors.WithMessagef(err, "reopen shard failed, shardInfo:%d", expectShard.ID)
-		}
 	}
 
 	// 4. Shard exists in node and not exists in metadata, close extra shard on node.

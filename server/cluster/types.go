@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	MinShardID = 0
+	MinShardID                           = 0
+	HeartbeatKeepAliveIntervalSec uint64 = 15
 )
 
 type TableInfo struct {
