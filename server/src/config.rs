@@ -44,7 +44,7 @@ impl Default for SchemaShardView {
     fn default() -> Self {
         Self {
             schema: "".to_string(),
-            auto_create_tables: false,
+            auto_create_tables: true,
             default_engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             shard_views: Vec::default(),

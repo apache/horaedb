@@ -157,6 +157,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(write_api.or(query_api))
     }
 
+    // GET /
     fn home(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
             let mut resp = HashMap::new();
@@ -165,7 +166,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         })
     }
 
-    // TODO(yingwen): Avoid boilerplate code if there are more handlers
+    // POST /sql
     fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         // accept json or plain text
         let extract_request = warp::body::json()
@@ -195,10 +196,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
+    // POST /debug/flush_memtable
     fn flush_memtable(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("flush_memtable")
+        warp::path!("debug" / "flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
             .and_then(|instance: InstanceRef<Q>| async move {
@@ -242,12 +244,14 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
+    // GET /metrics
     fn metrics(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         warp::path!("metrics").and(warp::get()).map(metrics::dump)
     }
 
+    // GET /debug/heap_profile/{seconds}
     fn heap_profile(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -271,10 +275,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
+    // PUT /debug/log_level/{level}
     fn update_log_level(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("log_level" / String)
+        warp::path!("debug" / "log_level" / String)
             .and(warp::put())
             .and(self.with_log_runtime())
             .and_then(
@@ -288,6 +293,31 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
+    }
+
+    // POST /admin/block
+    fn admin_block(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("admin" / "block")
+            .and(warp::post())
+            .and(warp::body::json())
+            .and(self.with_context())
+            .and(self.with_instance())
+            .and_then(|req, ctx, instance| async {
+                let result = handlers::admin::handle_block(ctx, instance, req)
+                    .await
+                    .map_err(|e| {
+                        error!("Http service failed to handle admin block, err:{}", e);
+                        Box::new(e)
+                    })
+                    .context(HandleRequest);
+
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
     }
 
     fn with_context(
@@ -348,30 +378,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
         let log_runtime = self.log_runtime.clone();
         warp::any().map(move || log_runtime.clone())
-    }
-
-    fn admin_block(
-        &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::path!("block")
-            .and(warp::post())
-            .and(warp::body::json())
-            .and(self.with_context())
-            .and(self.with_instance())
-            .and_then(|req, ctx, instance| async {
-                let result = handlers::admin::handle_block(ctx, instance, req)
-                    .await
-                    .map_err(|e| {
-                        error!("Http service failed to handle admin block, err:{}", e);
-                        Box::new(e)
-                    })
-                    .context(HandleRequest);
-
-                match result {
-                    Ok(res) => Ok(reply::json(&res)),
-                    Err(e) => Err(reject::custom(e)),
-                }
-            })
     }
 }
 
