@@ -8,7 +8,7 @@ use arrow::{
     record_batch::RecordBatch,
 };
 use arrow_ext::ipc;
-use common_util::{avro, time::InstantExt};
+use common_util::time::InstantExt;
 
 fn create_batch(rows: usize) -> RecordBatch {
     let schema = Schema::new(vec![
@@ -44,24 +44,5 @@ pub fn main() {
 
         let cost = begin.saturating_elapsed();
         println!("Arrow IPC encode/decode cost:{}ms", cost.as_millis());
-    }
-
-    // Avro
-    {
-        let record_schema =
-            common_types::schema::RecordSchema::try_from(arrow_batch.schema()).unwrap();
-        let batch = common_types::record_batch::RecordBatch::try_from(arrow_batch).unwrap();
-
-        let begin = Instant::now();
-        let bytes = avro::record_batch_to_avro_rows(&batch).unwrap();
-        println!(
-            "Avro encoded size:{}",
-            bytes.iter().map(|row| row.len()).sum::<usize>()
-        );
-
-        let _decode_batch = avro::avro_rows_to_record_batch(bytes, record_schema);
-
-        let cost = begin.saturating_elapsed();
-        println!("Avro encode/decode cost:{}ms", cost.as_millis());
     }
 }

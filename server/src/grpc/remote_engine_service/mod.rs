@@ -7,11 +7,14 @@ use std::{sync::Arc, time::Instant};
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use ceresdbproto::remote_engine::{
-    remote_engine_service_server::RemoteEngineService, ReadRequest, ReadResponse, WriteRequest,
-    WriteResponse,
+use ceresdbproto::{
+    remote_engine::{
+        read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService,
+        ReadRequest, ReadResponse, WriteRequest, WriteResponse,
+    },
+    storage::ArrowPayload,
 };
-use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
@@ -161,10 +164,12 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 header: Some(error::build_err_header(e)),
                                 ..Default::default()
                             },
-                            Ok(CompressOutput { payload, .. }) => ReadResponse {
+                            Ok(CompressOutput { payload, method }) => ReadResponse {
                                 header: Some(build_ok_header()),
-                                version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
-                                rows: payload,
+                                output: Some(Arrow(ArrowPayload {
+                                    record_batches: vec![payload],
+                                    compression: method as i32,
+                                })),
                             },
                         };
 

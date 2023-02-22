@@ -9,7 +9,6 @@ pub mod macros;
 
 // TODO(yingwen): Move some mod into components as a crate
 pub mod alloc_tracker;
-pub mod avro;
 pub mod codec;
 pub mod config;
 pub mod error;

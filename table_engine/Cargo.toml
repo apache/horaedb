@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 # In alphabetical order
 arrow = { workspace = true }
+arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 ceresdbproto = { workspace = true }
 common_types = { workspace = true }

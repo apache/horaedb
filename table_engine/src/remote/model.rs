@@ -2,16 +2,22 @@
 
 //! Model for remote table engine
 
-use common_types::schema::Schema;
-use common_util::{
-    avro,
-    error::{BoxError, GenericError},
+use arrow_ext::{
+    ipc,
+    ipc::{CompressOptions, CompressionMethod},
 };
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use ceresdbproto::{
+    remote_engine::{row_group, row_group::Rows::Arrow},
+    storage::{arrow_payload, ArrowPayload},
+};
+use common_types::{
+    record_batch::{RecordBatch, RecordBatchWithKeyBuilder},
+    row::RowGroupBuilder,
+};
+use common_util::error::{BoxError, GenericError};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::table::{ReadRequest as TableReadRequest, WriteRequest as TableWriteRequest};
-
-const ENCODE_ROWS_WITH_AVRO: u32 = 0;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -28,16 +34,6 @@ pub enum Error {
         table_ident: TableIdentifier,
         msg: String,
         backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to convert write request to pb, table_ident:{:?}, err:{}",
-        table_ident,
-        source
-    ))]
-    WriteRequestToPbWithCause {
-        table_ident: TableIdentifier,
-        source: avro::Error,
     },
 
     #[snafu(display("Empty table identifier.\nBacktrace:\n{}", backtrace))]
@@ -60,13 +56,6 @@ pub enum Error {
 
     #[snafu(display("Failed to covert row group, err:{}", source))]
     ConvertRowGroup { source: GenericError },
-
-    #[snafu(display(
-        "Failed to covert row group, encoding version:{}.\nBacktrace:\n{}",
-        version,
-        backtrace
-    ))]
-    UnsupportedConvertRowGroup { version: u32, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -148,22 +137,65 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
     ) -> std::result::Result<Self, Self::Error> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let row_group_pb = pb.row_group.context(EmptyRowGroup)?;
-        let table_schema: Schema = row_group_pb
-            .table_schema
-            .context(EmptyTableSchema)?
-            .try_into()
-            .box_err()
-            .context(ConvertTableSchema)?;
-        let row_group = if row_group_pb.version == ENCODE_ROWS_WITH_AVRO {
-            avro::avro_rows_to_row_group(table_schema, &row_group_pb.rows)
-                .box_err()
-                .context(ConvertRowGroup)?
-        } else {
-            UnsupportedConvertRowGroup {
-                version: row_group_pb.version,
+        let rows = row_group_pb.rows.context(EmptyRowGroup)?;
+        let row_group = match rows {
+            Arrow(v) => {
+                ensure!(v.record_batches.len() > 0, EmptyRowGroup);
+
+                let compression = match v.compression() {
+                    arrow_payload::Compression::None => CompressionMethod::None,
+                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+                };
+
+                let mut record_batch_vec = vec![];
+                for data in v.record_batches {
+                    let arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
+                        .map_err(|e| Box::new(e) as _)
+                        .context(ConvertRowGroup)?;
+                    record_batch_vec.append(
+                        &mut arrow_record_batch_vec
+                            .try_into()
+                            .map_err(|e| Box::new(e) as _)
+                            .context(ConvertRowGroup)?,
+                    );
+                }
+
+                let mut row_group_builder = RowGroupBuilder::new(
+                    record_batch_vec[0]
+                        .schema()
+                        .try_into()
+                        .map_err(|e| Box::new(e) as _)
+                        .context(ConvertRowGroup)?,
+                );
+
+                for record_batch in record_batch_vec {
+                    let record_batch: RecordBatch = record_batch
+                        .try_into()
+                        .map_err(|e| Box::new(e) as _)
+                        .context(ConvertRowGroup)?;
+
+                    let num_cols = record_batch.num_columns();
+                    let num_rows = record_batch.num_rows();
+                    for row_idx in 0..num_rows {
+                        let mut row_builder = row_group_builder.row_builder();
+                        for col_idx in 0..num_cols {
+                            let val = record_batch.column(col_idx).datum(row_idx);
+                            row_builder = row_builder
+                                .append_datum(val)
+                                .map_err(|e| Box::new(e) as _)
+                                .context(ConvertRowGroup)?;
+                        }
+                        row_builder
+                            .finish()
+                            .map_err(|e| Box::new(e) as _)
+                            .context(ConvertRowGroup)?;
+                    }
+                }
+
+                row_group_builder.build()
             }
-            .fail()?
         };
+
         Ok(Self {
             table: table_identifier.into(),
             write_request: TableWriteRequest { row_group },
@@ -177,20 +209,48 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
     fn try_from(request: WriteRequest) -> std::result::Result<Self, Self::Error> {
         // Row group to pb.
         let row_group = request.write_request.row_group;
-        let table_schema_pb = row_group.schema().into();
+        let table_schema = row_group.schema();
         let min_timestamp = row_group.min_timestamp().as_i64();
         let max_timestamp = row_group.max_timestamp().as_i64();
-        let avro_rows =
-            avro::row_group_to_avro_rows(row_group).context(WriteRequestToPbWithCause {
-                table_ident: request.table.clone(),
-            })?;
+
+        let mut builder = RecordBatchWithKeyBuilder::new(table_schema.to_record_schema_with_key());
+
+        for row in row_group {
+            builder
+                .append_row(row)
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertRowGroup)?;
+        }
+
+        let record_batch_with_key = builder
+            .build()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertRowGroup)?;
+        let record_batch = record_batch_with_key.into_record_batch();
+        let compress_output = ipc::encode_record_batch(
+            &record_batch.into_arrow_record_batch(),
+            // TODO: Set compress_min_size to 0 for now, we should set it to a
+            // proper value.
+            CompressOptions {
+                compress_min_length: 0,
+                method: ipc::CompressionMethod::Zstd,
+            },
+        )
+        .map_err(|e| Box::new(e) as _)
+        .context(ConvertRowGroup)?;
+
+        let compression = match compress_output.method {
+            CompressionMethod::None => arrow_payload::Compression::None,
+            CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+        };
 
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
-            version: ENCODE_ROWS_WITH_AVRO,
-            table_schema: Some(table_schema_pb),
-            rows: avro_rows,
             min_timestamp,
             max_timestamp,
+            rows: Some(row_group::Rows::Arrow(ArrowPayload {
+                record_batches: vec![compress_output.payload],
+                compression: compression as i32,
+            })),
         };
 
         // Table ident to pb.

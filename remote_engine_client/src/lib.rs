@@ -65,24 +65,8 @@ pub mod error {
             backtrace: Backtrace,
         },
 
-        #[snafu(display(
-            "Failed to convert request or response, msg:{}, version:{}, err:{}",
-            msg,
-            version,
-            source
-        ))]
-        ConvertReadResponse {
-            msg: String,
-            version: u32,
-            source: GenericError,
-        },
-
-        #[snafu(display(
-            "Failed to convert request or response, table, msg:{}, err:{}",
-            msg,
-            source
-        ))]
-        ConvertWriteRequest { msg: String, source: GenericError },
+        #[snafu(display("Failed to convert msg:{}, err:{}", msg, source))]
+        Convert { msg: String, source: GenericError },
 
         #[snafu(display(
             "Failed to connect, table_ident:{:?}, msg:{}, err:{}",
@@ -118,11 +102,6 @@ pub mod error {
         RouteNoCause {
             table_ident: TableIdentifier,
             msg: String,
-        },
-
-        #[snafu(display("Failed to convert version, source:{}", source))]
-        ConvertVersion {
-            source: common_types::remote_engine::Error,
         },
     }
 
