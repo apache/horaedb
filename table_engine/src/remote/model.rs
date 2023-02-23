@@ -12,7 +12,7 @@ use ceresdbproto::{
 };
 use common_types::{
     record_batch::{RecordBatch, RecordBatchWithKeyBuilder},
-    row::RowGroupBuilder,
+    row::{RowGroup, RowGroupBuilder},
 };
 use common_util::error::{BoxError, GenericError};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -56,9 +56,21 @@ pub enum Error {
 
     #[snafu(display("Failed to covert row group, err:{}", source))]
     ConvertRowGroup { source: GenericError },
+
+    #[snafu(display(
+        "Invalid record batches number in the response, expect only one, given:{}.\nBacktrace:\n{}",
+        batch_num,
+        backtrace,
+    ))]
+    InvalidRecordBatchNumber {
+        batch_num: usize,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
+
+const DEFAULT_COMPRESS_MIN_LENG: usize = 80 * 1024;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TableIdentifier {
@@ -140,7 +152,12 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
         let rows = row_group_pb.rows.context(EmptyRowGroup)?;
         let row_group = match rows {
             Arrow(v) => {
-                ensure!(v.record_batches.len() > 0, EmptyRowGroup);
+                ensure!(
+                    !v.record_batches.is_empty(),
+                    InvalidRecordBatchNumber {
+                        batch_num: v.record_batches.len(),
+                    }
+                );
 
                 let compression = match v.compression() {
                     arrow_payload::Compression::None => CompressionMethod::None,
@@ -149,50 +166,13 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
 
                 let mut record_batch_vec = vec![];
                 for data in v.record_batches {
-                    let arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
+                    let mut arrow_record_batch_vec = ipc::decode_record_batches(data, compression)
                         .map_err(|e| Box::new(e) as _)
                         .context(ConvertRowGroup)?;
-                    record_batch_vec.append(
-                        &mut arrow_record_batch_vec
-                            .try_into()
-                            .map_err(|e| Box::new(e) as _)
-                            .context(ConvertRowGroup)?,
-                    );
+                    record_batch_vec.append(&mut arrow_record_batch_vec);
                 }
 
-                let mut row_group_builder = RowGroupBuilder::new(
-                    record_batch_vec[0]
-                        .schema()
-                        .try_into()
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ConvertRowGroup)?,
-                );
-
-                for record_batch in record_batch_vec {
-                    let record_batch: RecordBatch = record_batch
-                        .try_into()
-                        .map_err(|e| Box::new(e) as _)
-                        .context(ConvertRowGroup)?;
-
-                    let num_cols = record_batch.num_columns();
-                    let num_rows = record_batch.num_rows();
-                    for row_idx in 0..num_rows {
-                        let mut row_builder = row_group_builder.row_builder();
-                        for col_idx in 0..num_cols {
-                            let val = record_batch.column(col_idx).datum(row_idx);
-                            row_builder = row_builder
-                                .append_datum(val)
-                                .map_err(|e| Box::new(e) as _)
-                                .context(ConvertRowGroup)?;
-                        }
-                        row_builder
-                            .finish()
-                            .map_err(|e| Box::new(e) as _)
-                            .context(ConvertRowGroup)?;
-                    }
-                }
-
-                row_group_builder.build()
+                build_row_group_with_record_batch(record_batch_vec)?
             }
         };
 
@@ -229,10 +209,8 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
         let record_batch = record_batch_with_key.into_record_batch();
         let compress_output = ipc::encode_record_batch(
             &record_batch.into_arrow_record_batch(),
-            // TODO: Set compress_min_size to 0 for now, we should set it to a
-            // proper value.
             CompressOptions {
-                compress_min_length: 0,
+                compress_min_length: DEFAULT_COMPRESS_MIN_LENG,
                 method: ipc::CompressionMethod::Zstd,
             },
         )
@@ -261,4 +239,49 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
             row_group: Some(row_group_pb),
         })
     }
+}
+
+fn build_row_group_with_record_batch(
+    record_batches: Vec<arrow::record_batch::RecordBatch>,
+) -> Result<RowGroup> {
+    ensure!(
+        record_batches.len() == 1,
+        InvalidRecordBatchNumber {
+            batch_num: record_batches.len(),
+        }
+    );
+
+    let mut row_group_builder = RowGroupBuilder::new(
+        record_batches[0]
+            .schema()
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertRowGroup)?,
+    );
+
+    for record_batch in record_batches {
+        let record_batch: RecordBatch = record_batch
+            .try_into()
+            .map_err(|e| Box::new(e) as _)
+            .context(ConvertRowGroup)?;
+
+        let num_cols = record_batch.num_columns();
+        let num_rows = record_batch.num_rows();
+        for row_idx in 0..num_rows {
+            let mut row_builder = row_group_builder.row_builder();
+            for col_idx in 0..num_cols {
+                let val = record_batch.column(col_idx).datum(row_idx);
+                row_builder = row_builder
+                    .append_datum(val)
+                    .map_err(|e| Box::new(e) as _)
+                    .context(ConvertRowGroup)?;
+            }
+            row_builder
+                .finish()
+                .map_err(|e| Box::new(e) as _)
+                .context(ConvertRowGroup)?;
+        }
+    }
+
+    Ok(row_group_builder.build())
 }

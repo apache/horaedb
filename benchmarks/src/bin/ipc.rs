@@ -27,7 +27,7 @@ pub fn main() {
 
     // Arrow IPC
     {
-        let batch = common_types::record_batch::RecordBatch::try_from(arrow_batch.clone()).unwrap();
+        let batch = common_types::record_batch::RecordBatch::try_from(arrow_batch).unwrap();
         let compress_opts = ipc::CompressOptions {
             method: ipc::CompressionMethod::Zstd,
             compress_min_length: 0,

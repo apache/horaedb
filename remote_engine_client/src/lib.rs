@@ -49,13 +49,6 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to convert request or response, table, msg:{}, err:{}",
-            msg,
-            source
-        ))]
-        ConvertReadRequest { msg: String, source: GenericError },
-
-        #[snafu(display(
             "Invalid record batches number in the response, expect only one, given:{}.\nBacktrace:\n{}",
             batch_num,
             backtrace,

@@ -45,8 +45,8 @@ impl Client {
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
-            .context(ConvertReadRequest {
-                msg: "convert to pb failed",
+            .context(Convert {
+                msg: "convert ReadRequest to pb",
             })?;
 
         let result = rpc_client
@@ -54,7 +54,7 @@ impl Client {
             .await
             .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
-                msg: "read from remote failed",
+                msg: "read from remote",
             });
 
         let response = match result {
@@ -85,7 +85,7 @@ impl Client {
         let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
             .box_err()
             .context(Convert {
-                msg: "convert to pb failed",
+                msg: "convert WriteRequest to pb failed",
             })?;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
 
@@ -185,7 +185,7 @@ impl Stream for ClientReadRecordBatchStream {
                                 )
                                 .map_err(|e| Box::new(e) as _)
                                 .context(Convert {
-                                    msg: "convert read record batch failed",
+                                    msg: "decode read record batch",
                                 })
                                 .and_then(
                                     |mut record_batch_vec| {
@@ -200,7 +200,7 @@ impl Stream for ClientReadRecordBatchStream {
                                             .try_into()
                                             .map_err(|e| Box::new(e) as _)
                                             .context(Convert {
-                                                msg: "convert read record batch failed",
+                                                msg: "convert read record batch",
                                             })
                                     },
                                 )
@@ -213,7 +213,7 @@ impl Stream for ClientReadRecordBatchStream {
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
                 table_ident: this.table_ident.clone(),
-                msg: "poll read response failed",
+                msg: "poll read response",
             }))),
 
             Poll::Ready(None) => Poll::Ready(None),
