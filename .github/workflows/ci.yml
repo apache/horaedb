@@ -28,11 +28,8 @@ env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  CERESDB_ADDR: 127.0.0.1
-  CERESDB_PORT: 5440
   CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
   CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
-  SERVER_NAME: standalone-server
   LOCK_FILE: Cargo.lock
 
 jobs:
@@ -148,11 +145,9 @@ jobs:
           ref: refs/heads/main
       - name: Build CeresMeta Docker image
         run: docker build -t ${CERESMETA_IMAGE_NAME} .
-      - name: Add CeresDB0 host
+      - name: Add CeresDB Hosts
         run: |
           sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
-      - name: Add CeresDB1 host
-        run: |
           sudo echo "127.0.0.1 ceresdb1" | sudo tee -a /etc/hosts
       - uses: actions/checkout@v3
         with:
@@ -185,7 +180,7 @@ jobs:
       - name: Copy Target
         run: |
           cp ./target/debug/ceresdb-server ./ceresdb-server
-      - name: Build CeresDB Docker image
+      - name: Build CeresDB Docker Image
         run: docker build -f ./Dockerfile-CI -t ${CERESDB_IMAGE_NAME} .
       - name: Run black-box tests
         run: |
