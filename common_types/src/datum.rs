@@ -507,6 +507,24 @@ impl Datum {
         }
     }
 
+    /// Cast datum to int64.
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Datum::UInt64(v) => Some(*v as i64),
+            Datum::UInt32(v) => Some(*v as i64),
+            Datum::UInt16(v) => Some(*v as i64),
+            Datum::UInt8(v) => Some(*v as i64),
+            Datum::Int64(v) => Some(*v),
+            Datum::Int32(v) => Some(*v as i64),
+            Datum::Int16(v) => Some(*v as i64),
+            Datum::Int8(v) => Some(*v as i64),
+            Datum::Boolean(v) => Some(*v as i64),
+            Datum::Date(v) => Some(*v as i64),
+            Datum::Time(v) => Some(*v),
+            _ => None,
+        }
+    }
+
     /// Cast datum to Bytes.
     pub fn as_varbinary(&self) -> Option<&Bytes> {
         match self {
@@ -721,6 +739,14 @@ impl Datum {
         }
     }
 
+    /// format the `Datum::Date`(32 bits) as String.
+    fn format_datum_date(v: &i32) -> String {
+        NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
+            .unwrap()
+            .format(DATE_FORMAT)
+            .to_string()
+    }
+
     fn parse_datum_time_from_str(s: &str) -> Result<Datum> {
         // `NaiveTime` contains two parts: `num_seconds_from_midnight`
         // and `nanoseconds`, it is necessary to
@@ -732,12 +758,8 @@ impl Datum {
                 NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTimeCause)?;
             let sec = hours.abs() * 3600 + (time.num_seconds_from_midnight() as i64);
             let nanos = time.nanosecond() as i64 + sec * NANOSECONDS;
-            let nanos = if hours < 0 { 
-                  -nanos
-             } else {
-                  nanos
-             };
-            Ok(Datum::Time(nanos)))
+            let nanos = if hours < 0 { -nanos } else { nanos };
+            Ok(Datum::Time(nanos))
         } else {
             InvalidTimeNoCause {
                 msg: "Invalid time format".to_string(),
@@ -865,13 +887,7 @@ impl Serialize for Datum {
             Datum::Int16(v) => serializer.serialize_i16(*v),
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
-            Datum::Date(v) => serializer.serialize_str(
-                NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
-                    .unwrap()
-                    .format(DATE_FORMAT)
-                    .to_string()
-                    .as_ref(),
-            ),
+            Datum::Date(v) => serializer.serialize_str(Self::format_datum_date(v).as_ref()),
             Datum::Time(v) => serializer.serialize_str(Datum::format_datum_time(v).as_ref()),
         }
     }
@@ -1249,27 +1265,31 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_datum_date_from_str() {
-        let cases = ["-9999-01-01", "9999-12-21", "0-1-1", "1000-02-28"];
+    fn test_parse_datum_date() {
+        let cases = ["-9999-01-01", "9999-12-21", "2000-01-01", "1000-02-28"];
 
-        let expects = [
-            Datum::Date(-4371587),
-            Datum::Date(2932886),
-            Datum::Date(-719528),
-            Datum::Date(-354227),
-        ];
-
-        for (i, source) in cases.iter().enumerate() {
-            let datum = Datum::parse_datum_date_from_str(source).unwrap();
-            assert_eq!(datum, expects.get(i).unwrap().clone());
+        for case in cases {
+            let datum = Datum::parse_datum_date_from_str(case).unwrap();
+            assert_eq!(
+                case.to_string(),
+                Datum::format_datum_date(&(datum.as_i64().unwrap() as i32))
+            );
         }
+    }
 
+    #[test]
+    fn test_parse_datum_date_error_cases() {
         let err_cases = [
             "ab-01-01",
             "01-ab-01",
             "-9999-234-ab",
             "100099-123-01",
             "1990-01-123",
+            "1999",
+            "",
+            "1999--00--00",
+            "1999-0",
+            "1999-01-01-01",
         ];
 
         for source in err_cases {
@@ -1278,70 +1298,43 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_datum_time_from_str() {
+    fn test_parse_datum_time() {
         // '-838:59:59.000000' to '838:59:59.000000'
         let cases = [
-            "-838:59:59.000",
-            "838:59:59.000",
-            "-23:59:59.999",
-            "23:59:59.999",
-            "0:59:59.567",
-            "10:10:10.234",
-        ];
-
-        let expects = [
-            Datum::Time(-3020399000000000),
-            Datum::Time(3020399000000000),
-            Datum::Time(-86399999000000),
-            Datum::Time(86399999000000),
-            Datum::Time(3599567000000),
-            Datum::Time(36610234000000),
-        ];
-
-        for (i, source) in cases.iter().enumerate() {
-            let result = Datum::parse_datum_time_from_str(source);
-            let datum = result.unwrap();
-            assert_eq!(datum, expects.get(i).unwrap().clone());
-        }
-
-        let err_cases = [
-            "-ab:12:59.000",
-            "00:ab:59.000",
-            "-12:234:59.000",
-            "00:23:900.000",
-            "-00:59:59.abc",
-        ];
-
-        for source in err_cases {
-            assert!(Datum::parse_datum_time_from_str(source).is_err());
-        }
-    }
-
-    #[test]
-    fn test_format_datum_time() {
-        let cases = [
-            Datum::Time(-3020399000000000),
-            Datum::Time(3020399000000000),
-            Datum::Time(-86399999000000),
-            Datum::Time(86399999000000),
-            Datum::Time(3599567000000),
-            Datum::Time(36610234000000),
-        ];
-
-        let expects = [
-            "-838:59:59",
-            "838:59:59",
+            "-838:59:59.123",
+            "830:59:59.567",
             "-23:59:59.999",
             "23:59:59.999",
             "00:59:59.567",
             "10:10:10.234",
         ];
 
-        for (i, source) in cases.iter().enumerate() {
-            if let Datum::Time(v) = source {
-                let datum = Datum::format_datum_time(v);
-                assert_eq!(&datum, expects.get(i).unwrap());
-            }
+        for case in cases {
+            let datum = Datum::parse_datum_time_from_str(case).unwrap();
+            assert_eq!(
+                case.to_string(),
+                Datum::format_datum_time(&datum.as_i64().unwrap())
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_time_error_cases() {
+        let err_cases = [
+            "-ab:12:59.000",
+            "00:ab:59.000",
+            "-12:234:59.000",
+            "00:23:900.000",
+            "-00:59:59.abc",
+            "00",
+            "",
+            "00:00:00:00",
+            "12:",
+            ":",
+        ];
+
+        for source in err_cases {
+            assert!(Datum::parse_datum_time_from_str(source).is_err());
         }
     }
 }
