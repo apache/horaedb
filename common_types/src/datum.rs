@@ -715,9 +715,9 @@ impl Datum {
         .unwrap();
         let minute_sec = &(time.to_string())[3..];
         if *v < 0 {
-            format!("-{hours}:{minute_sec}")
+            format!("-{hours:02}:{minute_sec}")
         } else {
-            time.to_string()
+            format!("{hours:02}:{minute_sec}")
         }
     }
 
@@ -727,7 +727,7 @@ impl Datum {
         // calculate them into number of nanoseconds from midnight.
         if let Some(index) = s.find(':') {
             let hours: i64 = (s[..index]).parse().context(InvalidTimeHourFormat)?;
-            let replace = s.replace(&s[..index], "00");
+            let replace = format!("00:{}", &s[index + 1..]);
             let time =
                 NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTimeCause)?;
             let sec = hours.abs() * 3600 + (time.num_seconds_from_midnight() as i64);
@@ -1266,20 +1266,20 @@ mod tests {
         // '-838:59:59.000000' to '838:59:59.000000'
         let cases = [
             "-838:59:59.000",
-            "838:59:59.999",
+            "838:59:59.000",
             "-23:59:59.999",
             "23:59:59.999",
             "0:59:59.567",
-            "10:0:0.0",
+            "10:10:10.234",
         ];
 
         let expects = [
             Datum::Time(-3020399000000000),
-            Datum::Time(3020399999000000),
+            Datum::Time(3020399000000000),
             Datum::Time(-86399999000000),
             Datum::Time(86399999000000),
             Datum::Time(3599567000000),
-            Datum::Time(36000000000000),
+            Datum::Time(36610234000000),
         ];
 
         for (i, source) in cases.iter().enumerate() {
@@ -1293,20 +1293,20 @@ mod tests {
     fn test_format_datum_time() {
         let cases = [
             Datum::Time(-3020399000000000),
-            Datum::Time(3020399999000000),
+            Datum::Time(3020399000000000),
             Datum::Time(-86399999000000),
             Datum::Time(86399999000000),
             Datum::Time(3599567000000),
-            Datum::Time(36000000000000),
+            Datum::Time(36610234000000),
         ];
 
         let expects = [
-            "-838:59:59.000",
-            "838:59:59.999",
+            "-838:59:59",
+            "838:59:59",
             "-23:59:59.999",
             "23:59:59.999",
             "00:59:59.567",
-            "10:00:00",
+            "10:10:10.234",
         ];
 
         for (i, source) in cases.iter().enumerate() {
