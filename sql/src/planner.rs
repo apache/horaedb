@@ -1001,7 +1001,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 }
 
 // Ensure default value option of columns are valid.
-fn ensure_column_default_value_valid<'a, P: MetaProvider>(
+fn ensure_column_default_value_valid<P: MetaProvider>(
     columns: &[ColumnSchema],
     meta_provider: &ContextProviderAdapter<'_, P>,
 ) -> Result<()> {

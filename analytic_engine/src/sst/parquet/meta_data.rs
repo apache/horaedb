@@ -388,10 +388,10 @@ mod tests {
         let parquet_filter = ParquetFilter {
             row_group_filters: vec![
                 RowGroupFilter {
-                    column_filters: vec![None, Some(Box::new(Xor8Filter::default()))],
+                    column_filters: vec![None, Some(Box::<Xor8Filter>::default() as _)],
                 },
                 RowGroupFilter {
-                    column_filters: vec![Some(Box::new(Xor8Filter::default())), None],
+                    column_filters: vec![Some(Box::<Xor8Filter>::default() as _), None],
                 },
             ],
         };
