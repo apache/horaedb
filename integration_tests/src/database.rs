@@ -69,10 +69,6 @@ impl CeresDB {
                 Self::start_cluster(stdout, stderr);
                 // Wait for a while
                 std::thread::sleep(std::time::Duration::from_secs(10));
-                let stdout_content = fs::read_to_string(Path::new(&stdout_file))
-                    .expect("Should have been able to read the file");
-                let stderr_content = fs::read_to_string(Path::new(&stderr_file))
-                    .expect("Should have been able to read the file");
                 let endpoint = env::var(CLUSTER_SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
                     panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
                 });
