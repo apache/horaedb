@@ -58,10 +58,19 @@ pub enum Error {
     },
 
     #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    InvalidTime {
+    InvalidTimeCause {
         source: chrono::ParseError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    InvalidTimeHourFormat {
+        source: std::num::ParseIntError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Invalid time, err:{}", msg))]
+    InvalidTimeNoCause { msg: String },
 
     #[snafu(display("Invalid integer, err:{}.\nBacktrace:\n{}", source, backtrace))]
     InvalidInt {
@@ -388,7 +397,7 @@ pub enum Datum {
     Date(i32),
     /// Time represents the elapsed nanoseconds since midnight.
     /// It is mapped to [`arrow::datatypes::DataType::Time64`].
-    /// The supported time range is '-23:59:59.999' to '23:59:59.999'.
+    /// The supported time range is '-838:59:59.000000' to '838:59:59.000000'.
     Time(i64),
 }
 
@@ -698,13 +707,15 @@ impl Datum {
     /// generate `NaiveTime`.
     pub fn format_datum_time(v: &i64) -> String {
         let abs_nanos = (*v).abs();
+        let hours = abs_nanos / 3600 / NANOSECONDS;
         let time = NaiveTime::from_num_seconds_from_midnight_opt(
-            (abs_nanos / NANOSECONDS) as u32,
+            (abs_nanos / NANOSECONDS - hours * 3600) as u32,
             (abs_nanos % NANOSECONDS) as u32,
         )
-            .unwrap();
+        .unwrap();
+        let minute_sec = &(time.to_string())[3..];
         if *v < 0 {
-            format!("-{time}")
+            format!("-{hours}:{minute_sec}")
         } else {
             time.to_string()
         }
@@ -714,20 +725,21 @@ impl Datum {
         // `NaiveTime` contains two parts: `num_seconds_from_midnight`
         // and `nanoseconds`, it is necessary to
         // calculate them into number of nanoseconds from midnight.
-        let (time, positive) = match s.as_bytes().first() {
-            Some(b'-') => (
-                NaiveTime::parse_from_str(&s[1..], TIME_FORMAT).context(InvalidTime)?,
-                -1,
-            ),
-            _ => (
-                NaiveTime::parse_from_str(s, TIME_FORMAT).context(InvalidTime)?,
-                1,
-            ),
-        };
-
-        let sec = time.num_seconds_from_midnight() as i64;
-        let nano = time.nanosecond() as i64;
-        Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+        if let Some(index) = s.find(':') {
+            let hours: i64 = (s[..index]).parse().context(InvalidTimeHourFormat)?;
+            let replace = s.replace(&s[..index], "00");
+            let time =
+                NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTimeCause)?;
+            let sec = hours.abs() * 3600 + (time.num_seconds_from_midnight() as i64);
+            let positive = if hours < 0 { -1 } else { 1 };
+            let nano = time.nanosecond() as i64;
+            Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+        } else {
+            InvalidTimeNoCause {
+                msg: "Invalid time format".to_string(),
+            }
+            .fail()
+        }
     }
 
     fn parse_datum_date_from_str(s: &str) -> Result<Datum> {
@@ -1251,9 +1263,19 @@ mod tests {
 
     #[test]
     fn test_parse_datum_time_from_str() {
-        let cases = ["-23:59:59.999", "23:59:59.999", "0:59:59.567", "10:0:0.0"];
+        // '-838:59:59.000000' to '838:59:59.000000'
+        let cases = [
+            "-838:59:59.000",
+            "838:59:59.999",
+            "-23:59:59.999",
+            "23:59:59.999",
+            "0:59:59.567",
+            "10:0:0.0",
+        ];
 
         let expects = [
+            Datum::Time(-3020399000000000),
+            Datum::Time(3020399999000000),
             Datum::Time(-86399999000000),
             Datum::Time(86399999000000),
             Datum::Time(3599567000000),
@@ -1261,7 +1283,8 @@ mod tests {
         ];
 
         for (i, source) in cases.iter().enumerate() {
-            let datum = Datum::parse_datum_time_from_str(source).unwrap();
+            let result = Datum::parse_datum_time_from_str(source);
+            let datum = result.unwrap();
             assert_eq!(datum, expects.get(i).unwrap().clone());
         }
     }
@@ -1269,21 +1292,27 @@ mod tests {
     #[test]
     fn test_format_datum_time() {
         let cases = [
+            Datum::Time(-3020399000000000),
+            Datum::Time(3020399999000000),
             Datum::Time(-86399999000000),
             Datum::Time(86399999000000),
             Datum::Time(3599567000000),
             Datum::Time(36000000000000),
         ];
 
-        let expects = ["-23:59:59.999", "23:59:59.999", "00:59:59.567", "10:00:00"];
+        let expects = [
+            "-838:59:59.000",
+            "838:59:59.999",
+            "-23:59:59.999",
+            "23:59:59.999",
+            "00:59:59.567",
+            "10:00:00",
+        ];
 
         for (i, source) in cases.iter().enumerate() {
-            match source {
-                Datum::Time(v) => {
-                    let datum = Datum::format_datum_time(v);
-                    assert_eq!(datum, expects.get(i).unwrap().clone());
-                }
-                _ => {}
+            if let Datum::Time(v) = source {
+                let datum = Datum::format_datum_time(v);
+                assert_eq!(&datum, expects.get(i).unwrap());
             }
         }
     }
