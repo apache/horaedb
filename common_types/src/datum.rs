@@ -1259,6 +1259,18 @@ mod tests {
             let datum = Datum::parse_datum_date_from_str(source).unwrap();
             assert_eq!(datum, expects.get(i).unwrap().clone());
         }
+
+        let err_cases = [
+            "ab-01-01",
+            "01-ab-01",
+            "-9999-234-ab",
+            "100099-123-01",
+            "1990-01-123",
+        ];
+
+        for source in err_cases {
+            Result::unwrap_err(Datum::parse_datum_date_from_str(source));
+        }
     }
 
     #[test]
@@ -1286,6 +1298,18 @@ mod tests {
             let result = Datum::parse_datum_time_from_str(source);
             let datum = result.unwrap();
             assert_eq!(datum, expects.get(i).unwrap().clone());
+        }
+
+        let err_cases = [
+            "-ab:12:59.000",
+            "00:ab:59.000",
+            "-12:234:59.000",
+            "00:23:900.000",
+            "-00:59:59.abc",
+        ];
+
+        for source in err_cases {
+            Result::unwrap_err(Datum::parse_datum_time_from_str(source));
         }
     }
 
