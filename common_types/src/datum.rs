@@ -630,9 +630,12 @@ impl Datum {
             (abs_nanos % NANOSECONDS) as u32,
         )
         .unwrap();
-        let fmt = time.to_string();
-        let positive = if (*v) < 0 { "-" } else { "" };
-        format!("{positive}{fmt}")
+       if *v < 0 { 
+           format!("-{time}")
+        } else { 
+           time.to_string()
+        }
+ 
     }
 
     pub fn try_from_sql_value(kind: &DatumKind, value: Value) -> Result<Datum> {
