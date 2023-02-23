@@ -9,7 +9,7 @@ services:
       - ./docker/ceresmeta.toml:/etc/ceresmeta/ceresmeta.toml
 
   ceresdb0:
-    image: ceresdb/ceresdb-server:nightly-20230223-ce9fa87
+    image: ceresdb/ceresdb-server:latest
     restart: always
     ports:
       - "8832:8832"
@@ -20,7 +20,7 @@ services:
       - ceresmeta
 
   ceresdb1:
-    image: ceresdb/ceresdb-server:nightly-20230223-ce9fa87
+    image: ceresdb/ceresdb-server:latest
     restart: always
     ports:
       - "8833:8833"

@@ -1,7 +1,14 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{env, fmt::Display, fs, fs::File, path::Path, process::{Child, Command}, sync::Arc};
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    env,
+    fmt::Display,
+    fs::File,
+    path::Path,
+    process::{Child, Command},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use ceresdb_client_rs::{
@@ -46,8 +53,8 @@ impl CeresDB {
         let bin = env::var(BINARY_PATH_ENV).expect("Cannot parse binary path env");
         let stdout_file = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
         let stderr_file = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-        let stdout = File::create(stdout_file.clone()).expect("Cannot create stdout");
-        let stderr = File::create(stderr_file.clone()).expect("Cannot create stderr");
+        let stdout = File::create(stdout_file).expect("Cannot create stdout");
+        let stderr = File::create(stderr_file).expect("Cannot create stderr");
 
         println!("Start {bin} with {config}...");
 
@@ -127,8 +134,8 @@ impl CeresDB {
         })
     }
 
-    fn start_standalone(stdout: File, stderr: File, bin: String,config: Cow<str>) -> Child{
-         let server_process = Command::new(&bin)
+    fn start_standalone(stdout: File, stderr: File, bin: String, config: Cow<str>) -> Child {
+        let server_process = Command::new(&bin)
             .args(["--config", &config])
             .stdout(stdout)
             .stderr(stderr)
@@ -137,11 +144,11 @@ impl CeresDB {
         server_process
     }
 
-    fn stop_standalone(self){
+    fn stop_standalone(self) {
         self.server_process.unwrap().kill().unwrap()
     }
 
-    fn start_cluster(stdout: File, stderr: File){
+    fn start_cluster(stdout: File, stderr: File) {
         Command::new("docker-compose")
             .args(["up", "-d"])
             .stdout(stdout)
@@ -150,7 +157,7 @@ impl CeresDB {
             .unwrap_or_else(|_| panic!("Failed to start server"));
     }
 
-    fn stop_cluster(stdout: File, stderr: File){
+    fn stop_cluster(stdout: File, stderr: File) {
         Command::new("docker-compose")
             .args(["rm", "-fsv"])
             .stdout(stdout)
@@ -164,14 +171,10 @@ impl CeresDB {
 
         match &statements[0] {
             Statement::Standard(s) => match *s.clone() {
-                SqlStatement::Insert {
-                    table_name,
-                    ..
-                } => Some(TableName::from(table_name).to_string()),
-                SqlStatement::Explain {
-                    statement,
-                    ..
-                } => {
+                SqlStatement::Insert { table_name, .. } => {
+                    Some(TableName::from(table_name).to_string())
+                }
+                SqlStatement::Explain { statement, .. } => {
                     if let SqlStatement::Query(q) = *statement {
                         match *q.body {
                             SetExpr::Select(select) => {
