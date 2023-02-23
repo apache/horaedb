@@ -4,9 +4,12 @@
 
 use std::{convert::TryFrom, fmt, str};
 
-use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
+use arrow::{
+    error::ArrowError::ParseError,
+    temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS},
+};
 use ceresdbproto::schema::DataType as DataTypePb;
-use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
+use chrono::{format::ParseErrorKind, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
@@ -698,13 +701,15 @@ impl Datum {
     /// generate `NaiveTime`.
     pub fn format_datum_time(v: &i64) -> String {
         let abs_nanos = (*v).abs();
+        let hours = abs_nanos / 3600 / NANOSECONDS;
         let time = NaiveTime::from_num_seconds_from_midnight_opt(
-            (abs_nanos / NANOSECONDS) as u32,
+            (abs_nanos / NANOSECONDS - hours * hours * 3600) as u32,
             (abs_nanos % NANOSECONDS) as u32,
         )
-            .unwrap();
+        .unwrap();
+        let minute_sec = &(time.to_string())[3..];
         if *v < 0 {
-            format!("-{time}")
+            format!("-{hours}:{minute_sec}")
         } else {
             time.to_string()
         }
@@ -714,20 +719,20 @@ impl Datum {
         // `NaiveTime` contains two parts: `num_seconds_from_midnight`
         // and `nanoseconds`, it is necessary to
         // calculate them into number of nanoseconds from midnight.
-        let (time, positive) = match s.as_bytes().first() {
-            Some(b'-') => (
-                NaiveTime::parse_from_str(&s[1..], TIME_FORMAT).context(InvalidTime)?,
-                -1,
-            ),
-            _ => (
-                NaiveTime::parse_from_str(s, TIME_FORMAT).context(InvalidTime)?,
-                1,
-            ),
-        };
-
-        let sec = time.num_seconds_from_midnight() as i64;
-        let nano = time.nanosecond() as i64;
-        Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+        match s.find(b':') {
+            Some(index) => {
+                let hours = (&s[..index]).parse().unwrap();
+                let replace = s.replace(&s[..index], "00");
+                let time = NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTime)?;
+                let sec = hours.abs() * 3600 + time.num_seconds_from_midnight() as i64;
+                let positive = if hours < 0 { -1 } else { 1 };
+                let nano = time.nanosecond() as i64;
+                Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+            }
+            None => InvalidTime {
+                source: chrono::ParseError(ParseErrorKind::OutOfRange),
+            },
+        }
     }
 
     fn parse_datum_date_from_str(s: &str) -> Result<Datum> {
