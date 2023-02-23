@@ -1293,7 +1293,7 @@ mod tests {
         ];
 
         for source in err_cases {
-            Result::unwrap_err(Datum::parse_datum_date_from_str(source));
+            assert!(Datum::parse_datum_date_from_str(source).is_err());
         }
     }
 
