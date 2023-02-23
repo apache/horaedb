@@ -190,18 +190,6 @@ pub enum Error {
     StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
-        table,
-        wal_location,
-        source
-    ))]
-    GetLogBatchEncoder {
-        table: String,
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
-    #[snafu(display(
         "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
         table,
         wal_location,
@@ -252,7 +240,6 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OperateByWriteWorker { .. }
             | Error::FlushTable { .. }
             | Error::StoreVersionEdit { .. }
-            | Error::GetLogBatchEncoder { .. }
             | Error::EncodePayloads { .. }
             | Error::DoManifestSnapshot { .. } => Self::Unexpected {
                 source: Box::new(err),
