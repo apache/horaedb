@@ -28,6 +28,8 @@ env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
+  CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
   LOCK_FILE: Cargo.lock
 
 jobs:
@@ -37,7 +39,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [nightly-2022-08-08]
+        rust: [ nightly-2022-08-08 ]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -90,7 +92,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [nightly-2022-08-08]
+        rust: [ nightly-2022-08-08 ]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -134,18 +136,22 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [nightly-2022-08-08]
+        rust: [ nightly-2022-08-08 ]
     steps:
+      - name: Download CeresMeta Code
+        uses: actions/checkout@v3
+        with:
+          repository: CeresDB/ceresmeta
+          ref: refs/heads/main
+      - name: Build CeresMeta Docker image
+        run: docker build -t ${CERESMETA_IMAGE_NAME} .
+      - name: Add CeresDB Hosts
+        run: |
+          sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
+          sudo echo "127.0.0.1 ceresdb1" | sudo tee -a /etc/hosts
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${{ matrix.rust }} --profile minimal
-      - name: Release Disk Quota
-        run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
         with:
@@ -157,12 +163,35 @@ jobs:
             debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
             debug-${{ runner.os }}-
             debug-
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${{ matrix.rust }} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
       - name: Setup Build Environment
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+      - name: Build CeresDB
+        run: |
+          make build-debug
+      - name: Copy Target
+        run: |
+          cp ./target/debug/ceresdb-server ./ceresdb-server
+      - name: Build CeresDB Docker Image
+        run: docker build -f ./Dockerfile-CI -t ${CERESDB_IMAGE_NAME} .
       - name: Run black-box tests
         run: |
           make test-black
         env:
           RUST_BACKTRACE: "1"
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: CI
+          path: |
+            /tmp/ceresdb-stdout.log
+            /tmp/ceresdb-stderr.log
