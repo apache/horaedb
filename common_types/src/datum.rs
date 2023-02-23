@@ -702,7 +702,7 @@ impl Datum {
             (abs_nanos / NANOSECONDS) as u32,
             (abs_nanos % NANOSECONDS) as u32,
         )
-            .unwrap();
+        .unwrap();
         if *v < 0 {
             format!("-{time}")
         } else {
@@ -1278,12 +1278,9 @@ mod tests {
         let expects = ["-23:59:59.999", "23:59:59.999", "00:59:59.567", "10:00:00"];
 
         for (i, source) in cases.iter().enumerate() {
-            match source {
-                Datum::Time(v) => {
-                    let datum = Datum::format_datum_time(v);
-                    assert_eq!(datum, expects.get(i).unwrap().clone());
-                }
-                _ => {}
+            if let Datum::Time(v) = source {
+                let datum = Datum::format_datum_time(v);
+                assert_eq!(&datum, expects.get(i).unwrap());
             }
         }
     }
