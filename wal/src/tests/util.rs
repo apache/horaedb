@@ -25,6 +25,7 @@ use table_kv::memory::MemoryImpl;
 use tempfile::TempDir;
 
 use crate::{
+    kv_encoder::LogBatchEncoder,
     log_batch::{LogWriteBatch, Payload, PayloadDecoder},
     manager::{
         BatchLogIteratorAdapter, ReadContext, WalLocation, WalManager, WalManagerRef, WriteContext,
@@ -204,17 +205,13 @@ impl<B: WalBuilder> TestEnv<B> {
     /// Build the log batch with [TestPayload].val range [start, end).
     pub async fn build_log_batch(
         &self,
-        wal: WalManagerRef,
         location: WalLocation,
         start: u32,
         end: u32,
     ) -> (Vec<TestPayload>, LogWriteBatch) {
         let log_entries = (start..end).collect::<Vec<_>>();
 
-        let log_batch_encoder = wal
-            .encoder(location)
-            .expect("should succeed to create log batch encoder");
-
+        let log_batch_encoder = LogBatchEncoder::create(location);
         let log_batch = log_batch_encoder
             .encode_batch::<TestPayload, u32>(&log_entries)
             .expect("should succeed to encode payloads");
