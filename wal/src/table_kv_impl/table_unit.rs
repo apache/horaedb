@@ -354,7 +354,7 @@ impl TableUnit {
             None => return Ok(TableLogIterator::new_empty(table_kv.clone())),
         };
 
-        let region_id = request.location.versioned_region_id.id;
+        let region_id = request.location.region_id;
         let table_id = request.location.table_id;
         let min_log_key = CommonLogKey::new(region_id, table_id, start_sequence);
         let max_log_key = CommonLogKey::new(region_id, table_id, end_sequence);
@@ -914,7 +914,7 @@ impl TableUnitWriter {
 
         let log_encoding = CommonLogEncoding::newest();
         let entries_num = log_batch.len() as u64;
-        let region_id = log_batch.location.versioned_region_id.id;
+        let region_id = log_batch.location.region_id;
         let table_id = log_batch.location.table_id;
         let (wb, max_sequence_num) = {
             let mut wb = T::WriteBatch::with_capacity(log_batch.len());

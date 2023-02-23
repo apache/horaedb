@@ -291,11 +291,7 @@ impl Manifest for ManifestImpl {
 
         let table_id = request.meta_update.table_id();
         let shard_id = request.shard_info.shard_id;
-        let location = WalLocation::new(
-            shard_id as u64,
-            request.shard_info.cluster_version,
-            table_id.as_u64(),
-        );
+        let location = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = request.meta_update.space_id();
         let table_id = request.meta_update.table_id();
         self.store_update_to_wal(request.meta_update, location)
@@ -310,11 +306,7 @@ impl Manifest for ManifestImpl {
     async fn load_data(&self, load_req: &LoadRequest) -> GenericResult<Option<TableManifestData>> {
         info!("Manifest load data, request:{:?}", load_req);
 
-        let location = WalLocation::new(
-            load_req.shard_id as u64,
-            load_req.cluster_version,
-            load_req.table_id.as_u64(),
-        );
+        let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
 
         let log_store = WalBasedLogStore {
             opts: self.opts.clone(),
@@ -340,11 +332,7 @@ impl Manifest for ManifestImpl {
         info!("Manifest do snapshot, request:{:?}", request);
 
         let table_id = request.table_id;
-        let location = WalLocation::new(
-            request.shard_id as u64,
-            request.cluster_version,
-            table_id.as_u64(),
-        );
+        let location = WalLocation::new(request.shard_id as u64, table_id.as_u64());
         let space_id = request.space_id;
         let table_id = request.table_id;
 
@@ -1078,7 +1066,6 @@ mod tests {
             let load_req = LoadRequest {
                 table_id,
                 shard_id: DEFAULT_SHARD_ID,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
                 space_id: ctx.schema_id.as_u32(),
             };
             let expected_table_manifest_data = manifest_data_builder.build();
@@ -1161,11 +1148,7 @@ mod tests {
                 expr: Bytes::from("test"),
                 linear: false,
             }));
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as u64,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             let mut manifest_data_builder = TableManifestDataBuilder::default();
             let manifest = ctx.open_manifest().await;
             ctx.add_table_with_manifest(
@@ -1191,7 +1174,6 @@ mod tests {
             let load_req = LoadRequest {
                 space_id: ctx.schema_id.as_u32(),
                 table_id,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
                 shard_id: DEFAULT_SHARD_ID,
             };
             ctx.check_table_manifest_data_with_manifest(
@@ -1212,7 +1194,6 @@ mod tests {
             let load_req = LoadRequest {
                 space_id: ctx.schema_id.as_u32(),
                 table_id,
-                cluster_version: DEFAULT_CLUSTER_VERSION,
                 shard_id: table_id.as_u64() as u32,
             };
             let mut manifest_data_builder = TableManifestDataBuilder::default();
@@ -1236,11 +1217,7 @@ mod tests {
             )
             .await;
 
-            let location = WalLocation::new(
-                DEFAULT_SHARD_ID as u64,
-                DEFAULT_CLUSTER_VERSION,
-                table_id.as_u64(),
-            );
+            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
             manifest
                 .maybe_do_snapshot(ctx.schema_id.as_u32(), table_id, location, true)
                 .await
@@ -1369,11 +1346,7 @@ mod tests {
         input_updates: Vec<MetaUpdate>,
         updates_after_snapshot: Vec<MetaUpdate>,
     ) {
-        let location = WalLocation::new(
-            DEFAULT_SHARD_ID as u64,
-            DEFAULT_CLUSTER_VERSION,
-            table_id.as_u64(),
-        );
+        let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
         let log_store = MemLogStore::from_updates(&input_updates);
         let snapshot_store = MemSnapshotStore::new();
 

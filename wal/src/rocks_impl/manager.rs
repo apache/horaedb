@@ -162,7 +162,7 @@ impl TableUnit {
             return Ok(RocksLogIterator::new_empty(self.log_encoding.clone(), iter));
         };
 
-        let region_id = req.location.versioned_region_id.id;
+        let region_id = req.location.region_id;
         let (min_log_key, max_log_key) = (
             self.log_key(region_id, start_sequence),
             self.log_key(region_id, end_sequence),
@@ -187,7 +187,7 @@ impl TableUnit {
             let mut key_buf = BytesMut::new();
 
             for entry in &batch.entries {
-                let region_id = batch.location.versioned_region_id.id;
+                let region_id = batch.location.region_id;
                 self.log_encoding
                     .encode_key(
                         &mut key_buf,
@@ -722,7 +722,7 @@ impl WalManager for RocksImpl {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         if let Some(table_unit) = self.table_unit(&location) {
-            let region_id = location.versioned_region_id.id;
+            let region_id = location.region_id;
             return table_unit
                 .delete_entries_up_to(region_id, sequence_num)
                 .await;
@@ -768,7 +768,7 @@ impl WalManager for RocksImpl {
         let read_opts = ReadOptions::default();
         let iter = DBIterator::new(self.db.clone(), read_opts);
 
-        let region_id = req.versioned_region_id.id;
+        let region_id = req.region_id;
         let (min_log_key, max_log_key) = (
             CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN),
             CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX),

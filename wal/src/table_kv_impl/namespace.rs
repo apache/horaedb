@@ -519,7 +519,7 @@ impl<T: TableKv> NamespaceInner<T> {
 
     // TODO(yingwen): Provide a close_table_unit() method.
     async fn open_table_unit(&self, location: WalLocation) -> Result<Option<TableUnitRef>> {
-        let region_id = location.versioned_region_id.id;
+        let region_id = location.region_id;
         let table_id = location.table_id;
 
         let table_unit_meta_table = self.table_unit_meta_table(table_id);
@@ -576,7 +576,7 @@ impl<T: TableKv> NamespaceInner<T> {
             &self.table_kv,
             self.config.new_init_scan_ctx(),
             table_unit_meta_table,
-            location.versioned_region_id.id,
+            location.region_id,
             location.table_id,
             buckets,
         )
@@ -688,7 +688,7 @@ impl<T: TableKv> NamespaceInner<T> {
         // during reading start/end sequence.
         let buckets = self.list_buckets();
 
-        let region_id = request.versioned_region_id.id;
+        let region_id = request.region_id;
         let min_log_key = CommonLogKey::new(region_id, TableId::MIN, SequenceNumber::MIN);
         let max_log_key = CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX);
 
@@ -1453,10 +1453,7 @@ fn purge_buckets<T: TableKv>(
 mod tests {
     use std::sync::Arc;
 
-    use common_types::{
-        bytes::BytesMut,
-        table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
-    };
+    use common_types::{bytes::BytesMut, table::DEFAULT_SHARD_ID};
     use common_util::runtime::{Builder, Runtime};
     use table_kv::{memory::MemoryImpl, KeyBoundary, ScanContext, ScanRequest};
 
@@ -1759,8 +1756,7 @@ mod tests {
         runtime.block_on(async {
             let namespace = NamespaceMocker::new(table_kv.clone(), runtime.clone()).build();
             let table_id = 123;
-            let location =
-                WalLocation::new(DEFAULT_SHARD_ID as u64, DEFAULT_CLUSTER_VERSION, table_id);
+            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id);
             let seq1 = write_test_payloads(&namespace, location, 1000, 1004).await;
             write_test_payloads(&namespace, location, 1005, 1009).await;
 

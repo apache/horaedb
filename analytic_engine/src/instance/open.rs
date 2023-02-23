@@ -216,7 +216,6 @@ impl Instance {
         let load_req = LoadRequest {
             space_id,
             table_id,
-            cluster_version: request.cluster_version,
             shard_id: request.shard_id,
         };
         let manifest_data = self

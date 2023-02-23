@@ -75,7 +75,7 @@ impl WalWriteBench {
             .expect("should succeed to open WalNamespaceImpl(Memory)");
 
             let values = self.build_value_vec();
-            let wal_encoder = LogBatchEncoder::create(WalLocation::new(1, 1, 1));
+            let wal_encoder = LogBatchEncoder::create(WalLocation::new(1, 1));
             let log_batch = wal_encoder
                 .encode_batch::<WritePayload, Vec<u8>>(values.as_slice())
                 .expect("should succeed to encode payload batch");
