@@ -731,9 +731,13 @@ impl Datum {
             let time =
                 NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTimeCause)?;
             let sec = hours.abs() * 3600 + (time.num_seconds_from_midnight() as i64);
-            let positive = if hours < 0 { -1 } else { 1 };
-            let nano = time.nanosecond() as i64;
-            Ok(Datum::Time(positive * ((sec * NANOSECONDS) + nano)))
+            let nanos = time.nanosecond() as i64 + sec * NANOSECONDS;
+            let nanos = if hours < 0 { 
+                  -nanos
+             } else {
+                  nanos
+             };
+            Ok(Datum::Time(nanos)))
         } else {
             InvalidTimeNoCause {
                 msg: "Invalid time format".to_string(),
