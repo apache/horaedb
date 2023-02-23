@@ -619,25 +619,6 @@ impl Datum {
         }
     }
 
-    /// format the `Datum::Time`(64 bits) as String.
-    /// Time represent the nanoseconds from midnight,
-    /// so it is necessary to split `v` into seconds and nanoseconds to
-    /// generate `NaiveTime`.
-    pub fn format_datum_time(v: &i64) -> String {
-        let abs_nanos = (*v).abs();
-        let time = NaiveTime::from_num_seconds_from_midnight_opt(
-            (abs_nanos / NANOSECONDS) as u32,
-            (abs_nanos % NANOSECONDS) as u32,
-        )
-        .unwrap();
-       if *v < 0 { 
-           format!("-{time}")
-        } else { 
-           time.to_string()
-        }
- 
-    }
-
     pub fn try_from_sql_value(kind: &DatumKind, value: Value) -> Result<Datum> {
         match (kind, value) {
             (DatumKind::Null, Value::Null) => Ok(Datum::Null),
@@ -708,6 +689,24 @@ impl Datum {
             }
             (DatumKind::Boolean, Value::Boolean(b)) => Ok(Datum::Boolean(b)),
             (_, value) => InvalidValueType { kind: *kind, value }.fail(),
+        }
+    }
+
+    /// format the `Datum::Time`(64 bits) as String.
+    /// Time represent the nanoseconds from midnight,
+    /// so it is necessary to split `v` into seconds and nanoseconds to
+    /// generate `NaiveTime`.
+    pub fn format_datum_time(v: &i64) -> String {
+        let abs_nanos = (*v).abs();
+        let time = NaiveTime::from_num_seconds_from_midnight_opt(
+            (abs_nanos / NANOSECONDS) as u32,
+            (abs_nanos % NANOSECONDS) as u32,
+        )
+            .unwrap();
+        if *v < 0 {
+            format!("-{time}")
+        } else {
+            time.to_string()
         }
     }
 
@@ -1230,6 +1229,62 @@ mod tests {
 
         for source in cases {
             assert!(source.to_negative().is_none());
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_date_from_str() {
+        let cases = ["-9999-01-01", "9999-12-21", "0-1-1", "1000-02-28"];
+
+        let expects = [
+            Datum::Date(-4371587),
+            Datum::Date(2932886),
+            Datum::Date(-719528),
+            Datum::Date(-354227),
+        ];
+
+        for (i, source) in cases.iter().enumerate() {
+            let datum = Datum::parse_datum_date_from_str(source).unwrap();
+            assert_eq!(datum, expects.get(i).unwrap().clone());
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_time_from_str() {
+        let cases = ["-23:59:59.999", "23:59:59.999", "0:59:59.567", "10:0:0.0"];
+
+        let expects = [
+            Datum::Time(-86399999000000),
+            Datum::Time(86399999000000),
+            Datum::Time(3599567000000),
+            Datum::Time(36000000000000),
+        ];
+
+        for (i, source) in cases.iter().enumerate() {
+            let datum = Datum::parse_datum_time_from_str(source).unwrap();
+            assert_eq!(datum, expects.get(i).unwrap().clone());
+        }
+    }
+
+    #[test]
+    fn test_format_datum_time() {
+        let cases = [
+            Datum::Time(-86399999000000),
+            Datum::Time(86399999000000),
+            Datum::Time(3599567000000),
+            Datum::Time(36000000000000),
+        ];
+
+        let expects = ["-23:59:59.999", "23:59:59.999", "00:59:59.567", "10:00:00"];
+
+        for (i, source) in cases.iter().enumerate() {
+            match source {
+                Datum::Time(v) => {
+                    let datum = Datum::format_datum_time(v);
+                    assert_eq!(datum, expects.get(i).unwrap().clone());
+                }
+                _ => {}
+            }
         }
     }
 }
