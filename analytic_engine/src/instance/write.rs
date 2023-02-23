@@ -16,7 +16,10 @@ use smallvec::SmallVec;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::table::WriteRequest;
 use tokio::sync::oneshot;
-use wal::manager::{SequenceNumber, WalLocation, WriteContext};
+use wal::{
+    kv_encoder::LogBatchEncoder,
+    manager::{SequenceNumber, WalLocation, WriteContext},
+};
 
 use crate::{
     instance,
@@ -37,18 +40,6 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-        "Failed to get to log batch encoder, table:{}, wal_location:{:?}, err:{}",
-        table,
-        wal_location,
-        source
-    ))]
-    GetLogBatchEncoder {
-        table: String,
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
     #[snafu(display(
         "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
         table,
@@ -390,14 +381,7 @@ impl Instance {
         let table_location = table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
-        let log_batch_encoder =
-            self.space_store
-                .wal_manager
-                .encoder(wal_location)
-                .context(GetLogBatchEncoder {
-                    table: &table_data.name,
-                    wal_location,
-                })?;
+        let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
             wal_location,

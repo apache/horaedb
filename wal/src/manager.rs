@@ -15,7 +15,6 @@ pub use error::*;
 use snafu::ResultExt;
 
 use crate::{
-    kv_encoder::LogBatchEncoder,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
     manager,
 };
@@ -319,11 +318,6 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter>;
-
-    /// Provide the encoder for encoding payloads.
-    fn encoder(&self, location: WalLocation) -> Result<LogBatchEncoder> {
-        Ok(LogBatchEncoder::create(location))
-    }
 
     /// Write a batch of log entries to log.
     ///

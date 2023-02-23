@@ -9,15 +9,14 @@ use log::info;
 use snafu::{ensure, ResultExt};
 use table_engine::table::AlterSchemaRequest;
 use tokio::sync::oneshot;
-use wal::manager::WriteContext;
+use wal::{kv_encoder::LogBatchEncoder, manager::WriteContext};
 
 use crate::{
     instance::{
         self,
         engine::{
-            AlterDroppedTable, EncodePayloads, FlushTable, GetLogBatchEncoder, InvalidOptions,
-            InvalidPreVersion, InvalidSchemaVersion, OperateByWriteWorker, Result, WriteManifest,
-            WriteWal,
+            AlterDroppedTable, EncodePayloads, FlushTable, InvalidOptions, InvalidPreVersion,
+            InvalidSchemaVersion, OperateByWriteWorker, Result, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
         write_worker,
@@ -112,15 +111,7 @@ impl Instance {
         let table_location = table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
-        let log_batch_encoder =
-            self.space_store
-                .wal_manager
-                .encoder(wal_location)
-                .context(GetLogBatchEncoder {
-                    table: &table_data.name,
-                    wal_location,
-                })?;
-
+        let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
             wal_location,
@@ -288,15 +279,7 @@ impl Instance {
         let table_location = table_data.table_location();
         let wal_location =
             instance::create_wal_location(table_location.id, table_location.shard_info);
-        let log_batch_encoder =
-            self.space_store
-                .wal_manager
-                .encoder(wal_location)
-                .context(GetLogBatchEncoder {
-                    table: &table_data.name,
-                    wal_location,
-                })?;
-
+        let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &table_data.name,
             wal_location,

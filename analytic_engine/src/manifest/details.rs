@@ -27,6 +27,7 @@ use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
 use wal::{
+    kv_encoder::LogBatchEncoder,
     log_batch::LogEntry,
     manager::{
         BatchLogIteratorAdapter, ReadBoundary, ReadContext, ReadRequest, SequenceNumber,
@@ -50,16 +51,6 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-        "Failed to get to get log batch encoder, wal_location:{:?}, err:{}",
-        wal_location,
-        source
-    ))]
-    GetLogBatchEncoder {
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
     #[snafu(display(
         "Failed to encode payloads, wal_location:{:?}, err:{}",
         wal_location,
@@ -488,12 +479,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
 
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
         let payload = MetaUpdatePayload::from(meta_update);
-        let log_batch_encoder =
-            self.wal_manager
-                .encoder(self.location)
-                .context(GetLogBatchEncoder {
-                    wal_location: self.location,
-                })?;
+        let log_batch_encoder = LogBatchEncoder::create(self.location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             wal_location: self.location,
         })?;
