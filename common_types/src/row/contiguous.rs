@@ -263,6 +263,16 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 Self::write_byte_to_offset(inner, byte_offset, DatumKind::Boolean.into_u8());
                 Self::write_slice_to_offset(inner, datum_offset, &[*v as u8]);
             }
+            Datum::Date(v) => {
+                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Date.into_u8());
+                let value_buf = v.to_ne_bytes();
+                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+            }
+            Datum::Time(v) => {
+                Self::write_byte_to_offset(inner, byte_offset, DatumKind::Time.into_u8());
+                let value_buf = v.to_ne_bytes();
+                Self::write_slice_to_offset(inner, datum_offset, &value_buf);
+            }
         }
 
         Ok(())
@@ -329,6 +339,8 @@ pub(crate) fn byte_size_of_datum(kind: &DatumKind) -> usize {
         DatumKind::Int16 => mem::size_of::<i16>(),
         DatumKind::Int8 => mem::size_of::<i8>(),
         DatumKind::Boolean => mem::size_of::<bool>(),
+        DatumKind::Date => mem::size_of::<i32>(),
+        DatumKind::Time => mem::size_of::<i64>(),
     };
 
     datum_size + 1
@@ -405,6 +417,16 @@ fn must_read_view<'a>(
         }
         DatumKind::Int8 => DatumView::Int8(datum_buf[0] as i8),
         DatumKind::Boolean => DatumView::Boolean(datum_buf[0] != 0),
+        DatumKind::Date => {
+            let value_buf = datum_buf[..mem::size_of::<i32>()].try_into().unwrap();
+            let v = i32::from_ne_bytes(value_buf);
+            DatumView::Date(v)
+        }
+        DatumKind::Time => {
+            let value_buf = datum_buf[..mem::size_of::<i64>()].try_into().unwrap();
+            let v = i64::from_ne_bytes(value_buf);
+            DatumView::Time(v)
+        }
     }
 }
 

@@ -1152,11 +1152,32 @@ mod tests {
 
     #[test]
     fn test_split_record_batch_with_time_ranges() {
-        let rows0 = vec![build_row(b"binary key", 20, 10.0, "string value")];
-        let rows1 = vec![build_row(b"binary key1", 120, 11.0, "string value 1")];
+        let rows0 = vec![build_row(
+            b"binary key",
+            20,
+            10.0,
+            "string value",
+            1000,
+            1_000_000,
+        )];
+        let rows1 = vec![build_row(
+            b"binary key1",
+            120,
+            11.0,
+            "string value 1",
+            1000,
+            1_000_000,
+        )];
         let rows2 = vec![
-            build_row_opt(b"binary key2", 220, None, Some("string value 2")),
-            build_row_opt(b"binary key3", 250, Some(13.0), None),
+            build_row_opt(
+                b"binary key2",
+                220,
+                None,
+                Some("string value 2"),
+                Some(1000),
+                None,
+            ),
+            build_row_opt(b"binary key3", 250, Some(13.0), None, None, Some(1_000_000)),
         ];
 
         let rows = vec![rows0.clone(), rows1.clone(), rows2.clone()]

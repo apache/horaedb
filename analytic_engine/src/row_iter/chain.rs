@@ -334,10 +334,22 @@ mod tests {
     async fn test_chain_multiple_streams() {
         let testcases = vec![
             // (sequence, rows)
-            (10, vec![build_row(b"key4", 1000000, 10.0, "v4")]),
-            (20, vec![build_row(b"key2", 1000000, 10.0, "v2")]),
-            (100, vec![build_row(b"key3", 1000000, 10.0, "v3")]),
-            (1, vec![build_row(b"key1", 1000000, 10.0, "v1")]),
+            (
+                10,
+                vec![build_row(b"key4", 1000000, 10.0, "v4", 1000, 1_000_000)],
+            ),
+            (
+                20,
+                vec![build_row(b"key2", 1000000, 10.0, "v2", 2000, 2_000_000)],
+            ),
+            (
+                100,
+                vec![build_row(b"key3", 1000000, 10.0, "v3", 3000, 3_000_000)],
+            ),
+            (
+                1,
+                vec![build_row(b"key1", 1000000, 10.0, "v1", 4000, 4_000_000)],
+            ),
         ];
         run_and_check(testcases).await;
     }
@@ -364,10 +376,16 @@ mod tests {
     async fn test_chain_half_empty_streams() {
         let testcases = vec![
             // (sequence, rows)
-            (10, vec![build_row(b"key4", 1000000, 10.0, "v4")]),
+            (
+                10,
+                vec![build_row(b"key4", 1000000, 10.0, "v4", 1000, 1_000_000)],
+            ),
             (20, vec![]),
             (100, vec![]),
-            (1, vec![build_row(b"key1", 1000000, 10.0, "v1")]),
+            (
+                1,
+                vec![build_row(b"key1", 1000000, 10.0, "v1", 1000, 1_000_000)],
+            ),
         ];
         run_and_check(testcases).await;
     }

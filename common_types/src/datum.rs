@@ -4,13 +4,18 @@
 
 use std::{convert::TryFrom, fmt, str};
 
+use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
 use ceresdbproto::schema::DataType as DataTypePb;
-use chrono::{Local, TimeZone};
+use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};
 
 use crate::{bytes::Bytes, hash::hash64, string::StringBytes, time::Timestamp};
+
+const DATE_FORMAT: &str = "%Y-%m-%d";
+const TIME_FORMAT: &str = "%H:%M:%S%.3f";
+
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
@@ -46,6 +51,27 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Invalid date, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    InvalidDate {
+        source: chrono::ParseError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    InvalidTimeCause {
+        source: chrono::ParseError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Invalid time, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    InvalidTimeHourFormat {
+        source: std::num::ParseIntError,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Invalid time, err:{}", msg))]
+    InvalidTimeNoCause { msg: String },
+
     #[snafu(display("Invalid integer, err:{}.\nBacktrace:\n{}", source, backtrace))]
     InvalidInt {
         source: std::num::ParseIntError,
@@ -78,10 +104,12 @@ pub enum DatumKind {
     Int16,
     Int8,
     Boolean,
+    Date,
+    Time,
 }
 
 impl DatumKind {
-    pub const VALUES: [Self; 15] = [
+    pub const VALUES: [Self; 17] = [
         Self::Null,
         Self::Timestamp,
         Self::Double,
@@ -97,6 +125,8 @@ impl DatumKind {
         Self::Int16,
         Self::Int8,
         Self::Boolean,
+        Self::Date,
+        Self::Time,
     ];
 
     /// Return true if this is DatumKind::Timestamp
@@ -136,6 +166,8 @@ impl DatumKind {
                 | DatumKind::Int16
                 | DatumKind::Int8
                 | DatumKind::Boolean
+                | DatumKind::Date
+                | DatumKind::Time
         )
     }
 
@@ -167,6 +199,8 @@ impl DatumKind {
             DatumKind::Int16 => "smallint",
             DatumKind::Int8 => "tinyint",
             DatumKind::Boolean => "boolean",
+            DatumKind::Date => "date",
+            DatumKind::Time => "time",
         }
     }
 
@@ -194,6 +228,8 @@ impl DatumKind {
             DatumKind::Int16 => 8,
             DatumKind::Int8 => 8,
             DatumKind::Boolean => 1,
+            DatumKind::Date => 4,
+            DatumKind::Time => 8,
         };
         Some(size)
     }
@@ -214,6 +250,8 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
             SqlDataType::String => Ok(Self::String),
             SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
+            SqlDataType::Date => Ok(Self::Date),
+            SqlDataType::Time(_, _) => Ok(Self::Time),
             SqlDataType::Custom(objects, _) if objects.0.len() == 1 => {
                 match objects.0[0].value.as_str() {
                     "UINT64" | "uint64" => Ok(Self::UInt64),
@@ -260,6 +298,8 @@ impl TryFrom<u8> for DatumKind {
             v if DatumKind::Int16.into_u8() == v => Ok(DatumKind::Int16),
             v if DatumKind::Int8.into_u8() == v => Ok(DatumKind::Int8),
             v if DatumKind::Boolean.into_u8() == v => Ok(DatumKind::Boolean),
+            v if DatumKind::Date.into_u8() == v => Ok(DatumKind::Date),
+            v if DatumKind::Time.into_u8() == v => Ok(DatumKind::Time),
             _ => InvalidDatumByte { value: v }.fail(),
         }
     }
@@ -283,6 +323,8 @@ impl From<DatumKind> for DataTypePb {
             DatumKind::Int16 => Self::Int16,
             DatumKind::Int8 => Self::Int8,
             DatumKind::Boolean => Self::Bool,
+            DatumKind::Date => Self::Date,
+            DatumKind::Time => Self::Time,
         }
     }
 }
@@ -305,6 +347,8 @@ impl From<DataTypePb> for DatumKind {
             DataTypePb::Int16 => DatumKind::Int16,
             DataTypePb::Int8 => DatumKind::Int8,
             DataTypePb::Bool => DatumKind::Boolean,
+            DataTypePb::Date => DatumKind::Date,
+            DataTypePb::Time => DatumKind::Time,
         }
     }
 }
@@ -347,6 +391,14 @@ pub enum Datum {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
+    /// Date represents the elapsed days since UNIX epoch.
+    /// It is mapped to [`arrow::datatypes::DataType::Date32`].
+    /// The supported date range is '-9999-01-01' to '9999-12-31'.
+    Date(i32),
+    /// Time represents the elapsed nanoseconds since midnight.
+    /// It is mapped to [`arrow::datatypes::DataType::Time64`].
+    /// The supported time range is '-838:59:59.000000' to '838:59:59.000000'.
+    Time(i64),
 }
 
 impl Datum {
@@ -368,6 +420,8 @@ impl Datum {
             DatumKind::Int16 => Self::Int16(0),
             DatumKind::Int8 => Self::Int8(0),
             DatumKind::Boolean => Self::Boolean(false),
+            DatumKind::Date => Self::Date(0),
+            DatumKind::Time => Self::Time(0),
         }
     }
 
@@ -389,6 +443,8 @@ impl Datum {
             Datum::Int16(_) => DatumKind::Int16,
             Datum::Int8(_) => DatumKind::Int8,
             Datum::Boolean(_) => DatumKind::Boolean,
+            Datum::Date(_) => DatumKind::Date,
+            Datum::Time(_) => DatumKind::Time,
         }
     }
 
@@ -410,6 +466,8 @@ impl Datum {
             Datum::Int16(v) => *v as u64,
             Datum::Int8(v) => *v as u64,
             Datum::Boolean(v) => *v as u64,
+            Datum::Date(v) => *v as u64,
+            Datum::Time(v) => *v as u64,
         }
     }
 
@@ -449,6 +507,24 @@ impl Datum {
         }
     }
 
+    /// Cast datum to int64.
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Datum::UInt64(v) => Some(*v as i64),
+            Datum::UInt32(v) => Some(*v as i64),
+            Datum::UInt16(v) => Some(*v as i64),
+            Datum::UInt8(v) => Some(*v as i64),
+            Datum::Int64(v) => Some(*v),
+            Datum::Int32(v) => Some(*v as i64),
+            Datum::Int16(v) => Some(*v as i64),
+            Datum::Int8(v) => Some(*v as i64),
+            Datum::Boolean(v) => Some(*v as i64),
+            Datum::Date(v) => Some(*v as i64),
+            Datum::Time(v) => Some(*v),
+            _ => None,
+        }
+    }
+
     /// Cast datum to Bytes.
     pub fn as_varbinary(&self) -> Option<&Bytes> {
         match self {
@@ -474,6 +550,8 @@ impl Datum {
             Datum::UInt8(v) => Some(*v as f64),
             Datum::Int64(v) => Some(*v as f64),
             Datum::Int32(v) => Some(*v as f64),
+            Datum::Date(v) => Some(*v as f64),
+            Datum::Time(v) => Some(*v as f64),
             Datum::Int16(v) => Some(*v as f64),
             Datum::Int8(v) => Some(*v as f64),
             Datum::Boolean(_)
@@ -507,6 +585,8 @@ impl Datum {
             Datum::Timestamp(ts) => ts.as_i64().to_le_bytes().to_vec(),
             Datum::Varbinary(b) => b.to_vec(),
             Datum::String(string) => string.as_bytes().to_vec(),
+            Datum::Date(v) => v.to_le_bytes().to_vec(),
+            Datum::Time(v) => v.to_le_bytes().to_vec(),
         }
     }
 
@@ -532,6 +612,8 @@ impl Datum {
             Datum::Int16(v) => 0i16.checked_sub(v).map(Datum::Int16),
             Datum::Int8(v) => 0i8.checked_sub(v).map(Datum::Int8),
             Datum::Boolean(v) => Some(Datum::Boolean(!v)),
+            Datum::Date(_) => None,
+            Datum::Time(_) => None,
         }
     }
 
@@ -552,6 +634,15 @@ impl Datum {
             Datum::Int16(v) => v.to_string(),
             Datum::Int8(v) => v.to_string(),
             Datum::Boolean(v) => v.to_string(),
+            // Display the Date(32 bits) as String.
+            // Date(v) represent the days from Unix epoch(1970-01-01),
+            // so it is necessary to add `EPOCH_DAYS_FROM_CE` to generate
+            // `NaiveDate`.
+            Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
+                .unwrap()
+                .to_string(),
+
+            Datum::Time(v) => Datum::format_datum_time(v),
         }
     }
 
@@ -561,6 +652,14 @@ impl Datum {
             (DatumKind::Timestamp, Value::Number(n, _long)) => {
                 let n = n.parse::<i64>().context(InvalidTimestamp)?;
                 Ok(Datum::Timestamp(Timestamp::new(n)))
+            }
+            (DatumKind::Date, Value::SingleQuotedString(s)) => {
+                let date = Self::parse_datum_date_from_str(&s)?;
+                Ok(date)
+            }
+            (DatumKind::Time, Value::SingleQuotedString(s)) => {
+                let datum_time = Self::parse_datum_time_from_str(&s)?;
+                Ok(datum_time)
             }
             (DatumKind::Double, Value::Number(n, _long)) => {
                 let n = n.parse::<f64>().context(InvalidDouble)?;
@@ -620,6 +719,64 @@ impl Datum {
         }
     }
 
+    /// format the `Datum::Time`(64 bits) as String.
+    /// Time represent the nanoseconds from midnight,
+    /// so it is necessary to split `v` into seconds and nanoseconds to
+    /// generate `NaiveTime`.
+    pub fn format_datum_time(v: &i64) -> String {
+        let abs_nanos = (*v).abs();
+        let hours = abs_nanos / 3600 / NANOSECONDS;
+        let time = NaiveTime::from_num_seconds_from_midnight_opt(
+            (abs_nanos / NANOSECONDS - hours * 3600) as u32,
+            (abs_nanos % NANOSECONDS) as u32,
+        )
+        .unwrap();
+        let minute_sec = &(time.to_string())[3..];
+        if *v < 0 {
+            format!("-{hours:02}:{minute_sec}")
+        } else {
+            format!("{hours:02}:{minute_sec}")
+        }
+    }
+
+    /// format the `Datum::Date`(32 bits) as String.
+    fn format_datum_date(v: &i32) -> String {
+        NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
+            .unwrap()
+            .format(DATE_FORMAT)
+            .to_string()
+    }
+
+    fn parse_datum_time_from_str(s: &str) -> Result<Datum> {
+        // `NaiveTime` contains two parts: `num_seconds_from_midnight`
+        // and `nanoseconds`, it is necessary to
+        // calculate them into number of nanoseconds from midnight.
+        if let Some(index) = s.find(':') {
+            let hours: i64 = (s[..index]).parse().context(InvalidTimeHourFormat)?;
+            let replace = format!("00:{}", &s[index + 1..]);
+            let time =
+                NaiveTime::parse_from_str(&replace, TIME_FORMAT).context(InvalidTimeCause)?;
+            let sec = hours.abs() * 3600 + (time.num_seconds_from_midnight() as i64);
+            let nanos = time.nanosecond() as i64 + sec * NANOSECONDS;
+            let nanos = if hours < 0 { -nanos } else { nanos };
+            Ok(Datum::Time(nanos))
+        } else {
+            InvalidTimeNoCause {
+                msg: "Invalid time format".to_string(),
+            }
+            .fail()
+        }
+    }
+
+    fn parse_datum_date_from_str(s: &str) -> Result<Datum> {
+        // `NaiveDate::num_days_from_ce()` returns the elapsed time
+        // since 0001-01-01 in days, it is necessary to
+        // subtract `EPOCH_DAYS_FROM_CE` to generate `Datum::Date`
+        let date = chrono::NaiveDate::parse_from_str(s, DATE_FORMAT).context(InvalidDate)?;
+        let days = date.num_days_from_ce() - EPOCH_DAYS_FROM_CE;
+        Ok(Datum::Date(days))
+    }
+
     #[cfg(test)]
     pub fn as_view(&self) -> DatumView {
         match self {
@@ -635,6 +792,8 @@ impl Datum {
             Datum::UInt8(v) => DatumView::UInt8(*v),
             Datum::Int64(v) => DatumView::Int64(*v),
             Datum::Int32(v) => DatumView::Int32(*v),
+            Datum::Date(v) => DatumView::Date(*v),
+            Datum::Time(v) => DatumView::Time(*v),
             Datum::Int16(v) => DatumView::Int16(*v),
             Datum::Int8(v) => DatumView::Int8(*v),
             Datum::Boolean(v) => DatumView::Boolean(*v),
@@ -728,6 +887,8 @@ impl Serialize for Datum {
             Datum::Int16(v) => serializer.serialize_i16(*v),
             Datum::Int8(v) => serializer.serialize_i8(*v),
             Datum::Boolean(v) => serializer.serialize_bool(*v),
+            Datum::Date(v) => serializer.serialize_str(Self::format_datum_date(v).as_ref()),
+            Datum::Time(v) => serializer.serialize_str(Datum::format_datum_time(v).as_ref()),
         }
     }
 }
@@ -752,6 +913,8 @@ pub enum DatumView<'a> {
     Int16(i16),
     Int8(i8),
     Boolean(bool),
+    Date(i32),
+    Time(i64),
 }
 
 impl<'a> DatumView<'a> {
@@ -773,6 +936,8 @@ impl<'a> DatumView<'a> {
             DatumView::Int16(_) => DatumKind::Int16,
             DatumView::Int8(_) => DatumKind::Int8,
             DatumView::Boolean(_) => DatumKind::Boolean,
+            DatumView::Date(_) => DatumKind::Date,
+            DatumView::Time(_) => DatumKind::Time,
         }
     }
 }
@@ -804,6 +969,8 @@ pub mod arrow_convert {
                 DataType::Int16 => Some(Self::Int16),
                 DataType::Int8 => Some(Self::Int8),
                 DataType::Boolean => Some(Self::Boolean),
+                DataType::Date32 => Some(Self::Date),
+                DataType::Time64(TimeUnit::Nanosecond) => Some(Self::Time),
                 DataType::Float16
                 | DataType::LargeUtf8
                 | DataType::LargeBinary
@@ -816,7 +983,6 @@ pub mod arrow_convert {
                 | DataType::Time32(_)
                 | DataType::Time64(_)
                 | DataType::Timestamp(_, _)
-                | DataType::Date32
                 | DataType::Date64
                 | DataType::Interval(_)
                 | DataType::Duration(_)
@@ -845,6 +1011,8 @@ pub mod arrow_convert {
                 DatumKind::Int16 => DataType::Int16,
                 DatumKind::Int8 => DataType::Int8,
                 DatumKind::Boolean => DataType::Boolean,
+                DatumKind::Date => DataType::Date32,
+                DatumKind::Time => DataType::Time64(TimeUnit::Nanosecond),
             }
         }
     }
@@ -869,6 +1037,8 @@ pub mod arrow_convert {
                 Datum::Int16(v) => Some(ScalarValue::Int16(Some(*v))),
                 Datum::Int8(v) => Some(ScalarValue::Int8(Some(*v))),
                 Datum::Boolean(v) => Some(ScalarValue::Boolean(Some(*v))),
+                Datum::Date(v) => Some(ScalarValue::Date32(Some(*v))),
+                Datum::Time(v) => Some(ScalarValue::Time64Nanosecond(Some(*v))),
             }
         }
 
@@ -896,13 +1066,13 @@ pub mod arrow_convert {
                 ScalarValue::TimestampMillisecond(v, _) => {
                     v.map(|v| Datum::Timestamp(Timestamp::new(v)))
                 }
+                ScalarValue::Date32(v) => v.map(Datum::Date),
+                ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
                 ScalarValue::List(_, _)
-                | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
                 | ScalarValue::Time32Millisecond(_)
                 | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -931,6 +1101,8 @@ pub mod arrow_convert {
                 ScalarValue::UInt16(v) => v.map(DatumView::UInt16),
                 ScalarValue::UInt32(v) => v.map(DatumView::UInt32),
                 ScalarValue::UInt64(v) => v.map(DatumView::UInt64),
+                ScalarValue::Date32(v) => v.map(DatumView::Date),
+                ScalarValue::Time64Nanosecond(v) => v.map(DatumView::Time),
                 ScalarValue::Utf8(v) | ScalarValue::LargeUtf8(v) => {
                     v.as_ref().map(|v| DatumView::String(v.as_str()))
                 }
@@ -943,12 +1115,10 @@ pub mod arrow_convert {
                     v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
                 }
                 ScalarValue::List(_, _)
-                | ScalarValue::Date32(_)
                 | ScalarValue::Date64(_)
                 | ScalarValue::Time32Second(_)
                 | ScalarValue::Time32Millisecond(_)
                 | ScalarValue::Time64Microsecond(_)
-                | ScalarValue::Time64Nanosecond(_)
                 | ScalarValue::TimestampSecond(_, _)
                 | ScalarValue::TimestampMicrosecond(_, _)
                 | ScalarValue::TimestampNanosecond(_, _)
@@ -981,6 +1151,8 @@ pub mod arrow_convert {
                 DatumKind::Int16 => DataType::Int16,
                 DatumKind::Int8 => DataType::Int8,
                 DatumKind::Boolean => DataType::Boolean,
+                DatumKind::Date => DataType::Date32,
+                DatumKind::Time => DataType::Time64(TimeUnit::Nanosecond),
             }
         }
     }
@@ -1007,6 +1179,8 @@ mod tests {
         assert!(DatumKind::Int16.is_key_kind());
         assert!(DatumKind::Int8.is_key_kind());
         assert!(DatumKind::Boolean.is_key_kind());
+        assert!(DatumKind::Date.is_key_kind());
+        assert!(DatumKind::Time.is_key_kind());
     }
 
     #[test]
@@ -1046,6 +1220,8 @@ mod tests {
         assert_eq!(12, DatumKind::Int16.into_u8());
         assert_eq!(13, DatumKind::Int8.into_u8());
         assert_eq!(14, DatumKind::Boolean.into_u8());
+        assert_eq!(15, DatumKind::Date.into_u8());
+        assert_eq!(16, DatumKind::Time.into_u8());
     }
 
     #[test]
@@ -1053,6 +1229,8 @@ mod tests {
         let cases = [
             (Datum::Null, None),
             (Datum::Timestamp(Timestamp::ZERO), None),
+            (Datum::Date(10), None),
+            (Datum::Time(10), None),
             (Datum::Double(1.0), Some(Datum::Double(-1.0))),
             (Datum::Float(1.0), Some(Datum::Float(-1.0))),
             (Datum::Varbinary(Bytes::new()), None),
@@ -1083,6 +1261,80 @@ mod tests {
 
         for source in cases {
             assert!(source.to_negative().is_none());
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_date() {
+        let cases = ["-9999-01-01", "9999-12-21", "2000-01-01", "1000-02-28"];
+
+        for case in cases {
+            let datum = Datum::parse_datum_date_from_str(case).unwrap();
+            assert_eq!(
+                case.to_string(),
+                Datum::format_datum_date(&(datum.as_i64().unwrap() as i32))
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_date_error_cases() {
+        let err_cases = [
+            "ab-01-01",
+            "01-ab-01",
+            "-9999-234-ab",
+            "100099-123-01",
+            "1990-01-123",
+            "1999",
+            "",
+            "1999--00--00",
+            "1999-0",
+            "1999-01-01-01",
+        ];
+
+        for source in err_cases {
+            assert!(Datum::parse_datum_date_from_str(source).is_err());
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_time() {
+        // '-838:59:59.000000' to '838:59:59.000000'
+        let cases = [
+            "-838:59:59.123",
+            "830:59:59.567",
+            "-23:59:59.999",
+            "23:59:59.999",
+            "00:59:59.567",
+            "10:10:10.234",
+        ];
+
+        for case in cases {
+            let datum = Datum::parse_datum_time_from_str(case).unwrap();
+            assert_eq!(
+                case.to_string(),
+                Datum::format_datum_time(&datum.as_i64().unwrap())
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_datum_time_error_cases() {
+        let err_cases = [
+            "-ab:12:59.000",
+            "00:ab:59.000",
+            "-12:234:59.000",
+            "00:23:900.000",
+            "-00:59:59.abc",
+            "00",
+            "",
+            "00:00:00:00",
+            "12:",
+            ":",
+        ];
+
+        for source in err_cases {
+            assert!(Datum::parse_datum_time_from_str(source).is_err());
         }
     }
 }

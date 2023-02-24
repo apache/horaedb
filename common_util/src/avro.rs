@@ -271,6 +271,8 @@ fn data_type_to_schema(data_type: &DatumKind) -> avro_rs::Schema {
         | DatumKind::Int16
         | DatumKind::Int8 => avro_rs::Schema::Int,
         DatumKind::Boolean => avro_rs::Schema::Boolean,
+        DatumKind::Date => avro_rs::Schema::Date,
+        DatumKind::Time => avro_rs::Schema::TimeMicros,
     }
 }
 
@@ -329,6 +331,10 @@ pub fn datum_to_avro_value(datum: Datum, is_nullable: bool) -> Value {
         Datum::Int16(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Int8(v) => may_union(Value::Int(i32::from(v)), is_nullable),
         Datum::Boolean(v) => may_union(Value::Boolean(v), is_nullable),
+        // Value::Date in avro(https://docs.rs/avro-rs/latest/avro_rs/schema/enum.Schema.html) is the number of days since the unix epoch
+        Datum::Date(v) => may_union(Value::Date(v), is_nullable),
+        // this will lose some accuracy
+        Datum::Time(v) => may_union(Value::TimeMicros(v / 1000), is_nullable),
     }
 }
 
@@ -353,6 +359,8 @@ fn avro_value_to_datum(value: Value, datum_type: DatumKind) -> Result<Datum> {
         (Value::Int(v), DatumKind::Int16) => Datum::Int16(v as i16),
         (Value::Int(v), DatumKind::UInt16) => Datum::UInt16(v as u16),
         (Value::Int(v), DatumKind::Int32) => Datum::Int32(v),
+        (Value::Date(v), DatumKind::Date) => Datum::Date(v),
+        (Value::TimeMicros(v), DatumKind::Time) => Datum::Time(v * 1000),
         (Value::Union(inner_val), _) => avro_value_to_datum(*inner_val, datum_type)?,
         (other_value, _) => {
             return UnsupportedConversion {
@@ -404,6 +412,9 @@ fn avro_row_to_row(
 
 #[cfg(test)]
 mod tests {
+    use arrow::temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS};
+    use chrono::{Datelike, Timelike};
+
     use super::*;
 
     #[test]
@@ -413,6 +424,28 @@ mod tests {
         let datum = avro_value_to_datum(avro_value, DatumKind::UInt64).unwrap();
         let expected = Datum::UInt64(overflow_value);
 
+        assert_eq!(datum, expected);
+    }
+
+    #[test]
+    fn test_avro_value_to_datum_date() {
+        let date = chrono::NaiveDate::from_ymd_opt(2022, 12, 31).unwrap();
+        let expected = Datum::Date(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE);
+        let value = datum_to_avro_value(expected, true);
+        let datum = avro_value_to_datum(value, DatumKind::Date).unwrap();
+        let expected = Datum::Date(date.num_days_from_ce() - EPOCH_DAYS_FROM_CE);
+        assert_eq!(datum, expected);
+    }
+
+    #[test]
+    fn test_avro_value_to_datum_time() {
+        let time = chrono::NaiveTime::from_hms_milli_opt(23, 59, 59, 999).unwrap();
+        let secs = time.num_seconds_from_midnight() as i64;
+        let nanos = time.nanosecond() as i64;
+        let expected = Datum::Time((secs * NANOSECONDS) + nanos);
+        let value = datum_to_avro_value(expected, true);
+        let datum = avro_value_to_datum(value, DatumKind::Time).unwrap();
+        let expected = Datum::Time((secs * NANOSECONDS) + nanos);
         assert_eq!(datum, expected);
     }
 }

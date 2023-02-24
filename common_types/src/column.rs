@@ -6,9 +6,11 @@ use std::sync::Arc;
 use arrow::{
     array::{
         Array, ArrayBuilder, ArrayRef, BinaryArray, BinaryBuilder, BooleanArray, BooleanBuilder,
-        Float32Array as FloatArray, Float32Builder as FloatBuilder, Float64Array as DoubleArray,
+        Date32Array as DateArray, Date32Builder as DateBuilder, Float32Array as FloatArray,
+        Float32Builder as FloatBuilder, Float64Array as DoubleArray,
         Float64Builder as DoubleBuilder, Int16Array, Int16Builder, Int32Array, Int32Builder,
         Int64Array, Int64Builder, Int8Array, Int8Builder, NullArray, StringArray, StringBuilder,
+        Time64NanosecondArray as TimeArray, Time64NanosecondBuilder as TimeBuilder,
         TimestampMillisecondArray, TimestampMillisecondBuilder, UInt16Array, UInt16Builder,
         UInt32Array, UInt32Builder, UInt64Array, UInt64Builder, UInt8Array, UInt8Builder,
     },
@@ -123,6 +125,12 @@ pub struct VarbinaryColumn(BinaryArray);
 #[derive(Debug)]
 pub struct StringColumn(StringArray);
 
+#[derive(Debug)]
+pub struct DateColumn(DateArray);
+
+#[derive(Debug)]
+pub struct TimeColumn(TimeArray);
+
 #[inline]
 fn get_null_datum_view(_array: &NullArray, _index: usize) -> DatumView {
     DatumView::Null
@@ -144,6 +152,18 @@ fn get_varbinary_datum_view(array: &BinaryArray, index: usize) -> DatumView {
 fn get_string_datum_view(array: &StringArray, index: usize) -> DatumView {
     let value = array.value(index);
     DatumView::String(value)
+}
+
+#[inline]
+fn get_date_datum_view(array: &DateArray, index: usize) -> DatumView {
+    let value = array.value(index);
+    DatumView::Date(value)
+}
+
+#[inline]
+fn get_time_datum_view(array: &TimeArray, index: usize) -> DatumView {
+    let value = array.value(index);
+    DatumView::Time(value)
 }
 
 #[inline]
@@ -171,6 +191,18 @@ fn get_varbinary_datum(array: &BinaryArray, index: usize) -> Datum {
 fn get_string_datum(array: &StringArray, index: usize) -> Datum {
     let value = array.value(index);
     Datum::String(StringBytes::copy_from_str(value))
+}
+
+#[inline]
+fn get_date_datum(array: &DateArray, index: usize) -> Datum {
+    let value = array.value(index);
+    Datum::Date(value)
+}
+
+#[inline]
+fn get_time_datum(array: &TimeArray, index: usize) -> Datum {
+    let value = array.value(index);
+    Datum::Time(value)
 }
 
 macro_rules! impl_column {
@@ -217,6 +249,19 @@ macro_rules! impl_column {
     };
 }
 
+impl_column!(NullColumn, get_null_datum, get_null_datum_view);
+impl_column!(
+    TimestampColumn,
+    get_timestamp_datum,
+    get_timestamp_datum_view
+);
+impl_column!(
+    VarbinaryColumn,
+    get_varbinary_datum,
+    get_varbinary_datum_view
+);
+impl_column!(StringColumn, get_string_datum, get_string_datum_view);
+
 macro_rules! impl_dedup {
     ($Column: ident) => {
         impl $Column {
@@ -247,6 +292,10 @@ macro_rules! impl_dedup {
     };
 }
 
+impl_dedup!(TimestampColumn);
+impl_dedup!(VarbinaryColumn);
+impl_dedup!(StringColumn);
+
 macro_rules! impl_new_null {
     ($Column: ident, $Builder: ident) => {
         impl $Column {
@@ -263,6 +312,8 @@ macro_rules! impl_new_null {
         }
     };
 }
+
+impl_new_null!(TimestampColumn, TimestampMillisecondBuilder);
 
 macro_rules! impl_from_array_and_slice {
     ($Column: ident, $ArrayType: ident) => {
@@ -308,6 +359,11 @@ macro_rules! impl_from_array_and_slice {
     };
 }
 
+impl_from_array_and_slice!(NullColumn, NullArray);
+impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
+impl_from_array_and_slice!(VarbinaryColumn, BinaryArray);
+impl_from_array_and_slice!(StringColumn, StringArray);
+
 macro_rules! impl_iter {
     ($Column: ident, $Value: ident) => {
         impl $Column {
@@ -330,20 +386,7 @@ macro_rules! impl_iter_map {
     };
 }
 
-impl_column!(NullColumn, get_null_datum, get_null_datum_view);
-impl_column!(
-    TimestampColumn,
-    get_timestamp_datum,
-    get_timestamp_datum_view
-);
-impl_column!(
-    VarbinaryColumn,
-    get_varbinary_datum,
-    get_varbinary_datum_view
-);
-impl_column!(StringColumn, get_string_datum, get_string_datum_view);
-
-impl_new_null!(TimestampColumn, TimestampMillisecondBuilder);
+impl_iter_map!(TimestampColumn, Timestamp);
 
 impl VarbinaryColumn {
     fn new_null(num_rows: usize) -> Self {
@@ -370,17 +413,6 @@ impl StringColumn {
     }
 }
 
-impl_from_array_and_slice!(NullColumn, NullArray);
-impl_from_array_and_slice!(TimestampColumn, TimestampMillisecondArray);
-impl_from_array_and_slice!(VarbinaryColumn, BinaryArray);
-impl_from_array_and_slice!(StringColumn, StringArray);
-
-impl_iter_map!(TimestampColumn, Timestamp);
-
-impl_dedup!(TimestampColumn);
-impl_dedup!(VarbinaryColumn);
-impl_dedup!(StringColumn);
-
 macro_rules! impl_numeric_column {
     ($(($Kind: ident, $type: ty)), *) =>  {
         $(
@@ -406,7 +438,9 @@ impl_numeric_column!(
     (Int32, i32),
     (Int16, i16),
     (Int8, i8),
-    (Boolean, bool)
+    (Boolean, bool),
+    (Date, i32),
+    (Time, i64)
 );
 
 macro_rules! impl_numeric_value {
@@ -446,7 +480,9 @@ batch_impl_numeric_value!(
     (Int32, i32),
     (Int16, i16),
     (Int8, i8),
-    (Boolean, bool)
+    (Boolean, bool),
+    (Date, i32),
+    (Time, i64)
 );
 
 impl VarbinaryColumn {
@@ -548,6 +584,11 @@ macro_rules! impl_column_block {
     };
 }
 
+impl_column_block!(
+    Null, Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
+    Int16, Int8, Boolean, Date, Time
+);
+
 // TODO(yingwen): We can add a unsafe function that don't do bound check.
 
 macro_rules! define_column_block {
@@ -593,7 +634,7 @@ macro_rules! define_column_block {
 // Define column blocks, Null is defined explicitly in macro.
 define_column_block!(
     Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean
+    Int16, Int8, Boolean, Date, Time
 );
 
 impl ColumnBlock {
@@ -616,11 +657,6 @@ impl ColumnBlock {
         }
     }
 }
-
-impl_column_block!(
-    Null, Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean
-);
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
     array
@@ -705,6 +741,8 @@ macro_rules! define_column_block_builder {
                 Timestamp(TimestampMillisecondBuilder),
                 Varbinary(BinaryBuilder),
                 String(StringBuilder),
+                Date(DateBuilder),
+                Time(TimeBuilder),
                 $(
                     $Kind($Builder),
                 )*
@@ -719,6 +757,8 @@ macro_rules! define_column_block_builder {
                         // The data_capacity is set as 1024, because the item is variable-size type.
                         DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
                         DatumKind::String => Self::String(StringBuilder::with_capacity(item_capacity, 1024)),
+                        DatumKind::Date => Self::Date(DateBuilder::with_capacity(item_capacity)),
+                        DatumKind::Time => Self::Time(TimeBuilder::with_capacity(item_capacity)),
                         $(
                             DatumKind::$Kind => Self::$Kind($Builder::with_capacity(item_capacity)),
                         )*
@@ -744,6 +784,8 @@ macro_rules! define_column_block_builder {
                         Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, Datum, datum),
                         Self::Varbinary(builder) => append_datum!(Varbinary, builder, Datum, datum),
                         Self::String(builder) => append_datum!(String, builder, Datum, datum),
+                        Self::Date(builder) => append_datum!(Date, builder, Datum, datum),
+                        Self::Time(builder) => append_datum!(Time, builder, Datum, datum),
                         $(
                             Self::$Kind(builder) => append_datum!($Kind, builder, Datum, datum),
                         )*
@@ -769,6 +811,8 @@ macro_rules! define_column_block_builder {
                         Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datum),
                         Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datum),
                         Self::String(builder) => append_datum!(String, builder, DatumView, datum),
+                        Self::Date(builder) => append_datum!(Date, builder, DatumView, datum),
+                        Self::Time(builder) => append_datum!(Time, builder, DatumView, datum),
                         $(
                             Self::$Kind(builder) => append_datum!($Kind, builder, DatumView, datum),
                         )*
@@ -791,6 +835,8 @@ macro_rules! define_column_block_builder {
                         Self::Timestamp(builder) => append_block!(Timestamp, builder, ColumnBlock, block, start, len),
                         Self::Varbinary(builder) => append_block!(Varbinary, builder, ColumnBlock, block, start, len),
                         Self::String(builder) => append_block!(String, builder, ColumnBlock, block, start, len),
+                        Self::Date(builder) => append_block!(Date, builder, ColumnBlock, block, start, len),
+                        Self::Time(builder) => append_block!(Time, builder, ColumnBlock, block, start, len),
                         $(
                             Self::$Kind(builder) => append_block!($Kind, builder, ColumnBlock, block, start, len),
                         )*
@@ -803,6 +849,8 @@ macro_rules! define_column_block_builder {
                         Self::Timestamp(builder) => builder.len(),
                         Self::Varbinary(builder) => builder.len(),
                         Self::String(builder) => builder.len(),
+                        Self::Date(builder) => builder.len(),
+                        Self::Time(builder) => builder.len(),
                         $(
                             Self::$Kind(builder) =>  builder.len(),
                         )*
@@ -820,6 +868,8 @@ macro_rules! define_column_block_builder {
                         Self::Timestamp(builder) => TimestampColumn::from(builder.finish()).into(),
                         Self::Varbinary(builder) => VarbinaryColumn::from(builder.finish()).into(),
                         Self::String(builder) => StringColumn::from(builder.finish()).into(),
+                        Self::Date(builder) => DateColumn::from(builder.finish()).into(),
+                        Self::Time(builder) => TimeColumn::from(builder.finish()).into(),
                         $(
                             Self::$Kind(builder) => [<$Kind Column>]::from(builder.finish()).into(),
                         )*

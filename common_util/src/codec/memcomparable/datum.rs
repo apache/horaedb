@@ -2,6 +2,8 @@
 
 //! Datum comparable codec
 
+use std::i64;
+
 use common_types::{
     bytes::{Buf, BufMut, BytesMut, SafeBufMut},
     datum::{Datum, DatumKind},
@@ -72,6 +74,14 @@ impl Encoder<Datum> for MemComparable {
                 buf.try_put_u8(consts::UINT_FLAG).context(EncodeKey)?;
                 self.encode(buf, &(u64::from(*v)))
             }
+            Datum::Date(v) => {
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
+                self.encode(buf, &(i64::from(*v)))
+            }
+            Datum::Time(v) => {
+                buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
+                self.encode(buf, v)
+            }
             Datum::Double(_) => UnsupportedKind {
                 kind: DatumKind::Double,
             }
@@ -96,6 +106,8 @@ impl Encoder<Datum> for MemComparable {
             Datum::UInt8(v) => self.estimate_encoded_size(&(u64::from(*v))),
             Datum::Int64(v) => self.estimate_encoded_size(v),
             Datum::Int32(v) => self.estimate_encoded_size(&(i64::from(*v))),
+            Datum::Date(v) => self.estimate_encoded_size(&(i64::from(*v))),
+            Datum::Time(v) => self.estimate_encoded_size(v),
             Datum::Int16(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Int8(v) => self.estimate_encoded_size(&(i64::from(*v))),
             Datum::Boolean(v) => self.estimate_encoded_size(&(u64::from(*v))),
@@ -178,6 +190,11 @@ impl DecodeTo<Datum> for MemComparable {
                 self.decode_to(buf, v)?;
             }
             Datum::Int32(v) => decode_i64_into!(self, v, buf, i32),
+            Datum::Date(v) => decode_i64_into!(self, v, buf, i32),
+            Datum::Time(v) => {
+                Self::ensure_flag(buf, consts::INT_FLAG)?;
+                self.decode_to(buf, v)?;
+            }
             Datum::Int16(v) => decode_i64_into!(self, v, buf, i16),
             Datum::Int8(v) => decode_i64_into!(self, v, buf, i8),
             Datum::Boolean(v) => decode_u64_into_bool!(self, v, buf),
@@ -224,6 +241,8 @@ mod tests {
             (Datum::Int8(-120), 9),
             (Datum::Boolean(true), 9),
             (Datum::Boolean(false), 9),
+            (Datum::Date(1000), 9),
+            (Datum::Time(100000000), 9),
         ];
         let mut decoded = vec![
             Datum::Null,
@@ -240,6 +259,8 @@ mod tests {
             Datum::Int8(0),
             Datum::Boolean(false),
             Datum::Boolean(false),
+            Datum::Date(0),
+            Datum::Time(0),
         ];
         let c = MemComparable;
         for (index, x) in data.iter().enumerate() {
@@ -277,6 +298,12 @@ mod tests {
                 Ordering::Less,
             ),
             (Datum::UInt64(888), Datum::UInt64(889), Ordering::Less),
+            (Datum::Date(1000), Datum::Date(2000), Ordering::Less),
+            (
+                Datum::Time(2000000000),
+                Datum::Time(1000000000),
+                Ordering::Greater,
+            ),
         ];
         let c = MemComparable;
         for x in &data {

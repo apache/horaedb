@@ -112,7 +112,7 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let sql = format!("INSERT INTO {table_name}(key1, key2, field1,field2) VALUES('tagk', 1638428434000,100, 'hello3'),('tagk2', 1638428434000,100, 'hello3');");
+        let sql = format!("INSERT INTO {table_name}(key1, key2, field1,field2,field3,field4) VALUES('tagk', 1638428434000,100, 'hello3','2022-10-10','10:10:10.234'),('tagk2', 1638428434000,100, 'hello3','2022-10-11','11:10:10.234');");
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         assert!(
             matches!(output, Output::AffectedRows(v) if v == 2),
@@ -135,12 +135,12 @@ where
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
-            "+------------+---------------------+--------+--------+",
-            "| key1       | key2                | field1 | field2 |",
-            "+------------+---------------------+--------+--------+",
-            "| 7461676b   | 2021-12-02T07:00:34 | 100    | hello3 |",
-            "| 7461676b32 | 2021-12-02T07:00:34 | 100    | hello3 |",
-            "+------------+---------------------+--------+--------+",
+            "+------------+---------------------+--------+--------+------------+--------------+",
+            "| key1       | key2                | field1 | field2 | field3     | field4       |",
+            "+------------+---------------------+--------+--------+------------+--------------+",
+            "| 7461676b   | 2021-12-02T07:00:34 | 100    | hello3 | 2022-10-10 | 10:10:10.234 |",
+            "| 7461676b32 | 2021-12-02T07:00:34 | 100    | hello3 | 2022-10-11 | 11:10:10.234 |",
+            "+------------+---------------------+--------+--------+------------+--------------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
 
@@ -177,6 +177,8 @@ where
             "| key2   | timestamp | true       | false       | false  |",
             "| field1 | double    | false      | true        | false  |",
             "| field2 | string    | false      | true        | false  |",
+            "| field3 | date      | false      | true        | false  |",
+            "| field4 | time      | false      | true        | false  |",
             "+--------+-----------+------------+-------------+--------+",
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
@@ -272,11 +274,11 @@ where
         let output = self.sql_to_output(sql).await.unwrap();
         let records = output.try_into().unwrap();
         let expected = vec![
-            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
-            "| Table      | Create Table                                                                                                                                                                    |",
-            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
-            "| test_table | CREATE TABLE `test_table` (`key1` varbinary NOT NULL, `key2` timestamp NOT NULL, `field1` double, `field2` string, PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic |",
-            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+"
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
+            "| Table      | Create Table                                                                                                                                                                                                  |",
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+",
+            "| test_table | CREATE TABLE `test_table` (`key1` varbinary NOT NULL, `key2` timestamp NOT NULL, `field1` double, `field2` string, `field3` date, `field4` time, PRIMARY KEY(key1,key2), TIMESTAMP KEY(key2)) ENGINE=Analytic |",
+            "+------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+"
         ];
         common_util::record_batch::assert_record_batches_eq(&expected, records);
     }
