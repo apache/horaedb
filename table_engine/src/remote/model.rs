@@ -7,7 +7,7 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
-    remote_engine::{row_group, row_group::Rows::Arrow},
+    remote_engine::row_group::Rows::Arrow,
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{
@@ -57,20 +57,13 @@ pub enum Error {
     #[snafu(display("Failed to covert row group, err:{}", source))]
     ConvertRowGroup { source: GenericError },
 
-    #[snafu(display(
-        "Invalid record batches number in the response, expect only one, given:{}.\nBacktrace:\n{}",
-        batch_num,
-        backtrace,
-    ))]
-    InvalidRecordBatchNumber {
-        batch_num: usize,
-        backtrace: Backtrace,
-    },
+    #[snafu(display("Record batches can't be empty.\nBacktrace:\n{}", backtrace,))]
+    EmptyRecordBatch { backtrace: Backtrace },
 }
 
 define_result!(Error);
 
-const DEFAULT_COMPRESS_MIN_LENG: usize = 80 * 1024;
+const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TableIdentifier {
@@ -152,12 +145,7 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
         let rows = row_group_pb.rows.context(EmptyRowGroup)?;
         let row_group = match rows {
             Arrow(v) => {
-                ensure!(
-                    !v.record_batches.is_empty(),
-                    InvalidRecordBatchNumber {
-                        batch_num: v.record_batches.len(),
-                    }
-                );
+                ensure!(!v.record_batches.is_empty(), EmptyRecordBatch);
 
                 let compression = match v.compression() {
                     arrow_payload::Compression::None => CompressionMethod::None,
@@ -172,7 +160,7 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
                     record_batch_vec.append(&mut arrow_record_batch_vec);
                 }
 
-                build_row_group_with_record_batch(record_batch_vec)?
+                build_row_group_from_record_batch(record_batch_vec)?
             }
         };
 
@@ -210,8 +198,8 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
         let compress_output = ipc::encode_record_batch(
             &record_batch.into_arrow_record_batch(),
             CompressOptions {
-                compress_min_length: DEFAULT_COMPRESS_MIN_LENG,
-                method: ipc::CompressionMethod::Zstd,
+                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                method: CompressionMethod::Zstd,
             },
         )
         .map_err(|e| Box::new(e) as _)
@@ -225,7 +213,7 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
         let row_group_pb = ceresdbproto::remote_engine::RowGroup {
             min_timestamp,
             max_timestamp,
-            rows: Some(row_group::Rows::Arrow(ArrowPayload {
+            rows: Some(Arrow(ArrowPayload {
                 record_batches: vec![compress_output.payload],
                 compression: compression as i32,
             })),
@@ -241,15 +229,10 @@ impl TryFrom<WriteRequest> for ceresdbproto::remote_engine::WriteRequest {
     }
 }
 
-fn build_row_group_with_record_batch(
+fn build_row_group_from_record_batch(
     record_batches: Vec<arrow::record_batch::RecordBatch>,
 ) -> Result<RowGroup> {
-    ensure!(
-        record_batches.len() == 1,
-        InvalidRecordBatchNumber {
-            batch_num: record_batches.len(),
-        }
-    );
+    ensure!(!record_batches.is_empty(), EmptyRecordBatch);
 
     let mut row_group_builder = RowGroupBuilder::new(
         record_batches[0]
