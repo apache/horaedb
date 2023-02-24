@@ -23,7 +23,8 @@ use common_util::{
     time::InstantExt,
 };
 use datafusion::physical_plan::{
-    file_format::ParquetFileMetrics, metrics::ExecutionPlanMetricsSet,
+    file_format::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
+    metrics::ExecutionPlanMetricsSet,
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -211,22 +212,24 @@ impl<'a> Reader<'a> {
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
-        let exprs =
-            datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec()).unwrap();
+        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
         let metrics_set = ExecutionPlanMetricsSet::new();
-        let metrics = ParquetFileMetrics::new(1, "abc", &metrics_set);
+        let metrics = ParquetFileMetrics::new(1, &self.path.to_string(), &metrics_set);
         for chunk in target_row_group_chunks {
             let object_store_reader =
                 ObjectStoreReader::new(self.store.clone(), self.path.clone(), meta_data.clone());
-            let page_predicate =
-                datafusion::physical_plan::file_format::parquet::page_filter::PagePruningPredicate::try_new(&exprs, arrow_schema.clone()).context(DataFusionError)?;
-            let row_selection = page_predicate
-                .prune(&chunk, parquet_metadata, &metrics)
-                .context(DataFusionError)?;
+            let row_selection = if let Some(exprs) = &exprs {
+                let page_predicate = PagePruningPredicate::try_new(&exprs, arrow_schema.clone())
+                    .context(DataFusionError)?;
+                page_predicate
+                    .prune(&chunk, parquet_metadata, &metrics)
+                    .context(DataFusionError)?
+            } else {
+                None
+            };
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
                 .with_context(|| ParquetError)?;
-
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
             };

@@ -16,17 +16,3 @@ data_dir = "/tmp/ceresdb"
 [analytic.wal]
 type = "RocksDB"
 data_dir = "/tmp/ceresdb"
-
-[cluster_deployment]
-mode = "NoMeta"
-
-[[cluster_deployment.topology.schema_shards]]
-schema = 'public'
-auto_create_tables = true
-
-[[cluster_deployment.topology.schema_shards.shard_views]]
-shard_id = 0
-
-[cluster_deployment.topology.schema_shards.shard_views.endpoint]
-addr = "127.0.0.1"
-port = 8831
