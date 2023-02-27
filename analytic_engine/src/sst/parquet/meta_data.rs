@@ -420,4 +420,22 @@ mod tests {
         let decoded_parquet_filter = ParquetFilter::try_from(parquet_filter_pb).unwrap();
         assert_eq!(decoded_parquet_filter, parquet_filter);
     }
+
+    #[test]
+    fn test_row_group_filter_builder() {
+        let mut builders = RowGroupFilterBuilder::with_num_columns(1);
+        for key in ["host-123", "host-456", "host-789"] {
+            builders.add_key(0, key.as_bytes());
+        }
+        let row_group_filter = builders.build().unwrap();
+
+        let testcase = [("host-123", true), ("host-321", false)];
+        for (key, expected) in testcase {
+            let actual = row_group_filter
+                .contains_column_data(0, key.as_bytes())
+                .unwrap();
+
+            assert_eq!(expected, actual);
+        }
+    }
 }
