@@ -191,7 +191,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v3
         with:
-          name: CI
+          name: CI-${{ github.head_ref }}.${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
             /tmp/ceresdb-stderr.log
