@@ -243,43 +243,58 @@ mod test {
             .unwrap()
     }
 
+    fn int32_stat(min: i32, max: i32) -> Statistics {
+        Statistics::int32(Some(min), Some(max), None, 0, false)
+    }
+
+    fn string_stat(min: &str, max: &str) -> Statistics {
+        Statistics::byte_array(Some(min.into()), Some(max.into()), None, 0, false)
+    }
+
     #[test]
     fn test_row_group_filter() {
         let testcases = vec![
             // (expr, min, max, schema, expected)
             (
                 col("a").eq(lit(5i64)), // a == 5
-                10,
-                20,
+                int32_stat(10, 20),
                 vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
             (
                 col("a").eq(lit(14i64)), // a == 14
-                10,
-                20,
+                int32_stat(10, 20),
                 vec![("a", ArrowDataType::Int64)],
                 vec![0],
             ),
             (
                 col("a").lt(col("b")), // a < b
-                10,
-                20,
+                int32_stat(10, 20),
                 vec![("a", ArrowDataType::Int32), ("b", ArrowDataType::Int32)],
                 // nothing actually gets calculated.
                 vec![0],
             ),
             (
                 col("a").in_list(vec![lit(17i64), lit(100i64)], false), // a in (17, 100)
-                101,
-                200,
+                int32_stat(101, 200),
                 vec![("a", ArrowDataType::Int64)],
                 vec![],
             ),
+            (
+                col("hostname").eq(lit("host-1794")), // hostname == host-1794
+                string_stat("host-18000", "host-20000"),
+                vec![("hostname", ArrowDataType::Utf8)],
+                vec![],
+            ),
+            (
+                col("hostname").eq(lit("host-1794")), // hostname == host-1794
+                string_stat("host-1000", "host-20000"),
+                vec![("hostname", ArrowDataType::Utf8)],
+                vec![0],
+            ),
         ];
 
-        for (expr, min, max, schema, expected) in testcases {
-            let stat = Statistics::int32(Some(min), Some(max), None, 0, false);
+        for (expr, stat, schema, expected) in testcases {
             let schema = prepare_arrow_schema(schema);
             let metadata = prepare_metadata(&schema, stat);
 
