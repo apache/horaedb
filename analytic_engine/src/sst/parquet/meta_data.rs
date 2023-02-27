@@ -122,9 +122,7 @@ impl RowGroupFilterBuilder {
     }
 
     pub(crate) fn add_key(&mut self, col_idx: usize, key: &[u8]) {
-        if let Some(b) = self.builders[col_idx].as_mut() {
-            b.insert(key)
-        }
+        self.builders[col_idx].get_or_insert_default().insert(key)
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
