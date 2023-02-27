@@ -31,8 +31,8 @@ use tempfile::TempDir;
 
 use crate::{
     setup::{
-        EngineBuildContext, EngineBuildContextBuilder, EngineBuilder, MemWalEngineBuilder,
-        RocksDBWalEngineBuilder,
+        EngineBuildContext, EngineBuildContextBuilder, MemWalEngineBuilder,
+        RocksDBWalEngineBuilder, WalsOpener,
     },
     storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
@@ -451,7 +451,7 @@ impl Default for Builder {
 }
 
 pub trait EngineContext: Clone + Default {
-    type EngineBuilder: EngineBuilder;
+    type EngineBuilder: WalsOpener;
 
     fn engine_builder(&self) -> Self::EngineBuilder;
     fn config(&self) -> Config;

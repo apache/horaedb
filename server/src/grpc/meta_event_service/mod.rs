@@ -4,6 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
+use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::{
     manager::ManagerRef,
@@ -36,21 +37,56 @@ use table_engine::{
 };
 use tonic::Response;
 
+use self::shard_operation::WalCloserAdapter;
 use crate::{
     grpc::{
-        meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        meta_event_service::{
+            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+            shard_operation::WalRegionCloserRef,
+        },
         metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
     instance::InstanceRef,
 };
 
 pub(crate) mod error;
+mod shard_operation;
 
-#[derive(Clone)]
-pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+/// Builder for [MetaServiceImpl].
+pub struct Builder<Q> {
     pub cluster: ClusterRef,
     pub instance: InstanceRef<Q>,
     pub runtime: Arc<Runtime>,
+    pub opened_wals: OpenedWals,
+}
+
+impl<Q: QueryExecutor + 'static> Builder<Q> {
+    pub fn build(self) -> MetaServiceImpl<Q> {
+        let Self {
+            cluster,
+            instance,
+            runtime,
+            opened_wals,
+        } = self;
+
+        MetaServiceImpl {
+            cluster,
+            instance,
+            runtime,
+            wal_region_closer: Arc::new(WalCloserAdapter {
+                data_wal: opened_wals.data_wal,
+                manifest_wal: opened_wals.manifest_wal,
+            }),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+    cluster: ClusterRef,
+    instance: InstanceRef<Q>,
+    runtime: Arc<Runtime>,
+    wal_region_closer: WalRegionCloserRef,
 }
 
 macro_rules! handle_request {
@@ -131,28 +167,25 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
         CloseTableOnShardResponse
     );
 
-    fn handler_ctx(&self) -> HandlerContext<C> {
+    fn handler_ctx(&self) -> HandlerContext {
         HandlerContext {
             cluster: self.cluster.clone(),
             catalog_manager: self.instance.catalog_manager.clone(),
             table_engine: self.instance.table_engine.clone(),
+            wal_region_closer: self.wal_region_closer.clone(),
         }
     }
 }
 
-pub trait WalRegionCloser: Debug {
-    fn close_region(&self, region_id: RegionId) -> Result<()>;
-}
-
 /// Context for handling all kinds of meta event service.
-struct HandlerContext<C> {
+struct HandlerContext {
     cluster: ClusterRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
-    wal_shard_closer: C,
+    wal_region_closer: WalRegionCloserRef,
 }
 
-impl<C> HandlerContext<C> {
+impl HandlerContext {
     fn default_catalog(&self) -> Result<CatalogRef> {
         let default_catalog_name = self.catalog_manager.default_catalog_name();
         let default_catalog = self
@@ -171,6 +204,10 @@ impl<C> HandlerContext<C> {
         Ok(default_catalog)
     }
 }
+
+// TODO: maybe we should encapsulate the logic of handling meta event into a
+// trait, so that we don't need to expose the logic to the meta event service
+// implementation.
 
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
     let tables_of_shard =
@@ -229,10 +266,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     Ok(())
 }
 
-async fn handle_close_shard<C: WalRegionCloser>(
-    ctx: HandlerContext<C>,
-    request: CloseShardRequest,
-) -> Result<()> {
+async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
     let tables_of_shard =
         ctx.cluster
             .close_shard(&request)
@@ -270,7 +304,13 @@ async fn handle_close_shard<C: WalRegionCloser>(
     }
 
     // try to close wal region
-    ctx.wal_shard_closer.close_region(request.shard_id as u64)
+    ctx.wal_region_closer
+        .close_region(request.shard_id)
+        .await
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to close wal region, shard_id:{}", request.shard_id),
+        })
 }
 
 async fn handle_create_table_on_shard(

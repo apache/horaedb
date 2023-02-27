@@ -7,8 +7,8 @@ use std::sync::Arc;
 use analytic_engine::{
     self,
     setup::{
-        EngineBuildContext, EngineBuildContextBuilder, EngineBuilder, KafkaWalEngineBuilder,
-        ObkvWalEngineBuilder, RocksDBWalEngineBuilder,
+        EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder,
+        WalsOpener,
     },
     WalStorageConfig,
 };
@@ -119,7 +119,7 @@ async fn run_server_with_runtimes<T>(
     runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
 ) where
-    T: EngineBuilder,
+    T: WalsOpener,
 {
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
@@ -180,17 +180,13 @@ async fn run_server_with_runtimes<T>(
     server.stop().await;
 }
 
-async fn build_table_engine<T: EngineBuilder>(
-    context: EngineBuildContext,
-    runtimes: Arc<EngineRuntimes>,
-    engine_builder: T,
-) -> Arc<TableEngineProxy> {
-    // Build all table engine
+// Build proxy for all table engines.
+async fn build_table_engine_proxy<'a>(engine_builder: EngineBuilder<'a>) -> Arc<TableEngineProxy> {
     // Create memory engine
     let memory = MemoryTableEngine;
     // Create analytic engine
     let analytic = engine_builder
-        .build(context, runtimes.clone())
+        .build()
         .await
         .expect("Failed to setup analytic engine");
 
@@ -201,12 +197,12 @@ async fn build_table_engine<T: EngineBuilder>(
     })
 }
 
-async fn build_with_meta<Q: Executor + 'static, T: EngineBuilder>(
+async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
     config: &Config,
     cluster_config: &ClusterConfig,
     builder: Builder<Q>,
     runtimes: Arc<EngineRuntimes>,
-    engine_builder: T,
+    wal_opener: T,
 ) -> Builder<Q> {
     // Build meta related modules.
     let node_meta_info = NodeMetaInfo {
@@ -234,13 +230,17 @@ async fn build_with_meta<Q: Executor + 'static, T: EngineBuilder>(
     };
     let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
 
-    // Build table engine.
-    let build_context_builder = EngineBuildContextBuilder::default();
-    let build_context = build_context_builder
-        .config(config.analytic.clone())
-        .router(router.clone())
-        .build();
-    let engine_proxy = build_table_engine(build_context, runtimes.clone(), engine_builder).await;
+    let opened_wals = wal_opener
+        .open_wals(&config.analytic.wal, runtimes.clone())
+        .await
+        .expect("Failed to setup analytic engine");
+    let engine_builder = EngineBuilder {
+        config: &config.analytic,
+        router: Some(router.clone()),
+        engine_runtimes: runtimes.clone(),
+        opened_wals: opened_wals.clone(),
+    };
+    let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
     let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
         shard_tables_cache,
@@ -258,23 +258,29 @@ async fn build_with_meta<Q: Executor + 'static, T: EngineBuilder>(
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .cluster(cluster)
+        .opened_wals(opened_wals)
         .router(router)
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_without_meta<Q: Executor + 'static, T: EngineBuilder>(
+async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
     config: &Config,
     static_route_config: &StaticRouteConfig,
     builder: Builder<Q>,
     runtimes: Arc<EngineRuntimes>,
-    engine_builder: T,
+    wal_builder: T,
 ) -> Builder<Q> {
-    // Build table engine.
-    let build_context_builder = EngineBuildContextBuilder::default();
-    let build_context = build_context_builder
-        .config(config.analytic.clone())
-        .build();
-    let engine_proxy = build_table_engine(build_context, runtimes.clone(), engine_builder).await;
+    let opened_wals = wal_builder
+        .open_wals(&config.analytic.wal, runtimes.clone())
+        .await
+        .expect("Failed to setup analytic engine");
+    let engine_builder = EngineBuilder {
+        config: &config.analytic,
+        router: None,
+        engine_runtimes: runtimes.clone(),
+        opened_wals,
+    };
+    let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
     // Create catalog manager, use analytic engine as backend.
     let analytic = engine_proxy.analytic.clone();

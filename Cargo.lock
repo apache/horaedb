@@ -5637,6 +5637,7 @@ dependencies = [
  "tokio 1.25.0",
  "tokio-stream",
  "tonic",
+ "wal",
  "warp",
  "zstd 0.12.1+zstd.1.5.2",
 ]
