@@ -136,8 +136,6 @@ impl EncodeContext {
     }
 
     pub fn encode_rows(&mut self, table_schema: &Schema) -> Result<()> {
-        // Encode the row group into the buffer, which can be reused to write to
-        // memtable
         row::encode_row_group_for_wal(
             &self.row_group,
             table_schema,

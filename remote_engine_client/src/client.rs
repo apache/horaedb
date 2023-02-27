@@ -7,11 +7,13 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow_ext::ipc;
-use ceresdbproto::remote_engine::{self, remote_engine_service_client::*};
+use arrow_ext::{ipc, ipc::CompressionMethod};
+use ceresdbproto::{
+    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
+    storage::arrow_payload,
+};
 use common_types::{
     projected_schema::ProjectedSchema, record_batch::RecordBatch, schema::RecordSchema,
-    RemoteEngineVersion,
 };
 use common_util::error::BoxError;
 use futures::{Stream, StreamExt};
@@ -43,8 +45,8 @@ impl Client {
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
-            .context(ConvertReadRequest {
-                msg: "convert to pb failed",
+            .context(Convert {
+                msg: "convert ReadRequest to pb",
             })?;
 
         let result = rpc_client
@@ -52,7 +54,7 @@ impl Client {
             .await
             .with_context(|| Rpc {
                 table_ident: table_ident.clone(),
-                msg: "read from remote failed",
+                msg: "read from remote",
             });
 
         let response = match result {
@@ -82,8 +84,8 @@ impl Client {
 
         let request_pb = ceresdbproto::remote_engine::WriteRequest::try_from(request)
             .box_err()
-            .context(ConvertWriteRequest {
-                msg: "convert to pb failed",
+            .context(Convert {
+                msg: "convert WriteRequest to pb failed",
             })?;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(channel);
 
@@ -158,40 +160,60 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                let record_batch = match RemoteEngineVersion::try_from(response.version)
-                    .context(ConvertVersion)?
-                {
-                    RemoteEngineVersion::ArrowIPCWithZstd => {
-                        ipc::decode_record_batches(response.rows, ipc::CompressionMethod::Zstd)
-                            .box_err()
-                            .context(ConvertReadResponse {
-                                msg: "decode record batch failed",
-                                version: response.version,
-                            })
-                            .and_then(|mut batches| {
-                                ensure!(
-                                    batches.len() == 1,
-                                    InvalidRecordBatchNumber {
-                                        batch_num: batches.len()
-                                    }
-                                );
+                match response.output {
+                    None => Poll::Ready(None),
+                    Some(v) => {
+                        let record_batch = match v {
+                            Arrow(mut v) => {
+                                if v.record_batches.len() != 1 {
+                                    return Poll::Ready(Some(
+                                        InvalidRecordBatchNumber {
+                                            batch_num: v.record_batches.len(),
+                                        }
+                                        .fail(),
+                                    ));
+                                }
 
-                                RecordBatch::try_from(batches.swap_remove(0))
-                                    .box_err()
-                                    .context(ConvertReadResponse {
-                                        msg: "convert record batch failed",
-                                        version: response.version,
-                                    })
-                            })
+                                let compression = match v.compression() {
+                                    arrow_payload::Compression::None => CompressionMethod::None,
+                                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+                                };
+
+                                ipc::decode_record_batches(
+                                    v.record_batches.swap_remove(0),
+                                    compression,
+                                )
+                                .map_err(|e| Box::new(e) as _)
+                                .context(Convert {
+                                    msg: "decode read record batch",
+                                })
+                                .and_then(
+                                    |mut record_batch_vec| {
+                                        ensure!(
+                                            record_batch_vec.len() == 1,
+                                            InvalidRecordBatchNumber {
+                                                batch_num: record_batch_vec.len()
+                                            }
+                                        );
+                                        record_batch_vec
+                                            .swap_remove(0)
+                                            .try_into()
+                                            .map_err(|e| Box::new(e) as _)
+                                            .context(Convert {
+                                                msg: "convert read record batch",
+                                            })
+                                    },
+                                )
+                            }
+                        };
+                        Poll::Ready(Some(record_batch))
                     }
-                };
-
-                Poll::Ready(Some(record_batch))
+                }
             }
 
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e).context(Rpc {
                 table_ident: this.table_ident.clone(),
-                msg: "poll read response failed",
+                msg: "poll read response",
             }))),
 
             Poll::Ready(None) => Poll::Ready(None),

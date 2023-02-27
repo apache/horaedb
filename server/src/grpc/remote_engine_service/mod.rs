@@ -4,14 +4,17 @@
 
 use std::{sync::Arc, time::Instant};
 
-use arrow_ext::ipc::{self, CompressOptions, CompressOutput};
+use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
 use catalog::manager::ManagerRef;
-use ceresdbproto::remote_engine::{
-    remote_engine_service_server::RemoteEngineService, ReadRequest, ReadResponse, WriteRequest,
-    WriteResponse,
+use ceresdbproto::{
+    remote_engine::{
+        read_response::Output::Arrow, remote_engine_service_server::RemoteEngineService,
+        ReadRequest, ReadResponse, WriteRequest, WriteResponse,
+    },
+    storage::{arrow_payload, ArrowPayload},
 };
-use common_types::{record_batch::RecordBatch, RemoteEngineVersion};
+use common_types::record_batch::RecordBatch;
 use common_util::{error::BoxError, time::InstantExt};
 use futures::stream::{self, BoxStream, StreamExt};
 use log::error;
@@ -38,6 +41,7 @@ use crate::{
 pub(crate) mod error;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 20;
+const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
 #[derive(Clone)]
 pub struct RemoteEngineServiceImpl<Q: QueryExecutor + 'static> {
@@ -145,11 +149,9 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     Ok(record_batch) => {
                         let resp = match ipc::encode_record_batch(
                             &record_batch.into_arrow_record_batch(),
-                            // TODO: Set compress_min_size to 0 for now, we should set it to a
-                            // proper value.
                             CompressOptions {
-                                compress_min_length: 0,
-                                method: ipc::CompressionMethod::Zstd,
+                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                                method: CompressionMethod::Zstd,
                             },
                         )
                         .box_err()
@@ -161,11 +163,20 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                                 header: Some(error::build_err_header(e)),
                                 ..Default::default()
                             },
-                            Ok(CompressOutput { payload, .. }) => ReadResponse {
-                                header: Some(build_ok_header()),
-                                version: RemoteEngineVersion::ArrowIPCWithZstd.as_u32(),
-                                rows: payload,
-                            },
+                            Ok(CompressOutput { payload, method }) => {
+                                let compression = match method {
+                                    CompressionMethod::None => arrow_payload::Compression::None,
+                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+                                };
+
+                                ReadResponse {
+                                    header: Some(build_ok_header()),
+                                    output: Some(Arrow(ArrowPayload {
+                                        record_batches: vec![payload],
+                                        compression: compression as i32,
+                                    })),
+                                }
+                            }
                         };
 
                         Ok(resp)
@@ -179,7 +190,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     }
                 }));
 
-                Ok(tonic::Response::new(new_stream))
+                Ok(Response::new(new_stream))
             }
             Err(e) => {
                 let resp = ReadResponse {
@@ -187,7 +198,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                     ..Default::default()
                 };
                 let stream = stream::once(async { Ok(resp) });
-                Ok(tonic::Response::new(Box::pin(stream)))
+                Ok(Response::new(Box::pin(stream)))
             }
         }
     }
