@@ -131,7 +131,7 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
         CloseTableOnShardResponse
     );
 
-    fn handler_ctx(&self) -> HandlerContext {
+    fn handler_ctx(&self) -> HandlerContext<C> {
         HandlerContext {
             cluster: self.cluster.clone(),
             catalog_manager: self.instance.catalog_manager.clone(),
@@ -140,14 +140,19 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
     }
 }
 
+pub trait WalRegionCloser: Debug {
+    fn close_region(&self, region_id: RegionId) -> Result<()>;
+}
+
 /// Context for handling all kinds of meta event service.
-struct HandlerContext {
+struct HandlerContext<C> {
     cluster: ClusterRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
+    wal_shard_closer: C,
 }
 
-impl HandlerContext {
+impl<C> HandlerContext<C> {
     fn default_catalog(&self) -> Result<CatalogRef> {
         let default_catalog_name = self.catalog_manager.default_catalog_name();
         let default_catalog = self
@@ -224,7 +229,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     Ok(())
 }
 
-async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
+async fn handle_close_shard<C: WalRegionCloser>(
+    ctx: HandlerContext<C>,
+    request: CloseShardRequest,
+) -> Result<()> {
     let tables_of_shard =
         ctx.cluster
             .close_shard(&request)
@@ -261,7 +269,8 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
             })?;
     }
 
-    Ok(())
+    // try to close wal region
+    ctx.wal_shard_closer.close_region(request.shard_id as u64)
 }
 
 async fn handle_create_table_on_shard(

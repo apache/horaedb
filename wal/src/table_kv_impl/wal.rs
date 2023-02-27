@@ -7,14 +7,14 @@ use std::{fmt, str, sync::Arc};
 use async_trait::async_trait;
 use common_types::SequenceNumber;
 use common_util::error::BoxError;
-use log::info;
+use log::{info, warn};
 use snafu::ResultExt;
 use table_kv::TableKv;
 
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
         ScanRequest, WalLocation, WalManager,
     },
     table_kv_impl::{
@@ -116,6 +116,12 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .await
             .box_err()
             .context(Delete)
+    }
+
+    async fn close_region(&self, region: RegionId) -> Result<()> {
+        warn!("Close region is not supported yet, region:{}", region);
+
+        Ok(())
     }
 
     async fn close_gracefully(&self) -> Result<()> {

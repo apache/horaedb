@@ -27,8 +27,8 @@ use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext, ScanRequest,
-        SyncLogIterator, WalLocation, WalManager, WriteContext,
+        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
+        ScanRequest, SyncLogIterator, WalLocation, WalManager, WriteContext,
     },
 };
 
@@ -727,6 +727,15 @@ impl WalManager for RocksImpl {
                 .delete_entries_up_to(region_id, sequence_num)
                 .await;
         }
+
+        Ok(())
+    }
+
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        debug!(
+            "Close region for RocksDB based WAL is noop operation, region_id:{}",
+            region_id
+        );
 
         Ok(())
     }

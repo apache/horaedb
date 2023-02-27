@@ -14,16 +14,13 @@ use common_util::{error::BoxError, runtime::Runtime};
 pub use error::*;
 use snafu::ResultExt;
 
-use crate::{
-    log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
-    manager,
-};
+use crate::log_batch::{LogEntry, LogWriteBatch, PayloadDecoder};
 
 pub mod error {
     use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
-    use crate::manager::WalLocation;
+    use crate::manager::{RegionId, WalLocation};
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -107,6 +104,18 @@ pub mod error {
         #[snafu(display("Failed to decode, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Decoding {
             source: GenericError,
+            backtrace: Backtrace,
+        },
+
+        #[snafu(display(
+            "Failed to close wal region, region_id:{}, err:{}.\nBacktrace:\n{}",
+            source,
+            region,
+            backtrace
+        ))]
+        CloseRegion {
+            source: GenericError,
+            region: RegionId,
             backtrace: Backtrace,
         },
 
@@ -285,6 +294,9 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
         sequence_num: SequenceNumber,
     ) -> Result<()>;
 
+    /// Close a region.
+    async fn close_region(&self, region: RegionId) -> Result<()>;
+
     /// Close the wal gracefully.
     async fn close_gracefully(&self) -> Result<()>;
 
@@ -361,7 +373,7 @@ impl BatchLogIteratorAdapter {
                         let payload = decoder
                             .decode(&mut raw_payload)
                             .box_err()
-                            .context(manager::Decoding)?;
+                            .context(error::Decoding)?;
                         let log_entry = LogEntry {
                             table_id: raw_log_entry.table_id,
                             sequence: raw_log_entry.sequence,
@@ -399,7 +411,7 @@ impl BatchLogIteratorAdapter {
                 let payload = decoder
                     .decode(&mut raw_payload)
                     .box_err()
-                    .context(manager::Decoding)?;
+                    .context(error::Decoding)?;
                 let log_entry = LogEntry {
                     table_id: raw_log_entry.table_id,
                     sequence: raw_log_entry.sequence,

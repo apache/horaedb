@@ -107,72 +107,54 @@ const MANIFEST_DIR_NAME: &str = "manifest";
 const STORE_DIR_NAME: &str = "store";
 const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
-#[derive(Default)]
-pub struct EngineBuildContextBuilder {
+#[derive(Clone)]
+struct EngineBuilder2 {
     config: Config,
     router: Option<RouterRef>,
+    engine_runtimes: Arc<EngineRuntimes>,
+    data_wal: WalManagerRef,
+    manifest_wal: WalManagerRef,
 }
 
-impl EngineBuildContextBuilder {
-    pub fn config(mut self, config: Config) -> Self {
-        self.config = config;
-        self
-    }
+impl EngineBuilder2 {
+    async fn build(self) -> Result<TableEngineRef> {
+        let opened_storages = open_storage(self.config.storage.clone()).await?;
+        let manifest = ManifestImpl::open(
+            self.config.manifest.clone(),
+            self.manifest_wal.clone(),
+            opened_storages.default_store().clone(),
+        )
+        .await
+        .context(OpenManifest)?;
 
-    pub fn router(mut self, router: RouterRef) -> Self {
-        self.router = Some(router);
-        self
-    }
-
-    pub fn build(self) -> EngineBuildContext {
-        EngineBuildContext {
-            config: self.config,
-            router: self.router,
-        }
+        let instance = open_instance(
+            self.config,
+            self.engine_runtimes,
+            self.data_wal,
+            Arc::new(manifest),
+            Arc::new(opened_storages),
+            self.router,
+        )
+        .await?;
+        Ok(Arc::new(TableEngineImpl::new(instance)))
     }
 }
 
-#[derive(Clone)]
-pub struct EngineBuildContext {
-    pub config: Config,
-    pub router: Option<RouterRef>,
+#[derive(Debug, Clone)]
+struct OpenedWals {
+    data_wal: WalManagerRef,
+    manifest_wal: WalManagerRef,
 }
 
 /// Analytic engine builder.
 #[async_trait]
 pub trait EngineBuilder: Send + Sync + Default {
-    /// Build the analytic engine from `config` and `engine_runtimes`.
-    async fn build(
-        &self,
-        context: EngineBuildContext,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<TableEngineRef> {
-        let opened_storages = open_storage(context.config.storage.clone()).await?;
-        let (wal, manifest) = self
-            .open_wal_and_manifest(
-                context.config.clone(),
-                engine_runtimes.clone(),
-                opened_storages.default_store().clone(),
-            )
-            .await?;
-        let instance = open_instance(
-            context.config.clone(),
-            engine_runtimes,
-            wal,
-            manifest,
-            Arc::new(opened_storages),
-            context.router,
-        )
-        .await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
-    }
-
     async fn open_wal_and_manifest(
         &self,
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
-    ) -> Result<(WalManagerRef, ManifestRef)>;
+    ) -> Result<OpenedWals>;
 }
 
 /// [RocksEngine] builder.
@@ -186,7 +168,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
-    ) -> Result<(WalManagerRef, ManifestRef)> {
+    ) -> Result<OpenedWals> {
         let rocksdb_wal_config = match config.wal {
             WalStorageConfig::RocksDB(config) => *config,
             _ => {
@@ -203,7 +185,7 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         let write_runtime = engine_runtimes.write_runtime.clone();
         let data_path = Path::new(&rocksdb_wal_config.data_dir);
         let wal_path = data_path.join(WAL_DIR_NAME);
-        let wal_manager = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
+        let data_wal = WalBuilder::with_default_rocksdb_config(wal_path, write_runtime.clone())
             .build()
             .context(OpenWal)?;
 
@@ -211,16 +193,11 @@ impl EngineBuilder for RocksDBWalEngineBuilder {
         let manifest_wal = WalBuilder::with_default_rocksdb_config(manifest_path, write_runtime)
             .build()
             .context(OpenManifestWal)?;
-
-        let manifest = ManifestImpl::open(
-            config.manifest.clone(),
-            Arc::new(manifest_wal),
-            object_store,
-        )
-        .await
-        .context(OpenManifest)?;
-
-        Ok((Arc::new(wal_manager), Arc::new(manifest)))
+        let opened_wals = OpenedWals {
+            data_wal: Arc::new(data_wal),
+            manifest_wal: Arc::new(manifest_wal),
+        };
+        Ok(opened_wals)
     }
 }
 
@@ -235,7 +212,7 @@ impl EngineBuilder for ObkvWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
-    ) -> Result<(WalManagerRef, ManifestRef)> {
+    ) -> Result<OpenedWals> {
         let obkv_wal_config = match &config.wal {
             WalStorageConfig::Obkv(config) => config.clone(),
             _ => {
@@ -262,7 +239,6 @@ impl EngineBuilder for ObkvWalEngineBuilder {
             config.manifest.clone(),
             engine_runtimes,
             obkv,
-            object_store,
         )
         .await
     }
@@ -284,7 +260,7 @@ impl EngineBuilder for MemWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
-    ) -> Result<(WalManagerRef, ManifestRef)> {
+    ) -> Result<OpenedWals> {
         let obkv_wal_config = match &config.wal {
             WalStorageConfig::Obkv(config) => config.clone(),
             _ => {
@@ -302,8 +278,7 @@ impl EngineBuilder for MemWalEngineBuilder {
             *obkv_wal_config,
             config.manifest.clone(),
             engine_runtimes,
-            self.table_kv.clone(),
-            object_store,
+            self.table_kv,
         )
         .await
     }
@@ -319,7 +294,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
         config: Config,
         engine_runtimes: Arc<EngineRuntimes>,
         object_store: ObjectStoreRef,
-    ) -> Result<(WalManagerRef, ManifestRef)> {
+    ) -> Result<OpenedWals> {
         let kafka_wal_config = match &config.wal {
             WalStorageConfig::Kafka(config) => config.clone(),
             _ => {
@@ -337,7 +312,7 @@ impl EngineBuilder for KafkaWalEngineBuilder {
         let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
             .await
             .context(OpenKafka)?;
-        let wal_manager = MessageQueueImpl::new(
+        let data_wal = MessageQueueImpl::new(
             WAL_DIR_NAME.to_string(),
             kafka.clone(),
             bg_runtime.clone(),
@@ -351,11 +326,10 @@ impl EngineBuilder for KafkaWalEngineBuilder {
             kafka_wal_config.meta_namespace,
         );
 
-        let manifest = ManifestImpl::open(config.manifest, Arc::new(manifest_wal), object_store)
-            .await
-            .context(OpenManifest)?;
-
-        Ok((Arc::new(wal_manager), Arc::new(manifest)))
+        Ok(OpenedWals {
+            data_wal: Arc::new(data_wal),
+            manifest_wal: Arc::new(manifest_wal),
+        })
     }
 }
 
@@ -364,15 +338,14 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     manifest_opts: ManifestOptions,
     engine_runtimes: Arc<EngineRuntimes>,
     table_kv: T,
-    object_store: ObjectStoreRef,
-) -> Result<(WalManagerRef, ManifestRef)> {
+) -> Result<OpenedWals> {
     let runtimes = WalRuntimes {
         read_runtime: engine_runtimes.read_runtime.clone(),
         write_runtime: engine_runtimes.write_runtime.clone(),
         bg_runtime: engine_runtimes.bg_runtime.clone(),
     };
 
-    let wal_manager = WalNamespaceImpl::open(
+    let data_wal = WalNamespaceImpl::open(
         table_kv.clone(),
         runtimes.clone(),
         WAL_DIR_NAME,
@@ -389,11 +362,11 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
     )
     .await
     .context(OpenManifestWal)?;
-    let manifest = ManifestImpl::open(manifest_opts, Arc::new(manifest_wal), object_store)
-        .await
-        .context(OpenManifest)?;
 
-    Ok((Arc::new(wal_manager), Arc::new(manifest)))
+    Ok(OpenedWals {
+        data_wal: Arc::new(data_wal),
+        manifest_wal: Arc::new(manifest_wal),
+    })
 }
 
 async fn open_instance(

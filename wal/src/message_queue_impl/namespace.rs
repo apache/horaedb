@@ -162,6 +162,12 @@ impl<M: MessageQueue> Namespace<M> {
         }
     }
 
+    pub async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        let mut regions = self.inner.regions.write().await;
+        regions.remove(&region_id);
+        Ok(())
+    }
+
     /// Close namespace
     ///
     /// Mainly clear the regions and wait logs cleaning routine to stop.
