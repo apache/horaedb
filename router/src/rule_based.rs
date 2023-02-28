@@ -162,7 +162,6 @@ impl Router for RuleBasedRouter {
                 let route = Route {
                     table,
                     endpoint: Some(pb_endpoint),
-                    ..Default::default()
                 };
                 route_results.push(route);
             }

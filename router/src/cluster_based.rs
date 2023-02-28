@@ -28,7 +28,6 @@ fn make_route(table_name: &str, endpoint: &str) -> Result<Route> {
     Ok(Route {
         table: table_name.to_string(),
         endpoint: Some(endpoint.into()),
-        ..Default::default()
     })
 }
 

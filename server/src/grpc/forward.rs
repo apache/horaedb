@@ -401,7 +401,6 @@ mod tests {
                 Some(v) => Ok(vec![Route {
                     table: req.tables[0].clone(),
                     endpoint: Some(v.clone().into()),
-                    ext: vec![],
                 }]),
             }
         }
