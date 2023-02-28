@@ -1,11 +1,11 @@
 [node]
-addr = "ceresdb1"
+addr = "ceresdb0"
 
 [server]
 bind_addr = "0.0.0.0"
-http_port = 5442
-grpc_port = 8833
-mysql_port = 13307
+http_port = 5440
+grpc_port = 8831
+mysql_port = 3307
 log_level = "info"
 deploy_mode = "Cluster"
 
@@ -18,11 +18,11 @@ mem_cache_partition_bits = 0
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/ceresdb1"
+data_dir = "/tmp/ceresdb0"
 
-[analytic.wal_storage]
+[analytic.wal]
 type = "RocksDB"
-data_dir = "/tmp/ceresdb1"
+data_dir = "/tmp/ceresdb0"
 
 [cluster_deployment]
 mode = "WithMeta"
@@ -31,7 +31,7 @@ cmd_channel_buffer_size = 10
 [cluster_deployment.meta_client]
 # Only support "defaultCluster" currently.
 cluster_name = "defaultCluster"
-meta_addr = "http://ceresmeta:2379"
+meta_addr = "http://127.0.0.1:2379"
 lease = "10s"
 timeout = "5s"
 
