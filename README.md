@@ -10,10 +10,6 @@
 
 CeresDB is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
 
-## Status
-The project is currently under rapid development. This early stage is not production ready and may incur data corruptions.
-
-
 ## Documentation
 - [User Guide](https://docs.ceresdb.io/)
 - [Development Guide](https://docs.ceresdb.io/dev/compile_run.html)
