@@ -16,7 +16,7 @@ use common_util::{panic, toml};
 use log::info;
 
 /// The ip address of current node.
-const NODE_ADDR: &str = "CSE_CERES_META_NODE_ADDR";
+const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
 
 fn fetch_version() -> String {
@@ -24,10 +24,19 @@ fn fetch_version() -> String {
     let git_branch = option_env!("VERGEN_GIT_BRANCH").unwrap_or("NONE");
     let git_commit_id = option_env!("VERGEN_GIT_SHA_SHORT").unwrap_or("NONE");
     let build_time = option_env!("VERGEN_BUILD_TIMESTAMP").unwrap_or("NONE");
+    let rustc_version = option_env!("VERGEN_RUSTC_SEMVER").unwrap_or("NONE");
 
-    format!(
-        "\nCeresDB Version: {build_version}\nGit branch: {git_branch}\nGit commit: {git_commit_id}\nBuild: {build_time}"
-    )
+    [
+        ("\nCeresDB version", build_version),
+        ("Git branch", git_branch),
+        ("Git commit", git_commit_id),
+        ("Build time", build_time),
+        ("Rustc version", rustc_version),
+    ]
+    .iter()
+    .map(|(label, value)| format!("{label}: {value}"))
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 // Parse the raw addr and panic if it is invalid.

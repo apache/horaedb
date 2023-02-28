@@ -139,7 +139,7 @@ pub struct Builder {
 impl Default for Builder {
     fn default() -> Self {
         Self {
-            thread_name: "cse-runtime-worker".to_string(),
+            thread_name: "runtime-worker".to_string(),
             builder: RuntimeBuilder::new_multi_thread(),
         }
     }
