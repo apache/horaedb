@@ -141,7 +141,7 @@ table_engine = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]
-vergen = { version = "5", default-features = false, features = ["build", "git"] }
+vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
 
 # This profile optimizes for good runtime performance.
 [profile.release]
