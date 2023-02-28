@@ -11,7 +11,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdb_client_rs::{
+use ceresdb_client::{
     db_client::{Builder, DbClient, Mode},
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
@@ -20,7 +20,7 @@ use sql::{
     ast::{Statement, TableName},
     parser::Parser,
 };
-use sqlness::Database;
+use sqlness::{Database, QueryContext};
 use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 
 const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
@@ -42,7 +42,7 @@ pub struct CeresDB {
 
 #[async_trait]
 impl Database for CeresDB {
-    async fn query(&self, query: String) -> Box<dyn Display> {
+    async fn query(&self, _context: QueryContext, query: String) -> Box<dyn Display> {
         Self::execute(query, self.db_client.clone()).await
     }
 }
