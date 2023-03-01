@@ -8,7 +8,7 @@
 
 [中文](./README-CN.md)
 
-CeresDB is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
+CeresDB is a high-performance, distributed, cloud native time-series database.
 
 ## Documentation
 - [User Guide](https://docs.ceresdb.io/)
