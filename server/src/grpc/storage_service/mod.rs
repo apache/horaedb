@@ -454,10 +454,9 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 ///
 /// The caller must ENSURE that the HandlerContext's schema_config is not None.
 pub fn write_table_request_to_create_table_plan(
-    schema_config: Option<&SchemaConfig>,
+    schema_config: &SchemaConfig,
     write_table: &WriteTableRequest,
 ) -> Result<CreateTablePlan> {
-    let schema_config = schema_config.unwrap();
     Ok(CreateTablePlan {
         engine: schema_config.default_engine_type.clone(),
         if_not_exists: true,
@@ -769,7 +768,6 @@ mod tests {
     #[test]
     fn test_build_schema_from_write_table_request() {
         let schema_config = SchemaConfig {
-            auto_create_tables: true,
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             ..SchemaConfig::default()
         };

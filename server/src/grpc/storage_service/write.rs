@@ -181,22 +181,20 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
         if table.is_none() {
-            if let Some(config) = schema_config {
-                if config.auto_create_tables {
-                    create_table(
-                        request_id,
-                        catalog,
-                        schema,
-                        instance.clone(),
-                        &write_table_req,
-                        schema_config,
-                        deadline,
-                    )
-                    .await?;
-                    // try to get table again
-                    table = try_get_table(catalog, schema, instance.clone(), table_name)?;
-                }
-            }
+            // TODO: remove this clone?
+            let schema_config = schema_config.cloned().unwrap_or_default();
+            create_table(
+                request_id,
+                catalog,
+                schema,
+                instance.clone(),
+                &write_table_req,
+                &schema_config,
+                deadline,
+            )
+            .await?;
+            // try to get table again
+            table = try_get_table(catalog, schema, instance.clone(), table_name)?;
         }
 
         match table {
@@ -259,7 +257,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     schema: &str,
     instance: InstanceRef<Q>,
     write_table_req: &WriteTableRequest,
-    schema_config: Option<&SchemaConfig>,
+    schema_config: &SchemaConfig,
     deadline: Option<Instant>,
 ) -> Result<()> {
     let create_table_plan =

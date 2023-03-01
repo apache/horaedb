@@ -34,7 +34,6 @@ pub struct ShardView {
 #[serde(default)]
 pub struct SchemaShardView {
     pub schema: String,
-    pub auto_create_tables: bool,
     pub default_engine_type: String,
     pub default_timestamp_column_name: String,
     pub shard_views: Vec<ShardView>,
@@ -44,7 +43,6 @@ impl Default for SchemaShardView {
     fn default() -> Self {
         Self {
             schema: "".to_string(),
-            auto_create_tables: true,
             default_engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             shard_views: Vec::default(),
@@ -55,7 +53,6 @@ impl Default for SchemaShardView {
 impl From<SchemaShardView> for SchemaConfig {
     fn from(view: SchemaShardView) -> Self {
         Self {
-            auto_create_tables: view.auto_create_tables,
             default_engine_type: view.default_engine_type,
             default_timestamp_column_name: view.default_timestamp_column_name,
         }
