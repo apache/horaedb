@@ -112,7 +112,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            level: "debug".to_string(),
+            level: "info".to_string(),
             enable_async: true,
             async_channel_len: 102400,
         }

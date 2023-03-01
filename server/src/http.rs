@@ -100,7 +100,8 @@ pub const DEFAULT_MAX_BODY_SIZE: u64 = 64 * 1024;
 
 /// Http service
 ///
-/// Note that the service does not owns the runtime
+/// Endpoints beginning with /debug are for internal use, and may subject to
+/// breaking changes.
 pub struct Service<Q> {
     engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
