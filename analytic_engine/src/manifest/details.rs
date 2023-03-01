@@ -431,6 +431,16 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
             return Ok(None);
         };
 
+        // TODO: currently, this is just a workaround to handle the case where the error
+        // is not thrown as [object_store::ObjectStoreError::NotFound].
+        if let Err(err) = &get_res {
+            let err_msg = err.to_string().to_lowercase();
+            if err_msg.contains("404") || err_msg.contains("not found") {
+                warn!("Current snapshot file doesn't exist, err:{}", err);
+                return Ok(None);
+            }
+        }
+
         let payload = get_res
             .context(FetchSnapshot)?
             .bytes()
