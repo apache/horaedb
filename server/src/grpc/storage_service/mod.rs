@@ -769,7 +769,6 @@ mod tests {
     #[test]
     fn test_build_schema_from_write_table_request() {
         let schema_config = SchemaConfig {
-            auto_create_tables: true,
             default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
             ..SchemaConfig::default()
         };
