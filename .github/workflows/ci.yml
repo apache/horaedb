@@ -184,7 +184,7 @@ jobs:
         run: docker build -f ./Dockerfile-CI -t ${CERESDB_IMAGE_NAME} .
       - name: Run black-box tests
         run: |
-          make test-black
+          make integration-test
         env:
           RUST_BACKTRACE: "1"
       - name: Upload Logs

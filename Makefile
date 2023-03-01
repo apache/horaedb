@@ -30,7 +30,7 @@ build-arm64:
 test:
 	cd $(DIR); cargo test --workspace -- --test-threads=4
 
-test-black:
+integration-test:
 	cd $(DIR)/integration_tests; make run
 
 # grcov needs build first, then run test
