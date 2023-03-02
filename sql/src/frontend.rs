@@ -7,6 +7,7 @@ use std::{sync::Arc, time::Instant};
 use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
+use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;
 
@@ -29,14 +30,24 @@ pub enum Error {
     },
 
     // TODO(yingwen): Should we store stmt here?
-    #[snafu(display("Failed to create plan, err:{}", source))]
-    CreatePlan { source: crate::planner::Error },
+    #[snafu(display("Failed to create plan, plan_type:{}, err:{}", plan_type, source))]
+    CreatePlan {
+        plan_type: String,
+        source: crate::planner::Error,
+    },
 
     #[snafu(display("Invalid prom request, err:{}", source))]
     InvalidPromRequest { source: crate::promql::Error },
 
     #[snafu(display("Expr is not found in prom request.\nBacktrace:\n{}", backtrace))]
     ExprNotFoundInPromRequest { backtrace: Backtrace },
+
+    // invalid sql is quite common, so we don't provide a backtrace now.
+    #[snafu(display("invalid influxql, influxql:{}, err:{}", influxql, parse_err))]
+    InvalidInfluxql {
+        influxql: String,
+        parse_err: influxdb_influxql_parser::common::ParseError,
+    },
 }
 
 define_result!(Error);
@@ -90,6 +101,21 @@ impl<P> Frontend<P> {
         let expr = expr.context(ExprNotFoundInPromRequest)?;
         Expr::try_from(expr).context(InvalidPromRequest)
     }
+
+    /// Parse the sql and returns the statements
+    pub fn parse_influxql(
+        &self,
+        _ctx: &mut Context,
+        influxql: &str,
+    ) -> Result<Vec<InfluxqlStatement>> {
+        match influxdb_influxql_parser::parse_statements(influxql) {
+            Ok(stmts) => Ok(stmts),
+            Err(e) => Err(Error::InvalidInfluxql {
+                influxql: influxql.to_string(),
+                parse_err: e,
+            }),
+        }
+    }
 }
 
 impl<P: MetaProvider> Frontend<P> {
@@ -97,7 +123,9 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn statement_to_plan(&self, ctx: &mut Context, stmt: Statement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.statement_to_plan(stmt).context(CreatePlan)
+        planner
+            .statement_to_plan(stmt)
+            .context(CreatePlan { plan_type: "sql" })
     }
 
     pub fn promql_expr_to_plan(
@@ -107,7 +135,21 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<(Plan, Arc<ColumnNames>)> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.promql_expr_to_plan(expr).context(CreatePlan)
+        planner.promql_expr_to_plan(expr).context(CreatePlan {
+            plan_type: "promql",
+        })
+    }
+
+    pub fn influxql_stmt_to_plan(
+        &self,
+        ctx: &mut Context,
+        stmt: InfluxqlStatement,
+    ) -> Result<Plan> {
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+
+        planner.influxql_stmt_to_plan(stmt).context(CreatePlan {
+            plan_type: "influxql",
+        })
     }
 
     pub fn write_req_to_plan(
