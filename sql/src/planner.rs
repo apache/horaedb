@@ -270,7 +270,7 @@ pub struct Planner<'a, P: MetaProvider> {
     read_parallelism: usize,
 }
 
-impl<'a, P: MetaProvider + 'a> Planner<'a, P> {
+impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Create a new logical planner
     pub fn new(provider: &'a P, request_id: RequestId, read_parallelism: usize) -> Self {
         Self {
@@ -333,53 +333,54 @@ impl<'a, P: MetaProvider + 'a> Planner<'a, P> {
             engine: schema_config.default_engine_type.clone(),
             if_not_exists: true,
             table: write_table.table.clone(),
-            table_schema: Self::build_schema_from_write_table_request(schema_config, write_table)?,
+            table_schema: build_schema_from_write_table_request(schema_config, write_table)?,
             options: HashMap::default(),
             partition_info: None,
         }))
     }
+}
 
-    fn build_column_schema(
-        column_name: &str,
-        data_type: DatumKind,
-        is_tag: bool,
-    ) -> Result<ColumnSchema> {
-        let builder = column_schema::Builder::new(column_name.to_string(), data_type)
-            .is_nullable(true)
-            .is_tag(is_tag);
+fn build_column_schema(
+    column_name: &str,
+    data_type: DatumKind,
+    is_tag: bool,
+) -> Result<ColumnSchema> {
+    let builder = column_schema::Builder::new(column_name.to_string(), data_type)
+        .is_nullable(true)
+        .is_tag(is_tag);
 
-        builder.build().with_context(|| InvalidColumnSchema {
-            column_name: column_name.to_string(),
-        })
-    }
+    builder.build().with_context(|| InvalidColumnSchema {
+        column_name: column_name.to_string(),
+    })
+}
 
-    fn build_schema_from_write_table_request(
-        schema_config: &SchemaConfig,
-        write_table_req: &WriteTableRequest,
-    ) -> Result<Schema> {
-        let WriteTableRequest {
-            table,
-            field_names,
-            tag_names,
-            entries: write_entries,
-        } = write_table_req;
+fn build_schema_from_write_table_request(
+    schema_config: &SchemaConfig,
+    write_table_req: &WriteTableRequest,
+) -> Result<Schema> {
+    let WriteTableRequest {
+        table,
+        field_names,
+        tag_names,
+        entries: write_entries,
+    } = write_table_req;
 
-        let mut schema_builder =
-            SchemaBuilder::with_capacity(field_names.len()).auto_increment_column_id(true);
+    let mut schema_builder =
+        SchemaBuilder::with_capacity(field_names.len()).auto_increment_column_id(true);
 
-        ensure!(
-            !write_entries.is_empty(),
-            InvalidWriteEntry {
-                msg: "empty write entries".to_string()
-            }
-        );
+    ensure!(
+        !write_entries.is_empty(),
+        InvalidWriteEntry {
+            msg: "empty write entries".to_string()
+        }
+    );
 
-        let mut name_column_map: BTreeMap<_, ColumnSchema> = BTreeMap::new();
-        for write_entry in write_entries {
-            // parse tags
-            for tag in &write_entry.tags {
-                let name_index = tag.name_index as usize;
-                ensure!(
+    let mut name_column_map: BTreeMap<_, ColumnSchema> = BTreeMap::new();
+    for write_entry in write_entries {
+        // parse tags
+        for tag in &write_entry.tags {
+            let name_index = tag.name_index as usize;
+            ensure!(
                 name_index < tag_names.len(),
                 InvalidWriteEntry{
                     msg: format!(
@@ -388,160 +389,149 @@ impl<'a, P: MetaProvider + 'a> Planner<'a, P> {
                 }
             );
 
-                let tag_name = &tag_names[name_index];
+            let tag_name = &tag_names[name_index];
 
-                let tag_value = tag
-                    .value
-                    .as_ref()
-                    .with_context(|| InvalidWriteEntry {
-                        msg: format!("Tag({tag_name}) value is needed, table_name:{table} "),
-                    })?
-                    .value
-                    .as_ref()
-                    .with_context(|| InvalidWriteEntry {
-                        msg: format!(
-                            "Tag({tag_name}) value type is not supported, table_name:{table}"
-                        ),
-                    })?;
-
-                let data_type = Self::try_get_data_type_from_value(tag_value)?;
-
-                if let Some(column_schema) = name_column_map.get(tag_name) {
-                    Self::ensure_data_type_compatible(
-                        table,
-                        tag_name,
-                        true,
-                        data_type,
-                        column_schema,
-                    )?;
-                }
-                let column_schema = Self::build_column_schema(tag_name, data_type, true)?;
-                name_column_map.insert(tag_name, column_schema);
-            }
-
-            // parse fields
-            for field_group in &write_entry.field_groups {
-                for field in &field_group.fields {
-                    if (field.name_index as usize) < field_names.len() {
-                        let field_name = &field_names[field.name_index as usize];
-                        let field_value = field
-                            .value
-                            .as_ref()
-                            .with_context(|| InvalidWriteEntry {
-                                msg: format!("Field({field_name}) value is needed, table:{table}"),
-                            })?
-                            .value
-                            .as_ref()
-                            .with_context(|| InvalidWriteEntry {
-                                msg: format!(
-                                "Field({field_name}) value type is not supported, table:{table}"
-                            ),
-                            })?;
-
-                        let data_type = Self::try_get_data_type_from_value(field_value)?;
-
-                        if let Some(column_schema) = name_column_map.get(field_name) {
-                            Self::ensure_data_type_compatible(
-                                table,
-                                field_name,
-                                false,
-                                data_type,
-                                column_schema,
-                            )?;
-                        }
-
-                        let column_schema =
-                            Self::build_column_schema(field_name, data_type, false)?;
-                        name_column_map.insert(field_name, column_schema);
-                    }
-                }
-            }
-        }
-
-        // Timestamp column will be the last column
-        let timestamp_column_schema = column_schema::Builder::new(
-            schema_config.default_timestamp_column_name.clone(),
-            DatumKind::Timestamp,
-        )
-        .is_nullable(false)
-        .build()
-        .with_context(|| InvalidColumnSchema {
-            column_name: schema_config.default_timestamp_column_name.clone(),
-        })?;
-
-        // Use (tsid, timestamp) as primary key.
-        let tsid_column_schema =
-            column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-                .is_nullable(false)
-                .build()
-                .with_context(|| InvalidColumnSchema {
-                    column_name: TSID_COLUMN.to_string(),
+            let tag_value = tag
+                .value
+                .as_ref()
+                .with_context(|| InvalidWriteEntry {
+                    msg: format!("Tag({tag_name}) value is needed, table_name:{table} "),
+                })?
+                .value
+                .as_ref()
+                .with_context(|| InvalidWriteEntry {
+                    msg: format!("Tag({tag_name}) value type is not supported, table_name:{table}"),
                 })?;
 
+            let data_type = try_get_data_type_from_value(tag_value)?;
+
+            if let Some(column_schema) = name_column_map.get(tag_name) {
+                ensure_data_type_compatible(table, tag_name, true, data_type, column_schema)?;
+            }
+            let column_schema = build_column_schema(tag_name, data_type, true)?;
+            name_column_map.insert(tag_name, column_schema);
+        }
+
+        // parse fields
+        for field_group in &write_entry.field_groups {
+            for field in &field_group.fields {
+                if (field.name_index as usize) < field_names.len() {
+                    let field_name = &field_names[field.name_index as usize];
+                    let field_value = field
+                        .value
+                        .as_ref()
+                        .with_context(|| InvalidWriteEntry {
+                            msg: format!("Field({field_name}) value is needed, table:{table}"),
+                        })?
+                        .value
+                        .as_ref()
+                        .with_context(|| InvalidWriteEntry {
+                            msg: format!(
+                                "Field({field_name}) value type is not supported, table:{table}"
+                            ),
+                        })?;
+
+                    let data_type = try_get_data_type_from_value(field_value)?;
+
+                    if let Some(column_schema) = name_column_map.get(field_name) {
+                        ensure_data_type_compatible(
+                            table,
+                            field_name,
+                            false,
+                            data_type,
+                            column_schema,
+                        )?;
+                    }
+
+                    let column_schema = build_column_schema(field_name, data_type, false)?;
+                    name_column_map.insert(field_name, column_schema);
+                }
+            }
+        }
+    }
+
+    // Timestamp column will be the last column
+    let timestamp_column_schema = column_schema::Builder::new(
+        schema_config.default_timestamp_column_name.clone(),
+        DatumKind::Timestamp,
+    )
+    .is_nullable(false)
+    .build()
+    .with_context(|| InvalidColumnSchema {
+        column_name: schema_config.default_timestamp_column_name.clone(),
+    })?;
+
+    // Use (tsid, timestamp) as primary key.
+    let tsid_column_schema =
+        column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
+            .is_nullable(false)
+            .build()
+            .with_context(|| InvalidColumnSchema {
+                column_name: TSID_COLUMN.to_string(),
+            })?;
+
+    schema_builder = schema_builder
+        .add_key_column(tsid_column_schema)
+        .context(BuildTableSchema {})?
+        .add_key_column(timestamp_column_schema)
+        .context(BuildTableSchema {})?;
+
+    for col in name_column_map.into_values() {
         schema_builder = schema_builder
-            .add_key_column(tsid_column_schema)
-            .context(BuildTableSchema {})?
-            .add_key_column(timestamp_column_schema)
+            .add_normal_column(col)
             .context(BuildTableSchema {})?;
-
-        for col in name_column_map.into_values() {
-            schema_builder = schema_builder
-                .add_normal_column(col)
-                .context(BuildTableSchema {})?;
-        }
-
-        schema_builder.build().context(BuildTableSchema {})
     }
 
-    fn ensure_data_type_compatible(
-        table_name: &str,
-        column_name: &str,
-        is_tag: bool,
-        data_type: DatumKind,
-        column_schema: &ColumnSchema,
-    ) -> Result<()> {
-        ensure!(
-            column_schema.is_tag == is_tag,
-            InvalidWriteEntry {
-                msg: format!(
-                    "Duplicated column: {column_name} in fields and tags for table: {table_name}",
-                ),
-            }
-        );
-
-        ensure!(
-            column_schema.data_type == data_type,
-            InvalidWriteEntry {
-                msg: format!(
-                    "Column: {} in table: {} data type is not same, expected: {}, actual: {}",
-                    column_name, table_name, column_schema.data_type, data_type,
-                ),
-            }
-        );
-
-        Ok(())
-    }
-
-    fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
-        match value {
-            PbValue::Float64Value(_) => Ok(DatumKind::Double),
-            PbValue::StringValue(_) => Ok(DatumKind::String),
-            PbValue::Int64Value(_) => Ok(DatumKind::Int64),
-            PbValue::Float32Value(_) => Ok(DatumKind::Float),
-            PbValue::Int32Value(_) => Ok(DatumKind::Int32),
-            PbValue::Int16Value(_) => Ok(DatumKind::Int16),
-            PbValue::Int8Value(_) => Ok(DatumKind::Int8),
-            PbValue::BoolValue(_) => Ok(DatumKind::Boolean),
-            PbValue::Uint64Value(_) => Ok(DatumKind::UInt64),
-            PbValue::Uint32Value(_) => Ok(DatumKind::UInt32),
-            PbValue::Uint16Value(_) => Ok(DatumKind::UInt16),
-            PbValue::Uint8Value(_) => Ok(DatumKind::UInt8),
-            PbValue::TimestampValue(_) => Ok(DatumKind::Timestamp),
-            PbValue::VarbinaryValue(_) => Ok(DatumKind::Varbinary),
-        }
-    }
+    schema_builder.build().context(BuildTableSchema {})
 }
 
+fn ensure_data_type_compatible(
+    table_name: &str,
+    column_name: &str,
+    is_tag: bool,
+    data_type: DatumKind,
+    column_schema: &ColumnSchema,
+) -> Result<()> {
+    ensure!(
+        column_schema.is_tag == is_tag,
+        InvalidWriteEntry {
+            msg: format!(
+                "Duplicated column: {column_name} in fields and tags for table: {table_name}",
+            ),
+        }
+    );
+
+    ensure!(
+        column_schema.data_type == data_type,
+        InvalidWriteEntry {
+            msg: format!(
+                "Column: {} in table: {} data type is not same, expected: {}, actual: {}",
+                column_name, table_name, column_schema.data_type, data_type,
+            ),
+        }
+    );
+
+    Ok(())
+}
+
+fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
+    match value {
+        PbValue::Float64Value(_) => Ok(DatumKind::Double),
+        PbValue::StringValue(_) => Ok(DatumKind::String),
+        PbValue::Int64Value(_) => Ok(DatumKind::Int64),
+        PbValue::Float32Value(_) => Ok(DatumKind::Float),
+        PbValue::Int32Value(_) => Ok(DatumKind::Int32),
+        PbValue::Int16Value(_) => Ok(DatumKind::Int16),
+        PbValue::Int8Value(_) => Ok(DatumKind::Int8),
+        PbValue::BoolValue(_) => Ok(DatumKind::Boolean),
+        PbValue::Uint64Value(_) => Ok(DatumKind::UInt64),
+        PbValue::Uint32Value(_) => Ok(DatumKind::UInt32),
+        PbValue::Uint16Value(_) => Ok(DatumKind::UInt16),
+        PbValue::Uint8Value(_) => Ok(DatumKind::UInt8),
+        PbValue::TimestampValue(_) => Ok(DatumKind::Timestamp),
+        PbValue::VarbinaryValue(_) => Ok(DatumKind::Varbinary),
+    }
+}
 /// A planner wraps the datafusion's logical planner, and delegate sql like
 /// select/explain to datafusion's planner.
 struct PlannerDelegate<'a, P: MetaProvider> {
@@ -1302,6 +1292,9 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 #[cfg(test)]
 mod tests {
 
+    use ceresdbproto::storage::{
+        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
+    };
     use sqlparser::ast::Value;
 
     use super::*;
@@ -2246,6 +2239,127 @@ mod tests {
             let parsed = parse_data_value_from_expr(expect.kind(), &mut source)
                 .expect("Fail to parse data value");
             assert_eq!(parsed, expect);
+        }
+    }
+
+    const TAG1: &str = "host";
+    const TAG2: &str = "idc";
+    const FIELD1: &str = "cpu";
+    const FIELD2: &str = "memory";
+    const FIELD3: &str = "log";
+    const FIELD4: &str = "ping_ok";
+    const TABLE: &str = "pod_system_table";
+    const TIMESTAMP_COLUMN: &str = "custom_timestamp";
+
+    fn make_tag(name_index: u32, val: &str) -> Tag {
+        Tag {
+            name_index,
+            value: Some(PbValue {
+                value: Some(value::Value::StringValue(val.to_string())),
+            }),
+        }
+    }
+
+    fn make_field(name_index: u32, val: value::Value) -> Field {
+        Field {
+            name_index,
+            value: Some(PbValue { value: Some(val) }),
+        }
+    }
+
+    fn generate_write_table_request() -> WriteTableRequest {
+        let tag1 = make_tag(0, "test.host");
+        let tag2 = make_tag(1, "test.idc");
+        let tags = vec![tag1, tag2];
+
+        let field1 = make_field(0, value::Value::Float64Value(100.0));
+        let field2 = make_field(1, value::Value::Float64Value(1024.0));
+        let field3 = make_field(2, value::Value::StringValue("test log".to_string()));
+        let field4 = make_field(3, value::Value::BoolValue(true));
+
+        let field_group1 = FieldGroup {
+            timestamp: 1000,
+            fields: vec![field1.clone(), field4],
+        };
+        let field_group2 = FieldGroup {
+            timestamp: 2000,
+            fields: vec![field1, field2],
+        };
+        let field_group3 = FieldGroup {
+            timestamp: 3000,
+            fields: vec![field3],
+        };
+
+        let write_entry = WriteSeriesEntry {
+            tags,
+            field_groups: vec![field_group1, field_group2, field_group3],
+        };
+
+        let tag_names = vec![TAG1.to_string(), TAG2.to_string()];
+        let field_names = vec![
+            FIELD1.to_string(),
+            FIELD2.to_string(),
+            FIELD3.to_string(),
+            FIELD4.to_string(),
+        ];
+
+        WriteTableRequest {
+            table: TABLE.to_string(),
+            tag_names,
+            field_names,
+            entries: vec![write_entry],
+        }
+    }
+
+    #[test]
+    fn test_build_schema_from_write_table_request() {
+        let schema_config = SchemaConfig {
+            default_timestamp_column_name: TIMESTAMP_COLUMN.to_string(),
+            ..SchemaConfig::default()
+        };
+        let write_table_request = generate_write_table_request();
+
+        let schema = build_schema_from_write_table_request(&schema_config, &write_table_request);
+        assert!(schema.is_ok());
+
+        let schema = schema.unwrap();
+
+        assert_eq!(8, schema.num_columns());
+        assert_eq!(2, schema.num_primary_key_columns());
+        assert_eq!(TIMESTAMP_COLUMN, schema.timestamp_name());
+        let tsid = schema.tsid_column();
+        assert!(tsid.is_some());
+
+        let key_columns = schema.key_columns();
+        assert_eq!(2, key_columns.len());
+        assert_eq!("tsid", key_columns[0].name);
+        assert_eq!(TIMESTAMP_COLUMN, key_columns[1].name);
+
+        let columns = schema.normal_columns();
+        assert_eq!(6, columns.len());
+
+        // sorted by column names because of btree
+        assert_eq!(FIELD1, columns[0].name);
+        assert!(!columns[0].is_tag);
+        assert_eq!(DatumKind::Double, columns[0].data_type);
+        assert_eq!(TAG1, columns[1].name);
+        assert!(columns[1].is_tag);
+        assert_eq!(DatumKind::String, columns[1].data_type);
+        assert_eq!(TAG2, columns[2].name);
+        assert!(columns[2].is_tag);
+        assert_eq!(DatumKind::String, columns[2].data_type);
+        assert_eq!(FIELD3, columns[3].name);
+        assert!(!columns[3].is_tag);
+        assert_eq!(DatumKind::String, columns[3].data_type);
+        assert_eq!(FIELD2, columns[4].name);
+        assert!(!columns[4].is_tag);
+        assert_eq!(DatumKind::Double, columns[4].data_type);
+        assert_eq!(FIELD4, columns[5].name);
+        assert!(!columns[5].is_tag);
+        assert_eq!(DatumKind::Boolean, columns[5].data_type);
+
+        for column in columns {
+            assert!(column.is_nullable);
         }
     }
 }
