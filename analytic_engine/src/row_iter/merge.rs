@@ -667,10 +667,6 @@ impl MergeIterator {
             return Ok(());
         }
 
-        debug!(
-            "Merge iterator init, table_id:{:?}, request_id:{}, schema:{:?}",
-            self.table_id, self.request_id, self.schema
-        );
         let init_start = Instant::now();
 
         // Initialize buffered streams concurrently.
@@ -681,14 +677,20 @@ impl MergeIterator {
                 .push(async move { BufferedStream::build(schema, origin_stream).await });
         }
 
+        debug!(
+            "Merge iterator init, table_id:{:?}, request_id:{}, schema:{:?}, num of init streams:{}",
+            self.table_id, self.request_id, self.schema, init_buffered_streams.len()
+        );
+
         let pull_start = Instant::now();
-        let buffered_streams = try_join_all(init_buffered_streams).await?;
         self.metrics.scan_duration += pull_start.elapsed();
-        self.metrics.scan_count += buffered_streams.len();
+        self.metrics.scan_count += init_buffered_streams.len();
 
         // Push streams to heap.
         let current_schema = &self.schema;
-        for buffered_stream in buffered_streams {
+        for init_buffered_stream in init_buffered_streams {
+            let buffered_stream = init_buffered_stream.await?;
+
             let stream_schema = buffered_stream.schema();
             ensure!(
                 current_schema == stream_schema,
