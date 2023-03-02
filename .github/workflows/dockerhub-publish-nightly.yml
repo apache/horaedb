@@ -11,7 +11,7 @@ env:
 
 jobs:
   docker:
-    # if: github.repository_owner == 'CeresDB'
+    if: github.repository_owner == 'CeresDB'
     runs-on: ubuntu-latest
     permissions:
       contents: read
