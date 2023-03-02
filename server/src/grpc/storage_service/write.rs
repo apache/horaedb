@@ -25,12 +25,15 @@ use interpreters::{context::Context as InterpreterContext, factory::Factory, int
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
-use sql::plan::{InsertPlan, Plan};
+use sql::{
+    frontend::{Context, Frontend},
+    plan::{InsertPlan, Plan},
+    provider::CatalogMetaProvider,
+};
 use table_engine::table::TableRef;
 
 use crate::{
     grpc::storage_service::{
-        self,
         error::{self, ErrNoCause, ErrWithCause, Result},
         HandlerContext,
     },
@@ -260,22 +263,26 @@ async fn create_table<Q: QueryExecutor + 'static>(
     schema_config: &SchemaConfig,
     deadline: Option<Instant>,
 ) -> Result<()> {
-    let create_table_plan =
-        storage_service::write_table_request_to_create_table_plan(schema_config, write_table_req)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!(
-                    "Failed to build creating table plan, table:{}",
-                    write_table_req.table
-                ),
-            })?;
+    let provider = CatalogMetaProvider {
+        manager: instance.catalog_manager.clone(),
+        default_catalog: catalog,
+        default_schema: schema,
+        function_registry: &*instance.function_registry,
+    };
+    let frontend = Frontend::new(provider);
+    let mut ctx = Context::new(request_id, deadline);
+    let plan = frontend
+        .write_req_to_plan(&mut ctx, schema_config, write_table_req)
+        .box_err()
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!(
+                "Failed to build creating table plan, table:{}",
+                write_table_req.table
+            ),
+        })?;
 
-    debug!(
-        "Grpc handle create table begin, table:{}, schema:{:?}",
-        create_table_plan.table, create_table_plan.table_schema,
-    );
-    let plan = Plan::Create(create_table_plan);
+    debug!("Grpc handle create table begin, plan:{:?}", plan);
 
     instance
         .limiter
