@@ -7,10 +7,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   docker:
-    if: github.repository_owner == 'CeresDB'
+    # if: github.repository_owner == 'CeresDB'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,9 +30,14 @@ jobs:
       - name: Set Environment Variables
         run: |
             echo "BUILD_DATE=$(TZ=':Asia/Shanghai' date '+%Y%m%d')" >> $GITHUB_ENV
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       - name: Build and Push CeresDB Server Docker Image
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
-          tags: ceresdb/ceresdb-server:nightly-${{ env.BUILD_DATE }}
+          tags: nightly-${{ env.BUILD_DATE }}
