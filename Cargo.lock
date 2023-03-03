@@ -4793,6 +4793,7 @@ version = "1.0.0"
 dependencies = [
  "arrow 32.0.0",
  "async-trait",
+ "chrono",
  "common_types",
  "common_util",
  "datafusion",
