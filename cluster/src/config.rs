@@ -7,6 +7,7 @@ use table_engine::ANALYTIC_ENGINE_TYPE;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
+// TODO: move this to table_engine crates
 pub struct SchemaConfig {
     pub default_engine_type: String,
     pub default_timestamp_column_name: String,

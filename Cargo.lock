@@ -5933,6 +5933,7 @@ dependencies = [
  "async-trait",
  "catalog",
  "ceresdbproto",
+ "cluster",
  "common_types",
  "common_util",
  "datafusion",

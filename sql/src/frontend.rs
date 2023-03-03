@@ -4,7 +4,8 @@
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::prometheus::Expr as PromExpr;
+use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
+use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table;
@@ -107,5 +108,18 @@ impl<P: MetaProvider> Frontend<P> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)
+    }
+
+    pub fn write_req_to_plan(
+        &self,
+        ctx: &mut Context,
+        schema_config: &SchemaConfig,
+        write_table: &WriteTableRequest,
+    ) -> Result<Plan> {
+        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+
+        planner
+            .write_req_to_plan(schema_config, write_table)
+            .context(CreatePlan)
     }
 }
