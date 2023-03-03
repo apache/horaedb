@@ -136,7 +136,6 @@ impl MemCache {
         self.partitions
             .iter()
             .map(|part| part.keys().join(","))
-            .into_iter()
             .enumerate()
             .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
             .collect::<Vec<_>>()
