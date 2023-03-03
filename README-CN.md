@@ -151,5 +151,5 @@ CeresDB 基于 [Apache License 2.0](./LICENSE) 协议。
 - [CeresDB 社区角色](docs/community/ROLES-CN.md)
 - [Slack](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
 - 邮箱: ceresdbservice@gmail.com
-- [微信群](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
+- [官方微信公众号](https://github.com/CeresDB/assets/blob/main/WeChatQRCode.jpg)
 - 钉钉群: CeresDB 开源: 44602802
