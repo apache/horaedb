@@ -1,5 +1,6 @@
 use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
 
+use super::stmt_rewriter::StmtRewriter;
 use crate::{influxql::error::*, plan::Plan, provider::MetaProvider};
 
 pub(crate) struct Planner<'a, P: MetaProvider> {
@@ -28,6 +29,9 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     fn rewrite_stmt(&self, stmt: InfluxqlStatement) -> Result<InfluxqlStatement> {
+        let mut stmt = stmt;
+        let stmt_rewriter = StmtRewriter::new(&self.sql_planner);
+        // stmt_rewriter.rewrite_from(&mut stmt)?;
         todo!()
     }
 }

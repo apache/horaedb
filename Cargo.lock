@@ -6024,6 +6024,7 @@ dependencies = [
  "df_operator",
  "hashbrown 0.12.3",
  "influxdb_influxql_parser",
+ "itertools",
  "log",
  "paste 1.0.8",
  "regex",
