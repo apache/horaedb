@@ -30,7 +30,7 @@ use table_engine::{
 use tempfile::TempDir;
 
 use crate::{
-    setup::{EngineBuilder, MemWalsOpener, RocksDBWalsOpener, WalsOpener},
+    setup::{EngineBuilder, MemWalsOpener, OpenedWals, RocksDBWalsOpener, WalsOpener},
     storage_options::{LocalOptions, ObjectStoreOptions, StorageOptions},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RocksDBConfig, WalStorageConfig,
@@ -109,6 +109,7 @@ pub struct TestContext<T: EngineBuildContext> {
     runtimes: Arc<EngineRuntimes>,
     context: T,
     pub engine: Option<TableEngineRef>,
+    pub opened_wals: Option<OpenedWals>,
     pub schema_id: SchemaId,
     last_table_seq: u32,
 
@@ -118,19 +119,23 @@ pub struct TestContext<T: EngineBuildContext> {
 impl<T: EngineBuildContext> TestContext<T> {
     pub async fn open(&mut self) {
         let config = self.context.config();
-        let opened_wals = self
-            .context
-            .wal_opener()
-            .open_wals(&config.wal, self.runtimes.clone())
-            .await
-            .unwrap();
+        let opened_wals = if let Some(opened_wals) = self.opened_wals.take() {
+            opened_wals
+        } else {
+            self.context
+                .wal_opener()
+                .open_wals(&config.wal, self.runtimes.clone())
+                .await
+                .unwrap()
+        };
 
         let engine_builder = EngineBuilder {
             config: &config,
             router: None,
             engine_runtimes: self.runtimes.clone(),
-            opened_wals,
+            opened_wals: opened_wals.clone(),
         };
+        self.opened_wals = Some(opened_wals);
         self.engine = Some(engine_builder.build().await.unwrap());
     }
 
@@ -384,11 +389,12 @@ impl TestEnv {
         Builder::default()
     }
 
-    pub fn new_context<T: EngineBuildContext>(&self, engine_context: T) -> TestContext<T> {
+    pub fn new_context<T: EngineBuildContext>(&self, build_context: T) -> TestContext<T> {
         TestContext {
-            context: engine_context,
+            context: build_context,
             runtimes: self.runtimes.clone(),
             engine: None,
+            opened_wals: None,
             schema_id: SchemaId::from_u32(100),
             last_table_seq: 1,
             name_to_tables: HashMap::new(),
