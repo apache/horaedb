@@ -7,7 +7,9 @@ use table_engine::table::FlushRequest;
 
 use crate::{
     compaction::SizeTieredCompactionOptions,
-    tests::util::{self, EngineContext, MemoryEngineContext, RocksDBEngineContext, TestEnv},
+    tests::util::{
+        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestEnv,
+    },
 };
 
 #[test]
@@ -20,11 +22,11 @@ fn test_table_compact_current_segment_rocks() {
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/427"]
 fn test_table_compact_current_segment_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_table_compact_current_segment(memory_ctx);
 }
 
-fn test_table_compact_current_segment<T: EngineContext>(engine_context: T) {
+fn test_table_compact_current_segment<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 

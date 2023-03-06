@@ -6,10 +6,7 @@ use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{
-        EngineBuilder, KafkaWalEngineBuilder, ObkvWalEngineBuilder, RocksDBWalEngineBuilder,
-        WalsOpener,
-    },
+    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, CatalogRef};
@@ -85,30 +82,18 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
     runtimes.bg_runtime.block_on(async {
         match config.analytic.wal {
             WalStorageConfig::RocksDB(_) => {
-                run_server_with_runtimes::<RocksDBWalEngineBuilder>(
-                    config,
-                    engine_runtimes,
-                    log_runtime,
-                )
-                .await
+                run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
+                    .await
             }
 
             WalStorageConfig::Obkv(_) => {
-                run_server_with_runtimes::<ObkvWalEngineBuilder>(
-                    config,
-                    engine_runtimes,
-                    log_runtime,
-                )
-                .await;
+                run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, log_runtime)
+                    .await;
             }
 
             WalStorageConfig::Kafka(_) => {
-                run_server_with_runtimes::<KafkaWalEngineBuilder>(
-                    config,
-                    engine_runtimes,
-                    log_runtime,
-                )
-                .await;
+                run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, log_runtime)
+                    .await;
             }
         }
     });
@@ -181,7 +166,7 @@ async fn run_server_with_runtimes<T>(
 }
 
 // Build proxy for all table engines.
-async fn build_table_engine_proxy<'a>(engine_builder: EngineBuilder<'a>) -> Arc<TableEngineProxy> {
+async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<TableEngineProxy> {
     // Create memory engine
     let memory = MemoryTableEngine;
     // Create analytic engine

@@ -157,10 +157,10 @@ pub trait WalsOpener: Send + Sync + Default {
 
 /// [RocksEngine] builder.
 #[derive(Default)]
-pub struct RocksDBWalEngineBuilder;
+pub struct RocksDBWalsOpener;
 
 #[async_trait]
-impl WalsOpener for RocksDBWalEngineBuilder {
+impl WalsOpener for RocksDBWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
@@ -201,10 +201,10 @@ impl WalsOpener for RocksDBWalEngineBuilder {
 
 /// [ReplicatedEngine] builder.
 #[derive(Default)]
-pub struct ObkvWalEngineBuilder;
+pub struct ObkvWalsOpener;
 
 #[async_trait]
-impl WalsOpener for ObkvWalEngineBuilder {
+impl WalsOpener for ObkvWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
@@ -239,12 +239,12 @@ impl WalsOpener for ObkvWalEngineBuilder {
 /// All engine built by this builder share same [MemoryImpl] instance, so the
 /// data wrote by the engine still remains after the engine dropped.
 #[derive(Default)]
-pub struct MemWalEngineBuilder {
+pub struct MemWalsOpener {
     table_kv: MemoryImpl,
 }
 
 #[async_trait]
-impl WalsOpener for MemWalEngineBuilder {
+impl WalsOpener for MemWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,
@@ -272,10 +272,10 @@ impl WalsOpener for MemWalEngineBuilder {
 }
 
 #[derive(Default)]
-pub struct KafkaWalEngineBuilder;
+pub struct KafkaWalsOpener;
 
 #[async_trait]
-impl WalsOpener for KafkaWalEngineBuilder {
+impl WalsOpener for KafkaWalsOpener {
     async fn open_wals(
         &self,
         config: &WalStorageConfig,

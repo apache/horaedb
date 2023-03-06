@@ -11,7 +11,8 @@ use table_engine::table::ReadOrder;
 use crate::{
     table_options,
     tests::util::{
-        self, EngineContext, MemoryEngineContext, RocksDBEngineContext, TestContext, TestEnv,
+        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestContext,
+        TestEnv,
     },
 };
 
@@ -23,11 +24,11 @@ fn test_multi_table_read_write_rocks() {
 
 #[test]
 fn test_multi_table_read_write_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_multi_table_read_write(memory_ctx);
 }
 
-fn test_multi_table_read_write<T: EngineContext>(engine_context: T) {
+fn test_multi_table_read_write<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
@@ -175,11 +176,11 @@ fn test_table_write_read_rocks() {
 
 #[test]
 fn test_table_write_read_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_table_write_read(memory_ctx);
 }
 
-fn test_table_write_read<T: EngineContext>(engine_context: T) {
+fn test_table_write_read<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
@@ -254,11 +255,11 @@ fn test_table_write_get_rocks() {
 
 #[test]
 fn test_table_write_get_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_table_write_get(memory_ctx);
 }
 
-fn test_table_write_get<T: EngineContext>(engine_context: T) {
+fn test_table_write_get<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
@@ -330,10 +331,10 @@ fn test_table_write_get_override_rocks() {
 
 #[test]
 fn test_table_write_get_override_mem_wal() {
-    test_table_write_get_override::<MemoryEngineContext>();
+    test_table_write_get_override::<MemoryEngineBuildContext>();
 }
 
-fn test_table_write_get_override<T: EngineContext>() {
+fn test_table_write_get_override<T: EngineBuildContext>() {
     test_table_write_get_override_case::<T>(FlushPoint::NoFlush, T::default());
 
     test_table_write_get_override_case::<T>(FlushPoint::AfterFirstWrite, T::default());
@@ -351,7 +352,7 @@ enum FlushPoint {
     FirstAndOverwrite,
 }
 
-fn test_table_write_get_override_case<T: EngineContext>(
+fn test_table_write_get_override_case<T: EngineBuildContext>(
     flush_point: FlushPoint,
     engine_context: T,
 ) {
@@ -511,15 +512,15 @@ fn test_db_write_buffer_size_rocks() {
 
 #[test]
 fn test_db_write_buffer_size_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     // Use different table name to avoid metrics collision.
     test_db_write_buffer_size("test_db_write_buffer_size_mem_wal", memory_ctx);
 }
 
-fn test_db_write_buffer_size<T: EngineContext>(table_name: &str, engine_context: T) {
-    let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context(engine_context);
-    test_ctx.context.config.db_write_buffer_size = 1;
+fn test_db_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_context: T) {
+    let mut env = TestEnv::builder().build();
+    env.config.db_write_buffer_size = 1;
+    let test_ctx = env.new_context(engine_context);
     test_write_buffer_size_overflow(table_name, env, test_ctx);
 }
 
@@ -532,19 +533,19 @@ fn test_space_write_buffer_size_rocks() {
 
 #[test]
 fn test_space_write_buffer_size_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     // Use different table name to avoid metrics collision.
     test_space_write_buffer_size("test_space_write_buffer_size_mem_wal", memory_ctx);
 }
 
-fn test_space_write_buffer_size<T: EngineContext>(table_name: &str, engine_context: T) {
-    let env = TestEnv::builder().build();
-    let mut test_ctx = env.new_context(engine_context);
-    test_ctx.context.config.space_write_buffer_size = 1;
+fn test_space_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_context: T) {
+    let mut env = TestEnv::builder().build();
+    env.config.db_write_buffer_size = 1;
+    let test_ctx = env.new_context(engine_context);
     test_write_buffer_size_overflow(table_name, env, test_ctx);
 }
 
-fn test_write_buffer_size_overflow<T: EngineContext>(
+fn test_write_buffer_size_overflow<T: EngineBuildContext>(
     test_table_name: &str,
     env: TestEnv,
     test_ctx: TestContext<T>,
@@ -665,11 +666,11 @@ fn test_table_write_read_reverse_rocks() {
 
 #[test]
 fn test_table_write_read_reverse_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_table_write_read_reverse(memory_ctx);
 }
 
-fn test_table_write_read_reverse<T: EngineContext>(engine_context: T) {
+fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
@@ -752,11 +753,11 @@ fn test_table_write_read_reverse_after_flush_rocks() {
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_mem_wal() {
-    let memory_ctx = MemoryEngineContext::default();
+    let memory_ctx = MemoryEngineBuildContext::default();
     test_table_write_read_reverse_after_flush(memory_ctx);
 }
 
-fn test_table_write_read_reverse_after_flush<T: EngineContext>(engine_context: T) {
+fn test_table_write_read_reverse_after_flush<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
 
