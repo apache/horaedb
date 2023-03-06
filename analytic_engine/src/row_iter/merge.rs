@@ -224,6 +224,7 @@ impl<'a> MergeBuilder<'a> {
             // Use the schema after projection as the schema of the merge iterator.
             self.config.projected_schema.to_record_schema_with_key(),
             streams,
+            self.ssts,
             self.config.merge_iter_options,
             self.config.reverse,
             Metrics::new(self.memtables.len(), sst_streams_num, sst_ids),
@@ -619,6 +620,8 @@ pub struct MergeIterator {
     schema: RecordSchemaWithKey,
     record_batch_builder: RecordBatchWithKeyBuilder,
     origin_streams: Vec<SequencedRecordBatchStream>,
+    /// ssts are kept here to avoid them from being purged.
+    _ssts: Vec<Vec<FileHandle>>,
     /// Any [BufferedStream] in the hot heap is not empty.
     hot: BinaryHeap<HeapBufferedStream>,
     /// Any [BufferedStream] in the cold heap is not empty.
@@ -629,11 +632,13 @@ pub struct MergeIterator {
 }
 
 impl MergeIterator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         table_id: TableId,
         request_id: RequestId,
         schema: RecordSchemaWithKey,
         streams: Vec<SequencedRecordBatchStream>,
+        ssts: Vec<Vec<FileHandle>>,
         iter_options: IterOptions,
         reverse: bool,
         metrics: Metrics,
@@ -646,6 +651,7 @@ impl MergeIterator {
             request_id,
             inited: false,
             schema,
+            _ssts: ssts,
             record_batch_builder,
             origin_streams: streams,
             hot: BinaryHeap::with_capacity(heap_cap),
@@ -914,6 +920,7 @@ mod tests {
             RequestId::next_id(),
             schema.to_record_schema_with_key(),
             streams,
+            Vec::new(),
             IterOptions::default(),
             false,
             Metrics::new(1, 1, vec![]),
@@ -966,6 +973,7 @@ mod tests {
             RequestId::next_id(),
             schema.to_record_schema_with_key(),
             streams,
+            Vec::new(),
             IterOptions::default(),
             true,
             Metrics::new(1, 1, vec![]),
