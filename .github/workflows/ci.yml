@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [ nightly-2022-08-08 ]
+        rust: [ nightly-2023-02-02 ]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -92,7 +92,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [ nightly-2022-08-08 ]
+        rust: [ nightly-2023-02-02 ]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -136,7 +136,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [ nightly-2022-08-08 ]
+        rust: [ nightly-2023-02-02 ]
     steps:
       - name: Download CeresMeta Code
         uses: actions/checkout@v3
@@ -202,7 +202,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        rust: [ nightly-2022-08-08 ]
+        rust: [ nightly-2023-02-02 ]
     steps:
       - uses: actions/checkout@v3
         with:

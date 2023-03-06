@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [nightly-2022-08-08]
+        rust: [ nightly-2023-02-02 ]
     steps:
       - uses: actions/checkout@v3
         with:
