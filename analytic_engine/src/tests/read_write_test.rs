@@ -11,14 +11,14 @@ use table_engine::table::ReadOrder;
 use crate::{
     table_options,
     tests::util::{
-        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestContext,
+        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestContext,
         TestEnv,
     },
 };
 
 #[test]
 fn test_multi_table_read_write_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_multi_table_read_write(rocksdb_ctx);
 }
 
@@ -170,7 +170,7 @@ fn test_multi_table_read_write<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_read_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_table_write_read(rocksdb_ctx);
 }
 
@@ -249,7 +249,7 @@ fn test_table_write_read<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_get_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_table_write_get(rocksdb_ctx);
 }
 
@@ -326,7 +326,7 @@ fn test_table_write_get<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_table_write_get_override_rocks() {
-    test_table_write_get_override::<RocksDBEngineContext>();
+    test_table_write_get_override::<RocksDBEngineBuildContext>();
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn test_table_write_get_override_case<T: EngineBuildContext>(
 
 #[test]
 fn test_db_write_buffer_size_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     // Use different table name to avoid metrics collision.
     test_db_write_buffer_size("test_db_write_buffer_size_rocks", rocksdb_ctx);
 }
@@ -526,7 +526,7 @@ fn test_db_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_con
 
 #[test]
 fn test_space_write_buffer_size_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     // Use different table name to avoid metrics collision.
     test_space_write_buffer_size("test_space_write_buffer_size_rocks", rocksdb_ctx);
 }
@@ -660,7 +660,7 @@ fn test_write_buffer_size_overflow<T: EngineBuildContext>(
 
 #[test]
 fn test_table_write_read_reverse_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_table_write_read_reverse(rocksdb_ctx);
 }
 
@@ -746,7 +746,7 @@ fn test_table_write_read_reverse<T: EngineBuildContext>(engine_context: T) {
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/313"]
 fn test_table_write_read_reverse_after_flush_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_table_write_read_reverse_after_flush(rocksdb_ctx);
 }
 

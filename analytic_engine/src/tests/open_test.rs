@@ -3,12 +3,12 @@
 //! Engine open test.
 
 use crate::tests::util::{
-    EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestEnv,
+    EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestEnv,
 };
 
 #[test]
 fn test_open_engine_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_open_engine(rocksdb_ctx);
 }
 

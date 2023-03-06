@@ -8,14 +8,14 @@ use table_engine::table::FlushRequest;
 use crate::{
     compaction::SizeTieredCompactionOptions,
     tests::util::{
-        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestEnv,
+        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestEnv,
     },
 };
 
 #[test]
 #[ignore = "https://github.com/CeresDB/ceresdb/issues/427"]
 fn test_table_compact_current_segment_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_table_compact_current_segment(rocksdb_ctx);
 }
 

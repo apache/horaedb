@@ -9,12 +9,14 @@ use table_engine::table::AlterSchemaRequest;
 
 use crate::tests::{
     table::FixedSchemaTable,
-    util::{self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineContext, TestEnv},
+    util::{
+        self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestEnv,
+    },
 };
 
 #[test]
 fn test_drop_table_once_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_drop_table_once(rocksdb_ctx);
 }
 
@@ -57,7 +59,7 @@ fn test_drop_table_once<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_drop_table_again_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_drop_table_again(rocksdb_ctx);
 }
 
@@ -94,7 +96,7 @@ fn test_drop_table_again<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_drop_create_table_mixed_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_drop_create_table_mixed(rocksdb_ctx);
 }
 
@@ -207,7 +209,7 @@ fn test_drop_create_same_table_case<T: EngineBuildContext>(flush: bool, engine_c
 
 #[test]
 fn test_drop_create_same_table_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_drop_create_same_table(rocksdb_ctx);
 }
 
@@ -225,7 +227,7 @@ fn test_drop_create_same_table<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_alter_schema_drop_create_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_schema_drop_create(rocksdb_ctx);
 }
 
@@ -282,7 +284,7 @@ fn test_alter_schema_drop_create<T: EngineBuildContext>(engine_context: T) {
 
 #[test]
 fn test_alter_options_drop_create_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_options_drop_create(rocksdb_ctx);
 }
 

@@ -905,7 +905,7 @@ impl Schema for SchemaImpl {
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineContext, TestEnv};
+    use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
     use catalog::{
         consts::DEFAULT_CATALOG,
         manager::Manager,
@@ -961,7 +961,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_catalog_by_name_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_catalog_by_name_schema_by_name(rocksdb_ctx).await;
     }
 
@@ -1007,7 +1007,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_create_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_maybe_create_schema_by_name(rocksdb_ctx).await;
     }
 
@@ -1039,7 +1039,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_create_table(rocksdb_ctx).await;
     }
 
@@ -1085,7 +1085,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_drop_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_drop_table(rocksdb_ctx).await;
     }
 

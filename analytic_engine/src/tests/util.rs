@@ -459,11 +459,11 @@ pub trait EngineBuildContext: Clone + Default {
     fn config(&self) -> Config;
 }
 
-pub struct RocksDBEngineContext {
+pub struct RocksDBEngineBuildContext {
     config: Config,
 }
 
-impl Default for RocksDBEngineContext {
+impl Default for RocksDBEngineBuildContext {
     fn default() -> Self {
         let dir = tempfile::tempdir().unwrap();
 
@@ -489,7 +489,7 @@ impl Default for RocksDBEngineContext {
     }
 }
 
-impl Clone for RocksDBEngineContext {
+impl Clone for RocksDBEngineBuildContext {
     fn clone(&self) -> Self {
         let mut config = self.config.clone();
 
@@ -514,7 +514,7 @@ impl Clone for RocksDBEngineContext {
     }
 }
 
-impl EngineBuildContext for RocksDBEngineContext {
+impl EngineBuildContext for RocksDBEngineBuildContext {
     type WalOpener = RocksDBWalsOpener;
 
     fn wal_opener(&self) -> Self::WalOpener {

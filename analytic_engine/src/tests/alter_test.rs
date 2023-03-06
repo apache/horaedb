@@ -20,15 +20,15 @@ use crate::{
         row_util,
         table::{self, FixedSchemaTable},
         util::{
-            EngineBuildContext, MemoryEngineBuildContext, Null, RocksDBEngineContext, TestContext,
-            TestEnv,
+            EngineBuildContext, MemoryEngineBuildContext, Null, RocksDBEngineBuildContext,
+            TestContext, TestEnv,
         },
     },
 };
 
 #[test]
 fn test_alter_table_add_column_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_table_add_column(rocksdb_ctx);
 }
 
@@ -369,7 +369,7 @@ async fn check_read_row_group<T: EngineBuildContext>(
 
 #[test]
 fn test_alter_table_options_rocks() {
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_alter_table_options(rocksdb_ctx);
 }
 
