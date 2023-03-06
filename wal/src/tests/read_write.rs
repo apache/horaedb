@@ -182,11 +182,12 @@ fn test_move_from_nodes<B: WalBuilder>(builder: B) {
         .await;
 
         // The table are move to node 2 but in the same shard, so its region id is still
-        // 0, but region version changed to 1 for distinguishing this moving.
+        // 0.
+        wal_1.close_region(region_id).await.unwrap();
         let wal_2 = env.build_wal().await;
         simple_read_write_with_range_and_wal(
             &env,
-            wal_2,
+            wal_2.clone(),
             WalLocation::new(region_id, table_id),
             10,
             20,
@@ -194,8 +195,7 @@ fn test_move_from_nodes<B: WalBuilder>(builder: B) {
         .await;
 
         // Finally, the table with the same shard is moved to node 1 again.
-        // If version changed, wal manager can distinguish that
-        // the region info in it is outdated, it should reopen the region.
+        wal_2.close_region(region_id).await.unwrap();
         simple_read_write_with_range_and_wal(
             &env,
             wal_1,

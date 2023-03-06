@@ -7,7 +7,7 @@ use std::{fmt, str, sync::Arc};
 use async_trait::async_trait;
 use common_types::SequenceNumber;
 use common_util::error::BoxError;
-use log::{info, warn};
+use log::info;
 use snafu::ResultExt;
 use table_kv::TableKv;
 
@@ -118,10 +118,12 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .context(Delete)
     }
 
-    async fn close_region(&self, region: RegionId) -> Result<()> {
-        warn!("Close region is not supported yet, region:{}", region);
-
-        Ok(())
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.namespace
+            .close_region(region_id)
+            .await
+            .box_err()
+            .context(CloseRegion { region: region_id })
     }
 
     async fn close_gracefully(&self) -> Result<()> {

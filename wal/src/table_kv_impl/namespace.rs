@@ -26,7 +26,8 @@ use crate::{
     kv_encoder::CommonLogKey,
     log_batch::LogWriteBatch,
     manager::{
-        self, ReadContext, ReadRequest, ScanContext, ScanRequest, SequenceNumber, WalLocation,
+        self, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest, SequenceNumber,
+        WalLocation,
     },
     table_kv_impl::{
         consts, encoding,
@@ -636,6 +637,15 @@ impl<T: TableKv> NamespaceInner<T> {
         Ok(common_types::MIN_SEQUENCE_NUMBER)
     }
 
+    /// Close the region.
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        let mut table_units = self.table_units.write().unwrap();
+        // remote the table unit belongs to this region.
+        table_units.retain(|_, v| v.region_id() != region_id);
+
+        Ok(())
+    }
+
     /// Read log from this namespace. Note that the iterating the iterator may
     /// still block caller thread now.
     async fn read_log(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<TableLogIterator<T>> {
@@ -1112,6 +1122,10 @@ impl<T: TableKv> Namespace<T> {
     /// Get last sequence number of this table unit.
     pub async fn last_sequence(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.inner.last_sequence(location).await
+    }
+
+    pub async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.inner.close_region(region_id).await
     }
 
     /// Read log from this namespace. Note that the iterating the iterator may
