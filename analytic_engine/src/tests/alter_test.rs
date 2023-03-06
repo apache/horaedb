@@ -15,6 +15,7 @@ use log::info;
 use table_engine::table::AlterSchemaRequest;
 
 use crate::{
+    setup::WalsOpener,
     table_options::TableOptions,
     tests::{
         row_util,
@@ -110,7 +111,7 @@ fn add_columns(schema_builder: schema::Builder) -> schema::Builder {
         .unwrap()
 }
 
-async fn alter_schema_same_schema_version_case<T: EngineBuildContext>(
+async fn alter_schema_same_schema_version_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
 ) {
@@ -132,7 +133,7 @@ async fn alter_schema_same_schema_version_case<T: EngineBuildContext>(
     assert!(res.is_err());
 }
 
-async fn alter_schema_old_pre_version_case<T: EngineBuildContext>(
+async fn alter_schema_old_pre_version_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
 ) {
@@ -158,7 +159,7 @@ async fn alter_schema_old_pre_version_case<T: EngineBuildContext>(
     assert!(res.is_err());
 }
 
-async fn alter_schema_add_column_case<T: EngineBuildContext>(
+async fn alter_schema_add_column_case<T: WalsOpener>(
     test_ctx: &mut TestContext<T>,
     table_name: &str,
     start_ms: i64,
@@ -346,7 +347,7 @@ async fn alter_schema_add_column_case<T: EngineBuildContext>(
     .await;
 }
 
-async fn check_read_row_group<T: EngineBuildContext>(
+async fn check_read_row_group<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     msg: &str,
     table_name: &str,
@@ -419,7 +420,7 @@ fn test_alter_table_options<T: EngineBuildContext>(engine_context: T) {
     });
 }
 
-async fn alter_immutable_option_case<T: EngineBuildContext>(
+async fn alter_immutable_option_case<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     table_name: &str,
     opt_key: &str,
@@ -440,7 +441,7 @@ async fn alter_immutable_option_case<T: EngineBuildContext>(
     assert_options_eq(&old_opts, &opts_after_alter);
 }
 
-async fn alter_mutable_option_case<T: EngineBuildContext>(
+async fn alter_mutable_option_case<T: WalsOpener>(
     test_ctx: &mut TestContext<T>,
     table_name: &str,
     opt_key: &str,

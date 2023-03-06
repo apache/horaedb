@@ -9,6 +9,7 @@ use log::info;
 use table_engine::table::ReadOrder;
 
 use crate::{
+    setup::WalsOpener,
     table_options,
     tests::util::{
         self, EngineBuildContext, MemoryEngineBuildContext, RocksDBEngineBuildContext, TestContext,
@@ -545,7 +546,7 @@ fn test_space_write_buffer_size<T: EngineBuildContext>(table_name: &str, engine_
     test_write_buffer_size_overflow(table_name, env, test_ctx);
 }
 
-fn test_write_buffer_size_overflow<T: EngineBuildContext>(
+fn test_write_buffer_size_overflow<T: WalsOpener>(
     test_table_name: &str,
     env: TestEnv,
     test_ctx: TestContext<T>,

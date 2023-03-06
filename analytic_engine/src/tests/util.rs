@@ -47,7 +47,7 @@ impl From<Null> for Datum {
     }
 }
 
-pub async fn check_read_with_order<T: EngineBuildContext>(
+pub async fn check_read_with_order<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -69,7 +69,7 @@ pub async fn check_read_with_order<T: EngineBuildContext>(
     }
 }
 
-pub async fn check_read<T: EngineBuildContext>(
+pub async fn check_read<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -87,7 +87,7 @@ pub async fn check_read<T: EngineBuildContext>(
     .await
 }
 
-pub async fn check_get<T: EngineBuildContext>(
+pub async fn check_get<T: WalsOpener>(
     test_ctx: &TestContext<T>,
     fixed_schema_table: &FixedSchemaTable,
     msg: &str,
@@ -105,9 +105,10 @@ pub async fn check_get<T: EngineBuildContext>(
     }
 }
 
-pub struct TestContext<T: EngineBuildContext> {
+pub struct TestContext<T> {
+    config: Config,
+    wals_opener: T,
     runtimes: Arc<EngineRuntimes>,
-    context: T,
     pub engine: Option<TableEngineRef>,
     pub opened_wals: Option<OpenedWals>,
     pub schema_id: SchemaId,
@@ -116,21 +117,19 @@ pub struct TestContext<T: EngineBuildContext> {
     name_to_tables: HashMap<String, TableRef>,
 }
 
-impl<T: EngineBuildContext> TestContext<T> {
+impl<T: WalsOpener> TestContext<T> {
     pub async fn open(&mut self) {
-        let config = self.context.config();
         let opened_wals = if let Some(opened_wals) = self.opened_wals.take() {
             opened_wals
         } else {
-            self.context
-                .wal_opener()
-                .open_wals(&config.wal, self.runtimes.clone())
+            self.wals_opener
+                .open_wals(&self.config.wal, self.runtimes.clone())
                 .await
                 .unwrap()
         };
 
         let engine_builder = EngineBuilder {
-            config: &config,
+            config: &self.config,
             router: None,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
@@ -372,7 +371,7 @@ impl<T: EngineBuildContext> TestContext<T> {
     }
 }
 
-impl<T: EngineBuildContext> TestContext<T> {
+impl<T> TestContext<T> {
     pub fn clone_engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
     }
@@ -390,8 +389,11 @@ impl TestEnv {
     }
 
     pub fn new_context<T: EngineBuildContext>(&self, build_context: T) -> TestContext<T> {
+        let config = build_context.config();
+        let wals_opener = build_context.wals_opener();
         TestContext {
-            context: build_context,
+            config,
+            wals_opener,
             runtimes: self.runtimes.clone(),
             engine: None,
             opened_wals: None,
@@ -459,9 +461,9 @@ impl Default for Builder {
 }
 
 pub trait EngineBuildContext: Clone + Default {
-    type WalOpener: WalsOpener;
+    type WalsOpener: WalsOpener;
 
-    fn wal_opener(&self) -> Self::WalOpener;
+    fn wal_opener(&self) -> Self::WalsOpener;
     fn config(&self) -> Config;
 }
 
