@@ -109,9 +109,9 @@ pub struct TestContext<T> {
     config: Config,
     wals_opener: T,
     runtimes: Arc<EngineRuntimes>,
-    pub engine: Option<TableEngineRef>,
-    pub opened_wals: Option<OpenedWals>,
-    pub schema_id: SchemaId,
+    engine: Option<TableEngineRef>,
+    opened_wals: Option<OpenedWals>,
+    schema_id: SchemaId,
     last_table_seq: u32,
 
     name_to_tables: HashMap<String, TableRef>,
@@ -372,6 +372,10 @@ impl<T: WalsOpener> TestContext<T> {
 }
 
 impl<T> TestContext<T> {
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+
     pub fn clone_engine(&self) -> TableEngineRef {
         self.engine.clone().unwrap()
     }
@@ -388,9 +392,13 @@ impl TestEnv {
         Builder::default()
     }
 
-    pub fn new_context<T: EngineBuildContext>(&self, build_context: T) -> TestContext<T> {
+    pub fn new_context<T: EngineBuildContext>(
+        &self,
+        build_context: T,
+    ) -> TestContext<T::WalsOpener> {
         let config = build_context.config();
         let wals_opener = build_context.wals_opener();
+
         TestContext {
             config,
             wals_opener,
@@ -463,7 +471,7 @@ impl Default for Builder {
 pub trait EngineBuildContext: Clone + Default {
     type WalsOpener: WalsOpener;
 
-    fn wal_opener(&self) -> Self::WalsOpener;
+    fn wals_opener(&self) -> Self::WalsOpener;
     fn config(&self) -> Config;
 }
 
@@ -523,9 +531,9 @@ impl Clone for RocksDBEngineBuildContext {
 }
 
 impl EngineBuildContext for RocksDBEngineBuildContext {
-    type WalOpener = RocksDBWalsOpener;
+    type WalsOpener = RocksDBWalsOpener;
 
-    fn wal_opener(&self) -> Self::WalOpener {
+    fn wals_opener(&self) -> Self::WalsOpener {
         RocksDBWalsOpener::default()
     }
 
@@ -563,9 +571,9 @@ impl Default for MemoryEngineBuildContext {
 }
 
 impl EngineBuildContext for MemoryEngineBuildContext {
-    type WalOpener = MemWalsOpener;
+    type WalsOpener = MemWalsOpener;
 
-    fn wal_opener(&self) -> Self::WalOpener {
+    fn wals_opener(&self) -> Self::WalsOpener {
         MemWalsOpener::default()
     }
 
