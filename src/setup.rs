@@ -263,7 +263,7 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         config: &config.analytic,
         router: None,
         engine_runtimes: runtimes.clone(),
-        opened_wals,
+        opened_wals: opened_wals.clone(),
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
@@ -314,6 +314,7 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .router(router)
+        .opened_wals(opened_wals)
         .schema_config_provider(schema_config_provider)
         .local_tables_recoverer(local_tables_recoverer)
 }
