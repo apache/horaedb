@@ -5,6 +5,7 @@
 pub mod planner;
 pub(crate) mod stmt_rewriter;
 pub(crate) mod util;
+pub(crate) mod stmt_converter;
 pub mod error {
     use common_util::error::GenericError;
     use snafu::{Backtrace, Snafu};
