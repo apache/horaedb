@@ -162,6 +162,8 @@ impl<P: MetaProvider> Frontend<P> {
 
         planner
             .write_req_to_plan(schema_config, write_table)
-            .context(CreatePlan)
+            .context(CreatePlan {
+                plan_type: "internal write",
+            })
     }
 }

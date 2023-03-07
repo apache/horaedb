@@ -1,8 +1,13 @@
-use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use super::stmt_rewriter::StmtRewriter;
+use common_util::error::BoxError;
+use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+use snafu::ResultExt;
+use table_engine::table::TableRef;
+
 use crate::{influxql::error::*, plan::Plan, provider::MetaProvider};
 
+#[allow(dead_code)]
 pub(crate) struct Planner<'a, P: MetaProvider> {
     sql_planner: crate::planner::PlannerDelegate<'a, P>,
 }
@@ -27,11 +32,21 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             InfluxqlStatement::Explain(_) => todo!(),
         }
     }
+}
 
-    fn rewrite_stmt(&self, stmt: InfluxqlStatement) -> Result<InfluxqlStatement> {
-        let mut stmt = stmt;
-        let stmt_rewriter = StmtRewriter::new(&self.sql_planner);
-        // stmt_rewriter.rewrite_from(&mut stmt)?;
-        todo!()
+pub trait MeasurementProvider {
+    fn measurement(&self, measurement_name: &str) -> Result<Option<TableRef>>;
+}
+
+pub(crate) struct MeasurementProviderImpl<'a, P: MetaProvider>(
+    crate::planner::PlannerDelegate<'a, P>,
+);
+
+impl<'a, P: MetaProvider> MeasurementProvider for MeasurementProviderImpl<'a, P> {
+    fn measurement(&self, measurement_name: &str) -> Result<Option<TableRef>> {
+        self.0
+            .find_table(measurement_name)
+            .box_err()
+            .context(FindTableWithCause)
     }
 }

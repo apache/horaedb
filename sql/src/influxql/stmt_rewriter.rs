@@ -1,4 +1,6 @@
-use std::{collections::HashSet, ops::ControlFlow};
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
+use std::{collections::BTreeSet, ops::ControlFlow};
 
 use common_util::error::BoxError;
 use influxdb_influxql_parser::{
@@ -13,20 +15,32 @@ use influxdb_influxql_parser::{
 use itertools::{Either, Itertools};
 use snafu::{ensure, OptionExt, ResultExt};
 
-use super::util;
-use crate::{influxql::error::*, provider::MetaProvider};
+use super::{planner::MeasurementProvider, util};
+use crate::influxql::error::*;
 
-pub(crate) struct StmtRewriter<'a, P: MetaProvider> {
-    sql_planner: &'a crate::planner::PlannerDelegate<'a, P>,
+/// Rewriter for the influxql statement
+///
+/// It will rewrite statement before converting it to sql statement.
+// Partial copy from influxdb_iox.
+pub(crate) struct StmtRewriter<'a> {
+    measurement_provider: &'a dyn MeasurementProvider,
 }
 
-// Partial copy from influxdb_iox.
-impl<'a, P: MetaProvider> StmtRewriter<'a, P> {
-    pub fn new(sql_planner: &'a crate::planner::PlannerDelegate<'a, P>) -> Self {
-        Self { sql_planner }
+impl<'a> StmtRewriter<'a> {
+    #[allow(dead_code)]
+    pub fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
+        Self {
+            measurement_provider,
+        }
     }
 
-    pub fn rewrite_from(&self, stmt: &mut SelectStatement) -> Result<()> {
+    #[allow(dead_code)]
+    pub fn rewrite(&self, stmt: &mut SelectStatement) -> Result<()> {
+        self.rewrite_from(stmt)?;
+        self.rewrite_field_list(stmt)
+    }
+
+    fn rewrite_from(&self, stmt: &mut SelectStatement) -> Result<()> {
         let mut new_from = Vec::new();
         for ms in stmt.from.iter() {
             match ms {
@@ -35,11 +49,13 @@ impl<'a, P: MetaProvider> StmtRewriter<'a, P> {
                         name: MeasurementName::Name(name),
                         ..
                     } => {
-                        let table = self.sql_planner.find_table(name).box_err().context(
-                            RewriteFromWithCause {
+                        let table = self
+                            .measurement_provider
+                            .measurement(name)
+                            .box_err()
+                            .context(RewriteFromWithCause {
                                 msg: format!("measurement not found, measurement:{name}"),
-                            },
-                        )?;
+                            })?;
                         if table.is_some() {
                             new_from.push(ms.clone())
                         }
@@ -96,7 +112,7 @@ impl<'a, P: MetaProvider> StmtRewriter<'a, P> {
                     MeasurementName::Name(name) => {
                         // Get schema, and split columns to tags and fields.
                         let (tags, fields) = self.tags_and_fields_in_measurement(name.as_str())?;
-                        let mut group_by_tags = HashSet::new();
+                        let mut group_by_tags = BTreeSet::new();
                         maybe_rewrite_group_by(&tags, &mut group_by_tags, stmt)?;
                         maybe_rewrite_projection(&tags, &fields, &group_by_tags, stmt)?;
 
@@ -117,14 +133,13 @@ impl<'a, P: MetaProvider> StmtRewriter<'a, P> {
         }
     }
 
-    // TODO: just support from one table now.
     fn tags_and_fields_in_measurement(
         &self,
         measurement_name: &str,
     ) -> Result<(Vec<String>, Vec<String>)> {
         let measurement = self
-            .sql_planner
-            .find_table(measurement_name)
+            .measurement_provider
+            .measurement(measurement_name)
             .box_err()
             .context(RewriteFieldsWithCause {
                 msg: format!("failed to find measurement, measurement:{measurement_name}"),
@@ -135,22 +150,39 @@ impl<'a, P: MetaProvider> StmtRewriter<'a, P> {
 
         // Get schema and split to tags and fields.
         let schema = measurement.schema();
-        let tags_and_fields: (Vec<String>, Vec<String>) =
-            schema.columns().iter().partition_map(|column| {
-                if column.is_tag {
-                    Either::Left(column.name.clone())
+        let tsid_idx_opt = schema.index_of_tsid();
+        let timestamp_key_idx = schema.timestamp_index();
+        let tags_and_fields: (Vec<String>, Vec<String>) = schema
+            .columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(col_idx, col)| {
+                let is_tsid_col = match tsid_idx_opt {
+                    Some(idx) => col_idx == idx,
+                    None => false,
+                };
+                let is_timestamp_key_col = col_idx == timestamp_key_idx;
+
+                if !is_tsid_col && !is_timestamp_key_col {
+                    Some(col)
                 } else {
-                    Either::Right(column.name.clone())
+                    None
+                }
+            })
+            .partition_map(|col| {
+                if col.is_tag {
+                    Either::Left(col.name.clone())
+                } else {
+                    Either::Right(col.name.clone())
                 }
             });
-
         Ok(tags_and_fields)
     }
 }
 
 fn maybe_rewrite_group_by(
     tags: &[String],
-    group_by_tags: &mut HashSet<String>,
+    group_by_tags: &mut BTreeSet<String>,
     stmt: &mut SelectStatement,
 ) -> Result<()> {
     if let Some(group_by) = &stmt.group_by {
@@ -164,7 +196,7 @@ fn maybe_rewrite_group_by(
                 }
 
                 Dimension::Tag(tag) => {
-                    if tags.contains(&tag.to_string()) {
+                    if !tags.contains(&tag.to_string()) {
                         return RewriteFieldsNoCause {
                             msg: format!("group by tag not exist, tag:{tag}, exist tags:{tags:?}"),
                         }
@@ -207,7 +239,7 @@ fn maybe_rewrite_group_by(
 fn maybe_rewrite_projection(
     tags: &[String],
     fields: &[String],
-    groub_by_tags: &HashSet<String>,
+    groub_by_tags: &BTreeSet<String>,
     stmt: &mut SelectStatement,
 ) -> Result<()> {
     let mut new_fields = Vec::new();
@@ -347,4 +379,82 @@ fn maybe_rewrite_projection(
     stmt.fields = FieldList::new(new_fields);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use datafusion::sql::TableReference;
+    use influxdb_influxql_parser::{
+        parse_statements, select::SelectStatement, statement::Statement,
+    };
+
+    use super::StmtRewriter;
+    use crate::{
+        influxql::planner::MeasurementProvider, provider::MetaProvider, tests::MockMetaProvider,
+    };
+
+    impl MeasurementProvider for MockMetaProvider {
+        fn measurement(
+            &self,
+            measurement_name: &str,
+        ) -> crate::influxql::error::Result<Option<table_engine::table::TableRef>> {
+            let table_ref = TableReference::Bare {
+                table: std::borrow::Cow::Borrowed(measurement_name),
+            };
+            Ok(self.table(table_ref).unwrap())
+        }
+    }
+
+    #[test]
+    fn test_wildcard_and_regex_in_projection() {
+        let namespace = MockMetaProvider::default();
+
+        let mut stmt = parse_select("SELECT * FROM influxql_test");
+        rewrite_statement(&namespace, &mut stmt);
+        assert_eq!(
+            "SELECT col1, col2, col3 FROM influxql_test",
+            stmt.to_string()
+        );
+
+        let mut stmt = parse_select("SELECT *::tag FROM influxql_test");
+        rewrite_statement(&namespace, &mut stmt);
+        assert_eq!("SELECT col1, col2 FROM influxql_test", stmt.to_string());
+
+        let mut stmt = parse_select("SELECT *::field FROM influxql_test");
+        rewrite_statement(&namespace, &mut stmt);
+        assert_eq!("SELECT col3 FROM influxql_test", stmt.to_string());
+    }
+
+    #[test]
+    fn test_wildcard_and_regex_in_group_by() {
+        let namespace = MockMetaProvider::default();
+
+        let mut stmt = parse_select("SELECT * FROM influxql_test GROUP BY *");
+        rewrite_statement(&namespace, &mut stmt);
+        assert_eq!(
+            "SELECT col3 FROM influxql_test GROUP BY col1, col2",
+            stmt.to_string()
+        );
+
+        let mut stmt = parse_select("SELECT * FROM influxql_test GROUP BY col1");
+        rewrite_statement(&namespace, &mut stmt);
+        assert_eq!(
+            "SELECT col2, col3 FROM influxql_test GROUP BY col1",
+            stmt.to_string()
+        );
+    }
+
+    pub fn rewrite_statement(provider: &dyn MeasurementProvider, stmt: &mut SelectStatement) {
+        let rewriter = StmtRewriter::new(provider);
+        rewriter.rewrite(stmt).unwrap();
+    }
+
+    /// Returns the InfluxQL [`SelectStatement`] for the specified SQL, `s`.
+    pub fn parse_select(s: &str) -> SelectStatement {
+        let statements = parse_statements(s).unwrap();
+        match statements.first() {
+            Some(Statement::Select(sel)) => *sel.clone(),
+            _ => panic!("expected SELECT statement"),
+        }
+    }
 }

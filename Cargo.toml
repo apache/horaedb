@@ -84,6 +84,7 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 interpreters = { path = "interpreters" }
+itertools = "0.10.5"
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
 parquet_ext = { path = "components/parquet_ext" }
@@ -115,7 +116,6 @@ tokio = { version = "1.25", features = ["full"] }
 wal = { path = "wal" }
 message_queue = { path = "components/message_queue" }
 zstd = { version = "0.12", default-features = false }
-itertools = "0.10.5"
 
 [dependencies]
 analytic_engine = { workspace = true }

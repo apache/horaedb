@@ -27,15 +27,15 @@ datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
+influxdb_influxql_parser = { git = "https://github.com/Rachelint/influxdb_iox.git", branch = "influxql-parser" }
+itertools = { workspace = true }
 log = { workspace = true }
 paste = { workspace = true }
 regex = "1"
+regex-syntax = "0.6.28"
 snafu = { workspace = true }
 sqlparser = { workspace = true }
 table_engine = { workspace = true }
-influxdb_influxql_parser = {git = "https://github.com/Rachelint/influxdb_iox.git", branch = "influxql-parser"}
-regex-syntax = "0.6.28"
-itertools = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }
