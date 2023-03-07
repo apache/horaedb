@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Influxql planner.
+
 use common_util::error::BoxError;
 use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::ResultExt;
@@ -47,6 +49,8 @@ impl<'a, P: MetaProvider> MeasurementProvider for MeasurementProviderImpl<'a, P>
         self.0
             .find_table(measurement_name)
             .box_err()
-            .context(FindTableWithCause)
+            .context(RewriteWithCause {
+                msg: format!("failed to find measurement, measurement:{measurement_name}"),
+            })
     }
 }

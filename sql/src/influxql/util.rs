@@ -1,20 +1,11 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Some utils used process influxql
+
 use influxdb_influxql_parser::string::Regex;
 
-// copy from influxdb_iox.
-/// Removes all `/` patterns that the rust regex library would reject
-/// and rewrites them to their unescaped form.
-///
-/// For example, `\:` is rewritten to `:` as `\:` is not a valid
-/// escape sequence in the `regexp` crate but is valid in golang's
-/// regexp implementation.
-///
-/// This is done for compatibility purposes so that the regular
-/// expression matching in Rust more closely follows the matching in
-/// golang, used by the influx storage rpc.
-///
-/// See <https://github.com/rust-lang/regex/issues/501> for more details
+// Copy from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/e7369449f8975f6f86bc665ea3e1f556c2777145/query_functions/src/regex.rs#L147
 pub fn clean_non_meta_escapes(pattern: &str) -> String {
     if pattern.is_empty() {
         return pattern.to_string();
@@ -64,6 +55,8 @@ pub fn clean_non_meta_escapes(pattern: &str) -> String {
     new_pattern
 }
 
+// Copy from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/e7369449f8975f6f86bc665ea3e1f556c2777145/query_functions/src/regex.rs#L123
 fn is_valid_character_after_escape(c: char) -> bool {
     // same list as https://docs.rs/regex-syntax/0.6.25/src/regex_syntax/ast/parse.rs.html#1445-1538
     match c {
@@ -76,9 +69,45 @@ fn is_valid_character_after_escape(c: char) -> bool {
     }
 }
 
-/// Sanitize an InfluxQL regular expression and create a compiled
-/// [`regex::Regex`].
+// Copy from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/e7369449f8975f6f86bc665ea3e1f556c2777145/iox_query/src/plan/influxql/util.rs#L48
 pub fn parse_regex(re: &Regex) -> std::result::Result<regex::Regex, regex::Error> {
     let pattern = clean_non_meta_escapes(re.as_str());
     regex::Regex::new(&pattern)
+}
+
+mod test {
+    // Copy from influxdb_iox:
+    // https://github.com/influxdata/influxdb_iox/blob/e7369449f8975f6f86bc665ea3e1f556c2777145/query_functions/src/regex.rs#L357
+    #[test]
+    fn test_clean_non_meta_escapes() {
+        let cases = vec![
+            ("", ""),
+            (r#"\"#, r#"\"#),
+            (r#"\\"#, r#"\\"#),
+            // : is not a special meta character
+            (r#"\:"#, r#":"#),
+            // . is a special meta character
+            (r#"\."#, r#"\."#),
+            (r#"foo\"#, r#"foo\"#),
+            (r#"foo\\"#, r#"foo\\"#),
+            (r#"foo\:"#, r#"foo:"#),
+            (r#"foo\xff"#, r#"foo\xff"#),
+            (r#"fo\\o"#, r#"fo\\o"#),
+            (r#"fo\:o"#, r#"fo:o"#),
+            (r#"fo\:o\x123"#, r#"fo:o\x123"#),
+            (r#"fo\:o\x123\:"#, r#"fo:o\x123:"#),
+            (r#"foo\\\:bar"#, r#"foo\\:bar"#),
+            (r#"foo\\\:bar\\\:"#, r#"foo\\:bar\\:"#),
+            ("foo", "foo"),
+        ];
+
+        for (pattern, expected) in cases {
+            let cleaned_pattern = crate::influxql::util::clean_non_meta_escapes(pattern);
+            assert_eq!(
+                cleaned_pattern, expected,
+                "Expected '{pattern}' to be cleaned to '{expected}', got '{cleaned_pattern}'"
+            );
+        }
+    }
 }

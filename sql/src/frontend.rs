@@ -30,11 +30,8 @@ pub enum Error {
     },
 
     // TODO(yingwen): Should we store stmt here?
-    #[snafu(display("Failed to create plan, plan_type:{}, err:{}", plan_type, source))]
-    CreatePlan {
-        plan_type: String,
-        source: crate::planner::Error,
-    },
+    #[snafu(display("Failed to create plan, err:{}", source))]
+    CreatePlan { source: crate::planner::Error },
 
     #[snafu(display("Invalid prom request, err:{}", source))]
     InvalidPromRequest { source: crate::promql::Error },
@@ -123,9 +120,7 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn statement_to_plan(&self, ctx: &mut Context, stmt: Statement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner
-            .statement_to_plan(stmt)
-            .context(CreatePlan { plan_type: "sql" })
+        planner.statement_to_plan(stmt).context(CreatePlan)
     }
 
     pub fn promql_expr_to_plan(
@@ -135,9 +130,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<(Plan, Arc<ColumnNames>)> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.promql_expr_to_plan(expr).context(CreatePlan {
-            plan_type: "promql",
-        })
+        planner.promql_expr_to_plan(expr).context(CreatePlan)
     }
 
     pub fn influxql_stmt_to_plan(
@@ -147,9 +140,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.influxql_stmt_to_plan(stmt).context(CreatePlan {
-            plan_type: "influxql",
-        })
+        planner.influxql_stmt_to_plan(stmt).context(CreatePlan)
     }
 
     pub fn write_req_to_plan(
@@ -162,8 +153,6 @@ impl<P: MetaProvider> Frontend<P> {
 
         planner
             .write_req_to_plan(schema_config, write_table)
-            .context(CreatePlan {
-                plan_type: "internal write",
-            })
+            .context(CreatePlan)
     }
 }

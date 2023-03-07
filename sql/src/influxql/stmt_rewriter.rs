@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Influxql statement rewriter
+
 use std::{collections::BTreeSet, ops::ControlFlow};
 
 use common_util::error::BoxError;
@@ -49,16 +51,12 @@ impl<'a> StmtRewriter<'a> {
                         name: MeasurementName::Name(name),
                         ..
                     } => {
-                        let table = self
-                            .measurement_provider
-                            .measurement(name)
-                            .box_err()
-                            .context(RewriteFromWithCause {
+                        let _ = self.measurement_provider.measurement(name)?.context(
+                            RewriteNoCause {
                                 msg: format!("measurement not found, measurement:{name}"),
-                            })?;
-                        if table.is_some() {
-                            new_from.push(ms.clone())
-                        }
+                            },
+                        )?;
+                        new_from.push(ms.clone());
                     }
                     QualifiedMeasurementName {
                         name: MeasurementName::Regex(_),
@@ -111,7 +109,12 @@ impl<'a> StmtRewriter<'a> {
                 match name {
                     MeasurementName::Name(name) => {
                         // Get schema, and split columns to tags and fields.
-                        let (tags, fields) = self.tags_and_fields_in_measurement(name.as_str())?;
+                        let (tags, fields) = self
+                            .tags_and_fields_in_measurement(name.as_str())
+                            .box_err()
+                            .context(RewriteWithCause {
+                                msg: "rewrite field list fail to find measurement",
+                            })?;
                         let mut group_by_tags = BTreeSet::new();
                         maybe_rewrite_group_by(&tags, &mut group_by_tags, stmt)?;
                         maybe_rewrite_projection(&tags, &fields, &group_by_tags, stmt)?;
@@ -119,7 +122,7 @@ impl<'a> StmtRewriter<'a> {
                         Ok(())
                     }
 
-                    MeasurementName::Regex(_) => RewriteFieldsNoCause {
+                    MeasurementName::Regex(_) => RewriteNoCause {
                         msg: "rewrite field list should not encounter regex in from clause",
                     }
                     .fail(),
@@ -141,10 +144,10 @@ impl<'a> StmtRewriter<'a> {
             .measurement_provider
             .measurement(measurement_name)
             .box_err()
-            .context(RewriteFieldsWithCause {
+            .context(RewriteWithCause {
                 msg: format!("failed to find measurement, measurement:{measurement_name}"),
             })?
-            .context(RewriteFieldsNoCause {
+            .context(RewriteNoCause {
                 msg: format!("measurement not found, measurement:{measurement_name}"),
             })?;
 
@@ -197,8 +200,8 @@ fn maybe_rewrite_group_by(
 
                 Dimension::Tag(tag) => {
                     if !tags.contains(&tag.to_string()) {
-                        return RewriteFieldsNoCause {
-                            msg: format!("group by tag not exist, tag:{tag}, exist tags:{tags:?}"),
+                        return RewriteNoCause {
+                            msg: format!("rewrite group by encounter tag not exist, tag:{tag}, exist tags:{tags:?}"),
                         }
                         .fail();
                     }
@@ -206,11 +209,9 @@ fn maybe_rewrite_group_by(
                 }
 
                 Dimension::Regex(re) => {
-                    let re = util::parse_regex(re)
-                        .box_err()
-                        .context(RewriteFieldsWithCause {
-                            msg: format!("group by invalid regex, regex:{re}"),
-                        })?;
+                    let re = util::parse_regex(re).box_err().context(RewriteWithCause {
+                        msg: format!("rewrite group by encounter invalid regex, regex:{re}"),
+                    })?;
                     let match_tags = tags.iter().filter_map(|tag| {
                         if re.is_match(tag.as_str()) {
                             Some(tag.clone())
@@ -307,11 +308,9 @@ fn maybe_rewrite_projection(
             }
 
             Expr::Literal(Literal::Regex(re)) => {
-                let re = util::parse_regex(re)
-                    .box_err()
-                    .context(RewriteFieldsWithCause {
-                        msg: format!("rewrite field list encounter invalid regex, regex:{re}"),
-                    })?;
+                let re = util::parse_regex(re).box_err().context(RewriteWithCause {
+                    msg: format!("rewrite projection encounter invalid regex, regex:{re}"),
+                })?;
 
                 let filter = |v: &String| -> bool { re.is_match(v.as_str()) };
 
@@ -332,8 +331,8 @@ fn maybe_rewrite_projection(
 
                 match args.first() {
                     Some(Expr::Wildcard(Some(WildcardType::Tag))) => {
-                        return RewriteFieldsNoCause {
-                            msg: "tags can't be placed in a call",
+                        return RewriteNoCause {
+                            msg: "rewrite projection found tags placed in a call",
                         }
                         .fail();
                     }
@@ -363,8 +362,8 @@ fn maybe_rewrite_projection(
                 .is_break();
 
                 if has_wildcard {
-                    return RewriteFieldsNoCause {
-                        msg: "wildcard or regex should be encountered in binary expression",
+                    return RewriteNoCause {
+                        msg: "rewrite projection encounter wildcard or regex in binary expression",
                     }
                     .fail();
                 }
