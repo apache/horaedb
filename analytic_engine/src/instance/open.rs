@@ -27,7 +27,7 @@ use crate::{
             ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
             RecoverTableData, Result,
         },
-        flush_compaction::{TableFlushOptions, TableFlushPolicy},
+        flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         write_worker,
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
@@ -423,7 +423,6 @@ impl Instance {
                             res_sender: None,
                             compact_after_flush: false,
                             block_on_write_thread: false,
-                            policy: TableFlushPolicy::Dump,
                         };
                         self.flush_table_in_worker(worker_local, table_data, opts)
                             .await
