@@ -1,4 +1,4 @@
-use std::{default, ops::DerefMut};
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use influxdb_influxql_parser::{
     common::{MeasurementName, QualifiedMeasurementName},
@@ -12,16 +12,19 @@ use influxdb_influxql_parser::{
 use snafu::ensure;
 use sqlparser::ast::{
     BinaryOperator, Expr, Function, FunctionArg, FunctionArgExpr, Ident, ObjectName, Offset,
-    OffsetRows, Query, Select, SelectItem, SetExpr, Statement, TableFactor, TableWithJoins, Value,
+    OffsetRows, Query, Select, SelectItem, SetExpr, TableFactor, TableWithJoins, Value,
 };
 
 use super::is_scalar_math_function;
 use crate::influxql::error::*;
 
+/// Used to convert influxql select statement to sql's.
+#[allow(dead_code)]
 pub struct StmtConverter;
 
 impl StmtConverter {
-    pub fn convert_select(stmt: SelectStatement) -> Result<Query> {
+    #[allow(dead_code)]
+    pub fn convert(stmt: SelectStatement) -> Result<Query> {
         // Fields in `Query` needed to be converted.
         //  - limit
         //  - order by
@@ -90,7 +93,7 @@ impl StmtConverter {
             }
         };
         let table_factor = TableFactor::Table {
-            name: ObjectName(vec![Ident::new(measurement_name)]),
+            name: ObjectName(vec![Ident::with_quote('`', measurement_name)]),
             alias: None,
             args: None,
             with_hints: Vec::default(),
@@ -107,7 +110,7 @@ impl StmtConverter {
 
         let group_by = match stmt.group_by {
             Some(keys) => keys
-                .into_iter()
+                .iter()
                 .map(|key| match key {
                     Dimension::Time { .. } => Unimplemented {
                         msg: "group by time interval",
@@ -341,5 +344,42 @@ fn conditional_op_to_operator(op: ConditionalOperator) -> Result<BinaryOperator>
             msg: "unexpected binary operator: IN",
         }
         .fail(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use sqlparser::ast::Statement as SqlStatement;
+
+    use crate::{
+        ast::Statement,
+        influxql::{stmt_converter::StmtConverter, test_util::parse_select},
+        parser::Parser,
+    };
+
+    #[test]
+    fn test_basic_convert() {
+        // Common parts between influxql and sql, include:
+        //  - limit
+        //  - offset
+        //  - projection
+        //  - from(single table)
+        //  - selection
+        //  - group_by
+        let stmt = parse_select(
+            "SELECT a, sin(b), c 
+            FROM influxql_test WHERE a < 4 and b > 4.5 GROUP BY c LIMIT 1 OFFSET 0",
+        );
+        let converted_sql_stmt = Statement::Standard(Box::new(SqlStatement::Query(Box::new(
+            StmtConverter::convert(stmt).unwrap(),
+        ))));
+
+        let sql_stmts = Parser::parse_sql(
+            "SELECT a, sin(b), c 
+            FROM influxql_test WHERE a < 4 and b > 4.5 GROUP BY c LIMIT 1 OFFSET 0",
+        )
+        .unwrap();
+        let expected_sql_stmt = sql_stmts.first().unwrap();
+        assert_eq!(expected_sql_stmt, &converted_sql_stmt);
     }
 }
