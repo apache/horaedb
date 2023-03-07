@@ -621,7 +621,8 @@ pub struct MergeIterator {
     record_batch_builder: RecordBatchWithKeyBuilder,
     origin_streams: Vec<SequencedRecordBatchStream>,
     /// ssts are kept here to avoid them from being purged.
-    _ssts: Vec<Vec<FileHandle>>,
+    #[allow(dead_code)]
+    ssts: Vec<Vec<FileHandle>>,
     /// Any [BufferedStream] in the hot heap is not empty.
     hot: BinaryHeap<HeapBufferedStream>,
     /// Any [BufferedStream] in the cold heap is not empty.
@@ -651,7 +652,7 @@ impl MergeIterator {
             request_id,
             inited: false,
             schema,
-            _ssts: ssts,
+            ssts,
             record_batch_builder,
             origin_streams: streams,
             hot: BinaryHeap::with_capacity(heap_cap),
