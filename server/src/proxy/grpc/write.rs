@@ -1,23 +1,59 @@
-use std::time::Instant;
-use ceresdbproto::storage::{RouteRequest, RouteResponse, WriteRequest, WriteResponse};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Instant,
+};
+
+use bytes::Bytes;
+use ceresdbproto::storage::{
+    value, RouteRequest, RouteResponse, WriteRequest, WriteSeriesEntry, WriteTableRequest,
+};
+use cluster::config::SchemaConfig;
+use common_types::{
+    datum::{Datum, DatumKind},
+    request_id::RequestId,
+    row::{Row, RowGroupBuilder},
+    schema::Schema,
+    time::Timestamp,
+};
+use common_util::error::BoxError;
+use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
-use common_types::request_id::RequestId;
-use crate::proxy::{Context, Proxy};
-use crate::proxy::error::Error::Internal;
-use crate::proxy::error::Result;
+use query_engine::executor::Executor as QueryExecutor;
+use snafu::{ensure, OptionExt, ResultExt};
+use sql::{
+    frontend::{Context as FrontendContext, Frontend},
+    plan::{InsertPlan, Plan},
+    provider::CatalogMetaProvider,
+};
+use table_engine::table::TableRef;
+
+use crate::{
+    instance::InstanceRef,
+    proxy::{
+        error::{BadRequest, BadRequestWithoutErr, Internal, InternalWithoutErr, Result},
+        Context, Proxy,
+    },
+};
+
+#[derive(Debug)]
+pub struct WriteResponse {
+    pub success: u32,
+    pub failed: u32,
+}
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
+    pub(crate) async fn handle_write(
+        &self,
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
-        let catalog = ctx.catalog();
+        let catalog = self.instance.catalog_manager.default_catalog_name();
         let req_ctx = req.context.unwrap();
         let schema = req_ctx.database;
-        let schema_config = ctx
+        let schema_config = self
             .schema_config_provider
             .schema_config(&schema)
             .box_err()
@@ -40,12 +76,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             request_id,
             catalog,
             &schema,
-            ctx.instance.clone(),
+            self.instance.clone(),
             req.table_requests,
             schema_config,
             deadline,
         )
-            .await?;
+        .await?;
 
         let mut success = 0;
         for insert_plan in plan_vec {
@@ -53,23 +89,22 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 request_id,
                 catalog,
                 &schema,
-                ctx.instance.clone(),
+                self.instance.clone(),
                 insert_plan,
                 deadline,
             )
-                .await?;
+            .await?;
         }
 
         let resp = WriteResponse {
-            header: Some(error::build_ok_header()),
             success: success as u32,
             failed: 0,
         };
 
         debug!(
-        "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
-        catalog, schema, resp
-    );
+            "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
+            catalog, schema, resp
+        );
 
         Ok(resp)
     }
@@ -102,7 +137,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                 &schema_config,
                 deadline,
             )
-                .await?;
+            .await?;
             // try to get table again
             table = try_get_table(catalog, schema, instance.clone(), table_name)?;
         }
@@ -113,11 +148,10 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                 plan_vec.push(plan);
             }
             None => {
-                return ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
+                return BadRequestWithoutErr {
                     msg: format!("Table not found, schema:{schema}, table:{table_name}"),
                 }
-                    .fail();
+                .fail();
             }
         }
     }
@@ -144,8 +178,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         .limiter
         .try_limit(&plan)
         .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::FORBIDDEN,
+        .context(Internal {
             msg: "Insert is blocked",
         })?;
 
@@ -162,8 +195,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+        .with_context(|| Internal {
             msg: "Failed to create interpreter",
         })?;
 
@@ -171,16 +203,305 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         .execute()
         .await
         .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
+        .context(Internal {
             msg: "failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(n) => Ok(n),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
+            Output::Records(_) => BadRequestWithoutErr {
                 msg: "Invalid output type, expect AffectedRows, found Records",
             }
-                .fail(),
+            .fail(),
         })
+}
+
+fn try_get_table<Q: QueryExecutor + 'static>(
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    table_name: &str,
+) -> Result<Option<TableRef>> {
+    instance
+        .catalog_manager
+        .catalog_by_name(catalog)
+        .box_err()
+        .with_context(|| Internal {
+            msg: format!("Failed to find catalog, catalog_name:{catalog}"),
+        })?
+        .with_context(|| BadRequestWithoutErr {
+            msg: format!("Catalog not found, catalog_name:{catalog}"),
+        })?
+        .schema_by_name(schema)
+        .box_err()
+        .with_context(|| Internal {
+            msg: format!("Failed to find schema, schema_name:{schema}"),
+        })?
+        .with_context(|| BadRequestWithoutErr {
+            msg: format!("Schema not found, schema_name:{schema}"),
+        })?
+        .table_by_name(table_name)
+        .box_err()
+        .with_context(|| Internal {
+            msg: format!("Failed to find table, table:{table_name}"),
+        })
+}
+
+async fn create_table<Q: QueryExecutor + 'static>(
+    request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    write_table_req: &WriteTableRequest,
+    schema_config: &SchemaConfig,
+    deadline: Option<Instant>,
+) -> Result<()> {
+    let provider = CatalogMetaProvider {
+        manager: instance.catalog_manager.clone(),
+        default_catalog: catalog,
+        default_schema: schema,
+        function_registry: &*instance.function_registry,
+    };
+    let frontend = Frontend::new(provider);
+    let mut ctx = FrontendContext::new(request_id, deadline);
+    let plan = frontend
+        .write_req_to_plan(&mut ctx, schema_config, write_table_req)
+        .box_err()
+        .with_context(|| Internal {
+            msg: format!(
+                "Failed to build creating table plan, table:{}",
+                write_table_req.table
+            ),
+        })?;
+
+    debug!("Grpc handle create table begin, plan:{:?}", plan);
+
+    instance
+        .limiter
+        .try_limit(&plan)
+        .box_err()
+        .context(Internal {
+            msg: "Create table is blocked",
+        })?;
+
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+        .build();
+    let interpreter_factory = Factory::new(
+        instance.query_executor.clone(),
+        instance.catalog_manager.clone(),
+        instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
+    );
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .box_err()
+        .with_context(|| Internal {
+            msg: "Failed to create interpreter",
+        })?;
+
+    interpreter
+        .execute()
+        .await
+        .box_err()
+        .context(Internal {
+            msg: "failed to execute interpreter",
+        })
+        .and_then(|output| match output {
+            Output::AffectedRows(_) => Ok(()),
+            Output::Records(_) => InternalWithoutErr {
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
+            .fail(),
+        })
+}
+
+fn write_table_request_to_insert_plan(
+    table: TableRef,
+    write_table_req: WriteTableRequest,
+) -> Result<InsertPlan> {
+    let schema = table.schema();
+
+    let mut rows_total = Vec::new();
+    for write_entry in write_table_req.entries {
+        let mut rows = write_entry_to_rows(
+            &write_table_req.table,
+            &schema,
+            &write_table_req.tag_names,
+            &write_table_req.field_names,
+            write_entry,
+        )?;
+        rows_total.append(&mut rows);
+    }
+    // The row group builder will checks nullable.
+    let row_group = RowGroupBuilder::with_rows(schema, rows_total)
+        .box_err()
+        .context(Internal {
+            msg: format!("Failed to build row group, table:{}", table.name()),
+        })?
+        .build();
+    Ok(InsertPlan {
+        table,
+        rows: row_group,
+        default_value_map: BTreeMap::new(),
+    })
+}
+
+fn write_entry_to_rows(
+    table_name: &str,
+    schema: &Schema,
+    tag_names: &[String],
+    field_names: &[String],
+    write_series_entry: WriteSeriesEntry,
+) -> Result<Vec<Row>> {
+    // Init all columns by null.
+    let mut rows = vec![
+        Row::from_datums(vec![Datum::Null; schema.num_columns()]);
+        write_series_entry.field_groups.len()
+    ];
+
+    // Fill tsid by default value.
+    if let Some(tsid_idx) = schema.index_of_tsid() {
+        let kind = &schema.tsid_column().unwrap().data_type;
+        let default_datum = Datum::empty(kind);
+        for row in &mut rows {
+            row[tsid_idx] = default_datum.clone();
+        }
+    }
+
+    // Fill tags.
+    for tag in write_series_entry.tags {
+        let name_index = tag.name_index as usize;
+        ensure!(
+            name_index < tag_names.len(),
+            BadRequestWithoutErr {
+                msg: format!(
+                    "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
+                ),
+            }
+        );
+
+        let tag_name = &tag_names[name_index];
+        let tag_index_in_schema =
+            schema
+                .index_of(tag_name)
+                .with_context(|| BadRequestWithoutErr {
+                    msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
+                })?;
+
+        let column_schema = schema.column(tag_index_in_schema);
+        ensure!(
+            column_schema.is_tag,
+            BadRequestWithoutErr {
+                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
+            }
+        );
+
+        let tag_value = tag
+            .value
+            .with_context(|| BadRequestWithoutErr {
+                msg: format!("Tag({tag_name}) value is needed, table:{table_name}"),
+            })?
+            .value
+            .with_context(|| BadRequestWithoutErr {
+                msg: format!(
+                    "Tag({tag_name}) value type is not supported, table_name:{table_name}"
+                ),
+            })?;
+        for row in &mut rows {
+            row[tag_index_in_schema] = convert_proto_value_to_datum(
+                table_name,
+                tag_name,
+                tag_value.clone(),
+                column_schema.data_type,
+            )?;
+        }
+    }
+
+    // Fill fields.
+    let mut field_name_index: HashMap<String, usize> = HashMap::new();
+    for (i, field_group) in write_series_entry.field_groups.into_iter().enumerate() {
+        // timestamp
+        let timestamp_index_in_schema = schema.timestamp_index();
+        rows[i][timestamp_index_in_schema] =
+            Datum::Timestamp(Timestamp::new(field_group.timestamp));
+
+        for field in field_group.fields {
+            if (field.name_index as usize) < field_names.len() {
+                let field_name = &field_names[field.name_index as usize];
+                let index_in_schema = if field_name_index.contains_key(field_name) {
+                    field_name_index.get(field_name).unwrap().to_owned()
+                } else {
+                    let index_in_schema =
+                        schema.index_of(field_name).with_context(|| BadRequestWithoutErr {
+                            msg: format!(
+                                "Can't find field in schema, table:{table_name}, field_name:{field_name}"
+                            ),
+                        })?;
+                    field_name_index.insert(field_name.to_string(), index_in_schema);
+                    index_in_schema
+                };
+                let column_schema = schema.column(index_in_schema);
+                ensure!(
+                    !column_schema.is_tag,
+                    BadRequestWithoutErr {
+                        msg: format!(
+                            "Column {field_name} is a tag rather than a field, table:{table_name}"
+                        )
+                    }
+                );
+                let field_value = field
+                    .value
+                    .with_context(|| BadRequestWithoutErr {
+                        msg: format!("Field({field_name}) is needed, table:{table_name}"),
+                    })?
+                    .value
+                    .with_context(|| BadRequestWithoutErr {
+                        msg: format!(
+                            "Field({field_name}) value type is not supported, table:{table_name}"
+                        ),
+                    })?;
+
+                rows[i][index_in_schema] = convert_proto_value_to_datum(
+                    table_name,
+                    field_name,
+                    field_value,
+                    column_schema.data_type,
+                )?;
+            }
+        }
+    }
+
+    Ok(rows)
+}
+
+/// Convert the `Value_oneof_value` defined in protos into the datum.
+fn convert_proto_value_to_datum(
+    table_name: &str,
+    name: &str,
+    value: value::Value,
+    data_type: DatumKind,
+) -> Result<Datum> {
+    match (value, data_type) {
+        (value::Value::Float64Value(v), DatumKind::Double) => Ok(Datum::Double(v)),
+        (value::Value::StringValue(v), DatumKind::String) => Ok(Datum::String(v.into())),
+        (value::Value::Int64Value(v), DatumKind::Int64) => Ok(Datum::Int64(v)),
+        (value::Value::Float32Value(v), DatumKind::Float) => Ok(Datum::Float(v)),
+        (value::Value::Int32Value(v), DatumKind::Int32) => Ok(Datum::Int32(v)),
+        (value::Value::Int16Value(v), DatumKind::Int16) => Ok(Datum::Int16(v as i16)),
+        (value::Value::Int8Value(v), DatumKind::Int8) => Ok(Datum::Int8(v as i8)),
+        (value::Value::BoolValue(v), DatumKind::Boolean) => Ok(Datum::Boolean(v)),
+        (value::Value::Uint64Value(v), DatumKind::UInt64) => Ok(Datum::UInt64(v)),
+        (value::Value::Uint32Value(v), DatumKind::UInt32) => Ok(Datum::UInt32(v)),
+        (value::Value::Uint16Value(v), DatumKind::UInt16) => Ok(Datum::UInt16(v as u16)),
+        (value::Value::Uint8Value(v), DatumKind::UInt8) => Ok(Datum::UInt8(v as u8)),
+        (value::Value::TimestampValue(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
+        (value::Value::VarbinaryValue(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
+        (v, _) => BadRequestWithoutErr {
+            msg: format!(
+                "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
+            ),
+        }
+            .fail(),
+    }
 }

@@ -1,6 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 mod error;
+mod header;
 mod metrics;
 
 use std::{
@@ -16,6 +17,7 @@ use ceresdbproto::storage::{
 use common_util::error::BoxError;
 use futures::stream::{self, BoxStream, StreamExt};
 use http::StatusCode;
+use log::error;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
@@ -23,7 +25,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     grpc::{
-        storage::error::{ErrWithCause, Result},
+        storage::error::{ErrNoCause, ErrWithCause, Result},
         storage_service::RequestHeader,
     },
     proxy::{Context, Proxy},
@@ -34,7 +36,6 @@ use crate::{
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub proxy: Arc<Proxy<Q>>,
     pub runtimes: Arc<EngineRuntimes>,
-    pub schema_config_provider: SchemaConfigProviderRef,
     pub timeout: Option<Duration>,
     pub resp_compress_min_length: usize,
 }
@@ -148,9 +149,53 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
     async fn write_internal(
         &self,
-        _req: tonic::Request<WriteRequest>,
+        req: tonic::Request<WriteRequest>,
     ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        todo!()
+        let header = RequestHeader::from(req.metadata());
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let join_handle = self.runtimes.write_runtime.spawn(async move {
+            if req.context.is_none() {
+                ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: "database is not set",
+                }
+                .fail()?
+            }
+
+            proxy
+                .handle_write(Context::default(), req)
+                .await
+                .map_err(|e| {
+                    error!("Failed to handle write request, err:{}", e);
+                    e
+                })
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to join the spawn task",
+                })
+        });
+
+        let res = join_handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "fail to join the spawn task",
+        });
+
+        let mut resp = WriteResponse::default();
+        match res {
+            Ok(Ok(v)) => {
+                resp.header = Some(error::build_ok_header());
+                resp.success = v.success;
+                resp.failed = v.failed;
+            }
+            Ok(Err(e)) | Err(e) => {
+                let header = error::build_err_header(e);
+                resp.header = Some(header);
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn query_internal(

@@ -12,12 +12,14 @@ use router::Router;
 use crate::{
     instance::InstanceRef,
     proxy::{error::Result, forward::ForwarderRef},
+    schema_config_provider::SchemaConfigProviderRef,
 };
 
 pub struct Proxy<Q: QueryExecutor + 'static> {
-    pub router: Arc<dyn Router + Send + Sync>,
-    pub forwarder: Option<ForwarderRef>,
+    router: Arc<dyn Router + Send + Sync>,
+    forwarder: Option<ForwarderRef>,
     instance: InstanceRef<Q>,
+    schema_config_provider: SchemaConfigProviderRef,
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
@@ -25,11 +27,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         router: Arc<dyn Router + Send + Sync>,
         forwarder: Option<ForwarderRef>,
         instance: InstanceRef<Q>,
+        schema_config_provider: SchemaConfigProviderRef,
     ) -> Self {
         Self {
             router,
             forwarder,
             instance,
+            schema_config_provider,
         }
     }
 }
@@ -38,6 +42,5 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 pub struct Context {
     pub tenant: String,
     pub token: String,
-    // pub runtime: Runtime,
     pub timeout: Option<Duration>,
 }
