@@ -7,6 +7,12 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
+      - 'etc/**'
+      - '**.md'
+      - '.dockerignore'
+      - 'docker/**'
   schedule:
     - cron: '2 0 * * *'
 
