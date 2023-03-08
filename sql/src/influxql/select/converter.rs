@@ -35,7 +35,7 @@ impl Converter {
         //  - offset
         //  - select body
         let limit = stmt.limit.map(|limit| {
-            let limit_n: u64 = *limit;
+            let limit_n = *limit;
             Expr::Value(Value::Number(limit_n.to_string(), false))
         });
 
@@ -75,7 +75,7 @@ impl Converter {
         ensure!(
             stmt.from.len() == 1,
             Unimplemented {
-                msg: "from multiple measurements",
+                msg: "select from multiple measurements",
             }
         );
         let measurement_name = match &stmt.from[0] {
@@ -90,7 +90,7 @@ impl Converter {
             },
             MeasurementSelection::Subquery(_) => {
                 return Unimplemented {
-                    msg: "from subquery",
+                    msg: "select from subquery",
                 }
                 .fail()
             }
@@ -252,32 +252,32 @@ fn call_to_sql_expr(scope: ExprScope, name: &str, args: &[InfluxqlExpr]) -> Resu
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(Expr::Function(Function {
+        return Ok(Expr::Function(Function {
             name,
             args,
             over: None,
             distinct: false,
             special: false,
-        }))
-    } else {
-        match scope {
-            ExprScope::Projection => Unimplemented {
-                msg: "aggregate and selector functions in projection list",
-            }
-            .fail(),
+        }));
+    }
 
-            ExprScope::Where => {
-                if name.eq_ignore_ascii_case("now") {
-                    Unimplemented {
-                        msg: "now() in where clause",
-                    }
-                    .fail()
-                } else {
-                    Convert {
-                        msg: format!("invalid function call in condition: {name}"),
-                    }
-                    .fail()
+    match scope {
+        ExprScope::Projection => Unimplemented {
+            msg: "aggregate and selector functions in projection list",
+        }
+        .fail(),
+
+        ExprScope::Where => {
+            if name.eq_ignore_ascii_case("now") {
+                Unimplemented {
+                    msg: "now() in where clause",
                 }
+                .fail()
+            } else {
+                Convert {
+                    msg: format!("invalid function call in condition: {name}"),
+                }
+                .fail()
             }
         }
     }
@@ -355,9 +355,7 @@ mod test {
     use sqlparser::ast::Statement as SqlStatement;
 
     use crate::{
-        ast::Statement,
-        influxql::{select::converter::Converter, test_util::parse_select},
-        parser::Parser,
+        ast::Statement, influxql::select::converter::Converter, parser::Parser, tests::parse_select,
     };
 
     #[test]

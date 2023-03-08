@@ -107,15 +107,18 @@ impl From<Bytes> for Request {
 }
 
 #[derive(Debug)]
-pub enum QueryType {
-    Sql,
-    Influxql,
+pub enum QueryRequest {
+    Sql(Request),
+    // TODO: influxql include more parameters, we should add it in later.
+    Influxql(Request),
 }
-
-#[derive(Debug)]
-pub struct QueryRequest {
-    pub query_type: QueryType,
-    pub request: Request,
+impl QueryRequest {
+    fn query(&self) -> &str {
+        match self {
+            QueryRequest::Sql(request) => request.query.as_str(),
+            QueryRequest::Influxql(request) => request.query.as_str(),
+        }
+    }
 }
 
 pub async fn handle_query<Q: QueryExecutor + 'static>(
@@ -143,12 +146,8 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     let frontend = Frontend::new(provider);
     let mut sql_ctx = SqlContext::new(request_id, deadline);
 
-    let QueryRequest {
-        request,
-        query_type,
-    } = query_request;
-    let plan = match query_type {
-        QueryType::Sql => {
+    let plan = match &query_request {
+        QueryRequest::Sql(request) => {
             // Parse sql, frontend error of invalid sql already contains sql
             // TODO(yingwen): Maybe move sql from frontend error to outer error
             let mut stmts = frontend
@@ -165,7 +164,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
                 stmts.len() == 1,
                 TooMuchStmt {
                     len: stmts.len(),
-                    query: request.query,
+                    query: &request.query,
                 }
             );
 
@@ -178,7 +177,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
                 })?
         }
 
-        QueryType::Influxql => {
+        QueryRequest::Influxql(request) => {
             let mut stmts = frontend
                 .parse_influxql(&mut sql_ctx, &request.query)
                 .context(ParseInfluxql)?;
@@ -191,7 +190,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
                 stmts.len() == 1,
                 TooMuchStmt {
                     len: stmts.len(),
-                    query: request.query,
+                    query: &request.query,
                 }
             );
 
@@ -204,7 +203,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
     };
 
     instance.limiter.try_limit(&plan).context(QueryBlock {
-        query: &request.query,
+        query: query_request.query(),
     })?;
 
     // Execute in interpreter
@@ -223,7 +222,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         interpreter_factory
             .create(interpreter_ctx, plan)
             .context(InterpreterExec {
-                query: &request.query,
+                query: query_request.query(),
             })?;
 
     let output = if let Some(deadline) = deadline {
@@ -233,16 +232,16 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         )
         .await
         .context(QueryTimeout {
-            query: &request.query,
+            query: query_request.query(),
         })
         .and_then(|v| {
             v.context(InterpreterExec {
-                query: &request.query,
+                query: query_request.query(),
             })
         })?
     } else {
         interpreter.execute().await.context(InterpreterExec {
-            query: &request.query,
+            query: query_request.query(),
         })?
     };
 
@@ -250,7 +249,7 @@ pub async fn handle_query<Q: QueryExecutor + 'static>(
         "Query handler finished, request_id:{}, cost:{}ms, request:{:?}",
         request_id,
         begin_instant.saturating_elapsed().as_millis(),
-        request
+        query_request
     );
 
     Ok(output)

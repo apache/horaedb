@@ -13,7 +13,7 @@ use crate::{
     context::RequestContext,
     handlers::{
         self,
-        query::{QueryRequest, QueryType, Request},
+        query::{QueryRequest, Request},
     },
     instance::Instance,
     mysql::{
@@ -113,10 +113,7 @@ where
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;
         let req = Request::from(sql.to_string());
-        let req = QueryRequest {
-            query_type: QueryType::Sql,
-            request: req,
-        };
+        let req = QueryRequest::Sql(req);
         handlers::query::handle_query(&ctx, self.instance.clone(), req)
             .await
             .map_err(|e| {

@@ -81,7 +81,7 @@ pub fn parse_regex(re: &Regex) -> std::result::Result<regex::Regex, regex::Error
 
 // Copy from influxql_iox.
 lazy_static! {
-    pub(crate) static ref SCALAR_MATH_FUNCTIONS: HashSet<&'static str> = HashSet::from([
+    static ref SCALAR_MATH_FUNCTIONS: HashSet<&'static str> = HashSet::from([
         "abs", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "log", "ln", "log2",
         "log10", "sqrt", "pow", "floor", "ceil", "round",
     ]);

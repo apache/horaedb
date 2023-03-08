@@ -4,9 +4,8 @@
 
 pub mod planner;
 pub(crate) mod select;
-#[cfg(test)]
-pub mod test_util;
 pub(crate) mod util;
+
 pub mod error {
     use common_util::error::GenericError;
     use snafu::{Backtrace, Snafu};
@@ -36,7 +35,7 @@ pub mod error {
         RewriteNoCause { msg: String, backtrace: Backtrace },
 
         #[snafu(display(
-            "Failed to convert to sql statement, msg:{}..\nBacktrace:{}",
+            "Failed to convert to sql statement, msg:{}.\nBacktrace:{}",
             msg,
             backtrace
         ))]

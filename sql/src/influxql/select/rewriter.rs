@@ -22,20 +22,19 @@ use crate::influxql::{error::*, planner::MeasurementProvider, util};
 /// Rewriter for the influxql statement
 ///
 /// It will rewrite statement before converting it to sql statement.
-// Partial copy from influxdb_iox.
+// Derived from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/ff11fe465d02faf6c4dd3017df8750b38d4afd2b/iox_query/src/plan/influxql/rewriter.rs
 pub(crate) struct Rewriter<'a> {
     measurement_provider: &'a dyn MeasurementProvider,
 }
 
 impl<'a> Rewriter<'a> {
-    #[allow(dead_code)]
     pub fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
         Self {
             measurement_provider,
         }
     }
 
-    #[allow(dead_code)]
     pub fn rewrite(&self, stmt: &mut SelectStatement) -> Result<()> {
         self.rewrite_from(stmt)?;
         self.rewrite_field_list(stmt)
@@ -51,17 +50,19 @@ impl<'a> Rewriter<'a> {
                             name: MeasurementName::Name(name),
                             ..
                         } => {
-                            let _ = self.measurement_provider.measurement(name)
-                        .context(
-                            RewriteWithCause {
-                                msg: format!("rewrite from failed to find measurement, measurement:{name}") 
-                            }
-                        )?
-                        .context(
-                            RewriteNoCause {
-                                msg: format!("rewrite from found measurement not found, measurement:{name}"),
-                            },
-                        )?;
+                            let _ = self
+                                .measurement_provider
+                                .measurement(name)
+                                .context(RewriteWithCause {
+                                    msg: format!(
+                                        "rewrite from failed to find measurement, measurement:{name}",
+                                    ),
+                                })?
+                                .context(RewriteNoCause {
+                                    msg: format!(
+                                        "rewrite from found measurement not found, measurement:{name}"
+                                    ),
+                                })?;
                             new_from.push(ms.clone());
                         }
                         QualifiedMeasurementName {
@@ -388,10 +389,7 @@ fn maybe_rewrite_projection(
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        influxql::test_util::{parse_select, rewrite_statement},
-        tests::MockMetaProvider,
-    };
+    use crate::tests::{parse_select, rewrite_statement, MockMetaProvider};
 
     #[test]
     fn test_wildcard_and_regex_in_projection() {

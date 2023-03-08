@@ -27,6 +27,11 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         Self { sql_planner }
     }
 
+    /// Build sql logical plan from [InfluxqlStatement].
+    ///
+    /// NOTICE: when building plan from influxql select statement,
+    /// the [InfluxqlStatement] will be converted to [SqlStatement] first,
+    /// and build plan then.
     pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
         match stmt {
             InfluxqlStatement::Select(stmt) => self.select_to_plan(*stmt),

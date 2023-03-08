@@ -31,11 +31,7 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{
-        self,
-        prom::CeresDBStorage,
-        query::{QueryType, Request},
-    },
+    handlers::{self, prom::CeresDBStorage, query::Request},
     instance::InstanceRef,
     metrics,
     schema_config_provider::SchemaConfigProviderRef,
@@ -187,10 +183,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let req = QueryRequest {
-                    query_type: QueryType::Sql,
-                    request: req,
-                };
+                let req = QueryRequest::Sql(req);
                 let result = handlers::query::handle_query(&ctx, instance, req)
                     .await
                     .map(handlers::query::convert_output)
@@ -207,7 +200,9 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    // POST /sql
+    // POST /influxql
+    // this request type is not what influxdb API expected, the one in influxdb:
+    // https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxql(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
@@ -223,12 +218,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let req = QueryRequest {
-                    query_type: QueryType::Influxql,
-                    request: req,
-                };
+                let req = QueryRequest::Influxql(req);
                 let result = handlers::query::handle_query(&ctx, instance, req)
                     .await
+                    // TODO: the sql's `convert_output` function may be not suitable to influxql.
+                    // We should implement influxql's related function in later.
                     .map(handlers::query::convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
