@@ -106,6 +106,7 @@ pub struct HandlerContext<'a, Q> {
     forwarder: Option<ForwarderRef>,
     timeout: Option<Duration>,
     resp_compress_min_length: usize,
+    auto_create_tables: bool,
 }
 
 impl<'a, Q> HandlerContext<'a, Q> {
@@ -118,6 +119,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
         forwarder: Option<ForwarderRef>,
         timeout: Option<Duration>,
         resp_compress_min_length: usize,
+        auto_create_tables: bool,
     ) -> Self {
         // catalog is not exposed to protocol layer
         let catalog = instance.catalog_manager.default_catalog_name().to_string();
@@ -131,6 +133,7 @@ impl<'a, Q> HandlerContext<'a, Q> {
             forwarder,
             timeout,
             resp_compress_min_length,
+            auto_create_tables,
         }
     }
 
@@ -149,6 +152,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
     pub resp_compress_min_length: usize,
+    pub auto_create_tables: bool,
 }
 
 macro_rules! handle_request {
@@ -166,6 +170,7 @@ macro_rules! handle_request {
                 let forwarder = self.forwarder.clone();
                 let timeout = self.timeout;
                 let resp_compress_min_length = self.resp_compress_min_length;
+                let auto_create_tables = self.auto_create_tables;
 
                 // The future spawned by tokio cannot be executed by other executor/runtime, so
 
@@ -187,7 +192,7 @@ macro_rules! handle_request {
                         .fail()?
                     }
                     let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length);
+                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length, auto_create_tables);
                     $mod_name::$handle_fn(&handler_ctx, req)
                         .await
                         .map_err(|e| {
@@ -262,6 +267,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             self.forwarder.clone(),
             self.timeout,
             self.resp_compress_min_length,
+            self.auto_create_tables,
         );
 
         let mut total_success = 0;
@@ -318,6 +324,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let forwarder = self.forwarder.clone();
         let timeout = self.timeout;
         let resp_compress_min_length = self.resp_compress_min_length;
+        let auto_create_tables = self.auto_create_tables;
 
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         self.runtimes.read_runtime.spawn(async move {
@@ -329,6 +336,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 forwarder,
                 timeout,
                 resp_compress_min_length,
+                auto_create_tables
             );
             let query_req = request.into_inner();
             let output = sql_query::fetch_query_output(&handler_ctx, &query_req)

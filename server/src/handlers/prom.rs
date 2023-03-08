@@ -250,6 +250,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
             Self::convert_write_request(req)?,
             schema_config,
             deadline,
+            true,
         )
         .await
         .context(GRPCWriteError)?;

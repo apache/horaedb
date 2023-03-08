@@ -207,6 +207,7 @@ pub struct Builder<Q> {
     cluster: Option<ClusterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
+    auto_create_tables: bool,
 }
 
 impl<Q> Builder<Q> {
@@ -222,6 +223,7 @@ impl<Q> Builder<Q> {
             cluster: None,
             schema_config_provider: None,
             forward_config: None,
+            auto_create_tables: true,
         }
     }
 
@@ -276,6 +278,11 @@ impl<Q> Builder<Q> {
         self.timeout = timeout;
         self
     }
+
+    pub fn auto_create_tables(mut self, auto_create_tables: bool) -> Self {
+        self.auto_create_tables = auto_create_tables;
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -326,6 +333,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             forwarder,
             timeout: self.timeout,
             resp_compress_min_length: self.resp_compress_min_length,
+            auto_create_tables: self.auto_create_tables,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

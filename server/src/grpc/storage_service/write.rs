@@ -75,6 +75,7 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
         req.table_requests,
         schema_config,
         deadline,
+        ctx.auto_create_tables,
     )
     .await?;
 
@@ -165,6 +166,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
@@ -173,6 +175,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     table_requests: Vec<WriteTableRequest>,
     schema_config: Option<&SchemaConfig>,
     deadline: Option<Instant>,
+    auto_create_tables: bool,
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(table_requests.len());
 
@@ -180,7 +183,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         let table_name = &write_table_req.table;
         let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
 
-        if table.is_none() {
+        if table.is_none() && auto_create_tables {
             // TODO: remove this clone?
             let schema_config = schema_config.cloned().unwrap_or_default();
             create_table(

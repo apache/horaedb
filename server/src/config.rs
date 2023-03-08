@@ -106,6 +106,9 @@ pub struct ServerConfig {
 
     /// Config for forwarding
     pub forward: forward::Config,
+
+    /// auto create tables, default true
+    pub auto_create_tables: bool,
 }
 
 impl Default for ServerConfig {
@@ -120,6 +123,7 @@ impl Default for ServerConfig {
             grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
+            auto_create_tables: true,
         }
     }
 }
