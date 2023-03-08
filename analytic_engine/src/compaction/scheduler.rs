@@ -575,9 +575,9 @@ impl ScheduleWorker {
                 // Memory usage exceeds the threshold, let's put pack the
                 // request.
                 warn!(
-                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}",
+                    "Compaction task is ignored, because of high memory usage:{}, task:{:?}, table:{}",
                     self.memory_limit.usage.load(Ordering::Relaxed),
-                    compaction_task,
+                    compaction_task, table_data.name
                 );
                 // self.put_back_compaction_request(compact_req).await;
                 return;
