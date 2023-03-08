@@ -22,7 +22,6 @@ use crate::{
 pub struct LoadRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
-    pub cluster_version: u64,
     pub shard_id: ShardId,
 }
 

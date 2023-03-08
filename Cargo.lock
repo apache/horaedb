@@ -1142,6 +1142,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono-tz"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa48fa079165080f11d7753fd0bc175b7d391f276b965fe4b55bfad67856e463"
+dependencies = [
+ "chrono",
+ "chrono-tz-build",
+ "phf",
+]
+
+[[package]]
+name = "chrono-tz-build"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9998fb9f7e9b2111641485bf8beb32f92945f97f92a3d061f744cfef335f751"
+dependencies = [
+ "parse-zoneinfo",
+ "phf",
+ "phf_codegen",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2949,6 +2971,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "influxdb_influxql_parser"
+version = "0.1.0"
+source = "git+https://github.com/Rachelint/influxdb_iox.git?branch=influxql-parser#77e24e992a90dd08a6d71366de53fac721e491fb"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "nom 7.1.1",
+ "num-traits",
+ "once_cell",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4319,6 +4353,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-zoneinfo"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c705f256449c60da65e11ff6626e0c16a0a0b96aaa348de61376b249bc340f41"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "paste"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4381,6 +4424,44 @@ checksum = "e6d5014253a1331579ce62aa67443b4a658c5e7dd03d4bc6d302b94474888143"
 dependencies = [
  "fixedbitset",
  "indexmap",
+]
+
+[[package]]
+name = "phf"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "928c6535de93548188ef63bb7c4036bd415cd8f36ad25af44b9789b2ee72a48c"
+dependencies = [
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_codegen"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a56ac890c5e3ca598bbdeaa99964edb5b0258a583a9eb6ef4e89fc85d9224770"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_generator"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1181c94580fa345f50f19d738aaa39c0ed30a600d95cb2d3e23f94266f14fbf"
+dependencies = [
+ "phf_shared",
+ "rand 0.8.5",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1fb5f6f826b772a8d4c0394209441e7d37cbbb967ae9c7e0e8134365c9ee676"
+dependencies = [
+ "siphasher",
 ]
 
 [[package]]
@@ -4793,6 +4874,7 @@ version = "1.0.0"
 dependencies = [
  "arrow 32.0.0",
  "async-trait",
+ "chrono",
  "common_types",
  "common_util",
  "datafusion",
@@ -5636,6 +5718,7 @@ dependencies = [
  "tokio 1.25.0",
  "tokio-stream",
  "tonic",
+ "wal",
  "warp",
  "zstd 0.12.1+zstd.1.5.2",
 ]
@@ -5933,6 +6016,7 @@ dependencies = [
  "async-trait",
  "catalog",
  "ceresdbproto",
+ "cluster",
  "common_types",
  "common_util",
  "datafusion",
@@ -5940,9 +6024,12 @@ dependencies = [
  "datafusion-proto",
  "df_operator",
  "hashbrown 0.12.3",
+ "influxdb_influxql_parser",
+ "itertools",
  "log",
  "paste 1.0.8",
  "regex",
+ "regex-syntax",
  "snafu 0.6.10",
  "sqlparser",
  "table_engine",

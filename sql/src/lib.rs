@@ -10,6 +10,7 @@ extern crate common_util;
 pub mod ast;
 pub mod container;
 pub mod frontend;
+pub mod influxql;
 pub mod parser;
 pub(crate) mod partition;
 pub mod plan;

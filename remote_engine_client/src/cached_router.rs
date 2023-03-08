@@ -2,14 +2,13 @@
 
 //! Cached router
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use ceresdbproto::storage::{self, RequestContext};
 use log::debug;
 use router::RouterRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::remote::model::TableIdentifier;
-use tokio::sync::RwLock;
 use tonic::transport::Channel;
 
 use crate::{channel::ChannelPool, config::Config, error::*};
@@ -40,7 +39,7 @@ impl CachedRouter {
     pub async fn route(&self, table_ident: &TableIdentifier) -> Result<Channel> {
         // Find in cache first.
         let channel_opt = {
-            let cache = self.cache.read().await;
+            let cache = self.cache.read().unwrap();
             cache.get(table_ident).cloned()
         };
 
@@ -62,7 +61,7 @@ impl CachedRouter {
             let channel = self.do_route(table_ident).await?;
 
             {
-                let mut cache = self.cache.write().await;
+                let mut cache = self.cache.write().unwrap();
                 // Double check here, if still not found, we put it.
                 let channel_opt = cache.get(table_ident).cloned();
                 if channel_opt.is_none() {
@@ -81,7 +80,7 @@ impl CachedRouter {
     }
 
     pub async fn evict(&self, table_ident: &TableIdentifier) {
-        let mut cache = self.cache.write().await;
+        let mut cache = self.cache.write().unwrap();
         let _ = cache.remove(table_ident);
     }
 

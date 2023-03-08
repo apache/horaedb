@@ -6,10 +6,8 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     num::NonZeroUsize,
-    sync::Arc,
+    sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-
-use tokio::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T> {
@@ -28,16 +26,16 @@ impl<T> PartitionedRwLock<T> {
         }
     }
 
-    pub async fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
+    pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
         let rwlock = self.get_partition(key);
 
-        rwlock.read().await
+        rwlock.read().unwrap()
     }
 
-    pub async fn write<K: Eq + Hash>(&self, key: &K) -> RwLockWriteGuard<'_, T> {
+    pub fn write<K: Eq + Hash>(&self, key: &K) -> RwLockWriteGuard<'_, T> {
         let rwlock = self.get_partition(key);
 
-        rwlock.write().await
+        rwlock.write().unwrap()
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
@@ -66,10 +64,10 @@ impl<T> PartitionedMutex<T> {
         }
     }
 
-    pub async fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
+    pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
         let mutex = self.get_partition(key);
 
-        mutex.lock().await
+        mutex.lock().unwrap()
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
@@ -87,37 +85,37 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_partitioned_rwlock() {
+    #[test]
+    fn test_partitioned_rwlock() {
         let test_locked_map =
             PartitionedRwLock::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
         {
-            let mut map = test_locked_map.write(&test_key).await;
+            let mut map = test_locked_map.write(&test_key);
             map.insert(test_key.clone(), test_value.clone());
         }
 
         {
-            let map = test_locked_map.read(&test_key).await;
+            let map = test_locked_map.read(&test_key);
             assert_eq!(map.get(&test_key).unwrap(), &test_value);
         }
     }
 
-    #[tokio::test]
-    async fn test_partitioned_mutex() {
+    #[test]
+    fn test_partitioned_mutex() {
         let test_locked_map = PartitionedMutex::new(HashMap::new(), NonZeroUsize::new(10).unwrap());
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
         {
-            let mut map = test_locked_map.lock(&test_key).await;
+            let mut map = test_locked_map.lock(&test_key);
             map.insert(test_key.clone(), test_value.clone());
         }
 
         {
-            let map = test_locked_map.lock(&test_key).await;
+            let map = test_locked_map.lock(&test_key);
             assert_eq!(map.get(&test_key).unwrap(), &test_value);
         }
     }

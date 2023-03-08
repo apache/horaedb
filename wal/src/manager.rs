@@ -7,23 +7,20 @@ use std::{collections::VecDeque, fmt, sync::Arc, time::Duration};
 use async_trait::async_trait;
 pub use common_types::SequenceNumber;
 use common_types::{
-    table::{TableId, DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID},
+    table::{TableId, DEFAULT_SHARD_ID},
     MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER,
 };
 use common_util::{error::BoxError, runtime::Runtime};
 pub use error::*;
 use snafu::ResultExt;
 
-use crate::{
-    log_batch::{LogEntry, LogWriteBatch, PayloadDecoder},
-    manager,
-};
+use crate::log_batch::{LogEntry, LogWriteBatch, PayloadDecoder};
 
 pub mod error {
     use common_util::{define_result, error::GenericError};
     use snafu::{Backtrace, Snafu};
 
-    use crate::manager::WalLocation;
+    use crate::manager::{RegionId, WalLocation};
 
     // Now most error from manage implementation don't have backtrace, so we add
     // backtrace here.
@@ -110,6 +107,18 @@ pub mod error {
             backtrace: Backtrace,
         },
 
+        #[snafu(display(
+            "Failed to close wal region, region_id:{}, err:{}.\nBacktrace:\n{}",
+            source,
+            region,
+            backtrace
+        ))]
+        CloseRegion {
+            source: GenericError,
+            region: RegionId,
+            backtrace: Backtrace,
+        },
+
         #[snafu(display("Failed to close wal, err:{}.\nBacktrace:\n{}", source, backtrace))]
         Close {
             source: GenericError,
@@ -126,42 +135,22 @@ pub mod error {
     define_result!(Error);
 }
 
+pub type RegionId = u64;
+
 /// Decide where to write logs
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
-    pub versioned_region_id: VersionedRegionId,
+    pub region_id: RegionId,
     pub table_id: TableId,
 }
 
 impl WalLocation {
-    pub fn new(region_id: u64, region_version: u64, table_id: TableId) -> Self {
-        let versioned_region_id = VersionedRegionId {
-            version: region_version,
-            id: region_id,
-        };
-
+    pub fn new(region_id: RegionId, table_id: TableId) -> Self {
         WalLocation {
-            versioned_region_id,
+            region_id,
             table_id,
         }
     }
-}
-
-/// Region id with version
-///
-/// Region is used to describe a set of table's log unit.
-///
-/// The `id` is used to identify the `Region`, can be mapped to table's related
-/// information(e.g. `shard id`, `table id`).
-///
-/// The `version` is introduced for solving the following bug:
-///     https://github.com/CeresDB/ceresdb/issues/441.
-/// It may be mapped to cluster version(while shard moved from nodes,
-/// it may changed to mark this moving) now.
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VersionedRegionId {
-    pub version: u64,
-    pub id: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -258,11 +247,7 @@ pub struct ReadRequest {
 impl Default for ReadRequest {
     fn default() -> Self {
         Self {
-            location: WalLocation::new(
-                DEFAULT_SHARD_ID as u64,
-                DEFAULT_CLUSTER_VERSION,
-                TableId::MIN,
-            ),
+            location: WalLocation::new(DEFAULT_SHARD_ID as u64, TableId::MIN),
             start: ReadBoundary::Min,
             end: ReadBoundary::Min,
         }
@@ -271,8 +256,8 @@ impl Default for ReadRequest {
 
 #[derive(Debug, Clone, Default)]
 pub struct ScanRequest {
-    /// Region id of the wals to be scanned
-    pub versioned_region_id: VersionedRegionId,
+    /// Id of the region to scan
+    pub region_id: RegionId,
 }
 
 pub type ScanContext = ReadContext;
@@ -308,6 +293,9 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()>;
+
+    /// Close a region.
+    async fn close_region(&self, region: RegionId) -> Result<()>;
 
     /// Close the wal gracefully.
     async fn close_gracefully(&self) -> Result<()>;
@@ -385,7 +373,7 @@ impl BatchLogIteratorAdapter {
                         let payload = decoder
                             .decode(&mut raw_payload)
                             .box_err()
-                            .context(manager::Decoding)?;
+                            .context(error::Decoding)?;
                         let log_entry = LogEntry {
                             table_id: raw_log_entry.table_id,
                             sequence: raw_log_entry.sequence,
@@ -423,7 +411,7 @@ impl BatchLogIteratorAdapter {
                 let payload = decoder
                     .decode(&mut raw_payload)
                     .box_err()
-                    .context(manager::Decoding)?;
+                    .context(error::Decoding)?;
                 let log_entry = LogEntry {
                     table_id: raw_log_entry.table_id,
                     sequence: raw_log_entry.sequence,

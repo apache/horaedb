@@ -23,7 +23,7 @@ use common_util::{
     metric::Meter,
     runtime::{JoinHandle, Runtime},
 };
-use log::{debug, error, info};
+use log::{error, info, warn};
 use object_store::ObjectStoreRef;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -249,7 +249,7 @@ struct FileHandleInner {
 
 impl Drop for FileHandleInner {
     fn drop(&mut self) {
-        debug!("FileHandle is dropped, meta:{:?}", self.meta);
+        info!("FileHandle is dropped, meta:{:?}", self.meta);
 
         // Push file cannot block or be async because we are in drop().
         self.purge_queue.push_file(self.meta.id);
@@ -426,6 +426,7 @@ impl FilePurgeQueue {
 
     fn push_file(&self, file_id: FileId) {
         if self.inner.closed.load(Ordering::SeqCst) {
+            warn!("Purger closed, ignore file_id:{file_id}");
             return;
         }
 

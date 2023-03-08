@@ -31,22 +31,20 @@ env:
   CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
   CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
   LOCK_FILE: Cargo.lock
+  RUST_VERSION: nightly-2023-02-02
 
 jobs:
   style-check:
     name: style-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      matrix:
-        rust: [ nightly-2022-08-08 ]
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
-          rustup toolchain install ${{ matrix.rust }} --profile minimal
+          rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
           sudo rm -rf /usr/local/lib/android # release about 10 GB
@@ -90,16 +88,13 @@ jobs:
     name: unit-test
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      matrix:
-        rust: [ nightly-2022-08-08 ]
     steps:
       - uses: actions/checkout@v3
         with:
           submodules: true
       - run: |
           rustup set auto-self-update disable
-          rustup toolchain install ${{ matrix.rust }} --profile minimal
+          rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
           sudo rm -rf /usr/local/lib/android # release about 10 GB
@@ -134,9 +129,6 @@ jobs:
     name: integration-test
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      matrix:
-        rust: [ nightly-2022-08-08 ]
     steps:
       - name: Download CeresMeta Code
         uses: actions/checkout@v3
@@ -165,7 +157,7 @@ jobs:
             debug-
       - run: |
           rustup set auto-self-update disable
-          rustup toolchain install ${{ matrix.rust }} --profile minimal
+          rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
           sudo rm -rf /usr/local/lib/android # release about 10 GB
@@ -195,3 +187,50 @@ jobs:
           path: |
             /tmp/ceresdb-stdout.log
             /tmp/ceresdb-stderr.log
+
+  sdk-test:
+    name: sdk-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo
+            ./target
+          key: debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            debug-${{ runner.os }}-${{ hashFiles('rust-toolchain') }}-
+            debug-${{ runner.os }}-
+            debug-
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${RUST_VERSION} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo rm -rf /usr/local/lib/android # release about 10 GB
+          sudo rm -rf /usr/share/dotnet # release about 20GB
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+      - name: Build and Run CeresDB
+        run: |
+          make build-debug
+          nohup ./target/debug/ceresdb-server -c docs/minimal.toml > /tmp/ceresdb-stdout.log &
+          sleep 10
+      - name: Run Go SDK tests
+        working-directory: integration_tests/sdk/go
+        run: |
+          go run main.go
+      - name: Upload Logs
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: sdk-test-${{ github.head_ref }}.${{ github.sha }}
+          path: |
+            /tmp/ceresdb-stdout.log

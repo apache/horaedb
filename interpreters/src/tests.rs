@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
+use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
 use catalog::{
     consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA},
     manager::ManagerRef,
@@ -337,11 +337,11 @@ where
 #[tokio::test]
 async fn test_interpreters_rocks() {
     common_util::tests::init_log_for_test();
-    let rocksdb_ctx = RocksDBEngineContext::default();
+    let rocksdb_ctx = RocksDBEngineBuildContext::default();
     test_interpreters(rocksdb_ctx).await;
 }
 
-async fn test_interpreters<T: EngineContext>(engine_context: T) {
+async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
     test_ctx.open().await;

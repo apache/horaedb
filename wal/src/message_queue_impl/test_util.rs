@@ -59,7 +59,7 @@ impl<Mq: MessageQueue> TestContext<Mq> {
             .into_iter()
             .map(|(table_id, data)| {
                 let log_batch_encoder =
-                    LogBatchEncoder::create(WalLocation::new(region_id, region_version, table_id));
+                    LogBatchEncoder::create(WalLocation::new(region_id, table_id));
                 let log_write_batch = log_batch_encoder
                     .encode_batch::<TestPayload, u32>(&data)
                     .unwrap();
