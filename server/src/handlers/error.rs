@@ -14,6 +14,9 @@ pub enum Error {
     #[snafu(display("Failed to parse sql, err:{}", source))]
     ParseSql { source: sql::frontend::Error },
 
+    #[snafu(display("Failed to parse influxql, err:{}", source))]
+    ParseInfluxql { source: sql::frontend::Error },
+
     #[snafu(display("Failed to create plan, query:{}, err:{}", query, source))]
     CreatePlan {
         query: String,

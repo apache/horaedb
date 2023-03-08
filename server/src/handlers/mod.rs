@@ -5,7 +5,7 @@
 pub mod admin;
 pub mod error;
 pub mod prom;
-pub mod sql;
+pub mod query;
 
 mod prelude {
     pub use catalog::manager::Manager as CatalogManager;

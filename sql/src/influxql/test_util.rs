@@ -1,5 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! Test utils
+
 use common_util::error::GenericResult;
 use datafusion::sql::TableReference;
 use influxdb_influxql_parser::{parse_statements, select::SelectStatement, statement::Statement};

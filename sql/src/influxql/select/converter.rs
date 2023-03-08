@@ -20,6 +20,8 @@ use sqlparser::ast::{
 use crate::influxql::{error::*, util};
 
 /// Influxql select statement converter
+// Derived from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/ff11fe465d02faf6c4dd3017df8750b38d4afd2b/iox_query/src/plan/influxql/planner.rs
 #[allow(dead_code)]
 pub struct Converter;
 

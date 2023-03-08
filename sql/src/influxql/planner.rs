@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Influxql planner.
+//! Influxql planner
 
 use common_util::error::{BoxError, GenericResult};
 use influxdb_influxql_parser::{
@@ -10,8 +10,8 @@ use snafu::ResultExt;
 use sqlparser::ast::Statement as SqlStatement;
 use table_engine::table::TableRef;
 
-use super::select::{converter::Converter, rewriter::Rewriter};
 use crate::{
+    influxql::select::{converter::Converter, rewriter::Rewriter},
     plan::Plan,
     planner::{BuildInfluxqlPlan, Result},
     provider::MetaProvider,

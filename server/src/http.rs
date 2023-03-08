@@ -8,6 +8,7 @@ use std::{
 };
 
 use common_util::error::BoxError;
+use handlers::query::QueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -30,7 +31,11 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{self, prom::CeresDBStorage, sql::Request},
+    handlers::{
+        self,
+        prom::CeresDBStorage,
+        query::{QueryType, Request},
+    },
     instance::InstanceRef,
     metrics,
     schema_config_provider::SchemaConfigProviderRef,
@@ -126,6 +131,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         self.home()
             .or(self.metrics())
             .or(self.sql())
+            .or(self.influxql())
             .or(self.heap_profile())
             .or(self.admin_block())
             .or(self.flush_memtable())
@@ -181,9 +187,49 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let result = handlers::sql::handle_sql(&ctx, instance, req)
+                let req = QueryRequest {
+                    query_type: QueryType::Sql,
+                    request: req,
+                };
+                let result = handlers::query::handle_query(&ctx, instance, req)
                     .await
-                    .map(handlers::sql::convert_output)
+                    .map(handlers::query::convert_output)
+                    .map_err(|e| {
+                        // TODO(yingwen): Maybe truncate and print the sql
+                        error!("Http service Failed to handle sql, err:{}", e);
+                        Box::new(e)
+                    })
+                    .context(HandleRequest);
+                match result {
+                    Ok(res) => Ok(reply::json(&res)),
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    // POST /sql
+    fn influxql(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        // accept json or plain text
+        let extract_request = warp::body::json()
+            .or(warp::body::bytes().map(Request::from))
+            .unify();
+
+        warp::path!("influxql")
+            .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
+            .and(extract_request)
+            .and(self.with_context())
+            .and(self.with_instance())
+            .and_then(|req, ctx, instance| async move {
+                let req = QueryRequest {
+                    query_type: QueryType::Influxql,
+                    request: req,
+                };
+                let result = handlers::query::handle_query(&ctx, instance, req)
+                    .await
+                    .map(handlers::query::convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
