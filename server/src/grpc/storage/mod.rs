@@ -4,10 +4,7 @@ mod error;
 mod header;
 mod metrics;
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{
@@ -29,7 +26,6 @@ use crate::{
         storage_service::RequestHeader,
     },
     proxy::{Context, Proxy},
-    schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Clone)]

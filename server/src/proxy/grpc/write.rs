@@ -4,9 +4,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use ceresdbproto::storage::{
-    value, RouteRequest, RouteResponse, WriteRequest, WriteSeriesEntry, WriteTableRequest,
-};
+use ceresdbproto::storage::{value, WriteRequest, WriteSeriesEntry, WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::{
     datum::{Datum, DatumKind},
@@ -30,7 +28,7 @@ use table_engine::table::TableRef;
 use crate::{
     instance::InstanceRef,
     proxy::{
-        error::{BadRequest, BadRequestWithoutErr, Internal, InternalWithoutErr, Result},
+        error::{BadRequestWithoutErr, Internal, InternalWithoutErr, Result},
         Context, Proxy,
     },
 };
@@ -42,6 +40,7 @@ pub struct WriteResponse {
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    // TODO: support forwarding write request
     pub(crate) async fn handle_write(
         &self,
         ctx: Context,

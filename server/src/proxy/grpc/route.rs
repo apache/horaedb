@@ -4,7 +4,7 @@ use query_engine::executor::Executor as QueryExecutor;
 use snafu::ResultExt;
 
 use crate::proxy::{
-    error::{self, Internal, Result},
+    error::{Internal, Result},
     Context, Proxy,
 };
 

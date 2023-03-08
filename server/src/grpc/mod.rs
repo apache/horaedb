@@ -34,7 +34,7 @@ use tonic::transport::Server;
 use crate::{
     grpc::{
         forward::Forwarder, meta_event_service::MetaServiceImpl,
-        remote_engine_service::RemoteEngineServiceImpl, storage::StorageServiceImpl,
+        remote_engine_service::RemoteEngineServiceImpl, storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
     schema_config_provider::{self, SchemaConfigProviderRef},
@@ -319,16 +319,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             None
         };
         let bg_runtime = runtimes.bg_runtime.clone();
-        // let storage_service = StorageServiceImpl {
-        //     router,
-        //     instance,
-        //     runtimes,
-        //     schema_config_provider,
-        //     forwarder,
-        //     timeout: self.timeout,
-        //     resp_compress_min_length: self.resp_compress_min_length,
-        // };
-        let storage_service = StorageServiceImpl::new();
+        let storage_service = StorageServiceImpl {
+            router,
+            instance,
+            runtimes,
+            schema_config_provider,
+            forwarder,
+            timeout: self.timeout,
+            resp_compress_min_length: self.resp_compress_min_length,
+        };
         let rpc_server = StorageServiceServer::new(storage_service);
 
         let serve_addr = self.endpoint.parse().context(InvalidRpcServeAddr)?;
