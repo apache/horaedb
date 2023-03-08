@@ -35,9 +35,12 @@ use crate::grpc::storage_service::{
 };
 
 fn is_table_not_found_error(e: &FrontendError) -> bool {
-    matches!(&e, FrontendError::CreatePlan { source }
-             if matches!(source, sql::planner::Error::BuildPromPlanError { source }
-                         if matches!(source, sql::promql::Error::TableNotFound { .. })))
+    matches!(&e, 
+        FrontendError::CreatePlan { 
+            source, 
+        .. }
+        if matches!(source, sql::planner::Error::BuildPromPlanError { source }
+                    if matches!(source, sql::promql::Error::TableNotFound { .. })))
 }
 
 pub async fn handle_query<Q>(
