@@ -20,6 +20,7 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
     time::DurationExt,
 };
+use datafusion::sql::sqlparser::test_utils::table;
 use log::{debug, error, info, warn};
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
@@ -529,7 +530,7 @@ impl ScheduleWorker {
 
         let token = self.memory_limit.try_apply_token(estimate_memory_usage);
 
-        warn!(
+        debug!(
             "Apply memory for compaction, current usage:{}, applied:{}, applied_result:{:?}",
             self.memory_limit.usage.load(Ordering::Relaxed),
             estimate_memory_usage,
