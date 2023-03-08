@@ -49,6 +49,7 @@ table_engine = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { workspace = true }
+wal = { workspace = true }
 warp = "0.3"
 zstd = { workspace = true }
 

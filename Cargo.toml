@@ -84,6 +84,7 @@ log = "0.4"
 logger = { path = "components/logger" }
 lru = "0.7.6"
 interpreters = { path = "interpreters" }
+itertools = "0.10.5"
 meta_client = { path = "meta_client" }
 object_store = { path = "components/object_store" }
 parquet_ext = { path = "components/parquet_ext" }

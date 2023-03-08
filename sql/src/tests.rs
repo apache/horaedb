@@ -3,7 +3,12 @@
 use std::sync::Arc;
 
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use common_types::tests::{build_default_value_schema, build_schema};
+use common_types::{
+    column_schema,
+    datum::DatumKind,
+    schema::{Builder, Schema, TSID_COLUMN},
+    tests::{build_default_value_schema, build_schema},
+};
 use datafusion::catalog::TableReference;
 use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
 use table_engine::{
@@ -46,6 +51,12 @@ impl Default for MockMetaProvider {
                     build_schema(),
                     ANALYTIC_ENGINE_TYPE.to_string(),
                 )),
+                Arc::new(MemoryTable::new(
+                    "influxql_test".to_string(),
+                    TableId::from(144),
+                    build_influxql_test_schema(),
+                    ANALYTIC_ENGINE_TYPE.to_string(),
+                )),
             ],
         }
     }
@@ -78,4 +89,43 @@ impl MetaProvider for MockMetaProvider {
     fn aggregate_udf(&self, _name: &str) -> crate::provider::Result<Option<AggregateUdf>> {
         todo!()
     }
+}
+
+fn build_influxql_test_schema() -> Schema {
+    Builder::new()
+        .auto_increment_column_id(true)
+        .add_key_column(
+            column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_key_column(
+            column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("col1".to_string(), DatumKind::String)
+                .is_tag(true)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("col2".to_string(), DatumKind::String)
+                .is_tag(true)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .add_normal_column(
+            column_schema::Builder::new("col3".to_string(), DatumKind::Int64)
+                .build()
+                .expect("should succeed build column schema"),
+        )
+        .unwrap()
+        .build()
+        .expect("should succeed to build schema")
 }

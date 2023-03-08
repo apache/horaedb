@@ -27,7 +27,7 @@ use crate::{
             ApplyMemTable, FlushTable, OperateByWriteWorker, ReadMetaUpdate, ReadWal,
             RecoverTableData, Result,
         },
-        flush_compaction::{TableFlushOptions, TableFlushPolicy},
+        flush_compaction::TableFlushOptions,
         mem_collector::MemUsageCollector,
         write_worker,
         write_worker::{RecoverTableCommand, WorkerLocal, WriteGroup},
@@ -216,7 +216,6 @@ impl Instance {
         let load_req = LoadRequest {
             space_id,
             table_id,
-            cluster_version: request.cluster_version,
             shard_id: request.shard_id,
         };
         let manifest_data = self
@@ -423,7 +422,6 @@ impl Instance {
                             res_sender: None,
                             compact_after_flush: false,
                             block_on_write_thread: false,
-                            policy: TableFlushPolicy::Dump,
                         };
                         self.flush_table_in_worker(worker_local, table_data, opts)
                             .await

@@ -2,11 +2,10 @@
 
 //! Channel pool
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
-use tokio::sync::RwLock;
 use tonic::transport::{Channel, Endpoint as TonicEndpoint};
 
 use crate::{config::Config, error::*};
@@ -30,7 +29,7 @@ impl ChannelPool {
 
     pub async fn get(&self, endpoint: &Endpoint) -> Result<Channel> {
         {
-            let inner = self.channels.read().await;
+            let inner = self.channels.read().unwrap();
             if let Some(channel) = inner.get(endpoint) {
                 return Ok(channel.clone());
             }
@@ -40,7 +39,7 @@ impl ChannelPool {
             .builder
             .build(endpoint.clone().to_string().as_str())
             .await?;
-        let mut inner = self.channels.write().await;
+        let mut inner = self.channels.write().unwrap();
         // Double check here.
         if let Some(channel) = inner.get(endpoint) {
             return Ok(channel.clone());

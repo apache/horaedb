@@ -231,9 +231,5 @@ pub type InstanceRef = Arc<Instance>;
 
 #[inline]
 pub(crate) fn create_wal_location(table_id: TableId, shard_info: TableShardInfo) -> WalLocation {
-    WalLocation::new(
-        shard_info.shard_id as u64,
-        shard_info.cluster_version,
-        table_id,
-    )
+    WalLocation::new(shard_info.shard_id as u64, table_id)
 }
