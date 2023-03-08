@@ -382,9 +382,9 @@ fn build_schema_from_write_table_request(
             let name_index = tag.name_index as usize;
             ensure!(
                 name_index < tag_names.len(),
-                InvalidWriteEntry{
+                InvalidWriteEntry {
                     msg: format!(
-                        "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table}",
+                        "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table}",
                     ),
                 }
             );
