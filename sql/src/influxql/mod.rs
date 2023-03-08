@@ -3,7 +3,8 @@
 //! Influxql processing
 
 pub mod planner;
-pub(crate) mod stmt_rewriter;
+pub(crate) mod select;
+pub mod test_util;
 pub(crate) mod util;
 pub mod error {
     use common_util::error::GenericError;
@@ -32,7 +33,13 @@ pub mod error {
             backtrace
         ))]
         RewriteNoCause { msg: String, backtrace: Backtrace },
-    }
 
+        #[snafu(display(
+            "Failed to convert to sql statement, msg:{}..\nBacktrace:{}",
+            msg,
+            backtrace
+        ))]
+        Convert { msg: String, backtrace: Backtrace },
+    }
     define_result!(Error);
 }

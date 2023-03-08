@@ -2,7 +2,10 @@
 
 //! Some utils used process influxql
 
+use std::collections::HashSet;
+
 use influxdb_influxql_parser::string::Regex;
+use lazy_static::lazy_static;
 
 // Copy from influxdb_iox:
 // https://github.com/influxdata/influxdb_iox/blob/e7369449f8975f6f86bc665ea3e1f556c2777145/query_functions/src/regex.rs#L147
@@ -74,6 +77,20 @@ fn is_valid_character_after_escape(c: char) -> bool {
 pub fn parse_regex(re: &Regex) -> std::result::Result<regex::Regex, regex::Error> {
     let pattern = clean_non_meta_escapes(re.as_str());
     regex::Regex::new(&pattern)
+}
+
+// Copy from influxql_iox.
+lazy_static! {
+    pub(crate) static ref SCALAR_MATH_FUNCTIONS: HashSet<&'static str> = HashSet::from([
+        "abs", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "exp", "log", "ln", "log2",
+        "log10", "sqrt", "pow", "floor", "ceil", "round",
+    ]);
+}
+
+/// Returns `true` if `name` is a mathematical scalar function
+/// supported by InfluxQL.
+pub(crate) fn is_scalar_math_function(name: &str) -> bool {
+    SCALAR_MATH_FUNCTIONS.contains(name)
 }
 
 mod test {
