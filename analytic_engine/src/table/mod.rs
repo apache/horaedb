@@ -17,8 +17,8 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, ReadOptions, ReadOrder, ReadRequest,
-        Result, Scan, Table, TableId, TableStats, Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, ReadMetricsCollector, ReadOptions,
+        ReadOrder, ReadRequest, Result, Scan, Table, TableId, TableStats, Write, WriteRequest,
     },
 };
 use tokio::sync::oneshot;
@@ -179,6 +179,7 @@ impl Table for TableImpl {
             projected_schema: request.projected_schema,
             predicate,
             order: ReadOrder::None,
+            metrics_collector: ReadMetricsCollector::new(),
         };
         let mut batch_stream = self
             .read(read_request)

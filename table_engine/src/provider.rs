@@ -19,7 +19,7 @@ use datafusion::{
     execution::context::{SessionState, TaskContext},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        DisplayFormatType, ExecutionPlan, Partitioning,
+        metrics::MetricsSet, DisplayFormatType, ExecutionPlan, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -30,7 +30,7 @@ use log::debug;
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
     stream::{SendableRecordBatchStream, ToDfStream},
-    table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
+    table::{self, ReadMetricsCollector, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
 
 #[derive(Clone, Debug)]
@@ -169,6 +169,7 @@ impl TableProviderAdapter {
             predicate,
             deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
+            metrics_collector: ReadMetricsCollector::new(),
         };
         scan_table.maybe_init_stream(state).await?;
 
@@ -295,6 +296,7 @@ struct ScanTable {
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
+    metrics_collector: ReadMetricsCollector,
 
     stream_state: Mutex<ScanStreamState>,
 }
@@ -311,6 +313,7 @@ impl ScanTable {
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),
             order: self.read_order,
+            metrics_collector: self.metrics_collector.clone(),
         };
 
         let read_res = self.table.partitioned_read(req).await;
@@ -385,6 +388,10 @@ impl ExecutionPlan for ScanTable {
             self.read_parallelism,
             self.read_order,
         )
+    }
+
+    fn metrics(&self) -> Option<MetricsSet> {
+        Some(self.metrics_collector.take_as_df_metrics())
     }
 
     fn statistics(&self) -> Statistics {

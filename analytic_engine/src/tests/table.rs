@@ -20,7 +20,10 @@ use table_engine::{
     self,
     engine::{CreateTableRequest, TableState},
     predicate::Predicate,
-    table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
+    table::{
+        GetRequest, ReadMetricsCollector, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId,
+        TableSeq,
+    },
 };
 
 use crate::{table_options, tests::row_util};
@@ -185,6 +188,7 @@ pub fn new_read_all_request_with_order(
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
         order,
+        metrics_collector: ReadMetricsCollector::new(),
     }
 }
 

@@ -7,7 +7,7 @@ use std::{
     fmt,
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -23,6 +23,9 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use common_util::error::{BoxError, GenericError};
+use datafusion::physical_plan::metrics::{
+    Count, Metric as DfMetric, MetricValue as DfMetricValue, MetricsSet, Time,
+};
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
@@ -376,6 +379,115 @@ impl ReadOrder {
 }
 
 #[derive(Clone, Debug)]
+pub struct MetricValue<T: Clone + fmt::Debug> {
+    pub name: String,
+    pub val: T,
+    pub partition: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Metric {
+    Counter(MetricValue<usize>),
+    Elapsed(MetricValue<Duration>),
+}
+
+impl Metric {
+    #[inline]
+    pub fn counter(name: String, val: usize, partition: Option<usize>) -> Self {
+        Metric::Counter(MetricValue {
+            name,
+            val,
+            partition,
+        })
+    }
+
+    #[inline]
+    pub fn elapsed(name: String, val: Duration, partition: Option<usize>) -> Self {
+        Metric::Elapsed(MetricValue {
+            name,
+            val,
+            partition,
+        })
+    }
+}
+
+impl From<Metric> for DfMetric {
+    fn from(metric: Metric) -> Self {
+        let (df_metric_val, partition) = match metric {
+            Metric::Counter(MetricValue {
+                name,
+                val,
+                partition,
+            }) => {
+                let count = Count::new();
+                count.add(val);
+                (
+                    DfMetricValue::Count {
+                        name: name.into(),
+                        count,
+                    },
+                    partition,
+                )
+            }
+            Metric::Elapsed(MetricValue {
+                name,
+                val,
+                partition,
+            }) => {
+                let time = Time::new();
+                time.add_duration(val);
+                (
+                    DfMetricValue::Time {
+                        name: name.into(),
+                        time,
+                    },
+                    partition,
+                )
+            }
+        };
+
+        DfMetric::new(df_metric_val, partition)
+    }
+}
+
+/// A collector for metrics of a single read request.
+///
+/// It can be cloned and shared among threads.
+#[derive(Clone, Debug)]
+pub struct ReadMetricsCollector {
+    pub(crate) metrics: Arc<Mutex<Vec<Metric>>>,
+}
+
+impl Default for ReadMetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReadMetricsCollector {
+    pub fn new() -> Self {
+        Self {
+            metrics: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn collect(&self, metric: Metric) {
+        let mut metrics = self.metrics.lock().unwrap();
+        metrics.push(metric);
+    }
+
+    pub fn take_as_df_metrics(&self) -> MetricsSet {
+        let metrics: Vec<_> = std::mem::take(self.metrics.lock().unwrap().as_mut());
+        let mut metrics_set = MetricsSet::new();
+        for df_metric in metrics.into_iter().map(DfMetric::from) {
+            metrics_set.push(Arc::new(df_metric));
+        }
+
+        metrics_set
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
     pub request_id: RequestId,
@@ -388,6 +500,8 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Read the rows in reverse order.
     pub order: ReadOrder,
+    /// Collector for metrics of this read request.
+    pub metrics_collector: ReadMetricsCollector,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -448,6 +562,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
+            metrics_collector: ReadMetricsCollector::new(),
         })
     }
 }
@@ -513,9 +628,6 @@ pub trait Table: std::fmt::Debug {
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 
     /// Get the specific row according to the primary key.
-    /// TODO(xikai): object-safety is not ensured by now if the default
-    ///  implementation is provided. Actually it is better to use the read
-    ///  method to implement the get method.
     async fn get(&self, request: GetRequest) -> Result<Option<Row>>;
 
     /// Read multiple partition of the table in parallel.

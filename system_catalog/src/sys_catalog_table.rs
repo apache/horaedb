@@ -35,8 +35,8 @@ use table_engine::{
     },
     predicate::PredicateBuilder,
     table::{
-        GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableInfo, TableRef,
-        WriteRequest,
+        GetRequest, ReadMetricsCollector, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId,
+        TableInfo, TableRef, WriteRequest,
     },
 };
 use tokio::sync::Mutex;
@@ -533,6 +533,7 @@ impl SysCatalogTable {
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
             order: ReadOrder::None,
+            metrics_collector: ReadMetricsCollector::new(),
         };
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
 
