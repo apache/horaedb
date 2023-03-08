@@ -905,7 +905,7 @@ impl Schema for SchemaImpl {
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
-    use analytic_engine::tests::util::{EngineContext, RocksDBEngineContext, TestEnv};
+    use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
     use catalog::{
         consts::DEFAULT_CATALOG,
         manager::Manager,
@@ -961,13 +961,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_catalog_by_name_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_catalog_by_name_schema_by_name(rocksdb_ctx).await;
     }
 
     async fn test_catalog_by_name_schema_by_name<T>(engine_context: T)
     where
-        T: EngineContext,
+        T: EngineBuildContext,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
@@ -1007,13 +1007,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_maybe_create_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_maybe_create_schema_by_name(rocksdb_ctx).await;
     }
 
     async fn test_maybe_create_schema_by_name<T>(engine_context: T)
     where
-        T: EngineContext,
+        T: EngineBuildContext,
     {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
@@ -1039,11 +1039,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_create_table(rocksdb_ctx).await;
     }
 
-    async fn test_create_table<T: EngineContext>(engine_context: T) {
+    async fn test_create_table<T: EngineBuildContext>(engine_context: T) {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;
@@ -1085,11 +1085,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_drop_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineContext::default();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
         test_drop_table(rocksdb_ctx).await;
     }
 
-    async fn test_drop_table<T: EngineContext>(engine_context: T) {
+    async fn test_drop_table<T: EngineBuildContext>(engine_context: T) {
         let env = TestEnv::builder().build();
         let mut test_ctx = env.new_context(engine_context);
         test_ctx.open().await;

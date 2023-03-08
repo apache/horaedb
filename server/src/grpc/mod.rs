@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use analytic_engine::setup::OpenedWals;
 use ceresdbproto::{
     meta_event::meta_event_service_server::MetaEventServiceServer,
     remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
@@ -91,6 +92,9 @@ pub enum Error {
 
     #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
     MissingRouter { backtrace: Backtrace },
+
+    #[snafu(display("Missing wals.\nBacktrace:\n{}", backtrace))]
+    MissingWals { backtrace: Backtrace },
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
@@ -205,6 +209,7 @@ pub struct Builder<Q> {
     instance: Option<InstanceRef<Q>>,
     router: Option<RouterRef>,
     cluster: Option<ClusterRef>,
+    opened_wals: Option<OpenedWals>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
 }
@@ -220,6 +225,7 @@ impl<Q> Builder<Q> {
             instance: None,
             router: None,
             cluster: None,
+            opened_wals: None,
             schema_config_provider: None,
             forward_config: None,
         }
@@ -262,6 +268,11 @@ impl<Q> Builder<Q> {
         self
     }
 
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
+
     pub fn schema_config_provider(mut self, provider: SchemaConfigProviderRef) -> Self {
         self.schema_config_provider = Some(provider);
         self
@@ -283,17 +294,19 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
         let router = self.router.context(MissingRouter)?;
+        let opened_wals = self.opened_wals.context(MissingWals)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
 
         let meta_rpc_server = self.cluster.map(|v| {
-            let meta_service = MetaServiceImpl {
+            let builder = meta_event_service::Builder {
                 cluster: v,
                 instance: instance.clone(),
                 runtime: runtimes.meta_runtime.clone(),
+                opened_wals,
             };
-            MetaEventServiceServer::new(meta_service)
+            MetaEventServiceServer::new(builder.build())
         });
 
         let remote_engine_server = {

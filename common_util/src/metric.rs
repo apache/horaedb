@@ -16,7 +16,7 @@ use crate::time;
 /// Meters are used to calculate rate of an event.
 #[derive(Debug)]
 pub struct Meter {
-    moving_avarages: ExponentiallyWeightedMovingAverages,
+    moving_averages: ExponentiallyWeightedMovingAverages,
     count: AtomicU64,
     start_time: SystemTime,
 }
@@ -30,7 +30,7 @@ impl Default for Meter {
 impl Meter {
     pub fn new() -> Meter {
         Meter {
-            moving_avarages: ExponentiallyWeightedMovingAverages::new(),
+            moving_averages: ExponentiallyWeightedMovingAverages::new(),
             count: AtomicU64::from(0),
             start_time: SystemTime::now(),
         }
@@ -42,23 +42,23 @@ impl Meter {
 
     pub fn mark_n(&self, n: u64) {
         self.count.fetch_add(n, Ordering::Relaxed);
-        self.moving_avarages.tick_if_needed();
-        self.moving_avarages.update(n);
+        self.moving_averages.tick_if_needed();
+        self.moving_averages.update(n);
     }
 
     pub fn h1_rate(&self) -> f64 {
-        self.moving_avarages.tick_if_needed();
-        self.moving_avarages.h1_rate()
+        self.moving_averages.tick_if_needed();
+        self.moving_averages.h1_rate()
     }
 
     pub fn h2_rate(&self) -> f64 {
-        self.moving_avarages.tick_if_needed();
-        self.moving_avarages.h2_rate()
+        self.moving_averages.tick_if_needed();
+        self.moving_averages.h2_rate()
     }
 
     pub fn m15_rate(&self) -> f64 {
-        self.moving_avarages.tick_if_needed();
-        self.moving_avarages.m15_rate()
+        self.moving_averages.tick_if_needed();
+        self.moving_averages.m15_rate()
     }
 
     pub fn count(&self) -> u64 {

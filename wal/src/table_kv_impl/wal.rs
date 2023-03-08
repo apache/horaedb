@@ -14,7 +14,7 @@ use table_kv::TableKv;
 use crate::{
     log_batch::LogWriteBatch,
     manager::{
-        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
+        self, error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext,
         ScanRequest, WalLocation, WalManager,
     },
     table_kv_impl::{
@@ -116,6 +116,14 @@ impl<T: TableKv> WalManager for WalNamespaceImpl<T> {
             .await
             .box_err()
             .context(Delete)
+    }
+
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.namespace
+            .close_region(region_id)
+            .await
+            .box_err()
+            .context(CloseRegion { region: region_id })
     }
 
     async fn close_gracefully(&self) -> Result<()> {

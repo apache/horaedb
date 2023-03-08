@@ -76,7 +76,6 @@ impl Instance {
         let snapshot_request = SnapshotRequest {
             space_id: space.id,
             table_id: table_data.id,
-            cluster_version: table_data.shard_info.cluster_version,
             shard_id: table_data.shard_info.shard_id,
         };
         self.space_store

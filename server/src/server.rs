@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
@@ -55,6 +56,9 @@ pub enum Error {
 
     #[snafu(display("Missing function registry.\nBacktrace:\n{}", backtrace))]
     MissingFunctionRegistry { backtrace: Backtrace },
+
+    #[snafu(display("Missing wals.\nBacktrace:\n{}", backtrace))]
+    MissingWals { backtrace: Backtrace },
 
     #[snafu(display("Missing limiter.\nBacktrace:\n{}", backtrace))]
     MissingLimiter { backtrace: Backtrace },
@@ -177,6 +181,7 @@ pub struct Builder<Q> {
     router: Option<RouterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -196,6 +201,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             router: None,
             schema_config_provider: None,
             local_tables_recoverer: None,
+            opened_wals: None,
         }
     }
 
@@ -267,6 +273,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server<Q>> {
         // Build instance
@@ -275,6 +286,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
+        let opened_wals = self.opened_wals.context(MissingWals)?;
 
         let instance = {
             let instance = Instance {
@@ -335,6 +347,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
+            .opened_wals(opened_wals)
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
             .timeout(self.config.timeout.map(|v| v.0))
