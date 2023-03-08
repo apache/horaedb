@@ -391,7 +391,7 @@ fn write_entry_to_rows(
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
+                    "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );
