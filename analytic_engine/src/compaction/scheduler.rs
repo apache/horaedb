@@ -529,7 +529,7 @@ impl ScheduleWorker {
 
         let token = self.memory_limit.try_apply_token(estimate_memory_usage);
 
-        debug!(
+        warn!(
             "Apply memory for compaction, current usage:{}, applied:{}, applied_result:{:?}",
             self.memory_limit.usage.load(Ordering::Relaxed),
             estimate_memory_usage,
@@ -574,12 +574,12 @@ impl ScheduleWorker {
             None => {
                 // Memory usage exceeds the threshold, let's put pack the
                 // request.
-                debug!(
+                warn!(
                     "Compaction task is ignored, because of high memory usage:{}, task:{:?}",
                     self.memory_limit.usage.load(Ordering::Relaxed),
                     compaction_task,
                 );
-                self.put_back_compaction_request(compact_req).await;
+                // self.put_back_compaction_request(compact_req).await;
                 return;
             }
         };
