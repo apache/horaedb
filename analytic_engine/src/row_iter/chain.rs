@@ -163,6 +163,7 @@ impl<'a> Builder<'a> {
             request_id: self.config.request_id,
             schema: self.config.projected_schema.to_record_schema_with_key(),
             streams,
+            ssts: self.ssts,
             next_stream_idx: 0,
             inited: false,
             metrics: Metrics::new(self.memtables.len(), total_sst_streams),
@@ -224,6 +225,9 @@ pub struct ChainIterator {
     request_id: RequestId,
     schema: RecordSchemaWithKey,
     streams: Vec<SequencedRecordBatchStream>,
+    /// ssts are kept here to avoid them from being purged.
+    #[allow(dead_code)]
+    ssts: Vec<Vec<FileHandle>>,
     /// The range of the index is [0, streams.len()] and the iterator is
     /// exhausted if it reaches `streams.len()`.
     next_stream_idx: usize,
@@ -322,6 +326,7 @@ mod tests {
             request_id: RequestId::next_id(),
             schema: schema.to_record_schema_with_key(),
             streams,
+            ssts: Vec::new(),
             next_stream_idx: 0,
             inited: false,
             metrics: Metrics::new(0, 0),
