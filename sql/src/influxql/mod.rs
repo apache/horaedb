@@ -4,6 +4,7 @@
 
 pub mod planner;
 pub(crate) mod select;
+#[cfg(test)]
 pub mod test_util;
 pub(crate) mod util;
 pub mod error {

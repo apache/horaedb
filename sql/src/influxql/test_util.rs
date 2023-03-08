@@ -1,5 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use common_util::error::GenericResult;
 use datafusion::sql::TableReference;
 use influxdb_influxql_parser::{parse_statements, select::SelectStatement, statement::Statement};
 
@@ -10,7 +11,7 @@ impl MeasurementProvider for MockMetaProvider {
     fn measurement(
         &self,
         measurement_name: &str,
-    ) -> crate::influxql::error::Result<Option<table_engine::table::TableRef>> {
+    ) -> GenericResult<Option<table_engine::table::TableRef>> {
         let table_ref = TableReference::Bare {
             table: std::borrow::Cow::Borrowed(measurement_name),
         };

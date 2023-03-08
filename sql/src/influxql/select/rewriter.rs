@@ -45,29 +45,37 @@ impl<'a> Rewriter<'a> {
         let mut new_from = Vec::new();
         for ms in stmt.from.iter() {
             match ms {
-                MeasurementSelection::Name(qmn) => match qmn {
-                    QualifiedMeasurementName {
-                        name: MeasurementName::Name(name),
-                        ..
-                    } => {
-                        let _ = self.measurement_provider.measurement(name)?.context(
+                MeasurementSelection::Name(qmn) => {
+                    match qmn {
+                        QualifiedMeasurementName {
+                            name: MeasurementName::Name(name),
+                            ..
+                        } => {
+                            let _ = self.measurement_provider.measurement(name)
+                        .context(
+                            RewriteWithCause {
+                                msg: format!("rewrite from failed to find measurement, measurement:{name}") 
+                            }
+                        )?
+                        .context(
                             RewriteNoCause {
-                                msg: format!("measurement not found, measurement:{name}"),
+                                msg: format!("rewrite from found measurement not found, measurement:{name}"),
                             },
                         )?;
-                        new_from.push(ms.clone());
-                    }
-                    QualifiedMeasurementName {
-                        name: MeasurementName::Regex(_),
-                        ..
-                    } => {
-                        // TODO: need to support get all tables first.
-                        return Unimplemented {
-                            msg: "rewrite from regex",
+                            new_from.push(ms.clone());
                         }
-                        .fail();
+                        QualifiedMeasurementName {
+                            name: MeasurementName::Regex(_),
+                            ..
+                        } => {
+                            // TODO: need to support get all tables first.
+                            return Unimplemented {
+                                msg: "rewrite from regex",
+                            }
+                            .fail();
+                        }
                     }
-                },
+                }
                 MeasurementSelection::Subquery(_) => {
                     return Unimplemented {
                         msg: "rewrite from subquery",
@@ -142,7 +150,6 @@ impl<'a> Rewriter<'a> {
         let measurement = self
             .measurement_provider
             .measurement(measurement_name)
-            .box_err()
             .context(RewriteWithCause {
                 msg: format!("failed to find measurement, measurement:{measurement_name}"),
             })?

@@ -252,10 +252,9 @@ pub enum Error {
 
     #[snafu(display("Failed to build plan, msg:{}", msg))]
     InvalidWriteEntry { msg: String },
+
     #[snafu(display("Failed to build influxql plan, err:{}", source))]
-    BuildInfluxqlPlan {
-        source: crate::influxql::error::Error,
-    },
+    BuildInfluxqlPlan { source: GenericError },
 }
 
 define_result!(Error);
@@ -333,9 +332,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         let planner = PlannerDelegate::new(adapter);
 
         let influxql_planner = crate::influxql::planner::Planner::new(planner);
-        influxql_planner
-            .statement_to_plan(statement)
-            .context(BuildInfluxqlPlan)
+        influxql_planner.statement_to_plan(statement)
     }
 
     pub fn write_req_to_plan(
