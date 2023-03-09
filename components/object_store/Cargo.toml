@@ -30,7 +30,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
-upstream = { package = "object_store", version = "0.5.3" }
+upstream = { package = "object_store", version = "0.5.5", features = [ "aws" ] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

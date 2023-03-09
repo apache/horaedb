@@ -1755,7 +1755,7 @@ dependencies = [
  "lazy_static",
  "log",
  "num_cpus",
- "object_store 0.5.3",
+ "object_store 0.5.5",
  "parking_lot 0.12.1",
  "parquet",
  "paste 1.0.8",
@@ -1782,7 +1782,7 @@ dependencies = [
  "arrow 32.0.0",
  "chrono",
  "num_cpus",
- "object_store 0.5.3",
+ "object_store 0.5.5",
  "parquet",
  "sqlparser",
 ]
@@ -1859,7 +1859,7 @@ dependencies = [
  "datafusion",
  "datafusion-common",
  "datafusion-expr",
- "object_store 0.5.3",
+ "object_store 0.5.5",
  "parking_lot 0.12.1",
  "pbjson-build",
  "prost",
@@ -3734,17 +3734,24 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "0.5.3"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4201837dc4c27a8670f0363b1255cd3845a4f0c521211cced1ed14c1d0cc6d2"
+checksum = "e1ea8f683b4f89a64181393742c041520a1a87e9775e6b4c0dd5a3281af05fc6"
 dependencies = [
  "async-trait",
+ "base64 0.21.0",
  "bytes 1.2.1",
  "chrono",
  "futures 0.3.25",
  "itertools",
  "parking_lot 0.12.1",
  "percent-encoding",
+ "quick-xml 0.27.1",
+ "rand 0.8.5",
+ "reqwest",
+ "ring",
+ "serde",
+ "serde_json",
  "snafu 0.7.1",
  "tokio",
  "tracing",
@@ -3767,7 +3774,7 @@ dependencies = [
  "lazy_static",
  "log",
  "lru",
- "object_store 0.5.3",
+ "object_store 0.5.5",
  "oss-rust-sdk",
  "prometheus 0.12.0",
  "prometheus-static-metric",
@@ -4562,6 +4569,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffc053f057dd768a56f62cd7e434c42c831d296968997e9ac1f76ea7c2d14c41"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -4928,6 +4936,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-rustls",
+ "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
