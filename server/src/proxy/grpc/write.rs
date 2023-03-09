@@ -506,3 +506,171 @@ fn convert_proto_value_to_datum(
             .fail(),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use ceresdbproto::storage::{Field, FieldGroup, Tag, Value};
+    use common_types::{
+        column_schema::{self, ColumnSchema},
+        schema::Builder,
+    };
+    use system_catalog::sys_catalog_table::TIMESTAMP_COLUMN_NAME;
+
+    use super::*;
+
+    const TAG_K: &str = "tagk";
+    const TAG_V: &str = "tagv";
+    const TAG_K1: &str = "tagk1";
+    const TAG_V1: &str = "tagv1";
+    const FIELD_NAME: &str = "field";
+    const FIELD_NAME1: &str = "field1";
+    const FIELD_VALUE_STRING: &str = "stringValue";
+
+    // tag_names field_names write_entry
+    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteSeriesEntry) {
+        let tag_names = vec![TAG_K.to_string(), TAG_K1.to_string()];
+        let field_names = vec![FIELD_NAME.to_string(), FIELD_NAME1.to_string()];
+
+        let tag = Tag {
+            name_index: 0,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(TAG_V.to_string())),
+            }),
+        };
+        let tag1 = Tag {
+            name_index: 1,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(TAG_V1.to_string())),
+            }),
+        };
+        let tags = vec![tag, tag1];
+
+        let field = Field {
+            name_index: 0,
+            value: Some(Value {
+                value: Some(value::Value::Float64Value(100.0)),
+            }),
+        };
+        let field1 = Field {
+            name_index: 1,
+            value: Some(Value {
+                value: Some(value::Value::StringValue(FIELD_VALUE_STRING.to_string())),
+            }),
+        };
+        let field_group = FieldGroup {
+            timestamp: 1000,
+            fields: vec![field],
+        };
+        let field_group1 = FieldGroup {
+            timestamp: 2000,
+            fields: vec![field1.clone()],
+        };
+        let field_group2 = FieldGroup {
+            timestamp: 3000,
+            fields: vec![field1],
+        };
+
+        let write_entry = WriteSeriesEntry {
+            tags,
+            field_groups: vec![field_group, field_group1, field_group2],
+        };
+
+        let schema_builder = Builder::new();
+        let schema = schema_builder
+            .auto_increment_column_id(true)
+            .add_key_column(ColumnSchema {
+                id: column_schema::COLUMN_ID_UNINIT,
+                name: TIMESTAMP_COLUMN_NAME.to_string(),
+                data_type: DatumKind::Timestamp,
+                is_nullable: false,
+                is_tag: false,
+                comment: String::new(),
+                escaped_name: TIMESTAMP_COLUMN_NAME.escape_debug().to_string(),
+                default_value: None,
+            })
+            .unwrap()
+            .add_key_column(ColumnSchema {
+                id: column_schema::COLUMN_ID_UNINIT,
+                name: TAG_K.to_string(),
+                data_type: DatumKind::String,
+                is_nullable: false,
+                is_tag: true,
+                comment: String::new(),
+                escaped_name: TAG_K.escape_debug().to_string(),
+                default_value: None,
+            })
+            .unwrap()
+            .add_normal_column(ColumnSchema {
+                id: column_schema::COLUMN_ID_UNINIT,
+                name: TAG_K1.to_string(),
+                data_type: DatumKind::String,
+                is_nullable: false,
+                is_tag: true,
+                comment: String::new(),
+                escaped_name: TAG_K1.escape_debug().to_string(),
+                default_value: None,
+            })
+            .unwrap()
+            .add_normal_column(ColumnSchema {
+                id: column_schema::COLUMN_ID_UNINIT,
+                name: FIELD_NAME.to_string(),
+                data_type: DatumKind::Double,
+                is_nullable: true,
+                is_tag: false,
+                comment: String::new(),
+                escaped_name: FIELD_NAME.escape_debug().to_string(),
+                default_value: None,
+            })
+            .unwrap()
+            .add_normal_column(ColumnSchema {
+                id: column_schema::COLUMN_ID_UNINIT,
+                name: FIELD_NAME1.to_string(),
+                data_type: DatumKind::String,
+                is_nullable: true,
+                is_tag: false,
+                comment: String::new(),
+                escaped_name: FIELD_NAME1.escape_debug().to_string(),
+                default_value: None,
+            })
+            .unwrap()
+            .build()
+            .unwrap();
+        (schema, tag_names, field_names, write_entry)
+    }
+
+    #[test]
+    fn test_write_entry_to_row_group() {
+        let (schema, tag_names, field_names, write_entry) = generate_write_entry();
+        let rows =
+            write_entry_to_rows("test_table", &schema, &tag_names, &field_names, write_entry)
+                .unwrap();
+        let row0 = vec![
+            Datum::Timestamp(Timestamp::new(1000)),
+            Datum::String(TAG_V.into()),
+            Datum::String(TAG_V1.into()),
+            Datum::Double(100.0),
+            Datum::Null,
+        ];
+        let row1 = vec![
+            Datum::Timestamp(Timestamp::new(2000)),
+            Datum::String(TAG_V.into()),
+            Datum::String(TAG_V1.into()),
+            Datum::Null,
+            Datum::String(FIELD_VALUE_STRING.into()),
+        ];
+        let row2 = vec![
+            Datum::Timestamp(Timestamp::new(3000)),
+            Datum::String(TAG_V.into()),
+            Datum::String(TAG_V1.into()),
+            Datum::Null,
+            Datum::String(FIELD_VALUE_STRING.into()),
+        ];
+
+        let expect_rows = vec![
+            Row::from_datums(row0),
+            Row::from_datums(row1),
+            Row::from_datums(row2),
+        ];
+        assert_eq!(rows, expect_rows);
+    }
+}

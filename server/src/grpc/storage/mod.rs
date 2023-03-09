@@ -1,7 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 mod error;
-mod header;
 mod metrics;
 
 use std::{sync::Arc, time::Duration};
