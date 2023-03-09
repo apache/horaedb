@@ -22,7 +22,7 @@ futures = { workspace = true }
 lazy_static = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
-oss-rust-sdk = "0.6.1"
+oss-rust-sdk = { version = "0.8", default-features = false, features = [ "rustls-tls" ] }
 prometheus = { workspace = true }
 prometheus-static-metric = { workspace = true }
 prost = { workspace = true }
