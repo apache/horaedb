@@ -26,8 +26,8 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use warp::reject;
 
 use crate::{
-    context::RequestContext, handlers, instance::InstanceRef,
-    schema_config_provider::SchemaConfigProviderRef,
+    context::RequestContext, grpc::storage_service::write::WriteContext, handlers,
+    instance::InstanceRef, schema_config_provider::SchemaConfigProviderRef,
 };
 
 #[derive(Debug, Snafu)]
@@ -242,15 +242,15 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
             .schema_config_provider
             .schema_config(schema)
             .context(SchemaError)?;
+
+        let write_context =
+            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
+
         let plans = crate::grpc::storage_service::write::write_request_to_insert_plan(
-            request_id,
-            catalog,
-            schema,
             self.instance.clone(),
             Self::convert_write_request(req)?,
             schema_config,
-            deadline,
-            true,
+            write_context,
         )
         .await
         .context(GRPCWriteError)?;
