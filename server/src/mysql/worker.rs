@@ -11,7 +11,10 @@ use table_engine::engine::EngineRuntimes;
 
 use crate::{
     context::RequestContext,
-    handlers::{self, sql::Request},
+    handlers::{
+        self,
+        query::{QueryRequest, Request},
+    },
     instance::Instance,
     mysql::{
         error::{CreateContext, HandleSql, Result},
@@ -109,9 +112,9 @@ where
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
         let ctx = self.create_ctx()?;
-
         let req = Request::from(sql.to_string());
-        handlers::sql::handle_sql(&ctx, self.instance.clone(), req)
+        let req = QueryRequest::Sql(req);
+        handlers::query::handle_query(&ctx, self.instance.clone(), req)
             .await
             .map_err(|e| {
                 error!("Mysql service Failed to handle sql, err: {}", e);

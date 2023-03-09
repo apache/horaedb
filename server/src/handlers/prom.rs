@@ -25,6 +25,7 @@ use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use warp::reject;
 
+use super::query::QueryRequest;
 use crate::{
     context::RequestContext, handlers, instance::InstanceRef,
     schema_config_provider::SchemaConfigProviderRef,
@@ -291,7 +292,8 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
             TIMESTAMP_COLUMN
         );
 
-        let result = handlers::sql::handle_sql(ctx, self.instance.clone(), sql.into())
+        let request = QueryRequest::Sql(sql.into());
+        let result = handlers::query::handle_query(ctx, self.instance.clone(), request)
             .await
             .map_err(Box::new)
             .context(SqlHandle)?;

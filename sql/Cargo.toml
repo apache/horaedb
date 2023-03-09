@@ -29,6 +29,7 @@ df_operator = { workspace = true }
 hashbrown = { version = "0.12", features = ["raw"] }
 influxdb_influxql_parser = { git = "https://github.com/Rachelint/influxdb_iox.git", branch = "influxql-parser" }
 itertools = { workspace = true }
+lazy_static = { workspace = true }
 log = { workspace = true }
 paste = { workspace = true }
 regex = "1"
