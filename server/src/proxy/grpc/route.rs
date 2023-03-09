@@ -1,3 +1,5 @@
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use ceresdbproto::storage::{Route, RouteRequest};
 use common_util::error::BoxError;
 use query_engine::executor::Executor as QueryExecutor;

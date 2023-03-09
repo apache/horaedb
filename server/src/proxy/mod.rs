@@ -1,3 +1,5 @@
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
 pub(crate) mod error;
 mod grpc;
 
@@ -15,6 +17,7 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    #[allow(dead_code)]
     pub fn new(
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,

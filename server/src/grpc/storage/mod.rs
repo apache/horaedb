@@ -21,10 +21,7 @@ use table_engine::engine::EngineRuntimes;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    grpc::{
-        storage::error::{ErrNoCause, ErrWithCause, Result},
-        storage_service::RequestHeader,
-    },
+    grpc::storage::error::{ErrNoCause, ErrWithCause, Result},
     proxy::{Context, Proxy},
 };
 
@@ -34,12 +31,6 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub runtimes: Arc<EngineRuntimes>,
     pub timeout: Option<Duration>,
     pub resp_compress_min_length: usize,
-}
-
-impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
-    pub fn new() -> Self {
-        todo!()
-    }
 }
 
 #[async_trait]
@@ -147,7 +138,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         req: tonic::Request<WriteRequest>,
     ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let header = RequestHeader::from(req.metadata());
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let join_handle = self.runtimes.write_runtime.spawn(async move {
