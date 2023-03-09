@@ -2,6 +2,7 @@
 
 use std::{
     borrow::Cow,
+    collections::HashMap,
     env,
     fmt::Display,
     fs::File,
@@ -16,6 +17,8 @@ use ceresdb_client::{
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,
 };
+use reqwest::ClientBuilder;
+use serde::Serialize;
 use sql::{
     ast::{Statement, TableName},
     parser::Parser,
@@ -35,15 +38,71 @@ pub enum DeployMode {
     Cluster,
 }
 
+// Used to access CeresDB by http service.
+#[derive(Clone)]
+struct HttpClient {
+    client: reqwest::Client,
+    endpoint: String,
+}
+
+#[derive(Clone, Serialize)]
+struct InfluxQLRequest {
+    query: String,
+}
+
+impl HttpClient {
+    fn new(endpoint: String) -> Self {
+        let client = ClientBuilder::new()
+            .build()
+            .expect("should succeed to build http client");
+        Self { client, endpoint }
+    }
+}
+
 pub struct CeresDB {
     server_process: Option<Child>,
     db_client: Arc<dyn DbClient>,
+    // FIXME: Currently, the new protocol does not support by the dbclient but is exposed by http
+    // service. And remove this client when the new protocol is supported by the dbclient.
+    http_client: Option<HttpClient>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Protocol {
+    Sql,
+    InfluxQL,
+}
+
+struct ProtocolParser;
+
+impl ProtocolParser {
+    fn parse_from_ctx(&self, ctx: HashMap<String, String>) -> Protocol {
+        if ctx
+            .get("protocol")
+            .map(|v| v == "influxql")
+            .unwrap_or(false)
+        {
+            Protocol::InfluxQL
+        } else {
+            Protocol::Sql
+        }
+    }
 }
 
 #[async_trait]
 impl Database for CeresDB {
-    async fn query(&self, _context: QueryContext, query: String) -> Box<dyn Display> {
-        Self::execute(query, self.db_client.clone()).await
+    async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
+        let protocol = ProtocolParser.parse_from_ctx(context.context);
+        match protocol {
+            Protocol::Sql => Self::execute_sql(query, self.db_client.clone()).await,
+            Protocol::InfluxQL => {
+                let http_client = self
+                    .http_client
+                    .clone()
+                    .expect("http client is not initialized for execute influxql");
+                Self::execute_influxql(query, http_client).await
+            }
+        }
     }
 }
 
@@ -66,10 +125,11 @@ impl CeresDB {
                 let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
                     panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
                 });
-                let db_client = Builder::new(endpoint, Mode::Proxy).build();
+                let db_client = Builder::new(endpoint.clone(), Mode::Proxy).build();
                 CeresDB {
                     server_process: Some(server_process),
                     db_client,
+                    http_client: Some(HttpClient::new(endpoint)),
                 }
             }
             DeployMode::Cluster => {
@@ -83,6 +143,7 @@ impl CeresDB {
                 CeresDB {
                     server_process: None,
                     db_client,
+                    http_client: None,
                 }
             }
         }
@@ -101,7 +162,24 @@ impl CeresDB {
         }
     }
 
-    async fn execute(query: String, client: Arc<dyn DbClient>) -> Box<dyn Display> {
+    async fn execute_influxql(query: String, http_client: HttpClient) -> Box<dyn Display> {
+        let url = format!("http://{}/influxql", http_client.endpoint);
+        let query_request = InfluxQLRequest { query };
+        let resp = http_client
+            .client
+            .post(url)
+            .json(&query_request)
+            .send()
+            .await
+            .unwrap();
+        let query_res = match resp.text().await {
+            Ok(text) => text,
+            Err(e) => format!("Failed to do influxql query, err:{e:?}"),
+        };
+        Box::new(query_res)
+    }
+
+    async fn execute_sql(query: String, client: Arc<dyn DbClient>) -> Box<dyn Display> {
         let query_ctx = RpcContext {
             database: Some("public".to_string()),
             timeout: None,

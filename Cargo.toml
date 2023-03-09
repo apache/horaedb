@@ -97,6 +97,7 @@ prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
+reqwest = { version = "0.11", features = ["json"] }
 router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"

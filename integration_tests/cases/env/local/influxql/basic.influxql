@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS `basic_influxql_test`;
+
+CREATE TABLE `basic_influxql_test` (
+    `hostname` string TAG,
+    `zone` string TAG,
+    load double NOT NULL,
+    t timestamp NOT NULL,
+    timestamp KEY (t)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
+
+INSERT INTO basic_influxql_test(t, hostname, zone, value)
+    VALUES (1651737067001, "127.0.0.1", "GZ001", 4.5);
+
+# protocol=influxql
+SELECT * FROM "basic_influxql_test";
