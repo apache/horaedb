@@ -107,7 +107,7 @@ pub struct ServerConfig {
     /// Config for forwarding
     pub forward: forward::Config,
 
-    /// auto create tables, default true
+    /// Whether to create table when data is first written, only used in gRPC
     pub auto_create_tables: bool,
 }
 
