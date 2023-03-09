@@ -220,6 +220,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,

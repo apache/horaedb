@@ -20,7 +20,7 @@ use table_engine::{
     stream::{
         self, ErrWithSource, PartitionedStreams, RecordBatchStream, SendableRecordBatchStream,
     },
-    table::ReadRequest,
+    table::{Metric, ReadRequest},
 };
 use tokio::sync::mpsc::{self, Receiver};
 
@@ -66,6 +66,8 @@ pub enum Error {
 define_result!(Error);
 
 const RECORD_BATCH_READ_BUF_SIZE: usize = 1000;
+const READ_METRIC_MERGE_SORT: &str = "do_merge_sort";
+const READ_METRIC_ITER_NUM: &str = "iter_num";
 
 /// Check whether it needs to apply merge sorting when reading the table with
 /// the `table_options` by the `read_request`.
@@ -91,13 +93,18 @@ impl Instance {
 
         let table_data = space_table.table_data();
 
-        // Collect metrics.
-        table_data.metrics.on_read_request_begin();
-
         let iter_options = self.iter_options.clone();
         let table_options = table_data.table_options();
 
-        if need_merge_sort_streams(&table_data.table_options(), &request) {
+        // Collect metrics.
+        table_data.metrics.on_read_request_begin();
+        let need_merge_sort = need_merge_sort_streams(&table_options, &request);
+        request.metrics_collector.collect(Metric::boolean(
+            READ_METRIC_MERGE_SORT.to_string(),
+            need_merge_sort,
+        ));
+
+        if need_merge_sort {
             let merge_iters = self
                 .build_merge_iters(table_data, &request, iter_options, &table_options)
                 .await?;
@@ -123,16 +130,16 @@ impl Instance {
         };
 
         // Split iterators into `read_parallelism` groups.
-        let mut splited_iters: Vec<_> = std::iter::repeat_with(Vec::new)
+        let mut splitted_iters: Vec<_> = std::iter::repeat_with(Vec::new)
             .take(read_parallelism)
             .collect();
 
         for (i, time_aligned_iter) in partitioned_iters.into_iter().enumerate() {
-            splited_iters[i % read_parallelism].push(time_aligned_iter);
+            splitted_iters[i % read_parallelism].push(time_aligned_iter);
         }
 
         let mut streams = Vec::with_capacity(read_parallelism);
-        for iters in splited_iters {
+        for iters in splitted_iters {
             let stream = iters_to_stream(iters, self.read_runtime(), &request.projected_schema);
             streams.push(stream);
         }
@@ -172,6 +179,7 @@ impl Instance {
         for read_view in read_views {
             let merge_config = MergeConfig {
                 request_id: request.request_id,
+                metrics_collector: Some(request.metrics_collector.clone()),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
@@ -200,6 +208,11 @@ impl Instance {
 
             iters.push(dedup_iter);
         }
+
+        request.metrics_collector.collect(Metric::counter(
+            READ_METRIC_ITER_NUM.to_string(),
+            iters.len(),
+        ));
 
         Ok(iters)
     }

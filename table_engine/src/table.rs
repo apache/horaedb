@@ -382,71 +382,63 @@ impl ReadOrder {
 pub struct MetricValue<T: Clone + fmt::Debug> {
     pub name: String,
     pub val: T,
-    pub partition: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
 pub enum Metric {
+    Boolean(MetricValue<bool>),
     Counter(MetricValue<usize>),
     Elapsed(MetricValue<Duration>),
 }
 
 impl Metric {
     #[inline]
-    pub fn counter(name: String, val: usize, partition: Option<usize>) -> Self {
-        Metric::Counter(MetricValue {
-            name,
-            val,
-            partition,
-        })
+    pub fn counter(name: String, val: usize) -> Self {
+        Metric::Counter(MetricValue { name, val })
     }
 
     #[inline]
-    pub fn elapsed(name: String, val: Duration, partition: Option<usize>) -> Self {
-        Metric::Elapsed(MetricValue {
-            name,
-            val,
-            partition,
-        })
+    pub fn elapsed(name: String, val: Duration) -> Self {
+        Metric::Elapsed(MetricValue { name, val })
+    }
+
+    #[inline]
+    pub fn boolean(name: String, val: bool) -> Self {
+        Metric::Boolean(MetricValue { name, val })
     }
 }
 
 impl From<Metric> for DfMetric {
     fn from(metric: Metric) -> Self {
-        let (df_metric_val, partition) = match metric {
-            Metric::Counter(MetricValue {
-                name,
-                val,
-                partition,
-            }) => {
+        let df_metric_val = match metric {
+            Metric::Counter(MetricValue { name, val }) => {
                 let count = Count::new();
                 count.add(val);
-                (
-                    DfMetricValue::Count {
-                        name: name.into(),
-                        count,
-                    },
-                    partition,
-                )
+                DfMetricValue::Count {
+                    name: name.into(),
+                    count,
+                }
             }
-            Metric::Elapsed(MetricValue {
-                name,
-                val,
-                partition,
-            }) => {
+            Metric::Elapsed(MetricValue { name, val }) => {
                 let time = Time::new();
                 time.add_duration(val);
-                (
-                    DfMetricValue::Time {
-                        name: name.into(),
-                        time,
-                    },
-                    partition,
-                )
+                DfMetricValue::Time {
+                    name: name.into(),
+                    time,
+                }
+            }
+            Metric::Boolean(MetricValue { name, val }) => {
+                let count = Count::new();
+                // Use 0 for false, 1 for true.
+                count.add(val as usize);
+                DfMetricValue::Count {
+                    name: name.into(),
+                    count,
+                }
             }
         };
 
-        DfMetric::new(df_metric_val, partition)
+        DfMetric::new(df_metric_val, None)
     }
 }
 
