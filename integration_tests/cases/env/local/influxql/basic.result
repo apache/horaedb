@@ -1,0 +1,49 @@
+DROP TABLE IF EXISTS `h2o_feet`;
+
+affected_rows: 0
+
+CREATE TABLE `h2o_feet` (
+    `time` timestamp NOT NULL,
+    `level_description` string TAG,
+    `location` string TAG,
+    `water_level` double NOT NULL,
+    timestamp KEY (time)) ENGINE = Analytic WITH (
+    enable_ttl = 'false'
+);
+
+affected_rows: 0
+
+INSERT INTO h2o_feet(time, level_description, location, water_level)
+    VALUES
+        (1439827200000, "between 6 and 9 feet", "coyote_creek", 8.12),
+        (1439827200000, "below 3 feet", "santa_monica", 2.064),
+        (1439827560000, "between 6 and 9 feet", "coyote_creek", 8.005),
+        (1439827560000, "below 3 feet", "santa_monica", 2.116),
+        (1439827620000, "between 6 and 9 feet", "coyote_creek", 7.887),
+        (1439827620000, "below 3 feet", "santa_monica", 2.028);
+
+affected_rows: 6
+
+SELECT * FROM "h2o_feet";
+
+tsid,time,level_description,location,water_level,
+UInt64(4483051411356144610),Timestamp(1439827200000),String("between 6 and 9 feet"),String("coyote_creek"),Double(8.12),
+UInt64(4483051411356144610),Timestamp(1439827560000),String("between 6 and 9 feet"),String("coyote_creek"),Double(8.005),
+UInt64(4483051411356144610),Timestamp(1439827620000),String("between 6 and 9 feet"),String("coyote_creek"),Double(7.887),
+UInt64(8247797837995683878),Timestamp(1439827200000),String("below 3 feet"),String("santa_monica"),Double(2.064),
+UInt64(8247797837995683878),Timestamp(1439827560000),String("below 3 feet"),String("santa_monica"),Double(2.116),
+UInt64(8247797837995683878),Timestamp(1439827620000),String("below 3 feet"),String("santa_monica"),Double(2.028),
+
+
+SELECT level_description, location, water_level FROM "h2o_feet" where location = 'santa_monica';
+
+level_description,location,water_level,
+String("below 3 feet"),String("santa_monica"),Double(2.064),
+String("below 3 feet"),String("santa_monica"),Double(2.116),
+String("below 3 feet"),String("santa_monica"),Double(2.028),
+
+
+DROP TABLE IF EXISTS `h2o_feet`;
+
+affected_rows: 0
+
