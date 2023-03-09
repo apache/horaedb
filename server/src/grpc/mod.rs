@@ -44,6 +44,8 @@ pub mod forward;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
+#[allow(dead_code)]
+mod storage;
 pub(crate) mod storage_service;
 
 #[derive(Debug, Snafu)]
