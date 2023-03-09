@@ -25,7 +25,7 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
-use log::{error, info};
+use log::{error, info, warn};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -249,18 +249,25 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             shard_id: shard_info.id,
             cluster_version: topology.cluster_topology_version,
         };
-        schema
-            .open_table(open_request.clone(), opts.clone())
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: format!("fail to open table, open_request:{open_request:?}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!("no table is opened, open_request:{open_request:?}"),
-            })?;
+        let result = schema.open_table(open_request.clone(), opts.clone()).await;
+
+        if result.is_ok() {
+            continue;
+        }
+
+        match result.err() {
+            Some(e) => warn!("fail to open table, open_request:{open_request:?}, error:{e:?}"),
+            None => warn!("no table is opened, open_request:{open_request:?}"),
+        }
+        // box_result
+        //     .with_context(|| ErrWithCause {
+        //         code: StatusCode::Internal,
+        //         msg: format!("fail to open table,
+        // open_request:{open_request:?}"),     })?
+        //     .with_context(|| ErrNoCause {
+        //         code: StatusCode::Internal,
+        //         msg: format!("no table is opened,
+        // open_request:{open_request:?}"),     })?;
     }
 
     Ok(())
