@@ -210,6 +210,7 @@ impl HandlerContext {
 // implementation.
 
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
+    let instant = Instant::now();
     let tables_of_shard =
         ctx.cluster
             .open_shard(&request)
@@ -272,8 +273,11 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     }
 
     info!(
-        "Open shard finish, shard id:{}, successful tables:{}, failed tables:{}",
-        shard_info.id, success, fail
+        "Open shard finish, shard id:{}, cost:{}ms, successful tables:{}, failed tables:{}",
+        shard_info.id,
+        instant.saturating_elapsed().as_millis(),
+        success,
+        fail
     );
 
     if err_list.is_empty() {
@@ -281,7 +285,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     } else {
         Err(Error::OpenShardErr {
             code: StatusCode::Internal,
-            msg: format!("Open shard failed because of failed tables:{err_list:?}"),
+            msg: format!(
+                "Failed to open shard:{},  because of failed tables:{err_list:?}",
+                shard_info.id
+            ),
         })
     }
 }
