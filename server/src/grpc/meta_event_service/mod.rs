@@ -236,6 +236,8 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         table_engine: ctx.table_engine,
     };
 
+    let mut success = 0;
+    let mut cfail = 0;
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -252,12 +254,20 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         let result = schema.open_table(open_request.clone(), opts.clone()).await;
 
         match result {
-            Ok(Some(_)) => {},
+            Ok(Some(_)) => {
+                success += 1;
+            }
             Ok(None) => error!("No table is opened, open_request:{open_request:?}"),
-            Err(e) => error!("Failed to open table, open_request:{open_request:?}, err:{e}"),
+            Err(e) => {
+                fail += 1;
+                error!("Failed to open table, open_request:{open_request:?}, err:{e}");
+            }
         }
     }
-
+    info!(
+        "Open shard finish, shard id:{}, successful tables:{}, failed tables:{}",
+        shard_info.id, success, fail
+    );
     Ok(())
 }
 
