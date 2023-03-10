@@ -41,7 +41,7 @@ use self::shard_operation::WalCloserAdapter;
 use crate::{
     grpc::{
         meta_event_service::{
-            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+            error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
             shard_operation::WalRegionCloserRef,
         },
         metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -238,6 +238,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
 
     let mut success = 0;
     let mut fail = 0;
+    let mut err_list = vec![];
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -257,18 +258,32 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             Ok(Some(_)) => {
                 success += 1;
             }
-            Ok(None) => error!("No table is opened, open_request:{open_request:?}"),
+            Ok(None) => {
+                fail += 1;
+                error!("no table is opened, open_request:{open_request:?}");
+                err_list.push(table.name);
+            }
             Err(e) => {
                 fail += 1;
-                error!("Failed to open table, open_request:{open_request:?}, err:{e}");
+                error!("fail to open table, open_request:{open_request:?}, err:{e}");
+                err_list.push(table.name);
             }
-        }
+        };
     }
+
     info!(
         "Open shard finish, shard id:{}, successful tables:{}, failed tables:{}",
         shard_info.id, success, fail
     );
-    Ok(())
+
+    if err_list.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::OpenShardErr {
+            code: StatusCode::Internal,
+            msg: format!("Open shard failed because of failed tables:{err_list:?}"),
+        })
+    }
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
