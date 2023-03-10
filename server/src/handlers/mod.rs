@@ -4,6 +4,7 @@
 
 pub mod admin;
 pub mod error;
+pub mod influxdb;
 pub mod prom;
 pub mod query;
 

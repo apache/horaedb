@@ -3,6 +3,7 @@
 //! Error of handlers
 
 use snafu::{Backtrace, Snafu};
+use warp::reject::Reject;
 
 use crate::limiter;
 // TODO(yingwen): Avoid printing huge sql string
@@ -73,3 +74,5 @@ pub enum Error {
 }
 
 define_result!(Error);
+
+impl Reject for Error {}

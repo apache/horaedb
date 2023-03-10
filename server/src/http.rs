@@ -31,7 +31,12 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{self, prom::CeresDBStorage, query::Request},
+    handlers::{
+        self,
+        influxdb::{self, Influxdb},
+        prom::CeresDBStorage,
+        query::Request,
+    },
     instance::InstanceRef,
     metrics,
     schema_config_provider::SchemaConfigProviderRef,
@@ -109,6 +114,7 @@ pub struct Service<Q> {
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
+    influxdb: Arc<Influxdb<Q>>,
     tx: Sender<()>,
     config: HttpConfig,
 }
@@ -124,15 +130,20 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn routes(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        self.home()
-            .or(self.metrics())
-            .or(self.sql())
-            .or(self.influxql())
-            .or(self.heap_profile())
-            .or(self.admin_block())
-            .or(self.flush_memtable())
-            .or(self.update_log_level())
-            .or(self.prom_api())
+        warp::body::content_length_limit(self.config.max_body_size).and(
+            self.home()
+                // public APIs
+                .or(self.metrics())
+                .or(self.sql())
+                .or(self.influxdb_api())
+                .or(self.prom_api())
+                // admin APIs
+                .or(self.admin_block())
+                // debug APIs
+                .or(self.flush_memtable())
+                .or(self.update_log_level())
+                .or(self.heap_profile()),
+        )
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -178,7 +189,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("sql")
             .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
@@ -200,41 +210,24 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    // POST /influxql
-    // this request type is not what influxdb API expected, the one in influxdb:
-    // https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
-    fn influxql(
+    /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
+    fn influxdb_api(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        // accept json or plain text
-        let extract_request = warp::body::json()
-            .or(warp::body::bytes().map(Request::from))
-            .unify();
-
-        warp::path!("influxql")
-            .and(warp::post())
-            .and(warp::body::content_length_limit(self.config.max_body_size))
-            .and(extract_request)
+        let write_api = warp::path!("write")
             .and(self.with_context())
-            .and(self.with_instance())
-            .and_then(|req, ctx, instance| async move {
-                let req = QueryRequest::Influxql(req);
-                let result = handlers::query::handle_query(&ctx, instance, req)
-                    .await
-                    // TODO: the sql's `convert_output` function may be not suitable to influxql.
-                    // We should implement influxql's related function in later.
-                    .map(handlers::query::convert_output)
-                    .map_err(|e| {
-                        // TODO(yingwen): Maybe truncate and print the sql
-                        error!("Http service Failed to handle sql, err:{}", e);
-                        Box::new(e)
-                    })
-                    .context(HandleRequest);
-                match result {
-                    Ok(res) => Ok(reply::json(&res)),
-                    Err(e) => Err(reject::custom(e)),
-                }
-            })
+            .and(self.with_influxdb())
+            .and(warp::body::bytes().map(influxdb::WriteRequest::from))
+            .and_then(influxdb::write);
+        let query_api = warp::path!("query")
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::body::bytes().map(|bytes| QueryRequest::Influxql(Request::from(bytes))))
+            .and_then(influxdb::query);
+
+        warp::path!("influxdb" / "v1" / ..)
+            .and(warp::post())
+            .and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -407,6 +400,13 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || profiler.clone())
     }
 
+    fn with_influxdb(
+        &self,
+    ) -> impl Filter<Extract = (Arc<Influxdb<Q>>,), Error = Infallible> + Clone {
+        let influxdb = self.influxdb.clone();
+        warp::any().map(move || influxdb.clone())
+    }
+
     fn with_instance(
         &self,
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
@@ -474,8 +474,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .context(MissingSchemaConfigProvider)?;
         let prom_remote_storage = Arc::new(CeresDBStorage::new(
             instance.clone(),
-            schema_config_provider,
+            schema_config_provider.clone(),
         ));
+        let influxdb = Arc::new(Influxdb::new(instance.clone(), schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
@@ -483,6 +484,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             log_runtime,
             instance,
             prom_remote_storage,
+            influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
