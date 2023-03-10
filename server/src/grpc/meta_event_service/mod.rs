@@ -251,13 +251,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         };
         let result = schema.open_table(open_request.clone(), opts.clone()).await;
 
-        if result.is_ok() {
-            continue;
-        }
-
-        match result.err() {
-            Some(e) => warn!("Failed to open table, open_request:{open_request:?}, error:{e:?}"),
-            None => warn!("No table is opened, open_request:{open_request:?}"),
+        match result {
+            Ok(Some(_)) => {},
+            Ok(None) => error!("No table is opened, open_request:{open_request:?}"),
+            Err(e) => error!("Failed to open table, open_request:{open_request:?}, err:{e}"),
         }
     }
 
