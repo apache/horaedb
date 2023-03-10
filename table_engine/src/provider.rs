@@ -26,11 +26,12 @@ use datafusion::{
 use datafusion_expr::{Expr, TableSource, TableType};
 use df_operator::visitor;
 use log::debug;
+use trace_metric::Collector;
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
     stream::{SendableRecordBatchStream, ToDfStream},
-    table::{self, ReadMetricsCollector, ReadOptions, ReadOrder, ReadRequest, TableRef},
+    table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
 
 #[derive(Clone, Debug)]
@@ -169,7 +170,7 @@ impl TableProviderAdapter {
             predicate,
             deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
-            metrics_collector: ReadMetricsCollector::new(),
+            metrics_collector: Collector::new("scan_table".to_string()),
         };
         scan_table.maybe_init_stream(state).await?;
 
@@ -296,7 +297,7 @@ struct ScanTable {
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
-    metrics_collector: ReadMetricsCollector,
+    metrics_collector: Collector,
 
     stream_state: Mutex<ScanStreamState>,
 }
@@ -391,7 +392,8 @@ impl ExecutionPlan for ScanTable {
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
-        Some(self.metrics_collector.take_as_df_metrics())
+        // TODO: Convert metrics_collector to MetricsSet.
+        None
     }
 
     fn statistics(&self) -> Statistics {

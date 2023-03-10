@@ -20,12 +20,10 @@ use common_types::{
 };
 use common_util::{define_result, error::GenericError};
 use futures::{future::try_join_all, StreamExt};
-use log::{debug, info, trace};
+use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
-use table_engine::{
-    predicate::PredicateRef,
-    table::{Metric, ReadMetricsCollector, TableId},
-};
+use table_engine::{predicate::PredicateRef, table::TableId};
+use trace_metric::{Collector, TracedMetrics};
 
 use crate::{
     row_iter::{
@@ -86,7 +84,7 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
-    pub metrics_collector: Option<ReadMetricsCollector>,
+    pub metrics_collector: Collector,
     /// None for background jobs, such as: compaction
     pub deadline: Option<Instant>,
     pub space_id: SpaceId,
@@ -231,8 +229,12 @@ impl<'a> MergeBuilder<'a> {
             self.ssts,
             self.config.merge_iter_options,
             self.config.reverse,
-            Metrics::new(self.memtables.len(), sst_streams_num, sst_ids),
-            self.config.metrics_collector,
+            Metrics::new(
+                self.memtables.len(),
+                sst_streams_num,
+                sst_ids,
+                self.config.metrics_collector.clone(),
+            ),
         ))
     }
 }
@@ -562,28 +564,44 @@ impl Ord for HeapBufferedStream {
 }
 
 /// Metrics for merge iterator.
+#[derive(TracedMetrics)]
 pub struct Metrics {
+    #[metric(counter)]
     num_memtables: usize,
+    #[metric(counter)]
     num_ssts: usize,
     sst_ids: Vec<FileId>,
     /// Total rows collected using fetch_rows_from_one_stream().
+    #[metric(counter)]
     total_rows_fetch_from_one: usize,
     /// Times to fetch rows from one stream.
+    #[metric(counter)]
     times_fetch_rows_from_one: usize,
     /// Times to fetch one row from multiple stream.
+    #[metric(counter)]
     times_fetch_row_from_multiple: usize,
     /// Create time of the metrics.
     create_at: Instant,
     /// Init time cost of the metrics.
+    #[metric(elapsed)]
     init_duration: Duration,
     /// Scan time cost of the metrics.
+    #[metric(elapsed)]
     scan_duration: Duration,
     /// Scan count
+    #[metric(counter)]
     scan_count: usize,
+    #[metric(collector)]
+    metrics_collector: Collector,
 }
 
 impl Metrics {
-    fn new(num_memtables: usize, num_ssts: usize, sst_ids: Vec<FileId>) -> Self {
+    fn new(
+        num_memtables: usize,
+        num_ssts: usize,
+        sst_ids: Vec<FileId>,
+        collector: Collector,
+    ) -> Self {
         Self {
             num_memtables,
             num_ssts,
@@ -595,38 +613,8 @@ impl Metrics {
             init_duration: Duration::default(),
             scan_duration: Duration::default(),
             scan_count: 0,
+            metrics_collector: collector,
         }
-    }
-
-    fn collect(&self, collector: &ReadMetricsCollector) {
-        // TODO: maybe we can define a macro to generate the code.
-        collector.collect(Metric::counter(
-            "num_memtables".to_string(),
-            self.num_memtables,
-        ));
-
-        collector.collect(Metric::counter("num_ssts".to_string(), self.num_ssts));
-        collector.collect(Metric::counter(
-            "times_fetch_rows_from_one".to_string(),
-            self.times_fetch_rows_from_one,
-        ));
-        collector.collect(Metric::counter(
-            "times_rows_fetch_from_one".to_string(),
-            self.times_fetch_row_from_multiple,
-        ));
-        collector.collect(Metric::counter(
-            "total_rows_fetch_from_one".to_string(),
-            self.total_rows_fetch_from_one,
-        ));
-        collector.collect(Metric::elapsed(
-            "init_duration".to_string(),
-            self.init_duration,
-        ));
-        collector.collect(Metric::elapsed(
-            "scan_duration".to_string(),
-            self.scan_duration,
-        ));
-        collector.collect(Metric::counter("scan_count".to_string(), self.scan_count));
     }
 }
 
@@ -667,7 +655,6 @@ pub struct MergeIterator {
     iter_options: IterOptions,
     reverse: bool,
     metrics: Metrics,
-    metrics_collector: Option<ReadMetricsCollector>,
 }
 
 impl MergeIterator {
@@ -681,7 +668,6 @@ impl MergeIterator {
         iter_options: IterOptions,
         reverse: bool,
         metrics: Metrics,
-        metrics_collector: Option<ReadMetricsCollector>,
     ) -> Self {
         let heap_cap = streams.len();
         let record_batch_builder =
@@ -699,7 +685,6 @@ impl MergeIterator {
             iter_options,
             reverse,
             metrics,
-            metrics_collector,
         }
     }
 
@@ -893,19 +878,6 @@ impl MergeIterator {
     }
 }
 
-impl Drop for MergeIterator {
-    fn drop(&mut self) {
-        if let Some(collector) = &self.metrics_collector {
-            self.metrics.collect(collector);
-        }
-
-        info!(
-            "Merge iterator dropped, table_id:{:?}, request_id:{}, metrics:{:?}, iter_options:{:?},",
-            self.table_id, self.request_id, self.metrics, self.iter_options,
-        );
-    }
-}
-
 #[async_trait]
 impl RecordBatchWithKeyIterator for MergeIterator {
     type Error = Error;
@@ -968,8 +940,7 @@ mod tests {
             Vec::new(),
             IterOptions::default(),
             false,
-            Metrics::new(1, 1, vec![]),
-            None,
+            Metrics::new(1, 1, vec![], Collector::new("".to_string())),
         );
 
         check_iterator(
@@ -1022,8 +993,7 @@ mod tests {
             Vec::new(),
             IterOptions::default(),
             true,
-            Metrics::new(1, 1, vec![]),
-            None,
+            Metrics::new(1, 1, vec![], Collector::new("".to_string())),
         );
 
         check_iterator(

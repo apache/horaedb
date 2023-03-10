@@ -7,7 +7,7 @@ use std::{
     fmt,
     sync::{
         atomic::{AtomicU32, AtomicU64, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::{Duration, Instant},
 };
@@ -23,11 +23,9 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use common_util::error::{BoxError, GenericError};
-use datafusion::physical_plan::metrics::{
-    Count, Metric as DfMetric, MetricValue as DfMetricValue, MetricsSet, Time,
-};
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use trace_metric::Collector;
 
 use crate::{
     engine::TableState,
@@ -379,107 +377,6 @@ impl ReadOrder {
 }
 
 #[derive(Clone, Debug)]
-pub struct MetricValue<T: Clone + fmt::Debug> {
-    pub name: String,
-    pub val: T,
-}
-
-#[derive(Clone, Debug)]
-pub enum Metric {
-    Boolean(MetricValue<bool>),
-    Counter(MetricValue<usize>),
-    Elapsed(MetricValue<Duration>),
-}
-
-impl Metric {
-    #[inline]
-    pub fn counter(name: String, val: usize) -> Self {
-        Metric::Counter(MetricValue { name, val })
-    }
-
-    #[inline]
-    pub fn elapsed(name: String, val: Duration) -> Self {
-        Metric::Elapsed(MetricValue { name, val })
-    }
-
-    #[inline]
-    pub fn boolean(name: String, val: bool) -> Self {
-        Metric::Boolean(MetricValue { name, val })
-    }
-}
-
-impl From<Metric> for DfMetric {
-    fn from(metric: Metric) -> Self {
-        let df_metric_val = match metric {
-            Metric::Counter(MetricValue { name, val }) => {
-                let count = Count::new();
-                count.add(val);
-                DfMetricValue::Count {
-                    name: name.into(),
-                    count,
-                }
-            }
-            Metric::Elapsed(MetricValue { name, val }) => {
-                let time = Time::new();
-                time.add_duration(val);
-                DfMetricValue::Time {
-                    name: name.into(),
-                    time,
-                }
-            }
-            Metric::Boolean(MetricValue { name, val }) => {
-                let count = Count::new();
-                // Use 0 for false, 1 for true.
-                count.add(val as usize);
-                DfMetricValue::Count {
-                    name: name.into(),
-                    count,
-                }
-            }
-        };
-
-        DfMetric::new(df_metric_val, None)
-    }
-}
-
-/// A collector for metrics of a single read request.
-///
-/// It can be cloned and shared among threads.
-#[derive(Clone, Debug)]
-pub struct ReadMetricsCollector {
-    pub(crate) metrics: Arc<Mutex<Vec<Metric>>>,
-}
-
-impl Default for ReadMetricsCollector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ReadMetricsCollector {
-    pub fn new() -> Self {
-        Self {
-            metrics: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    pub fn collect(&self, metric: Metric) {
-        let mut metrics = self.metrics.lock().unwrap();
-        metrics.push(metric);
-    }
-
-    pub fn take_as_df_metrics(&self) -> MetricsSet {
-        let metrics: Vec<_> = std::mem::take(self.metrics.lock().unwrap().as_mut());
-        let mut metrics_set = MetricsSet::new();
-        for df_metric in metrics.into_iter().map(DfMetric::from) {
-            metrics_set.push(Arc::new(df_metric));
-        }
-
-        metrics_set
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct ReadRequest {
     /// Read request id.
     pub request_id: RequestId,
@@ -493,7 +390,7 @@ pub struct ReadRequest {
     /// Read the rows in reverse order.
     pub order: ReadOrder,
     /// Collector for metrics of this read request.
-    pub metrics_collector: ReadMetricsCollector,
+    pub metrics_collector: Collector,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -554,7 +451,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
-            metrics_collector: ReadMetricsCollector::new(),
+            metrics_collector: Collector::new("".to_string()),
         })
     }
 }

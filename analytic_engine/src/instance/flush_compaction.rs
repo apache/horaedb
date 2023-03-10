@@ -28,6 +28,7 @@ use log::{debug, error, info};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::Result as TableResult};
 use tokio::sync::oneshot;
+use trace_metric::Collector;
 use wal::manager::WalLocation;
 
 use crate::{
@@ -855,7 +856,7 @@ impl SpaceStore {
             let sequence = table_data.last_sequence();
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
-                metrics_collector: None,
+                metrics_collector: Collector::new("compaction".to_string()),
                 // no need to set deadline for compaction
                 deadline: None,
                 space_id,

@@ -20,9 +20,10 @@ use table_engine::{
     stream::{
         self, ErrWithSource, PartitionedStreams, RecordBatchStream, SendableRecordBatchStream,
     },
-    table::{Metric, ReadRequest},
+    table::ReadRequest,
 };
 use tokio::sync::mpsc::{self, Receiver};
+use trace_metric::Metric;
 
 use crate::{
     instance::Instance,
@@ -179,7 +180,7 @@ impl Instance {
         for read_view in read_views {
             let merge_config = MergeConfig {
                 request_id: request.request_id,
-                metrics_collector: Some(request.metrics_collector.clone()),
+                metrics_collector: request.metrics_collector.clone(),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,
