@@ -44,6 +44,7 @@ pub fn try_new(
         .with_virtual_hosted_style_request(true)
         // region is not used when virtual_hosted_style is true,
         // but is required, so dummy is used here
+        // https://github.com/apache/arrow-rs/issues/3827
         .with_region("dummy")
         .with_access_key_id(key_id)
         .with_secret_access_key(key_secret)
