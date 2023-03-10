@@ -47,7 +47,7 @@ impl Collector {
 
     /// Visit all metrics in the collector, excluding the metrics belonging to
     /// the children.
-    pub fn visit_metrics(&self, f: &mut dyn FnMut(&Metric)) {
+    pub fn visit_metrics(&self, f: &mut impl FnMut(&Metric)) {
         let metrics = self.metrics.lock().unwrap();
         for metric in metrics.iter() {
             f(metric);
@@ -55,7 +55,7 @@ impl Collector {
     }
 
     /// Visit all the collectors including itself and its children.
-    pub fn visit(&self, f: &mut dyn FnMut(&Collector)) {
+    pub fn visit(&self, f: &mut impl FnMut(&Collector)) {
         f(self);
         let children = self.children.lock().unwrap();
         for child in children.iter() {

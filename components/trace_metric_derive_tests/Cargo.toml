@@ -1,5 +1,5 @@
 [package]
-name = "trace_metric"
+name = "trace_metric_derive_tests"
 
 [package.version]
 workspace = true
@@ -11,4 +11,4 @@ workspace = true
 workspace = true
 
 [dependencies]
-trace_metric_derive = { workspace = true }
+trace_metric = { workspace = true }
