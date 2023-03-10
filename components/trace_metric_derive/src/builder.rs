@@ -1,7 +1,7 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{DeriveInput, Field, Generics, Ident};
 
 const COLLECTOR_FIELD_TOKENS: &str = "(collector)";
@@ -55,10 +55,35 @@ impl MetricField {
     }
 }
 
+struct CollectorField {
+    field_name: Ident,
+    optional: bool,
+}
+
+impl CollectorField {
+    fn try_from_field(field: Field) -> Option<Self> {
+        let is_collector_field = field.attrs.iter().any(|attr| {
+            attr.path.is_ident("metric")
+                && attr.tokens.to_string().as_str() == COLLECTOR_FIELD_TOKENS
+        });
+
+        if !is_collector_field {
+            None
+        } else {
+            let ident = field.ident.expect("Collector field must be named");
+            let type_tokens = field.ty.into_token_stream().to_string();
+            Some(Self {
+                field_name: ident,
+                optional: type_tokens.starts_with("Option"),
+            })
+        }
+    }
+}
+
 pub struct Builder {
     struct_name: Ident,
     metric_fields: Vec<MetricField>,
-    collector_field: Ident,
+    collector_field: CollectorField,
     generics: Generics,
 }
 
@@ -73,20 +98,15 @@ impl Builder {
                 let mut metric_fields = Vec::new();
                 let mut collector_field = None;
                 for field in named {
-                    if Self::is_collector_field(&field) {
-                        collector_field = Some(field);
-                        continue;
-                    }
-                    if let Some(metric_field) = MetricField::try_from_field(field) {
+                    if let Some(collector) = CollectorField::try_from_field(field.clone()) {
+                        collector_field = Some(collector);
+                    } else if let Some(metric_field) = MetricField::try_from_field(field) {
                         metric_fields.push(metric_field);
                     }
                 }
                 (
                     metric_fields,
-                    collector_field
-                        .expect("TracedMetrics must have a collector field")
-                        .ident
-                        .expect("TracedMetrics collector field must be named"),
+                    collector_field.expect("TracedMetrics must have a collector field"),
                 )
             }
             _ => panic!("TracedMetrics only supports struct with named fields"),
@@ -102,7 +122,6 @@ impl Builder {
 
     pub fn build(&self) -> TokenStream {
         let mut collect_statements = Vec::with_capacity(self.metric_fields.len());
-        let collector_field = &self.collector_field;
         for metric_field in self.metric_fields.iter() {
             let field_name = &metric_field.field_name;
             let metric = match metric_field.metric_type {
@@ -117,7 +136,7 @@ impl Builder {
                 }
             };
             let statement = quote! {
-                self.#collector_field.collect(#metric);
+                collector.collect(#metric);
             };
             collect_statements.push(statement);
         }
@@ -125,20 +144,28 @@ impl Builder {
         let where_clause = &self.generics.where_clause;
         let generics = &self.generics;
         let struct_name = &self.struct_name;
-        quote! {
-            impl #generics Drop for #struct_name #generics #where_clause {
-                fn drop(&mut self) {
-                    #(#collect_statements)*
+        let collector_field_name = &self.collector_field.field_name;
+        let stream = if self.collector_field.optional {
+            quote! {
+                impl #generics Drop for #struct_name #generics #where_clause {
+                    fn drop(&mut self) {
+                        if let Some(collector) = &self.#collector_field_name {
+                            #(#collect_statements)*
+                        }
+                    }
                 }
             }
-        }
-        .into()
-    }
+        } else {
+            quote! {
+                impl #generics Drop for #struct_name #generics #where_clause {
+                    fn drop(&mut self) {
+                        let collector = &self.#collector_field_name;
+                        #(#collect_statements)*
+                    }
+                }
+            }
+        };
 
-    fn is_collector_field(field: &Field) -> bool {
-        field.attrs.iter().any(|attr| {
-            attr.path.is_ident("metric")
-                && attr.tokens.to_string().as_str() == COLLECTOR_FIELD_TOKENS
-        })
+        stream.into()
     }
 }
