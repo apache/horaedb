@@ -29,6 +29,7 @@ members = [
     "components/profile",
     "components/skiplist",
     "components/table_kv",
+    "components/trace_metric",
     "components/tracing_util",
     "df_operator",
     "integration_tests",
