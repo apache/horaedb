@@ -73,26 +73,37 @@ enum Protocol {
     InfluxQL,
 }
 
+impl TryFrom<&str> for Protocol {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        let protocol = match s {
+            "influxql" => Protocol::InfluxQL,
+            "sql" => Protocol::Sql,
+            _ => return Err(format!("unknown protocol:{s}")),
+        };
+
+        Ok(protocol)
+    }
+}
+
 struct ProtocolParser;
 
 impl ProtocolParser {
-    fn parse_from_ctx(&self, ctx: HashMap<String, String>) -> Protocol {
-        if ctx
-            .get("protocol")
-            .map(|v| v == "influxql")
-            .unwrap_or(false)
-        {
-            Protocol::InfluxQL
-        } else {
-            Protocol::Sql
-        }
+    fn parse_from_ctx(&self, ctx: &HashMap<String, String>) -> Result<Protocol, String> {
+        ctx.get("protocol")
+            .map(|s| Protocol::try_from(s.as_str()))
+            .unwrap_or(Ok(Protocol::Sql))
     }
 }
 
 #[async_trait]
 impl Database for CeresDB {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
-        let protocol = ProtocolParser.parse_from_ctx(context.context);
+        let protocol = ProtocolParser
+            .parse_from_ctx(&context.context)
+            .expect("parse protocol");
+
         match protocol {
             Protocol::Sql => Self::execute_sql(query, self.db_client.clone()).await,
             Protocol::InfluxQL => {
