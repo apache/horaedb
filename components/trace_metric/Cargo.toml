@@ -9,5 +9,3 @@ workspace = true
 
 [package.edition]
 workspace = true
-
-[dependencies]

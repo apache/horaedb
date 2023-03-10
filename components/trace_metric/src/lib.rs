@@ -4,3 +4,6 @@
 
 pub mod collector;
 pub mod metric;
+
+pub use collector::Collector;
+pub use metric::Metric;

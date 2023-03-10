@@ -1,0 +1,20 @@
+[package]
+name = "trace_metric_derive"
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version="1.0", features=["full"] }
+trace_metric = { workspace = true }
