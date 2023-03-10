@@ -259,15 +259,6 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             Some(e) => warn!("Failed to open table, open_request:{open_request:?}, error:{e:?}"),
             None => warn!("No table is opened, open_request:{open_request:?}"),
         }
-        // box_result
-        //     .with_context(|| ErrWithCause {
-        //         code: StatusCode::Internal,
-        //         msg: format!("fail to open table,
-        // open_request:{open_request:?}"),     })?
-        //     .with_context(|| ErrNoCause {
-        //         code: StatusCode::Internal,
-        //         msg: format!("no table is opened,
-        // open_request:{open_request:?}"),     })?;
     }
 
     Ok(())
