@@ -27,7 +27,8 @@ use sqlness::{Database, QueryContext};
 use sqlparser::ast::{SetExpr, Statement as SqlStatement, TableFactor};
 
 const BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
-const SERVER_ENDPOINT_ENV: &str = "CERESDB_SERVER_ENDPOINT";
+const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
+const SERVER_HTTP_ENDPOINT_ENV: &str = "CERESDB_SERVER_HTTP_ENDPOINT";
 const CLUSTER_SERVER_ENDPOINT_ENV: &str = "CERESDB_CLUSTER_SERVER_ENDPOINT";
 const CERESDB_STDOUT_FILE: &str = "CERESDB_STDOUT_FILE";
 const CERESDB_STDERR_FILE: &str = "CERESDB_STDERR_FILE";
@@ -133,14 +134,17 @@ impl CeresDB {
                 let server_process = Self::start_standalone(stdout, stderr, bin, config);
                 // Wait for a while
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                let endpoint = env::var(SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
-                    panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
+                let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
+                    panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
                 });
-                let db_client = Builder::new(endpoint.clone(), Mode::Proxy).build();
+                let db_client = Builder::new(endpoint, Mode::Proxy).build();
+                let http_endpoint = env::var(SERVER_HTTP_ENDPOINT_ENV).unwrap_or_else(|_| {
+                    panic!("Cannot read server endpoint from env {SERVER_HTTP_ENDPOINT_ENV:?}")
+                });
                 CeresDB {
                     server_process: Some(server_process),
                     db_client,
-                    http_client: Some(HttpClient::new(endpoint)),
+                    http_client: Some(HttpClient::new(http_endpoint)),
                 }
             }
             DeployMode::Cluster => {
@@ -148,7 +152,7 @@ impl CeresDB {
                 // Wait for a while
                 std::thread::sleep(std::time::Duration::from_secs(10));
                 let endpoint = env::var(CLUSTER_SERVER_ENDPOINT_ENV).unwrap_or_else(|_| {
-                    panic!("Cannot read server endpoint from env {SERVER_ENDPOINT_ENV:?}")
+                    panic!("Cannot read server endpoint from env {CLUSTER_SERVER_ENDPOINT_ENV:?}")
                 });
                 let db_client = Builder::new(endpoint, Mode::Proxy).build();
                 CeresDB {

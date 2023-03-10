@@ -26,10 +26,10 @@ INSERT INTO h2o_feet(time, level_description, location, water_level)
         (1439827620000, "below 3 feet", "santa_monica", 2.028);
 
 
--- protocol=influxql
+-- SQLNESS ARG protocol=influxql
 SELECT * FROM "h2o_feet";
 
--- protocol=influxql
-SELECT level_description, location, water_level FROM "h2o_feet" where location = 'santa_monica';
+-- SQLNESS ARG protocol=influxql
+SELECT "level_description", location, water_level FROM "h2o_feet" where location = 'santa_monica';
 
 DROP TABLE IF EXISTS `h2o_feet`;

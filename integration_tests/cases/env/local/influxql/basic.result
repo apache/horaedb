@@ -24,24 +24,15 @@ INSERT INTO h2o_feet(time, level_description, location, water_level)
 
 affected_rows: 6
 
+-- SQLNESS ARG protocol=influxql
 SELECT * FROM "h2o_feet";
 
-tsid,time,level_description,location,water_level,
-UInt64(4483051411356144610),Timestamp(1439827200000),String("between 6 and 9 feet"),String("coyote_creek"),Double(8.12),
-UInt64(4483051411356144610),Timestamp(1439827560000),String("between 6 and 9 feet"),String("coyote_creek"),Double(8.005),
-UInt64(4483051411356144610),Timestamp(1439827620000),String("between 6 and 9 feet"),String("coyote_creek"),Double(7.887),
-UInt64(8247797837995683878),Timestamp(1439827200000),String("below 3 feet"),String("santa_monica"),Double(2.064),
-UInt64(8247797837995683878),Timestamp(1439827560000),String("below 3 feet"),String("santa_monica"),Double(2.116),
-UInt64(8247797837995683878),Timestamp(1439827620000),String("below 3 feet"),String("santa_monica"),Double(2.028),
+{"rows":[{"level_description":"between 6 and 9 feet","location":"coyote_creek","water_level":8.12},{"level_description":"between 6 and 9 feet","location":"coyote_creek","water_level":8.005},{"level_description":"between 6 and 9 feet","location":"coyote_creek","water_level":7.887},{"level_description":"below 3 feet","location":"santa_monica","water_level":2.064},{"level_description":"below 3 feet","location":"santa_monica","water_level":2.116},{"level_description":"below 3 feet","location":"santa_monica","water_level":2.028}]}
 
+-- SQLNESS ARG protocol=influxql
+SELECT "level_description", location, water_level FROM "h2o_feet" where location = 'santa_monica';
 
-SELECT level_description, location, water_level FROM "h2o_feet" where location = 'santa_monica';
-
-level_description,location,water_level,
-String("below 3 feet"),String("santa_monica"),Double(2.064),
-String("below 3 feet"),String("santa_monica"),Double(2.116),
-String("below 3 feet"),String("santa_monica"),Double(2.028),
-
+{"rows":[{"level_description":"below 3 feet","location":"santa_monica","water_level":2.064},{"level_description":"below 3 feet","location":"santa_monica","water_level":2.116},{"level_description":"below 3 feet","location":"santa_monica","water_level":2.028}]}
 
 DROP TABLE IF EXISTS `h2o_feet`;
 

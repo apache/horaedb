@@ -4,7 +4,8 @@ ROOT = $(shell pwd)
 DATA_DIR = /tmp/ceresdb
 
 export CERESDB_BINARY_PATH ?= $(ROOT)/../target/$(MODE)/ceresdb-server
-export CERESDB_SERVER_ENDPOINT ?= 127.0.0.1:8831
+export CERESDB_SERVER_GRPC_ENDPOINT ?= 127.0.0.1:8831
+export CERESDB_SERVER_HTTP_ENDPOINT ?= 127.0.0.1:5440
 export CERESDB_CLUSTER_SERVER_ENDPOINT ?= 127.0.0.1:8832
 export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export CERESDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
