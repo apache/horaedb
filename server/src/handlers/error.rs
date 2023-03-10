@@ -2,6 +2,7 @@
 
 //! Error of handlers
 
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
 use warp::reject::Reject;
 
@@ -71,6 +72,9 @@ pub enum Error {
         source: tokio::time::error::Elapsed,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Influxdb handler failed, msg:{}, source:{}", msg, source))]
+    InfluxdbHandler { msg: String, source: GenericError },
 }
 
 define_result!(Error);
