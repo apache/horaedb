@@ -25,7 +25,7 @@ use ceresdbproto::meta_event::{
 use cluster::ClusterRef;
 use common_types::schema::SchemaEncoder;
 use common_util::{error::BoxError, runtime::Runtime, time::InstantExt};
-use log::{error, info, warn};
+use log::{error, info};
 use paste::paste;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
@@ -237,7 +237,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     };
 
     let mut success = 0;
-    let mut cfail = 0;
+    let mut fail = 0;
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
