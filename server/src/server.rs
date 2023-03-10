@@ -351,6 +351,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider(provider)
             .forward_config(self.config.forward)
             .timeout(self.config.timeout.map(|v| v.0))
+            .auto_create_table(self.config.auto_create_table)
             .build()
             .context(BuildGrpcService)?;
 
