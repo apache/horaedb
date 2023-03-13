@@ -27,7 +27,7 @@ use crate::{
     instance::InstanceRef, schema_config_provider::SchemaConfigProviderRef,
 };
 
-pub struct Influxdb<Q> {
+pub struct InfluxDb<Q> {
     instance: InstanceRef<Q>,
     schema_config_provider: SchemaConfigProviderRef,
 }
@@ -68,7 +68,7 @@ impl From<Bytes> for WriteRequest {
 
 pub type WriteResponse = ();
 
-impl<Q: QueryExecutor + 'static> Influxdb<Q> {
+impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
     pub fn new(instance: InstanceRef<Q>, schema_config_provider: SchemaConfigProviderRef) -> Self {
         Self {
             instance,
@@ -229,7 +229,7 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
 // TODO: Request and response type don't match influxdb's API now.
 pub async fn query<Q: QueryExecutor + 'static>(
     ctx: RequestContext,
-    db: Arc<Influxdb<Q>>,
+    db: Arc<InfluxDb<Q>>,
     req: QueryRequest,
 ) -> std::result::Result<impl Reply, Rejection> {
     db.query(ctx, req)
@@ -241,7 +241,7 @@ pub async fn query<Q: QueryExecutor + 'static>(
 // TODO: Request and response type don't match influxdb's API now.
 pub async fn write<Q: QueryExecutor + 'static>(
     ctx: RequestContext,
-    db: Arc<Influxdb<Q>>,
+    db: Arc<InfluxDb<Q>>,
     req: WriteRequest,
 ) -> std::result::Result<impl Reply, Rejection> {
     db.write(ctx, req)

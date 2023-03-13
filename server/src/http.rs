@@ -33,7 +33,7 @@ use crate::{
     error_util,
     handlers::{
         self,
-        influxdb::{self, Influxdb},
+        influxdb::{self, InfluxDb},
         prom::CeresDBStorage,
         query::Request,
     },
@@ -114,7 +114,7 @@ pub struct Service<Q> {
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
-    influxdb: Arc<Influxdb<Q>>,
+    influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     config: HttpConfig,
 }
@@ -403,7 +403,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     fn with_influxdb(
         &self,
-    ) -> impl Filter<Extract = (Arc<Influxdb<Q>>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract = (Arc<InfluxDb<Q>>,), Error = Infallible> + Clone {
         let influxdb = self.influxdb.clone();
         warp::any().map(move || influxdb.clone())
     }
@@ -477,7 +477,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             instance.clone(),
             schema_config_provider.clone(),
         ));
-        let influxdb = Arc::new(Influxdb::new(instance.clone(), schema_config_provider));
+        let influxdb = Arc::new(InfluxDb::new(instance.clone(), schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
