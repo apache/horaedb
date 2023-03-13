@@ -130,20 +130,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn routes(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        warp::body::content_length_limit(self.config.max_body_size).and(
-            self.home()
-                // public APIs
-                .or(self.metrics())
-                .or(self.sql())
-                .or(self.influxdb_api())
-                .or(self.prom_api())
-                // admin APIs
-                .or(self.admin_block())
-                // debug APIs
-                .or(self.flush_memtable())
-                .or(self.update_log_level())
-                .or(self.heap_profile()),
-        )
+        self.home()
+            // public APIs
+            .or(self.metrics())
+            .or(self.sql())
+            .or(self.influxdb_api())
+            .or(self.prom_api())
+            // admin APIs
+            .or(self.admin_block())
+            // debug APIs
+            .or(self.flush_memtable())
+            .or(self.update_log_level())
+            .or(self.heap_profile())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -168,6 +166,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("prom" / "v1" / ..)
             .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(write_api.or(query_api))
     }
 
@@ -189,6 +188,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("sql")
             .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(extract_request)
             .and(self.with_context())
             .and(self.with_instance())
@@ -227,6 +227,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("influxdb" / "v1" / ..)
             .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(write_api.or(query_api))
     }
 

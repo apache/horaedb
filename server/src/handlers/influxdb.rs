@@ -4,28 +4,31 @@
 //! [1]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#write-http-endpoint
 //! [2]: https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use bytes::Bytes;
-use ceresdbproto::storage::{value, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest};
-use common_types::time::Timestamp;
+use ceresdbproto::storage::{
+    value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
+};
+use common_types::{request_id::RequestId, time::Timestamp};
 use common_util::error::BoxError;
 use handlers::{
     error::{InfluxdbHandler, Result},
     query::QueryRequest,
 };
+use influxdb_line_protocol::FieldValue;
+use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::ResultExt;
 use warp::{reject, reply, Rejection, Reply};
 
 use crate::{
-    context::RequestContext, handlers, instance::InstanceRef,
-    schema_config_provider::SchemaConfigProviderRef,
+    context::RequestContext, grpc::storage_service::write::WriteContext, handlers,
+    instance::InstanceRef, schema_config_provider::SchemaConfigProviderRef,
 };
 
 pub struct Influxdb<Q> {
     instance: InstanceRef<Q>,
-    #[allow(dead_code)]
     schema_config_provider: SchemaConfigProviderRef,
 }
 
@@ -33,6 +36,8 @@ pub struct Influxdb<Q> {
 pub enum Precision {
     #[default]
     Millisecond,
+    // TODO: parse precision `second` from HTTP API
+    #[allow(dead_code)]
     Second,
 }
 
@@ -46,6 +51,7 @@ impl Precision {
 }
 
 /// Line protocol
+#[derive(Debug)]
 pub struct WriteRequest {
     pub lines: String,
     pub precision: Precision,
@@ -81,17 +87,66 @@ impl<Q: QueryExecutor + 'static> Influxdb<Q> {
     }
 
     async fn write(&self, ctx: RequestContext, req: WriteRequest) -> Result<WriteResponse> {
-        todo!()
+        let request_id = RequestId::next_id();
+        let deadline = ctx.timeout.map(|t| Instant::now() + t);
+        let catalog = &ctx.catalog;
+        self.instance.catalog_manager.default_catalog_name();
+        let schema = &ctx.schema;
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(schema)
+            .box_err()
+            .with_context(|| InfluxdbHandler {
+                msg: format!("get schema config failed, schema:{schema}"),
+            })?;
+
+        let write_context =
+            WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
+
+        let plans = crate::grpc::storage_service::write::write_request_to_insert_plan(
+            self.instance.clone(),
+            convert_write_request(req)?,
+            schema_config,
+            write_context,
+        )
+        .await
+        .box_err()
+        .with_context(|| InfluxdbHandler {
+            msg: "write request to insert plan",
+        })?;
+
+        let mut success = 0;
+        for insert_plan in plans {
+            success += crate::grpc::storage_service::write::execute_plan(
+                request_id,
+                catalog,
+                schema,
+                self.instance.clone(),
+                insert_plan,
+                deadline,
+            )
+            .await
+            .box_err()
+            .with_context(|| InfluxdbHandler {
+                msg: "execute plan",
+            })?;
+        }
+        debug!(
+            "Remote write finished, catalog:{}, schema:{}, success:{}",
+            catalog, schema, success
+        );
+
+        Ok(())
     }
 }
 
-fn convert_write_req(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
+fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
     let default_ts = Timestamp::now().as_i64();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
-        let mut line = line
-            .box_err()
-            .with_context(|| InfluxdbHandler { msg: "valid line" })?;
+        let mut line = line.box_err().with_context(|| InfluxdbHandler {
+            msg: "invalid line",
+        })?;
 
         let timestamp = line
             .timestamp
@@ -126,17 +181,36 @@ fn convert_write_req(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
                         }),
                     })
                     .collect(),
-                field_groups: line
-                    .field_set
-                    .iter()
-                    .map(|(_, fieldv)| FieldGroup {
-                        timestamp,
-                        fields: vec![],
-                    })
-                    .collect(),
+                // TODO: merge field group for same series
+                field_groups: vec![FieldGroup {
+                    timestamp,
+                    fields: line
+                        .field_set
+                        .into_iter()
+                        .enumerate()
+                        .map(|(idx, (_, fieldv))| Field {
+                            name_index: idx as u32,
+                            value: Some(convert_influx_value(fieldv)),
+                        })
+                        .collect(),
+                }],
             });
     }
-    todo!()
+
+    Ok(req_by_measurement.into_values().collect())
+}
+
+/// Convert influxdb's FieldValue to ceresdbproto's Value
+fn convert_influx_value(field_value: FieldValue) -> Value {
+    let v = match field_value {
+        FieldValue::I64(v) => value::Value::Int64Value(v),
+        FieldValue::U64(v) => value::Value::Uint64Value(v),
+        FieldValue::F64(v) => value::Value::Float64Value(v),
+        FieldValue::String(v) => value::Value::StringValue(v.to_string()),
+        FieldValue::Boolean(v) => value::Value::BoolValue(v),
+    };
+
+    Value { value: Some(v) }
 }
 
 // TODO: Request and response type don't match influxdb's API now.
