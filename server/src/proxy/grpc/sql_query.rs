@@ -35,8 +35,7 @@ use crate::proxy::{
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
-        let ret = self.handle_query_internal(ctx, req).await;
-        match ret {
+        match self.handle_query_internal(ctx, req).await {
             Err(e) => SqlQueryResponse {
                 header: Some(error::build_err_header(e)),
                 ..Default::default()
@@ -61,10 +60,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     async fn maybe_forward_query(&self, req: &SqlQueryRequest) -> Option<Result<SqlQueryResponse>> {
         if req.tables.len() != 1 {
-            warn!(
-                "Unable to forward query without exactly one table, req:{:?}",
-                req
-            );
+            warn!("Unable to forward query without exactly one table, req:{req:?}",);
 
             return None;
         }
@@ -112,10 +108,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!(
-            "Grpc handle query begin, request_id:{}, request:{:?}",
-            request_id, req,
-        );
+        info!("Grpc handle query begin, request_id:{request_id}, request:{req:?}");
 
         let req_ctx = req.context.as_ref().unwrap();
         let schema = &req_ctx.database;
@@ -327,7 +320,7 @@ impl QueryResponseWriter {
         self.encoder
             .write(batch.as_arrow_record_batch())
             .box_err()
-            .with_context(|| ErrWithCause {
+            .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "failed to encode record batch",
             })
@@ -342,14 +335,10 @@ impl QueryResponseWriter {
     }
 
     pub fn finish(self) -> Result<SqlQueryResponse> {
-        let compress_output = self
-            .encoder
-            .finish()
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to encode record batch",
-            })?;
+        let compress_output = self.encoder.finish().box_err().context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "failed to encode record batch",
+        })?;
 
         if compress_output.payload.is_empty() {
             return Ok(QueryResponseBuilder::with_ok_header().build_with_empty_arrow_payload());
