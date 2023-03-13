@@ -127,7 +127,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
             if req.context.is_none() {
                 return SqlQueryResponse {
                     header: Some(error::build_err_header(
-                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
                         "database is not set".to_string(),
                     )),
                     ..Default::default()

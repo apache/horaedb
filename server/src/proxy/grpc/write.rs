@@ -338,7 +338,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .and_then(|output| match output {
             Output::AffectedRows(_) => Ok(()),
             Output::Records(_) => ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Invalid output type, expect AffectedRows, found Records",
             }
             .fail(),
@@ -405,7 +405,7 @@ fn write_entry_to_rows(
         ensure!(
             name_index < tag_names.len(),
             ErrNoCause {
-                code:StatusCode::BAD_REQUEST,
+                code: StatusCode::BAD_REQUEST,
                 msg: format!(
                     "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
@@ -466,7 +466,7 @@ fn write_entry_to_rows(
                 } else {
                     let index_in_schema =
                         schema.index_of(field_name).with_context(|| ErrNoCause {
-                            code:StatusCode::BAD_REQUEST,
+                            code: StatusCode::BAD_REQUEST,
                             msg: format!(
                                 "Can't find field in schema, table:{table_name}, field_name:{field_name}"
                             ),
@@ -534,7 +534,7 @@ fn convert_proto_value_to_datum(
         (value::Value::TimestampValue(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
         (value::Value::VarbinaryValue(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
         (v, _) => ErrNoCause {
-            code:StatusCode::BAD_REQUEST,
+            code: StatusCode::BAD_REQUEST,
             msg: format!(
                 "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
             ),

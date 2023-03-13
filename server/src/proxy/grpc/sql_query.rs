@@ -103,7 +103,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 ForwardResult::Original => None,
             },
             Err(e) => {
-                error!("Failed to forward req but the error is ignored, err:{}", e);
+                error!("Failed to forward req but the error is ignored, err:{e}");
                 None
             }
         }
@@ -332,7 +332,7 @@ impl QueryResponseWriter {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to encode record batch".to_string(),
+                msg: "failed to encode record batch",
             })
     }
 
@@ -351,7 +351,7 @@ impl QueryResponseWriter {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to encode record batch".to_string(),
+                msg: "failed to encode record batch",
             })?;
 
         if compress_output.payload.is_empty() {
