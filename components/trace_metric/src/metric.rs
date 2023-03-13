@@ -8,7 +8,7 @@ pub struct MetricValue<T: Clone + fmt::Debug> {
     pub val: T,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Metric {
     Boolean(MetricValue<bool>),
     Counter(MetricValue<usize>),
@@ -35,5 +35,15 @@ impl Metric {
 impl<T: Clone + fmt::Debug> fmt::Debug for MetricValue<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}={:?}", self.name, self.val)
+    }
+}
+
+impl fmt::Debug for Metric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Metric::Boolean(v) => write!(f, "{}={:?}", v.name, v.val),
+            Metric::Counter(v) => write!(f, "{}={:?}", v.name, v.val),
+            Metric::Elapsed(v) => write!(f, "{}={:?}", v.name, v.val),
+        }
     }
 }

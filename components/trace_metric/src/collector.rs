@@ -53,11 +53,86 @@ impl MetricsCollector {
     }
 
     /// Visit all the collectors including itself and its children.
-    pub fn visit(&self, f: &mut impl FnMut(&MetricsCollector)) {
-        f(self);
-        let children = self.children.lock().unwrap();
-        for child in children.iter() {
-            child.visit(f);
+    pub fn visit(&self, visitor: &mut impl CollectorVisitor) {
+        self.visit_with_level(0, visitor);
+    }
+
+    /// Visit all the collectors including itself and its children.
+    fn visit_with_level(&self, level: usize, visitor: &mut impl CollectorVisitor) {
+        visitor.visit(level, self);
+        // Clone the children to avoid holding the lock, which may cause deadlocks
+        // because the lock order is not guaranteed.
+        let children = self.children.lock().unwrap().clone();
+        for child in children {
+            child.visit_with_level(level + 1, visitor);
         }
+    }
+}
+
+pub trait CollectorVisitor {
+    fn visit(&mut self, level: usize, collector: &MetricsCollector);
+}
+
+#[derive(Default)]
+pub struct FormatCollectorVisitor {
+    buffer: String,
+}
+
+impl FormatCollectorVisitor {
+    pub fn into_string(self) -> String {
+        self.buffer
+    }
+
+    fn indent(level: usize) -> String {
+        " ".repeat(level * 2)
+    }
+
+    fn append_line(&mut self, indent: &str, line: &str) {
+        self.buffer.push_str(&format!("{indent}{line}\n"));
+    }
+}
+
+impl CollectorVisitor for FormatCollectorVisitor {
+    fn visit(&mut self, level: usize, collector: &MetricsCollector) {
+        let collector_indent = Self::indent(level);
+        self.append_line(&collector_indent, &format!("<{}>", collector.name()));
+        let metric_indent = Self::indent(level + 1);
+        collector.visit_metrics(&mut |metric| {
+            self.append_line(&metric_indent, &format!("{metric:?}"));
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn test_metrics_collector() {
+        let collector = MetricsCollector::new("root".to_string());
+        collector.collect(Metric::counter("counter".to_string(), 1));
+        collector.collect(Metric::elapsed(
+            "elapsed".to_string(),
+            Duration::from_millis(100),
+        ));
+        let child_1_0 = collector.span("child_1_0".to_string());
+        child_1_0.collect(Metric::boolean("boolean".to_string(), false));
+
+        let child_2_0 = child_1_0.span("child_2_0".to_string());
+        child_2_0.collect(Metric::counter("counter".to_string(), 1));
+        child_2_0.collect(Metric::elapsed(
+            "elapsed".to_string(),
+            Duration::from_millis(100),
+        ));
+
+        let child_1_1 = collector.span("child_1_1".to_string());
+        child_1_1.collect(Metric::boolean("boolean".to_string(), false));
+        let _child_1_2 = collector.span("child_1_2".to_string());
+
+        let mut visitor = FormatCollectorVisitor::default();
+        collector.visit(&mut visitor);
+        println!("{}", visitor.into_string());
     }
 }
