@@ -157,7 +157,7 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
         // sort by field key
         line.field_set.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-        req_by_measurement
+        let req_for_one_measurement = req_by_measurement
             .entry(line.series.measurement.to_string())
             .or_insert_with(|| WriteTableRequest {
                 table: line.series.measurement.to_string(),
@@ -168,33 +168,46 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
                     .map(|(tagk, _)| tagk.to_string())
                     .collect(),
                 entries: Vec::new(),
-            })
-            .entries
-            .push(WriteSeriesEntry {
-                tags: tag_set
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (_, tagv))| Tag {
-                        name_index: idx as u32,
-                        value: Some(Value {
-                            value: Some(value::Value::StringValue(tagv.to_string())),
-                        }),
-                    })
-                    .collect(),
-                // TODO: merge field group for same series
-                field_groups: vec![FieldGroup {
-                    timestamp,
-                    fields: line
-                        .field_set
-                        .into_iter()
-                        .enumerate()
-                        .map(|(idx, (_, fieldv))| Field {
-                            name_index: idx as u32,
-                            value: Some(convert_influx_value(fieldv)),
-                        })
-                        .collect(),
-                }],
             });
+
+        let tags: Vec<_> = tag_set
+            .iter()
+            .enumerate()
+            .map(|(idx, (_, tagv))| Tag {
+                name_index: idx as u32,
+                value: Some(Value {
+                    value: Some(value::Value::StringValue(tagv.to_string())),
+                }),
+            })
+            .collect();
+        let field_group = FieldGroup {
+            timestamp,
+            fields: line
+                .field_set
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(idx, (_, fieldv))| Field {
+                    name_index: idx as u32,
+                    value: Some(convert_influx_value(fieldv)),
+                })
+                .collect(),
+        };
+        let mut found = false;
+        for entry in &mut req_for_one_measurement.entries {
+            if entry.tags == tags {
+                // TODO: remove clone?
+                entry.field_groups.push(field_group.clone());
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            req_for_one_measurement.entries.push(WriteSeriesEntry {
+                tags,
+                field_groups: vec![field_group],
+            })
+        }
     }
 
     Ok(req_by_measurement.into_values().collect())
