@@ -2,7 +2,6 @@
 
 mod error;
 mod metrics;
-pub(crate) mod query;
 
 use std::{sync::Arc, time::Duration};
 
@@ -11,29 +10,18 @@ use ceresdbproto::storage::{
     storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
     RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
 };
-use common_util::error::BoxError;
-use futures::stream::{self, BoxStream, StreamExt};
+use futures::stream::BoxStream;
 use http::StatusCode;
-use log::error;
 use query_engine::executor::Executor as QueryExecutor;
-use snafu::ResultExt;
 use table_engine::engine::EngineRuntimes;
-use tokio_stream::wrappers::ReceiverStream;
 
-use crate::{
-    grpc::storage::{
-        error::{ErrNoCause, ErrWithCause, Result},
-        query::convert_output,
-    },
-    proxy::{grpc::sql_query::QueryResponse, Context, Proxy},
-};
+use crate::proxy::{Context, Proxy};
 
 #[derive(Clone)]
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
     pub proxy: Arc<Proxy<Q>>,
     pub runtimes: Arc<EngineRuntimes>,
     pub timeout: Option<Duration>,
-    pub resp_compress_min_length: usize,
 }
 
 #[async_trait]
@@ -78,33 +66,9 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
     async fn stream_sql_query(
         &self,
-        request: tonic::Request<SqlQueryRequest>,
+        _request: tonic::Request<SqlQueryRequest>,
     ) -> std::result::Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
-        match self.stream_sql_query_internal(request).await {
-            Ok(stream) => {
-                let new_stream: Self::StreamSqlQueryStream =
-                    Box::pin(stream.map(|res| match res {
-                        Ok(resp) => Ok(resp),
-                        Err(e) => {
-                            let resp = SqlQueryResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            };
-                            Ok(resp)
-                        }
-                    }));
-
-                Ok(tonic::Response::new(new_stream))
-            }
-            Err(e) => {
-                let resp = SqlQueryResponse {
-                    header: Some(error::build_err_header(e)),
-                    ..Default::default()
-                };
-                let stream = stream::once(async { Ok(resp) });
-                Ok(tonic::Response::new(Box::pin(stream)))
-            }
-        }
+        todo!()
     }
 }
 
@@ -114,26 +78,8 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         req: tonic::Request<RouteRequest>,
     ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
         let req = req.into_inner();
-        let ret = self
-            .proxy
-            .handle_route(Context::default(), req)
-            .await
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "fail to join the spawn task",
-            });
+        let resp = self.proxy.handle_route(Context::default(), req).await;
 
-        let mut resp = RouteResponse::default();
-        match ret {
-            Err(e) => {
-                resp.header = Some(error::build_err_header(e));
-            }
-            Ok(v) => {
-                resp.header = Some(error::build_ok_header());
-                resp.routes = v.routes;
-            }
-        }
         Ok(tonic::Response::new(resp))
     }
 
@@ -145,43 +91,27 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let proxy = self.proxy.clone();
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             if req.context.is_none() {
-                ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "database is not set",
-                }
-                .fail()?
+                return WriteResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
             }
 
-            proxy
-                .handle_write(Context::default(), req)
-                .await
-                .map_err(|e| {
-                    error!("Failed to handle write request, err:{}", e);
-                    e
-                })
-                .box_err()
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "fail to join the spawn task",
-                })
+            proxy.handle_write(Context::default(), req).await
         });
 
-        let res = join_handle.await.box_err().context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "fail to join the spawn task",
-        });
-
-        let mut resp = WriteResponse::default();
-        match res {
-            Ok(Ok(v)) => {
-                resp.header = Some(error::build_ok_header());
-                resp.success = v.success;
-                resp.failed = v.failed;
-            }
-            Ok(Err(e)) | Err(e) => {
-                let header = error::build_err_header(e);
-                resp.header = Some(header);
-            }
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => WriteResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
         };
 
         Ok(tonic::Response::new(resp))
@@ -195,45 +125,27 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let proxy = self.proxy.clone();
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
-                ErrNoCause {
-                    code: StatusCode::BAD_REQUEST,
-                    msg: "database is not set",
-                }
-                .fail()?
+                return SqlQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
             }
 
-            proxy
-                .handle_query(Context::default(), req)
-                .await
-                .map_err(|e| {
-                    error!("Failed to handle sql query request, err:{}", e);
-                    e
-                })
-                .box_err()
-                .context(ErrWithCause {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "fail to join the spawn task",
-                })
+            proxy.handle_sql_query(Context::default(), req).await
         });
 
-        let res = join_handle.await.box_err().context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "fail to join the spawn task",
-        });
-
-        let resp = match res {
-            Ok(Ok(v)) => match v {
-                QueryResponse::Forward(data) => data,
-                QueryResponse::Direct(data) => {
-                    convert_output(&data, self.resp_compress_min_length).unwrap()
-                }
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => SqlQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
             },
-            Ok(Err(e)) | Err(e) => {
-                let mut resp = SqlQueryResponse::default();
-                let header = error::build_err_header(e);
-                resp.header = Some(header);
-                resp
-            }
         };
 
         Ok(tonic::Response::new(resp))
@@ -250,13 +162,6 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         &self,
         _request: tonic::Request<tonic::Streaming<WriteRequest>>,
     ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        todo!()
-    }
-
-    async fn stream_sql_query_internal(
-        &self,
-        _request: tonic::Request<SqlQueryRequest>,
-    ) -> Result<ReceiverStream<Result<SqlQueryResponse>>> {
         todo!()
     }
 }
