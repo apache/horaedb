@@ -153,9 +153,36 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
     async fn prom_query_internal(
         &self,
-        _req: tonic::Request<PrometheusQueryRequest>,
+        req: tonic::Request<PrometheusQueryRequest>,
     ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        todo!()
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            if req.context.is_none() {
+                return PrometheusQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
+            }
+
+            proxy.handle_prom_query(Context::default(), req).await
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => PrometheusQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn stream_write_internal(
