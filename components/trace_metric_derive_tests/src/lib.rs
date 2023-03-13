@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use trace_metric::{MetricsCollector, TracedMetrics};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-#[derive(Debug, Clone, TracedMetrics)]
+#[derive(Debug, Clone, TraceMetricWhenDrop)]
 pub struct ExampleMetrics {
     #[metric(counter)]
     pub counter: usize,

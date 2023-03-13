@@ -34,7 +34,7 @@ use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use trace_metric::{MetricsCollector, TracedMetrics};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::sst::{
     factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
@@ -76,7 +76,7 @@ pub struct Reader<'a> {
     metrics: Metrics,
 }
 
-#[derive(Debug, Clone, TracedMetrics)]
+#[derive(Debug, Clone, TraceMetricWhenDrop)]
 pub(crate) struct Metrics {
     #[metric(boolean)]
     pub meta_data_cache_hit: bool,

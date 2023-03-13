@@ -23,7 +23,7 @@ use futures::{future::try_join_all, StreamExt};
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
-use trace_metric::{MetricsCollector, TracedMetrics};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
     row_iter::{
@@ -566,7 +566,7 @@ impl Ord for HeapBufferedStream {
 }
 
 /// Metrics for merge iterator.
-#[derive(TracedMetrics)]
+#[derive(TraceMetricWhenDrop)]
 pub struct Metrics {
     #[metric(counter)]
     num_memtables: usize,

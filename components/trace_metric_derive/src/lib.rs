@@ -7,7 +7,7 @@ mod builder;
 
 use builder::Builder;
 
-#[proc_macro_derive(TracedMetrics, attributes(metric))]
+#[proc_macro_derive(TraceMetricWhenDrop, attributes(metric))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     Builder::parse_from_ast(ast).build()

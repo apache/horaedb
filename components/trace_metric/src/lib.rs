@@ -5,4 +5,4 @@ pub mod metric;
 
 pub use collector::MetricsCollector;
 pub use metric::Metric;
-pub use trace_metric_derive::TracedMetrics;
+pub use trace_metric_derive::TraceMetricWhenDrop;

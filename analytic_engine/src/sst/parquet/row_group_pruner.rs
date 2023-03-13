@@ -14,14 +14,14 @@ use parquet_ext::prune::{
     min_max,
 };
 use snafu::ensure;
-use trace_metric::{MetricsCollector, TracedMetrics};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::sst::{
     parquet::meta_data::ParquetFilter,
     reader::error::{OtherNoCause, Result},
 };
 
-#[derive(Debug, Clone, TracedMetrics)]
+#[derive(Debug, Clone, TraceMetricWhenDrop)]
 struct Metrics {
     #[metric(boolean)]
     use_bloom_filter: bool,

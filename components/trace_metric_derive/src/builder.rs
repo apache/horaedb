@@ -106,10 +106,10 @@ impl Builder {
                 }
                 (
                     metric_fields,
-                    collector_field.expect("TracedMetrics must have a collector field"),
+                    collector_field.expect("TraceMetricWhenDrop must have a collector field"),
                 )
             }
-            _ => panic!("TracedMetrics only supports struct with named fields"),
+            _ => panic!("TraceMetricWhenDrop only supports struct with named fields"),
         };
 
         Self {
