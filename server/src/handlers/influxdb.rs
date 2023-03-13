@@ -249,3 +249,118 @@ pub async fn write<Q: QueryExecutor + 'static>(
         .map_err(reject::custom)
         .map(|_| reply::reply())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_convert_influxdb_write_req() {
+        let lines = r#"
+demo,tag1=t1,tag2=t2 field1=90,field2=100 1678675992000
+demo,tag1=t1,tag2=t2 field1=91,field2=101 1678675993000
+demo,tag1=t11,tag2=t22 field1=900,field2=1000 1678675992000
+demo,tag1=t11,tag2=t22 field1=901,field2=1001 1678675993000
+"#
+        .to_string();
+        let req = WriteRequest {
+            lines,
+            precision: Precision::Millisecond,
+        };
+
+        let pb_req = convert_write_request(req).unwrap();
+        assert_eq!(1, pb_req.len());
+        assert_eq!(
+            pb_req[0],
+            WriteTableRequest {
+                table: "demo".to_string(),
+                tag_names: vec!["tag1".to_string(), "tag2".to_string()],
+                field_names: vec!["field1".to_string(), "field2".to_string()],
+                entries: vec![
+                    // First series
+                    WriteSeriesEntry {
+                        tags: vec![
+                            Tag {
+                                name_index: 0,
+                                value: Some(convert_influx_value(FieldValue::String("t1".into()))),
+                            },
+                            Tag {
+                                name_index: 1,
+                                value: Some(convert_influx_value(FieldValue::String("t2".into()))),
+                            },
+                        ],
+                        field_groups: vec![
+                            FieldGroup {
+                                timestamp: 1678675992000,
+                                fields: vec![
+                                    Field {
+                                        name_index: 0,
+                                        value: Some(convert_influx_value(FieldValue::F64(90.0))),
+                                    },
+                                    Field {
+                                        name_index: 1,
+                                        value: Some(convert_influx_value(FieldValue::F64(100.0))),
+                                    }
+                                ]
+                            },
+                            FieldGroup {
+                                timestamp: 1678675993000,
+                                fields: vec![
+                                    Field {
+                                        name_index: 0,
+                                        value: Some(convert_influx_value(FieldValue::F64(91.0))),
+                                    },
+                                    Field {
+                                        name_index: 1,
+                                        value: Some(convert_influx_value(FieldValue::F64(101.0))),
+                                    }
+                                ]
+                            },
+                        ]
+                    },
+                    // Second series
+                    WriteSeriesEntry {
+                        tags: vec![
+                            Tag {
+                                name_index: 0,
+                                value: Some(convert_influx_value(FieldValue::String("t11".into()))),
+                            },
+                            Tag {
+                                name_index: 1,
+                                value: Some(convert_influx_value(FieldValue::String("t22".into()))),
+                            },
+                        ],
+                        field_groups: vec![
+                            FieldGroup {
+                                timestamp: 1678675992000,
+                                fields: vec![
+                                    Field {
+                                        name_index: 0,
+                                        value: Some(convert_influx_value(FieldValue::F64(900.0))),
+                                    },
+                                    Field {
+                                        name_index: 1,
+                                        value: Some(convert_influx_value(FieldValue::F64(1000.0))),
+                                    }
+                                ]
+                            },
+                            FieldGroup {
+                                timestamp: 1678675993000,
+                                fields: vec![
+                                    Field {
+                                        name_index: 0,
+                                        value: Some(convert_influx_value(FieldValue::F64(901.0))),
+                                    },
+                                    Field {
+                                        name_index: 1,
+                                        value: Some(convert_influx_value(FieldValue::F64(1001.0))),
+                                    }
+                                ]
+                            },
+                        ]
+                    }
+                ]
+            }
+        );
+    }
+}
