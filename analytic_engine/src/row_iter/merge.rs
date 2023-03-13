@@ -184,6 +184,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.reverse,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -197,6 +198,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.reverse,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -212,6 +214,7 @@ impl<'a> MergeBuilder<'a> {
                     self.config.sst_factory,
                     &self.config.sst_read_options,
                     self.config.store_picker,
+                    self.config.metrics_collector.clone(),
                 )
                 .await
                 .context(BuildStreamFromSst)?;

@@ -90,7 +90,7 @@ impl MergeMemTableBench {
             ));
 
             info!(
-                "\nMergeMemTableBench memtable loaded, memory used: {}",
+                "MergeMemTableBench memtable loaded, memory used:{}",
                 memtable.approximate_memory_usage()
             );
 
@@ -182,7 +182,7 @@ impl MergeMemTableBench {
             }
 
             info!(
-                "\nMergeMemTableBench total rows of sst: {}, total batch num: {}, cost: {:?}",
+                "MergeMemTableBench total rows of sst:{}, total batch num:{}, cost:{:?}",
                 total_rows,
                 batch_num,
                 begin_instant.elapsed(),

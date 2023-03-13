@@ -136,6 +136,7 @@ async fn sst_to_record_batch_stream(
             sst_read_options,
             SstReadHint::default(),
             &store_picker,
+            None,
         )
         .await
         .unwrap();

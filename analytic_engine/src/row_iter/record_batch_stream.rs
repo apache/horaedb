@@ -27,6 +27,7 @@ use datafusion::{
 use futures::stream::{self, Stream, StreamExt};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
+use trace_metric::Collector;
 
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
@@ -208,6 +209,7 @@ pub fn filtered_stream_from_memtable(
     reverse: bool,
     predicate: &Predicate,
     deadline: Option<Instant>,
+    metrics_collector: Option<Collector>,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_memtable(
         projected_schema.clone(),
@@ -215,6 +217,7 @@ pub fn filtered_stream_from_memtable(
         memtable,
         reverse,
         deadline,
+        metrics_collector,
     )
     .and_then(|origin_stream| {
         filter_stream(
@@ -234,12 +237,15 @@ pub fn stream_from_memtable(
     memtable: &MemTableRef,
     reverse: bool,
     deadline: Option<Instant>,
+    metrics_collector: Option<Collector>,
 ) -> Result<SequencedRecordBatchStream> {
     let scan_ctx = ScanContext {
         deadline,
         ..Default::default()
     };
     let max_seq = memtable.last_sequence();
+    let scan_memtable_desc = format!("scan_memtable_{max_seq}");
+    let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
@@ -247,6 +253,7 @@ pub fn stream_from_memtable(
         projected_schema,
         need_dedup,
         reverse,
+        metrics_collector,
     };
 
     let iter = memtable.scan(scan_ctx, scan_req).context(ScanMemtable)?;
@@ -270,6 +277,7 @@ pub async fn filtered_stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
+    metrics_collector: Option<Collector>,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_sst_file(
         space_id,
@@ -278,6 +286,7 @@ pub async fn filtered_stream_from_sst_file(
         sst_factory,
         sst_read_options,
         store_picker,
+        metrics_collector,
     )
     .await
     .and_then(|origin_stream| {
@@ -300,6 +309,7 @@ pub async fn stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
+    metrics_collector: Option<Collector>,
 ) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());
@@ -308,8 +318,16 @@ pub async fn stream_from_sst_file(
         file_size: Some(sst_file.size() as usize),
         file_format: Some(sst_file.storage_format()),
     };
+    let scan_sst_desc = format!("scan_sst_{}", sst_file.id());
+    let metrics_collector = metrics_collector.map(|v| v.span(scan_sst_desc));
     let mut sst_reader = sst_factory
-        .create_reader(&path, sst_read_options, read_hint, store_picker)
+        .create_reader(
+            &path,
+            sst_read_options,
+            read_hint,
+            store_picker,
+            metrics_collector,
+        )
         .await
         .context(CreateSstReader)?;
     let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;

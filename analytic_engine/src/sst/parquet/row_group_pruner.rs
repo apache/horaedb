@@ -14,11 +14,28 @@ use parquet_ext::prune::{
     min_max,
 };
 use snafu::ensure;
+use trace_metric::{Collector, TracedMetrics};
 
 use crate::sst::{
     parquet::meta_data::ParquetFilter,
     reader::error::{OtherNoCause, Result},
 };
+
+#[derive(Debug, Clone, TracedMetrics)]
+struct Metrics {
+    #[metric(boolean)]
+    use_bloom_filter: bool,
+    #[metric(counter)]
+    total_row_groups: usize,
+    #[metric(counter)]
+    row_groups_after_prune: usize,
+    #[metric(counter)]
+    pruned_by_bloom_filter: usize,
+    #[metric(counter)]
+    pruned_by_min_max: usize,
+    #[metric(collector)]
+    collector: Option<Collector>,
+}
 
 /// RowGroupPruner is used to prune row groups according to the provided
 /// predicates and filters.
@@ -30,6 +47,7 @@ pub struct RowGroupPruner<'a> {
     row_groups: &'a [RowGroupMetaData],
     parquet_filter: Option<&'a ParquetFilter>,
     predicates: &'a [Expr],
+    metrics: Metrics,
 }
 
 impl<'a> RowGroupPruner<'a> {
@@ -38,6 +56,7 @@ impl<'a> RowGroupPruner<'a> {
         row_groups: &'a [RowGroupMetaData],
         parquet_filter: Option<&'a ParquetFilter>,
         predicates: &'a [Expr],
+        metrics_collector: Option<Collector>,
     ) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {
@@ -45,15 +64,25 @@ impl<'a> RowGroupPruner<'a> {
             });
         }
 
+        let metrics = Metrics {
+            use_bloom_filter: parquet_filter.is_some(),
+            total_row_groups: row_groups.len(),
+            row_groups_after_prune: 0,
+            pruned_by_bloom_filter: 0,
+            pruned_by_min_max: 0,
+            collector: metrics_collector,
+        };
+
         Ok(Self {
             schema,
             row_groups,
             parquet_filter,
             predicates,
+            metrics,
         })
     }
 
-    pub fn prune(&self) -> Vec<usize> {
+    pub fn prune(&mut self) -> Vec<usize> {
         debug!(
             "Begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",
             self.row_groups.len(),
@@ -62,13 +91,16 @@ impl<'a> RowGroupPruner<'a> {
         );
 
         let pruned0 = self.prune_by_min_max();
-        match self.parquet_filter {
+        self.metrics.pruned_by_min_max = self.row_groups.len() - pruned0.len();
+
+        let pruned = match self.parquet_filter {
             Some(v) => {
                 // TODO: We can do continuous prune based on the `pruned0` to reduce the
                 // filtering cost.
                 let pruned1 = self.prune_by_filters(v);
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
+                self.metrics.pruned_by_bloom_filter = self.row_groups.len() - pruned1.len();
                 debug!(
                     "Finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
                     self.row_groups.len(),
@@ -87,7 +119,10 @@ impl<'a> RowGroupPruner<'a> {
                 );
                 pruned0
             }
-        }
+        };
+
+        self.metrics.row_groups_after_prune = pruned.len();
+        pruned
     }
 
     fn prune_by_min_max(&self) -> Vec<usize> {

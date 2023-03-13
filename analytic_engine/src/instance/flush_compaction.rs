@@ -1054,6 +1054,7 @@ fn build_mem_table_iter(memtable: MemTableRef, table_data: &TableData) -> Result
         projected_schema: ProjectedSchema::no_projection(table_data.schema()),
         need_dedup: table_data.dedup(),
         reverse: false,
+        metrics_collector: None,
     };
     memtable
         .scan(scan_ctx, scan_req)
