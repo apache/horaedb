@@ -19,14 +19,15 @@ use datafusion::{
     execution::context::{SessionState, TaskContext},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        metrics::MetricsSet, DisplayFormatType, ExecutionPlan, Partitioning,
+        metrics::{Count, MetricValue, MetricsSet},
+        DisplayFormatType, ExecutionPlan, Metric, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
 use datafusion_expr::{Expr, TableSource, TableType};
 use df_operator::visitor;
 use log::debug;
-use trace_metric::MetricsCollector;
+use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
@@ -392,8 +393,19 @@ impl ExecutionPlan for ScanTable {
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
-        // TODO: Convert metrics_collector to MetricsSet.
-        None
+        let mut format_visitor = FormatCollectorVisitor::default();
+        self.metrics_collector.visit(&mut format_visitor);
+        let metrics_desc = format_visitor.into_string();
+
+        let metric_value = MetricValue::Count {
+            name: metrics_desc.into(),
+            count: Count::new(),
+        };
+        let metric = Metric::new(metric_value, None);
+        let mut metric_set = MetricsSet::new();
+        metric_set.push(Arc::new(metric));
+
+        Some(metric_set)
     }
 
     fn statistics(&self) -> Statistics {
