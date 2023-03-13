@@ -33,7 +33,6 @@ use object_store::{LocalFileSystem, ObjectStoreRef, Path};
 use serde::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc;
-use trace_metric::Collector;
 
 use crate::{config::BenchPredicate, util};
 
@@ -221,7 +220,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
-            metrics_collector: Collector::new("".to_string()),
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,

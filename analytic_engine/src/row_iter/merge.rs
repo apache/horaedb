@@ -4,7 +4,7 @@ use std::{
     cmp,
     cmp::Ordering,
     collections::BinaryHeap,
-    fmt, mem,
+    mem,
     ops::{Deref, DerefMut},
     time::{Duration, Instant},
 };
@@ -35,7 +35,7 @@ use crate::{
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
         file::FileHandle,
-        manager::{FileId, MAX_LEVEL},
+        manager::MAX_LEVEL,
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
@@ -84,7 +84,7 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
-    pub metrics_collector: Collector,
+    pub metrics_collector: Option<Collector>,
     /// None for background jobs, such as: compaction
     pub deadline: Option<Instant>,
     pub space_id: SpaceId,
@@ -232,8 +232,7 @@ impl<'a> MergeBuilder<'a> {
             Metrics::new(
                 self.memtables.len(),
                 sst_streams_num,
-                sst_ids,
-                self.config.metrics_collector.clone(),
+                self.config.metrics_collector,
             ),
         ))
     }
@@ -570,7 +569,6 @@ pub struct Metrics {
     num_memtables: usize,
     #[metric(counter)]
     num_ssts: usize,
-    sst_ids: Vec<FileId>,
     /// Total rows collected using fetch_rows_from_one_stream().
     #[metric(counter)]
     total_rows_fetch_from_one: usize,
@@ -580,8 +578,6 @@ pub struct Metrics {
     /// Times to fetch one row from multiple stream.
     #[metric(counter)]
     times_fetch_row_from_multiple: usize,
-    /// Create time of the metrics.
-    create_at: Instant,
     /// Init time cost of the metrics.
     #[metric(elapsed)]
     init_duration: Duration,
@@ -592,49 +588,22 @@ pub struct Metrics {
     #[metric(counter)]
     scan_count: usize,
     #[metric(collector)]
-    metrics_collector: Collector,
+    metrics_collector: Option<Collector>,
 }
 
 impl Metrics {
-    fn new(
-        num_memtables: usize,
-        num_ssts: usize,
-        sst_ids: Vec<FileId>,
-        collector: Collector,
-    ) -> Self {
+    fn new(num_memtables: usize, num_ssts: usize, collector: Option<Collector>) -> Self {
         Self {
             num_memtables,
             num_ssts,
-            sst_ids,
             times_fetch_rows_from_one: 0,
             total_rows_fetch_from_one: 0,
             times_fetch_row_from_multiple: 0,
-            create_at: Instant::now(),
             init_duration: Duration::default(),
             scan_duration: Duration::default(),
             scan_count: 0,
             metrics_collector: collector,
         }
-    }
-}
-
-impl fmt::Debug for Metrics {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Metrics")
-            .field("num_memtables", &self.num_memtables)
-            .field("num_ssts", &self.num_ssts)
-            .field("sst_ids", &self.sst_ids)
-            .field("times_fetch_rows_from_one", &self.times_fetch_rows_from_one)
-            .field("total_rows_fetch_from_one", &self.total_rows_fetch_from_one)
-            .field(
-                "times_fetch_row_from_multiple",
-                &self.times_fetch_row_from_multiple,
-            )
-            .field("duration_since_create", &self.create_at.elapsed())
-            .field("init_duration", &self.init_duration)
-            .field("scan_duration", &self.scan_duration)
-            .field("scan_count", &self.scan_count)
-            .finish()
     }
 }
 
@@ -940,7 +909,7 @@ mod tests {
             Vec::new(),
             IterOptions::default(),
             false,
-            Metrics::new(1, 1, vec![], Collector::new("".to_string())),
+            Metrics::new(1, 1, None),
         );
 
         check_iterator(
@@ -993,7 +962,7 @@ mod tests {
             Vec::new(),
             IterOptions::default(),
             true,
-            Metrics::new(1, 1, vec![], Collector::new("".to_string())),
+            Metrics::new(1, 1, None),
         );
 
         check_iterator(

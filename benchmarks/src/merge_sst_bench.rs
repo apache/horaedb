@@ -29,7 +29,6 @@ use log::info;
 use object_store::{LocalFileSystem, ObjectStoreRef};
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
-use trace_metric::Collector;
 
 use crate::{config::MergeSstBenchConfig, util};
 
@@ -126,7 +125,7 @@ impl MergeSstBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
-            metrics_collector: Collector::new("".to_string()),
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,
