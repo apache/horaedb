@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use trace_metric::{Collector, TracedMetrics};
+use trace_metric::{MetricsCollector, TracedMetrics};
 
 #[derive(Debug, Clone, TracedMetrics)]
 pub struct ExampleMetrics {
@@ -15,7 +15,7 @@ pub struct ExampleMetrics {
     pub foo: String,
 
     #[metric(collector)]
-    pub collector: Collector,
+    pub collector: MetricsCollector,
 }
 
 #[cfg(test)]
@@ -24,7 +24,7 @@ mod test {
 
     #[test]
     fn basic() {
-        let collector = Collector::new("test".to_string());
+        let collector = MetricsCollector::new("test".to_string());
         {
             let _ = ExampleMetrics {
                 counter: 1,

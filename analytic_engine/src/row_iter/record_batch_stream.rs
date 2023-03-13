@@ -27,7 +27,7 @@ use datafusion::{
 use futures::stream::{self, Stream, StreamExt};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{predicate::Predicate, table::TableId};
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::{
     memtable::{MemTableRef, ScanContext, ScanRequest},
@@ -209,7 +209,7 @@ pub fn filtered_stream_from_memtable(
     reverse: bool,
     predicate: &Predicate,
     deadline: Option<Instant>,
-    metrics_collector: Option<Collector>,
+    metrics_collector: Option<MetricsCollector>,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_memtable(
         projected_schema.clone(),
@@ -237,7 +237,7 @@ pub fn stream_from_memtable(
     memtable: &MemTableRef,
     reverse: bool,
     deadline: Option<Instant>,
-    metrics_collector: Option<Collector>,
+    metrics_collector: Option<MetricsCollector>,
 ) -> Result<SequencedRecordBatchStream> {
     let scan_ctx = ScanContext {
         deadline,
@@ -277,7 +277,7 @@ pub async fn filtered_stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
-    metrics_collector: Option<Collector>,
+    metrics_collector: Option<MetricsCollector>,
 ) -> Result<SequencedRecordBatchStream> {
     stream_from_sst_file(
         space_id,
@@ -309,7 +309,7 @@ pub async fn stream_from_sst_file(
     sst_factory: &SstFactoryRef,
     sst_read_options: &SstReadOptions,
     store_picker: &ObjectStorePickerRef,
-    metrics_collector: Option<Collector>,
+    metrics_collector: Option<MetricsCollector>,
 ) -> Result<SequencedRecordBatchStream> {
     sst_file.read_meter().mark();
     let path = sst_util::new_sst_file_path(space_id, table_id, sst_file.id());

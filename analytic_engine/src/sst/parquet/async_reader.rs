@@ -34,7 +34,7 @@ use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use trace_metric::{Collector, TracedMetrics};
+use trace_metric::{MetricsCollector, TracedMetrics};
 
 use crate::sst::{
     factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
@@ -85,7 +85,7 @@ pub(crate) struct Metrics {
     #[metric(counter)]
     pub parallelism: usize,
     #[metric(collector)]
-    pub metrics_collector: Option<Collector>,
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 impl<'a> Reader<'a> {
@@ -94,7 +94,7 @@ impl<'a> Reader<'a> {
         options: &SstReadOptions,
         file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
-        metrics_collector: Option<Collector>,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =

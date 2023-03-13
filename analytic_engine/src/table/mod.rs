@@ -22,7 +22,7 @@ use table_engine::{
     },
 };
 use tokio::sync::oneshot;
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use self::data::TableDataRef;
 use crate::{
@@ -180,7 +180,7 @@ impl Table for TableImpl {
             projected_schema: request.projected_schema,
             predicate,
             order: ReadOrder::None,
-            metrics_collector: Collector::new("".to_string()),
+            metrics_collector: MetricsCollector::new("".to_string()),
         };
         let mut batch_stream = self
             .read(read_request)

@@ -25,7 +25,7 @@ use common_types::{
 use common_util::error::{BoxError, GenericError};
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::{
     engine::TableState,
@@ -390,7 +390,7 @@ pub struct ReadRequest {
     /// Read the rows in reverse order.
     pub order: ReadOrder,
     /// Collector for metrics of this read request.
-    pub metrics_collector: Collector,
+    pub metrics_collector: MetricsCollector,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -451,7 +451,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
-            metrics_collector: Collector::new("".to_string()),
+            metrics_collector: MetricsCollector::new("".to_string()),
         })
     }
 }

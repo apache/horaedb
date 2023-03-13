@@ -22,7 +22,7 @@ use table_engine::{
     predicate::Predicate,
     table::{GetRequest, ReadOptions, ReadOrder, ReadRequest, SchemaId, TableId, TableSeq},
 };
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::{table_options, tests::row_util};
 
@@ -186,7 +186,7 @@ pub fn new_read_all_request_with_order(
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
         order,
-        metrics_collector: Collector::new("".to_string()),
+        metrics_collector: MetricsCollector::new("".to_string()),
     }
 }
 

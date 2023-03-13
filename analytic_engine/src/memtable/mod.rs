@@ -18,7 +18,7 @@ use common_types::{
 };
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, Snafu};
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
 
@@ -131,7 +131,7 @@ pub struct ScanRequest {
     pub need_dedup: bool,
     pub reverse: bool,
     /// Collector for scan metrics.
-    pub metrics_collector: Option<Collector>,
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 /// In memory storage for table's data.

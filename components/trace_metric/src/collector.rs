@@ -8,13 +8,13 @@ use crate::metric::Metric;
 ///
 /// It can be cloned and shared among threads.
 #[derive(Clone, Debug)]
-pub struct Collector {
+pub struct MetricsCollector {
     name: String,
     metrics: Arc<Mutex<Vec<Metric>>>,
-    children: Arc<Mutex<Vec<Collector>>>,
+    children: Arc<Mutex<Vec<MetricsCollector>>>,
 }
 
-impl Collector {
+impl MetricsCollector {
     /// Create a new collector with the given name.
     pub fn new(name: String) -> Self {
         Self {
@@ -31,7 +31,7 @@ impl Collector {
     }
 
     /// Span a child collector with a given name.
-    pub fn span(&self, name: String) -> Collector {
+    pub fn span(&self, name: String) -> MetricsCollector {
         let mut children = self.children.lock().unwrap();
         let child = Self::new(name);
         children.push(child.clone());
@@ -53,7 +53,7 @@ impl Collector {
     }
 
     /// Visit all the collectors including itself and its children.
-    pub fn visit(&self, f: &mut impl FnMut(&Collector)) {
+    pub fn visit(&self, f: &mut impl FnMut(&MetricsCollector)) {
         f(self);
         let children = self.children.lock().unwrap();
         for child in children.iter() {

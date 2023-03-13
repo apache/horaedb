@@ -23,7 +23,7 @@ use futures::{future::try_join_all, StreamExt};
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
-use trace_metric::{Collector, TracedMetrics};
+use trace_metric::{MetricsCollector, TracedMetrics};
 
 use crate::{
     row_iter::{
@@ -84,7 +84,7 @@ define_result!(Error);
 #[derive(Debug)]
 pub struct MergeConfig<'a> {
     pub request_id: RequestId,
-    pub metrics_collector: Option<Collector>,
+    pub metrics_collector: Option<MetricsCollector>,
     /// None for background jobs, such as: compaction
     pub deadline: Option<Instant>,
     pub space_id: SpaceId,
@@ -591,11 +591,11 @@ pub struct Metrics {
     #[metric(counter)]
     scan_count: usize,
     #[metric(collector)]
-    metrics_collector: Option<Collector>,
+    metrics_collector: Option<MetricsCollector>,
 }
 
 impl Metrics {
-    fn new(num_memtables: usize, num_ssts: usize, collector: Option<Collector>) -> Self {
+    fn new(num_memtables: usize, num_ssts: usize, collector: Option<MetricsCollector>) -> Self {
         Self {
             num_memtables,
             num_ssts,

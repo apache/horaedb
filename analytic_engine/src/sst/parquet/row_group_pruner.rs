@@ -14,7 +14,7 @@ use parquet_ext::prune::{
     min_max,
 };
 use snafu::ensure;
-use trace_metric::{Collector, TracedMetrics};
+use trace_metric::{MetricsCollector, TracedMetrics};
 
 use crate::sst::{
     parquet::meta_data::ParquetFilter,
@@ -34,7 +34,7 @@ struct Metrics {
     #[metric(counter)]
     pruned_by_min_max: usize,
     #[metric(collector)]
-    collector: Option<Collector>,
+    collector: Option<MetricsCollector>,
 }
 
 /// RowGroupPruner is used to prune row groups according to the provided
@@ -56,7 +56,7 @@ impl<'a> RowGroupPruner<'a> {
         row_groups: &'a [RowGroupMetaData],
         parquet_filter: Option<&'a ParquetFilter>,
         predicates: &'a [Expr],
-        metrics_collector: Option<Collector>,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {

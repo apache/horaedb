@@ -3,6 +3,6 @@
 pub mod collector;
 pub mod metric;
 
-pub use collector::Collector;
+pub use collector::MetricsCollector;
 pub use metric::Metric;
 pub use trace_metric_derive::TracedMetrics;

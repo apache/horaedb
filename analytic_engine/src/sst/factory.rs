@@ -10,7 +10,7 @@ use common_util::{define_result, runtime::Runtime};
 use object_store::{ObjectStoreRef, Path};
 use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::{
     sst::{
@@ -66,7 +66,7 @@ pub trait Factory: Send + Sync + Debug {
         options: &SstReadOptions,
         hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
-        metrics_collector: Option<Collector>,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Result<Box<dyn SstReader + Send + 'a>>;
 
     async fn create_writer<'a>(
@@ -129,7 +129,7 @@ impl Factory for FactoryImpl {
         options: &SstReadOptions,
         hint: SstReadHint,
         store_picker: &'a ObjectStorePickerRef,
-        metrics_collector: Option<Collector>,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = match hint.file_format {
             Some(v) => v,

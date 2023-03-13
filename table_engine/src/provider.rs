@@ -26,7 +26,7 @@ use datafusion::{
 use datafusion_expr::{Expr, TableSource, TableType};
 use df_operator::visitor;
 use log::debug;
-use trace_metric::Collector;
+use trace_metric::MetricsCollector;
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
@@ -170,7 +170,7 @@ impl TableProviderAdapter {
             predicate,
             deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
-            metrics_collector: Collector::new("scan_table".to_string()),
+            metrics_collector: MetricsCollector::new("scan_table".to_string()),
         };
         scan_table.maybe_init_stream(state).await?;
 
@@ -297,7 +297,7 @@ struct ScanTable {
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
-    metrics_collector: Collector,
+    metrics_collector: MetricsCollector,
 
     stream_state: Mutex<ScanStreamState>,
 }
