@@ -2,7 +2,7 @@
 
 // Meta event rpc service implementation.
 
-use std::{sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
@@ -238,8 +238,8 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     };
 
     let mut success = 0;
-    let mut fail = 0;
-    let mut err_list = vec![];
+    let mut err_map = HashMap::new();
+
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -260,14 +260,12 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
                 success += 1;
             }
             Ok(None) => {
-                fail += 1;
                 error!("no table is opened, open_request:{open_request:?}");
-                err_list.push(table.name);
+                err_map.insert(table.name, "no table is opened");
             }
             Err(e) => {
-                fail += 1;
                 error!("fail to open table, open_request:{open_request:?}, err:{e}");
-                err_list.push(table.name);
+                err_map.insert(table.name, "fail to open table");
             }
         };
     }
@@ -277,16 +275,16 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         shard_info.id,
         instant.saturating_elapsed().as_millis(),
         success,
-        fail
+        err_map.len(),
     );
 
-    if err_list.is_empty() {
+    if err_map.is_empty() {
         Ok(())
     } else {
-        Err(Error::OpenShardErr {
+        Err(Error::ErrNoCause {
             code: StatusCode::Internal,
             msg: format!(
-                "Failed to open shard:{},  because of failed tables:{err_list:?}",
+                "Failed to open shard:{},  because of failed tables:{err_map:?}",
                 shard_info.id
             ),
         })

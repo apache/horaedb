@@ -22,9 +22,6 @@ pub enum Error {
         msg: String,
         source: GenericError,
     },
-
-    #[snafu(display("Open shard error, code:{:?}, message:{}", code, msg))]
-    OpenShardErr { code: StatusCode, msg: String },
 }
 
 impl Error {
@@ -32,7 +29,6 @@ impl Error {
         match *self {
             Error::ErrNoCause { code, .. } => code,
             Error::ErrWithCause { code, .. } => code,
-            Error::OpenShardErr { code, .. } => code,
         }
     }
 
@@ -46,8 +42,6 @@ impl Error {
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{msg}. Caused by: {first_line}")
             }
-
-            Error::OpenShardErr { msg, .. } => msg.clone(),
         }
     }
 }
