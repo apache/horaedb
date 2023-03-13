@@ -18,7 +18,6 @@ use ceresdb_client::{
     RpcContext,
 };
 use reqwest::ClientBuilder;
-use serde::Serialize;
 use sql::{
     ast::{Statement, TableName},
     parser::Parser,
@@ -44,11 +43,6 @@ pub enum DeployMode {
 struct HttpClient {
     client: reqwest::Client,
     endpoint: String,
-}
-
-#[derive(Clone, Serialize)]
-struct InfluxQLRequest {
-    query: String,
 }
 
 impl HttpClient {
@@ -178,12 +172,11 @@ impl CeresDB {
     }
 
     async fn execute_influxql(query: String, http_client: HttpClient) -> Box<dyn Display> {
-        let url = format!("http://{}/influxql", http_client.endpoint);
-        let query_request = InfluxQLRequest { query };
+        let url = format!("http://{}/influxdb/v1/query", http_client.endpoint);
         let resp = http_client
             .client
             .post(url)
-            .json(&query_request)
+            .body(query)
             .send()
             .await
             .unwrap();

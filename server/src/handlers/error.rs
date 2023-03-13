@@ -2,7 +2,9 @@
 
 //! Error of handlers
 
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
+use warp::reject::Reject;
 
 use crate::limiter;
 // TODO(yingwen): Avoid printing huge sql string
@@ -70,6 +72,11 @@ pub enum Error {
         source: tokio::time::error::Elapsed,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("InfluxDb handler failed, msg:{}, source:{}", msg, source))]
+    InfluxDbHandler { msg: String, source: GenericError },
 }
 
 define_result!(Error);
+
+impl Reject for Error {}
