@@ -41,8 +41,7 @@ use crate::{
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub(crate) async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
-        let ret = self.handle_write_internal(ctx, req).await;
-        match ret {
+        match self.handle_write_internal(ctx, req).await {
             Err(e) => WriteResponse {
                 header: Some(error::build_err_header(e)),
                 ..Default::default()
@@ -208,7 +207,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
         })?;
@@ -319,7 +318,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
         })?;
@@ -362,7 +361,7 @@ fn write_table_request_to_insert_plan(
     // The row group builder will checks nullable.
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
         .box_err()
-        .context(ErrWithCause {
+        .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
         })?
