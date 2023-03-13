@@ -284,7 +284,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         Err(Error::ErrNoCause {
             code: StatusCode::Internal,
             msg: format!(
-                "Failed to open shard:{},  because of failed tables:{err_map:?}",
+                "Failed to open shard:{}, because of failed tables:{err_map:?}",
                 shard_info.id
             ),
         })
