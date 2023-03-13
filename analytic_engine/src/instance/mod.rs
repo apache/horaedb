@@ -14,7 +14,6 @@ pub mod flush_compaction;
 pub(crate) mod mem_collector;
 pub mod open;
 mod read;
-pub(crate) mod read_metrics;
 pub(crate) mod write;
 pub mod write_worker;
 
