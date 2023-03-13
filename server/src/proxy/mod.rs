@@ -19,6 +19,7 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
     instance: InstanceRef<Q>,
+    resp_compress_min_length: usize,
     schema_config_provider: SchemaConfigProviderRef,
 }
 
@@ -28,12 +29,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
         forwarder: ForwarderRef,
+        resp_compress_min_length: usize,
         schema_config_provider: SchemaConfigProviderRef,
     ) -> Self {
         Self {
             router,
             instance,
             forwarder,
+            resp_compress_min_length,
             schema_config_provider,
         }
     }

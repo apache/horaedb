@@ -6,7 +6,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use ceresdbproto::storage::{value, WriteRequest, WriteSeriesEntry, WriteTableRequest};
+use ceresdbproto::storage::{
+    value, WriteRequest, WriteResponse, WriteSeriesEntry, WriteTableRequest,
+};
 use cluster::config::SchemaConfig;
 use common_types::{
     datum::{Datum, DatumKind},
@@ -16,6 +18,7 @@ use common_types::{
     time::Timestamp,
 };
 use common_util::error::BoxError;
+use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
@@ -30,20 +33,29 @@ use table_engine::table::TableRef;
 use crate::{
     instance::InstanceRef,
     proxy::{
-        error::{BadRequestWithoutErr, Internal, InternalWithoutErr, Result},
+        error,
+        error::{ErrNoCause, ErrWithCause, Result},
         Context, Proxy,
     },
 };
 
-#[derive(Debug)]
-pub struct WriteResponse {
-    pub success: u32,
-    pub failed: u32,
-}
-
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    pub(crate) async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
+        let ret = self.handle_write_internal(ctx, req).await;
+        let mut resp = WriteResponse::default();
+        match ret {
+            Err(e) => {
+                resp.header = Some(error::build_err_header(e));
+            }
+            Ok(v) => {
+                resp = v;
+            }
+        }
+        resp
+    }
+
     // TODO: support forwarding write request
-    pub(crate) async fn handle_write(
+    async fn handle_write_internal(
         &self,
         ctx: Context,
         req: WriteRequest,
@@ -58,7 +70,8 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .schema_config_provider
             .schema_config(&schema)
             .box_err()
-            .with_context(|| Internal {
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: format!("fail to fetch schema config, schema_name:{schema}"),
             })?;
 
@@ -99,7 +112,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let resp = WriteResponse {
             success: success as u32,
-            failed: 0,
+            ..Default::default()
         };
 
         debug!(
@@ -149,7 +162,8 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                 plan_vec.push(plan);
             }
             None => {
-                return BadRequestWithoutErr {
+                return ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
                     msg: format!("Table not found, schema:{schema}, table:{table_name}"),
                 }
                 .fail();
@@ -179,7 +193,8 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         .limiter
         .try_limit(&plan)
         .box_err()
-        .context(Internal {
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Insert is blocked",
         })?;
 
@@ -196,7 +211,8 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
         })?;
 
@@ -204,12 +220,14 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         .execute()
         .await
         .box_err()
-        .context(Internal {
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(n) => Ok(n),
-            Output::Records(_) => BadRequestWithoutErr {
+            Output::Records(_) => ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
                 msg: "Invalid output type, expect AffectedRows, found Records",
             }
             .fail(),
@@ -226,23 +244,28 @@ fn try_get_table<Q: QueryExecutor + 'static>(
         .catalog_manager
         .catalog_by_name(catalog)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find catalog, catalog_name:{catalog}"),
         })?
-        .with_context(|| BadRequestWithoutErr {
+        .with_context(|| ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
             msg: format!("Catalog not found, catalog_name:{catalog}"),
         })?
         .schema_by_name(schema)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find schema, schema_name:{schema}"),
         })?
-        .with_context(|| BadRequestWithoutErr {
+        .with_context(|| ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
             msg: format!("Schema not found, schema_name:{schema}"),
         })?
         .table_by_name(table_name)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to find table, table:{table_name}"),
         })
 }
@@ -267,7 +290,8 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let plan = frontend
         .write_req_to_plan(&mut ctx, schema_config, write_table_req)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!(
                 "Failed to build creating table plan, table:{}",
                 write_table_req.table
@@ -280,7 +304,8 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .limiter
         .try_limit(&plan)
         .box_err()
-        .context(Internal {
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Create table is blocked",
         })?;
 
@@ -297,7 +322,8 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| Internal {
+        .with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
         })?;
 
@@ -305,12 +331,14 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .execute()
         .await
         .box_err()
-        .context(Internal {
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(_) => Ok(()),
-            Output::Records(_) => InternalWithoutErr {
+            Output::Records(_) => ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
                 msg: "Invalid output type, expect AffectedRows, found Records",
             }
             .fail(),
@@ -337,7 +365,8 @@ fn write_table_request_to_insert_plan(
     // The row group builder will checks nullable.
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
         .box_err()
-        .context(Internal {
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
         })?
         .build();
@@ -375,7 +404,8 @@ fn write_entry_to_rows(
         let name_index = tag.name_index as usize;
         ensure!(
             name_index < tag_names.len(),
-            BadRequestWithoutErr {
+            ErrNoCause {
+                code:StatusCode::BAD_REQUEST,
                 msg: format!(
                     "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
@@ -383,28 +413,29 @@ fn write_entry_to_rows(
         );
 
         let tag_name = &tag_names[name_index];
-        let tag_index_in_schema =
-            schema
-                .index_of(tag_name)
-                .with_context(|| BadRequestWithoutErr {
-                    msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
-                })?;
+        let tag_index_in_schema = schema.index_of(tag_name).with_context(|| ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: format!("Can't find tag({tag_name}) in schema, table:{table_name}"),
+        })?;
 
         let column_schema = schema.column(tag_index_in_schema);
         ensure!(
             column_schema.is_tag,
-            BadRequestWithoutErr {
+            ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
                 msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 
         let tag_value = tag
             .value
-            .with_context(|| BadRequestWithoutErr {
+            .with_context(|| ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
                 msg: format!("Tag({tag_name}) value is needed, table:{table_name}"),
             })?
             .value
-            .with_context(|| BadRequestWithoutErr {
+            .with_context(|| ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
                 msg: format!(
                     "Tag({tag_name}) value type is not supported, table_name:{table_name}"
                 ),
@@ -434,7 +465,8 @@ fn write_entry_to_rows(
                     field_name_index.get(field_name).unwrap().to_owned()
                 } else {
                     let index_in_schema =
-                        schema.index_of(field_name).with_context(|| BadRequestWithoutErr {
+                        schema.index_of(field_name).with_context(|| ErrNoCause {
+                            code:StatusCode::BAD_REQUEST,
                             msg: format!(
                                 "Can't find field in schema, table:{table_name}, field_name:{field_name}"
                             ),
@@ -445,7 +477,8 @@ fn write_entry_to_rows(
                 let column_schema = schema.column(index_in_schema);
                 ensure!(
                     !column_schema.is_tag,
-                    BadRequestWithoutErr {
+                    ErrNoCause {
+                        code: StatusCode::BAD_REQUEST,
                         msg: format!(
                             "Column {field_name} is a tag rather than a field, table:{table_name}"
                         )
@@ -453,11 +486,13 @@ fn write_entry_to_rows(
                 );
                 let field_value = field
                     .value
-                    .with_context(|| BadRequestWithoutErr {
+                    .with_context(|| ErrNoCause {
+                        code: StatusCode::BAD_REQUEST,
                         msg: format!("Field({field_name}) is needed, table:{table_name}"),
                     })?
                     .value
-                    .with_context(|| BadRequestWithoutErr {
+                    .with_context(|| ErrNoCause {
+                        code: StatusCode::BAD_REQUEST,
                         msg: format!(
                             "Field({field_name}) value type is not supported, table:{table_name}"
                         ),
@@ -498,7 +533,8 @@ fn convert_proto_value_to_datum(
         (value::Value::Uint8Value(v), DatumKind::UInt8) => Ok(Datum::UInt8(v as u8)),
         (value::Value::TimestampValue(v), DatumKind::Timestamp) => Ok(Datum::Timestamp(Timestamp::new(v))),
         (value::Value::VarbinaryValue(v), DatumKind::Varbinary) => Ok(Datum::Varbinary(Bytes::from(v))),
-        (v, _) => BadRequestWithoutErr {
+        (v, _) => ErrNoCause {
+            code:StatusCode::BAD_REQUEST,
             msg: format!(
                 "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
             ),
