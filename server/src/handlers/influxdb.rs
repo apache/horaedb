@@ -13,7 +13,7 @@ use ceresdbproto::storage::{
 use common_types::{request_id::RequestId, time::Timestamp};
 use common_util::error::BoxError;
 use handlers::{
-    error::{InfluxdbHandler, Result},
+    error::{InfluxDbHandler, Result},
     query::QueryRequest,
 };
 use influxdb_line_protocol::FieldValue;
@@ -96,7 +96,7 @@ impl<Q: QueryExecutor + 'static> Influxdb<Q> {
             .schema_config_provider
             .schema_config(schema)
             .box_err()
-            .with_context(|| InfluxdbHandler {
+            .with_context(|| InfluxDbHandler {
                 msg: format!("get schema config failed, schema:{schema}"),
             })?;
 
@@ -111,7 +111,7 @@ impl<Q: QueryExecutor + 'static> Influxdb<Q> {
         )
         .await
         .box_err()
-        .with_context(|| InfluxdbHandler {
+        .with_context(|| InfluxDbHandler {
             msg: "write request to insert plan",
         })?;
 
@@ -127,12 +127,12 @@ impl<Q: QueryExecutor + 'static> Influxdb<Q> {
             )
             .await
             .box_err()
-            .with_context(|| InfluxdbHandler {
+            .with_context(|| InfluxDbHandler {
                 msg: "execute plan",
             })?;
         }
         debug!(
-            "Remote write finished, catalog:{}, schema:{}, success:{}",
+            "Influxdb write finished, catalog:{}, schema:{}, success:{}",
             catalog, schema, success
         );
 
@@ -144,7 +144,7 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
     let default_ts = Timestamp::now().as_i64();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
-        let mut line = line.box_err().with_context(|| InfluxdbHandler {
+        let mut line = line.box_err().with_context(|| InfluxDbHandler {
             msg: "invalid line",
         })?;
 
@@ -247,7 +247,7 @@ pub async fn write<Q: QueryExecutor + 'static>(
     db.write(ctx, req)
         .await
         .map_err(reject::custom)
-        .map(|_| reply::reply())
+        .map(|_| warp::http::StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
