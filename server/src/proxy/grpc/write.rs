@@ -42,16 +42,13 @@ use crate::{
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub(crate) async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         let ret = self.handle_write_internal(ctx, req).await;
-        let mut resp = WriteResponse::default();
         match ret {
-            Err(e) => {
-                resp.header = Some(error::build_err_header(e));
-            }
-            Ok(v) => {
-                resp = v;
-            }
+            Err(e) => WriteResponse {
+                header: Some(error::build_err_header(e)),
+                ..Default::default()
+            },
+            Ok(v) => v,
         }
-        resp
     }
 
     // TODO: support forwarding write request

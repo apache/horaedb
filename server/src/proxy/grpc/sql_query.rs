@@ -36,16 +36,13 @@ use crate::proxy::{
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
         let ret = self.handle_query_internal(ctx, req).await;
-        let mut resp = SqlQueryResponse::default();
         match ret {
-            Err(e) => {
-                resp.header = Some(error::build_err_header(e));
-            }
-            Ok(v) => {
-                resp = v;
-            }
+            Err(e) => SqlQueryResponse {
+                header: Some(error::build_err_header(e)),
+                ..Default::default()
+            },
+            Ok(v) => v,
         }
-        resp
     }
 
     async fn handle_query_internal(
