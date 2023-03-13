@@ -2,6 +2,7 @@
 
 mod error;
 mod metrics;
+pub(crate) mod query;
 
 use std::{sync::Arc, time::Duration};
 
@@ -20,8 +21,11 @@ use table_engine::engine::EngineRuntimes;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    grpc::storage::error::{ErrNoCause, ErrWithCause, Result},
-    proxy::{Context, Proxy},
+    grpc::storage::{
+        error::{ErrNoCause, ErrWithCause, Result},
+        query::convert_output,
+    },
+    proxy::{grpc::sql_query::QueryResponse, Context, Proxy},
 };
 
 #[derive(Clone)]
@@ -185,9 +189,54 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
 
     async fn query_internal(
         &self,
-        _req: tonic::Request<SqlQueryRequest>,
+        req: tonic::Request<SqlQueryRequest>,
     ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        todo!()
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            if req.context.is_none() {
+                ErrNoCause {
+                    code: StatusCode::BAD_REQUEST,
+                    msg: "database is not set",
+                }
+                .fail()?
+            }
+
+            proxy
+                .handle_query(Context::default(), req)
+                .await
+                .map_err(|e| {
+                    error!("Failed to handle sql query request, err:{}", e);
+                    e
+                })
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::INTERNAL_SERVER_ERROR,
+                    msg: "fail to join the spawn task",
+                })
+        });
+
+        let res = join_handle.await.box_err().context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "fail to join the spawn task",
+        });
+
+        let resp = match res {
+            Ok(Ok(v)) => match v {
+                QueryResponse::Forward(data) => data,
+                QueryResponse::Direct(data) => {
+                    convert_output(&data, self.resp_compress_min_length).unwrap()
+                }
+            },
+            Ok(Err(e)) | Err(e) => {
+                let mut resp = SqlQueryResponse::default();
+                let header = error::build_err_header(e);
+                resp.header = Some(header);
+                resp
+            }
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
     async fn prom_query_internal(
