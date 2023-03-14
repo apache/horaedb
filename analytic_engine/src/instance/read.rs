@@ -177,10 +177,11 @@ impl Instance {
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
-        for read_view in read_views {
+        for (idx, read_view) in read_views.into_iter().enumerate() {
+            let metrics_collector = request.metrics_collector.span(format!("merge_{idx}");
             let merge_config = MergeConfig {
                 request_id: request.request_id,
-                metrics_collector: Some(request.metrics_collector.clone()),
+                metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
                 table_id: table_data.id,

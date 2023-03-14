@@ -398,7 +398,7 @@ impl ExecutionPlan for ScanTable {
         let metrics_desc = format_visitor.into_string();
 
         let metric_value = MetricValue::Count {
-            name: metrics_desc.into(),
+            name: format!("\n{metrics_desc}").into(),
             count: Count::new(),
         };
         let metric = Metric::new(metric_value, None);
