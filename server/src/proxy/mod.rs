@@ -2,17 +2,22 @@
 
 pub(crate) mod error;
 #[allow(dead_code)]
-mod forward;
+pub mod forward;
 pub(crate) mod grpc;
 
-use std::{sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
-use common_util::runtime::Runtime;
+use common_util::{error::BoxError, runtime::Runtime};
 use query_engine::executor::Executor as QueryExecutor;
-use router::Router;
+use router::{endpoint::Endpoint, Router};
+use snafu::ResultExt;
 
 use crate::{
-    instance::InstanceRef, proxy::forward::ForwarderRef,
+    instance::InstanceRef,
+    proxy::{
+        error::{Internal, Result},
+        forward::{Forwarder, ForwarderRef},
+    },
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -25,21 +30,31 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
 }
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    #[allow(dead_code)]
-    pub fn new(
+    pub fn try_new(
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef<Q>,
-        forwarder: ForwarderRef,
+        forward_config: forward::Config,
+        local_endpoint: String,
         resp_compress_min_length: usize,
         schema_config_provider: SchemaConfigProviderRef,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        let local_endpoint = Endpoint::from_str(&local_endpoint).with_context(|| Internal {
+            msg: format!("invalid local endpoint, input:{local_endpoint}"),
+        })?;
+        let forwarder = Arc::new(
+            Forwarder::try_new(forward_config, router.clone(), local_endpoint)
+                .box_err()
+                .context(Internal {
+                    msg: "fail to init forward",
+                })?,
+        );
+        Ok(Self {
             router,
             instance,
             forwarder,
             resp_compress_min_length,
             schema_config_provider,
-        }
+        })
     }
 }
 

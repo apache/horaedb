@@ -12,6 +12,9 @@ define_result!(Error);
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
+    #[snafu(display("Internal error, message:{}, cause:{}", msg, source))]
+    Internal { msg: String, source: GenericError },
+
     #[snafu(display("Rpc error, code:{:?}, message:{}", code, msg))]
     ErrNoCause { code: StatusCode, msg: String },
 
@@ -28,6 +31,7 @@ impl Error {
         match *self {
             Error::ErrNoCause { code, .. } => code,
             Error::ErrWithCause { code, .. } => code,
+            Error::Internal { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -41,6 +45,7 @@ impl Error {
                 let first_line = error_util::remove_backtrace_from_err(&err_string);
                 format!("{msg}. Caused by: {first_line}")
             }
+            Error::Internal { msg, .. } => msg.clone(),
         }
     }
 }
