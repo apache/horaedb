@@ -25,6 +25,7 @@ use common_types::{
 use common_util::error::{BoxError, GenericError};
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use trace_metric::MetricsCollector;
 
 use crate::{
     engine::TableState,
@@ -388,6 +389,8 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Read the rows in reverse order.
     pub order: ReadOrder,
+    /// Collector for metrics of this read request.
+    pub metrics_collector: MetricsCollector,
 }
 
 impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
@@ -448,6 +451,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
+            metrics_collector: MetricsCollector::default(),
         })
     }
 }
@@ -513,9 +517,6 @@ pub trait Table: std::fmt::Debug {
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
 
     /// Get the specific row according to the primary key.
-    /// TODO(xikai): object-safety is not ensured by now if the default
-    ///  implementation is provided. Actually it is better to use the read
-    ///  method to implement the get method.
     async fn get(&self, request: GetRequest) -> Result<Option<Row>>;
 
     /// Read multiple partition of the table in parallel.

@@ -119,6 +119,7 @@ pub async fn load_sst_to_memtable(
             &sst_read_options,
             SstReadHint::default(),
             &store_picker,
+            None,
         )
         .await
         .unwrap();

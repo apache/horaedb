@@ -29,6 +29,9 @@ members = [
     "components/profile",
     "components/skiplist",
     "components/table_kv",
+    "components/trace_metric",
+    "components/trace_metric_derive",
+    "components/trace_metric_derive_tests",
     "components/tracing_util",
     "df_operator",
     "integration_tests",
@@ -112,6 +115,9 @@ table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
 tracing_util = { path = "components/tracing_util" }
+trace_metric = { path = "components/trace_metric" }
+trace_metric_derive = { path = "components/trace_metric_derive" }
+trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.25", features = ["full"] }
 wal = { path = "wal" }

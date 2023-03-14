@@ -111,6 +111,7 @@ dependencies = [
  "table_kv",
  "tempfile",
  "tokio",
+ "trace_metric",
  "wal",
  "xorfilter-rs",
 ]
@@ -656,6 +657,7 @@ dependencies = [
  "table_engine",
  "table_kv",
  "tokio",
+ "trace_metric",
  "wal",
  "zstd 0.12.1+zstd.1.5.2",
 ]
@@ -5881,6 +5883,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_engine",
  "tokio",
+ "trace_metric",
 ]
 
 [[package]]
@@ -5906,6 +5909,7 @@ dependencies = [
  "smallvec",
  "snafu 0.6.10",
  "tokio",
+ "trace_metric",
 ]
 
 [[package]]
@@ -6352,6 +6356,29 @@ name = "tower-service"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
+
+[[package]]
+name = "trace_metric"
+version = "1.0.0"
+dependencies = [
+ "trace_metric_derive",
+]
+
+[[package]]
+name = "trace_metric_derive"
+version = "1.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "trace_metric_derive_tests"
+version = "1.0.0"
+dependencies = [
+ "trace_metric",
+]
 
 [[package]]
 name = "tracing"

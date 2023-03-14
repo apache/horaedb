@@ -116,6 +116,7 @@ impl<'a> Builder<'a> {
                 false,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                None,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -131,6 +132,7 @@ impl<'a> Builder<'a> {
                 false,
                 self.config.predicate.as_ref(),
                 self.config.deadline,
+                None,
             )
             .context(BuildStreamFromMemtable)?;
             streams.push(stream);
@@ -145,6 +147,7 @@ impl<'a> Builder<'a> {
                     self.config.sst_factory,
                     &self.config.sst_read_options,
                     self.config.store_picker,
+                    None,
                 )
                 .await
                 .context(BuildStreamFromSst)?;

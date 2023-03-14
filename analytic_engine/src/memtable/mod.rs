@@ -18,6 +18,7 @@ use common_types::{
 };
 use common_util::{define_result, error::GenericError};
 use snafu::{Backtrace, Snafu};
+use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
 
@@ -129,14 +130,16 @@ pub struct ScanRequest {
     pub projected_schema: ProjectedSchema,
     pub need_dedup: bool,
     pub reverse: bool,
+    /// Collector for scan metrics.
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 /// In memory storage for table's data.
 ///
 /// # Concurrency
-/// The memtable is designed for single-writer and mutltiple-reader usage, so
+/// The memtable is designed for single-writer and multiple-reader usage, so
 /// not all function supports concurrent writer, the caller should guarantee not
-/// writing to the memtable concurrrently.
+/// writing to the memtable concurrently.
 // All operation is done in memory, no need to use async trait
 pub trait MemTable {
     /// Schema of this memtable

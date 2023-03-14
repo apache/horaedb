@@ -32,6 +32,7 @@ snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
 tokio = { workspace = true }
+trace_metric = { workspace = true }
 wal = { workspace = true }
 zstd = { workspace = true }
 

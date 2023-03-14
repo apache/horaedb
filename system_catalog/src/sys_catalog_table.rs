@@ -40,6 +40,7 @@ use table_engine::{
     },
 };
 use tokio::sync::Mutex;
+use trace_metric::MetricsCollector;
 
 use crate::{SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_ID, SYS_CATALOG_TABLE_NAME};
 
@@ -533,6 +534,7 @@ impl SysCatalogTable {
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
             order: ReadOrder::None,
+            metrics_collector: MetricsCollector::default(),
         };
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
 
