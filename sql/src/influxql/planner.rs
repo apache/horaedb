@@ -4,8 +4,10 @@
 
 use std::sync::Arc;
 
+use common_util::error::BoxError;
 use influxql_logical_planner::planner::InfluxQLToLogicalPlan;
 use influxql_parser::statement::Statement as InfluxqlStatement;
+use snafu::ResultExt;
 
 use super::provider::InfluxSchemaProviderImpl;
 use crate::{
@@ -50,8 +52,20 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         };
         let influxql_logical_planner = InfluxQLToLogicalPlan::new(&influx_schema_provider);
 
-        let df_plan = influxql_logical_planner.statement_to_plan(stmt).unwrap();
-        let tables = Arc::new(self.context_provider.try_into_container().unwrap());
+        let df_plan = influxql_logical_planner
+            .statement_to_plan(stmt)
+            .box_err()
+            .context(BuildPlan {
+                msg: "build df plan for influxql select statement",
+            })?;
+        let tables = Arc::new(
+            self.context_provider
+                .try_into_container()
+                .box_err()
+                .context(BuildPlan {
+                    msg: "get tables from df plan of select",
+                })?,
+        );
 
         Ok(Plan::Query(QueryPlan { df_plan, tables }))
     }
