@@ -12,7 +12,7 @@ use std::{
 };
 
 use log::{info, SetLoggerError};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 pub use slog::Level;
 use slog::{slog_o, Drain, Key, OwnedKVList, Record, KV};
 use slog_async::{Async, OverflowStrategy};
@@ -100,7 +100,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 /// The config for logger.
 pub struct Config {

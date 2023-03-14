@@ -1042,6 +1042,7 @@ dependencies = [
  "query_engine",
  "router",
  "serde",
+ "serde_json",
  "server",
  "signal-hook",
  "sort",

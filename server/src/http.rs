@@ -123,7 +123,7 @@ pub struct Service<Q> {
     influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     config: HttpConfig,
-    server_config_content: String,
+    config_content: String,
 }
 
 impl<Q> Service<Q> {
@@ -323,7 +323,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     fn server_config(
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        let server_config_content = self.server_config_content.clone();
+        let server_config_content = self.config_content.clone();
         warp::path!("debug" / "config")
             .and(warp::get())
             .map(move || server_config_content.clone())
@@ -449,7 +449,7 @@ pub struct Builder<Q> {
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
-    server_config_content: Option<String>,
+    config_content: Option<String>,
 }
 
 impl<Q> Builder<Q> {
@@ -460,7 +460,7 @@ impl<Q> Builder<Q> {
             log_runtime: None,
             instance: None,
             schema_config_provider: None,
-            server_config_content: None,
+            config_content: None,
         }
     }
 
@@ -484,8 +484,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn server_config_content(mut self, content: String) -> Self {
-        self.server_config_content = Some(content);
+    pub fn config_content(mut self, content: String) -> Self {
+        self.config_content = Some(content);
         self
     }
 }
@@ -496,7 +496,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
-        let server_config_content = self.server_config_content.context(MissingInstance)?;
+        let config_content = self.config_content.context(MissingInstance)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -516,7 +516,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
-            server_config_content,
+            config_content,
         };
 
         info!(

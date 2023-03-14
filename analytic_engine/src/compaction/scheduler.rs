@@ -21,7 +21,7 @@ use common_util::{
     time::DurationExt,
 };
 use log::{debug, error, info, warn};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
@@ -54,7 +54,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct SchedulerConfig {
     pub schedule_channel_len: usize,
