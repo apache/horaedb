@@ -126,13 +126,13 @@ impl Builder {
             let field_name = &metric_field.field_name;
             let metric = match metric_field.metric_type {
                 MetricType::Counter => {
-                    quote! { trace_metric::Metric::counter("#field_name".to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::counter(stringify!(#field_name).to_string(), self.#field_name) }
                 }
                 MetricType::Elapsed => {
-                    quote! { trace_metric::Metric::elapsed("#field_name".to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::elapsed(stringify!(#field_name).to_string(), self.#field_name) }
                 }
                 MetricType::Boolean => {
-                    quote! { trace_metric::Metric::boolean("#field_name".to_string(), self.#field_name) }
+                    quote! { ::trace_metric::Metric::boolean(stringify!(#field_name).to_string(), self.#field_name) }
                 }
             };
             let statement = quote! {
@@ -147,7 +147,7 @@ impl Builder {
         let collector_field_name = &self.collector_field.field_name;
         let stream = if self.collector_field.optional {
             quote! {
-                impl #generics Drop for #struct_name #generics #where_clause {
+                impl #generics ::core::ops::Drop for #struct_name #generics #where_clause {
                     fn drop(&mut self) {
                         if let Some(collector) = &self.#collector_field_name {
                             #(#collect_statements)*
@@ -157,7 +157,7 @@ impl Builder {
             }
         } else {
             quote! {
-                impl #generics Drop for #struct_name #generics #where_clause {
+                impl #generics ::core::ops::Drop for #struct_name #generics #where_clause {
                     fn drop(&mut self) {
                         let collector = &self.#collector_field_name;
                         #(#collect_statements)*

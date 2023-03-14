@@ -95,7 +95,7 @@ impl FormatCollectorVisitor {
 impl CollectorVisitor for FormatCollectorVisitor {
     fn visit(&mut self, level: usize, collector: &MetricsCollector) {
         let collector_indent = Self::indent(level);
-        self.append_line(&collector_indent, &format!("<{}>", collector.name()));
+        self.append_line(&collector_indent, &format!("{}:", collector.name()));
         let metric_indent = Self::indent(level + 1);
         collector.visit_metrics(&mut |metric| {
             self.append_line(&metric_indent, &format!("{metric:?}"));
@@ -133,6 +133,18 @@ mod tests {
 
         let mut visitor = FormatCollectorVisitor::default();
         collector.visit(&mut visitor);
-        println!("{}", visitor.into_string());
+        let expect_output = r#"root:
+  counter=1
+  elapsed=100ms
+  child_1_0:
+    boolean=false
+    child_2_0:
+      counter=1
+      elapsed=100ms
+  child_1_1:
+    boolean=false
+  child_1_2:
+"#;
+        assert_eq!(expect_output, &visitor.into_string());
     }
 }

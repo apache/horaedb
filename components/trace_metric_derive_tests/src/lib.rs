@@ -20,6 +20,8 @@ pub struct ExampleMetrics {
 
 #[cfg(test)]
 mod test {
+    use trace_metric::collector::FormatCollectorVisitor;
+
     use super::*;
 
     #[test]
@@ -34,12 +36,14 @@ mod test {
                 collector: collector.clone(),
             };
         }
+        let mut formatter = FormatCollectorVisitor::default();
+        collector.visit(&mut formatter);
+        let expect_output = r#"test:
+  counter=1
+  elapsed=1s
+  boolean=true
+"#;
 
-        let mut metric_num = 0;
-        collector.visit_metrics(&mut |_| {
-            metric_num += 1;
-        });
-
-        assert_eq!(metric_num, 3)
+        assert_eq!(expect_output, &formatter.into_string());
     }
 }
