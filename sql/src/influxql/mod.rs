@@ -6,7 +6,6 @@ pub mod planner;
 pub(crate) mod provider;
 
 pub mod error {
-    use common_util::error::GenericError;
     use snafu::{Backtrace, Snafu};
 
     #[derive(Debug, Snafu)]

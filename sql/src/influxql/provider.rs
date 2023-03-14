@@ -1,11 +1,13 @@
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Influxql schema provider
+
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType as ArrowDataType, Field as ArrowField};
+use arrow::datatypes::Field as ArrowField;
 use common_types::{column_schema::ColumnSchema, datum::DatumKind, schema::Schema};
-use datafusion::{
-    physical_plan::expressions::Column,
-    sql::{planner::ContextProvider, TableReference},
-};
+use common_util::error::BoxError;
+use datafusion::sql::planner::ContextProvider;
 use influxql_logical_planner::{
     provider::{InfluxColumnType, InfluxFieldType, Schema as InfluxSchema, SchemaProvider},
     DataFusionError, Result as DatafusionResult,
@@ -36,7 +38,7 @@ impl InfluxSchemaImpl {
         let arrow_fields = &schema.to_arrow_schema_ref().fields;
 
         let influx_columns = arrow_fields
-            .into_iter()
+            .iter()
             .zip(cols.iter().enumerate())
             .filter_map(|(arrow_col, (col_idx, col))| {
                 if matches!(tsid_idx_opt, Some(tsid_idx) if col_idx == tsid_idx) {
@@ -89,8 +91,8 @@ impl InfluxSchema for InfluxSchemaImpl {
             .collect()
     }
 
-    // TODO:
     fn time(&self) -> &ArrowField {
+        // Time column must exist, has checked it when building.
         let time_column = self
             .columns
             .iter()
@@ -119,7 +121,7 @@ fn map_column_type_to_influx_column_type(
     column: &ColumnSchema,
     is_timestamp_key: bool,
 ) -> Result<InfluxColumnType> {
-    // Timestamp
+    // Time column
     if is_timestamp_key {
         if column.name == "time" && !column.is_nullable {
             Ok(InfluxColumnType::Timestamp)
@@ -130,6 +132,7 @@ fn map_column_type_to_influx_column_type(
             .fail()
         }
     } else if column.is_tag {
+        // Tag column
         if matches!(column.data_type, DatumKind::String) && column.is_nullable {
             Ok(InfluxColumnType::Tag)
         } else {
@@ -139,8 +142,8 @@ fn map_column_type_to_influx_column_type(
             .fail()
         }
     } else {
-        map_field_type_to_influx_field_type(column)
-            .map(|field_type| InfluxColumnType::Field(field_type))
+        // Field column
+        map_field_type_to_influx_field_type(column).map(InfluxColumnType::Field)
     }
 }
 
@@ -185,20 +188,41 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxSchemaProviderImpl<'a, P> {
     fn get_table_provider(
         &self,
         name: &str,
-    ) -> DatafusionResult<std::sync::Arc<dyn datafusion_expr::TableSource>> {
-        self.context_provider.get_table_provider(name.into())
+    ) -> DatafusionResult<Arc<dyn datafusion_expr::TableSource>> {
+        self.context_provider
+            .get_table_provider(name.into())
+            .box_err()
+            .map_err(|e| DataFusionError::External(e))
     }
 
-    fn table_names(&self) -> Vec<&'_ str> {
-        todo!()
+    fn table_names(&self) -> DatafusionResult<Vec<&'_ str>> {
+        Err(DataFusionError::NotImplemented(
+            "get all table names".to_string(),
+        ))
     }
 
-    fn table_schema(&self, name: &str) -> Option<std::sync::Arc<dyn InfluxSchema>> {
-        let table_opt = self.context_provider.table(name.into()).unwrap();
-        table_opt.map(|table| Arc::new(InfluxSchemaImpl::new(&table.schema()).unwrap()) as _)
+    fn table_schema(
+        &self,
+        name: &str,
+    ) -> DatafusionResult<Option<std::sync::Arc<dyn InfluxSchema>>> {
+        let table_opt = self
+            .context_provider
+            .table(name.into())
+            .box_err()
+            .map_err(|e| DataFusionError::External(e))?;
+
+        Ok(match table_opt {
+            Some(table) => {
+                let influx_schema = InfluxSchemaImpl::new(&table.schema())
+                    .box_err()
+                    .map_err(|e| DataFusionError::External(e))?;
+                Some(Arc::new(influx_schema))
+            }
+            None => None,
+        })
     }
 
-    fn table_exists(&self, name: &str) -> bool {
-        self.table_schema(name).is_some()
+    fn table_exists(&self, name: &str) -> DatafusionResult<bool> {
+        Ok(self.table_schema(name)?.is_some())
     }
 }
