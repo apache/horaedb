@@ -81,9 +81,9 @@ pub struct Reader<'a> {
 pub(crate) struct Metrics {
     #[metric(boolean)]
     pub meta_data_cache_hit: bool,
-    #[metric(elapsed)]
+    #[metric(duration)]
     pub read_meta_data_duration: Duration,
-    #[metric(counter)]
+    #[metric(number)]
     pub parallelism: usize,
     #[metric(collector)]
     pub metrics_collector: Option<MetricsCollector>,

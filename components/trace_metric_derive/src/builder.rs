@@ -5,22 +5,22 @@ use quote::{quote, ToTokens};
 use syn::{DeriveInput, Field, Generics, Ident};
 
 const COLLECTOR_FIELD_TOKENS: &str = "(collector)";
-const COUNTER_FIELD_TOKENS: &str = "(counter)";
-const ELAPSED_FIELD_TOKENS: &str = "(elapsed)";
+const NUMBER_FIELD_TOKENS: &str = "(number)";
+const DURATION_FIELD_TOKENS: &str = "(duration)";
 const BOOLEAN_FIELD_TOKENS: &str = "(boolean)";
 
 enum MetricType {
-    Counter,
-    Elapsed,
+    Number,
+    Duration,
     Boolean,
 }
 
 impl MetricType {
     fn try_from_tokens(s: &str) -> Option<Self> {
-        if s == COUNTER_FIELD_TOKENS {
-            Some(Self::Counter)
-        } else if s == ELAPSED_FIELD_TOKENS {
-            Some(Self::Elapsed)
+        if s == NUMBER_FIELD_TOKENS {
+            Some(Self::Number)
+        } else if s == DURATION_FIELD_TOKENS {
+            Some(Self::Duration)
         } else if s == BOOLEAN_FIELD_TOKENS {
             Some(Self::Boolean)
         } else {
@@ -125,11 +125,11 @@ impl Builder {
         for metric_field in self.metric_fields.iter() {
             let field_name = &metric_field.field_name;
             let metric = match metric_field.metric_type {
-                MetricType::Counter => {
-                    quote! { ::trace_metric::Metric::counter(stringify!(#field_name).to_string(), self.#field_name) }
+                MetricType::Number => {
+                    quote! { ::trace_metric::Metric::number(stringify!(#field_name).to_string(), self.#field_name) }
                 }
-                MetricType::Elapsed => {
-                    quote! { ::trace_metric::Metric::elapsed(stringify!(#field_name).to_string(), self.#field_name) }
+                MetricType::Duration => {
+                    quote! { ::trace_metric::Metric::duration(stringify!(#field_name).to_string(), self.#field_name) }
                 }
                 MetricType::Boolean => {
                     quote! { ::trace_metric::Metric::boolean(stringify!(#field_name).to_string(), self.#field_name) }

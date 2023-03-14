@@ -6,9 +6,9 @@ use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 #[derive(Debug, Clone, TraceMetricWhenDrop)]
 pub struct ExampleMetrics {
-    #[metric(counter)]
+    #[metric(number)]
     pub counter: usize,
-    #[metric(elapsed)]
+    #[metric(duration)]
     pub elapsed: Duration,
     #[metric(boolean)]
     pub boolean: bool,
@@ -39,9 +39,9 @@ mod test {
         let mut formatter = FormatCollectorVisitor::default();
         collector.visit(&mut formatter);
         let expect_output = r#"test:
-  counter=1
-  elapsed=1s
-  boolean=true
+    counter=1
+    elapsed=1s
+    boolean=true
 "#;
 
         assert_eq!(expect_output, &formatter.into_string());

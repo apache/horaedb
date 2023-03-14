@@ -214,7 +214,7 @@ impl Instance {
             iters.push(dedup_iter);
         }
 
-        request.metrics_collector.collect(Metric::counter(
+        request.metrics_collector.collect(Metric::number(
             ITER_NUM_METRIC_NAME.to_string(),
             iters.len(),
         ));

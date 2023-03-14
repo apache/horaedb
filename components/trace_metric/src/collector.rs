@@ -83,7 +83,7 @@ impl FormatCollectorVisitor {
     }
 
     fn indent(level: usize) -> String {
-        " ".repeat(level * 2)
+        " ".repeat(level * 4)
     }
 
     fn append_line(&mut self, indent: &str, line: &str) {
@@ -111,8 +111,8 @@ mod tests {
     #[test]
     fn test_metrics_collector() {
         let collector = MetricsCollector::new("root".to_string());
-        collector.collect(Metric::counter("counter".to_string(), 1));
-        collector.collect(Metric::elapsed(
+        collector.collect(Metric::number("counter".to_string(), 1));
+        collector.collect(Metric::duration(
             "elapsed".to_string(),
             Duration::from_millis(100),
         ));
@@ -120,8 +120,8 @@ mod tests {
         child_1_0.collect(Metric::boolean("boolean".to_string(), false));
 
         let child_2_0 = child_1_0.span("child_2_0".to_string());
-        child_2_0.collect(Metric::counter("counter".to_string(), 1));
-        child_2_0.collect(Metric::elapsed(
+        child_2_0.collect(Metric::number("counter".to_string(), 1));
+        child_2_0.collect(Metric::duration(
             "elapsed".to_string(),
             Duration::from_millis(100),
         ));
@@ -133,16 +133,16 @@ mod tests {
         let mut visitor = FormatCollectorVisitor::default();
         collector.visit(&mut visitor);
         let expect_output = r#"root:
-  counter=1
-  elapsed=100ms
-  child_1_0:
-    boolean=false
-    child_2_0:
-      counter=1
-      elapsed=100ms
-  child_1_1:
-    boolean=false
-  child_1_2:
+    counter=1
+    elapsed=100ms
+    child_1_0:
+        boolean=false
+        child_2_0:
+            counter=1
+            elapsed=100ms
+    child_1_1:
+        boolean=false
+    child_1_2:
 "#;
         assert_eq!(expect_output, &visitor.into_string());
     }

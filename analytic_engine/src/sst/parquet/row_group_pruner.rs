@@ -25,13 +25,13 @@ use crate::sst::{
 struct Metrics {
     #[metric(boolean)]
     use_custom_filter: bool,
-    #[metric(counter)]
+    #[metric(number)]
     total_row_groups: usize,
-    #[metric(counter)]
+    #[metric(number)]
     row_groups_after_prune: usize,
-    #[metric(counter)]
+    #[metric(number)]
     pruned_by_custom_filter: usize,
-    #[metric(counter)]
+    #[metric(number)]
     pruned_by_min_max: usize,
     #[metric(collector)]
     collector: Option<MetricsCollector>,

@@ -568,27 +568,27 @@ impl Ord for HeapBufferedStream {
 /// Metrics for merge iterator.
 #[derive(TraceMetricWhenDrop)]
 pub struct Metrics {
-    #[metric(counter)]
+    #[metric(number)]
     num_memtables: usize,
-    #[metric(counter)]
+    #[metric(number)]
     num_ssts: usize,
     /// Total rows collected using fetch_rows_from_one_stream().
-    #[metric(counter)]
+    #[metric(number)]
     total_rows_fetch_from_one: usize,
     /// Times to fetch rows from one stream.
-    #[metric(counter)]
+    #[metric(number)]
     times_fetch_rows_from_one: usize,
     /// Times to fetch one row from multiple stream.
-    #[metric(counter)]
+    #[metric(number)]
     times_fetch_row_from_multiple: usize,
     /// Init time cost of the metrics.
-    #[metric(elapsed)]
+    #[metric(duration)]
     init_duration: Duration,
     /// Scan time cost of the metrics.
-    #[metric(elapsed)]
+    #[metric(duration)]
     scan_duration: Duration,
     /// Scan count
-    #[metric(counter)]
+    #[metric(number)]
     scan_count: usize,
     #[metric(collector)]
     metrics_collector: Option<MetricsCollector>,
