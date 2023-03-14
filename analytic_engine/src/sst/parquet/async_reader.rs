@@ -51,6 +51,7 @@ use crate::sst::{
     reader::{error::*, Result, SstReader},
 };
 
+const PRUNE_ROW_GROUPS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
 pub struct Reader<'a> {
@@ -176,7 +177,7 @@ impl<'a> Reader<'a> {
             .metrics
             .metrics_collector
             .as_ref()
-            .map(|v| v.span("prune_row_groups".to_string()));
+            .map(|v| v.span(PRUNE_ROW_GROUPS_COLLECTOR_NAME.to_string()));
         let mut pruner = RowGroupPruner::try_new(
             &schema,
             row_groups,

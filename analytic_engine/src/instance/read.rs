@@ -67,8 +67,8 @@ pub enum Error {
 define_result!(Error);
 
 const RECORD_BATCH_READ_BUF_SIZE: usize = 1000;
-const READ_METRIC_MERGE_SORT: &str = "do_merge_sort";
-const READ_METRIC_ITER_NUM: &str = "iter_num";
+const MERGE_SORT_METRIC_NAME: &str = "do_merge_sort";
+const ITER_NUM_METRIC_NAME: &str = "iter_num";
 
 /// Check whether it needs to apply merge sorting when reading the table with
 /// the `table_options` by the `read_request`.
@@ -101,7 +101,7 @@ impl Instance {
         table_data.metrics.on_read_request_begin();
         let need_merge_sort = need_merge_sort_streams(&table_options, &request);
         request.metrics_collector.collect(Metric::boolean(
-            READ_METRIC_MERGE_SORT.to_string(),
+            MERGE_SORT_METRIC_NAME.to_string(),
             need_merge_sort,
         ));
 
@@ -211,7 +211,7 @@ impl Instance {
         }
 
         request.metrics_collector.collect(Metric::counter(
-            READ_METRIC_ITER_NUM.to_string(),
+            ITER_NUM_METRIC_NAME.to_string(),
             iters.len(),
         ));
 
