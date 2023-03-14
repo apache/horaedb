@@ -181,7 +181,7 @@ impl Instance {
         for (idx, read_view) in read_views.into_iter().enumerate() {
             let metrics_collector = request
                 .metrics_collector
-                .span(format!("{MERGE_ITER_COLLECTOR_NAME_PREFIX}_{idx}"));
+                .span(format!("{MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let merge_config = MergeConfig {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
