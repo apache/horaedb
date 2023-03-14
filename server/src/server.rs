@@ -323,6 +323,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .log_runtime(log_runtime)
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
+            .server_config_content(format!("{:?}", self.config))
             .build()
             .context(StartHttpService)?;
 
