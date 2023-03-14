@@ -36,7 +36,7 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
-use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -254,7 +254,9 @@ pub enum Error {
     InvalidWriteEntry { msg: String },
 
     #[snafu(display("Failed to build influxql plan, err:{}", source))]
-    BuildInfluxqlPlan { source: GenericError },
+    BuildInfluxqlPlan {
+        source: crate::influxql::error::Error,
+    },
 }
 
 define_result!(Error);
@@ -329,10 +331,12 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
 
     pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
         let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
-        let planner = PlannerDelegate::new(adapter);
+        // let planner = PlannerDelegate::new(adapter);
 
-        let influxql_planner = crate::influxql::planner::Planner::new(planner);
-        influxql_planner.statement_to_plan(statement)
+        let influxql_planner = crate::influxql::planner::Planner::new(adapter);
+        influxql_planner
+            .statement_to_plan(statement)
+            .context(BuildInfluxqlPlan)
     }
 
     pub fn write_req_to_plan(
