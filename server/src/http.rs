@@ -128,7 +128,7 @@ pub struct Service<Q> {
 
 impl<Q> Service<Q> {
     pub fn stop(self) {
-        if let Err(_) = self.tx.send(()) {
+        if self.tx.send(()).is_err() {
             error!("Failed to send http service stop message");
         }
     }
@@ -435,13 +435,6 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     fn with_log_runtime(
-        &self,
-    ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
-        let log_runtime = self.log_runtime.clone();
-        warp::any().map(move || log_runtime.clone())
-    }
-
-    fn with_server_config_content(
         &self,
     ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
         let log_runtime = self.log_runtime.clone();
