@@ -21,16 +21,16 @@ use crate::sst::{
     reader::error::{OtherNoCause, Result},
 };
 
-#[derive(Debug, Clone, TraceMetricWhenDrop)]
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
 struct Metrics {
     #[metric(boolean)]
-    use_bloom_filter: bool,
+    use_custom_filter: bool,
     #[metric(counter)]
     total_row_groups: usize,
     #[metric(counter)]
     row_groups_after_prune: usize,
     #[metric(counter)]
-    pruned_by_bloom_filter: usize,
+    pruned_by_custom_filter: usize,
     #[metric(counter)]
     pruned_by_min_max: usize,
     #[metric(collector)]
@@ -65,12 +65,10 @@ impl<'a> RowGroupPruner<'a> {
         }
 
         let metrics = Metrics {
-            use_bloom_filter: parquet_filter.is_some(),
+            use_custom_filter: parquet_filter.is_some(),
             total_row_groups: row_groups.len(),
-            row_groups_after_prune: 0,
-            pruned_by_bloom_filter: 0,
-            pruned_by_min_max: 0,
             collector: metrics_collector,
+            ..Default::default()
         };
 
         Ok(Self {
@@ -100,7 +98,7 @@ impl<'a> RowGroupPruner<'a> {
                 let pruned1 = self.prune_by_filters(v);
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
-                self.metrics.pruned_by_bloom_filter = self.row_groups.len() - pruned1.len();
+                self.metrics.pruned_by_custom_filter = self.row_groups.len() - pruned1.len();
                 debug!(
                     "Finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
                     self.row_groups.len(),

@@ -43,9 +43,8 @@ impl MetricsCollector {
         &self.name
     }
 
-    /// Visit all metrics in the collector, excluding the metrics belonging to
-    /// the children.
-    pub fn visit_metrics(&self, f: &mut impl FnMut(&Metric)) {
+    /// Calls a closure on each top-level metrics of this collector.
+    pub fn for_each_metric(&self, f: &mut impl FnMut(&Metric)) {
         let metrics = self.metrics.lock().unwrap();
         for metric in metrics.iter() {
             f(metric);
@@ -97,7 +96,7 @@ impl CollectorVisitor for FormatCollectorVisitor {
         let collector_indent = Self::indent(level);
         self.append_line(&collector_indent, &format!("{}:", collector.name()));
         let metric_indent = Self::indent(level + 1);
-        collector.visit_metrics(&mut |metric| {
+        collector.for_each_metric(&mut |metric| {
             self.append_line(&metric_indent, &format!("{metric:?}"));
         });
     }

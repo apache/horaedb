@@ -77,7 +77,7 @@ pub struct Reader<'a> {
     metrics: Metrics,
 }
 
-#[derive(Debug, Clone, TraceMetricWhenDrop)]
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
 pub(crate) struct Metrics {
     #[metric(boolean)]
     pub meta_data_cache_hit: bool,
@@ -103,10 +103,8 @@ impl<'a> Reader<'a> {
         let store = store_picker.pick_by_freq(options.frequency);
 
         let metrics = Metrics {
-            meta_data_cache_hit: false,
-            read_meta_data_duration: Duration::from_secs(0),
-            parallelism: 0,
             metrics_collector,
+            ..Default::default()
         };
 
         Self {
