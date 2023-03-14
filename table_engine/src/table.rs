@@ -451,7 +451,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             order,
-            metrics_collector: MetricsCollector::new("".to_string()),
+            metrics_collector: MetricsCollector::default(),
         })
     }
 }

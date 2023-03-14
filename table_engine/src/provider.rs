@@ -35,6 +35,8 @@ use crate::{
     table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
 
+const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
+
 #[derive(Clone, Debug)]
 pub struct CeresdbOptions {
     pub request_id: u64,
@@ -171,7 +173,7 @@ impl TableProviderAdapter {
             predicate,
             deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
-            metrics_collector: MetricsCollector::new("scan_table".to_string()),
+            metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
         scan_table.maybe_init_stream(state).await?;
 

@@ -7,7 +7,7 @@ use crate::metric::Metric;
 /// A collector for metrics of a single read request.
 ///
 /// It can be cloned and shared among threads.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MetricsCollector {
     name: String,
     metrics: Arc<Mutex<Vec<Metric>>>,

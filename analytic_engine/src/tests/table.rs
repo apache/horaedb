@@ -186,7 +186,7 @@ pub fn new_read_all_request_with_order(
         projected_schema: ProjectedSchema::no_projection(schema),
         predicate: Arc::new(Predicate::empty()),
         order,
-        metrics_collector: MetricsCollector::new("".to_string()),
+        metrics_collector: MetricsCollector::default(),
     }
 }
 

@@ -534,7 +534,7 @@ impl SysCatalogTable {
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
             order: ReadOrder::None,
-            metrics_collector: MetricsCollector::new("open_sys_catalog_table".to_string()),
+            metrics_collector: MetricsCollector::default(),
         };
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
 

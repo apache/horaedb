@@ -69,6 +69,7 @@ define_result!(Error);
 const RECORD_BATCH_READ_BUF_SIZE: usize = 1000;
 const MERGE_SORT_METRIC_NAME: &str = "do_merge_sort";
 const ITER_NUM_METRIC_NAME: &str = "iter_num";
+const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
 
 /// Check whether it needs to apply merge sorting when reading the table with
 /// the `table_options` by the `read_request`.
@@ -178,7 +179,9 @@ impl Instance {
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
-            let metrics_collector = request.metrics_collector.span(format!("merge_{idx}");
+            let metrics_collector = request
+                .metrics_collector
+                .span(format!("{MERGE_ITER_COLLECTOR_NAME_PREFIX}_{idx}"));
             let merge_config = MergeConfig {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
