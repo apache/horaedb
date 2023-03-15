@@ -122,13 +122,7 @@ impl Table for PartitionTableImpl {
     }
 
     fn stats(&self) -> TableStats {
-        let metrics = &self.space_table.table_data().metrics;
-
-        TableStats {
-            num_write: metrics.write_request_counter.get(),
-            num_read: metrics.read_request_counter.get(),
-            num_flush: metrics.flush_duration_histogram.get_sample_count(),
-        }
+        self.space_table.table_data().metrics.table_stats()
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {

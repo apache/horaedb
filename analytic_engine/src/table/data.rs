@@ -203,7 +203,7 @@ impl TableData {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(space_id, request.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&request.table_name);
+        let metrics = Metrics::default();
 
         Ok(Self {
             id: request.table_id,
@@ -241,7 +241,7 @@ impl TableData {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
-        let metrics = Metrics::new(&add_meta.table_name);
+        let metrics = Metrics::default();
 
         Ok(Self {
             id: add_meta.table_id,
