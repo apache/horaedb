@@ -7,6 +7,7 @@ pub(crate) mod grpc;
 
 use std::{sync::Arc, time::Duration};
 
+use common_util::runtime::Runtime;
 use query_engine::executor::Executor as QueryExecutor;
 use router::Router;
 
@@ -42,9 +43,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
-#[derive(Default)]
 pub struct Context {
-    pub tenant: String,
-    pub token: String,
     pub timeout: Option<Duration>,
+    pub runtime: Arc<Runtime>,
 }
