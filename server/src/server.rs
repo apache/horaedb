@@ -133,6 +133,7 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
+        self.http_service.start().await.context(StartHttpService)?;
         self.mysql_service
             .start()
             .await
@@ -319,7 +320,6 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.expect("Missing config content");

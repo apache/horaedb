@@ -18,7 +18,7 @@ use router::endpoint::Endpoint;
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
-use tokio::sync::oneshot::{self, Sender};
+use tokio::sync::oneshot::{self, Receiver, Sender};
 use warp::{
     header,
     http::StatusCode,
@@ -102,6 +102,9 @@ pub enum Error {
     Internal {
         source: Box<dyn StdError + Send + Sync>,
     },
+
+    #[snafu(display("Server already started."))]
+    AlreadyStarted { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -122,14 +125,45 @@ pub struct Service<Q> {
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
     influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
+    rx: Option<Receiver<()>>,
     config: HttpConfig,
     config_content: String,
 }
 
-impl<Q> Service<Q> {
+impl<Q: QueryExecutor + 'static> Service<Q> {
+    pub async fn start(&mut self) -> Result<()> {
+        let ip_addr: IpAddr = self
+            .config
+            .endpoint
+            .addr
+            .parse()
+            .with_context(|| ParseIpAddr {
+                ip: self.config.endpoint.addr.to_string(),
+            })?;
+        let rx = self.rx.take().context(AlreadyStarted)?;
+
+        info!(
+            "HTTP server tries to listen on {}",
+            &self.config.endpoint.to_string()
+        );
+
+        // Register filters to warp and rejection handler
+        let routes = self.routes().recover(handle_rejection);
+        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
+            (ip_addr, self.config.endpoint.port),
+            async {
+                rx.await.ok();
+            },
+        );
+
+        self.engine_runtimes.bg_runtime.spawn(server);
+
+        Ok(())
+    }
+
     pub fn stop(self) {
-        if self.tx.send(()).is_err() {
-            error!("Failed to send http service stop message");
+        if let Err(e) = self.tx.send(()) {
+            error!("Failed to send http service stop message, err:{:?}", e);
         }
     }
 }
@@ -493,7 +527,7 @@ impl<Q> Builder<Q> {
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     /// Build and start the service
     pub fn build(self) -> Result<Service<Q>> {
-        let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
+        let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
         let config_content = self.config_content.context(MissingInstance)?;
@@ -508,36 +542,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
-            engine_runtimes: engine_runtime.clone(),
+            engine_runtimes,
             log_runtime,
             instance,
             prom_remote_storage,
             influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
+            rx: Some(rx),
             config: self.config.clone(),
             config_content,
         };
-
-        info!(
-            "HTTP server tries to listen on {}",
-            &self.config.endpoint.to_string()
-        );
-
-        let ip_addr: IpAddr = self.config.endpoint.addr.parse().context(ParseIpAddr {
-            ip: self.config.endpoint.addr,
-        })?;
-
-        // Register filters to warp and rejection handler
-        let routes = service.routes().recover(handle_rejection);
-        let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
-            (ip_addr, self.config.endpoint.port),
-            async {
-                rx.await.ok();
-            },
-        );
-        // Run the service
-        engine_runtime.bg_runtime.spawn(server);
 
         Ok(service)
     }
@@ -571,6 +586,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::ProfileHeap { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
+        | Error::AlreadyStarted { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
