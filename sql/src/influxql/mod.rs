@@ -21,6 +21,9 @@ pub mod error {
 
         #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
         BuildPlan { msg: String, source: GenericError },
+
+        #[snafu(display("Unimplemented influxql statement, statement:{}", stmt))]
+        Unimplemented { stmt: String },
     }
     define_result!(Error);
 }

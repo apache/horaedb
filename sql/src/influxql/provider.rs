@@ -20,7 +20,7 @@ use crate::{
 
 /// Influx schema used for build logical plan
 pub struct InfluxSchemaImpl {
-    columns: Vec<(InfluxColumnType, ArrowField)>,
+    columns: Vec<InfluxColumnSchema>,
 }
 
 impl InfluxSchemaImpl {
@@ -45,8 +45,11 @@ impl InfluxSchemaImpl {
                     None
                 } else {
                     let influx_type_res =
-                        map_column_type_to_influx_column_type(col, col_idx == timestamp_key_idx);
-                    Some(influx_type_res.map(|influx_type| (influx_type, arrow_col.clone())))
+                        map_column_to_influx_column(col, col_idx == timestamp_key_idx);
+                    Some(influx_type_res.map(|influx_type| InfluxColumnSchema {
+                        influx_type,
+                        arrow_field: arrow_col.clone(),
+                    }))
                 }
             })
             .collect::<Result<Vec<_>>>()?;
@@ -61,16 +64,16 @@ impl InfluxSchema for InfluxSchemaImpl {
     fn columns(&self) -> Vec<(InfluxColumnType, &ArrowField)> {
         self.columns
             .iter()
-            .map(|(influx_type, field)| (*influx_type, field))
+            .map(|column| (column.influx_type, &column.arrow_field))
             .collect()
     }
 
     fn tags(&self) -> Vec<&ArrowField> {
         self.columns
             .iter()
-            .filter_map(|(influx_type, field)| {
-                if matches!(influx_type, InfluxColumnType::Tag) {
-                    Some(field)
+            .filter_map(|column| {
+                if matches!(column.influx_type, InfluxColumnType::Tag) {
+                    Some(&column.arrow_field)
                 } else {
                     None
                 }
@@ -81,9 +84,9 @@ impl InfluxSchema for InfluxSchemaImpl {
     fn fields(&self) -> Vec<&ArrowField> {
         self.columns
             .iter()
-            .filter_map(|(influx_type, field)| {
-                if matches!(influx_type, InfluxColumnType::Field(..)) {
-                    Some(field)
+            .filter_map(|column| {
+                if matches!(column.influx_type, InfluxColumnType::Field(..)) {
+                    Some(&column.arrow_field)
                 } else {
                     None
                 }
@@ -96,65 +99,71 @@ impl InfluxSchema for InfluxSchemaImpl {
         let time_column = self
             .columns
             .iter()
-            .find(|(influx_type, _)| matches!(influx_type, InfluxColumnType::Timestamp))
+            .find(|column| matches!(column.influx_type, InfluxColumnType::Timestamp))
             .unwrap();
 
-        &time_column.1
+        &time_column.arrow_field
     }
 
     fn column(&self, idx: usize) -> (InfluxColumnType, &ArrowField) {
-        let (influx_type, field) = &self.columns[idx];
+        let column = &self.columns[idx];
 
-        (*influx_type, field)
+        (column.influx_type, &column.arrow_field)
     }
 
     fn find_index_of(&self, name: &str) -> Option<usize> {
         self.columns
             .iter()
             .enumerate()
-            .find(|(_, (_, field))| field.name() == name)
+            .find(|(_, column)| column.arrow_field.name() == name)
             .map(|(index, _)| index)
     }
 }
 
-fn map_column_type_to_influx_column_type(
+fn map_column_to_influx_column(
     column: &ColumnSchema,
     is_timestamp_key: bool,
 ) -> Result<InfluxColumnType> {
-    // Time column
     if is_timestamp_key {
-        if column.name == "time" && !column.is_nullable {
-            Ok(InfluxColumnType::Timestamp)
-        } else {
-            BuildSchema {
-                msg: format!("invalid time column, column:{column:?}"),
-            }
-            .fail()
-        }
+        map_column_to_influx_time_column(column)
     } else if column.is_tag {
-        // Tag column
-        if matches!(column.data_type, DatumKind::String) && column.is_nullable {
-            Ok(InfluxColumnType::Tag)
-        } else {
-            BuildSchema {
-                msg: format!("invalid tag column, column:{column:?}"),
-            }
-            .fail()
-        }
+        map_column_to_influx_tag_column(column)
     } else {
-        // Field column
-        map_field_type_to_influx_field_type(column).map(InfluxColumnType::Field)
+        map_column_to_influx_field_column(column)
     }
 }
 
-fn map_field_type_to_influx_field_type(column: &ColumnSchema) -> Result<InfluxFieldType> {
+fn map_column_to_influx_time_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
+    if column.name == "time" && !column.is_nullable {
+        Ok(InfluxColumnType::Timestamp)
+    } else {
+        BuildSchema {
+            msg: format!("invalid time column, column:{column:?}"),
+        }
+        .fail()
+    }
+}
+
+fn map_column_to_influx_tag_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
+    // Tag column
+    if matches!(column.data_type, DatumKind::String) && column.is_nullable {
+        Ok(InfluxColumnType::Tag)
+    } else {
+        BuildSchema {
+            msg: format!("invalid tag column, column:{column:?}"),
+        }
+        .fail()
+    }
+}
+
+fn map_column_to_influx_field_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
     if column.is_nullable {
         match column.data_type {
-            DatumKind::Int64 => Ok(InfluxFieldType::Integer),
-            DatumKind::UInt64 => Ok(InfluxFieldType::UInteger),
-            DatumKind::Double => Ok(InfluxFieldType::Float),
-            DatumKind::String => Ok(InfluxFieldType::String),
-            DatumKind::Boolean => Ok(InfluxFieldType::Boolean),
+            DatumKind::Int64 => Ok(InfluxColumnType::Field(InfluxFieldType::Integer)),
+            DatumKind::UInt64 => Ok(InfluxColumnType::Field(InfluxFieldType::UInteger)),
+            DatumKind::Double => Ok(InfluxColumnType::Field(InfluxFieldType::Float)),
+            DatumKind::String => Ok(InfluxColumnType::Field(InfluxFieldType::String)),
+            DatumKind::Boolean => Ok(InfluxColumnType::Field(InfluxFieldType::Boolean)),
             DatumKind::Null
             | DatumKind::Timestamp
             | DatumKind::Float
@@ -177,6 +186,11 @@ fn map_field_type_to_influx_field_type(column: &ColumnSchema) -> Result<InfluxFi
         }
         .fail()
     }
+}
+
+struct InfluxColumnSchema {
+    influx_type: InfluxColumnType,
+    arrow_field: ArrowField,
 }
 
 /// Influx schema provider used for building logical plan
@@ -304,18 +318,43 @@ mod test {
                 }
                 Case::TimeNameInvalid => {
                     assert!(influx_schema.is_err());
+                    assert!(influx_schema
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("invalid time column"));
                 }
                 Case::TagNotNull => {
                     assert!(influx_schema.is_err());
+                    assert!(influx_schema
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("invalid tag column"));
                 }
                 Case::FieldNotNull => {
                     assert!(influx_schema.is_err());
+                    assert!(influx_schema
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("invalid field column"));
                 }
                 Case::TagTypeInvalid => {
                     assert!(influx_schema.is_err());
+                    assert!(influx_schema
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("invalid tag column"));
                 }
                 Case::FieldTypeInvalid => {
                     assert!(influx_schema.is_err());
+                    assert!(influx_schema
+                        .err()
+                        .unwrap()
+                        .to_string()
+                        .contains("invalid field column"));
                 }
             }
         }

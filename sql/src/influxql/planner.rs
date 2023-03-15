@@ -16,6 +16,8 @@ use crate::{
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
+const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "ceresdb::measurement";
+
 pub(crate) struct Planner<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
 }
@@ -33,16 +35,19 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
         match &stmt {
             InfluxqlStatement::Select(_) => self.select_to_plan(stmt),
-            InfluxqlStatement::CreateDatabase(_) => todo!(),
-            InfluxqlStatement::ShowDatabases(_) => todo!(),
-            InfluxqlStatement::ShowRetentionPolicies(_) => todo!(),
-            InfluxqlStatement::ShowTagKeys(_) => todo!(),
-            InfluxqlStatement::ShowTagValues(_) => todo!(),
-            InfluxqlStatement::ShowFieldKeys(_) => todo!(),
-            InfluxqlStatement::ShowMeasurements(_) => todo!(),
-            InfluxqlStatement::Delete(_) => todo!(),
-            InfluxqlStatement::DropMeasurement(_) => todo!(),
-            InfluxqlStatement::Explain(_) => todo!(),
+            InfluxqlStatement::CreateDatabase(_)
+            | InfluxqlStatement::ShowDatabases(_)
+            | InfluxqlStatement::ShowRetentionPolicies(_)
+            | InfluxqlStatement::ShowTagKeys(_)
+            | InfluxqlStatement::ShowTagValues(_)
+            | InfluxqlStatement::ShowFieldKeys(_)
+            | InfluxqlStatement::ShowMeasurements(_)
+            | InfluxqlStatement::Delete(_)
+            | InfluxqlStatement::DropMeasurement(_)
+            | InfluxqlStatement::Explain(_) => Unimplemented {
+                stmt: stmt.to_string(),
+            }
+            .fail(),
         }
     }
 
@@ -50,7 +55,10 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         let influx_schema_provider = InfluxSchemaProviderImpl {
             context_provider: &self.context_provider,
         };
-        let influxql_logical_planner = InfluxQLToLogicalPlan::new(&influx_schema_provider);
+        let influxql_logical_planner = InfluxQLToLogicalPlan::new(
+            &influx_schema_provider,
+            CERESDB_MEASUREMENT_COLUMN_NAME.to_string(),
+        );
 
         let df_plan = influxql_logical_planner
             .statement_to_plan(stmt)
