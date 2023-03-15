@@ -30,6 +30,7 @@ serde = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
+trace_metric = { workspace = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }

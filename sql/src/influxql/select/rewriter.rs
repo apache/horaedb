@@ -1,6 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Influxql statement rewriter
+//! Influxql select statement rewriter
 
 use std::{collections::BTreeSet, ops::ControlFlow};
 
@@ -17,26 +17,24 @@ use influxdb_influxql_parser::{
 use itertools::{Either, Itertools};
 use snafu::{ensure, OptionExt, ResultExt};
 
-use super::{planner::MeasurementProvider, util};
-use crate::influxql::error::*;
+use crate::influxql::{error::*, planner::MeasurementProvider, util};
 
 /// Rewriter for the influxql statement
 ///
 /// It will rewrite statement before converting it to sql statement.
-// Partial copy from influxdb_iox.
-pub(crate) struct StmtRewriter<'a> {
+// Derived from influxdb_iox:
+// https://github.com/influxdata/influxdb_iox/blob/ff11fe465d02faf6c4dd3017df8750b38d4afd2b/iox_query/src/plan/influxql/rewriter.rs
+pub(crate) struct Rewriter<'a> {
     measurement_provider: &'a dyn MeasurementProvider,
 }
 
-impl<'a> StmtRewriter<'a> {
-    #[allow(dead_code)]
+impl<'a> Rewriter<'a> {
     pub fn new(measurement_provider: &'a dyn MeasurementProvider) -> Self {
         Self {
             measurement_provider,
         }
     }
 
-    #[allow(dead_code)]
     pub fn rewrite(&self, stmt: &mut SelectStatement) -> Result<()> {
         self.rewrite_from(stmt)?;
         self.rewrite_field_list(stmt)
@@ -46,29 +44,39 @@ impl<'a> StmtRewriter<'a> {
         let mut new_from = Vec::new();
         for ms in stmt.from.iter() {
             match ms {
-                MeasurementSelection::Name(qmn) => match qmn {
-                    QualifiedMeasurementName {
-                        name: MeasurementName::Name(name),
-                        ..
-                    } => {
-                        let _ = self.measurement_provider.measurement(name)?.context(
-                            RewriteNoCause {
-                                msg: format!("measurement not found, measurement:{name}"),
-                            },
-                        )?;
-                        new_from.push(ms.clone());
-                    }
-                    QualifiedMeasurementName {
-                        name: MeasurementName::Regex(_),
-                        ..
-                    } => {
-                        // TODO: need to support get all tables first.
-                        return Unimplemented {
-                            msg: "rewrite from regex",
+                MeasurementSelection::Name(qmn) => {
+                    match qmn {
+                        QualifiedMeasurementName {
+                            name: MeasurementName::Name(name),
+                            ..
+                        } => {
+                            let _ = self
+                                .measurement_provider
+                                .measurement(name)
+                                .context(RewriteWithCause {
+                                    msg: format!(
+                                        "rewrite from failed to find measurement, measurement:{name}",
+                                    ),
+                                })?
+                                .context(RewriteNoCause {
+                                    msg: format!(
+                                        "rewrite from found measurement not found, measurement:{name}"
+                                    ),
+                                })?;
+                            new_from.push(ms.clone());
                         }
-                        .fail();
+                        QualifiedMeasurementName {
+                            name: MeasurementName::Regex(_),
+                            ..
+                        } => {
+                            // TODO: need to support get all tables first.
+                            return Unimplemented {
+                                msg: "rewrite from regex",
+                            }
+                            .fail();
+                        }
                     }
-                },
+                }
                 MeasurementSelection::Subquery(_) => {
                     return Unimplemented {
                         msg: "rewrite from subquery",
@@ -143,7 +151,6 @@ impl<'a> StmtRewriter<'a> {
         let measurement = self
             .measurement_provider
             .measurement(measurement_name)
-            .box_err()
             .context(RewriteWithCause {
                 msg: format!("failed to find measurement, measurement:{measurement_name}"),
             })?
@@ -382,27 +389,7 @@ fn maybe_rewrite_projection(
 
 #[cfg(test)]
 mod test {
-    use datafusion::sql::TableReference;
-    use influxdb_influxql_parser::{
-        parse_statements, select::SelectStatement, statement::Statement,
-    };
-
-    use super::StmtRewriter;
-    use crate::{
-        influxql::planner::MeasurementProvider, provider::MetaProvider, tests::MockMetaProvider,
-    };
-
-    impl MeasurementProvider for MockMetaProvider {
-        fn measurement(
-            &self,
-            measurement_name: &str,
-        ) -> crate::influxql::error::Result<Option<table_engine::table::TableRef>> {
-            let table_ref = TableReference::Bare {
-                table: std::borrow::Cow::Borrowed(measurement_name),
-            };
-            Ok(self.table(table_ref).unwrap())
-        }
-    }
+    use crate::tests::{parse_select, rewrite_statement, MockMetaProvider};
 
     #[test]
     fn test_wildcard_and_regex_in_projection() {
@@ -441,19 +428,5 @@ mod test {
             "SELECT col2, col3 FROM influxql_test GROUP BY col1",
             stmt.to_string()
         );
-    }
-
-    pub fn rewrite_statement(provider: &dyn MeasurementProvider, stmt: &mut SelectStatement) {
-        let rewriter = StmtRewriter::new(provider);
-        rewriter.rewrite(stmt).unwrap();
-    }
-
-    /// Returns the InfluxQL [`SelectStatement`] for the specified SQL, `s`.
-    pub fn parse_select(s: &str) -> SelectStatement {
-        let statements = parse_statements(s).unwrap();
-        match statements.first() {
-            Some(Statement::Select(sel)) => *sel.clone(),
-            _ => panic!("expected SELECT statement"),
-        }
     }
 }

@@ -125,6 +125,7 @@ impl MergeSstBench {
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
+            metrics_collector: None,
             deadline: None,
             space_id,
             table_id,

@@ -262,11 +262,11 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             }
             Ok(None) => {
                 no_table_count += 1;
-                error!("MetaServiceImpl::handle_open_shard no table is opened, open_request:{open_request:?}");
+                error!("no table is opened, open_request:{open_request:?}");
             }
             Err(e) => {
                 open_err_count += 1;
-                error!("MetaServiceImpl::handle_open_shard fail to open table, open_request:{open_request:?}, err:{e}");
+                error!("fail to open table, open_request:{open_request:?}, err:{e}");
             }
         };
     }

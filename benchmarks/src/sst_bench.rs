@@ -87,6 +87,7 @@ impl SstBench {
                     &self.sst_read_options,
                     SstReadHint::default(),
                     &store_picker,
+                    None,
                 )
                 .await
                 .unwrap();

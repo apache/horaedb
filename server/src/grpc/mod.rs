@@ -212,7 +212,7 @@ pub struct Builder<Q> {
     opened_wals: Option<OpenedWals>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     forward_config: Option<forward::Config>,
-    auto_create_tables: bool,
+    auto_create_table: bool,
 }
 
 impl<Q> Builder<Q> {
@@ -229,7 +229,7 @@ impl<Q> Builder<Q> {
             opened_wals: None,
             schema_config_provider: None,
             forward_config: None,
-            auto_create_tables: true,
+            auto_create_table: true,
         }
     }
 
@@ -290,8 +290,8 @@ impl<Q> Builder<Q> {
         self
     }
 
-    pub fn auto_create_tables(mut self, auto_create_tables: bool) -> Self {
-        self.auto_create_tables = auto_create_tables;
+    pub fn auto_create_table(mut self, auto_create_table: bool) -> Self {
+        self.auto_create_table = auto_create_table;
         self
     }
 }
@@ -346,7 +346,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             forwarder,
             timeout: self.timeout,
             resp_compress_min_length: self.resp_compress_min_length,
-            auto_create_tables: self.auto_create_tables,
+            auto_create_table: self.auto_create_table,
         };
         let rpc_server = StorageServiceServer::new(storage_service);
 

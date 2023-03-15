@@ -1,13 +1,21 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Influxql planner.
+//! Influxql planner
 
-use common_util::error::BoxError;
-use influxdb_influxql_parser::statement::Statement as InfluxqlStatement;
+use common_util::error::{BoxError, GenericResult};
+use influxdb_influxql_parser::{
+    select::SelectStatement, statement::Statement as InfluxqlStatement,
+};
 use snafu::ResultExt;
+use sqlparser::ast::Statement as SqlStatement;
 use table_engine::table::TableRef;
 
-use crate::{influxql::error::*, plan::Plan, provider::MetaProvider};
+use crate::{
+    influxql::select::{converter::Converter, rewriter::Rewriter},
+    plan::Plan,
+    planner::{BuildInfluxqlPlan, Result},
+    provider::MetaProvider,
+};
 
 #[allow(dead_code)]
 pub(crate) struct Planner<'a, P: MetaProvider> {
@@ -19,9 +27,14 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         Self { sql_planner }
     }
 
-    pub fn statement_to_plan(&self, stmt: InfluxqlStatement) -> Result<Plan> {
+    /// Build sql logical plan from [InfluxqlStatement].
+    ///
+    /// NOTICE: when building plan from influxql select statement,
+    /// the [InfluxqlStatement] will be converted to [SqlStatement] first,
+    /// and build plan then.
+    pub fn statement_to_plan(self, stmt: InfluxqlStatement) -> Result<Plan> {
         match stmt {
-            InfluxqlStatement::Select(_) => todo!(),
+            InfluxqlStatement::Select(stmt) => self.select_to_plan(*stmt),
             InfluxqlStatement::CreateDatabase(_) => todo!(),
             InfluxqlStatement::ShowDatabases(_) => todo!(),
             InfluxqlStatement::ShowRetentionPolicies(_) => todo!(),
@@ -34,23 +47,37 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             InfluxqlStatement::Explain(_) => todo!(),
         }
     }
+
+    pub fn select_to_plan(self, stmt: SelectStatement) -> Result<Plan> {
+        let mut stmt = stmt;
+        let provider_impl = MeasurementProviderImpl(&self.sql_planner);
+        let rewriter = Rewriter::new(&provider_impl);
+        rewriter
+            .rewrite(&mut stmt)
+            .box_err()
+            .context(BuildInfluxqlPlan)?;
+
+        let sql_stmt = SqlStatement::Query(Box::new(
+            Converter::convert(stmt)
+                .box_err()
+                .context(BuildInfluxqlPlan)?,
+        ));
+
+        self.sql_planner
+            .sql_statement_to_plan(sql_stmt)
+            .box_err()
+            .context(BuildInfluxqlPlan)
+    }
 }
 
 pub trait MeasurementProvider {
-    fn measurement(&self, measurement_name: &str) -> Result<Option<TableRef>>;
+    fn measurement(&self, measurement_name: &str) -> GenericResult<Option<TableRef>>;
 }
 
-pub(crate) struct MeasurementProviderImpl<'a, P: MetaProvider>(
-    crate::planner::PlannerDelegate<'a, P>,
-);
+struct MeasurementProviderImpl<'a, P: MetaProvider>(&'a crate::planner::PlannerDelegate<'a, P>);
 
 impl<'a, P: MetaProvider> MeasurementProvider for MeasurementProviderImpl<'a, P> {
-    fn measurement(&self, measurement_name: &str) -> Result<Option<TableRef>> {
-        self.0
-            .find_table(measurement_name)
-            .box_err()
-            .context(RewriteWithCause {
-                msg: format!("failed to find measurement, measurement:{measurement_name}"),
-            })
+    fn measurement(&self, measurement_name: &str) -> GenericResult<Option<TableRef>> {
+        self.0.find_table(measurement_name).box_err()
     }
 }

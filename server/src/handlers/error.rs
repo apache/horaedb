@@ -2,7 +2,9 @@
 
 //! Error of handlers
 
+use common_util::error::GenericError;
 use snafu::{Backtrace, Snafu};
+use warp::reject::Reject;
 
 use crate::limiter;
 // TODO(yingwen): Avoid printing huge sql string
@@ -13,6 +15,9 @@ use crate::limiter;
 pub enum Error {
     #[snafu(display("Failed to parse sql, err:{}", source))]
     ParseSql { source: sql::frontend::Error },
+
+    #[snafu(display("Failed to parse influxql, err:{}", source))]
+    ParseInfluxql { source: sql::frontend::Error },
 
     #[snafu(display("Failed to create plan, query:{}, err:{}", query, source))]
     CreatePlan {
@@ -67,6 +72,11 @@ pub enum Error {
         source: tokio::time::error::Elapsed,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("InfluxDb handler failed, msg:{}, source:{}", msg, source))]
+    InfluxDbHandler { msg: String, source: GenericError },
 }
 
 define_result!(Error);
+
+impl Reject for Error {}

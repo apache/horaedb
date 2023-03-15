@@ -29,6 +29,9 @@ members = [
     "components/profile",
     "components/skiplist",
     "components/table_kv",
+    "components/trace_metric",
+    "components/trace_metric_derive",
+    "components/trace_metric_derive_tests",
     "components/tracing_util",
     "df_operator",
     "integration_tests",
@@ -97,6 +100,7 @@ prost = "0.11"
 query_engine = { path = "query_engine" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
 router = { path = "router" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = "1.0"
@@ -111,6 +115,9 @@ table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
 tracing_util = { path = "components/tracing_util" }
+trace_metric = { path = "components/trace_metric" }
+trace_metric_derive = { path = "components/trace_metric_derive" }
+trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.25", features = ["full"] }
 wal = { path = "wal" }

@@ -7,7 +7,7 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch};
@@ -34,6 +34,7 @@ use prometheus::local::LocalHistogram;
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::sst::{
     factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
@@ -50,6 +51,7 @@ use crate::sst::{
     reader::{error::*, Result, SstReader},
 };
 
+const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
 
 pub struct Reader<'a> {
@@ -72,6 +74,19 @@ pub struct Reader<'a> {
 
     /// Options for `read_parallelly`
     parallelism_options: ParallelismOptions,
+    metrics: Metrics,
+}
+
+#[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
+pub(crate) struct Metrics {
+    #[metric(boolean)]
+    pub meta_data_cache_hit: bool,
+    #[metric(duration)]
+    pub read_meta_data_duration: Duration,
+    #[metric(number)]
+    pub parallelism: usize,
+    #[metric(collector)]
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 impl<'a> Reader<'a> {
@@ -80,11 +95,17 @@ impl<'a> Reader<'a> {
         options: &SstReadOptions,
         file_size_hint: Option<usize>,
         store_picker: &'a ObjectStorePickerRef,
+        metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let batch_size = options.read_batch_row_num;
         let parallelism_options =
             ParallelismOptions::new(options.read_batch_row_num, options.num_rows_per_row_group);
         let store = store_picker.pick_by_freq(options.frequency);
+
+        let metrics = Metrics {
+            metrics_collector,
+            ..Default::default()
+        };
 
         Self {
             path,
@@ -98,6 +119,7 @@ impl<'a> Reader<'a> {
             meta_data: None,
             row_projector: None,
             parallelism_options,
+            metrics,
         }
     }
 
@@ -149,8 +171,18 @@ impl<'a> Reader<'a> {
         row_groups: &[RowGroupMetaData],
         parquet_filter: Option<&ParquetFilter>,
     ) -> Result<Vec<usize>> {
-        let pruner =
-            RowGroupPruner::try_new(&schema, row_groups, parquet_filter, self.predicate.exprs())?;
+        let metrics_collector = self
+            .metrics
+            .metrics_collector
+            .as_ref()
+            .map(|v| v.span(PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME.to_string()));
+        let mut pruner = RowGroupPruner::try_new(
+            &schema,
+            row_groups,
+            parquet_filter,
+            self.predicate.exprs(),
+            metrics_collector,
+        )?;
 
         Ok(pruner.prune())
     }
@@ -191,10 +223,12 @@ impl<'a> Reader<'a> {
         // adjust it when supporting it other situations.
         let chunks_num = read_parallelism;
         let chunk_size = target_row_groups.len() / read_parallelism + 1;
+        self.metrics.parallelism = read_parallelism;
         info!(
             "Reader fetch record batches parallelly, parallelism suggest:{}, real:{}, chunk_size:{}",
             suggest_read_parallelism, read_parallelism, chunk_size
         );
+
         let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
         for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
             let chunk_idx = row_group_idx % chunks_num;
@@ -232,7 +266,12 @@ impl<'a> Reader<'a> {
             return Ok(());
         }
 
-        let meta_data = self.read_sst_meta().await?;
+        let meta_data = {
+            let start = Instant::now();
+            let meta_data = self.read_sst_meta().await?;
+            self.metrics.read_meta_data_duration = start.elapsed();
+            meta_data
+        };
 
         let row_projector = self
             .projected_schema
@@ -280,9 +319,10 @@ impl<'a> Reader<'a> {
         }
     }
 
-    async fn read_sst_meta(&self) -> Result<MetaData> {
+    async fn read_sst_meta(&mut self) -> Result<MetaData> {
         if let Some(cache) = &self.meta_cache {
             if let Some(meta_data) = cache.get(self.path.as_ref()) {
+                self.metrics.meta_data_cache_hit = true;
                 return Ok(meta_data);
             }
         }
@@ -356,7 +396,7 @@ impl ParallelismOptions {
 }
 
 #[derive(Clone, Debug)]
-struct ReaderMetrics {
+struct ObjectReaderMetrics {
     bytes_scanned: usize,
     sst_get_range_length_histogram: LocalHistogram,
 }
@@ -366,7 +406,7 @@ struct ObjectStoreReader {
     storage: ObjectStoreRef,
     path: Path,
     meta_data: MetaData,
-    metrics: ReaderMetrics,
+    metrics: ObjectReaderMetrics,
 }
 
 impl ObjectStoreReader {
@@ -375,7 +415,7 @@ impl ObjectStoreReader {
             storage,
             path,
             meta_data,
-            metrics: ReaderMetrics {
+            metrics: ObjectReaderMetrics {
                 bytes_scanned: 0,
                 sst_get_range_length_histogram: metrics::SST_GET_RANGE_HISTOGRAM.local(),
             },

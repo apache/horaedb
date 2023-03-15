@@ -9,15 +9,20 @@ use common_types::{
     schema::{Builder, Schema, TSID_COLUMN},
     tests::{build_default_value_schema, build_schema},
 };
+use common_util::error::GenericResult;
 use datafusion::catalog::TableReference;
 use df_operator::{scalar::ScalarUdf, udaf::AggregateUdf};
+use influxdb_influxql_parser::{parse_statements, select::SelectStatement, statement::Statement};
 use table_engine::{
     memory::MemoryTable,
     table::{Table, TableId, TableRef},
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::provider::MetaProvider;
+use crate::{
+    influxql::{planner::MeasurementProvider, select::rewriter::Rewriter},
+    provider::MetaProvider,
+};
 
 pub struct MockMetaProvider {
     tables: Vec<Arc<MemoryTable>>,
@@ -88,6 +93,32 @@ impl MetaProvider for MockMetaProvider {
 
     fn aggregate_udf(&self, _name: &str) -> crate::provider::Result<Option<AggregateUdf>> {
         todo!()
+    }
+}
+
+impl MeasurementProvider for MockMetaProvider {
+    fn measurement(
+        &self,
+        measurement_name: &str,
+    ) -> GenericResult<Option<table_engine::table::TableRef>> {
+        let table_ref = TableReference::Bare {
+            table: std::borrow::Cow::Borrowed(measurement_name),
+        };
+        Ok(self.table(table_ref).unwrap())
+    }
+}
+
+pub fn rewrite_statement(provider: &dyn MeasurementProvider, stmt: &mut SelectStatement) {
+    let rewriter = Rewriter::new(provider);
+    rewriter.rewrite(stmt).unwrap();
+}
+
+/// Returns the InfluxQL [`SelectStatement`] for the specified SQL, `s`.
+pub fn parse_select(s: &str) -> SelectStatement {
+    let statements = parse_statements(s).unwrap();
+    match statements.first() {
+        Some(Statement::Select(sel)) => *sel.clone(),
+        _ => panic!("expected SELECT statement"),
     }
 }
 

@@ -9,7 +9,7 @@ use common_util::define_result;
 use futures::Future;
 use message_queue::kafka::kafka_impl::KafkaImpl;
 use object_store::{
-    aliyun::AliyunOSS,
+    aliyun,
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
@@ -443,14 +443,17 @@ fn open_storage(
                 Arc::new(store) as _
             }
             ObjectStoreOptions::Aliyun(aliyun_opts) => {
-                let oss = Arc::new(AliyunOSS::new(
-                    aliyun_opts.key_id,
-                    aliyun_opts.key_secret,
-                    aliyun_opts.endpoint,
-                    aliyun_opts.bucket,
-                    aliyun_opts.pool_max_idle_per_host,
-                    aliyun_opts.timeout,
-                ));
+                let oss: ObjectStoreRef = Arc::new(
+                    aliyun::try_new(
+                        aliyun_opts.key_id,
+                        aliyun_opts.key_secret,
+                        aliyun_opts.endpoint,
+                        aliyun_opts.bucket,
+                        aliyun_opts.pool_max_idle_per_host,
+                        aliyun_opts.timeout.0,
+                    )
+                    .context(OpenObjectStore)?,
+                );
                 let oss_with_metrics = Arc::new(StoreWithMetrics::new(oss));
                 Arc::new(
                     StoreWithPrefix::new(aliyun_opts.prefix, oss_with_metrics)

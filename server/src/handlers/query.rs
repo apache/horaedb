@@ -24,7 +24,9 @@ use sql::{
 };
 
 use crate::handlers::{
-    error::{CreatePlan, InterpreterExec, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt},
+    error::{
+        CreatePlan, InterpreterExec, ParseInfluxql, ParseSql, QueryBlock, QueryTimeout, TooMuchStmt,
+    },
     prelude::*,
 };
 
@@ -104,18 +106,33 @@ impl From<Bytes> for Request {
     }
 }
 
-pub async fn handle_sql<Q: QueryExecutor + 'static>(
+#[derive(Debug)]
+pub enum QueryRequest {
+    Sql(Request),
+    // TODO: influxql include more parameters, we should add it in later.
+    Influxql(Request),
+}
+impl QueryRequest {
+    fn query(&self) -> &str {
+        match self {
+            QueryRequest::Sql(request) => request.query.as_str(),
+            QueryRequest::Influxql(request) => request.query.as_str(),
+        }
+    }
+}
+
+pub async fn handle_query<Q: QueryExecutor + 'static>(
     ctx: &RequestContext,
     instance: InstanceRef<Q>,
-    request: Request,
+    query_request: QueryRequest,
 ) -> Result<Output> {
     let request_id = RequestId::next_id();
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
 
     info!(
-        "sql handler try to process request, request_id:{}, request:{:?}",
-        request_id, request
+        "Query handler try to process request, request_id:{}, request:{:?}",
+        request_id, query_request
     );
 
     // TODO(yingwen): Privilege check, cannot access data of other tenant
@@ -127,38 +144,66 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
-
     let mut sql_ctx = SqlContext::new(request_id, deadline);
-    // Parse sql, frontend error of invalid sql already contains sql
-    // TODO(yingwen): Maybe move sql from frontend error to outer error
-    let mut stmts = frontend
-        .parse_sql(&mut sql_ctx, &request.query)
-        .context(ParseSql)?;
 
-    if stmts.is_empty() {
-        return Ok(Output::AffectedRows(0));
-    }
+    let plan = match &query_request {
+        QueryRequest::Sql(request) => {
+            // Parse sql, frontend error of invalid sql already contains sql
+            // TODO(yingwen): Maybe move sql from frontend error to outer error
+            let mut stmts = frontend
+                .parse_sql(&mut sql_ctx, &request.query)
+                .context(ParseSql)?;
 
-    // TODO(yingwen): For simplicity, we only support executing one statement now
-    // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
-    ensure!(
-        stmts.len() == 1,
-        TooMuchStmt {
-            len: stmts.len(),
-            query: request.query,
+            if stmts.is_empty() {
+                return Ok(Output::AffectedRows(0));
+            }
+
+            // TODO(yingwen): For simplicity, we only support executing one statement now
+            // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
+            ensure!(
+                stmts.len() == 1,
+                TooMuchStmt {
+                    len: stmts.len(),
+                    query: &request.query,
+                }
+            );
+
+            // Create logical plan
+            // Note: Remember to store sql in error when creating logical plan
+            frontend
+                .statement_to_plan(&mut sql_ctx, stmts.remove(0))
+                .context(CreatePlan {
+                    query: &request.query,
+                })?
         }
-    );
 
-    // Create logical plan
-    // Note: Remember to store sql in error when creating logical plan
-    let plan = frontend
-        .statement_to_plan(&mut sql_ctx, stmts.remove(0))
-        .context(CreatePlan {
-            query: &request.query,
-        })?;
+        QueryRequest::Influxql(request) => {
+            let mut stmts = frontend
+                .parse_influxql(&mut sql_ctx, &request.query)
+                .context(ParseInfluxql)?;
+
+            if stmts.is_empty() {
+                return Ok(Output::AffectedRows(0));
+            }
+
+            ensure!(
+                stmts.len() == 1,
+                TooMuchStmt {
+                    len: stmts.len(),
+                    query: &request.query,
+                }
+            );
+
+            frontend
+                .influxql_stmt_to_plan(&mut sql_ctx, stmts.remove(0))
+                .context(CreatePlan {
+                    query: &request.query,
+                })?
+        }
+    };
 
     instance.limiter.try_limit(&plan).context(QueryBlock {
-        query: &request.query,
+        query: query_request.query(),
     })?;
 
     // Execute in interpreter
@@ -177,7 +222,7 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         interpreter_factory
             .create(interpreter_ctx, plan)
             .context(InterpreterExec {
-                query: &request.query,
+                query: query_request.query(),
             })?;
 
     let output = if let Some(deadline) = deadline {
@@ -187,24 +232,24 @@ pub async fn handle_sql<Q: QueryExecutor + 'static>(
         )
         .await
         .context(QueryTimeout {
-            query: &request.query,
+            query: query_request.query(),
         })
         .and_then(|v| {
             v.context(InterpreterExec {
-                query: &request.query,
+                query: query_request.query(),
             })
         })?
     } else {
         interpreter.execute().await.context(InterpreterExec {
-            query: &request.query,
+            query: query_request.query(),
         })?
     };
 
     info!(
-        "sql handler finished, request_id:{}, cost:{}ms, request:{:?}",
+        "Query handler finished, request_id:{}, cost:{}ms, request:{:?}",
         request_id,
         begin_instant.saturating_elapsed().as_millis(),
-        request
+        query_request
     );
 
     Ok(output)

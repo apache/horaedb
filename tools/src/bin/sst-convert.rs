@@ -92,6 +92,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
             &reader_opts,
             SstReadHint::default(),
             &store_picker,
+            None,
         )
         .await
         .expect("no sst reader found");
