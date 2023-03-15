@@ -118,7 +118,7 @@ async fn run_server_with_runtimes<T>(
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
-    let config_content = serde_json::to_string(&config).expect("Fail to serialize config");
+    let config_content = toml::to_string(&config).expect("Fail to serialize config");
 
     let builder = Builder::new(config.server.clone())
         .node_addr(config.node.addr.clone())

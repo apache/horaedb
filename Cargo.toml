@@ -111,6 +111,7 @@ system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
+toml = "0.7"
 tracing_util = { path = "components/tracing_util" }
 tonic = "0.8.1"
 tokio = { version = "1.25", features = ["full"] }
@@ -133,11 +134,11 @@ meta_client = { workspace = true }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"
 table_engine = { workspace = true }
+toml = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]
