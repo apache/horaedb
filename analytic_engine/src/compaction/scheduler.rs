@@ -20,14 +20,13 @@ use common_util::{
     runtime::{JoinHandle, Runtime},
     time::DurationExt,
 };
-use datafusion::sql::sqlparser::test_utils::table;
 use log::{debug, error, info, warn};
 use serde::Deserialize;
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::{
     sync::{
-        mpsc::{self, error::SendError, Receiver, Sender},
+        mpsc::{self, Receiver, Sender},
         Mutex,
     },
     time,
@@ -39,9 +38,7 @@ use crate::{
         PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
     },
     instance::{
-        flush_compaction::{self, TableFlushOptions},
-        write_worker::CompactionNotifier,
-        Instance, SpaceStore,
+        flush_compaction::TableFlushOptions, write_worker::CompactionNotifier, Instance, SpaceStore,
     },
     table::data::TableDataRef,
     TableOptions,
@@ -580,7 +577,6 @@ impl ScheduleWorker {
                     self.memory_limit.usage.load(Ordering::Relaxed),
                     compaction_task, table_data.name
                 );
-                // self.put_back_compaction_request(compact_req).await;
                 return;
             }
         };
@@ -595,29 +591,6 @@ impl ScheduleWorker {
             waiter_notifier,
             token,
         );
-    }
-
-    async fn put_back_compaction_request(&self, req: TableCompactionRequest) {
-        if let Err(SendError(ScheduleTask::Request(TableCompactionRequest {
-            compaction_notifier,
-            waiter,
-            ..
-        }))) = self.sender.send(ScheduleTask::Request(req)).await
-        {
-            let e = Arc::new(
-                flush_compaction::Other {
-                    msg: "Failed to put back the compaction request for memory usage exceeds",
-                }
-                .build(),
-            );
-            if let Some(notifier) = compaction_notifier {
-                notifier.notify_err(e.clone());
-            }
-
-            let waiter_notifier = WaiterNotifier::new(waiter);
-            let wait_err = WaitError::Compaction { source: e };
-            waiter_notifier.notify_wait_result(Err(wait_err));
-        }
     }
 
     async fn schedule(&mut self) {
