@@ -2,7 +2,7 @@
 
 // Meta event rpc service implementation.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
@@ -238,7 +238,8 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     };
 
     let mut success = 0;
-    let mut err_map = HashMap::new();
+    let mut no_table_count = 0;
+    let mut open_err_count = 0;
 
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
@@ -260,32 +261,33 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
                 success += 1;
             }
             Ok(None) => {
+                no_table_count += 1;
                 error!("no table is opened, open_request:{open_request:?}");
-                err_map.insert(table.name, "no table is opened");
             }
             Err(e) => {
+                open_err_count += 1;
                 error!("fail to open table, open_request:{open_request:?}, err:{e}");
-                err_map.insert(table.name, "fail to open table");
             }
         };
     }
 
     info!(
-        "Open shard finish, shard id:{}, cost:{}ms, successful tables:{}, failed tables:{}",
+        "Open shard finish, shard id:{}, cost:{}ms, successful count:{}, no table is opened count:{}, open error count:{}",
         shard_info.id,
         instant.saturating_elapsed().as_millis(),
         success,
-        err_map.len(),
+        no_table_count,
+        open_err_count
     );
 
-    if err_map.is_empty() {
+    if no_table_count == 0 && open_err_count == 0 {
         Ok(())
     } else {
         Err(Error::ErrNoCause {
             code: StatusCode::Internal,
             msg: format!(
-                "Failed to open shard:{}, because of failed tables:{err_map:?}",
-                shard_info.id
+                "Failed to open shard:{}, some tables open failed, no table is opened count:{}, open error count:{}",
+                shard_info.id, no_table_count, open_err_count
             ),
         })
     }
