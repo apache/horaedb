@@ -41,7 +41,7 @@ use self::shard_operation::WalCloserAdapter;
 use crate::{
     grpc::{
         meta_event_service::{
-            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+            error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
             shard_operation::WalRegionCloserRef,
         },
         metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
@@ -210,6 +210,7 @@ impl HandlerContext {
 // implementation.
 
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
+    let instant = Instant::now();
     let tables_of_shard =
         ctx.cluster
             .open_shard(&request)
@@ -236,6 +237,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         table_engine: ctx.table_engine,
     };
 
+    let mut success = 0;
+    let mut no_table_count = 0;
+    let mut open_err_count = 0;
+
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -249,21 +254,43 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             shard_id: shard_info.id,
             cluster_version: topology.cluster_topology_version,
         };
-        schema
-            .open_table(open_request.clone(), opts.clone())
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: format!("fail to open table, open_request:{open_request:?}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!("no table is opened, open_request:{open_request:?}"),
-            })?;
+        let result = schema.open_table(open_request.clone(), opts.clone()).await;
+
+        match result {
+            Ok(Some(_)) => {
+                success += 1;
+            }
+            Ok(None) => {
+                no_table_count += 1;
+                error!("MetaServiceImpl::handle_open_shard no table is opened, open_request:{open_request:?}");
+            }
+            Err(e) => {
+                open_err_count += 1;
+                error!("MetaServiceImpl::handle_open_shard fail to open table, open_request:{open_request:?}, err:{e}");
+            }
+        };
     }
 
-    Ok(())
+    info!(
+        "Open shard finish, shard id:{}, cost:{}ms, successful count:{}, no table is opened count:{}, open error count:{}",
+        shard_info.id,
+        instant.saturating_elapsed().as_millis(),
+        success,
+        no_table_count,
+        open_err_count
+    );
+
+    if no_table_count == 0 && open_err_count == 0 {
+        Ok(())
+    } else {
+        Err(Error::ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "Failed to open shard:{}, some tables open failed, no table is opened count:{}, open error count:{}",
+                shard_info.id, no_table_count, open_err_count
+            ),
+        })
+    }
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
