@@ -114,6 +114,7 @@ system_catalog = { path = "system_catalog" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
+toml = "0.7"
 tracing_util = { path = "components/tracing_util" }
 trace_metric = { path = "components/trace_metric" }
 trace_metric_derive = { path = "components/trace_metric_derive" }
@@ -143,6 +144,7 @@ server = { workspace = true }
 signal-hook = "0.3"
 sort = "0.8.5"
 table_engine = { workspace = true }
+toml = { workspace = true }
 tracing_util = { workspace = true }
 
 [build-dependencies]

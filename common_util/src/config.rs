@@ -106,7 +106,7 @@ impl FromStr for TimeUnit {
             "minutes" => Ok(TimeUnit::Minutes),
             "hours" => Ok(TimeUnit::Hours),
             "days" => Ok(TimeUnit::Days),
-            _ => Err(format!("unexpect TimeUnit: {tu_str}")),
+            _ => Err(format!("unexpected TimeUnit: {tu_str}")),
         }
     }
 }

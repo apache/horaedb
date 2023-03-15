@@ -101,7 +101,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
 
 async fn run_server_with_runtimes<T>(
     config: Config,
-    runtimes: Arc<EngineRuntimes>,
+    engine_runtimes: Arc<EngineRuntimes>,
     log_runtime: Arc<RuntimeLevel>,
 ) where
     T: WalsOpener,
@@ -118,10 +118,12 @@ async fn run_server_with_runtimes<T>(
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
+    let config_content = toml::to_string(&config).expect("Fail to serialize config");
 
     let builder = Builder::new(config.server.clone())
         .node_addr(config.node.addr.clone())
-        .engine_runtimes(runtimes.clone())
+        .config_content(config_content)
+        .engine_runtimes(engine_runtimes.clone())
         .log_runtime(log_runtime.clone())
         .query_executor(query_executor)
         .function_registry(function_registry)
@@ -134,20 +136,20 @@ async fn run_server_with_runtimes<T>(
                 &config,
                 &StaticRouteConfig::default(),
                 builder,
-                runtimes.clone(),
+                engine_runtimes.clone(),
                 engine_builder,
             )
             .await
         }
         Some(ClusterDeployment::NoMeta(v)) => {
-            build_without_meta(&config, v, builder, runtimes.clone(), engine_builder).await
+            build_without_meta(&config, v, builder, engine_runtimes.clone(), engine_builder).await
         }
         Some(ClusterDeployment::WithMeta(cluster_config)) => {
             build_with_meta(
                 &config,
                 cluster_config,
                 builder,
-                runtimes.clone(),
+                engine_runtimes.clone(),
                 engine_builder,
             )
             .await

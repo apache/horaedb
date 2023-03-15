@@ -22,7 +22,7 @@ use log::{debug, info, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prost::Message;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::Mutex;
@@ -157,7 +157,7 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 }
 
 /// Options for manifest
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Options {
     /// Steps to do snapshot
     pub snapshot_every_n_updates: usize,

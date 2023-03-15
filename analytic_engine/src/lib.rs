@@ -36,7 +36,7 @@ use wal::{
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
 /// Config of analytic engine
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     /// Storage options of the engine
@@ -115,7 +115,7 @@ impl Default for Config {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ObkvWalConfig {
     /// Obkv client config
@@ -222,7 +222,7 @@ impl From<WalNamespaceConfig> for NamespaceConfig {
 }
 
 /// Config of wal based on obkv
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct KafkaWalConfig {
     /// Kafka client config
@@ -235,7 +235,7 @@ pub struct KafkaWalConfig {
 }
 
 /// Config for wal based on RocksDB
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
     /// Data directory used by RocksDB.
@@ -250,7 +250,7 @@ impl Default for RocksDBConfig {
     }
 }
 /// Options for wal storage backend
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum WalStorageConfig {
     RocksDB(Box<RocksDBConfig>),

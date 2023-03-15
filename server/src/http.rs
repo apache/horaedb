@@ -64,6 +64,12 @@ pub enum Error {
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
 
+    #[snafu(display(
+        "Missing server config content to build service.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MissingServerConfigContent { backtrace: Backtrace },
+
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
 
@@ -117,12 +123,14 @@ pub struct Service<Q> {
     influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     config: HttpConfig,
+    config_content: String,
 }
 
 impl<Q> Service<Q> {
-    // TODO(yingwen): Maybe log error or return error
     pub fn stop(self) {
-        let _ = self.tx.send(());
+        if self.tx.send(()).is_err() {
+            error!("Failed to send http service stop message");
+        }
     }
 }
 
@@ -142,6 +150,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .or(self.flush_memtable())
             .or(self.update_log_level())
             .or(self.heap_profile())
+            .or(self.server_config())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -310,6 +319,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
+    // GET /debug/config
+    fn server_config(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let server_config_content = self.config_content.clone();
+        warp::path!("debug" / "config")
+            .and(warp::get())
+            .map(move || server_config_content.clone())
+    }
+
     // PUT /debug/log_level/{level}
     fn update_log_level(
         &self,
@@ -430,6 +449,7 @@ pub struct Builder<Q> {
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    config_content: Option<String>,
 }
 
 impl<Q> Builder<Q> {
@@ -440,6 +460,7 @@ impl<Q> Builder<Q> {
             log_runtime: None,
             instance: None,
             schema_config_provider: None,
+            config_content: None,
         }
     }
 
@@ -462,6 +483,11 @@ impl<Q> Builder<Q> {
         self.schema_config_provider = Some(provider);
         self
     }
+
+    pub fn config_content(mut self, content: String) -> Self {
+        self.config_content = Some(content);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -470,6 +496,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
+        let config_content = self.config_content.context(MissingInstance)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -489,6 +516,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
+            config_content,
         };
 
         info!(
@@ -537,6 +565,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
+        | Error::MissingServerConfigContent { .. }
         | Error::MissingSchemaConfigProvider { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
