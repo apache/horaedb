@@ -40,7 +40,7 @@ use crate::{
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    pub(crate) async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
+    pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         match self.handle_write_internal(ctx, req).await {
             Err(e) => WriteResponse {
                 header: Some(error::build_err_header(e)),
@@ -120,7 +120,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
-pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
+async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,
@@ -170,7 +170,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     Ok(plan_vec)
 }
 
-pub async fn execute_plan<Q: QueryExecutor + 'static>(
+async fn execute_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,

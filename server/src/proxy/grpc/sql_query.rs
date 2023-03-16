@@ -145,7 +145,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded query failed",
+                        msg: "forwarded query failed",
                     })
             }
             .boxed();
@@ -274,7 +274,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "Only support execute one statement now, current num:{}, sql:{}",
+                    "only support execute one statement now, current num:{}, sql:{}",
                     stmts.len(),
                     req.sql
                 ),
@@ -299,14 +299,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Query is blocked",
+                msg: "query is blocked",
             })?;
 
         if let Some(deadline) = deadline {
             if deadline.check_deadline() {
                 return ErrNoCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "Query timeout",
+                    msg: "query timeout",
                 }
                 .fail();
             }
@@ -328,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create interpreter",
+                msg: "failed to create interpreter",
             })?;
 
         let output = if let Some(deadline) = deadline {
@@ -340,7 +340,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Query timeout",
+                msg: "query timeout",
             })?
         } else {
             interpreter.execute().await
@@ -348,7 +348,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute interpreter, sql:{}", req.sql),
+            msg: format!("failed to execute interpreter, sql:{}", req.sql),
         })?;
 
         info!(

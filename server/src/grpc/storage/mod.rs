@@ -37,43 +37,43 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
 #[async_trait]
 impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
     type StreamSqlQueryStream =
-        BoxStream<'static, std::result::Result<SqlQueryResponse, tonic::Status>>;
+        BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
         &self,
-        request: tonic::Request<RouteRequest>,
-    ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
-        self.route_internal(request).await
+        req: tonic::Request<RouteRequest>,
+    ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
+        self.route_internal(req).await
     }
 
     async fn write(
         &self,
-        request: tonic::Request<WriteRequest>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        self.write_internal(request).await
+        req: tonic::Request<WriteRequest>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
+        self.write_internal(req).await
     }
 
     async fn sql_query(
         &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        self.query_internal(request).await
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+        self.query_internal(req).await
     }
 
     async fn prom_query(
         &self,
-        request: tonic::Request<PrometheusQueryRequest>,
-    ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        self.prom_query_internal(request).await
+        req: tonic::Request<PrometheusQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
+        self.prom_query_internal(req).await
     }
 
     async fn stream_write(
         &self,
-        request: tonic::Request<tonic::Streaming<WriteRequest>>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
+        req: tonic::Request<tonic::Streaming<WriteRequest>>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
         let begin_instant = Instant::now();
 
-        let resp = self.stream_write_internal(request).await;
+        let resp = self.stream_write_internal(req).await;
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .handle_stream_write
@@ -83,14 +83,14 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
     async fn stream_sql_query(
         &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
         let proxy = self.proxy.clone();
         let ctx = Context {
             runtime: self.runtimes.read_runtime.clone(),
             timeout: self.timeout,
         };
-        let stream = Self::stream_query_internal(ctx, proxy, request).await;
+        let stream = Self::stream_query_internal(ctx, proxy, req).await;
 
         Ok(tonic::Response::new(stream.map(Ok).boxed()))
     }
@@ -100,7 +100,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn route_internal(
         &self,
         req: tonic::Request<RouteRequest>,
-    ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
         let req = req.into_inner();
         let ctx = Context {
             runtime: self.runtimes.meta_runtime.clone(),
@@ -114,7 +114,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn write_internal(
         &self,
         req: tonic::Request<WriteRequest>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let ctx = Context {
@@ -152,7 +152,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn query_internal(
         &self,
         req: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let ctx = Context {
@@ -190,7 +190,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn prom_query_internal(
         &self,
         req: tonic::Request<PrometheusQueryRequest>,
-    ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
         let ctx = Context {
@@ -228,7 +228,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     async fn stream_write_internal(
         &self,
         req: tonic::Request<tonic::Streaming<WriteRequest>>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
         let mut total_success = 0;
         let mut resp = WriteResponse::default();
         let mut has_err = false;

@@ -92,7 +92,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     };
                     Error::ErrWithCause {
                         code,
-                        msg: "Failed to create plan".to_string(),
+                        msg: "failed to create plan".to_string(),
                         source: Box::new(e),
                     }
                 })?;
@@ -103,7 +103,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::FORBIDDEN,
-                msg: "Query is blocked",
+                msg: "query is blocked",
             })?;
 
         // Execute in interpreter
@@ -122,7 +122,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to create interpreter",
+                msg: "failed to create interpreter",
             })?;
 
         let output = if let Some(deadline) = deadline {
@@ -134,7 +134,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::REQUEST_TIMEOUT,
-                msg: "Query timeout",
+                msg: "query timeout",
             })?
         } else {
             interpreter.execute().await
@@ -142,7 +142,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
+            msg: "failed to execute interpreter",
         })?;
 
         let resp = convert_output(output, column_name)
@@ -256,21 +256,21 @@ impl RecordConverter {
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "Timestamp column should be timestamp type"
+                msg: "timestamp column should be timestamp type"
             }
         );
         let field_idx = record_schema
             .index_of(&column_name.field)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("Failed to find {} column", column_name.field),
+                msg: format!("failed to find {} column", column_name.field),
             })?;
         let field_type = record_schema.column(field_idx).data_type;
         ensure!(
             field_type.is_f64_castable(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("Field type must be f64-compatibile type, current:{field_type}")
+                msg: format!("field type must be f64-compatibile type, current:{field_type}")
             }
         );
 
