@@ -103,7 +103,7 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    #[snafu(display("Server already started."))]
+    #[snafu(display("Server already started.\nBacktrace:\n{}", backtrace))]
     AlreadyStarted { backtrace: Backtrace },
 }
 

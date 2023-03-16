@@ -136,12 +136,9 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
-        self.http_service
-            .start()
-            .await
-            .with_context(|| HttpService {
-                msg: "start failed".to_string(),
-            })?;
+        self.http_service.start().await.context(HttpService {
+            msg: "start failed",
+        })?;
         self.mysql_service
             .start()
             .await
@@ -341,8 +338,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider(provider.clone())
             .config_content(config_content)
             .build()
-            .with_context(|| HttpService {
-                msg: "build failed".to_string(),
+            .context(HttpService {
+                msg: "build failed",
             })?;
 
         let mysql_config = mysql::MysqlConfig {
