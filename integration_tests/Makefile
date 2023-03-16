@@ -23,10 +23,17 @@ build-test:
 
 build: build-ceresdb build-test
 
-# rename ${case}.output to ${case}.result automatically. fd is required
-# https://github.com/sharkdp/fd
-fix:
-	fd -t f output --exec mv {} {.}.result \;
+build-ceresmeta-image:
+	git clone https://github.com/CeresDB/ceresmeta.git || true
+	cd ceresmeta &&	docker build -t ceresdb/ceresmeta-server:latest .
+
+build-ceresdb-image: build-ceresdb
+	cd .. && cp ./target/debug/ceresdb-server ./ && docker build -t ceresdb/ceresdb-server:latest -f ./Dockerfile-CI .
+
+build-image: build-ceresmeta-image build-ceresdb-image
+
+run-all: clean build build-image
+	$(CERESDB_TEST_BINARY)
 
 run: clean build
 	$(CERESDB_TEST_BINARY)

@@ -5,7 +5,8 @@ use std::{
     collections::HashMap,
     env,
     fmt::Display,
-    fs::File,
+    fs::{File, OpenOptions},
+    io::Write,
     path::Path,
     process::{Child, Command},
     sync::Arc,
@@ -164,8 +165,16 @@ impl CeresDB {
             DeployMode::Cluster => {
                 let stdout = env::var(CERESDB_STDOUT_FILE).expect("Cannot parse stdout env");
                 let stderr = env::var(CERESDB_STDERR_FILE).expect("Cannot parse stderr env");
-                let stdout = File::open(stdout).expect("Cannot create stdout");
-                let stderr = File::open(stderr).expect("Cannot create stderr");
+                let stdout = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .open(stdout)
+                    .expect("Cannot open stdout");
+                let stderr = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .open(stderr)
+                    .expect("Cannot open stderr");
                 Self::stop_cluster(stdout, stderr)
             }
         }
@@ -240,10 +249,21 @@ impl CeresDB {
             .stdout(stdout)
             .stderr(stderr)
             .spawn()
-            .unwrap_or_else(|_| panic!("Failed to start server"));
+            .expect("Failed to spawn process to start server")
+            .wait()
+            .expect("Failed to wait for starting server");
     }
 
-    fn stop_cluster(stdout: File, stderr: File) {
+    fn stop_cluster(mut stdout: File, mut stderr: File) {
+        for ceresdb_container_name in ["ceresdb-ceresdb0-1", "ceresdb-ceresdb1-1"] {
+            let output = Command::new("docker")
+                .args(["logs", "-t", ceresdb_container_name])
+                .output()
+                .expect("Failed to get container's logs");
+            stdout.write_all(output.stdout.as_slice()).unwrap();
+            stderr.write_all(output.stderr.as_slice()).unwrap();
+        }
+
         Command::new("docker-compose")
             .args(["rm", "-fsv"])
             .stdout(stdout)

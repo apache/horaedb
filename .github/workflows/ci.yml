@@ -130,13 +130,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Download CeresMeta Code
-        uses: actions/checkout@v3
-        with:
-          repository: CeresDB/ceresmeta
-          ref: refs/heads/main
-      - name: Build CeresMeta Docker image
-        run: docker build -t ${CERESMETA_IMAGE_NAME} .
       - name: Add CeresDB Hosts
         run: |
           sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
@@ -166,24 +159,11 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Build CeresDB
-        run: |
-          make build-debug
-      - name: Copy Target
-        run: |
-          cp ./target/debug/ceresdb-server ./ceresdb-server
-      - name: Build CeresDB Docker Image
-        run: docker build -f ./Dockerfile-CI -t ${CERESDB_IMAGE_NAME} .
       - name: Run black-box tests
         run: |
           make integration-test
         env:
           RUST_BACKTRACE: "1"
-      - name: Redirect Logs
-        if: always()
-        run: |
-          docker logs -t ceresdb0 > /tmp/ceresdb-0.log
-          docker logs -t ceresdb1 > /tmp/ceresdb-1.log
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
