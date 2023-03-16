@@ -8,6 +8,7 @@ use std::{
     string::ToString,
     sync::{Arc, RwLock},
 };
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use catalog::{
@@ -194,6 +195,8 @@ struct SchemaImpl {
     tables: RwLock<HashMap<String, TableRef>>,
     /// Guard for creating/dropping table
     create_table_mutex: Mutex<()>,
+    /// the tables which are opening
+    opening_tables: RwLock<HashSet<String>>,
 }
 
 impl SchemaImpl {
@@ -210,6 +213,7 @@ impl SchemaImpl {
             shard_tables_cache,
             tables: Default::default(),
             create_table_mutex: Mutex::new(()),
+            opening_tables: RwLock::new(HashSet::new())
         }
     }
 
@@ -434,5 +438,17 @@ impl Schema for SchemaImpl {
             .iter()
             .map(|(_, v)| v.clone())
             .collect())
+    }
+
+    fn add_opening_table(&self, table: NameRef)  {
+        self.opening_tables.write().unwrap().insert(table.to_string());
+    }
+
+    fn table_is_opening(&self, table: &str) -> bool {
+        self.opening_tables.read().unwrap().contains(table)
+    }
+
+    fn remove_opening_table(&self, table: NameRef) {
+        self.opening_tables.write().unwrap().remove(table);
     }
 }

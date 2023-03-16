@@ -118,6 +118,16 @@ impl Schema for SystemTables {
             .map(|(_, v)| v.clone() as TableRef)
             .collect())
     }
+
+    fn table_is_opening(&self, _table: &str) -> bool {
+        false
+    }
+
+    fn add_opening_table(&self, _table: &str) {
+    }
+
+    fn remove_opening_table(&self, _table: &str)   {
+    }
 }
 
 #[async_trait]

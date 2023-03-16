@@ -325,4 +325,13 @@ pub trait Schema {
 
     /// All tables
     fn all_tables(&self) -> Result<Vec<TableRef>>;
+
+    /// check a table is opening or not
+    fn table_is_opening(&self, table: &str) -> bool;
+
+    /// add opening table when start to open shard
+    fn add_opening_table(&self, table: NameRef);
+
+    /// remove opening table when finish to open shard
+    fn remove_opening_table(&self, table: NameRef);
 }

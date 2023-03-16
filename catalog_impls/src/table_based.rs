@@ -3,7 +3,7 @@
 //! Table based catalog implementation
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
 
@@ -214,6 +214,7 @@ impl TableBasedManager {
             mutex: Mutex::new(()),
             catalog_table: self.catalog_table.clone(),
             table_seq_generator: TableSeqGenerator::default(),
+            opening_tables: RwLock::new(HashSet::new()),
         });
         // Use table seq of `sys_catalog` table as last table seq.
         schema
@@ -559,6 +560,8 @@ struct SchemaImpl {
     /// Sys catalog table
     catalog_table: Arc<SysCatalogTable>,
     table_seq_generator: TableSeqGenerator,
+    /// the tables which are opening
+    opening_tables: RwLock<HashSet<String>>,
 }
 
 impl SchemaImpl {
@@ -576,6 +579,7 @@ impl SchemaImpl {
             mutex: Mutex::new(()),
             catalog_table,
             table_seq_generator: TableSeqGenerator::default(),
+            opening_tables: RwLock::new(HashSet::new()),
         }
     }
 
@@ -898,6 +902,19 @@ impl Schema for SchemaImpl {
             .values()
             .cloned()
             .collect())
+    }
+
+
+    fn table_is_opening(&self, table: &str) -> bool {
+        self.opening_tables.read().unwrap().contains(table)
+    }
+
+    fn add_opening_table(&self, table: NameRef)  {
+        self.opening_tables.write().unwrap().insert(table.to_string());
+    }
+
+    fn remove_opening_table(&self, table: NameRef) {
+        self.opening_tables.write().unwrap().remove(table);
     }
 }
 

@@ -241,6 +241,12 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
     let mut no_table_count = 0;
     let mut open_err_count = 0;
 
+    //  add tables to opening tables in schema
+    for table in &tables_of_shard.tables {
+        let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
+        schema.add_opening_table(&table.name);
+    }
+
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -256,6 +262,9 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         };
         let result = schema.open_table(open_request.clone(), opts.clone()).await;
 
+        // remove table from opening tables
+        schema.remove_opening_table(&table.name);
+
         match result {
             Ok(Some(_)) => {
                 success += 1;
@@ -269,6 +278,7 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
                 error!("fail to open table, open_request:{open_request:?}, err:{e}");
             }
         };
+        schema.remove_opening_table(&table.name);
     }
 
     info!(
