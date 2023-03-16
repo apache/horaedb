@@ -63,8 +63,11 @@ pub enum Error {
     #[snafu(display("Missing limiter.\nBacktrace:\n{}", backtrace))]
     MissingLimiter { backtrace: Backtrace },
 
-    #[snafu(display("Failed to start http service, err:{}", source))]
-    StartHttpService { source: crate::http::Error },
+    #[snafu(display("Http service failed, msg:{}, err:{}", msg, source))]
+    HttpService {
+        msg: String,
+        source: crate::http::Error,
+    },
 
     #[snafu(display("Failed to build mysql service, err:{}", source))]
     BuildMysqlService { source: MysqlError },
@@ -133,7 +136,12 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
         self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
-        self.http_service.start().await.context(StartHttpService)?;
+        self.http_service
+            .start()
+            .await
+            .with_context(|| HttpService {
+                msg: "start failed".to_string(),
+            })?;
         self.mysql_service
             .start()
             .await
@@ -333,7 +341,9 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .schema_config_provider(provider.clone())
             .config_content(config_content)
             .build()
-            .context(StartHttpService)?;
+            .with_context(|| HttpService {
+                msg: "build failed".to_string(),
+            })?;
 
         let mysql_config = mysql::MysqlConfig {
             ip: self.server_config.bind_addr.clone(),
