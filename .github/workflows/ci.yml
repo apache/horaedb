@@ -185,6 +185,8 @@ jobs:
         with:
           name: CI-${{ github.head_ref }}.${{ github.sha }}
           path: |
+            /tmp/ceresdb-0.log
+            /tmp/ceresdb-1.log
             /tmp/ceresdb-stdout.log
             /tmp/ceresdb-stderr.log
 
