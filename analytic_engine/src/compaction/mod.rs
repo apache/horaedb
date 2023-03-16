@@ -5,7 +5,7 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use common_util::config::{ReadableSize, TimeUnit};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
 use tokio::sync::oneshot;
 
@@ -57,7 +57,7 @@ pub enum Error {
     InvalidOption { error: String, backtrace: Backtrace },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Serialize)]
 pub enum CompactionStrategy {
     #[default]
     Default,
@@ -65,7 +65,7 @@ pub enum CompactionStrategy {
     SizeTiered(SizeTieredCompactionOptions),
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub struct SizeTieredCompactionOptions {
     pub bucket_low: f32,
     pub bucket_high: f32,
@@ -75,7 +75,7 @@ pub struct SizeTieredCompactionOptions {
     pub max_input_sstable_size: ReadableSize,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 pub struct TimeWindowCompactionOptions {
     pub size_tiered: SizeTieredCompactionOptions,
     // TODO(boyan) In fact right now we only supports TimeUnit::Milliseconds resolution.
