@@ -33,7 +33,7 @@ use tonic::transport::Server;
 use crate::{
     grpc::{
         meta_event_service::MetaServiceImpl, remote_engine_service::RemoteEngineServiceImpl,
-        storage::StorageServiceImpl,
+        storage_service::StorageServiceImpl,
     },
     instance::InstanceRef,
     proxy::{forward, Proxy},
@@ -43,8 +43,6 @@ use crate::{
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;
-#[allow(dead_code)]
-mod storage;
 pub(crate) mod storage_service;
 
 #[derive(Debug, Snafu)]

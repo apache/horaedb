@@ -26,7 +26,10 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use warp::reject;
 
 use crate::{
-    context::RequestContext, handlers, instance::InstanceRef,
+    context::RequestContext,
+    handlers,
+    instance::InstanceRef,
+    proxy::grpc::write::{execute_plan, write_request_to_insert_plan},
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -94,9 +97,7 @@ pub enum Error {
     },
 
     #[snafu(display("Failed to write via gRPC, source:{}.", source))]
-    GRPCWriteError {
-        source: crate::grpc::storage_service::error::Error,
-    },
+    GRPCWriteError { source: crate::proxy::error::Error },
 
     #[snafu(display("Failed to get schema, source:{}.", source))]
     SchemaError {
@@ -242,7 +243,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
             .schema_config_provider
             .schema_config(schema)
             .context(SchemaError)?;
-        let plans = crate::grpc::storage_service::write::write_request_to_insert_plan(
+        let plans = write_request_to_insert_plan(
             request_id,
             catalog,
             schema,
@@ -256,7 +257,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
 
         let mut success = 0;
         for insert_plan in plans {
-            success += crate::grpc::storage_service::write::execute_plan(
+            success += execute_plan(
                 request_id,
                 catalog,
                 schema,

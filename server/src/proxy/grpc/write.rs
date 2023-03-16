@@ -120,7 +120,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
-async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
+pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,
@@ -170,7 +170,7 @@ async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     Ok(plan_vec)
 }
 
-async fn execute_plan<Q: QueryExecutor + 'static>(
+pub async fn execute_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,
