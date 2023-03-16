@@ -14,7 +14,7 @@ ENV RUST_BACKTRACE 1
 COPY ./ceresdb-server /usr/bin/ceresdb-server
 RUN chmod +x /usr/bin/ceresdb-server
 
-COPY ./docker/entrypoint.sh /entrypoint.sh
+COPY ./docker/entrypoint-ci.sh /entrypoint.sh
 COPY ./docs/minimal.toml /etc/ceresdb/ceresdb.toml
 
 COPY ./docker/tini /tini
