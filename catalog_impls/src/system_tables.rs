@@ -123,11 +123,9 @@ impl Schema for SystemTables {
         false
     }
 
-    fn add_opening_table(&self, _table: &str) {
-    }
+    fn add_opening_table(&self, _table: &str) {}
 
-    fn remove_opening_table(&self, _table: &str)   {
-    }
+    fn remove_opening_table(&self, _table: &str) {}
 }
 
 #[async_trait]

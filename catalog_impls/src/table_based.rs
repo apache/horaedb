@@ -904,13 +904,15 @@ impl Schema for SchemaImpl {
             .collect())
     }
 
-
     fn table_is_opening(&self, table: &str) -> bool {
         self.opening_tables.read().unwrap().contains(table)
     }
 
-    fn add_opening_table(&self, table: NameRef)  {
-        self.opening_tables.write().unwrap().insert(table.to_string());
+    fn add_opening_table(&self, table: NameRef) {
+        self.opening_tables
+            .write()
+            .unwrap()
+            .insert(table.to_string());
     }
 
     fn remove_opening_table(&self, table: NameRef) {

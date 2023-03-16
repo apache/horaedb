@@ -4,11 +4,10 @@
 //! and schema in memory.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     string::ToString,
     sync::{Arc, RwLock},
 };
-use std::collections::HashSet;
 
 use async_trait::async_trait;
 use catalog::{
@@ -213,7 +212,7 @@ impl SchemaImpl {
             shard_tables_cache,
             tables: Default::default(),
             create_table_mutex: Mutex::new(()),
-            opening_tables: RwLock::new(HashSet::new())
+            opening_tables: RwLock::new(HashSet::new()),
         }
     }
 
@@ -440,8 +439,11 @@ impl Schema for SchemaImpl {
             .collect())
     }
 
-    fn add_opening_table(&self, table: NameRef)  {
-        self.opening_tables.write().unwrap().insert(table.to_string());
+    fn add_opening_table(&self, table: NameRef) {
+        self.opening_tables
+            .write()
+            .unwrap()
+            .insert(table.to_string());
     }
 
     fn table_is_opening(&self, table: &str) -> bool {

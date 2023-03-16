@@ -34,12 +34,11 @@ use table_engine::table::TableRef;
 
 use crate::{
     grpc::storage_service::{
-        error::{self, ErrNoCause, ErrWithCause, Result},
+        error::{self, ErrNoCause, ErrWithCause, Error, Result},
         HandlerContext,
     },
     instance::InstanceRef,
 };
-use crate::grpc::storage_service::error::Error;
 
 #[derive(Debug)]
 pub struct WriteContext {
@@ -284,8 +283,8 @@ fn try_get_table<Q: QueryExecutor + 'static>(
             msg: format!("Schema not found, schema_name:{schema}"),
         })?;
 
-    if schema_ref.table_is_opening(table_name){
-       return Err(Error::ErrNoCause {
+    if schema_ref.table_is_opening(table_name) {
+        return Err(Error::ErrNoCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Table is opening, schema_name:{schema}, table_name:{table_name}"),
         });

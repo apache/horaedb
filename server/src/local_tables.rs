@@ -61,7 +61,7 @@ impl LocalTablesRecoverer {
                 .with_context(|| RecoverNoCause {
                     msg: format!("schema of table not found, table_info:{table_info:?}"),
                 })?;
-
+            schema.add_opening_table(&table_info.table_name);
             let open_request = OpenTableRequest::from(table_info.clone());
             schema
                 .open_table(open_request.clone(), opts.clone())
@@ -73,6 +73,7 @@ impl LocalTablesRecoverer {
                 .with_context(|| RecoverNoCause {
                     msg: format!("no table is opened, open_request:{open_request:?}"),
                 })?;
+            schema.remove_opening_table(&table_info.table_name);
         }
 
         Ok(())
