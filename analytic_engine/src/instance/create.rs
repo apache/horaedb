@@ -12,7 +12,10 @@ use tokio::sync::oneshot;
 
 use crate::{
     instance::{
-        engine::{CreateTableData, InvalidOptions, OperateByWriteWorker, Result, WriteManifest},
+        engine::{
+            CreateOpenFailedTable, CreateTableData, InvalidOptions, OperateByWriteWorker, Result,
+            WriteManifest,
+        },
         write_worker::{self, CreateTableCommand, WorkerLocal},
         Instance,
     },
@@ -30,6 +33,13 @@ impl Instance {
         request: CreateTableRequest,
     ) -> Result<TableDataRef> {
         info!("Instance create table, request:{:?}", request);
+
+        if space.is_open_failed_table(&request.table_name) {
+            return CreateOpenFailedTable {
+                table: request.table_name,
+            }
+            .fail();
+        }
 
         let mut table_opts =
             table_options::merge_table_options_for_create(&request.options, &self.table_opts)
