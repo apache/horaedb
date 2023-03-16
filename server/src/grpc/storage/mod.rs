@@ -1,6 +1,8 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 mod error;
+#[allow(dead_code)]
+mod header;
 
 use std::{
     sync::Arc,
@@ -36,8 +38,7 @@ pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
 
 #[async_trait]
 impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
-    type StreamSqlQueryStream =
-        BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
+    type StreamSqlQueryStream = BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
     async fn route(
         &self,
