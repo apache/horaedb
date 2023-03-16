@@ -19,11 +19,22 @@ pub mod error {
         ))]
         BuildSchema { msg: String, backtrace: Backtrace },
 
-        #[snafu(display("Failed to build influxql plan, msg:{}, err:{}", msg, source))]
-        BuildPlan { msg: String, source: GenericError },
+        #[snafu(display(
+            "Failed to build influxql plan with cause, msg:{}, err:{}",
+            msg,
+            source
+        ))]
+        BuildPlanWithCause { msg: String, source: GenericError },
 
-        #[snafu(display("Unimplemented influxql statement, statement:{}", stmt))]
-        Unimplemented { stmt: String },
+        #[snafu(display(
+            "Failed to build influxdb plan with no cause, msg:{}.\nBacktrace:{}",
+            msg,
+            backtrace
+        ))]
+        BuildPlanNoCause { msg: String, backtrace: Backtrace },
+
+        #[snafu(display("Unimplemented influxql statement, msg{}", msg))]
+        Unimplemented { msg: String },
     }
     define_result!(Error);
 }
