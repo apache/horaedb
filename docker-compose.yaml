@@ -16,7 +16,6 @@ services:
       - "5441:5441"
     volumes:
       - ./docker/ceresdb-cluster-0.toml:/etc/ceresdb/ceresdb.toml
-      - /tmp/ceresdb-0.log:/tmp/ceresdb.log
     depends_on:
       - ceresmeta
 
@@ -28,6 +27,5 @@ services:
       - "5442:5442"
     volumes:
       - ./docker/ceresdb-cluster-1.toml:/etc/ceresdb/ceresdb.toml
-      - /tmp/ceresdb-1.log:/tmp/ceresdb.log
     depends_on:
       - ceresmeta

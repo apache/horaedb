@@ -179,6 +179,10 @@ jobs:
           make integration-test
         env:
           RUST_BACKTRACE: "1"
+      - name: Redirect Logs
+        run: |
+          docker logs -t ceresdb0 > /tmp/ceresdb-0.log
+          docker logs -t ceresdb1 > /tmp/ceresdb-1.log
       - name: Upload Logs
         if: always()
         uses: actions/upload-artifact@v3
