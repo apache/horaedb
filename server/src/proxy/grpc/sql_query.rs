@@ -2,7 +2,7 @@
 
 //! Query handler
 
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
 use ceresdbproto::{
@@ -14,7 +14,7 @@ use ceresdbproto::{
 };
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use common_util::{error::BoxError, time::InstantExt};
-use futures::FutureExt;
+use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
 use log::{error, info, warn};
@@ -25,13 +25,17 @@ use sql::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
 };
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::proxy::{
-    error::{self, ErrNoCause, ErrWithCause, Result},
+    error::{self, ErrNoCause, ErrWithCause, Error, Result},
     forward::{ForwardRequest, ForwardResult},
     Context, Proxy,
 };
+
+const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
@@ -40,6 +44,23 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 header: Some(error::build_err_header(e)),
                 ..Default::default()
             },
+            Ok(v) => v,
+        }
+    }
+
+    pub async fn handle_stream_sql_query(
+        self: Arc<Self>,
+        ctx: Context,
+        req: SqlQueryRequest,
+    ) -> BoxStream<'static, SqlQueryResponse> {
+        match self.clone().handle_stream_query_internal(ctx, req).await {
+            Err(e) => stream::once(async {
+                SqlQueryResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            })
+            .boxed(),
             Ok(v) => v,
         }
     }
@@ -56,6 +77,48 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let output = self.fetch_query_output(ctx, &req).await?;
         convert_output(&output, self.resp_compress_min_length)
+    }
+
+    async fn handle_stream_query_internal(
+        self: Arc<Self>,
+        ctx: Context,
+        req: SqlQueryRequest,
+    ) -> Result<BoxStream<'static, SqlQueryResponse>> {
+        let req = match self.clone().maybe_forward_stream_query(req.clone()).await {
+            Some(resp) => return resp,
+            None => req,
+        };
+        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
+        let runtime = ctx.runtime.clone();
+        let resp_compress_min_length = self.resp_compress_min_length;
+        let output = self.as_ref().fetch_query_output(ctx, &req).await?;
+        runtime.spawn(async move {
+            match output {
+                Output::AffectedRows(rows) => {
+                    let resp =
+                        QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
+                    if tx.send(resp).await.is_err() {
+                        error!("Failed to send affected rows resp in stream query");
+                    }
+                }
+                Output::Records(batches) => {
+                    for batch in &batches {
+                        let resp = {
+                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
+                            writer.write(batch)?;
+                            writer.finish()
+                        }?;
+
+                        if tx.send(resp).await.is_err() {
+                            error!("Failed to send record batches resp in stream query");
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok::<(), Error>(())
+        });
+        Ok(ReceiverStream::new(rx).boxed())
     }
 
     async fn maybe_forward_query(&self, req: &SqlQueryRequest) -> Option<Result<SqlQueryResponse>> {
@@ -102,7 +165,69 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    pub async fn fetch_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
+    async fn maybe_forward_stream_query(
+        self: Arc<Self>,
+        req: SqlQueryRequest,
+    ) -> Option<Result<BoxStream<'static, SqlQueryResponse>>> {
+        if req.tables.len() != 1 {
+            warn!("Unable to forward query without exactly one table, req:{req:?}",);
+
+            return None;
+        }
+
+        let req_ctx = req.context.as_ref().unwrap();
+        let forward_req = ForwardRequest {
+            schema: req_ctx.database.clone(),
+            table: req.tables[0].clone(),
+            req: req.clone().into_request(),
+        };
+        let do_query = |mut client: StorageServiceClient<Channel>,
+                        request: tonic::Request<SqlQueryRequest>,
+                        _: &Endpoint| {
+            let query = async move {
+                client
+                    .stream_sql_query(request)
+                    .await
+                    .map(|resp| resp.into_inner().boxed())
+                    .box_err()
+                    .context(ErrWithCause {
+                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                        msg: "forwarded query failed",
+                    })
+                    .map(|stream| {
+                        stream
+                            .map(|item| {
+                                item.box_err()
+                                    .context(ErrWithCause {
+                                        code: StatusCode::INTERNAL_SERVER_ERROR,
+                                        msg: "fail to fetch stream query response",
+                                    })
+                                    .unwrap_or_else(|e| SqlQueryResponse {
+                                        header: Some(error::build_err_header(e)),
+                                        ..Default::default()
+                                    })
+                            })
+                            .boxed()
+                    })
+            }
+            .boxed();
+
+            Box::new(query) as _
+        };
+
+        match self.forwarder.forward(forward_req, do_query).await {
+            Ok(forward_res) => match forward_res {
+                ForwardResult::Forwarded(v) => Some(v),
+                ForwardResult::Original => None,
+            },
+            Err(e) => {
+                error!("Failed to forward req but the error is ignored, err:{e}");
+                None
+            }
+        }
+    }
+
+    async fn fetch_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);

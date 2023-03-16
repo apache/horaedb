@@ -83,9 +83,16 @@ impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
 
     async fn stream_sql_query(
         &self,
-        _request: tonic::Request<SqlQueryRequest>,
+        request: tonic::Request<SqlQueryRequest>,
     ) -> std::result::Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
-        todo!()
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let stream = Self::stream_query_internal(ctx, proxy, request).await;
+
+        Ok(tonic::Response::new(stream.map(Ok).boxed()))
     }
 }
 
@@ -95,7 +102,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         req: tonic::Request<RouteRequest>,
     ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
         let req = req.into_inner();
-        let resp = self.proxy.handle_route(Context::default(), req).await;
+        let ctx = Context {
+            runtime: self.runtimes.meta_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let resp = self.proxy.handle_route(ctx, req).await;
 
         Ok(tonic::Response::new(resp))
     }
@@ -106,6 +117,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.write_runtime.clone(),
+            timeout: self.timeout,
+        };
         let join_handle = self.runtimes.write_runtime.spawn(async move {
             if req.context.is_none() {
                 return WriteResponse {
@@ -117,7 +132,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 };
             }
 
-            proxy.handle_write(Context::default(), req).await
+            proxy.handle_write(ctx, req).await
         });
 
         let resp = match join_handle.await {
@@ -140,6 +155,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
                 return SqlQueryResponse {
@@ -151,7 +170,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 };
             }
 
-            proxy.handle_sql_query(Context::default(), req).await
+            proxy.handle_sql_query(ctx, req).await
         });
 
         let resp = match join_handle.await {
@@ -174,6 +193,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
     ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
         let req = req.into_inner();
         let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
         let join_handle = self.runtimes.read_runtime.spawn(async move {
             if req.context.is_none() {
                 return PrometheusQueryResponse {
@@ -185,7 +208,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 };
             }
 
-            proxy.handle_prom_query(Context::default(), req).await
+            proxy.handle_prom_query(ctx, req).await
         });
 
         let resp = match join_handle.await {
@@ -210,6 +233,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let mut resp = WriteResponse::default();
         let mut has_err = false;
         let mut stream = req.into_inner();
+        let ctx = Context {
+            runtime: self.runtimes.write_runtime.clone(),
+            timeout: self.timeout,
+        };
         while let Some(req) = stream.next().await {
             let write_req = match req {
                 Ok(v) => v,
@@ -224,7 +251,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 }
             };
 
-            let write_resp = self.proxy.handle_write(Context::default(), write_req).await;
+            let write_resp = self.proxy.handle_write(ctx.clone(), write_req).await;
 
             if let Some(header) = write_resp.header {
                 if header.code != StatusCode::OK.as_u16() as u32 {
@@ -245,5 +272,22 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         }
 
         Ok(tonic::Response::new(resp))
+    }
+
+    async fn stream_query_internal(
+        ctx: Context,
+        proxy: Arc<Proxy<Q>>,
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> BoxStream<'static, SqlQueryResponse> {
+        let begin_instant = Instant::now();
+        let query_req = req.into_inner();
+
+        let resp = proxy.handle_stream_sql_query(ctx, query_req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_stream_query
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
     }
 }
