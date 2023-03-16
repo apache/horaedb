@@ -21,6 +21,7 @@ use crate::{
 /// Influx schema used for build logical plan
 pub struct InfluxSchemaImpl {
     columns: Vec<InfluxColumnSchema>,
+    time_column_idx: usize,
 }
 
 impl InfluxSchemaImpl {
@@ -54,8 +55,17 @@ impl InfluxSchemaImpl {
             })
             .collect::<Result<Vec<_>>>()?;
 
+        // Schema is ensured to have timestamp key.
+        let time_column_idx = influx_columns
+            .iter()
+            .enumerate()
+            .find(|(_, column)| matches!(column.influx_type, InfluxColumnType::Timestamp))
+            .map(|(idx, _)| idx)
+            .unwrap();
+
         Ok(Self {
             columns: influx_columns,
+            time_column_idx,
         })
     }
 }
@@ -96,11 +106,7 @@ impl InfluxSchema for InfluxSchemaImpl {
 
     fn time(&self) -> &ArrowField {
         // Time column must exist, has checked it when building.
-        let time_column = self
-            .columns
-            .iter()
-            .find(|column| matches!(column.influx_type, InfluxColumnType::Timestamp))
-            .unwrap();
+        let time_column = &self.columns[self.time_column_idx];
 
         &time_column.arrow_field
     }
@@ -125,14 +131,17 @@ fn map_column_to_influx_column(
     is_timestamp_key: bool,
 ) -> Result<InfluxColumnType> {
     if is_timestamp_key {
-        map_column_to_influx_time_column(column)
-    } else if column.is_tag {
-        map_column_to_influx_tag_column(column)
-    } else {
-        map_column_to_influx_field_column(column)
+        return map_column_to_influx_time_column(column);
     }
+
+    if column.is_tag {
+        return map_column_to_influx_tag_column(column);
+    }
+
+    map_column_to_influx_field_column(column)
 }
 
+// TODO: don't restrict the time column name.
 fn map_column_to_influx_time_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
     if column.name == "time" && !column.is_nullable {
         Ok(InfluxColumnType::Timestamp)
@@ -144,8 +153,8 @@ fn map_column_to_influx_time_column(column: &ColumnSchema) -> Result<InfluxColum
     }
 }
 
+// TODO: support more tag types.
 fn map_column_to_influx_tag_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
-    // Tag column
     if matches!(column.data_type, DatumKind::String) && column.is_nullable {
         Ok(InfluxColumnType::Tag)
     } else {
@@ -156,6 +165,7 @@ fn map_column_to_influx_tag_column(column: &ColumnSchema) -> Result<InfluxColumn
     }
 }
 
+// TODO: support more field types.
 fn map_column_to_influx_field_column(column: &ColumnSchema) -> Result<InfluxColumnType> {
     if column.is_nullable {
         match column.data_type {

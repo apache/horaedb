@@ -9,9 +9,8 @@ use influxql_logical_planner::planner::InfluxQLToLogicalPlan;
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use snafu::ResultExt;
 
-use super::provider::InfluxSchemaProviderImpl;
 use crate::{
-    influxql::error::*,
+    influxql::{error::*, provider::InfluxSchemaProviderImpl},
     plan::{Plan, QueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
