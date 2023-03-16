@@ -65,6 +65,11 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
     pub async fn close(mut self) -> Result<FileMetaData> {
         let metadata = self.sync_writer.close()?;
         Self::flush(&self.shared_buffer, &mut self.async_writer).await?;
+        self.async_writer
+            .shutdown()
+            .await
+            .map_err(|e| ParquetError::External(Box::new(e)))?;
+
         Ok(metadata)
     }
 
