@@ -43,6 +43,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     }
 }
 
+#[derive(Clone)]
 pub struct Context {
     pub timeout: Option<Duration>,
     pub runtime: Arc<Runtime>,

@@ -102,16 +102,11 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         req: tonic::Request<RouteRequest>,
     ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
         let req = req.into_inner();
-        let resp = self
-            .proxy
-            .handle_route(
-                Context {
-                    runtime: self.runtimes.meta_runtime.clone(),
-                    timeout: self.timeout,
-                },
-                req,
-            )
-            .await;
+        let ctx = Context {
+            runtime: self.runtimes.meta_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let resp = self.proxy.handle_route(ctx, req).await;
 
         Ok(tonic::Response::new(resp))
     }
@@ -238,6 +233,10 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
         let mut resp = WriteResponse::default();
         let mut has_err = false;
         let mut stream = req.into_inner();
+        let ctx = Context {
+            runtime: self.runtimes.write_runtime.clone(),
+            timeout: self.timeout,
+        };
         while let Some(req) = stream.next().await {
             let write_req = match req {
                 Ok(v) => v,
@@ -252,16 +251,7 @@ impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
                 }
             };
 
-            let write_resp = self
-                .proxy
-                .handle_write(
-                    Context {
-                        runtime: self.runtimes.write_runtime.clone(),
-                        timeout: self.timeout,
-                    },
-                    write_req,
-                )
-                .await;
+            let write_resp = self.proxy.handle_write(ctx.clone(), write_req).await;
 
             if let Some(header) = write_resp.header {
                 if header.code != StatusCode::OK.as_u16() as u32 {

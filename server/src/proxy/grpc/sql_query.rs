@@ -192,7 +192,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded query failed",
+                        msg: "forwarded query failed",
                     })
                     .map(|stream| {
                         stream
@@ -200,7 +200,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                                 item.box_err()
                                     .context(ErrWithCause {
                                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                                        msg: "Fail to fetch stream query response",
+                                        msg: "fail to fetch stream query response",
                                     })
                                     .unwrap_or_else(|e| SqlQueryResponse {
                                         header: Some(error::build_err_header(e)),
