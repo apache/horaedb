@@ -27,13 +27,13 @@ pub mod error {
         BuildPlanWithCause { msg: String, source: GenericError },
 
         #[snafu(display(
-            "Failed to build influxdb plan with no cause, msg:{}.\nBacktrace:{}",
+            "Failed to build influxql plan with no cause, msg:{}.\nBacktrace:{}",
             msg,
             backtrace
         ))]
         BuildPlanNoCause { msg: String, backtrace: Backtrace },
 
-        #[snafu(display("Unimplemented influxql statement, msg{}", msg))]
+        #[snafu(display("Unimplemented influxql statement, msg:{}", msg))]
         Unimplemented { msg: String },
     }
     define_result!(Error);
