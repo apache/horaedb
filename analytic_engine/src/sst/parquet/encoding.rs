@@ -9,6 +9,7 @@ use arrow::{
     record_batch::RecordBatch as ArrowRecordBatch,
     util::bit_util,
 };
+use async_trait::async_trait;
 use ceresdbproto::sst as sst_pb;
 use common_types::{
     bytes::{BytesMut, SafeBufMut},
@@ -215,14 +216,15 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
 /// RecordEncoder is used for encoding ArrowBatch.
 ///
 /// TODO: allow pre-allocate buffer
+#[async_trait]
 trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
+    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
 
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
     /// indicate this encoder is already consumed
-    fn close(&mut self) -> Result<Vec<u8>>;
+    async fn close(&mut self) -> Result<()>;
 }
 
 struct ColumnarRecordEncoder {
@@ -257,8 +259,9 @@ impl ColumnarRecordEncoder {
     }
 }
 
+#[async_trait]
 impl RecordEncoder for ColumnarRecordEncoder {
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
         let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
@@ -275,7 +278,7 @@ impl RecordEncoder for ColumnarRecordEncoder {
         Ok(record_batch.num_rows())
     }
 
-    fn close(&mut self) -> Result<Vec<u8>> {
+    async fn close(&mut self) -> Result<Vec<u8>> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
