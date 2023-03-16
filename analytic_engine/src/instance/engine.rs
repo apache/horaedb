@@ -214,7 +214,7 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "{} open failed and can not be created again.\nBacktrace:\n{}",
+        "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
         table,
         backtrace,
     ))]
