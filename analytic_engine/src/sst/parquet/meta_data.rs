@@ -198,8 +198,14 @@ pub struct ParquetFilter {
 }
 
 impl ParquetFilter {
-    pub fn new(row_group_filters: Vec<RowGroupFilter>) -> Self {
-        Self { row_group_filters }
+    pub fn with_row_group_num(num: usize) -> Self {
+        Self {
+            row_group_filters: Vec::with_capacity(num),
+        }
+    }
+
+    pub fn push_row_group_filter(&mut self, row_group_filter: RowGroupFilter) {
+        self.row_group_filters.push(row_group_filter);
     }
 
     pub fn len(&self) -> usize {

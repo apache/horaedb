@@ -58,7 +58,7 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
         Self::flush(&self.shared_buffer, &mut self.async_writer).await
     }
 
-    pub async fn append_key_value_metadata(&mut self, kv_metadata: KeyValue) {
+    pub fn append_key_value_metadata(&mut self, kv_metadata: KeyValue) {
         self.sync_writer.append_key_value_metadata(kv_metadata);
     }
 

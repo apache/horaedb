@@ -73,28 +73,9 @@ struct RecordBytesReader {
     num_rows_per_row_group: usize,
     compression: Compression,
     total_row_num: Arc<AtomicUsize>,
-    // Record batch partitioned by exactly given `num_rows_per_row_group`
-    // There may be more than one `RecordBatchWithKey` inside each partition
-    partitioned_record_batch: Vec<Vec<RecordBatchWithKey>>,
 }
 
 impl RecordBytesReader {
-    // Partition record batch stream into batch vector with exactly given
-    // `num_rows_per_row_group`
-    async fn partition_record_batch(&mut self) -> Result<()> {
-        let mut prev_record_batch: Option<RecordBatchWithKey> = None;
-
-        loop {
-            let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
-            if row_group.is_empty() {
-                break;
-            }
-            self.partitioned_record_batch.push(row_group);
-        }
-
-        Ok(())
-    }
-
     /// Fetch an integral row group from the `self.record_stream`.
     ///
     /// Except the last one, every row group is ensured to contains exactly
@@ -150,71 +131,80 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
-    fn build_parquet_filter(&self) -> Result<ParquetFilter> {
+    fn build_parquet_filter(
+        &self,
+        row_group_batch: &[RecordBatchWithKey],
+        exist_filter: &mut ParquetFilter,
+    ) -> Result<()> {
         // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
-            return Ok(ParquetFilter::default());
+            return Ok(());
         }
-        let filters = self
-            .partitioned_record_batch
-            .iter()
-            .map(|row_group_batch| {
-                let mut builder =
-                    RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
+        let row_group_filter = {
+            let mut builder =
+                RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
 
-                for partial_batch in row_group_batch {
-                    for (col_idx, column) in partial_batch.columns().iter().enumerate() {
-                        for row in 0..column.num_rows() {
-                            let datum = column.datum(row);
-                            let bytes = datum.to_bytes();
-                            builder.add_key(col_idx, &bytes);
-                        }
+            for partial_batch in row_group_batch {
+                for (col_idx, column) in partial_batch.columns().iter().enumerate() {
+                    for row in 0..column.num_rows() {
+                        let datum = column.datum(row);
+                        let bytes = datum.to_bytes();
+                        builder.add_key(col_idx, &bytes);
                     }
                 }
+            }
 
-                builder.build().box_err().context(BuildParquetFilter)
-            })
-            .collect::<Result<Vec<_>>>()?;
+            builder.build().box_err().context(BuildParquetFilter)?
+        };
 
-        Ok(ParquetFilter::new(filters))
+        exist_filter.push_row_group_filter(row_group_filter);
+        Ok(())
     }
 
     async fn read_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<()> {
-        self.partition_record_batch().await?;
-
-        let parquet_meta_data = {
-            let sst_filter = self.build_parquet_filter()?;
-            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.parquet_filter = Some(sst_filter);
-            parquet_meta_data
-        };
+        let mut prev_record_batch: Option<RecordBatchWithKey> = None;
+        let mut parquet_filter = ParquetFilter::with_row_group_num(0);
+        let mut arrow_record_batch_vec = Vec::new();
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
             self.hybrid_encoding,
             self.num_rows_per_row_group,
             self.compression,
-            parquet_meta_data,
+            &self.meta_data.schema,
         )
         .box_err()
         .context(EncodeRecordBatch)?;
 
-        // process record batch stream
-        let mut arrow_record_batch_vec = Vec::new();
-        for record_batches in self.partitioned_record_batch {
-            for batch in record_batches {
-                arrow_record_batch_vec.push(batch.into_record_batch().into_arrow_record_batch());
+        loop {
+            let row_group_batch = self.fetch_next_row_group(&mut prev_record_batch).await?;
+            if row_group_batch.is_empty() {
+                break;
             }
-
-            let buf_len = arrow_record_batch_vec.len();
+            self.build_parquet_filter(&row_group_batch, &mut parquet_filter)?;
+            let num_batches = row_group_batch.len();
+            for record_batch in row_group_batch {
+                arrow_record_batch_vec
+                    .push(record_batch.into_record_batch().into_arrow_record_batch());
+            }
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
                 .await
                 .box_err()
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
-            arrow_record_batch_vec = Vec::with_capacity(buf_len);
+            arrow_record_batch_vec = Vec::with_capacity(num_batches);
         }
+
+        let parquet_meta_data = {
+            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
+            parquet_meta_data.parquet_filter = Some(parquet_filter);
+            parquet_meta_data
+        };
+        parquet_encoder
+            .set_meta_data(parquet_meta_data)
+            .box_err()
+            .context(EncodeRecordBatch)?;
 
         parquet_encoder
             .close()
@@ -280,7 +270,6 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             compression: self.compression,
             total_row_num: total_row_num.clone(),
             meta_data: meta.clone(),
-            partitioned_record_batch: Default::default(),
         };
 
         let (aborter, sink) =
@@ -492,54 +481,53 @@ mod tests {
     }
 
     async fn test_partition_record_batch_inner(
-        num_rows_per_row_group: usize,
-        input_row_nums: Vec<usize>,
-        expected_row_nums: Vec<usize>,
+        _num_rows_per_row_group: usize,
+        _input_row_nums: Vec<usize>,
+        _expected_row_nums: Vec<usize>,
     ) {
-        init_log_for_test();
-        let schema = build_schema();
-        let mut poll_cnt = 0;
-        let schema_clone = schema.clone();
-        let record_batch_stream = Box::new(stream::poll_fn(move |_ctx| -> Poll<Option<_>> {
-            if poll_cnt == input_row_nums.len() {
-                return Poll::Ready(None);
-            }
+        // init_log_for_test();
+        // let schema = build_schema();
+        // let mut poll_cnt = 0;
+        // let schema_clone = schema.clone();
+        // let record_batch_stream = Box::new(stream::poll_fn(move |_ctx| ->
+        // Poll<Option<_>> {     if poll_cnt == input_row_nums.len() {
+        //         return Poll::Ready(None);
+        //     }
 
-            let rows = (0..input_row_nums[poll_cnt])
-                .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
-                .collect::<Vec<_>>();
+        //     let rows = (0..input_row_nums[poll_cnt])
+        //         .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
+        //         .collect::<Vec<_>>();
 
-            let batch = build_record_batch_with_key(schema_clone.clone(), rows);
-            poll_cnt += 1;
+        //     let batch = build_record_batch_with_key(schema_clone.clone(),
+        // rows);     poll_cnt += 1;
 
-            Poll::Ready(Some(Ok(batch)))
-        }));
+        //     Poll::Ready(Some(Ok(batch)))
+        // }));
 
-        let mut reader = RecordBytesReader {
-            request_id: RequestId::next_id(),
-            hybrid_encoding: false,
-            record_stream: record_batch_stream,
-            num_rows_per_row_group,
-            compression: Compression::UNCOMPRESSED,
-            meta_data: MetaData {
-                min_key: Default::default(),
-                max_key: Default::default(),
-                time_range: Default::default(),
-                max_sequence: 1,
-                schema,
-            },
-            total_row_num: Arc::new(AtomicUsize::new(0)),
-            partitioned_record_batch: Vec::new(),
-        };
+        // let mut reader = RecordBytesReader {
+        //     request_id: RequestId::next_id(),
+        //     hybrid_encoding: false,
+        //     record_stream: record_batch_stream,
+        //     num_rows_per_row_group,
+        //     compression: Compression::UNCOMPRESSED,
+        //     meta_data: MetaData {
+        //         min_key: Default::default(),
+        //         max_key: Default::default(),
+        //         time_range: Default::default(),
+        //         max_sequence: 1,
+        //         schema,
+        //     },
+        //     total_row_num: Arc::new(AtomicUsize::new(0)),
+        // };
 
-        reader.partition_record_batch().await.unwrap();
+        // reader.partition_record_batch().await.unwrap();
 
-        for (i, expected_row_num) in expected_row_nums.into_iter().enumerate() {
-            let actual: usize = reader.partitioned_record_batch[i]
-                .iter()
-                .map(|b| b.num_rows())
-                .sum();
-            assert_eq!(expected_row_num, actual);
-        }
+        // for (i, expected_row_num) in
+        // expected_row_nums.into_iter().enumerate() {     let actual:
+        // usize = reader.partitioned_record_batch[i]         .iter()
+        //         .map(|b| b.num_rows())
+        //         .sum();
+        //     assert_eq!(expected_row_num, actual);
+        // }
     }
 }

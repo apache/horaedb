@@ -1,6 +1,6 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, mem, sync::Arc};
 
 use arrow::{
     array::{make_array, Array, ArrayData, ArrayRef},
@@ -14,7 +14,7 @@ use ceresdbproto::sst as sst_pb;
 use common_types::{
     bytes::{BytesMut, SafeBufMut},
     datum::DatumKind,
-    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field},
+    schema::{ArrowSchema, ArrowSchemaRef, DataType, Field, Schema},
 };
 use common_util::{
     define_result,
@@ -222,6 +222,8 @@ trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
     async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
 
+    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
+
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
     /// indicate this encoder is already consumed
@@ -239,12 +241,11 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
         sink: W,
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: ParquetMetaData,
+        schema: &Schema,
     ) -> Result<Self> {
-        let arrow_schema = meta_data.schema.to_arrow_schema_ref();
+        let arrow_schema = schema.to_arrow_schema_ref();
 
         let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
@@ -280,6 +281,16 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         Ok(record_batch.num_rows())
     }
 
+    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+        let key_value = encode_sst_meta_data(meta_data)?;
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .append_key_value_metadata(key_value);
+
+        Ok(())
+    }
+
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
@@ -302,6 +313,7 @@ struct HybridRecordEncoder<W> {
     non_collapsible_col_types: Vec<IndexedType>,
     // columns that can be collapsed into list
     collapsible_col_types: Vec<IndexedType>,
+    collapsible_col_idx: Vec<u32>,
 }
 
 impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
@@ -309,29 +321,30 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
         sink: W,
         num_rows_per_row_group: usize,
         compression: Compression,
-        mut meta_data: ParquetMetaData,
+        schema: &Schema,
     ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
-        let tsid_idx = meta_data.schema.index_of_tsid().context(TsidRequired)?;
+        let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
         let tsid_type = IndexedType {
             idx: tsid_idx,
-            data_type: meta_data.schema.column(tsid_idx).data_type,
+            data_type: schema.column(tsid_idx).data_type,
         };
 
         let mut non_collapsible_col_types = Vec::new();
         let mut collapsible_col_types = Vec::new();
-        for (idx, col) in meta_data.schema.columns().iter().enumerate() {
+        let mut collapsible_col_idx = Vec::new();
+        for (idx, col) in schema.columns().iter().enumerate() {
             if idx == tsid_idx {
                 continue;
             }
 
-            if meta_data.schema.is_collapsible_column(idx) {
+            if schema.is_collapsible_column(idx) {
                 collapsible_col_types.push(IndexedType {
                     idx,
-                    data_type: meta_data.schema.column(idx).data_type,
+                    data_type: schema.column(idx).data_type,
                 });
-                meta_data.collapsible_cols_idx.push(idx as u32);
+                collapsible_col_idx.push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
@@ -347,10 +360,9 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             }
         }
 
-        let arrow_schema = hybrid::build_hybrid_arrow_schema(&meta_data.schema);
+        let arrow_schema = hybrid::build_hybrid_arrow_schema(schema);
 
         let write_props = WriterProperties::builder()
-            .set_key_value_metadata(Some(vec![encode_sst_meta_data(meta_data)?]))
             .set_max_row_group_size(num_rows_per_row_group)
             .set_compression(compression)
             .build();
@@ -364,6 +376,7 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             tsid_type,
             non_collapsible_col_types,
             collapsible_col_types,
+            collapsible_col_idx,
         })
     }
 }
@@ -394,6 +407,17 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
         Ok(record_batch.num_rows())
     }
 
+    fn set_meta_data(&mut self, mut meta_data: ParquetMetaData) -> Result<()> {
+        meta_data.collapsible_cols_idx = mem::take(&mut self.collapsible_col_idx);
+        let key_value = encode_sst_meta_data(meta_data)?;
+        self.arrow_writer
+            .as_mut()
+            .unwrap()
+            .append_key_value_metadata(key_value);
+
+        Ok(())
+    }
+
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
@@ -418,21 +442,21 @@ impl ParquetEncoder {
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
         compression: Compression,
-        meta_data: ParquetMetaData,
+        schema: &Schema,
     ) -> Result<Self> {
         let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
             Box::new(HybridRecordEncoder::try_new(
                 sink,
                 num_rows_per_row_group,
                 compression,
-                meta_data,
+                schema,
             )?)
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
                 sink,
                 num_rows_per_row_group,
                 compression,
-                meta_data,
+                schema,
             )?)
         };
 
@@ -450,6 +474,10 @@ impl ParquetEncoder {
         }
 
         self.record_encoder.encode(arrow_record_batch_vec).await
+    }
+
+    pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+        self.record_encoder.set_meta_data(meta_data)
     }
 
     pub async fn close(mut self) -> Result<()> {
@@ -933,7 +961,7 @@ mod tests {
         let copied_buffer = CopiedBuffer::new(Vec::new());
         let copied_encoded_buffer = copied_buffer.copied_buffer();
         let mut encoder =
-            HybridRecordEncoder::try_new(copied_buffer, 100, Compression::ZSTD, meta_data.clone())
+            HybridRecordEncoder::try_new(copied_buffer, 100, Compression::ZSTD, &meta_data.schema)
                 .unwrap();
 
         let columns = vec![
