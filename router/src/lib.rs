@@ -4,11 +4,11 @@ pub mod cluster_based;
 pub mod endpoint;
 pub(crate) mod hash;
 pub mod rule_based;
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
+use serde::Deserialize;
 pub use cluster_based::ClusterBasedRouter;
 use common_util::define_result;
 pub use rule_based::{RuleBasedRouter, RuleList};
@@ -62,4 +62,30 @@ pub type RouterRef = Arc<dyn Router + Sync + Send>;
 #[async_trait]
 pub trait Router {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct RouteCacheConfig {
+    /// Time to live (TTL) in second
+    ttl: u64,
+    /// Time to idle (TTI) in second
+    tti: u64,
+    /// how many route records can store in cache
+    capacity: u64,
+}
+
+impl RouteCacheConfig {
+     pub fn new() -> Self {
+        Self {
+            ttl: 5 * 60,
+            tti: 2 * 60,
+            capacity: 10_000,
+        }
+    }
+}
+
+impl Default for RouteCacheConfig {
+    fn default() -> Self {
+        Self::new()
+    }
 }

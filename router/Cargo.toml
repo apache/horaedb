@@ -21,3 +21,5 @@ meta_client = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
 twox-hash = "1.6"
+moka = { version = "0.10", features = ["future"] }
+tokio = { workspace = true }
