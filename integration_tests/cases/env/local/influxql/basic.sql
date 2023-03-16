@@ -4,7 +4,7 @@ CREATE TABLE `h2o_feet` (
     `time` timestamp NOT NULL,
     `level_description` string TAG,
     `location` string TAG,
-    `water_level` double NOT NULL,
+    `water_level` double,
     timestamp KEY (time)) ENGINE = Analytic WITH (
     enable_ttl = 'false'
 );
