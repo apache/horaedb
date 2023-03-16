@@ -189,19 +189,18 @@ impl Instance {
             ..Default::default()
         };
 
-        if let Err(e) = self
-            .recover_table_from_wal(
-                worker_local,
-                table_data.clone(),
-                replay_batch_size,
-                &read_ctx,
-            )
-            .await
-        {
-            error!("Recovery table failed, table_data:{table_data:?}");
+        self.recover_table_from_wal(
+            worker_local,
+            table_data.clone(),
+            replay_batch_size,
+            &read_ctx,
+        )
+        .await
+        .map_err(|e| {
+            error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
             space.insert_open_failed_table(table_data.name.to_string());
-            return Err(e);
-        }
+            e
+        })?;
 
         space.insert_table(table_data.clone());
         Ok(Some(table_data))
