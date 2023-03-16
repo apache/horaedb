@@ -1,3 +1,5 @@
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,

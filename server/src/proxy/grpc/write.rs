@@ -34,7 +34,7 @@ use crate::{
     instance::InstanceRef,
     proxy::{
         error,
-        error::{ErrNoCause, ErrWithCause, Result},
+        error::{build_ok_header, ErrNoCause, ErrWithCause, Result},
         Context, Proxy,
     },
 };
@@ -139,6 +139,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let resp = WriteResponse {
             success: success as u32,
+            header: Some(build_ok_header()),
             ..Default::default()
         };
 
