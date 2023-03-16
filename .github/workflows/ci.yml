@@ -180,6 +180,7 @@ jobs:
         env:
           RUST_BACKTRACE: "1"
       - name: Redirect Logs
+        if: always()
         run: |
           docker logs -t ceresdb0 > /tmp/ceresdb-0.log
           docker logs -t ceresdb1 > /tmp/ceresdb-1.log
