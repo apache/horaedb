@@ -12,25 +12,25 @@ use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::{http::DEFAULT_MAX_BODY_SIZE, proxy::forward};
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
     pub rules: RuleList,
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
     pub endpoint: Endpoint,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct SchemaShardView {
     pub schema: String,
@@ -59,7 +59,7 @@ impl From<SchemaShardView> for SchemaConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct StaticTopologyConfig {
     pub schema_shards: Vec<SchemaShardView>,
@@ -89,7 +89,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// The address to listen.
@@ -106,6 +106,10 @@ pub struct ServerConfig {
 
     /// Config for forwarding
     pub forward: forward::Config,
+
+    /// Whether to create table automatically when data is first written, only
+    /// used in gRPC
+    pub auto_create_table: bool,
 }
 
 impl Default for ServerConfig {
@@ -120,6 +124,7 @@ impl Default for ServerConfig {
             grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
+            auto_create_table: true,
         }
     }
 }

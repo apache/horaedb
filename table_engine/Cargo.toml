@@ -23,13 +23,14 @@ datafusion-expr = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 futures = { workspace = true }
-itertools = "0.10.5"
+itertools = { workspace = true }
 log = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
 snafu = { workspace = true }
 tokio = { workspace = true }
+trace_metric = { workspace = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }

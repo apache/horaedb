@@ -22,13 +22,11 @@ use table_engine::{
     },
 };
 use tokio::sync::oneshot;
+use trace_metric::MetricsCollector;
 
 use self::data::TableDataRef;
 use crate::{
-    instance::{
-        flush_compaction::{TableFlushOptions, TableFlushPolicy},
-        Instance, InstanceRef,
-    },
+    instance::{flush_compaction::TableFlushOptions, Instance, InstanceRef},
     space::{SpaceAndTable, SpaceId},
 };
 
@@ -38,6 +36,8 @@ pub mod partition;
 pub mod sst_util;
 pub mod version;
 pub mod version_edit;
+
+const GET_METRICS_COLLECTOR_NAME: &str = "get";
 
 /// Table trait implementation
 pub struct TableImpl {
@@ -182,6 +182,7 @@ impl Table for TableImpl {
             projected_schema: request.projected_schema,
             predicate,
             order: ReadOrder::None,
+            metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
         };
         let mut batch_stream = self
             .read(read_request)
@@ -263,7 +264,6 @@ impl Table for TableImpl {
             } else {
                 None
             },
-            policy: TableFlushPolicy::Dump,
         };
 
         Instance::flush_table(self.space_table.table_data().clone(), flush_opts)

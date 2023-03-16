@@ -19,19 +19,23 @@ use datafusion::{
     execution::context::{SessionState, TaskContext},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
-        DisplayFormatType, ExecutionPlan, Partitioning,
+        metrics::{Count, MetricValue, MetricsSet},
+        DisplayFormatType, ExecutionPlan, Metric, Partitioning,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
 use datafusion_expr::{Expr, TableSource, TableType};
 use df_operator::visitor;
 use log::debug;
+use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
     predicate::{PredicateBuilder, PredicateRef},
     stream::{SendableRecordBatchStream, ToDfStream},
     table::{self, ReadOptions, ReadOrder, ReadRequest, TableRef},
 };
+
+const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
 #[derive(Clone, Debug)]
 pub struct CeresdbOptions {
@@ -169,6 +173,7 @@ impl TableProviderAdapter {
             predicate,
             deadline,
             stream_state: Mutex::new(ScanStreamState::default()),
+            metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
         scan_table.maybe_init_stream(state).await?;
 
@@ -295,6 +300,7 @@ struct ScanTable {
     read_parallelism: usize,
     predicate: PredicateRef,
     deadline: Option<Instant>,
+    metrics_collector: MetricsCollector,
 
     stream_state: Mutex<ScanStreamState>,
 }
@@ -311,6 +317,7 @@ impl ScanTable {
             projected_schema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),
             order: self.read_order,
+            metrics_collector: self.metrics_collector.clone(),
         };
 
         let read_res = self.table.partitioned_read(req).await;
@@ -385,6 +392,22 @@ impl ExecutionPlan for ScanTable {
             self.read_parallelism,
             self.read_order,
         )
+    }
+
+    fn metrics(&self) -> Option<MetricsSet> {
+        let mut format_visitor = FormatCollectorVisitor::default();
+        self.metrics_collector.visit(&mut format_visitor);
+        let metrics_desc = format_visitor.into_string();
+
+        let metric_value = MetricValue::Count {
+            name: format!("\n{metrics_desc}").into(),
+            count: Count::new(),
+        };
+        let metric = Metric::new(metric_value, None);
+        let mut metric_set = MetricsSet::new();
+        metric_set.push(Arc::new(metric));
+
+        Some(metric_set)
     }
 
     fn statistics(&self) -> Statistics {

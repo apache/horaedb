@@ -31,7 +31,7 @@ pub enum BlockRule {
     QueryWithoutPredicate,
 }
 
-#[derive(Default, Clone, Deserialize, Debug)]
+#[derive(Default, Clone, Deserialize, Debug, Serialize)]
 #[serde(default)]
 pub struct LimiterConfig {
     pub write_block_list: Vec<String>,

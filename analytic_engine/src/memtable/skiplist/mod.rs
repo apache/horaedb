@@ -204,6 +204,7 @@ mod tests {
                     projected_schema: projected_schema.clone(),
                     need_dedup: true,
                     reverse: false,
+                    metrics_collector: None,
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -223,6 +224,7 @@ mod tests {
                     projected_schema: projected_schema.clone(),
                     need_dedup: true,
                     reverse: false,
+                    metrics_collector: None,
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -241,6 +243,7 @@ mod tests {
                     projected_schema,
                     need_dedup: true,
                     reverse: false,
+                    metrics_collector: None,
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -272,6 +275,7 @@ mod tests {
                 projected_schema,
                 need_dedup: true,
                 reverse: false,
+                metrics_collector: None,
             },
             vec![
                 build_row_for_two_column(b"a", 1),

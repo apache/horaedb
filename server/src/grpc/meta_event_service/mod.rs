@@ -4,6 +4,7 @@
 
 use std::{sync::Arc, time::Instant};
 
+use analytic_engine::setup::OpenedWals;
 use async_trait::async_trait;
 use catalog::{
     manager::ManagerRef,
@@ -36,21 +37,56 @@ use table_engine::{
 };
 use tonic::Response;
 
+use self::shard_operation::WalCloserAdapter;
 use crate::{
     grpc::{
-        meta_event_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        meta_event_service::{
+            error::{ErrNoCause, ErrWithCause, Error, Result, StatusCode},
+            shard_operation::WalRegionCloserRef,
+        },
         metrics::META_EVENT_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
     },
     instance::InstanceRef,
 };
 
 pub(crate) mod error;
+mod shard_operation;
 
-#[derive(Clone)]
-pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+/// Builder for [MetaServiceImpl].
+pub struct Builder<Q> {
     pub cluster: ClusterRef,
     pub instance: InstanceRef<Q>,
     pub runtime: Arc<Runtime>,
+    pub opened_wals: OpenedWals,
+}
+
+impl<Q: QueryExecutor + 'static> Builder<Q> {
+    pub fn build(self) -> MetaServiceImpl<Q> {
+        let Self {
+            cluster,
+            instance,
+            runtime,
+            opened_wals,
+        } = self;
+
+        MetaServiceImpl {
+            cluster,
+            instance,
+            runtime,
+            wal_region_closer: Arc::new(WalCloserAdapter {
+                data_wal: opened_wals.data_wal,
+                manifest_wal: opened_wals.manifest_wal,
+            }),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct MetaServiceImpl<Q: QueryExecutor + 'static> {
+    cluster: ClusterRef,
+    instance: InstanceRef<Q>,
+    runtime: Arc<Runtime>,
+    wal_region_closer: WalRegionCloserRef,
 }
 
 macro_rules! handle_request {
@@ -136,6 +172,7 @@ impl<Q: QueryExecutor + 'static> MetaServiceImpl<Q> {
             cluster: self.cluster.clone(),
             catalog_manager: self.instance.catalog_manager.clone(),
             table_engine: self.instance.table_engine.clone(),
+            wal_region_closer: self.wal_region_closer.clone(),
         }
     }
 }
@@ -145,6 +182,7 @@ struct HandlerContext {
     cluster: ClusterRef,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
+    wal_region_closer: WalRegionCloserRef,
 }
 
 impl HandlerContext {
@@ -167,7 +205,12 @@ impl HandlerContext {
     }
 }
 
+// TODO: maybe we should encapsulate the logic of handling meta event into a
+// trait, so that we don't need to expose the logic to the meta event service
+// implementation.
+
 async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Result<()> {
+    let instant = Instant::now();
     let tables_of_shard =
         ctx.cluster
             .open_shard(&request)
@@ -194,6 +237,10 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
         table_engine: ctx.table_engine,
     };
 
+    let mut success = 0;
+    let mut no_table_count = 0;
+    let mut open_err_count = 0;
+
     for table in tables_of_shard.tables {
         let schema = find_schema(default_catalog.clone(), &table.schema_name)?;
 
@@ -207,21 +254,43 @@ async fn handle_open_shard(ctx: HandlerContext, request: OpenShardRequest) -> Re
             shard_id: shard_info.id,
             cluster_version: topology.cluster_topology_version,
         };
-        schema
-            .open_table(open_request.clone(), opts.clone())
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::Internal,
-                msg: format!("fail to open table, open_request:{open_request:?}"),
-            })?
-            .with_context(|| ErrNoCause {
-                code: StatusCode::Internal,
-                msg: format!("no table is opened, open_request:{open_request:?}"),
-            })?;
+        let result = schema.open_table(open_request.clone(), opts.clone()).await;
+
+        match result {
+            Ok(Some(_)) => {
+                success += 1;
+            }
+            Ok(None) => {
+                no_table_count += 1;
+                error!("no table is opened, open_request:{open_request:?}");
+            }
+            Err(e) => {
+                open_err_count += 1;
+                error!("fail to open table, open_request:{open_request:?}, err:{e}");
+            }
+        };
     }
 
-    Ok(())
+    info!(
+        "Open shard finish, shard id:{}, cost:{}ms, successful count:{}, no table is opened count:{}, open error count:{}",
+        shard_info.id,
+        instant.saturating_elapsed().as_millis(),
+        success,
+        no_table_count,
+        open_err_count
+    );
+
+    if no_table_count == 0 && open_err_count == 0 {
+        Ok(())
+    } else {
+        Err(Error::ErrNoCause {
+            code: StatusCode::Internal,
+            msg: format!(
+                "Failed to open shard:{}, some tables open failed, no table is opened count:{}, open error count:{}",
+                shard_info.id, no_table_count, open_err_count
+            ),
+        })
+    }
 }
 
 async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> Result<()> {
@@ -261,7 +330,14 @@ async fn handle_close_shard(ctx: HandlerContext, request: CloseShardRequest) -> 
             })?;
     }
 
-    Ok(())
+    // try to close wal region
+    ctx.wal_region_closer
+        .close_region(request.shard_id)
+        .await
+        .with_context(|| ErrWithCause {
+            code: StatusCode::Internal,
+            msg: format!("fail to close wal region, shard_id:{}", request.shard_id),
+        })
 }
 
 async fn handle_create_table_on_shard(

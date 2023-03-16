@@ -13,8 +13,8 @@ use snafu::ResultExt;
 use crate::{
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest, ScanContext,
-        ScanRequest, WalLocation, WalManager, WriteContext,
+        error::*, AsyncLogIterator, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId,
+        ScanContext, ScanRequest, WalLocation, WalManager, WriteContext,
     },
     message_queue_impl::{
         config::Config,
@@ -57,6 +57,14 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
             .await
             .box_err()
             .context(Delete)
+    }
+
+    async fn close_region(&self, region_id: RegionId) -> Result<()> {
+        self.0
+            .close_region(region_id)
+            .await
+            .box_err()
+            .context(Close)
     }
 
     async fn close_gracefully(&self) -> Result<()> {

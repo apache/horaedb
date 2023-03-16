@@ -14,6 +14,14 @@ body:
     validations:
       required: true
   - type: textarea
+    id: server-version
+    attributes:
+      label: Server version
+      description: Which CeresDB server version are you using when this issue arises.
+      placeholder: You can get version with `ceresdb-server --version` and paste the output here.
+    validations:
+      required: true
+  - type: textarea
     id: reproducer
     attributes:
       label: Steps to reproduce

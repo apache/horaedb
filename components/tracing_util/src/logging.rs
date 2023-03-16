@@ -22,7 +22,7 @@ use std::{
 
 use fmt::format::FmtSpan;
 use lazy_static::lazy_static;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::Subscriber;
 use tracing_appender::{
     non_blocking::WorkerGuard,
@@ -80,7 +80,7 @@ fn init_tracing_stdout() {
         .expect("error setting global tracing subscriber");
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 /// The configurations for tracing.
 pub struct Config {

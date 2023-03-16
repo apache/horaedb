@@ -3,13 +3,13 @@
 // Config for ceresdb server.
 
 use cluster::config::ClusterConfig;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use server::{
     config::{ServerConfig, StaticRouteConfig},
     limiter::LimiterConfig,
 };
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
     pub addr: String,
@@ -29,7 +29,7 @@ impl Default for NodeInfo {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// The information of the host node.
@@ -67,14 +67,14 @@ pub struct Config {
 ///
 /// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
 /// instance(s) under the control of CeresMeta.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RuntimeConfig {
     // Runtime for reading data

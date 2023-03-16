@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use analytic_engine::setup::OpenedWals;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use df_operator::registry::FunctionRegistryRef;
@@ -55,6 +56,9 @@ pub enum Error {
 
     #[snafu(display("Missing function registry.\nBacktrace:\n{}", backtrace))]
     MissingFunctionRegistry { backtrace: Backtrace },
+
+    #[snafu(display("Missing wals.\nBacktrace:\n{}", backtrace))]
+    MissingWals { backtrace: Backtrace },
 
     #[snafu(display("Missing limiter.\nBacktrace:\n{}", backtrace))]
     MissingLimiter { backtrace: Backtrace },
@@ -163,8 +167,9 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
 
 #[must_use]
 pub struct Builder<Q> {
-    config: ServerConfig,
+    server_config: ServerConfig,
     node_addr: String,
+    config_content: Option<String>,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
     catalog_manager: Option<ManagerRef>,
@@ -177,13 +182,15 @@ pub struct Builder<Q> {
     router: Option<RouterRef>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
+    opened_wals: Option<OpenedWals>,
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
     pub fn new(config: ServerConfig) -> Self {
         Self {
-            config,
+            server_config: config,
             node_addr: "".to_string(),
+            config_content: None,
             engine_runtimes: None,
             log_runtime: None,
             catalog_manager: None,
@@ -196,11 +203,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             router: None,
             schema_config_provider: None,
             local_tables_recoverer: None,
+            opened_wals: None,
         }
     }
 
     pub fn node_addr(mut self, node_addr: String) -> Self {
         self.node_addr = node_addr;
+        self
+    }
+
+    pub fn config_content(mut self, config_content: String) -> Self {
+        self.config_content = Some(config_content);
         self
     }
 
@@ -267,6 +280,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         self
     }
 
+    pub fn opened_wals(mut self, opened_wals: OpenedWals) -> Self {
+        self.opened_wals = Some(opened_wals);
+        self
+    }
+
     /// Build and run the server
     pub fn build(self) -> Result<Server<Q>> {
         // Build instance
@@ -275,6 +293,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let table_engine = self.table_engine.context(MissingTableEngine)?;
         let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;
         let function_registry = self.function_registry.context(MissingFunctionRegistry)?;
+        let opened_wals = self.opened_wals.context(MissingWals)?;
 
         let instance = {
             let instance = Instance {
@@ -290,19 +309,20 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         // Create http config
         let endpoint = Endpoint {
-            addr: self.config.bind_addr.clone(),
-            port: self.config.http_port,
+            addr: self.server_config.bind_addr.clone(),
+            port: self.server_config.http_port,
         };
 
         let http_config = HttpConfig {
             endpoint,
-            max_body_size: self.config.http_max_body_size,
-            timeout: self.config.timeout.map(|v| v.0),
+            max_body_size: self.server_config.http_max_body_size,
+            timeout: self.server_config.timeout.map(|v| v.0),
         };
 
         // Start http service
         let engine_runtimes = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
+        let config_content = self.config_content.expect("Missing config content");
         let provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
@@ -311,13 +331,14 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .log_runtime(log_runtime)
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
+            .config_content(config_content)
             .build()
             .context(StartHttpService)?;
 
         let mysql_config = mysql::MysqlConfig {
-            ip: self.config.bind_addr.clone(),
-            port: self.config.mysql_port,
-            timeout: self.config.timeout.map(|v| v.0),
+            ip: self.server_config.bind_addr.clone(),
+            port: self.server_config.mysql_port,
+            timeout: self.server_config.timeout.map(|v| v.0),
         };
 
         let mysql_service = mysql::Builder::new(mysql_config)
@@ -328,16 +349,23 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
 
         let router = self.router.context(MissingRouter)?;
         let rpc_services = grpc::Builder::new()
-            .endpoint(Endpoint::new(self.config.bind_addr, self.config.grpc_port).to_string())
-            .local_endpoint(Endpoint::new(self.node_addr, self.config.grpc_port).to_string())
-            .resp_compress_min_length(self.config.resp_compress_min_length.as_bytes() as usize)
+            .endpoint(
+                Endpoint::new(self.server_config.bind_addr, self.server_config.grpc_port)
+                    .to_string(),
+            )
+            .local_endpoint(Endpoint::new(self.node_addr, self.server_config.grpc_port).to_string())
+            .resp_compress_min_length(
+                self.server_config.resp_compress_min_length.as_bytes() as usize
+            )
             .runtimes(engine_runtimes)
             .instance(instance.clone())
             .router(router)
             .cluster(self.cluster.clone())
+            .opened_wals(opened_wals)
             .schema_config_provider(provider)
-            .forward_config(self.config.forward)
-            .timeout(self.config.timeout.map(|v| v.0))
+            .forward_config(self.server_config.forward)
+            .timeout(self.server_config.timeout.map(|v| v.0))
+            .auto_create_table(self.server_config.auto_create_table)
             .build()
             .context(BuildGrpcService)?;
 

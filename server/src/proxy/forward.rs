@@ -14,7 +14,7 @@ use ceresdbproto::storage::{
 };
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use tonic::{
     metadata::errors::InvalidMetadataValue,
@@ -74,7 +74,7 @@ define_result!(Error);
 
 pub type ForwarderRef = Arc<Forwarder<DefaultClientBuilder>>;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub enable: bool,

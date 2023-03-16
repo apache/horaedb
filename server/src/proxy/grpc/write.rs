@@ -39,6 +39,33 @@ use crate::{
     },
 };
 
+#[derive(Debug)]
+pub struct WriteContext {
+    pub request_id: RequestId,
+    pub deadline: Option<Instant>,
+    pub catalog: String,
+    pub schema: String,
+    pub auto_create_table: bool,
+}
+
+impl WriteContext {
+    pub fn new(
+        request_id: RequestId,
+        deadline: Option<Instant>,
+        catalog: String,
+        schema: String,
+    ) -> Self {
+        let auto_create_table = true;
+        Self {
+            request_id,
+            deadline,
+            catalog,
+            schema,
+            auto_create_table,
+        }
+    }
+}
+
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         match self.handle_write_internal(ctx, req).await {
@@ -81,15 +108,19 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .map(|m| (&m.table, &m.tag_names, &m.field_names)),
         req.table_requests.len(),
     );
+        let write_context = WriteContext {
+            request_id,
+            deadline,
+            catalog: catalog.to_string(),
+            schema: schema.to_string(),
+            auto_create_table: self.auto_create_table,
+        };
 
         let plan_vec = write_request_to_insert_plan(
-            request_id,
-            catalog,
-            &schema,
             self.instance.clone(),
             req.table_requests,
             schema_config,
-            deadline,
+            write_context,
         )
         .await?;
 
@@ -121,27 +152,32 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 }
 
 pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
-    request_id: RequestId,
-    catalog: &str,
-    schema: &str,
     instance: InstanceRef<Q>,
     table_requests: Vec<WriteTableRequest>,
     schema_config: Option<&SchemaConfig>,
-    deadline: Option<Instant>,
+    write_context: WriteContext,
 ) -> Result<Vec<InsertPlan>> {
     let mut plan_vec = Vec::with_capacity(table_requests.len());
 
+    let WriteContext {
+        request_id,
+        catalog,
+        schema,
+        deadline,
+        auto_create_table,
+    } = write_context;
+
     for write_table_req in table_requests {
         let table_name = &write_table_req.table;
-        let mut table = try_get_table(catalog, schema, instance.clone(), table_name)?;
+        let mut table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
 
-        if table.is_none() {
+        if table.is_none() && auto_create_table {
             // TODO: remove this clone?
             let schema_config = schema_config.cloned().unwrap_or_default();
             create_table(
                 request_id,
-                catalog,
-                schema,
+                &catalog,
+                &schema,
                 instance.clone(),
                 &write_table_req,
                 &schema_config,
@@ -149,7 +185,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
             )
             .await?;
             // try to get table again
-            table = try_get_table(catalog, schema, instance.clone(), table_name)?;
+            table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
         }
 
         match table {
@@ -403,7 +439,7 @@ fn write_entry_to_rows(
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table_name}",
+                    "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );

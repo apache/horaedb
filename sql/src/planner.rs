@@ -36,6 +36,7 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
+use influxql_parser::statement::Statement as InfluxqlStatement;
 use log::{debug, trace};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{
@@ -59,7 +60,6 @@ use crate::{
     promql::{ColumnNames, Expr as PromExpr},
     provider::{ContextProviderAdapter, MetaProvider},
 };
-
 // We do not carry backtrace in sql error because it is mainly used in server
 // handler and the error is usually caused by invalid/unsupported sql, which
 // should be easy to find out the reason.
@@ -252,6 +252,11 @@ pub enum Error {
 
     #[snafu(display("Failed to build plan, msg:{}", msg))]
     InvalidWriteEntry { msg: String },
+
+    #[snafu(display("Failed to build influxql plan, err:{}", source))]
+    BuildInfluxqlPlan {
+        source: crate::influxql::error::Error,
+    },
 }
 
 define_result!(Error);
@@ -324,6 +329,15 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
             .context(BuildPromPlanError)
     }
 
+    pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
+        let adapter = ContextProviderAdapter::new(self.provider, self.read_parallelism);
+
+        let influxql_planner = crate::influxql::planner::Planner::new(adapter);
+        influxql_planner
+            .statement_to_plan(statement)
+            .context(BuildInfluxqlPlan)
+    }
+
     pub fn write_req_to_plan(
         &self,
         schema_config: &SchemaConfig,
@@ -382,9 +396,9 @@ fn build_schema_from_write_table_request(
             let name_index = tag.name_index as usize;
             ensure!(
                 name_index < tag_names.len(),
-                InvalidWriteEntry{
+                InvalidWriteEntry {
                     msg: format!(
-                        "tag index {name_index} is not found in tag_names:{tag_names:?}, table:{table}",
+                        "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table}",
                     ),
                 }
             );
@@ -534,16 +548,16 @@ fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
 }
 /// A planner wraps the datafusion's logical planner, and delegate sql like
 /// select/explain to datafusion's planner.
-struct PlannerDelegate<'a, P: MetaProvider> {
+pub(crate) struct PlannerDelegate<'a, P: MetaProvider> {
     meta_provider: ContextProviderAdapter<'a, P>,
 }
 
 impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
-    fn new(meta_provider: ContextProviderAdapter<'a, P>) -> Self {
+    pub(crate) fn new(meta_provider: ContextProviderAdapter<'a, P>) -> Self {
         Self { meta_provider }
     }
 
-    fn sql_statement_to_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
+    pub(crate) fn sql_statement_to_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
         match sql_stmt {
             // Query statement use datafusion planner
             SqlStatement::Explain { .. } | SqlStatement::Query(_) => {
@@ -986,7 +1000,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
-    fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
+    pub(crate) fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
         let table_ref = get_table_ref(table_name);
         self.meta_provider
             .table(table_ref)

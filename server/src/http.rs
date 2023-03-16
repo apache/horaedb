@@ -8,6 +8,7 @@ use std::{
 };
 
 use common_util::error::BoxError;
+use handlers::query::QueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
 use profile::Profiler;
@@ -30,7 +31,12 @@ use crate::{
     consts,
     context::RequestContext,
     error_util,
-    handlers::{self, prom::CeresDBStorage, sql::Request},
+    handlers::{
+        self,
+        influxdb::{self, InfluxDb},
+        prom::CeresDBStorage,
+        query::Request,
+    },
     instance::InstanceRef,
     metrics,
     schema_config_provider::SchemaConfigProviderRef,
@@ -57,6 +63,12 @@ pub enum Error {
 
     #[snafu(display("Missing instance to build service.\nBacktrace:\n{}", backtrace))]
     MissingInstance { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Missing server config content to build service.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MissingServerConfigContent { backtrace: Backtrace },
 
     #[snafu(display("Missing schema config provider.\nBacktrace:\n{}", backtrace))]
     MissingSchemaConfigProvider { backtrace: Backtrace },
@@ -108,14 +120,17 @@ pub struct Service<Q> {
     instance: InstanceRef<Q>,
     profiler: Arc<Profiler>,
     prom_remote_storage: RemoteStorageRef<RequestContext, crate::handlers::prom::Error>,
+    influxdb: Arc<InfluxDb<Q>>,
     tx: Sender<()>,
     config: HttpConfig,
+    config_content: String,
 }
 
 impl<Q> Service<Q> {
-    // TODO(yingwen): Maybe log error or return error
     pub fn stop(self) {
-        let _ = self.tx.send(());
+        if self.tx.send(()).is_err() {
+            error!("Failed to send http service stop message");
+        }
     }
 }
 
@@ -124,13 +139,18 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         &self,
     ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
         self.home()
+            // public APIs
             .or(self.metrics())
             .or(self.sql())
-            .or(self.heap_profile())
+            .or(self.influxdb_api())
+            .or(self.prom_api())
+            // admin APIs
             .or(self.admin_block())
+            // debug APIs
             .or(self.flush_memtable())
             .or(self.update_log_level())
-            .or(self.prom_api())
+            .or(self.heap_profile())
+            .or(self.server_config())
     }
 
     /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
@@ -155,6 +175,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
         warp::path!("prom" / "v1" / ..)
             .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
             .and(write_api.or(query_api))
     }
 
@@ -181,9 +202,10 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_instance())
             .and_then(|req, ctx, instance| async move {
-                let result = handlers::sql::handle_sql(&ctx, instance, req)
+                let req = QueryRequest::Sql(req);
+                let result = handlers::query::handle_query(&ctx, instance, req)
                     .await
-                    .map(handlers::sql::convert_output)
+                    .map(handlers::query::convert_output)
                     .map_err(|e| {
                         // TODO(yingwen): Maybe truncate and print the sql
                         error!("Http service Failed to handle sql, err:{}", e);
@@ -195,6 +217,27 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     Err(e) => Err(reject::custom(e)),
                 }
             })
+    }
+
+    /// POST `/influxdb/v1/query` and `/influxdb/v1/write`
+    fn influxdb_api(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let write_api = warp::path!("write")
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::body::bytes().map(influxdb::WriteRequest::from))
+            .and_then(influxdb::write);
+        let query_api = warp::path!("query")
+            .and(self.with_context())
+            .and(self.with_influxdb())
+            .and(warp::body::bytes().map(|bytes| QueryRequest::Influxql(Request::from(bytes))))
+            .and_then(influxdb::query);
+
+        warp::path!("influxdb" / "v1" / ..)
+            .and(warp::post())
+            .and(warp::body::content_length_limit(self.config.max_body_size))
+            .and(write_api.or(query_api))
     }
 
     // POST /debug/flush_memtable
@@ -274,6 +317,16 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                 },
             )
+    }
+
+    // GET /debug/config
+    fn server_config(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        let server_config_content = self.config_content.clone();
+        warp::path!("debug" / "config")
+            .and(warp::get())
+            .map(move || server_config_content.clone())
     }
 
     // PUT /debug/log_level/{level}
@@ -367,6 +420,13 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         warp::any().map(move || profiler.clone())
     }
 
+    fn with_influxdb(
+        &self,
+    ) -> impl Filter<Extract = (Arc<InfluxDb<Q>>,), Error = Infallible> + Clone {
+        let influxdb = self.influxdb.clone();
+        warp::any().map(move || influxdb.clone())
+    }
+
     fn with_instance(
         &self,
     ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
@@ -389,6 +449,7 @@ pub struct Builder<Q> {
     log_runtime: Option<Arc<RuntimeLevel>>,
     instance: Option<InstanceRef<Q>>,
     schema_config_provider: Option<SchemaConfigProviderRef>,
+    config_content: Option<String>,
 }
 
 impl<Q> Builder<Q> {
@@ -399,6 +460,7 @@ impl<Q> Builder<Q> {
             log_runtime: None,
             instance: None,
             schema_config_provider: None,
+            config_content: None,
         }
     }
 
@@ -421,6 +483,11 @@ impl<Q> Builder<Q> {
         self.schema_config_provider = Some(provider);
         self
     }
+
+    pub fn config_content(mut self, content: String) -> Self {
+        self.config_content = Some(content);
+        self
+    }
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
@@ -429,13 +496,15 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let engine_runtime = self.engine_runtimes.context(MissingEngineRuntimes)?;
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let instance = self.instance.context(MissingInstance)?;
+        let config_content = self.config_content.context(MissingInstance)?;
         let schema_config_provider = self
             .schema_config_provider
             .context(MissingSchemaConfigProvider)?;
         let prom_remote_storage = Arc::new(CeresDBStorage::new(
             instance.clone(),
-            schema_config_provider,
+            schema_config_provider.clone(),
         ));
+        let influxdb = Arc::new(InfluxDb::new(instance.clone(), schema_config_provider));
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
@@ -443,9 +512,11 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             log_runtime,
             instance,
             prom_remote_storage,
+            influxdb,
             profiler: Arc::new(Profiler::default()),
             tx,
             config: self.config.clone(),
+            config_content,
         };
 
         info!(
@@ -494,6 +565,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingEngineRuntimes { .. }
         | Error::MissingLogRuntime { .. }
         | Error::MissingInstance { .. }
+        | Error::MissingServerConfigContent { .. }
         | Error::MissingSchemaConfigProvider { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }

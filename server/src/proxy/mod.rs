@@ -26,6 +26,7 @@ pub struct Proxy<Q: QueryExecutor + 'static> {
     forwarder: ForwarderRef,
     instance: InstanceRef<Q>,
     resp_compress_min_length: usize,
+    auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
 }
 
@@ -36,6 +37,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         forward_config: forward::Config,
         local_endpoint: String,
         resp_compress_min_length: usize,
+        auto_create_table: bool,
         schema_config_provider: SchemaConfigProviderRef,
     ) -> Result<Self> {
         let local_endpoint = Endpoint::from_str(&local_endpoint).with_context(|| Internal {
@@ -53,6 +55,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             instance,
             forwarder,
             resp_compress_min_length,
+            auto_create_table,
             schema_config_provider,
         })
     }
