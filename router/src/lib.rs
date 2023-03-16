@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
-use serde::Deserialize;
 pub use cluster_based::ClusterBasedRouter;
 use common_util::define_result;
 pub use rule_based::{RuleBasedRouter, RuleList};
+use serde::Deserialize;
 use snafu::{Backtrace, Snafu};
 
 #[derive(Snafu, Debug)]
@@ -75,7 +75,7 @@ pub struct RouteCacheConfig {
 }
 
 impl RouteCacheConfig {
-     pub fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             ttl: 5 * 60,
             tti: 2 * 60,
