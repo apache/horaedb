@@ -25,6 +25,7 @@ pub mod error {
         #[snafu(display("Failed to perform storage operation, err:{}", source))]
         Storage {
             source: object_store::ObjectStoreError,
+            backtrace: Backtrace,
         },
 
         #[snafu(display("Failed to encode meta data, err:{}", source))]

@@ -15,7 +15,7 @@ use parquet::{
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 #[derive(Clone, Default)]
-struct SharedBuffer {
+pub struct SharedBuffer {
     buffer: Arc<Mutex<Vec<u8>>>,
 }
 
@@ -37,7 +37,7 @@ pub struct AsyncArrowWriter<W> {
     shared_buffer: SharedBuffer,
 }
 
-impl<W: AsyncWrite + Unpin> AsyncArrowWriter<W> {
+impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
     pub fn try_new(
         writer: W,
         arrow_schema: SchemaRef,
@@ -69,11 +69,14 @@ impl<W: AsyncWrite + Unpin> AsyncArrowWriter<W> {
     }
 
     async fn flush(shared_buffer: &SharedBuffer, async_writer: &mut W) -> Result<()> {
-        let mut buffer = shared_buffer.buffer.lock().unwrap();
+        let mut buffer = {
+            let mut buffer = shared_buffer.buffer.lock().unwrap();
 
-        if buffer.is_empty() {
-            return Ok(());
-        }
+            if buffer.is_empty() {
+                return Ok(());
+            }
+            std::mem::take(&mut *buffer)
+        };
 
         async_writer
             .write(&buffer)
@@ -81,6 +84,7 @@ impl<W: AsyncWrite + Unpin> AsyncArrowWriter<W> {
             .map_err(|e| ParquetError::External(Box::new(e)))?;
 
         buffer.clear();
+        *shared_buffer.buffer.lock().unwrap() = buffer;
         Ok(())
     }
 }

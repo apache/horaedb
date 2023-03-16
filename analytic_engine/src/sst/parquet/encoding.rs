@@ -22,12 +22,13 @@ use common_util::{
 };
 use log::trace;
 use parquet::{
-    arrow::ArrowWriter,
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
+use parquet_ext::async_arrow_writer::AsyncArrowWriter;
 use prost::Message;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use tokio::io::AsyncWrite;
 
 use crate::sst::parquet::{
     hybrid::{self, IndexedType},
@@ -227,14 +228,15 @@ trait RecordEncoder {
     async fn close(&mut self) -> Result<()>;
 }
 
-struct ColumnarRecordEncoder {
+struct ColumnarRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
+    arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
 }
 
-impl ColumnarRecordEncoder {
+impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
     fn try_new(
+        sink: W,
         num_rows_per_row_group: usize,
         compression: Compression,
         meta_data: ParquetMetaData,
@@ -247,10 +249,9 @@ impl ColumnarRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let arrow_writer =
-            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .box_err()
-                .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(sink, arrow_schema.clone(), Some(write_props))
+            .box_err()
+            .context(EncodeRecordBatch)?;
 
         Ok(Self {
             arrow_writer: Some(arrow_writer),
@@ -260,7 +261,7 @@ impl ColumnarRecordEncoder {
 }
 
 #[async_trait]
-impl RecordEncoder for ColumnarRecordEncoder {
+impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
@@ -272,28 +273,30 @@ impl RecordEncoder for ColumnarRecordEncoder {
             .as_mut()
             .unwrap()
             .write(&record_batch)
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
 
-    async fn close(&mut self) -> Result<Vec<u8>> {
+    async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        let bytes = arrow_writer
-            .into_inner()
+        arrow_writer
+            .close()
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        Ok(bytes)
+        Ok(())
     }
 }
 
-struct HybridRecordEncoder {
+struct HybridRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<ArrowWriter<Vec<u8>>>,
+    arrow_writer: Option<AsyncArrowWriter<W>>,
     arrow_schema: ArrowSchemaRef,
     tsid_type: IndexedType,
     non_collapsible_col_types: Vec<IndexedType>,
@@ -301,8 +304,9 @@ struct HybridRecordEncoder {
     collapsible_col_types: Vec<IndexedType>,
 }
 
-impl HybridRecordEncoder {
+impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
     fn try_new(
+        sink: W,
         num_rows_per_row_group: usize,
         compression: Compression,
         mut meta_data: ParquetMetaData,
@@ -351,10 +355,9 @@ impl HybridRecordEncoder {
             .set_compression(compression)
             .build();
 
-        let arrow_writer =
-            ArrowWriter::try_new(Vec::new(), arrow_schema.clone(), Some(write_props))
-                .box_err()
-                .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(sink, arrow_schema.clone(), Some(write_props))
+            .box_err()
+            .context(EncodeRecordBatch)?;
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
@@ -365,8 +368,9 @@ impl HybridRecordEncoder {
     }
 }
 
-impl RecordEncoder for HybridRecordEncoder {
-    fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+#[async_trait]
+impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
+    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.arrow_writer.is_some());
 
         let record_batch = hybrid::convert_to_hybrid_record(
@@ -383,21 +387,24 @@ impl RecordEncoder for HybridRecordEncoder {
             .as_mut()
             .unwrap()
             .write(&record_batch)
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
 
-    fn close(&mut self) -> Result<Vec<u8>> {
+    async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        let bytes = arrow_writer
-            .into_inner()
+        arrow_writer
+            .close()
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
-        Ok(bytes)
+
+        Ok(())
     }
 }
 
@@ -406,7 +413,8 @@ pub struct ParquetEncoder {
 }
 
 impl ParquetEncoder {
-    pub fn try_new(
+    pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
+        sink: W,
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
         compression: Compression,
@@ -414,12 +422,14 @@ impl ParquetEncoder {
     ) -> Result<Self> {
         let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
             Box::new(HybridRecordEncoder::try_new(
+                sink,
                 num_rows_per_row_group,
                 compression,
                 meta_data,
             )?)
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
+                sink,
                 num_rows_per_row_group,
                 compression,
                 meta_data,
@@ -431,7 +441,7 @@ impl ParquetEncoder {
 
     /// Encode the record batch with [ArrowWriter] and the encoded contents is
     /// written to the buffer.
-    pub fn encode_record_batch(
+    pub async fn encode_record_batch(
         &mut self,
         arrow_record_batch_vec: Vec<ArrowRecordBatch>,
     ) -> Result<usize> {
@@ -439,11 +449,11 @@ impl ParquetEncoder {
             return Ok(0);
         }
 
-        self.record_encoder.encode(arrow_record_batch_vec)
+        self.record_encoder.encode(arrow_record_batch_vec).await
     }
 
-    pub fn close(mut self) -> Result<Vec<u8>> {
-        self.record_encoder.close()
+    pub async fn close(mut self) -> Result<()> {
+        self.record_encoder.close().await
     }
 }
 
@@ -702,6 +712,8 @@ impl ParquetDecoder {
 #[cfg(test)]
 mod tests {
 
+    use std::{pin::Pin, sync::Mutex, task::Poll};
+
     use arrow::array::{Int32Array, StringArray, TimestampMillisecondArray, UInt64Array};
     use common_types::{
         bytes::Bytes,
@@ -710,6 +722,7 @@ mod tests {
         time::{TimeRange, Timestamp},
     };
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+    use pin_project_lite::pin_project;
 
     use super::*;
 
@@ -855,8 +868,57 @@ mod tests {
         }
     }
 
-    #[test]
-    fn hybrid_record_encode_and_decode() {
+    pin_project! {
+        struct CopiedBuffer {
+            #[pin]
+            buffer: Vec<u8>,
+            copied_buffer: Arc<Mutex<Vec<u8>>>,
+        }
+    }
+
+    impl CopiedBuffer {
+        fn new(buffer: Vec<u8>) -> Self {
+            Self {
+                buffer,
+                copied_buffer: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn copied_buffer(&self) -> Arc<Mutex<Vec<u8>>> {
+            self.copied_buffer.clone()
+        }
+    }
+
+    impl AsyncWrite for CopiedBuffer {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::result::Result<usize, std::io::Error>> {
+            self.copied_buffer.lock().unwrap().extend_from_slice(buf);
+            let buffer = self.project().buffer;
+            buffer.poll_write(cx, buf)
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::result::Result<(), std::io::Error>> {
+            let buffer = self.project().buffer;
+            buffer.poll_flush(cx)
+        }
+
+        fn poll_shutdown(
+            self: Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<std::result::Result<(), std::io::Error>> {
+            let buffer = self.project().buffer;
+            buffer.poll_shutdown(cx)
+        }
+    }
+
+    #[tokio::test]
+    async fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
 
         let mut meta_data = ParquetMetaData {
@@ -868,8 +930,11 @@ mod tests {
             parquet_filter: Default::default(),
             collapsible_cols_idx: Vec::new(),
         };
+        let copied_buffer = CopiedBuffer::new(Vec::new());
+        let copied_encoded_buffer = copied_buffer.copied_buffer();
         let mut encoder =
-            HybridRecordEncoder::try_new(100, Compression::ZSTD, meta_data.clone()).unwrap();
+            HybridRecordEncoder::try_new(copied_buffer, 100, Compression::ZSTD, meta_data.clone())
+                .unwrap();
 
         let columns = vec![
             Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
@@ -914,11 +979,14 @@ mod tests {
             ArrowRecordBatch::try_new(schema.to_arrow_schema_ref(), columns2).unwrap();
         let row_nums = encoder
             .encode(vec![input_record_batch, input_record_batch2])
+            .await
             .unwrap();
         assert_eq!(2, row_nums);
 
         // read encoded records back, and then compare with input records
-        let encoded_bytes = encoder.close().unwrap();
+        encoder.close().await.unwrap();
+
+        let encoded_bytes = copied_encoded_buffer.lock().unwrap().clone();
         let mut reader = ParquetRecordBatchReaderBuilder::try_new(Bytes::from(encoded_bytes))
             .unwrap()
             .build()

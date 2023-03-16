@@ -12,9 +12,10 @@ use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use common_util::error::BoxError;
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
-use log::debug;
+use log::{debug, error};
 use object_store::{ObjectStoreRef, Path};
 use snafu::ResultExt;
+use tokio::io::AsyncWrite;
 
 use crate::{
     sst::{
@@ -178,7 +179,7 @@ impl RecordBytesReader {
         Ok(ParquetFilter::new(filters))
     }
 
-    async fn read_all(mut self) -> Result<Vec<u8>> {
+    async fn read_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<()> {
         self.partition_record_batch().await?;
 
         let parquet_meta_data = {
@@ -189,6 +190,7 @@ impl RecordBytesReader {
         };
 
         let mut parquet_encoder = ParquetEncoder::try_new(
+            sink,
             self.hybrid_encoding,
             self.num_rows_per_row_group,
             self.compression,
@@ -207,17 +209,52 @@ impl RecordBytesReader {
             let buf_len = arrow_record_batch_vec.len();
             let row_num = parquet_encoder
                 .encode_record_batch(arrow_record_batch_vec)
+                .await
                 .box_err()
                 .context(EncodeRecordBatch)?;
             self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
             arrow_record_batch_vec = Vec::with_capacity(buf_len);
         }
 
-        let bytes = parquet_encoder
+        parquet_encoder
             .close()
+            .await
             .box_err()
-            .context(EncodeRecordBatch)?;
-        Ok(bytes)
+            .context(EncodeRecordBatch)
+    }
+}
+
+struct ObjectStoreMultiUploadAborter<'a> {
+    location: &'a Path,
+    sink_id: String,
+    object_store: &'a ObjectStoreRef,
+}
+
+impl<'a> ObjectStoreMultiUploadAborter<'a> {
+    async fn initialize_upload(
+        object_store: &'a ObjectStoreRef,
+        location: &'a Path,
+    ) -> Result<(
+        ObjectStoreMultiUploadAborter<'a>,
+        Box<dyn AsyncWrite + Unpin + Send>,
+    )> {
+        let (sink_id, sink) = object_store
+            .put_multipart(location)
+            .await
+            .context(Storage)?;
+        let aborter = Self {
+            location,
+            sink_id,
+            object_store,
+        };
+        Ok((aborter, sink))
+    }
+
+    async fn abort(self) -> Result<()> {
+        self.object_store
+            .abort_multipart(self.location, &self.sink_id)
+            .await
+            .context(Storage)
     }
 }
 
@@ -245,11 +282,18 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             meta_data: meta.clone(),
             partitioned_record_batch: Default::default(),
         };
-        let bytes = reader.read_all().await?;
-        self.store
-            .put(self.path, bytes.into())
-            .await
-            .context(Storage)?;
+
+        let (aborter, sink) =
+            ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
+        if let Err(e) = reader.read_all(sink).await {
+            if let Err(e) = aborter.abort().await {
+                error!(
+                    "Failed to abort multi-upload for sst:{}, err:{}",
+                    self.path, e
+                );
+            }
+            return Err(e);
+        }
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
 
