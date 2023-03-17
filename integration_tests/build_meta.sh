@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -exo pipefail
+set -exo
 
 if [ ! -d ceresmeta ]; then
     git clone https://github.com/ceresdb/ceresmeta.git

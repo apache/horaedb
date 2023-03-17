@@ -40,7 +40,7 @@ fn fetch_version() -> String {
 fn parse_node_addr_or_fail(raw_addr: &str) -> IpAddr {
     let socket_addr: IpAddr = raw_addr
         .parse()
-        .expect(format!("invalid node addr, raw_addr:{raw_addr}").as_str());
+        .unwrap_or_else(|_| panic!("invalid node addr, raw_addr:{raw_addr}"));
     socket_addr
 }
 
