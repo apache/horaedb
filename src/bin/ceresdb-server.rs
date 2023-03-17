@@ -2,10 +2,7 @@
 
 //! The main entry point to start the server
 
-use std::{
-    env,
-    net::{IpAddr, SocketAddr},
-};
+use std::{env, net::IpAddr};
 
 use ceresdb::{
     config::{ClusterDeployment, Config},
@@ -41,8 +38,10 @@ fn fetch_version() -> String {
 
 // Parse the raw addr and panic if it is invalid.
 fn parse_node_addr_or_fail(raw_addr: &str) -> IpAddr {
-    let socket_addr: SocketAddr = raw_addr.parse().expect("invalid node addr");
-    socket_addr.ip()
+    let socket_addr: IpAddr = raw_addr
+        .parse()
+        .expect(format!("invalid node addr, raw_addr:{raw_addr}").as_str());
+    socket_addr
 }
 
 fn main() {
