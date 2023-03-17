@@ -66,26 +66,20 @@ pub trait Router {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouteCacheConfig {
-    /// Time to live (TTL) in second
+    /// Time to live (TTL) in second.
     ttl: u64,
-    /// Time to idle (TTI) in second
+    /// Time to idle (TTI) in second.
     tti: u64,
-    /// how many route records can store in cache
+    /// how many route records can store in cache.
     capacity: u64,
-}
-
-impl RouteCacheConfig {
-    pub fn new() -> Self {
-        Self {
-            ttl: 5 * 60,
-            tti: 2 * 60,
-            capacity: 10_000,
-        }
-    }
 }
 
 impl Default for RouteCacheConfig {
     fn default() -> Self {
-        Self::new()
+        Self {
+            ttl: 5,
+            tti: 5,
+            capacity: 10_000,
+        }
     }
 }

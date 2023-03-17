@@ -67,7 +67,7 @@ impl Router for ClusterBasedRouter {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>> {
         let req_ctx = req.context.unwrap();
 
-        // Firstly route table from local cache
+        // Firstly route table from local cache.
         let (mut routes, miss) = route_from_cache(&self.cache, req.tables);
 
         if !miss.is_empty() {
@@ -90,6 +90,7 @@ impl Router for ClusterBasedRouter {
                 for node_shard in route_entry.node_shards {
                     if node_shard.shard_info.is_leader() {
                         let route = make_route(&table_name, &node_shard.endpoint)?;
+                        // There may be data race here, and it is acceptable currently.
                         self.cache.insert(table_name.clone(), route.clone()).await;
                         routes.push(route);
                     }

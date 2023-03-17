@@ -128,7 +128,7 @@ impl Default for ServerConfig {
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
             auto_create_table: true,
-            route_cache: router::RouteCacheConfig::new(),
+            route_cache: router::RouteCacheConfig::default(),
         }
     }
 }
