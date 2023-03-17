@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, time::Instant};
 
-use ceresdbproto::storage::{RouteRequest};
+use ceresdbproto::storage::RouteRequest;
 use common_util::time::InstantExt;
 use log::info;
 
