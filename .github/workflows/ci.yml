@@ -130,10 +130,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Add CeresDB Hosts
-        run: |
-          sudo echo "127.0.0.1 ceresdb0" | sudo tee -a /etc/hosts
-          sudo echo "127.0.0.1 ceresdb1" | sudo tee -a /etc/hosts
       - uses: actions/checkout@v3
         with:
           submodules: true
@@ -170,10 +166,10 @@ jobs:
         with:
           name: CI-${{ github.head_ref }}.${{ github.sha }}
           path: |
-            /tmp/ceresdb-0.log
-            /tmp/ceresdb-1.log
             /tmp/ceresdb-stdout.log
-            /tmp/ceresdb-stderr.log
+            /tmp/ceresmeta.log
+            /tmp/ceresdb-stdout-0.log
+            /tmp/ceresdb-stdout-1.log
 
   sdk-test:
     name: sdk-test
