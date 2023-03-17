@@ -3,12 +3,11 @@
 //! Http service
 
 use std::{
-    collections::HashMap, convert::Infallible, error::Error as StdError, fmt::Display, net::IpAddr,
-    sync::Arc, time::Duration,
+    collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
+    time::Duration,
 };
 
 use common_util::error::BoxError;
-use datafusion::parquet::arrow::async_reader::AsyncFileReader;
 use handlers::query::QueryRequest;
 use log::{error, info};
 use logger::RuntimeLevel;
@@ -222,11 +221,14 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::get())
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|table:String, ctx, instance| async move {
+            .and_then(|table: String, ctx, instance| async move {
                 let result = handlers::route::handle_route(&ctx, instance, table.clone())
                     .await
                     .map_err(|e| {
-                        error!("Http service Failed to find route of table:{}, err:{:?}",table,e);
+                        error!(
+                            "Http service Failed to find route of table:{}, err:{:?}",
+                            table, e
+                        );
                         Box::new(e)
                     })
                     .context(HandleRequest);
@@ -409,6 +411,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     let default_catalog = default_catalog.clone();
                     let runtime = runtime.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
+                    let router = router.clone();
                     async move {
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
@@ -581,6 +584,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
         | Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::MissingRouter { .. } => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

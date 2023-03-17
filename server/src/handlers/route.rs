@@ -2,67 +2,50 @@
 
 //! route request handler
 
-use std::{ time::Instant};
+use std::{collections::HashMap, time::Instant};
 
-use ceresdbproto::storage::{Route, RouteRequest};
+use ceresdbproto::storage::{RouteRequest};
 use common_util::time::InstantExt;
 use log::info;
-use serde::{Serialize, Serializer};
-use serde::ser::{SerializeMap, SerializeSeq};
-use snafu::{ensure};
 
-use crate::handlers::{
-    error::{
-        RouteHandler
-    },
-    prelude::*,
-};
+use crate::handlers::{error::RouteHandler, prelude::*};
 
-#[serde(rename_all = "snake_case")]
-pub struct Response {
-    pub routes: Vec<Route>,
-}
-
-impl Serialize for Response {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-    { let mut seq = serializer.serialize_seq(Some(self.routes.len()))?;
-        for route in self.routes{
-            let endpoint = route.endpoint.unwrap();
-            let tup = (route.table.clone(), format!("{}:{}",endpoint.ip,endpoint.port));
-            seq.serialize_element(&tup)?;
-        }
-        seq.end()
-    }
+#[derive(Serialize)]
+pub struct RouteResponse {
+    routes: HashMap<String, String>,
 }
 
 pub async fn handle_route<Q: QueryExecutor + 'static>(
     ctx: &RequestContext,
-    instance: InstanceRef<Q>,
+    _: InstanceRef<Q>,
     table: String,
-) -> Result<Response> {
-    ensure!(!table.is_empty());
+) -> Result<RouteResponse> {
+    let mut route_map = HashMap::new();
+    if table.is_empty() {
+        return Ok(RouteResponse { routes: route_map });
+    }
+
     let begin_instant = Instant::now();
-    let deadline = ctx.timeout.map(|t| begin_instant + t);
-
-    info!("Route handler try to find route of table:{table}");
-
+    info!("Route handler try to find route for table:{table}");
     let req = RouteRequest {
-        context: Some(ceresdbproto::storage::RequestContext{
-            database: ctx.schema.clone()
+        context: Some(ceresdbproto::storage::RequestContext {
+            database: ctx.schema.clone(),
         }),
-        tables: vec![table],
+        tables: vec![table.clone()],
     };
-    let routes = ctx.router.route(req).await.context(RouteHandler{
-        table: table.clone()
+    let routes = ctx.router.route(req).await.context(RouteHandler {
+        table: table.clone(),
     })?;
-
+    for route in routes {
+        if let Some(endpoint) = route.endpoint {
+            route_map.insert(route.table, format!("{}:{}", endpoint.ip, endpoint.port));
+        }
+    }
     info!(
         "Route handler finished, cost:{}ms, table:{}",
         begin_instant.saturating_elapsed().as_millis(),
         table
     );
 
-    Ok(Response{routes} )
+    Ok(RouteResponse { routes: route_map })
 }

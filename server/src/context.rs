@@ -19,6 +19,9 @@ pub enum Error {
 
     #[snafu(display("Missing runtime.\nBacktrace:\n{}", backtrace))]
     MissingRuntime { backtrace: Backtrace },
+
+    #[snafu(display("Missing router.\nBacktrace:\n{}", backtrace))]
+    MissingRouter { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -56,7 +59,7 @@ pub struct Builder {
     runtime: Option<Arc<Runtime>>,
     enable_partition_table_access: bool,
     timeout: Option<Duration>,
-    router: Arc<dyn Router + Send + Sync>,
+    router: Option<Arc<dyn Router + Send + Sync>>,
 }
 
 impl Builder {
@@ -86,7 +89,7 @@ impl Builder {
     }
 
     pub fn router(mut self, router: Arc<dyn Router + Send + Sync>) -> Self {
-        self.router = router;
+        self.router = Some(router);
         self
     }
 
@@ -95,6 +98,7 @@ impl Builder {
         ensure!(!self.schema.is_empty(), MissingSchema);
 
         let runtime = self.runtime.context(MissingRuntime)?;
+        let router = self.router.context(MissingRouter)?;
 
         Ok(RequestContext {
             catalog: self.catalog,
@@ -102,7 +106,7 @@ impl Builder {
             runtime,
             enable_partition_table_access: self.enable_partition_table_access,
             timeout: self.timeout,
-            router: self.router,
+            router,
         })
     }
 }

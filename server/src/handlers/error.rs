@@ -77,7 +77,10 @@ pub enum Error {
     InfluxDbHandler { msg: String, source: GenericError },
 
     #[snafu(display("Route handler failed, table:{}, source:{}", table, source))]
-    RouteHandler { table: String, source: GenericError },
+    RouteHandler {
+        table: String,
+        source: router::Error,
+    },
 }
 
 define_result!(Error);

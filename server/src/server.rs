@@ -325,7 +325,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .log_runtime(log_runtime)
             .instance(instance.clone())
             .schema_config_provider(provider.clone())
-            .router(router)
+            .router(router.clone())
             .build()
             .context(StartHttpService)?;
 
@@ -347,7 +347,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             .resp_compress_min_length(self.config.resp_compress_min_length.as_bytes() as usize)
             .runtimes(engine_runtimes)
             .instance(instance.clone())
-            .router(router)
+            .router(router.clone())
             .cluster(self.cluster.clone())
             .opened_wals(opened_wals)
             .schema_config_provider(provider)
