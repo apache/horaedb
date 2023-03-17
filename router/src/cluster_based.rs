@@ -70,27 +70,29 @@ impl Router for ClusterBasedRouter {
         // Firstly route table from local cache
         let (mut routes, miss) = route_from_cache(&self.cache, req.tables);
 
-        let route_tables_req = RouteTablesRequest {
-            schema_name: req_ctx.database,
-            table_names: miss,
-        };
+        if !miss.is_empty() {
+            let route_tables_req = RouteTablesRequest {
+                schema_name: req_ctx.database,
+                table_names: miss,
+            };
 
-        let route_resp = self
-            .cluster
-            .route_tables(&route_tables_req)
-            .await
-            .box_err()
-            .with_context(|| OtherWithCause {
-                msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
-            })?;
+            let route_resp = self
+                .cluster
+                .route_tables(&route_tables_req)
+                .await
+                .box_err()
+                .with_context(|| OtherWithCause {
+                    msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
+                })?;
 
-        // Now we pick up the nodes who own the leader shard for the route response.
-        for (table_name, route_entry) in route_resp.entries {
-            for node_shard in route_entry.node_shards {
-                if node_shard.shard_info.is_leader() {
-                    let route = make_route(&table_name, &node_shard.endpoint)?;
-                    self.cache.insert(table_name.clone(), route.clone()).await;
-                    routes.push(route);
+            // Now we pick up the nodes who own the leader shard for the route response.
+            for (table_name, route_entry) in route_resp.entries {
+                for node_shard in route_entry.node_shards {
+                    if node_shard.shard_info.is_leader() {
+                        let route = make_route(&table_name, &node_shard.endpoint)?;
+                        self.cache.insert(table_name.clone(), route.clone()).await;
+                        routes.push(route);
+                    }
                 }
             }
         }
