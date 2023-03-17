@@ -35,12 +35,14 @@ pub struct AsyncArrowWriter<W> {
     sync_writer: ArrowWriter<SharedBuffer>,
     async_writer: W,
     shared_buffer: SharedBuffer,
+    max_buffer_size: usize,
 }
 
 impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
     pub fn try_new(
         writer: W,
         arrow_schema: SchemaRef,
+        max_buffer_size: usize,
         props: Option<WriterProperties>,
     ) -> Result<Self> {
         let shared_buffer = SharedBuffer::default();
@@ -50,12 +52,18 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
             sync_writer,
             async_writer: writer,
             shared_buffer,
+            max_buffer_size,
         })
     }
 
     pub async fn write(&mut self, batch: &RecordBatch) -> Result<()> {
         self.sync_writer.write(batch)?;
-        Self::flush(&self.shared_buffer, &mut self.async_writer).await
+        Self::flush(
+            &self.shared_buffer,
+            &mut self.async_writer,
+            self.max_buffer_size,
+        )
+        .await
     }
 
     pub fn append_key_value_metadata(&mut self, kv_metadata: KeyValue) {
@@ -64,7 +72,7 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
 
     pub async fn close(mut self) -> Result<FileMetaData> {
         let metadata = self.sync_writer.close()?;
-        Self::flush(&self.shared_buffer, &mut self.async_writer).await?;
+        Self::flush(&self.shared_buffer, &mut self.async_writer, 0).await?;
         self.async_writer
             .shutdown()
             .await
@@ -73,11 +81,16 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
         Ok(metadata)
     }
 
-    async fn flush(shared_buffer: &SharedBuffer, async_writer: &mut W) -> Result<()> {
+    async fn flush(
+        shared_buffer: &SharedBuffer,
+        async_writer: &mut W,
+        threshold: usize,
+    ) -> Result<()> {
         let mut buffer = {
             let mut buffer = shared_buffer.buffer.lock().unwrap();
 
-            if buffer.is_empty() {
+            if buffer.is_empty() || buffer.len() < threshold {
+                // no need to flush
                 return Ok(());
             }
             std::mem::take(&mut *buffer)

@@ -40,6 +40,7 @@ use crate::{
     instance::{
         flush_compaction::TableFlushOptions, write_worker::CompactionNotifier, Instance, SpaceStore,
     },
+    sst::factory::SstWriteOptions,
     table::data::TableDataRef,
     TableOptions,
 };
@@ -287,6 +288,7 @@ impl SchedulerImpl {
         space_store: Arc<SpaceStore>,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
+        write_sst_max_buffer_size: usize,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
@@ -300,6 +302,7 @@ impl SchedulerImpl {
             picker_manager: PickerManager::default(),
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
+            write_sst_max_buffer_size,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -367,6 +370,7 @@ struct ScheduleWorker {
     max_unflushed_duration: Duration,
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
+    write_sst_max_buffer_size: usize,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
@@ -462,13 +466,27 @@ impl ScheduleWorker {
 
         let sender = self.sender.clone();
         let request_id = RequestId::next_id();
+        let storage_format_hint = table_data.table_options().storage_format_hint;
+        let sst_write_options = SstWriteOptions {
+            storage_format_hint,
+            num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
+            compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
+        };
+
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
             // Release the token after compaction finished.
             let _token = token;
 
             let res = space_store
-                .compact_table(runtime, &table_data, request_id, &compaction_task)
+                .compact_table(
+                    runtime,
+                    &table_data,
+                    request_id,
+                    &compaction_task,
+                    &sst_write_options,
+                )
                 .await;
 
             if let Err(e) = &res {

@@ -545,6 +545,7 @@ impl Instance {
             storage_format_hint: table_data.table_options().storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
         };
 
         for time_range in &time_ranges {
@@ -674,6 +675,7 @@ impl Instance {
             storage_format_hint,
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
+            max_buffer_size: self.write_sst_max_buffer_size,
         };
         let mut writer = self
             .space_store
@@ -729,6 +731,7 @@ impl SpaceStore {
         table_data: &TableData,
         request_id: RequestId,
         task: &CompactionTask,
+        sst_write_options: &SstWriteOptions,
     ) -> Result<()> {
         debug!(
             "Begin compact table, table_name:{}, id:{}, task:{:?}",
@@ -766,6 +769,7 @@ impl SpaceStore {
                 table_data,
                 request_id,
                 input,
+                sst_write_options,
                 &mut edit_meta,
             )
             .await?;
@@ -796,6 +800,7 @@ impl SpaceStore {
         table_data: &TableData,
         request_id: RequestId,
         input: &CompactionInputFiles,
+        sst_write_options: &SstWriteOptions,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
         debug!(
@@ -907,18 +912,12 @@ impl SpaceStore {
         let file_id = table_data.alloc_file_id();
         let sst_file_path = table_data.set_sst_file_path(file_id);
 
-        let storage_format_hint = table_data.table_options().storage_format_hint;
-        let sst_write_options = SstWriteOptions {
-            storage_format_hint,
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
-            compression: table_options.compression,
-        };
         let mut sst_writer = self
             .sst_factory
-            .create_writer(&sst_write_options, &sst_file_path, self.store_picker())
+            .create_writer(sst_write_options, &sst_file_path, self.store_picker())
             .await
             .context(CreateSstWriter {
-                storage_format_hint,
+                storage_format_hint: sst_write_options.storage_format_hint,
             })?;
 
         let sst_info = sst_writer

@@ -239,9 +239,10 @@ struct ColumnarRecordEncoder<W> {
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
     fn try_new(
         sink: W,
-        num_rows_per_row_group: usize,
-        compression: Compression,
         schema: &Schema,
+        num_rows_per_row_group: usize,
+        max_buffer_size: usize,
+        compression: Compression,
     ) -> Result<Self> {
         let arrow_schema = schema.to_arrow_schema_ref();
 
@@ -250,9 +251,14 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             .set_compression(compression)
             .build();
 
-        let arrow_writer = AsyncArrowWriter::try_new(sink, arrow_schema.clone(), Some(write_props))
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(
+            sink,
+            arrow_schema.clone(),
+            max_buffer_size,
+            Some(write_props),
+        )
+        .box_err()
+        .context(EncodeRecordBatch)?;
 
         Ok(Self {
             arrow_writer: Some(arrow_writer),
@@ -319,9 +325,10 @@ struct HybridRecordEncoder<W> {
 impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
     fn try_new(
         sink: W,
-        num_rows_per_row_group: usize,
-        compression: Compression,
         schema: &Schema,
+        num_rows_per_row_group: usize,
+        max_buffer_size: usize,
+        compression: Compression,
     ) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
@@ -367,9 +374,14 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             .set_compression(compression)
             .build();
 
-        let arrow_writer = AsyncArrowWriter::try_new(sink, arrow_schema.clone(), Some(write_props))
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        let arrow_writer = AsyncArrowWriter::try_new(
+            sink,
+            arrow_schema.clone(),
+            max_buffer_size,
+            Some(write_props),
+        )
+        .box_err()
+        .context(EncodeRecordBatch)?;
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
@@ -439,24 +451,27 @@ pub struct ParquetEncoder {
 impl ParquetEncoder {
     pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
         sink: W,
+        schema: &Schema,
         hybrid_encoding: bool,
         num_rows_per_row_group: usize,
+        max_buffer_size: usize,
         compression: Compression,
-        schema: &Schema,
     ) -> Result<Self> {
         let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
             Box::new(HybridRecordEncoder::try_new(
                 sink,
-                num_rows_per_row_group,
-                compression,
                 schema,
+                num_rows_per_row_group,
+                max_buffer_size,
+                compression,
             )?)
         } else {
             Box::new(ColumnarRecordEncoder::try_new(
                 sink,
-                num_rows_per_row_group,
-                compression,
                 schema,
+                num_rows_per_row_group,
+                max_buffer_size,
+                compression,
             )?)
         };
 
@@ -960,9 +975,14 @@ mod tests {
         };
         let copied_buffer = CopiedBuffer::new(Vec::new());
         let copied_encoded_buffer = copied_buffer.copied_buffer();
-        let mut encoder =
-            HybridRecordEncoder::try_new(copied_buffer, 100, Compression::ZSTD, &meta_data.schema)
-                .unwrap();
+        let mut encoder = HybridRecordEncoder::try_new(
+            copied_buffer,
+            &meta_data.schema,
+            100,
+            0,
+            Compression::ZSTD,
+        )
+        .unwrap();
         encoder
             .set_meta_data(meta_data.clone())
             .expect("Failed to set meta data");

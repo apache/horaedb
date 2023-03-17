@@ -170,6 +170,8 @@ pub struct Instance {
     pub(crate) space_write_buffer_size: usize,
     /// Replay wal batch size
     pub(crate) replay_batch_size: usize,
+    /// Write sst max buffer size
+    pub(crate) write_sst_max_buffer_size: usize,
     /// Options for scanning sst
     pub(crate) iter_options: IterOptions,
     pub(crate) remote_engine: Option<RemoteEngineRef>,

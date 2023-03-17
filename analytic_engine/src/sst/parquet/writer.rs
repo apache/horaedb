@@ -37,6 +37,7 @@ pub struct ParquetSstWriter<'a> {
     store: &'a ObjectStoreRef,
     /// Max row group size.
     num_rows_per_row_group: usize,
+    max_buffer_size: usize,
     compression: Compression,
 }
 
@@ -54,6 +55,7 @@ impl<'a> ParquetSstWriter<'a> {
             store,
             num_rows_per_row_group: options.num_rows_per_row_group,
             compression: options.compression.into(),
+            max_buffer_size: options.max_buffer_size,
         }
     }
 }
@@ -66,6 +68,7 @@ struct RecordBatchGroupWriter {
     input: RecordBatchStream,
     meta_data: MetaData,
     num_rows_per_row_group: usize,
+    max_buffer_size: usize,
     compression: Compression,
 }
 
@@ -166,10 +169,11 @@ impl RecordBatchGroupWriter {
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
+            &self.meta_data.schema,
             self.hybrid_encoding,
             self.num_rows_per_row_group,
+            self.max_buffer_size,
             self.compression,
-            &self.meta_data.schema,
         )
         .box_err()
         .context(EncodeRecordBatch)?;
@@ -270,6 +274,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             request_id,
             input,
             num_rows_per_row_group: self.num_rows_per_row_group,
+            max_buffer_size: self.max_buffer_size,
             compression: self.compression,
             meta_data: meta.clone(),
         };
@@ -357,6 +362,7 @@ mod tests {
                 storage_format_hint: StorageFormatHint::Auto,
                 num_rows_per_row_group,
                 compression: table_options::Compression::Uncompressed,
+                max_buffer_size: 0,
             };
 
             let dir = tempdir().unwrap();

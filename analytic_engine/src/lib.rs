@@ -75,6 +75,8 @@ pub struct Config {
     pub scan_batch_size: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
+    /// Max buffer size for writing sst
+    pub write_sst_max_buffer_size: usize,
 
     /// Wal storage config
     ///
@@ -108,6 +110,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
+            write_sst_max_buffer_size: 1024 * 1024 * 10,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }

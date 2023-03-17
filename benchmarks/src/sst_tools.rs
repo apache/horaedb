@@ -51,6 +51,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         storage_format_hint: StorageFormatHint::Auto,
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
+        max_buffer_size: 1024 * 1024 * 10,
     };
 
     info!(

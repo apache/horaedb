@@ -116,6 +116,7 @@ pub struct SstWriteOptions {
     pub storage_format_hint: StorageFormatHint,
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
+    pub max_buffer_size: usize,
 }
 
 #[derive(Debug, Default)]
