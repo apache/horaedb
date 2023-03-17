@@ -95,7 +95,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("fail to fetch schema config, schema_name:{schema}"),
+                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
             })?;
 
         debug!(
@@ -255,7 +255,7 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
+            msg: "Failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(n) => Ok(n),
@@ -366,7 +366,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
+            msg: "Failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(_) => Ok(()),
@@ -440,7 +440,7 @@ fn write_entry_to_rows(
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
+                    "Tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );
@@ -456,7 +456,7 @@ fn write_entry_to_rows(
             column_schema.is_tag,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
+                msg: format!("Column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 

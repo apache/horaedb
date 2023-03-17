@@ -145,7 +145,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "forwarded query failed",
+                        msg: "Forwarded query failed",
                     })
             }
             .boxed();
@@ -192,7 +192,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "forwarded query failed",
+                        msg: "Forwarded query failed",
                     })
                     .map(|stream| {
                         stream
@@ -200,7 +200,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                                 item.box_err()
                                     .context(ErrWithCause {
                                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                                        msg: "fail to fetch stream query response",
+                                        msg: "Fail to fetch stream query response",
                                     })
                                     .unwrap_or_else(|e| SqlQueryResponse {
                                         header: Some(error::build_err_header(e)),
@@ -256,7 +256,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "failed to parse sql",
+                msg: "Failed to parse sql",
             })?;
 
         ensure!(
@@ -274,7 +274,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "only support execute one statement now, current num:{}, sql:{}",
+                    "Only support execute one statement now, current num:{}, sql:{}",
                     stmts.len(),
                     req.sql
                 ),
@@ -299,14 +299,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "query is blocked",
+                msg: "Query is blocked",
             })?;
 
         if let Some(deadline) = deadline {
             if deadline.check_deadline() {
                 return ErrNoCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: "query timeout",
+                    msg: "Query timeout",
                 }
                 .fail();
             }
@@ -328,7 +328,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to create interpreter",
+                msg: "Failed to create interpreter",
             })?;
 
         let output = if let Some(deadline) = deadline {
@@ -340,7 +340,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "query timeout",
+                msg: "Query timeout",
             })?
         } else {
             interpreter.execute().await
@@ -348,7 +348,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         .box_err()
         .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("failed to execute interpreter, sql:{}", req.sql),
+            msg: format!("Failed to execute interpreter, sql:{}", req.sql),
         })?;
 
         info!(
@@ -447,7 +447,7 @@ impl QueryResponseWriter {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to encode record batch",
+                msg: "Failed to encode record batch",
             })
     }
 
@@ -462,7 +462,7 @@ impl QueryResponseWriter {
     pub fn finish(self) -> Result<SqlQueryResponse> {
         let compress_output = self.encoder.finish().box_err().context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to encode record batch",
+            msg: "Failed to encode record batch",
         })?;
 
         if compress_output.payload.is_empty() {

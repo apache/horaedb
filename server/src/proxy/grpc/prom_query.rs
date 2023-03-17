@@ -80,7 +80,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "invalid request",
+                msg: "Invalid request",
             })?;
 
         let (plan, column_name) =
@@ -94,7 +94,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     };
                     Error::ErrWithCause {
                         code,
-                        msg: "failed to create plan".to_string(),
+                        msg: "Failed to create plan".to_string(),
                         source: Box::new(e),
                     }
                 })?;
@@ -105,7 +105,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::FORBIDDEN,
-                msg: "query is blocked",
+                msg: "Query is blocked",
             })?;
 
         // Execute in interpreter
@@ -124,7 +124,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to create interpreter",
+                msg: "Failed to create interpreter",
             })?;
 
         let output = if let Some(deadline) = deadline {
@@ -136,7 +136,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::REQUEST_TIMEOUT,
-                msg: "query timeout",
+                msg: "Query timeout",
             })?
         } else {
             interpreter.execute().await
@@ -144,14 +144,14 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
+            msg: "Failed to execute interpreter",
         })?;
 
         let resp = convert_output(output, column_name)
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to convert output",
+                msg: "Failed to convert output",
             })?;
 
         Ok(resp)
@@ -246,33 +246,33 @@ impl RecordConverter {
             .index_of(TSID_COLUMN)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "failed to find Tsid column".to_string(),
+                msg: "Failed to find Tsid column",
             })?;
         let timestamp_idx = record_schema
             .index_of(&column_name.timestamp)
             .context(ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "failed to find Timestamp column",
+                msg: "Failed to find Timestamp column",
             })?;
         ensure!(
             record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: "timestamp column should be timestamp type"
+                msg: "Timestamp column should be timestamp type"
             }
         );
         let field_idx = record_schema
             .index_of(&column_name.field)
             .with_context(|| ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("failed to find {} column", column_name.field),
+                msg: format!("Failed to find {} column", column_name.field),
             })?;
         let field_type = record_schema.column(field_idx).data_type;
         ensure!(
             field_type.is_f64_castable(),
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("field type must be f64-compatibile type, current:{field_type}")
+                msg: format!("Field type must be f64-compatibile type, current:{field_type}")
             }
         );
 
