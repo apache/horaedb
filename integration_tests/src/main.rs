@@ -15,9 +15,15 @@ mod database;
 const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
 
 struct CeresDBController;
+struct UntypedCeresDB {
+    db: DbRef,
+}
+
 pub trait StoppableDatabase: Database {
     fn stop(&mut self);
 }
+
+pub type DbRef = Box<dyn StoppableDatabase + Send + Sync>;
 
 impl<T: Backend + Send + Sync> StoppableDatabase for CeresDB<T> {
     fn stop(&mut self) {
@@ -25,31 +31,31 @@ impl<T: Backend + Send + Sync> StoppableDatabase for CeresDB<T> {
     }
 }
 
-pub type DbRef = Box<dyn StoppableDatabase + Send + Sync>;
-
 #[async_trait]
-impl Database for DbRef {
+impl Database for UntypedCeresDB {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
-        self.query(context, query).await
+        self.db.query(context, query).await
     }
 }
 
 #[async_trait]
 impl EnvController for CeresDBController {
-    type DB = DbRef;
+    type DB = UntypedCeresDB;
 
     async fn start(&self, env: &str, _config: Option<&Path>) -> Self::DB {
         println!("start with env {env}");
-        match env {
+        let db = match env {
             "local" => Box::new(CeresDB::<CeresDBServer>::create()) as DbRef,
             "cluster" => Box::new(CeresDB::<CeresDBCluster>::create()) as DbRef,
             _ => panic!("invalid env {env}"),
-        }
+        };
+
+        UntypedCeresDB { db }
     }
 
     async fn stop(&self, env: &str, mut database: Self::DB) {
         println!("stop with env {env}");
-        database.stop();
+        database.db.stop();
     }
 }
 
