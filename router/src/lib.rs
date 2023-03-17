@@ -11,7 +11,7 @@ use ceresdbproto::storage::{Route, RouteRequest};
 pub use cluster_based::ClusterBasedRouter;
 use common_util::define_result;
 pub use rule_based::{RuleBasedRouter, RuleList};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
 
 #[derive(Snafu, Debug)]
@@ -64,7 +64,7 @@ pub trait Router {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RouteCacheConfig {
     /// Time to live (TTL) in second
     ttl: u64,
