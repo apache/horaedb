@@ -41,12 +41,12 @@ impl MetaData {
             .context(KvMetaDataNotFound)?;
         let kv_meta = kv_metas
             .iter()
-            .find(|kv| &kv.key == encoding::META_KEY)
+            .find(|kv| kv.key == encoding::META_KEY)
             .context(KvMetaDataNotFound)?;
 
         let custom = {
             let mut sst_meta =
-                encoding::decode_sst_meta_data(&kv_meta).context(DecodeCustomMetaData)?;
+                encoding::decode_sst_meta_data(kv_meta).context(DecodeCustomMetaData)?;
             if ignore_sst_filter {
                 sst_meta.parquet_filter = None;
             }

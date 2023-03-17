@@ -2,11 +2,6 @@
 
 //! Sst writer implementation based on parquet.
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
-
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, request_id::RequestId};
 use common_util::error::BoxError;
@@ -63,20 +58,19 @@ impl<'a> ParquetSstWriter<'a> {
     }
 }
 
-/// RecordBytesReader provides AsyncRead implementation for the encoded records
-/// by parquet.
-struct RecordBytesReader {
+/// The writer will reorganize the record batches into row groups, and then
+/// encode them to parquet file.
+struct RecordBatchGroupWriter {
     request_id: RequestId,
     hybrid_encoding: bool,
+    input: RecordBatchStream,
     meta_data: MetaData,
-    record_stream: RecordBatchStream,
     num_rows_per_row_group: usize,
     compression: Compression,
-    total_row_num: Arc<AtomicUsize>,
 }
 
-impl RecordBytesReader {
-    /// Fetch an integral row group from the `self.record_stream`.
+impl RecordBatchGroupWriter {
+    /// Fetch an integral row group from the `self.input`.
     ///
     /// Except the last one, every row group is ensured to contains exactly
     /// `self.num_rows_per_row_group`. As for the last one, it will cover all
@@ -111,7 +105,7 @@ impl RecordBytesReader {
             }
 
             // Previous record batch has been exhausted, and let's fetch next record batch.
-            match self.record_stream.next().await {
+            match self.input.next().await {
                 Some(v) => {
                     let v = v.context(PollRecordBatch)?;
                     debug_assert!(
@@ -131,6 +125,8 @@ impl RecordBytesReader {
         Ok(curr_row_group)
     }
 
+    /// Build the parquet filter for the given `row_group`, and then update it
+    /// into `exist_filter`.
     fn build_parquet_filter(
         &self,
         row_group_batch: &[RecordBatchWithKey],
@@ -140,6 +136,7 @@ impl RecordBytesReader {
         if self.hybrid_encoding {
             return Ok(());
         }
+
         let row_group_filter = {
             let mut builder =
                 RowGroupFilterBuilder::with_num_columns(row_group_batch[0].num_columns());
@@ -161,10 +158,11 @@ impl RecordBytesReader {
         Ok(())
     }
 
-    async fn read_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<()> {
+    async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
         let mut parquet_filter = ParquetFilter::with_row_group_num(0);
-        let mut arrow_record_batch_vec = Vec::new();
+        let mut arrow_row_group = Vec::new();
+        let mut total_num_rows = 0;
 
         let mut parquet_encoder = ParquetEncoder::try_new(
             sink,
@@ -177,23 +175,27 @@ impl RecordBytesReader {
         .context(EncodeRecordBatch)?;
 
         loop {
-            let row_group_batch = self.fetch_next_row_group(&mut prev_record_batch).await?;
-            if row_group_batch.is_empty() {
+            let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
+            if row_group.is_empty() {
                 break;
             }
-            self.build_parquet_filter(&row_group_batch, &mut parquet_filter)?;
-            let num_batches = row_group_batch.len();
-            for record_batch in row_group_batch {
-                arrow_record_batch_vec
-                    .push(record_batch.into_record_batch().into_arrow_record_batch());
+
+            self.build_parquet_filter(&row_group, &mut parquet_filter)?;
+
+            let num_batches = row_group.len();
+            for record_batch in row_group {
+                arrow_row_group.push(record_batch.into_record_batch().into_arrow_record_batch());
             }
-            let row_num = parquet_encoder
-                .encode_record_batch(arrow_record_batch_vec)
+            let num_rows = parquet_encoder
+                .encode_record_batches(arrow_row_group)
                 .await
                 .box_err()
                 .context(EncodeRecordBatch)?;
-            self.total_row_num.fetch_add(row_num, Ordering::Relaxed);
-            arrow_record_batch_vec = Vec::with_capacity(num_batches);
+
+            // TODO: it will be better to use `arrow_row_group.clear()` to reuse the
+            // allocated memory.
+            arrow_row_group = Vec::with_capacity(num_batches);
+            total_num_rows += num_rows;
         }
 
         let parquet_meta_data = {
@@ -210,7 +212,9 @@ impl RecordBytesReader {
             .close()
             .await
             .box_err()
-            .context(EncodeRecordBatch)
+            .context(EncodeRecordBatch)?;
+
+        Ok(total_num_rows)
     }
 }
 
@@ -254,38 +258,38 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         &mut self,
         request_id: RequestId,
         meta: &MetaData,
-        record_stream: RecordBatchStream,
+        input: RecordBatchStream,
     ) -> writer::Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.num_rows_per_row_group
         );
 
-        let total_row_num = Arc::new(AtomicUsize::new(0));
-        let reader = RecordBytesReader {
+        let group_writer = RecordBatchGroupWriter {
             hybrid_encoding: self.hybrid_encoding,
             request_id,
-            record_stream,
+            input,
             num_rows_per_row_group: self.num_rows_per_row_group,
             compression: self.compression,
-            total_row_num: total_row_num.clone(),
             meta_data: meta.clone(),
         };
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
-        if let Err(e) = reader.read_all(sink).await {
-            if let Err(e) = aborter.abort().await {
-                error!(
-                    "Failed to abort multi-upload for sst:{}, err:{}",
-                    self.path, e
-                );
+        let total_num_rows = match group_writer.write_all(sink).await {
+            Ok(v) => v,
+            Err(e) => {
+                if let Err(e) = aborter.abort().await {
+                    error!(
+                        "Failed to abort multi-upload for sst:{}, err:{}",
+                        self.path, e
+                    );
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+        };
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
-
         let storage_format = if self.hybrid_encoding {
             StorageFormat::Hybrid
         } else {
@@ -293,7 +297,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         };
         Ok(SstInfo {
             file_size: file_head.size,
-            row_num: total_row_num.load(Ordering::Relaxed),
+            row_num: total_num_rows,
             storage_format,
         })
     }
@@ -302,7 +306,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 #[cfg(test)]
 mod tests {
 
-    use std::task::Poll;
+    use std::{sync::Arc, task::Poll};
 
     use common_types::{
         bytes::Bytes,

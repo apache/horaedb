@@ -220,7 +220,7 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
 #[async_trait]
 trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
-    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize>;
+    async fn encode(&mut self, record_batches: Vec<ArrowRecordBatch>) -> Result<usize>;
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
 
@@ -465,15 +465,15 @@ impl ParquetEncoder {
 
     /// Encode the record batch with [ArrowWriter] and the encoded contents is
     /// written to the buffer.
-    pub async fn encode_record_batch(
+    pub async fn encode_record_batches(
         &mut self,
-        arrow_record_batch_vec: Vec<ArrowRecordBatch>,
+        arrow_record_batches: Vec<ArrowRecordBatch>,
     ) -> Result<usize> {
-        if arrow_record_batch_vec.is_empty() {
+        if arrow_record_batches.is_empty() {
             return Ok(0);
         }
 
-        self.record_encoder.encode(arrow_record_batch_vec).await
+        self.record_encoder.encode(arrow_record_batches).await
     }
 
     pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
