@@ -163,7 +163,7 @@ impl RecordBatchGroupWriter {
 
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
-        let mut parquet_filter = ParquetFilter::with_row_group_num(0);
+        let mut parquet_filter = ParquetFilter::default();
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 

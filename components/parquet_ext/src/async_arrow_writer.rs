@@ -1,5 +1,9 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
+
+//! Async arrow writer for parquet file.
+
 use std::{
     io::Write,
     sync::{Arc, Mutex},
@@ -16,6 +20,10 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 #[derive(Clone, Default)]
 pub struct SharedBuffer {
+    /// The buffer to store the data to be written.
+    ///
+    /// The lock is used to obtain internal mutability, so no worry about the
+    /// lock contention.
     buffer: Arc<Mutex<Vec<u8>>>,
 }
 
@@ -31,6 +39,8 @@ impl Write for SharedBuffer {
     }
 }
 
+/// Async arrow writer for parquet file with a buffer whose size limit is
+/// configurable.
 pub struct AsyncArrowWriter<W> {
     sync_writer: ArrowWriter<SharedBuffer>,
     async_writer: W,
@@ -72,6 +82,8 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
 
     pub async fn close(mut self) -> Result<FileMetaData> {
         let metadata = self.sync_writer.close()?;
+
+        // flush the remaining data.
         Self::flush(&self.shared_buffer, &mut self.async_writer, 0).await?;
         self.async_writer
             .shutdown()
@@ -101,6 +113,7 @@ impl<W: AsyncWrite + Unpin + Send> AsyncArrowWriter<W> {
             .await
             .map_err(|e| ParquetError::External(Box::new(e)))?;
 
+        // reuse the buffer.
         buffer.clear();
         *shared_buffer.buffer.lock().unwrap() = buffer;
         Ok(())
