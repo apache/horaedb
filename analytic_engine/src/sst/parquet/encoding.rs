@@ -949,7 +949,7 @@ mod tests {
     async fn hybrid_record_encode_and_decode() {
         let schema = build_schema();
 
-        let mut meta_data = ParquetMetaData {
+        let meta_data = ParquetMetaData {
             min_key: Bytes::from_static(b"100"),
             max_key: Bytes::from_static(b"200"),
             time_range: TimeRange::new_unchecked(Timestamp::new(100), Timestamp::new(101)),
@@ -963,6 +963,9 @@ mod tests {
         let mut encoder =
             HybridRecordEncoder::try_new(copied_buffer, 100, Compression::ZSTD, &meta_data.schema)
                 .unwrap();
+        encoder
+            .set_meta_data(meta_data.clone())
+            .expect("Failed to set meta data");
 
         let columns = vec![
             Arc::new(UInt64Array::from(vec![1, 1, 2])) as ArrayRef,
@@ -1020,10 +1023,11 @@ mod tests {
             .build()
             .unwrap();
         let hybrid_record_batch = reader.next().unwrap().unwrap();
-        collect_collapsible_cols_idx(&meta_data.schema, &mut meta_data.collapsible_cols_idx);
+        let mut collapsible_cols_idx = Vec::new();
+        collect_collapsible_cols_idx(&meta_data.schema, &mut collapsible_cols_idx);
 
         let decoder = HybridRecordDecoder {
-            collapsible_cols_idx: meta_data.collapsible_cols_idx.clone(),
+            collapsible_cols_idx,
         };
         let decoded_record_batch = decoder.decode(hybrid_record_batch).unwrap();
 
