@@ -13,7 +13,7 @@ export CERESDB_SERVER_GRPC_ENDPOINT ?= 127.0.0.1:8831
 export CERESDB_SERVER_HTTP_ENDPOINT ?= 127.0.0.1:5440
 export CERESDB_BINARY_PATH ?= $(ROOT)/../target/$(MODE)/ceresdb-server
 export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
-export CERESDB_CONFIG_FILE ?= $(ROOT)/config/ceresdb-standalone.toml
+export CERESDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
 # environment variables for cluster
 export CERESMETA_BINARY_PATH ?= $(ROOT)/ceresmeta/ceresmeta
