@@ -222,11 +222,11 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(warp::get())
             .and(self.with_context())
             .and(self.with_instance())
-            .and_then(|table, ctx, instance| async move {
-                let result = handlers::route::handle_route(&ctx, instance, table)
+            .and_then(|table:String, ctx, instance| async move {
+                let result = handlers::route::handle_route(&ctx, instance, table.clone())
                     .await
                     .map_err(|e| {
-                        error!("Http service Failed to find route of table:{table}, err:{e:?}");
+                        error!("Http service Failed to find route of table:{}, err:{:?}",table,e);
                         Box::new(e)
                     })
                     .context(HandleRequest);
@@ -398,6 +398,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
         //TODO(boyan) use read/write runtime by sql type.
         let runtime = self.engine_runtimes.bg_runtime.clone();
         let timeout = self.config.timeout;
+        let router = self.router.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
@@ -415,7 +416,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                             .runtime(runtime)
                             .timeout(timeout)
                             .enable_partition_table_access(true)
-                            .router(self.router.clone())
+                            .router(router)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)

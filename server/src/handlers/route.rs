@@ -17,7 +17,6 @@ use crate::handlers::{
     },
     prelude::*,
 };
-use crate::handlers::error::Error::RouteHandler;
 
 #[serde(rename_all = "snake_case")]
 pub struct Response {
@@ -43,6 +42,7 @@ pub async fn handle_route<Q: QueryExecutor + 'static>(
     instance: InstanceRef<Q>,
     table: String,
 ) -> Result<Response> {
+    ensure!(!table.is_empty());
     let begin_instant = Instant::now();
     let deadline = ctx.timeout.map(|t| begin_instant + t);
 
