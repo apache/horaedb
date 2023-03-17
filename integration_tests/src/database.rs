@@ -125,6 +125,7 @@ impl Backend for CeresDBCluster {
             .spawn()
             .expect("Failed to spawn process to start server");
 
+        println!("wait for ceresmeta ready...\n");
         std::thread::sleep(Duration::from_secs(10));
 
         let ceresdb_bin =
@@ -141,7 +142,6 @@ impl Backend for CeresDBCluster {
         let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
         let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
 
-        println!("xxxxxxxxxxxx");
         Self {
             server0,
             server1,
@@ -150,6 +150,7 @@ impl Backend for CeresDBCluster {
     }
 
     fn wait_for_ready(&self) {
+        println!("wait for cluster service ready...\n");
         std::thread::sleep(Duration::from_secs(20));
     }
 
@@ -222,7 +223,6 @@ impl<T: Backend> CeresDB<T> {
         let backend = T::start();
         backend.wait_for_ready();
 
-        println!("ready for test");
         let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
             panic!("Cannot read server endpoint from env {SERVER_GRPC_ENDPOINT_ENV:?}")
         });

@@ -1,6 +1,9 @@
 MODE ?= debug
 ROOT = $(shell pwd)
-DATA_DIR = /tmp/ceresdb
+CERESDB_DATA_DIR = /tmp/ceresdb
+CERESDB_DATA_DIR_0 = /tmp/ceresdb0
+CERESDB_DATA_DIR_1 = /tmp/ceresdb1
+CERESMETA_DATA_DIR = /tmp/ceresmeta
 
 export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export CERESDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
@@ -22,7 +25,7 @@ export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
 export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 
 clean:
-	rm -rf $(DATA_DIR)
+	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
 
 build-meta:
 	sh ./build_meta.sh $(CERESMETA_BINARY_PATH)

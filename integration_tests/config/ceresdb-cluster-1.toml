@@ -1,7 +1,7 @@
 [server]
 bind_addr = "0.0.0.0"
-http_port = 15441
-grpc_port = 18832
+http_port = 15440
+grpc_port = 18831
 mysql_port = 13307
 log_level = "info"
 deploy_mode = "Cluster"
