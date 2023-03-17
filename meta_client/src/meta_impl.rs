@@ -9,7 +9,7 @@ use ceresdbproto::{
 };
 use common_util::{config::ReadableDuration, error::BoxError};
 use log::{debug, info};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 
 type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct MetaClientConfig {
     pub cluster_name: String,

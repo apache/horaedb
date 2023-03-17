@@ -12,25 +12,25 @@ use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 
 use crate::{grpc::forward, http::DEFAULT_MAX_BODY_SIZE};
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StaticRouteConfig {
     pub rules: RuleList,
     pub topology: StaticTopologyConfig,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShardView {
     pub shard_id: ShardId,
     pub endpoint: Endpoint,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct SchemaShardView {
     pub schema: String,
@@ -59,7 +59,7 @@ impl From<SchemaShardView> for SchemaConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct StaticTopologyConfig {
     pub schema_shards: Vec<SchemaShardView>,
@@ -89,7 +89,7 @@ impl From<&StaticTopologyConfig> for ClusterView {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ServerConfig {
     /// The address to listen.

@@ -12,7 +12,7 @@ use common_util::{
     time::DurationExt,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use table_engine::OPTION_KEY_ENABLE_TTL;
 
@@ -125,7 +125,7 @@ pub enum Error {
 
 define_result!(Error);
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub enum UpdateMode {
     Overwrite,
     Append,
@@ -152,7 +152,7 @@ impl ToString for UpdateMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Compression {
     Uncompressed,
     Lz4,
@@ -221,7 +221,7 @@ impl From<Compression> for ParquetCompression {
 }
 
 /// A hint for building sst.
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub enum StorageFormatHint {
     /// Which storage format is chosen to encode one sst depends on the data
     /// pattern.
@@ -231,7 +231,7 @@ pub enum StorageFormatHint {
 }
 
 /// StorageFormat specify how records are saved in persistent storage
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Serialize)]
 pub enum StorageFormat {
     /// Traditional columnar format, every column is saved in one exact one
     /// column, for example:
@@ -375,7 +375,7 @@ impl Default for StorageFormat {
 }
 
 /// Options for a table.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 pub struct TableOptions {
     // The following options are immutable once table was created.

@@ -50,9 +50,9 @@ define_result!(Error);
 
 /// Read toml file from given `path` to `toml_buf`, then parsed it to `T` and
 /// return.
-pub fn parse_toml_from_path<'a, T>(path: &str, toml_buf: &'a mut String) -> Result<T>
+pub fn parse_toml_from_path<T>(path: &str, toml_buf: &mut String) -> Result<T>
 where
-    T: de::Deserialize<'a>,
+    T: de::DeserializeOwned,
 {
     let mut file = File::open(path).context(OpenFile { path })?;
     file.read_to_string(toml_buf).context(ReadToml { path })?;

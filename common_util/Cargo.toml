@@ -33,7 +33,7 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 time = "0.1"
 tokio = { workspace = true }
-toml = "0.5"
+toml = { workspace = true }
 
 [dev-dependencies.slog-global]
 version = "0.1"
