@@ -7,4 +7,3 @@ if [ ! -d ceresmeta ]; then
 fi
 cd ceresmeta
 go build -o ceresmeta ./cmd/meta/...
-mv ceresmeta $1

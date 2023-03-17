@@ -28,7 +28,7 @@ clean:
 	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
 
 build-meta:
-	sh ./build_meta.sh $(CERESMETA_BINARY_PATH)
+	sh ./build_meta.sh
 
 build-ceresdb:
 	cd .. && cargo build --bin ceresdb-server
