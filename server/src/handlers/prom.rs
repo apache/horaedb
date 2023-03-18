@@ -30,7 +30,7 @@ use crate::{
     context::RequestContext,
     handlers,
     instance::InstanceRef,
-    proxy::grpc::write::{execute_plan, write_request_to_insert_plan, WriteContext},
+    proxy::grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
     schema_config_provider::SchemaConfigProviderRef,
 };
 
@@ -257,7 +257,7 @@ impl<Q: QueryExecutor + 'static> RemoteStorage for CeresDBStorage<Q> {
 
         let mut success = 0;
         for insert_plan in plans {
-            success += execute_plan(
+            success += execute_insert_plan(
                 request_id,
                 catalog,
                 schema,
