@@ -1,5 +1,8 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+//! The proxy module provides features such as forwarding and authentication,
+//! adapts to different protocols.
+
 pub(crate) mod error;
 #[allow(dead_code)]
 pub mod forward;
