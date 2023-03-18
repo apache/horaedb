@@ -70,6 +70,9 @@ struct RecordBatchGroupWriter {
     num_rows_per_row_group: usize,
     max_buffer_size: usize,
     compression: Compression,
+    /// The filter for the parquet file, and it will be updated during
+    /// generating the parquet file.
+    parquet_filter: ParquetFilter,
 }
 
 impl RecordBatchGroupWriter {
@@ -129,12 +132,8 @@ impl RecordBatchGroupWriter {
     }
 
     /// Build the parquet filter for the given `row_group`, and then update it
-    /// into `exist_filter`.
-    fn build_parquet_filter(
-        &self,
-        row_group_batch: &[RecordBatchWithKey],
-        exist_filter: &mut ParquetFilter,
-    ) -> Result<()> {
+    /// into `self.parquet_filter`.
+    fn update_parquet_filter(&mut self, row_group_batch: &[RecordBatchWithKey]) -> Result<()> {
         // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         if self.hybrid_encoding {
             return Ok(());
@@ -157,13 +156,12 @@ impl RecordBatchGroupWriter {
             builder.build().box_err().context(BuildParquetFilter)?
         };
 
-        exist_filter.push_row_group_filter(row_group_filter);
+        self.parquet_filter.push_row_group_filter(row_group_filter);
         Ok(())
     }
 
     async fn write_all<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
         let mut prev_record_batch: Option<RecordBatchWithKey> = None;
-        let mut parquet_filter = ParquetFilter::default();
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
@@ -184,7 +182,7 @@ impl RecordBatchGroupWriter {
                 break;
             }
 
-            self.build_parquet_filter(&row_group, &mut parquet_filter)?;
+            self.update_parquet_filter(&row_group)?;
 
             let num_batches = row_group.len();
             for record_batch in row_group {
@@ -204,7 +202,7 @@ impl RecordBatchGroupWriter {
 
         let parquet_meta_data = {
             let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.parquet_filter = Some(parquet_filter);
+            parquet_meta_data.parquet_filter = Some(self.parquet_filter);
             parquet_meta_data
         };
         parquet_encoder
@@ -224,7 +222,7 @@ impl RecordBatchGroupWriter {
 
 struct ObjectStoreMultiUploadAborter<'a> {
     location: &'a Path,
-    sink_id: String,
+    session_id: String,
     object_store: &'a ObjectStoreRef,
 }
 
@@ -236,21 +234,21 @@ impl<'a> ObjectStoreMultiUploadAborter<'a> {
         ObjectStoreMultiUploadAborter<'a>,
         Box<dyn AsyncWrite + Unpin + Send>,
     )> {
-        let (sink_id, sink) = object_store
+        let (session_id, upload_writer) = object_store
             .put_multipart(location)
             .await
             .context(Storage)?;
         let aborter = Self {
             location,
-            sink_id,
+            session_id,
             object_store,
         };
-        Ok((aborter, sink))
+        Ok((aborter, upload_writer))
     }
 
     async fn abort(self) -> Result<()> {
         self.object_store
-            .abort_multipart(self.location, &self.sink_id)
+            .abort_multipart(self.location, &self.session_id)
             .await
             .context(Storage)
     }
@@ -277,6 +275,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
             meta_data: meta.clone(),
+            parquet_filter: ParquetFilter::default(),
         };
 
         let (aborter, sink) =
@@ -285,6 +284,8 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             Ok(v) => v,
             Err(e) => {
                 if let Err(e) = aborter.abort().await {
+                    // The uploading file will be leaked if failed to abort. A repair command will
+                    // be provided to clean up the leaked files.
                     error!(
                         "Failed to abort multi-upload for sst:{}, err:{}",
                         self.path, e
@@ -468,7 +469,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_partition_record_batch() {
+    async fn test_fetch_row_group() {
         // rows per group: 10
         let testcases = vec![
             // input, expected
@@ -486,58 +487,60 @@ mod tests {
         ];
 
         for (num_rows_per_group, input, expected) in testcases {
-            test_partition_record_batch_inner(num_rows_per_group, input, expected).await;
+            check_num_rows_of_row_group(num_rows_per_group, input, expected).await;
         }
     }
 
-    async fn test_partition_record_batch_inner(
-        _num_rows_per_row_group: usize,
-        _input_row_nums: Vec<usize>,
-        _expected_row_nums: Vec<usize>,
+    async fn check_num_rows_of_row_group(
+        num_rows_per_row_group: usize,
+        input_num_rows: Vec<usize>,
+        expected_num_rows: Vec<usize>,
     ) {
-        // init_log_for_test();
-        // let schema = build_schema();
-        // let mut poll_cnt = 0;
-        // let schema_clone = schema.clone();
-        // let record_batch_stream = Box::new(stream::poll_fn(move |_ctx| ->
-        // Poll<Option<_>> {     if poll_cnt == input_row_nums.len() {
-        //         return Poll::Ready(None);
-        //     }
+        init_log_for_test();
+        let schema = build_schema();
+        let mut poll_cnt = 0;
+        let schema_clone = schema.clone();
+        let record_batch_stream = Box::new(stream::poll_fn(move |_ctx| -> Poll<Option<_>> {
+            if poll_cnt == input_num_rows.len() {
+                return Poll::Ready(None);
+            }
 
-        //     let rows = (0..input_row_nums[poll_cnt])
-        //         .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
-        //         .collect::<Vec<_>>();
+            let rows = (0..input_num_rows[poll_cnt])
+                .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
+                .collect::<Vec<_>>();
 
-        //     let batch = build_record_batch_with_key(schema_clone.clone(),
-        // rows);     poll_cnt += 1;
+            let batch = build_record_batch_with_key(schema_clone.clone(), rows);
+            poll_cnt += 1;
 
-        //     Poll::Ready(Some(Ok(batch)))
-        // }));
+            Poll::Ready(Some(Ok(batch)))
+        }));
 
-        // let mut reader = RecordBytesReader {
-        //     request_id: RequestId::next_id(),
-        //     hybrid_encoding: false,
-        //     record_stream: record_batch_stream,
-        //     num_rows_per_row_group,
-        //     compression: Compression::UNCOMPRESSED,
-        //     meta_data: MetaData {
-        //         min_key: Default::default(),
-        //         max_key: Default::default(),
-        //         time_range: Default::default(),
-        //         max_sequence: 1,
-        //         schema,
-        //     },
-        //     total_row_num: Arc::new(AtomicUsize::new(0)),
-        // };
+        let mut group_writer = RecordBatchGroupWriter {
+            request_id: RequestId::next_id(),
+            hybrid_encoding: false,
+            input: record_batch_stream,
+            num_rows_per_row_group,
+            compression: Compression::UNCOMPRESSED,
+            meta_data: MetaData {
+                min_key: Default::default(),
+                max_key: Default::default(),
+                time_range: Default::default(),
+                max_sequence: 1,
+                schema,
+            },
+            max_buffer_size: 0,
+            parquet_filter: ParquetFilter::default(),
+        };
 
-        // reader.partition_record_batch().await.unwrap();
+        let mut prev_record_batch = None;
+        for expect_num_row in expected_num_rows {
+            let batch = group_writer
+                .fetch_next_row_group(&mut prev_record_batch)
+                .await
+                .unwrap();
 
-        // for (i, expected_row_num) in
-        // expected_row_nums.into_iter().enumerate() {     let actual:
-        // usize = reader.partitioned_record_batch[i]         .iter()
-        //         .map(|b| b.num_rows())
-        //         .sum();
-        //     assert_eq!(expected_row_num, actual);
-        // }
+            let actual_num_row: usize = batch.iter().map(|b| b.num_rows()).sum();
+            assert_eq!(expect_num_row, actual_num_row);
+        }
     }
 }

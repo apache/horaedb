@@ -39,8 +39,11 @@ impl Write for SharedBuffer {
     }
 }
 
-/// Async arrow writer for parquet file with a buffer whose size limit is
-/// configurable.
+/// Async arrow writer for parquet file.
+///
+/// A shared buffer is provided to the sync writer [ArrowWriter] and it will
+/// accept the data from the sync writer and flush the received data to the
+/// async writer when the buffer size exceeds the threshold.
 pub struct AsyncArrowWriter<W> {
     sync_writer: ArrowWriter<SharedBuffer>,
     async_writer: W,
