@@ -39,7 +39,7 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
-        match self.handle_query_internal(ctx, req).await {
+        match self.handle_sql_query_internal(ctx, req).await {
             Err(e) => SqlQueryResponse {
                 header: Some(error::build_err_header(e)),
                 ..Default::default()
@@ -65,17 +65,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    async fn handle_query_internal(
+    async fn handle_sql_query_internal(
         &self,
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<SqlQueryResponse> {
-        let req = match self.maybe_forward_query(&req).await {
+        let req = match self.maybe_forward_sql_query(&req).await {
             Some(resp) => return resp,
             None => req,
         };
 
-        let output = self.fetch_query_output(ctx, &req).await?;
+        let output = self.fetch_sql_query_output(ctx, &req).await?;
         convert_output(&output, self.resp_compress_min_length)
     }
 
@@ -84,21 +84,25 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         ctx: Context,
         req: SqlQueryRequest,
     ) -> Result<BoxStream<'static, SqlQueryResponse>> {
-        let req = match self.clone().maybe_forward_stream_query(req.clone()).await {
+        let req = match self
+            .clone()
+            .maybe_forward_stream_sql_query(req.clone())
+            .await
+        {
             Some(resp) => return resp,
             None => req,
         };
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let runtime = ctx.runtime.clone();
         let resp_compress_min_length = self.resp_compress_min_length;
-        let output = self.as_ref().fetch_query_output(ctx, &req).await?;
+        let output = self.as_ref().fetch_sql_query_output(ctx, &req).await?;
         runtime.spawn(async move {
             match output {
                 Output::AffectedRows(rows) => {
                     let resp =
                         QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
                     if tx.send(resp).await.is_err() {
-                        error!("Failed to send affected rows resp in stream query");
+                        error!("Failed to send affected rows resp in stream sql query");
                     }
                 }
                 Output::Records(batches) => {
@@ -110,7 +114,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         }?;
 
                         if tx.send(resp).await.is_err() {
-                            error!("Failed to send record batches resp in stream query");
+                            error!("Failed to send record batches resp in stream sql query");
                             break;
                         }
                     }
@@ -121,9 +125,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         Ok(ReceiverStream::new(rx).boxed())
     }
 
-    async fn maybe_forward_query(&self, req: &SqlQueryRequest) -> Option<Result<SqlQueryResponse>> {
+    async fn maybe_forward_sql_query(
+        &self,
+        req: &SqlQueryRequest,
+    ) -> Option<Result<SqlQueryResponse>> {
         if req.tables.len() != 1 {
-            warn!("Unable to forward query without exactly one table, req:{req:?}",);
+            warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
 
             return None;
         }
@@ -145,7 +152,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded query failed",
+                        msg: "Forwarded sql query failed",
                     })
             }
             .boxed();
@@ -159,18 +166,18 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 ForwardResult::Original => None,
             },
             Err(e) => {
-                error!("Failed to forward req but the error is ignored, err:{e}");
+                error!("Failed to forward sql req but the error is ignored, err:{e}");
                 None
             }
         }
     }
 
-    async fn maybe_forward_stream_query(
+    async fn maybe_forward_stream_sql_query(
         self: Arc<Self>,
         req: SqlQueryRequest,
     ) -> Option<Result<BoxStream<'static, SqlQueryResponse>>> {
         if req.tables.len() != 1 {
-            warn!("Unable to forward query without exactly one table, req:{req:?}",);
+            warn!("Unable to forward sql query without exactly one table, req:{req:?}",);
 
             return None;
         }
@@ -192,7 +199,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     .box_err()
                     .context(ErrWithCause {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded query failed",
+                        msg: "Forwarded stream sql query failed",
                     })
                     .map(|stream| {
                         stream
@@ -200,7 +207,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                                 item.box_err()
                                     .context(ErrWithCause {
                                         code: StatusCode::INTERNAL_SERVER_ERROR,
-                                        msg: "Fail to fetch stream query response",
+                                        msg: "Fail to fetch stream sql query response",
                                     })
                                     .unwrap_or_else(|e| SqlQueryResponse {
                                         header: Some(error::build_err_header(e)),
@@ -221,19 +228,19 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 ForwardResult::Original => None,
             },
             Err(e) => {
-                error!("Failed to forward req but the error is ignored, err:{e}");
+                error!("Failed to forward stream sql req but the error is ignored, err:{e}");
                 None
             }
         }
     }
 
-    async fn fetch_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
+    async fn fetch_sql_query_output(&self, ctx: Context, req: &SqlQueryRequest) -> Result<Output> {
         let request_id = RequestId::next_id();
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Grpc handle query begin, request_id:{request_id}, request:{req:?}");
+        info!("Handle sql query, request_id:{request_id}, request:{req:?}");
 
         let req_ctx = req.context.as_ref().unwrap();
         let schema = &req_ctx.database;
@@ -352,7 +359,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })?;
 
         info!(
-        "Grpc handle query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
+        "Handle sql query success, catalog:{}, schema:{}, request_id:{}, cost:{}ms, request:{:?}",
         catalog,
         schema,
         request_id,

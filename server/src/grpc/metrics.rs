@@ -11,9 +11,10 @@ make_auto_flush_static_metric! {
     pub label_enum GrpcTypeKind {
         handle_route,
         handle_write,
-        handle_query,
+        handle_sql_query,
+        handle_prom_query,
         handle_stream_write,
-        handle_stream_query,
+        handle_stream_sql_query,
     }
 
     pub struct GrpcHandlerDurationHistogramVec: LocalHistogram {
