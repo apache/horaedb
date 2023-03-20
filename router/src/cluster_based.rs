@@ -144,8 +144,8 @@ mod tests {
         assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 0);
 
-        // sleep 2, table2 will be evicted, and table1 in cache
-        sleep(Duration::from_secs(2));
+        // sleep 1.5s, table2 will be evicted, and table1 in cache
+        sleep(Duration::from_millis(1500));
         let tables = vec![table1.to_string(), table2.to_string()];
 
         let (routes, miss) = route_from_cache(&cache, tables);
