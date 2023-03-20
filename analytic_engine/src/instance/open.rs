@@ -69,7 +69,7 @@ impl Instance {
             space_store.clone(),
             bg_runtime.clone(),
             scheduler_config,
-            ctx.config.write_sst_max_buffer_size,
+            ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
         ));
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
@@ -93,7 +93,7 @@ impl Instance {
             db_write_buffer_size: ctx.config.db_write_buffer_size,
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
-            write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size,
+            write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
             iter_options,
             remote_engine: remote_engine_ref,
         });

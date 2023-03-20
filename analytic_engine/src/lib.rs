@@ -22,7 +22,7 @@ pub mod table_options;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
-use common_util::config::ReadableDuration;
+use common_util::config::{ReadableDuration, ReadableSize};
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
 use serde::{Deserialize, Serialize};
@@ -76,7 +76,7 @@ pub struct Config {
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
     /// Max buffer size for writing sst
-    pub write_sst_max_buffer_size: usize,
+    pub write_sst_max_buffer_size: ReadableSize,
 
     /// Wal storage config
     ///
@@ -110,7 +110,7 @@ impl Default for Config {
             db_write_buffer_size: 0,
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
-            write_sst_max_buffer_size: 1024 * 1024 * 10,
+            write_sst_max_buffer_size: ReadableSize::mb(10),
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }
