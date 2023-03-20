@@ -64,22 +64,14 @@ pub trait Router {
     async fn route(&self, req: RouteRequest) -> Result<Vec<Route>>;
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct RouteCacheConfig {
+    // enable route cache, default false
+    enable: bool,
     /// Time to live (TTL) in second.
     ttl: u64,
     /// Time to idle (TTI) in second.
     tti: u64,
     /// how many route records can store in cache.
     capacity: u64,
-}
-
-impl Default for RouteCacheConfig {
-    fn default() -> Self {
-        Self {
-            ttl: 5,
-            tti: 5,
-            capacity: 10_000,
-        }
-    }
 }

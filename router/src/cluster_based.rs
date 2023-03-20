@@ -16,40 +16,46 @@ use crate::{endpoint::Endpoint, OtherWithCause, ParseEndpoint, Result, RouteCach
 
 pub struct ClusterBasedRouter {
     cluster: ClusterRef,
-    cache: Cache<String, Route>,
+    cache: Option<Cache<String, Route>>,
 }
 
 impl ClusterBasedRouter {
     pub fn new(cluster: ClusterRef, cache_config: RouteCacheConfig) -> Self {
-        Self {
-            cluster,
-            cache: Cache::builder()
-                .time_to_live(Duration::from_secs(cache_config.ttl))
-                .time_to_idle(Duration::from_secs(cache_config.tti))
-                .max_capacity(cache_config.capacity)
-                .build(),
-        }
-    }
-}
-
-/// route table from local cache, return cache routes and  tables which are not
-/// in cache
-fn route_from_cache(
-    cache: &Cache<String, Route>,
-    tables: Vec<String>,
-) -> (Vec<Route>, Vec<String>) {
-    let mut routes = vec![];
-    let mut miss = vec![];
-
-    for table in tables {
-        if let Some(route) = cache.get(&table) {
-            routes.push(route);
+        let cache = if cache_config.enable {
+            Some(
+                Cache::builder()
+                    .time_to_live(Duration::from_secs(cache_config.ttl))
+                    .time_to_idle(Duration::from_secs(cache_config.tti))
+                    .max_capacity(cache_config.capacity)
+                    .build(),
+            )
         } else {
-            miss.push(table.clone());
-        }
+            None
+        };
+
+        Self { cluster, cache }
     }
 
-    (routes, miss)
+    /// route table from local cache, return cache routes and  tables which are
+    /// not in cache
+    fn route_from_cache(&self, tables: &Vec<String>) -> (Vec<Route>, Vec<String>) {
+        let mut routes = vec![];
+        let mut miss = vec![];
+
+        if let Some(cache) = &self.cache {
+            for table in tables {
+                if let Some(route) = cache.get(table) {
+                    routes.push(route.clone());
+                } else {
+                    miss.push(table.clone());
+                }
+            }
+        } else {
+            miss = tables.clone();
+        }
+
+        (routes, miss)
+    }
 }
 
 /// Make a route according to the table name and the raw endpoint.
@@ -68,7 +74,8 @@ impl Router for ClusterBasedRouter {
         let req_ctx = req.context.unwrap();
 
         // Firstly route table from local cache.
-        let (mut routes, miss) = route_from_cache(&self.cache, req.tables);
+        let (mut routes, miss) = self.route_from_cache(&req.tables);
+
         if miss.is_empty() {
             return Ok(routes);
         }
@@ -92,8 +99,10 @@ impl Router for ClusterBasedRouter {
             for node_shard in route_entry.node_shards {
                 if node_shard.shard_info.is_leader() {
                     let route = make_route(&table_name, &node_shard.endpoint)?;
-                    // There may be data race here, and it is acceptable currently.
-                    self.cache.insert(table_name.clone(), route.clone()).await;
+                    if let Some(cache) = &self.cache {
+                        // There may be data race here, and it is acceptable currently.
+                        cache.insert(table_name.clone(), route.clone()).await;
+                    }
                     routes.push(route);
                 }
             }
@@ -104,42 +113,138 @@ impl Router for ClusterBasedRouter {
 
 #[cfg(test)]
 mod tests {
-    use std::thread::sleep;
+    use std::{collections::HashMap, sync::Arc, thread::sleep};
+
+    use ceresdbproto::{
+        meta_event::{
+            CloseShardRequest, CloseTableOnShardRequest, CreateTableOnShardRequest,
+            DropTableOnShardRequest, OpenShardRequest, OpenTableOnShardRequest,
+        },
+        storage::RequestContext,
+    };
+    use cluster::{Cluster, ClusterNodesResp};
+    use meta_client::types::{
+        NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
+        TablesOfShard,
+    };
 
     use super::*;
 
+    struct MockClusterImpl {}
+
+    #[async_trait]
+    impl Cluster for MockClusterImpl {
+        async fn start(&self) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn stop(&self) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn open_shard(&self, _req: &OpenShardRequest) -> cluster::Result<TablesOfShard> {
+            todo!()
+        }
+
+        async fn close_shard(&self, _req: &CloseShardRequest) -> cluster::Result<TablesOfShard> {
+            todo!()
+        }
+
+        async fn create_table_on_shard(
+            &self,
+            _req: &CreateTableOnShardRequest,
+        ) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn open_table_on_shard(&self, _req: &OpenTableOnShardRequest) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn close_table_on_shard(
+            &self,
+            _req: &CloseTableOnShardRequest,
+        ) -> cluster::Result<()> {
+            todo!()
+        }
+
+        async fn route_tables(
+            &self,
+            req: &RouteTablesRequest,
+        ) -> cluster::Result<RouteTablesResponse> {
+            let mut entries = HashMap::new();
+            for table in &req.table_names {
+                entries.insert(
+                    table.clone(),
+                    RouteEntry {
+                        table: TableInfo {
+                            id: 0,
+                            name: table.clone(),
+                            schema_name: String::from("public"),
+                            schema_id: 0,
+                        },
+                        node_shards: vec![NodeShard {
+                            endpoint: String::from("127.0.0.1:8831"),
+                            shard_info: ShardInfo {
+                                id: 0,
+                                role: Leader,
+                                version: 100,
+                            },
+                        }],
+                    },
+                );
+            }
+
+            Ok(RouteTablesResponse {
+                cluster_topology_version: 0,
+                entries,
+            })
+        }
+
+        async fn fetch_nodes(&self) -> cluster::Result<ClusterNodesResp> {
+            todo!()
+        }
+    }
+
     #[tokio::test]
     async fn test_route_cache() {
-        let cache: Cache<String, Route> = Cache::builder()
-            .time_to_live(Duration::from_secs(4))
-            .time_to_idle(Duration::from_secs(2))
-            .max_capacity(2)
-            .build();
+        let mock_cluster = MockClusterImpl {};
 
-        let table0 = "table0";
+        let config = RouteCacheConfig {
+            enable: true,
+            ttl: 4,
+            tti: 2,
+            capacity: 2,
+        };
+        let router = ClusterBasedRouter::new(Arc::new(mock_cluster), config);
+
         let table1 = "table1";
         let table2 = "table2";
-        let endpoint0 = "127.0.0.0:8831";
-        let endpoint1 = "127.0.0.1:8831";
-        let endpoint2 = "127.0.0.2:8831";
 
         // first case get two tables, no one miss
         let tables = vec![table1.to_string(), table2.to_string()];
-        let route = make_route(table0, endpoint0).unwrap();
-        cache.insert(table0.to_string(), route).await;
-        let route = make_route(table1, endpoint1).unwrap();
-        cache.insert(table1.to_string(), route).await;
-        let route = make_route(table2, endpoint2).unwrap();
-        cache.insert(table2.to_string(), route).await;
-        let (routes, miss) = route_from_cache(&cache, tables);
+        let result = router
+            .route(RouteRequest {
+                context: Some(RequestContext {
+                    database: String::from("public"),
+                }),
+                tables: tables.clone(),
+            })
+            .await;
+        assert_eq!(result.unwrap().len(), 2);
+
+        let (routes, miss) = router.route_from_cache(&tables);
         assert_eq!(routes.len(), 2);
         assert_eq!(miss.len(), 0);
         sleep(Duration::from_secs(1));
 
         // try to get table1
         let tables = vec![table1.to_string()];
-
-        let (routes, miss) = route_from_cache(&cache, tables);
+        let (routes, miss) = router.route_from_cache(&tables);
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 0);
@@ -147,8 +252,7 @@ mod tests {
         // sleep 1.5s, table2 will be evicted, and table1 in cache
         sleep(Duration::from_millis(1500));
         let tables = vec![table1.to_string(), table2.to_string()];
-
-        let (routes, miss) = route_from_cache(&cache, tables);
+        let (routes, miss) = router.route_from_cache(&tables);
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 1);
