@@ -522,7 +522,7 @@ pub struct TableLocation {
 pub type TableDataRef = Arc<TableData>;
 
 /// Manages TableDataRef
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TableDataSet {
     /// Name to table data
     table_datas: HashMap<String, TableDataRef>,
@@ -533,10 +533,7 @@ pub struct TableDataSet {
 impl TableDataSet {
     /// Create an empty TableDataSet
     pub fn new() -> Self {
-        Self {
-            table_datas: HashMap::new(),
-            id_to_tables: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Insert if absent, if successfully inserted, return true and return
@@ -593,12 +590,6 @@ impl TableDataSet {
         for table_data in self.table_datas.values().cloned() {
             tables.push(table_data);
         }
-    }
-}
-
-impl Default for TableDataSet {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

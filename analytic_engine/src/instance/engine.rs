@@ -212,6 +212,13 @@ pub enum Error {
         table: String,
         source: GenericError,
     },
+
+    #[snafu(display(
+        "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
+        table,
+        backtrace,
+    ))]
+    CreateOpenFailedTable { table: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -241,6 +248,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::FlushTable { .. }
             | Error::StoreVersionEdit { .. }
             | Error::EncodePayloads { .. }
+            | Error::CreateOpenFailedTable { .. }
             | Error::DoManifestSnapshot { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
