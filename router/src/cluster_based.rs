@@ -69,36 +69,36 @@ impl Router for ClusterBasedRouter {
 
         // Firstly route table from local cache.
         let (mut routes, miss) = route_from_cache(&self.cache, req.tables);
+        if miss.is_empty() {
+            return Ok(routes);
+        }
 
-        if !miss.is_empty() {
-            let route_tables_req = RouteTablesRequest {
-                schema_name: req_ctx.database,
-                table_names: miss,
-            };
+        let route_tables_req = RouteTablesRequest {
+            schema_name: req_ctx.database,
+            table_names: miss,
+        };
 
-            let route_resp = self
-                .cluster
-                .route_tables(&route_tables_req)
-                .await
-                .box_err()
-                .with_context(|| OtherWithCause {
-                    msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
-                })?;
+        let route_resp = self
+            .cluster
+            .route_tables(&route_tables_req)
+            .await
+            .box_err()
+            .with_context(|| OtherWithCause {
+                msg: format!("Failed to route tables by cluster, req:{route_tables_req:?}"),
+            })?;
 
-            // Now we pick up the nodes who own the leader shard for the route response.
-            for (table_name, route_entry) in route_resp.entries {
-                for node_shard in route_entry.node_shards {
-                    if node_shard.shard_info.is_leader() {
-                        let route = make_route(&table_name, &node_shard.endpoint)?;
-                        // There may be data race here, and it is acceptable currently.
-                        self.cache.insert(table_name.clone(), route.clone()).await;
-                        routes.push(route);
-                    }
+        // Now we pick up the nodes who own the leader shard for the route response.
+        for (table_name, route_entry) in route_resp.entries {
+            for node_shard in route_entry.node_shards {
+                if node_shard.shard_info.is_leader() {
+                    let route = make_route(&table_name, &node_shard.endpoint)?;
+                    // There may be data race here, and it is acceptable currently.
+                    self.cache.insert(table_name.clone(), route.clone()).await;
+                    routes.push(route);
                 }
             }
         }
-
-        Ok(routes)
+        return Ok(routes);
     }
 }
 
@@ -116,36 +116,42 @@ mod tests {
             .max_capacity(2)
             .build();
 
-        let tables = vec!["table1".to_string(), "table2".to_string()];
+        let table0 = "table0";
+        let table1 = "table1";
+        let table2 = "table2";
+        let endpoint0 = "127.0.0.0:8831";
+        let endpoint1 = "127.0.0.1:8831";
+        let endpoint2 = "127.0.0.2:8831";
 
-        // first case get two tables, miss 0
-        let route = make_route("table0", "127.0.0.0:8831").unwrap();
-        cache.insert("table0".to_string(), route).await;
-        let route = make_route("table1", "127.0.0.1:8831").unwrap();
-        cache.insert("table1".to_string(), route).await;
-        let route = make_route("table2", "127.0.0.2:8831").unwrap();
-        cache.insert("table2".to_string(), route).await;
+        // first case get two tables, no one miss
+        let tables = vec![table1.to_string(), table2.to_string()];
+        let route = make_route(table0, endpoint0).unwrap();
+        cache.insert(table0.to_string(), route).await;
+        let route = make_route(table1, endpoint1).unwrap();
+        cache.insert(table1.to_string(), route).await;
+        let route = make_route(table2, endpoint2).unwrap();
+        cache.insert(table2.to_string(), route).await;
         let (routes, miss) = route_from_cache(&cache, tables);
         assert_eq!(routes.len(), 2);
         assert_eq!(miss.len(), 0);
         sleep(Duration::from_secs(1));
 
         // try to get table1
-        let tables = vec!["table1".to_string()];
+        let tables = vec![table1.to_string()];
 
         let (routes, miss) = route_from_cache(&cache, tables);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, "table1".to_string());
+        assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 0);
 
         // sleep 2, table2 will be evicted, and table1 in cache
         sleep(Duration::from_secs(2));
-        let tables = vec!["table1".to_string(), "table2".to_string()];
+        let tables = vec![table1.to_string(), table2.to_string()];
 
         let (routes, miss) = route_from_cache(&cache, tables);
         assert_eq!(routes.len(), 1);
-        assert_eq!(routes[0].table, "table1".to_string());
+        assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 1);
-        assert_eq!(miss[0], "table2".to_string());
+        assert_eq!(miss[0], table2.to_string());
     }
 }
