@@ -122,18 +122,12 @@ impl Table for PartitionTableImpl {
     }
 
     fn stats(&self) -> TableStats {
-        let metrics = &self.space_table.table_data().metrics;
-
-        TableStats {
-            num_write: metrics.write_request_counter.get(),
-            num_read: metrics.read_request_counter.get(),
-            num_flush: metrics.flush_duration_histogram.get_sample_count(),
-        }
+        self.space_table.table_data().metrics.table_stats()
     }
 
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         let _timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
-            .with_label_values(&["total", &self.space_table.table_data().name])
+            .with_label_values(&["total"])
             .start_timer();
 
         // Build partition rule.
@@ -152,7 +146,7 @@ impl Table for PartitionTableImpl {
         // Split write request.
         let partitions = {
             let _locate_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["locate", &self.space_table.table_data().name])
+                .with_label_values(&["locate"])
                 .start_timer();
             df_partition_rule
                 .locate_partitions_for_write(&request.row_group)
@@ -190,7 +184,7 @@ impl Table for PartitionTableImpl {
 
         let result = {
             let _remote_timer = PARTITION_TABLE_WRITE_DURATION_HISTOGRAM
-                .with_label_values(&["remote_write", &self.space_table.table_data().name])
+                .with_label_values(&["remote_write"])
                 .start_timer();
             try_join_all(futures).await.box_err().context(Write {
                 table: self.name().to_string(),
@@ -218,7 +212,7 @@ impl Table for PartitionTableImpl {
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let _timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
-            .with_label_values(&["total", &self.space_table.table_data().name])
+            .with_label_values(&["total"])
             .start_timer();
 
         // Build partition rule.
@@ -237,7 +231,7 @@ impl Table for PartitionTableImpl {
         // Evaluate expr and locate partition.
         let partitions = {
             let _locate_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
-                .with_label_values(&["locate", &self.space_table.table_data().name])
+                .with_label_values(&["locate"])
                 .start_timer();
             df_partition_rule
                 .locate_partitions_for_read(request.predicate.exprs())
@@ -262,7 +256,7 @@ impl Table for PartitionTableImpl {
 
         let streams = {
             let _remote_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
-                .with_label_values(&["remote_read", &self.space_table.table_data().name])
+                .with_label_values(&["remote_read"])
                 .start_timer();
             try_join_all(futures).await.box_err().context(Scan {
                 table: self.name().to_string(),
