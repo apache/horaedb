@@ -390,8 +390,7 @@ impl Instance {
 
         // Start flush duration timer.
         let local_metrics = table_data.metrics.local_flush_metrics();
-        local_metrics.observe_memtables_num(mems_to_flush.len());
-        let _timer = local_metrics.flush_duration_histogram.start_timer();
+        let _timer = local_metrics.start_flush_timer();
         self.dump_memtables(table_data, request_id, &mems_to_flush)
             .await?;
 
@@ -807,10 +806,7 @@ impl SpaceStore {
         }
 
         // metrics
-        let _timer = table_data
-            .metrics
-            .compaction_duration_histogram
-            .start_timer();
+        let _timer = table_data.metrics.start_compaction_timer();
         table_data
             .metrics
             .compaction_observe_sst_num(input.files.len());

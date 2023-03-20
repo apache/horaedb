@@ -92,6 +92,11 @@ pub struct Space {
     /// lock
     table_datas: RwLock<TableDataSet>,
 
+    /// If table open failed, request of this table is not allowed, otherwise
+    /// schema may become inconsistent.
+    // TODO: engine should provide a repair method to fix those failed tables.
+    open_failed_tables: RwLock<Vec<String>>,
+
     /// Write workers
     pub write_group: WriteGroup,
     /// Space memtable memory usage collector
@@ -111,8 +116,9 @@ impl Space {
         Self {
             id,
             context,
-            table_datas: RwLock::new(TableDataSet::new()),
             write_group,
+            table_datas: Default::default(),
+            open_failed_tables: Default::default(),
             mem_usage_collector: Arc::new(MemUsageCollector::with_parent(engine_mem_collector)),
             write_buffer_size,
         }
@@ -157,6 +163,14 @@ impl Space {
             .unwrap()
             .insert_if_absent(table_data);
         assert!(success);
+    }
+
+    pub(crate) fn insert_open_failed_table(&self, table_name: String) {
+        self.open_failed_tables.write().unwrap().push(table_name)
+    }
+
+    pub(crate) fn is_open_failed_table(&self, table_name: &String) -> bool {
+        self.open_failed_tables.read().unwrap().contains(table_name)
     }
 
     /// Find table under this space by table name

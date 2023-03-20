@@ -195,7 +195,12 @@ impl Instance {
             replay_batch_size,
             &read_ctx,
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            error!("Recovery table from wal failed, table_data:{table_data:?}, err:{e}");
+            space.insert_open_failed_table(table_data.name.to_string());
+            e
+        })?;
 
         space.insert_table(table_data.clone());
         Ok(Some(table_data))

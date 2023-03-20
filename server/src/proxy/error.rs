@@ -12,13 +12,13 @@ define_result!(Error);
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Internal error, message:{}, cause:{}", msg, source))]
+    #[snafu(display("Internal error, message:{}, err:{}", msg, source))]
     Internal { msg: String, source: GenericError },
 
-    #[snafu(display("Rpc error, code:{:?}, message:{}", code, msg))]
+    #[snafu(display("Rpc error, code:{:?}, err:{}", code, msg))]
     ErrNoCause { code: StatusCode, msg: String },
 
-    #[snafu(display("Rpc error, code:{:?}, message:{}, cause:{}", code, msg, source))]
+    #[snafu(display("Rpc error, code:{:?}, message:{}, err:{}", code, msg, source))]
     ErrWithCause {
         code: StatusCode,
         msg: String,
