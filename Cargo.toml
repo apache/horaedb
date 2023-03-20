@@ -137,6 +137,7 @@ interpreters = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
+moka = { version = "0.10", features = ["future"] }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }
@@ -146,7 +147,6 @@ sort = "0.8.5"
 table_engine = { workspace = true }
 toml = { workspace = true }
 tracing_util = { workspace = true }
-moka = { version = "0.10", features = ["future"] }
 
 [build-dependencies]
 vergen = { version = "7", default-features = false, features = ["build", "git", "rustc"] }
