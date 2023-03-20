@@ -1,18 +1,16 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
-
-//! Write handler
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use std::{
     collections::{BTreeMap, HashMap},
     time::Instant,
 };
 
+use bytes::Bytes;
 use ceresdbproto::storage::{
     value, WriteRequest, WriteResponse, WriteSeriesEntry, WriteTableRequest,
 };
 use cluster::config::SchemaConfig;
 use common_types::{
-    bytes::Bytes,
     datum::{Datum, DatumKind},
     request_id::RequestId,
     row::{Row, RowGroupBuilder},
@@ -26,18 +24,19 @@ use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
-    frontend::{Context, Frontend},
+    frontend::{Context as FrontendContext, Frontend},
     plan::{InsertPlan, Plan},
     provider::CatalogMetaProvider,
 };
 use table_engine::table::TableRef;
 
 use crate::{
-    grpc::storage_service::{
-        error::{self, ErrNoCause, ErrWithCause, Result},
-        HandlerContext,
-    },
     instance::InstanceRef,
+    proxy::{
+        error,
+        error::{build_ok_header, ErrNoCause, ErrWithCause, Result},
+        Context, Proxy,
+    },
 };
 
 #[derive(Debug)]
@@ -66,26 +65,40 @@ impl WriteContext {
         }
     }
 }
-pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
-    ctx: &HandlerContext<'_, Q>,
-    req: WriteRequest,
-) -> Result<WriteResponse> {
-    let request_id = RequestId::next_id();
-    let begin_instant = Instant::now();
-    let deadline = ctx.timeout.map(|t| begin_instant + t);
-    let catalog = ctx.catalog();
-    let req_ctx = req.context.unwrap();
-    let schema = req_ctx.database;
-    let schema_config = ctx
-        .schema_config_provider
-        .schema_config(&schema)
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("fail to fetch schema config, schema_name:{schema}"),
-        })?;
 
-    debug!(
+impl<Q: QueryExecutor + 'static> Proxy<Q> {
+    pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
+        match self.handle_write_internal(ctx, req).await {
+            Err(e) => WriteResponse {
+                header: Some(error::build_err_header(e)),
+                ..Default::default()
+            },
+            Ok(v) => v,
+        }
+    }
+
+    // TODO: support forwarding write request
+    async fn handle_write_internal(
+        &self,
+        ctx: Context,
+        req: WriteRequest,
+    ) -> Result<WriteResponse> {
+        let request_id = RequestId::next_id();
+        let begin_instant = Instant::now();
+        let deadline = ctx.timeout.map(|t| begin_instant + t);
+        let catalog = self.instance.catalog_manager.default_catalog_name();
+        let req_ctx = req.context.unwrap();
+        let schema = req_ctx.database;
+        let schema_config = self
+            .schema_config_provider
+            .schema_config(&schema)
+            .box_err()
+            .with_context(|| ErrWithCause {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                msg: format!("Fail to fetch schema config, schema_name:{schema}"),
+            })?;
+
+        debug!(
         "Grpc handle write begin, catalog:{}, schema:{}, request_id:{}, first_table:{:?}, num_tables:{}",
         catalog,
         schema,
@@ -95,108 +108,48 @@ pub(crate) async fn handle_write<Q: QueryExecutor + 'static>(
             .map(|m| (&m.table, &m.tag_names, &m.field_names)),
         req.table_requests.len(),
     );
-
-    let write_context = WriteContext {
-        request_id,
-        deadline,
-        catalog: catalog.to_string(),
-        schema: schema.to_string(),
-        auto_create_table: ctx.auto_create_table,
-    };
-
-    let plan_vec = write_request_to_insert_plan(
-        ctx.instance.clone(),
-        req.table_requests,
-        schema_config,
-        write_context,
-    )
-    .await?;
-
-    let mut success = 0;
-    for insert_plan in plan_vec {
-        success += execute_plan(
+        let write_context = WriteContext {
             request_id,
-            catalog,
-            &schema,
-            ctx.instance.clone(),
-            insert_plan,
             deadline,
+            catalog: catalog.to_string(),
+            schema: schema.to_string(),
+            auto_create_table: self.auto_create_table,
+        };
+
+        let plan_vec = write_request_to_insert_plan(
+            self.instance.clone(),
+            req.table_requests,
+            schema_config,
+            write_context,
         )
         .await?;
+
+        let mut success = 0;
+        for insert_plan in plan_vec {
+            success += execute_plan(
+                request_id,
+                catalog,
+                &schema,
+                self.instance.clone(),
+                insert_plan,
+                deadline,
+            )
+            .await?;
+        }
+
+        let resp = WriteResponse {
+            success: success as u32,
+            header: Some(build_ok_header()),
+            ..Default::default()
+        };
+
+        debug!(
+            "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
+            catalog, schema, resp
+        );
+
+        Ok(resp)
     }
-
-    let resp = WriteResponse {
-        header: Some(error::build_ok_header()),
-        success: success as u32,
-        failed: 0,
-    };
-
-    debug!(
-        "Grpc handle write finished, catalog:{}, schema:{}, resp:{:?}",
-        catalog, schema, resp
-    );
-
-    Ok(resp)
-}
-
-pub async fn execute_plan<Q: QueryExecutor + 'static>(
-    request_id: RequestId,
-    catalog: &str,
-    schema: &str,
-    instance: InstanceRef<Q>,
-    insert_plan: InsertPlan,
-    deadline: Option<Instant>,
-) -> Result<usize> {
-    debug!(
-        "Grpc handle write table begin, table:{}, row_num:{}",
-        insert_plan.table.name(),
-        insert_plan.rows.num_rows()
-    );
-    let plan = Plan::Insert(insert_plan);
-
-    instance
-        .limiter
-        .try_limit(&plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::FORBIDDEN,
-            msg: "Insert is blocked",
-        })?;
-
-    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-        .build();
-    let interpreter_factory = Factory::new(
-        instance.query_executor.clone(),
-        instance.catalog_manager.clone(),
-        instance.table_engine.clone(),
-        instance.table_manipulator.clone(),
-    );
-    let interpreter = interpreter_factory
-        .create(interpreter_ctx, plan)
-        .box_err()
-        .with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to create interpreter",
-        })?;
-
-    interpreter
-        .execute()
-        .await
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
-        })
-        .and_then(|output| match output {
-            Output::AffectedRows(n) => Ok(n),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Invalid output type, expect AffectedRows, found Records",
-            }
-            .fail(),
-        })
 }
 
 pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
@@ -205,6 +158,8 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     schema_config: Option<&SchemaConfig>,
     write_context: WriteContext,
 ) -> Result<Vec<InsertPlan>> {
+    let mut plan_vec = Vec::with_capacity(table_requests.len());
+
     let WriteContext {
         request_id,
         catalog,
@@ -212,8 +167,6 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         deadline,
         auto_create_table,
     } = write_context;
-
-    let mut plan_vec = Vec::with_capacity(table_requests.len());
 
     for write_table_req in table_requests {
         let table_name = &write_table_req.table;
@@ -252,6 +205,66 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     }
 
     Ok(plan_vec)
+}
+
+pub async fn execute_plan<Q: QueryExecutor + 'static>(
+    request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    insert_plan: InsertPlan,
+    deadline: Option<Instant>,
+) -> Result<usize> {
+    debug!(
+        "Grpc handle write table begin, table:{}, row_num:{}",
+        insert_plan.table.name(),
+        insert_plan.rows.num_rows()
+    );
+    let plan = Plan::Insert(insert_plan);
+
+    instance
+        .limiter
+        .try_limit(&plan)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Insert is blocked",
+        })?;
+
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+        .build();
+    let interpreter_factory = Factory::new(
+        instance.query_executor.clone(),
+        instance.catalog_manager.clone(),
+        instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
+    );
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to create interpreter",
+        })?;
+
+    interpreter
+        .execute()
+        .await
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to execute interpreter",
+        })
+        .and_then(|output| match output {
+            Output::AffectedRows(n) => Ok(n),
+            Output::Records(_) => ErrNoCause {
+                code: StatusCode::BAD_REQUEST,
+                msg: "Invalid output type, expect AffectedRows, found Records",
+            }
+            .fail(),
+        })
 }
 
 fn try_get_table<Q: QueryExecutor + 'static>(
@@ -306,7 +319,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         function_registry: &*instance.function_registry,
     };
     let frontend = Frontend::new(provider);
-    let mut ctx = Context::new(request_id, deadline);
+    let mut ctx = FrontendContext::new(request_id, deadline);
     let plan = frontend
         .write_req_to_plan(&mut ctx, schema_config, write_table_req)
         .box_err()
@@ -325,7 +338,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .try_limit(&plan)
         .box_err()
         .context(ErrWithCause {
-            code: StatusCode::FORBIDDEN,
+            code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Create table is blocked",
         })?;
 
@@ -342,7 +355,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
     let interpreter = interpreter_factory
         .create(interpreter_ctx, plan)
         .box_err()
-        .with_context(|| ErrWithCause {
+        .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Failed to create interpreter",
         })?;
@@ -353,7 +366,7 @@ async fn create_table<Q: QueryExecutor + 'static>(
         .box_err()
         .context(ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "failed to execute interpreter",
+            msg: "Failed to execute interpreter",
         })
         .and_then(|output| match output {
             Output::AffectedRows(_) => Ok(()),
@@ -385,7 +398,7 @@ fn write_table_request_to_insert_plan(
     // The row group builder will checks nullable.
     let row_group = RowGroupBuilder::with_rows(schema, rows_total)
         .box_err()
-        .context(ErrWithCause {
+        .with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: format!("Failed to build row group, table:{}", table.name()),
         })?
@@ -427,7 +440,7 @@ fn write_entry_to_rows(
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!(
-                    "tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
+                    "Tag {tag:?} is not found in tag_names:{tag_names:?}, table:{table_name}",
                 ),
             }
         );
@@ -443,7 +456,7 @@ fn write_entry_to_rows(
             column_schema.is_tag,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!("column({tag_name}) is a field rather than a tag, table:{table_name}"),
+                msg: format!("Column({tag_name}) is a field rather than a tag, table:{table_name}"),
             }
         );
 
@@ -559,7 +572,7 @@ fn convert_proto_value_to_datum(
                 "Value type is not same, table:{table_name}, value_name:{name}, schema_type:{data_type:?}, actual_value:{v:?}"
             ),
         }
-        .fail(),
+            .fail(),
     }
 }
 

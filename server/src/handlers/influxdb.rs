@@ -23,8 +23,11 @@ use snafu::ResultExt;
 use warp::{reject, reply, Rejection, Reply};
 
 use crate::{
-    context::RequestContext, grpc::storage_service::write::WriteContext, handlers,
-    instance::InstanceRef, schema_config_provider::SchemaConfigProviderRef,
+    context::RequestContext,
+    handlers,
+    instance::InstanceRef,
+    proxy::grpc::write::{execute_plan, write_request_to_insert_plan, WriteContext},
+    schema_config_provider::SchemaConfigProviderRef,
 };
 
 pub struct InfluxDb<Q> {
@@ -103,7 +106,7 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
         let write_context =
             WriteContext::new(request_id, deadline, catalog.clone(), schema.clone());
 
-        let plans = crate::grpc::storage_service::write::write_request_to_insert_plan(
+        let plans = write_request_to_insert_plan(
             self.instance.clone(),
             convert_write_request(req)?,
             schema_config,
@@ -117,7 +120,7 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
 
         let mut success = 0;
         for insert_plan in plans {
-            success += crate::grpc::storage_service::write::execute_plan(
+            success += execute_plan(
                 request_id,
                 catalog,
                 schema,

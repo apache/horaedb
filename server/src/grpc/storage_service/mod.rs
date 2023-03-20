@@ -1,451 +1,398 @@
-// Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
+// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-// Storage rpc service implement.
+pub(crate) mod error;
+#[allow(dead_code)]
+mod header;
 
 use std::{
-    collections::HashMap,
-    stringify,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{
-    storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
-    RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
-};
-use common_util::{error::BoxError, time::InstantExt};
-use futures::stream::{self, BoxStream, StreamExt};
-use http::StatusCode;
-use interpreters::interpreter::Output;
-use log::{error, warn};
-use paste::paste;
-use query_engine::executor::Executor as QueryExecutor;
-use router::{Router, RouterRef};
-use snafu::ResultExt;
-use table_engine::engine::EngineRuntimes;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tonic::metadata::{KeyAndValueRef, MetadataMap};
-
-use self::{
-    error::Error,
-    sql_query::{QueryResponseBuilder, QueryResponseWriter},
-};
-use crate::{
-    grpc::{
-        forward::ForwarderRef,
-        metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
-        storage_service::error::{ErrNoCause, ErrWithCause, Result},
+use ceresdbproto::{
+    common::ResponseHeader,
+    storage::{
+        storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
+        RouteRequest, RouteResponse, SqlQueryRequest, SqlQueryResponse, WriteRequest,
+        WriteResponse,
     },
-    instance::InstanceRef,
-    schema_config_provider::SchemaConfigProviderRef,
 };
+use common_util::time::InstantExt;
+use futures::{stream, stream::BoxStream, StreamExt};
+use http::StatusCode;
+use query_engine::executor::Executor as QueryExecutor;
+use table_engine::engine::EngineRuntimes;
 
-pub(crate) mod error;
-mod prom_query;
-mod route;
-mod sql_query;
-pub(crate) mod write;
-
-const STREAM_QUERY_CHANNEL_LEN: usize = 20;
-
-/// Rpc request header
-/// Tenant/token will be saved in header in future
-#[allow(dead_code)]
-#[derive(Debug, Default)]
-pub struct RequestHeader {
-    metas: HashMap<String, Vec<u8>>,
-}
-
-impl From<&MetadataMap> for RequestHeader {
-    fn from(meta: &MetadataMap) -> Self {
-        let metas = meta
-            .iter()
-            .filter_map(|kv| match kv {
-                KeyAndValueRef::Ascii(key, val) => {
-                    // TODO: The value may be encoded in base64, which is not expected.
-                    Some((key.to_string(), val.as_encoded_bytes().to_vec()))
-                }
-                KeyAndValueRef::Binary(key, val) => {
-                    warn!(
-                        "Binary header is not supported yet and will be omit, key:{:?}, val:{:?}",
-                        key, val
-                    );
-                    None
-                }
-            })
-            .collect();
-
-        Self { metas }
-    }
-}
-
-impl RequestHeader {
-    #[allow(dead_code)]
-    pub fn get(&self, key: &str) -> Option<&[u8]> {
-        self.metas.get(key).map(|v| v.as_slice())
-    }
-}
-
-pub struct HandlerContext<'a, Q> {
-    #[allow(dead_code)]
-    header: RequestHeader,
-    router: RouterRef,
-    instance: InstanceRef<Q>,
-    catalog: String,
-    schema_config_provider: &'a SchemaConfigProviderRef,
-    forwarder: Option<ForwarderRef>,
-    timeout: Option<Duration>,
-    resp_compress_min_length: usize,
-    auto_create_table: bool,
-}
-
-impl<'a, Q> HandlerContext<'a, Q> {
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        header: RequestHeader,
-        router: Arc<dyn Router + Sync + Send>,
-        instance: InstanceRef<Q>,
-        schema_config_provider: &'a SchemaConfigProviderRef,
-        forwarder: Option<ForwarderRef>,
-        timeout: Option<Duration>,
-        resp_compress_min_length: usize,
-        auto_create_table: bool,
-    ) -> Self {
-        // catalog is not exposed to protocol layer
-        let catalog = instance.catalog_manager.default_catalog_name().to_string();
-
-        Self {
-            header,
-            router,
-            instance,
-            catalog,
-            schema_config_provider,
-            forwarder,
-            timeout,
-            resp_compress_min_length,
-            auto_create_table,
-        }
-    }
-
-    #[inline]
-    fn catalog(&self) -> &str {
-        &self.catalog
-    }
-}
+use crate::{
+    grpc::metrics::GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+    proxy::{Context, Proxy},
+};
 
 #[derive(Clone)]
 pub struct StorageServiceImpl<Q: QueryExecutor + 'static> {
-    pub router: Arc<dyn Router + Send + Sync>,
-    pub instance: InstanceRef<Q>,
+    pub proxy: Arc<Proxy<Q>>,
     pub runtimes: Arc<EngineRuntimes>,
-    pub schema_config_provider: SchemaConfigProviderRef,
-    pub forwarder: Option<ForwarderRef>,
     pub timeout: Option<Duration>,
-    pub resp_compress_min_length: usize,
-    pub auto_create_table: bool,
 }
 
-macro_rules! handle_request {
-    ($mod_name: ident, $handle_fn: ident, $req_ty: ident, $resp_ty: ident) => {
-        paste! {
-            async fn [<$mod_name _internal>] (
-                &self,
-                request: tonic::Request<$req_ty>,
-            ) -> std::result::Result<tonic::Response<$resp_ty>, tonic::Status> {
-                let instant = Instant::now();
+#[async_trait]
+impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
+    type StreamSqlQueryStream = BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>;
 
-                let router = self.router.clone();
-                let header = RequestHeader::from(request.metadata());
-                let instance = self.instance.clone();
-                let forwarder = self.forwarder.clone();
-                let timeout = self.timeout;
-                let resp_compress_min_length = self.resp_compress_min_length;
-                let auto_create_table = self.auto_create_table;
-
-                // The future spawned by tokio cannot be executed by other executor/runtime, so
-
-                let runtime = match stringify!($mod_name) {
-                    "sql_query" | "prom_query" => &self.runtimes.read_runtime,
-                    "write" => &self.runtimes.write_runtime,
-                    _ => &self.runtimes.bg_runtime,
-                };
-
-                let schema_config_provider = self.schema_config_provider.clone();
-                // we need to pass the result via channel
-                let join_handle = runtime.spawn(async move {
-                    let req = request.into_inner();
-                    if req.context.is_none() {
-                        ErrNoCause {
-                            code: StatusCode::BAD_REQUEST,
-                            msg: "database is not set",
-                        }
-                        .fail()?
-                    }
-                    let handler_ctx =
-                        HandlerContext::new(header, router, instance, &schema_config_provider, forwarder, timeout, resp_compress_min_length, auto_create_table);
-                    $mod_name::$handle_fn(&handler_ctx, req)
-                        .await
-                        .map_err(|e| {
-                            error!(
-                                "Failed to handle request, mod:{}, handler:{}, err:{}",
-                                stringify!($mod_name),
-                                stringify!($handle_fn),
-                                e
-                            );
-                            e
-                        })
-                });
-
-                let res = join_handle
-                    .await
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "fail to join the spawn task",
-                    });
-
-                let resp = match res {
-                    Ok(Ok(v)) => v,
-                    Ok(Err(e)) | Err(e) => {
-                        let mut resp = $resp_ty::default();
-                        let header = error::build_err_header(e);
-                        resp.header = Some(header);
-                        resp
-                    },
-                };
-
-                GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-                    .$handle_fn
-                    .observe(instant.saturating_elapsed().as_secs_f64());
-                Ok(tonic::Response::new(resp))
-            }
-        }
-    };
-}
-
-impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
-    // `RequestContext` is ensured in `handle_request` macro, so handler
-    // can just use it with unwrap()
-
-    handle_request!(route, handle_route, RouteRequest, RouteResponse);
-
-    handle_request!(write, handle_write, WriteRequest, WriteResponse);
-
-    handle_request!(sql_query, handle_query, SqlQueryRequest, SqlQueryResponse);
-
-    handle_request!(
-        prom_query,
-        handle_query,
-        PrometheusQueryRequest,
-        PrometheusQueryResponse
-    );
-
-    async fn stream_write_internal(
+    async fn route(
         &self,
-        request: tonic::Request<tonic::Streaming<WriteRequest>>,
-    ) -> Result<WriteResponse> {
+        req: tonic::Request<RouteRequest>,
+    ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
         let begin_instant = Instant::now();
-        let router = self.router.clone();
-        let header = RequestHeader::from(request.metadata());
-        let instance = self.instance.clone();
-        let schema_config_provider = self.schema_config_provider.clone();
-        let handler_ctx = HandlerContext::new(
-            header,
-            router,
-            instance,
-            &schema_config_provider,
-            self.forwarder.clone(),
-            self.timeout,
-            self.resp_compress_min_length,
-            self.auto_create_table,
-        );
 
-        let mut total_success = 0;
-        let mut resp = WriteResponse::default();
-        let mut has_err = false;
-        let mut stream = request.into_inner();
-        while let Some(req) = stream.next().await {
-            let write_req = req.box_err().context(ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "failed to fetch request",
-            })?;
+        let resp = self.route_internal(req).await;
 
-            let write_result = write::handle_write(
-                &handler_ctx,
-                write_req,
-            )
-            .await
-            .map_err(|e| {
-                error!("Failed to handle request, mod:stream_write, handler:handle_stream_write, err:{}", e);
-                e
-            });
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_route
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-            match write_result {
-                Ok(write_resp) => total_success += write_resp.success,
-                Err(e) => {
-                    resp.header = Some(error::build_err_header(e));
-                    has_err = true;
-                    break;
-                }
-            }
-        }
+        resp
+    }
 
-        if !has_err {
-            resp.header = Some(error::build_ok_header());
-            resp.success = total_success;
-        }
+    async fn write(
+        &self,
+        req: tonic::Request<WriteRequest>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.write_internal(req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_write
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
+    }
+
+    async fn sql_query(
+        &self,
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.sql_query_internal(req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_sql_query
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
+    }
+
+    async fn prom_query(
+        &self,
+        req: tonic::Request<PrometheusQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.prom_query_internal(req).await;
+
+        GRPC_HANDLER_DURATION_HISTOGRAM_VEC
+            .handle_prom_query
+            .observe(begin_instant.saturating_elapsed().as_secs_f64());
+
+        resp
+    }
+
+    async fn stream_write(
+        &self,
+        req: tonic::Request<tonic::Streaming<WriteRequest>>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
+        let begin_instant = Instant::now();
+
+        let resp = self.stream_write_internal(req).await;
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .handle_stream_write
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Ok(resp)
+        resp
     }
 
-    async fn stream_sql_query_internal(
+    async fn stream_sql_query(
         &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> Result<ReceiverStream<Result<SqlQueryResponse>>> {
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
         let begin_instant = Instant::now();
-        let router = self.router.clone();
-        let header = RequestHeader::from(request.metadata());
-        let instance = self.instance.clone();
-        let schema_config_provider = self.schema_config_provider.clone();
-        let forwarder = self.forwarder.clone();
-        let timeout = self.timeout;
-        let resp_compress_min_length = self.resp_compress_min_length;
-        let auto_create_table = self.auto_create_table;
-
-        let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
-        self.runtimes.read_runtime.spawn(async move {
-            let handler_ctx = HandlerContext::new(
-                header,
-                router,
-                instance,
-                &schema_config_provider,
-                forwarder,
-                timeout,
-                resp_compress_min_length,
-                auto_create_table
-            );
-            let query_req = request.into_inner();
-            let output = sql_query::fetch_query_output(&handler_ctx, &query_req)
-                .await
-                .map_err(|e| {
-                    error!("Failed to handle request, mod:stream_query, handler:handle_stream_query, err:{}", e);
-                    e
-                })?;
-            match output {
-                Output::AffectedRows(rows) => {
-                    let resp = QueryResponseBuilder::with_ok_header().build_with_affected_rows(rows);
-                    if tx.send(Ok(resp)).await.is_err() {
-                        error!("Failed to send affected rows resp in stream query");
-                    }
-                }
-                Output::Records(batches) => {
-                    for batch in &batches {
-                        let resp = {
-                            let mut writer = QueryResponseWriter::new(resp_compress_min_length);
-                            writer.write(batch)?;
-                            writer.finish()
-                        };
-
-                        if tx.send(resp).await.is_err() {
-                            error!("Failed to send record batches resp in stream query");
-                            break;
-                        }
-                    }
-                }
-            }
-
-            Ok::<(), Error>(())
-        });
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let stream = Self::stream_sql_query_internal(ctx, proxy, req).await;
 
         GRPC_HANDLER_DURATION_HISTOGRAM_VEC
-            .handle_stream_query
+            .handle_stream_sql_query
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        Ok(ReceiverStream::new(rx))
+        stream
     }
 }
 
-#[async_trait]
-impl<Q: QueryExecutor + 'static> StorageService for StorageServiceImpl<Q> {
-    type StreamSqlQueryStream =
-        BoxStream<'static, std::result::Result<SqlQueryResponse, tonic::Status>>;
-
-    async fn route(
+// TODO: Use macros to simplify duplicate code
+impl<Q: QueryExecutor + 'static> StorageServiceImpl<Q> {
+    async fn route_internal(
         &self,
-        request: tonic::Request<RouteRequest>,
-    ) -> std::result::Result<tonic::Response<RouteResponse>, tonic::Status> {
-        self.route_internal(request).await
+        req: tonic::Request<RouteRequest>,
+    ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.meta_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let join_handle = self
+            .runtimes
+            .meta_runtime
+            .spawn(async move { proxy.handle_route(ctx, req).await });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => RouteResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 
-    async fn write(
+    async fn write_internal(
         &self,
-        request: tonic::Request<WriteRequest>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        self.write_internal(request).await
-    }
+        req: tonic::Request<WriteRequest>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.write_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let join_handle = self.runtimes.write_runtime.spawn(async move {
+            if req.context.is_none() {
+                return WriteResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
+            }
 
-    async fn sql_query(
-        &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        self.sql_query_internal(request).await
-    }
+            proxy.handle_write(ctx, req).await
+        });
 
-    async fn prom_query(
-        &self,
-        request: tonic::Request<PrometheusQueryRequest>,
-    ) -> std::result::Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        self.prom_query_internal(request).await
-    }
-
-    async fn stream_write(
-        &self,
-        request: tonic::Request<tonic::Streaming<WriteRequest>>,
-    ) -> std::result::Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let resp = match self.stream_write_internal(request).await {
-            Ok(resp) => resp,
+        let resp = match join_handle.await {
+            Ok(v) => v,
             Err(e) => WriteResponse {
-                header: Some(error::build_err_header(e)),
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
+
+        Ok(tonic::Response::new(resp))
+    }
+
+    async fn sql_query_internal(
+        &self,
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            if req.context.is_none() {
+                return SqlQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
+            }
+
+            proxy.handle_sql_query(ctx, req).await
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => SqlQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
+
+        Ok(tonic::Response::new(resp))
+    }
+
+    async fn prom_query_internal(
+        &self,
+        req: tonic::Request<PrometheusQueryRequest>,
+    ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
+        let req = req.into_inner();
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.read_runtime.clone(),
+            timeout: self.timeout,
+        };
+        let join_handle = self.runtimes.read_runtime.spawn(async move {
+            if req.context.is_none() {
+                return PrometheusQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::BAD_REQUEST.as_u16() as u32,
+                        "database is not set".to_string(),
+                    )),
+                    ..Default::default()
+                };
+            }
+
+            proxy.handle_prom_query(ctx, req).await
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => PrometheusQueryResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
                 ..Default::default()
             },
         };
         Ok(tonic::Response::new(resp))
     }
 
-    async fn stream_sql_query(
+    async fn stream_write_internal(
         &self,
-        request: tonic::Request<SqlQueryRequest>,
-    ) -> std::result::Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
-        match self.stream_sql_query_internal(request).await {
-            Ok(stream) => {
-                let new_stream: Self::StreamSqlQueryStream =
-                    Box::pin(stream.map(|res| match res {
-                        Ok(resp) => Ok(resp),
-                        Err(e) => {
-                            let resp = SqlQueryResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            };
-                            Ok(resp)
-                        }
-                    }));
+        req: tonic::Request<tonic::Streaming<WriteRequest>>,
+    ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
+        let mut total_success = 0;
 
-                Ok(tonic::Response::new(new_stream))
-            }
-            Err(e) => {
-                let resp = SqlQueryResponse {
-                    header: Some(error::build_err_header(e)),
-                    ..Default::default()
+        let mut stream = req.into_inner();
+        let proxy = self.proxy.clone();
+        let ctx = Context {
+            runtime: self.runtimes.write_runtime.clone(),
+            timeout: self.timeout,
+        };
+
+        let join_handle = self.runtimes.write_runtime.spawn(async move {
+            let mut resp = WriteResponse::default();
+            let mut has_err = false;
+
+            while let Some(req) = stream.next().await {
+                let write_req = match req {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return WriteResponse {
+                            header: Some(error::build_err_header(
+                                StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                                format!("fail to fetch request, err:{e:?}"),
+                            )),
+                            ..Default::default()
+                        };
+                    }
                 };
-                let stream = stream::once(async { Ok(resp) });
-                Ok(tonic::Response::new(Box::pin(stream)))
+
+                let write_resp = proxy.handle_write(ctx.clone(), write_req).await;
+
+                if let Some(header) = write_resp.header {
+                    if header.code != StatusCode::OK.as_u16() as u32 {
+                        resp.header = Some(header);
+                        has_err = true;
+                        break;
+                    }
+                }
+                total_success += write_resp.success;
             }
-        }
+
+            if !has_err {
+                resp.header = Some(ResponseHeader {
+                    code: StatusCode::OK.as_u16() as u32,
+                    ..Default::default()
+                });
+                resp.success = total_success;
+            }
+
+            resp
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => WriteResponse {
+                header: Some(error::build_err_header(
+                    StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                    format!("fail to join the spawn task, err:{e:?}"),
+                )),
+                ..Default::default()
+            },
+        };
+
+        Ok(tonic::Response::new(resp))
+    }
+
+    async fn stream_sql_query_internal(
+        ctx: Context,
+        proxy: Arc<Proxy<Q>>,
+        req: tonic::Request<SqlQueryRequest>,
+    ) -> Result<
+        tonic::Response<BoxStream<'static, Result<SqlQueryResponse, tonic::Status>>>,
+        tonic::Status,
+    > {
+        let query_req = req.into_inner();
+
+        let runtime = ctx.runtime.clone();
+        let join_handle = runtime.spawn(async move {
+            if query_req.context.is_none() {
+                return stream::once(async move {
+                    Ok(SqlQueryResponse {
+                        header: Some(error::build_err_header(
+                            StatusCode::BAD_REQUEST.as_u16() as u32,
+                            "database is not set".to_string(),
+                        )),
+                        ..Default::default()
+                    })
+                })
+                .boxed();
+            }
+
+            proxy
+                .handle_stream_sql_query(ctx, query_req)
+                .await
+                .map(Ok)
+                .boxed()
+        });
+
+        let resp = match join_handle.await {
+            Ok(v) => v,
+            Err(e) => stream::once(async move {
+                Ok(SqlQueryResponse {
+                    header: Some(error::build_err_header(
+                        StatusCode::INTERNAL_SERVER_ERROR.as_u16() as u32,
+                        format!("fail to join the spawn task, err:{e:?}"),
+                    )),
+                    ..Default::default()
+                })
+            })
+            .boxed(),
+        };
+
+        Ok(tonic::Response::new(resp))
     }
 }
