@@ -15,7 +15,7 @@ use ceresdbproto::storage::{
 use log::{debug, error, warn};
 use router::{endpoint::Endpoint, RouterRef};
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, Snafu};
 use tonic::{
     metadata::errors::InvalidMetadataValue,
     transport::{self, Channel},
@@ -77,7 +77,6 @@ pub type ForwarderRef = Arc<Forwarder<DefaultClientBuilder>>;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
-    pub enable: bool,
     /// Thread num for grpc polling
     pub thread_num: usize,
     /// -1 means unlimited
@@ -100,7 +99,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            enable: false,
             thread_num: 4,
             // 20MB
             max_send_msg_len: 20 * (1 << 20),
@@ -238,14 +236,6 @@ impl<B: ClientBuilder> Forwarder<B> {
         local_endpoint: Endpoint,
         client_builder: B,
     ) -> Result<Self> {
-        let loopback_local_endpoint = Self::is_loopback_ip(&local_endpoint.addr);
-        ensure!(
-            !loopback_local_endpoint,
-            LoopbackLocalIpAddr {
-                ip_addr: &local_endpoint.addr,
-            }
-        );
-
         Ok(Self {
             config,
             local_endpoint,
@@ -275,10 +265,6 @@ impl<B: ClientBuilder> Forwarder<B> {
         >,
         Req: std::fmt::Debug + Clone,
     {
-        if !self.config.enable {
-            return Ok(ForwardResult::Original);
-        }
-
         let ForwardRequest {
             schema,
             table,
@@ -418,10 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_normal_forward() {
-        let config = Config {
-            enable: true,
-            ..Default::default()
-        };
+        let config = Config::default();
 
         let mut mock_router = MockRouter {
             routing_tables: HashMap::new(),
