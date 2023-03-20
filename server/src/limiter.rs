@@ -29,6 +29,8 @@ define_result!(Error);
 #[derive(Clone, Copy, Deserialize, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 pub enum BlockRule {
     QueryWithoutPredicate,
+    BlockAllQuery,
+    BlockAllInsert,
 }
 
 #[derive(Default, Clone, Deserialize, Debug, Serialize)]
@@ -43,6 +45,8 @@ impl BlockRule {
     fn should_limit(&self, plan: &Plan) -> bool {
         match self {
             BlockRule::QueryWithoutPredicate => self.is_query_without_predicate(plan),
+            BlockRule::BlockAllQuery => matches!(plan, Plan::Query(_)),
+            BlockRule::BlockAllInsert => matches!(plan, Plan::Insert(_)),
         }
     }
 
@@ -270,6 +274,16 @@ mod tests {
         let insert="INSERT INTO test_table(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3')";
         let insert_plan = sql_to_plan(&mock, insert);
         assert!(limiter.try_limit(&insert_plan).is_ok());
+
+        let (mock, limiter) = prepare_limiter_with_rules(vec![BlockRule::BlockAllQuery]);
+        let query = "select * from test_table";
+        let query_plan = sql_to_plan(&mock, query);
+        assert!(limiter.try_limit(&query_plan).is_err());
+
+        let (mock, limiter) = prepare_limiter_with_rules(vec![BlockRule::BlockAllInsert]);
+        let insert="INSERT INTO test_table(key1, key2, field1, field2) VALUES('tagk', 1638428434000, 100, 'hello3')";
+        let insert_plan = sql_to_plan(&mock, insert);
+        assert!(limiter.try_limit(&insert_plan).is_err());
     }
 
     #[test]
