@@ -3,7 +3,7 @@
 set -exo
 
 if [ ! -d ceresmeta ]; then
-    git clone https://github.com/ceresdb/ceresmeta.git
+    git clone --depth 1 https://github.com/ceresdb/ceresmeta.git
 fi
 cd ceresmeta
 go build -o ceresmeta ./cmd/meta/...
