@@ -34,7 +34,7 @@ use table_engine::table::TableRef;
 
 use crate::{
     grpc::storage_service::{
-        error::{self, ErrNoCause, ErrWithCause, Error, Result},
+        error::{self, ErrNoCause, ErrWithCause, Result},
         HandlerContext,
     },
     instance::InstanceRef,
@@ -282,13 +282,6 @@ fn try_get_table<Q: QueryExecutor + 'static>(
             code: StatusCode::BAD_REQUEST,
             msg: format!("Schema not found, schema_name:{schema}"),
         })?;
-
-    if schema_ref.table_is_opening(table_name) {
-        return Err(Error::ErrNoCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Table is opening, schema_name:{schema}, table_name:{table_name}"),
-        });
-    }
 
     schema_ref
         .table_by_name(table_name)

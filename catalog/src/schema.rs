@@ -162,6 +162,9 @@ pub enum Error {
     #[snafu(display("Failed to find table, table:{}.\nBacktrace:\n{}", table, backtrace))]
     TableNotFound { table: String, backtrace: Backtrace },
 
+    #[snafu(display("Table is Opening, table:{}.\n", table))]
+    TableIsOpening { table: String },
+
     #[snafu(display("Failed to alter table, err:{}", source))]
     AlterTable { source: GenericError },
 

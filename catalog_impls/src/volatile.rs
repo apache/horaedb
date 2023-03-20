@@ -274,6 +274,12 @@ impl Schema for SchemaImpl {
     }
 
     fn table_by_name(&self, name: NameRef) -> schema::Result<Option<TableRef>> {
+        if self.table_is_opening(name) {
+            return Err(schema::Error::TableIsOpening {
+                table: name.to_string(),
+            });
+        }
+
         let table = self.tables.read().unwrap().get(name).cloned();
         Ok(table)
     }
