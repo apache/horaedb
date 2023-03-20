@@ -21,7 +21,7 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::{debug, info};
+use log::{debug, error, info};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
@@ -542,7 +542,7 @@ fn find_new_columns(
     let old_columns = schema.columns();
     let mut new_columns = Vec::new();
     columns.iter().for_each(|column| {
-        if !old_columns.contains(column) {
+        if !old_columns.iter().any(|c| c.name == column.name) {
             new_columns.push(column.clone());
         }
     });
@@ -558,15 +558,21 @@ async fn add_columns<Q: QueryExecutor + 'static>(
     columns: Vec<ColumnSchema>,
     deadline: Option<Instant>,
 ) -> Result<()> {
-    info!("Add columns start, request_id:{request_id}, columns:{columns:?}");
+    let table_name = table.name().to_string();
+    info!("Add columns start, request_id:{request_id}, table:{table_name}, columns:{columns:?}");
 
     let plan = Plan::AlterTable(AlterTablePlan {
         table,
         operations: AlterTableOperation::AddColumn(columns),
     });
-    let _ = execute_plan(request_id, catalog, schema, instance, plan, deadline).await?;
+    let _ = execute_plan(request_id, catalog, schema, instance, plan, deadline)
+        .await
+        .map_err(|e| {
+            error!("Add colum failed, err:{e}");
+            e
+        })?;
 
-    info!("Add columns success, request_id:{request_id}");
+    info!("Add columns success, request_id:{request_id}, table:{table_name}");
     Ok(())
 }
 
