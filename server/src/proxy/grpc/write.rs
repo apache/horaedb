@@ -538,9 +538,11 @@ fn find_new_columns(
             code: StatusCode::INTERNAL_SERVER_ERROR,
             msg: "Build schema from write table request failed",
         })?;
+
     let columns = new_schema.columns();
     let old_columns = schema.columns();
     let mut new_columns = Vec::new();
+
     columns.iter().for_each(|column| {
         if !old_columns.iter().any(|c| c.name == column.name) {
             new_columns.push(column.clone());
