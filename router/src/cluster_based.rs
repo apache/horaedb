@@ -111,8 +111,7 @@ impl Router for ClusterBasedRouter {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, sync::Arc, thread::sleep};
-    use std::time::Duration;
+    use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
     use ceresdbproto::{
         meta_event::{
@@ -135,41 +134,41 @@ mod tests {
     #[async_trait]
     impl Cluster for MockClusterImpl {
         async fn start(&self) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn stop(&self) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn open_shard(&self, _req: &OpenShardRequest) -> cluster::Result<TablesOfShard> {
-            todo!()
+            unimplemented!();
         }
 
         async fn close_shard(&self, _req: &CloseShardRequest) -> cluster::Result<TablesOfShard> {
-            todo!()
+            unimplemented!();
         }
 
         async fn create_table_on_shard(
             &self,
             _req: &CreateTableOnShardRequest,
         ) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn drop_table_on_shard(&self, _req: &DropTableOnShardRequest) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn open_table_on_shard(&self, _req: &OpenTableOnShardRequest) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn close_table_on_shard(
             &self,
             _req: &CloseTableOnShardRequest,
         ) -> cluster::Result<()> {
-            todo!()
+            unimplemented!();
         }
 
         async fn route_tables(
@@ -206,7 +205,7 @@ mod tests {
         }
 
         async fn fetch_nodes(&self) -> cluster::Result<ClusterNodesResp> {
-            todo!()
+            unimplemented!();
         }
     }
 
