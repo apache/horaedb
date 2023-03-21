@@ -36,8 +36,7 @@ impl ClusterBasedRouter {
 
     /// route table from local cache, return cache routes and tables which are
     /// not in cache
-    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<Route>) -> Vec<String>
-        let mut routes = vec![];
+    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<Route>) -> Vec<String> {
         let mut miss = vec![];
 
         if let Some(cache) = &self.cache {
@@ -52,7 +51,7 @@ impl ClusterBasedRouter {
             miss = tables;
         }
 
-        (routes, miss)
+        miss
     }
 }
 
@@ -72,7 +71,8 @@ impl Router for ClusterBasedRouter {
         let req_ctx = req.context.unwrap();
 
         // Firstly route table from local cache.
-        let (mut routes, miss) = self.route_from_cache(req.tables);
+        let mut routes = Vec::with_capacity(req.tables.len());
+        let miss = self.route_from_cache(req.tables, &mut routes);
 
         if miss.is_empty() {
             return Ok(routes);
@@ -236,14 +236,16 @@ mod tests {
             .await;
         assert_eq!(result.unwrap().len(), 2);
 
-        let (routes, miss) = router.route_from_cache(tables);
+        let mut routes = Vec::with_capacity(tables.len());
+        let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 2);
         assert_eq!(miss.len(), 0);
         sleep(Duration::from_secs(1));
 
         // try to get table1
         let tables = vec![table1.to_string()];
-        let (routes, miss) = router.route_from_cache(tables);
+        let mut routes = Vec::with_capacity(tables.len());
+        let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 0);
@@ -251,7 +253,8 @@ mod tests {
         // sleep 1.5s, table2 will be evicted, and table1 in cache
         sleep(Duration::from_millis(1500));
         let tables = vec![table1.to_string(), table2.to_string()];
-        let (routes, miss) = router.route_from_cache(tables);
+        let mut routes = Vec::with_capacity(tables.len());
+        let miss = router.route_from_cache(tables, &mut routes);
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].table, table1.to_string());
         assert_eq!(miss.len(), 1);
