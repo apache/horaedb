@@ -36,7 +36,7 @@ impl ClusterBasedRouter {
 
     /// route table from local cache, return cache routes and tables which are
     /// not in cache
-    fn route_from_cache(&self, tables: Vec<String>) -> (Vec<Route>, Vec<String>) {
+    fn route_from_cache(&self, tables: Vec<String>, routes: &mut Vec<Route>) -> Vec<String>
         let mut routes = vec![];
         let mut miss = vec![];
 
