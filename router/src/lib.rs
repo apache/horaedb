@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 pub use cluster_based::ClusterBasedRouter;
-use common_util::define_result;
+use common_util::{config::ReadableDuration, define_result};
 pub use rule_based::{RuleBasedRouter, RuleList};
 use serde::{Deserialize, Serialize};
 use snafu::{Backtrace, Snafu};
@@ -69,9 +69,9 @@ pub struct RouteCacheConfig {
     // enable route cache, default false
     enable: bool,
     /// Time to live (TTL) in second.
-    ttl: u64,
+    ttl: ReadableDuration,
     /// Time to idle (TTI) in second.
-    tti: u64,
+    tti: ReadableDuration,
     /// how many route records can store in cache.
     capacity: u64,
 }

@@ -2,8 +2,6 @@
 
 //! A router based on the [`cluster::Cluster`].
 
-use std::time::Duration;
-
 use async_trait::async_trait;
 use ceresdbproto::storage::{Route, RouteRequest};
 use cluster::ClusterRef;
@@ -24,8 +22,8 @@ impl ClusterBasedRouter {
         let cache = if cache_config.enable {
             Some(
                 Cache::builder()
-                    .time_to_live(Duration::from_secs(cache_config.ttl))
-                    .time_to_idle(Duration::from_secs(cache_config.tti))
+                    .time_to_live(cache_config.ttl.0)
+                    .time_to_idle(cache_config.tti.0)
                     .max_capacity(cache_config.capacity)
                     .build(),
             )
@@ -114,6 +112,7 @@ impl Router for ClusterBasedRouter {
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep};
+    use std::time::Duration;
 
     use ceresdbproto::{
         meta_event::{
@@ -123,6 +122,7 @@ mod tests {
         storage::RequestContext,
     };
     use cluster::{Cluster, ClusterNodesResp};
+    use common_util::config::ReadableDuration;
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
         TablesOfShard,
@@ -216,8 +216,8 @@ mod tests {
 
         let config = RouteCacheConfig {
             enable: true,
-            ttl: 4,
-            tti: 2,
+            ttl: ReadableDuration::from(Duration::from_secs(4)),
+            tti: ReadableDuration::from(Duration::from_secs(2)),
             capacity: 2,
         };
         let router = ClusterBasedRouter::new(Arc::new(mock_cluster), config);
