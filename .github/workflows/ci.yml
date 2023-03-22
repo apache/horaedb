@@ -14,8 +14,6 @@ on:
       - '.dockerignore'
       - 'docker/**'
   pull_request:
-    branches:
-      - main
     paths-ignore:
       - 'docs/**'
       - 'etc/**'
