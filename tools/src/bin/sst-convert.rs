@@ -104,6 +104,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         num_rows_per_row_group: args.batch_size,
         compression: Compression::parse_from(&args.compression)
             .with_context(|| format!("invalid compression:{}", args.compression))?,
+        max_buffer_size: 10 * 1024 * 1024,
     };
     let output = Path::from(args.output);
     let mut writer = factory
