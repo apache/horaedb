@@ -117,8 +117,7 @@ func ddl(ctx context.Context, client ceresdb.Client, sql string) (uint32, error)
 	return resp.AffectedRows, nil
 }
 
-func checkAutoCreateTable(client ceresdb.Client) error {
-	ctx := context.TODO()
+func checkAutoCreateTable(ctx context.Context, client ceresdb.Client) error {
 	if _, err := ddl(ctx, client, "drop table if exists "+table); err != nil {
 		return err
 	}
@@ -135,9 +134,7 @@ func checkAutoCreateTable(client ceresdb.Client) error {
 	return nil
 }
 
-func checkAutoAddColumns(client ceresdb.Client) error {
-	ctx := context.TODO()
-
+func checkAutoAddColumns(ctx context.Context, client ceresdb.Client) error {
 	ts := currentMS()
 	if err := write(ctx, client, ts, true); err != nil {
 		return err
@@ -150,9 +147,7 @@ func checkAutoAddColumns(client ceresdb.Client) error {
 	return nil
 }
 
-func dropTable(client ceresdb.Client) error {
-	ctx := context.TODO()
-
+func dropTable(ctx context.Context, client ceresdb.Client) error {
 	affected, err := ddl(ctx, client, "drop table "+table)
 	if err != nil {
 		return err
@@ -174,15 +169,16 @@ func main() {
 		panic(err)
 	}
 
-	if err = checkAutoCreateTable(client); err != nil {
+	ctx := context.TODO()
+	if err = checkAutoCreateTable(ctx, client); err != nil {
 		panic(err)
 	}
 
-	if err = checkAutoAddColumns(client); err != nil {
+	if err = checkAutoAddColumns(ctx, client); err != nil {
 		panic(err)
 	}
 
-	if err = dropTable(client); err != nil {
+	if err = dropTable(ctx, client); err != nil {
 		panic(err)
 	}
 

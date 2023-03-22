@@ -192,19 +192,29 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
                 }
             }
             Some(t) => {
-                let table_schema = t.schema();
-                let columns = find_new_columns(&table_schema, &schema_config, &write_table_req)?;
-                if !columns.is_empty() {
-                    add_columns(
-                        request_id,
-                        &catalog,
-                        &schema,
-                        instance.clone(),
-                        t,
-                        columns,
-                        deadline,
-                    )
-                    .await?;
+                if auto_create_table {
+                    // The reasons for making the decision to add columns before writing are as
+                    // follows:
+                    // * If judged based on the error message returned, it may cause data that has
+                    //   already been successfully written to be written again and affect the
+                    //   accuracy of the data.
+                    // * Currently, the decision to add columns is made at the request level, not at
+                    //   the row level, so the cost is relatively small.
+                    let table_schema = t.schema();
+                    let columns =
+                        find_new_columns(&table_schema, &schema_config, &write_table_req)?;
+                    if !columns.is_empty() {
+                        execute_add_columns_plan(
+                            request_id,
+                            &catalog,
+                            &schema,
+                            instance.clone(),
+                            t,
+                            columns,
+                            deadline,
+                        )
+                        .await?;
+                    }
                 }
             }
         }
@@ -551,7 +561,7 @@ fn find_new_columns(
     Ok(new_columns)
 }
 
-async fn add_columns<Q: QueryExecutor + 'static>(
+async fn execute_add_columns_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,
