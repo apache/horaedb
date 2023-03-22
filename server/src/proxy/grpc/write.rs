@@ -71,10 +71,13 @@ impl WriteContext {
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         match self.handle_write_internal(ctx, req).await {
-            Err(e) => WriteResponse {
-                header: Some(error::build_err_header(e)),
-                ..Default::default()
-            },
+            Err(e) => {
+                error!("Failed to handle write, err:{e}");
+                WriteResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            }
             Ok(v) => v,
         }
     }
@@ -551,13 +554,12 @@ fn find_new_columns(
 
     let columns = new_schema.columns();
     let old_columns = schema.columns();
-    let mut new_columns = Vec::new();
 
-    columns.iter().for_each(|column| {
-        if !old_columns.iter().any(|c| c.name == column.name) {
-            new_columns.push(column.clone());
-        }
-    });
+    let new_columns = columns
+        .iter()
+        .filter(|column| !old_columns.iter().any(|c| c.name == column.name))
+        .cloned()
+        .collect();
     Ok(new_columns)
 }
 
@@ -577,12 +579,7 @@ async fn execute_add_columns_plan<Q: QueryExecutor + 'static>(
         table,
         operations: AlterTableOperation::AddColumn(columns),
     });
-    let _ = execute_plan(request_id, catalog, schema, instance, plan, deadline)
-        .await
-        .map_err(|e| {
-            error!("Add colum failed, err:{e}");
-            e
-        })?;
+    let _ = execute_plan(request_id, catalog, schema, instance, plan, deadline).await?;
 
     info!("Add columns success, request_id:{request_id}, table:{table_name}");
     Ok(())

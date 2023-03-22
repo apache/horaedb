@@ -20,7 +20,7 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::info;
+use log::{error, info};
 use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
@@ -42,10 +42,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         req: PrometheusQueryRequest,
     ) -> PrometheusQueryResponse {
         match self.handle_prom_query_internal(ctx, req).await {
-            Err(e) => PrometheusQueryResponse {
-                header: Some(error::build_err_header(e)),
-                ..Default::default()
-            },
+            Err(e) => {
+                error!("Failed to handle prom query, err:{e}");
+                PrometheusQueryResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            }
             Ok(v) => v,
         }
     }
