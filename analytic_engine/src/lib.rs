@@ -77,9 +77,8 @@ pub struct Config {
     pub sst_background_read_parallelism: usize,
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
-    /// Max bytes per write request. If the encoding size of the request exceeds
-    /// the limit, the request will be splitted.
-    pub max_bytes_per_write_request: Option<ReadableSize>,
+    /// Max bytes per write batch.
+    pub max_bytes_per_write_batch: Option<ReadableSize>,
 
     /// Wal storage config
     ///
@@ -114,7 +113,7 @@ impl Default for Config {
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
             write_sst_max_buffer_size: ReadableSize::mb(10),
-            max_bytes_per_write_request: None,
+            max_bytes_per_write_batch: None,
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
         }

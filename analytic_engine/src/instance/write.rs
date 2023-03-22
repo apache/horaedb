@@ -288,7 +288,7 @@ impl Instance {
             encoded_rows,
         } = encode_ctx;
 
-        if self.max_bytes_per_write_request.is_none() {
+        if self.max_bytes_per_write_batch.is_none() {
             let row_group_slicer = RowGroupSlicer::from(&row_group);
             self.write_table_row_group(
                 worker_local,
@@ -302,7 +302,7 @@ impl Instance {
             return Ok(row_group.num_rows());
         }
 
-        let splitter = WriteRowGroupSplitter::new(self.max_bytes_per_write_request.unwrap());
+        let splitter = WriteRowGroupSplitter::new(self.max_bytes_per_write_batch.unwrap());
         match splitter.split(encoded_rows, &row_group) {
             SplitResult::Integrate {
                 encoded_rows,
