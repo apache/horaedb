@@ -4,7 +4,7 @@
 
 use std::{
     cmp,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut, Range},
 };
 
 use snafu::{ensure, Backtrace, OptionExt, Snafu};
@@ -191,6 +191,49 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Debug)]
+pub struct RowGroupSlicer<'a> {
+    range: Range<usize>,
+    row_group: &'a RowGroup,
+}
+
+impl<'a> From<&'a RowGroup> for RowGroupSlicer<'a> {
+    fn from(value: &'a RowGroup) -> RowGroupSlicer<'a> {
+        Self {
+            range: 0..value.rows.len(),
+            row_group: value,
+        }
+    }
+}
+
+impl<'a> RowGroupSlicer<'a> {
+    pub fn new(range: Range<usize>, row_group: &'a RowGroup) -> Self {
+        Self { range, row_group }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.range.is_empty()
+    }
+
+    #[inline]
+    pub fn schema(&self) -> &Schema {
+        self.row_group.schema()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> IterRow<'a> {
+        IterRow {
+            iter: self.row_group.rows[self.range.start..self.range.end].iter(),
+        }
+    }
+
+    #[inline]
+    pub fn num_rows(&self) -> usize {
+        self.range.len()
+    }
 }
 
 // TODO(yingwen): For multiple rows that share the same schema, no need to store

@@ -414,7 +414,7 @@ impl Instance {
                         worker_local,
                         table_data,
                         sequence,
-                        row_group,
+                        &row_group.into(),
                         index_in_writer,
                     )
                     .context(ApplyMemTable {

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ceresdbproto::{schema as schema_pb, table_requests};
 use common_types::{
     bytes::ByteVec,
-    row::RowGroup,
+    row::{RowGroup, RowGroupSlicer},
     schema::{IndexInWriterSchema, Schema},
 };
 use common_util::{codec::row, define_result};
@@ -150,6 +150,86 @@ impl EncodeContext {
     }
 }
 
+struct WriteRowGroupSplitter {
+    max_bytes_per_batch: usize,
+}
+
+enum SplitResult<'a> {
+    Splitted {
+        encoded_batches: Vec<Vec<ByteVec>>,
+        row_group_batches: Vec<RowGroupSlicer<'a>>,
+    },
+    Integrate {
+        encoded_rows: Vec<ByteVec>,
+        row_group: RowGroupSlicer<'a>,
+    },
+}
+
+impl WriteRowGroupSplitter {
+    pub fn new(max_bytes_per_batch: usize) -> Self {
+        Self {
+            max_bytes_per_batch,
+        }
+    }
+
+    pub fn split<'a>(
+        &'a self,
+        encoded_rows: Vec<ByteVec>,
+        row_group: &'a RowGroup,
+    ) -> SplitResult<'a> {
+        let end_row_indexes = self.compute_batches(&encoded_rows);
+        if end_row_indexes.len() <= 1 {
+            return SplitResult::Integrate {
+                encoded_rows,
+                row_group: RowGroupSlicer::from(row_group),
+            };
+        }
+
+        let prev_end_row_index = 0;
+        let mut encoded_batches = Vec::with_capacity(end_row_indexes.len());
+        let mut row_group_batches = Vec::with_capacity(end_row_indexes.len());
+        for end_row_index in &end_row_indexes {
+            let end_row_index = *end_row_index;
+            let curr_batch = Vec::with_capacity(end_row_index - prev_end_row_index);
+            encoded_batches.push(curr_batch);
+            let row_group_slicer =
+                RowGroupSlicer::new(prev_end_row_index..end_row_index, row_group);
+            row_group_batches.push(row_group_slicer);
+        }
+
+        let mut current_batch_idx = 0;
+        for (row_idx, encoded_row) in encoded_rows.into_iter().enumerate() {
+            if row_idx >= end_row_indexes[current_batch_idx] {
+                current_batch_idx += 1;
+            }
+            encoded_batches[current_batch_idx].push(encoded_row);
+        }
+
+        return SplitResult::Splitted {
+            encoded_batches,
+            row_group_batches,
+        };
+    }
+
+    fn compute_batches(&self, encoded_rows: &[ByteVec]) -> Vec<usize> {
+        let mut current_batch_size = 0;
+        let mut end_row_indexes = Vec::new();
+        for (row_idx, encoded_row) in encoded_rows.iter().enumerate() {
+            let row_size = encoded_row.len();
+            current_batch_size += row_size;
+            if current_batch_size > self.max_bytes_per_batch {
+                current_batch_size = 0;
+                end_row_indexes.push(row_idx + 1)
+            }
+        }
+
+        if current_batch_size > 0 {
+            end_row_indexes.push(encoded_rows.len());
+        }
+        end_row_indexes
+    }
+}
+
 impl Instance {
     /// Write data to the table under give space.
     pub async fn write_to_table(
@@ -206,6 +286,50 @@ impl Instance {
             encoded_rows,
         } = encode_ctx;
 
+        let splitter = WriteRowGroupSplitter::new(1024 * 1024);
+        match splitter.split(encoded_rows, &row_group) {
+            SplitResult::Integrate {
+                encoded_rows,
+                row_group,
+            } => {
+                self.write_table_row_group(
+                    worker_local,
+                    table_data,
+                    row_group,
+                    index_in_writer,
+                    encoded_rows,
+                )
+                .await?;
+            }
+            SplitResult::Splitted {
+                encoded_batches,
+                row_group_batches,
+            } => {
+                for (encoded_rows, row_group) in encoded_batches.into_iter().zip(row_group_batches)
+                {
+                    self.write_table_row_group(
+                        worker_local,
+                        table_data,
+                        row_group,
+                        index_in_writer.clone(),
+                        encoded_rows,
+                    )
+                    .await?;
+                }
+            }
+        }
+
+        Ok(row_group.num_rows())
+    }
+
+    async fn write_table_row_group(
+        self: &Arc<Self>,
+        worker_local: &mut WorkerLocal,
+        table_data: &TableDataRef,
+        row_group: RowGroupSlicer<'_>,
+        index_in_writer: IndexInWriterSchema,
+        encoded_rows: Vec<ByteVec>,
+    ) -> Result<()> {
         let sequence = self
             .write_to_wal(worker_local, table_data, encoded_rows)
             .await?;
@@ -242,11 +366,12 @@ impl Instance {
 
         table_data.set_last_sequence(sequence);
 
-        let num_rows = row_group.num_rows();
         // Collect metrics.
-        table_data.metrics.on_write_request_done(num_rows);
+        table_data
+            .metrics
+            .on_write_request_done(row_group.num_rows());
 
-        Ok(num_rows)
+        Ok(())
     }
 
     /// Return Ok if the request is valid, this is done before entering the
@@ -410,7 +535,7 @@ impl Instance {
         worker_local: &WorkerLocal,
         table_data: &TableDataRef,
         sequence: SequenceNumber,
-        row_group: &RowGroup,
+        row_group: &RowGroupSlicer,
         index_in_writer: IndexInWriterSchema,
     ) -> Result<()> {
         if row_group.is_empty() {
