@@ -172,6 +172,9 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+    /// Max bytes per write request. And if it is exceeded, the request will be
+    /// splitted.
+    pub(crate) max_bytes_per_write_request: Option<usize>,
     /// Options for scanning sst
     pub(crate) iter_options: IterOptions,
     pub(crate) remote_engine: Option<RemoteEngineRef>,

@@ -94,6 +94,10 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
+            max_bytes_per_write_request: ctx
+                .config
+                .max_bytes_per_write_request
+                .map(|v| v.as_bytes() as usize),
             iter_options,
             remote_engine: remote_engine_ref,
         });

@@ -231,6 +231,11 @@ impl<'a> RowGroupSlicer<'a> {
     }
 
     #[inline]
+    pub fn slice_range(&self) -> Range<usize> {
+        self.range.clone()
+    }
+
+    #[inline]
     pub fn num_rows(&self) -> usize {
         self.range.len()
     }
@@ -390,7 +395,7 @@ pub struct RowGroupBuilder {
     schema: Schema,
     rows: Vec<Row>,
     min_timestamp: Option<Timestamp>,
-    max_timestmap: Timestamp,
+    max_timestamp: Timestamp,
 }
 
 impl RowGroupBuilder {
@@ -405,7 +410,7 @@ impl RowGroupBuilder {
             schema,
             rows: Vec::with_capacity(capacity),
             min_timestamp: None,
-            max_timestmap: Timestamp::new(0),
+            max_timestamp: Timestamp::new(0),
         }
     }
 
@@ -452,7 +457,7 @@ impl RowGroupBuilder {
             schema: self.schema,
             rows: self.rows,
             min_timestamp: self.min_timestamp.unwrap_or_else(|| Timestamp::new(0)),
-            max_timestamp: self.max_timestmap,
+            max_timestamp: self.max_timestamp,
         }
     }
 
@@ -465,7 +470,7 @@ impl RowGroupBuilder {
             Some(min_timestamp) => Some(cmp::min(min_timestamp, row_timestamp)),
             None => Some(row_timestamp),
         };
-        self.max_timestmap = cmp::max(self.max_timestmap, row_timestamp);
+        self.max_timestamp = cmp::max(self.max_timestamp, row_timestamp);
     }
 }
 
