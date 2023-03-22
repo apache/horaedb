@@ -25,4 +25,3 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }
-server = { workspace = true }
