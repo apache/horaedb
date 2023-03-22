@@ -215,7 +215,10 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .unwrap();
         Arc::new(cluster_impl)
     };
-    let router = Arc::new(ClusterBasedRouter::new(cluster.clone()));
+    let router = Arc::new(ClusterBasedRouter::new(
+        cluster.clone(),
+        config.server.route_cache.clone(),
+    ));
 
     let opened_wals = wal_opener
         .open_wals(&config.analytic.wal, runtimes.clone())

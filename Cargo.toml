@@ -137,6 +137,7 @@ interpreters = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 meta_client = { workspace = true }
+moka = { version = "0.10", features = ["future"] }
 query_engine = { workspace = true }
 router = { workspace = true }
 serde = { workspace = true }

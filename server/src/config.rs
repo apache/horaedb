@@ -110,6 +110,9 @@ pub struct ServerConfig {
     /// Whether to create table automatically when data is first written, only
     /// used in gRPC
     pub auto_create_table: bool,
+
+    // Config of route
+    pub route_cache: router::RouteCacheConfig,
 }
 
 impl Default for ServerConfig {
@@ -125,6 +128,7 @@ impl Default for ServerConfig {
             resp_compress_min_length: ReadableSize::mb(4),
             forward: forward::Config::default(),
             auto_create_table: true,
+            route_cache: router::RouteCacheConfig::default(),
         }
     }
 }
