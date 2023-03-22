@@ -985,7 +985,6 @@ dependencies = [
  "common_util",
  "log",
  "meta_client",
- "server",
  "snafu 0.6.10",
  "system_catalog",
  "table_engine",

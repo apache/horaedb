@@ -226,8 +226,6 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
     Value { value: Some(v) }
 }
 
-// fn convert_query_result(output: Output)
-
 // TODO: Request and response type don't match influxdb's API now.
 pub async fn query<Q: QueryExecutor + 'static>(
     ctx: RequestContext,
