@@ -2898,7 +2898,7 @@ dependencies = [
 [[package]]
 name = "influxql-logical-planner"
 version = "0.1.0"
-source = "git+https://github.com/Rachelint/influxql-logical-planner.git?rev=83d8854004e569b32ddbc66a31f74ea5dee99c7b#83d8854004e569b32ddbc66a31f74ea5dee99c7b"
+source = "git+https://github.com/Rachelint/influxql-logical-planner.git?rev=6057f72cd07336b9d641fcfcb98fb69b60fec1eb#6057f72cd07336b9d641fcfcb98fb69b60fec1eb"
 dependencies = [
  "arrow 32.0.0",
  "chrono",
