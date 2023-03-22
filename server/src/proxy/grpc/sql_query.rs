@@ -40,10 +40,13 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 20;
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_sql_query(&self, ctx: Context, req: SqlQueryRequest) -> SqlQueryResponse {
         match self.handle_sql_query_internal(ctx, req).await {
-            Err(e) => SqlQueryResponse {
-                header: Some(error::build_err_header(e)),
-                ..Default::default()
-            },
+            Err(e) => {
+                error!("Failed to handle sql query, err:{e}");
+                SqlQueryResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            }
             Ok(v) => v,
         }
     }
@@ -55,6 +58,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
     ) -> BoxStream<'static, SqlQueryResponse> {
         match self.clone().handle_stream_query_internal(ctx, req).await {
             Err(e) => stream::once(async {
+                error!("Failed to handle stream sql query, err:{e}");
                 SqlQueryResponse {
                     header: Some(error::build_err_header(e)),
                     ..Default::default()

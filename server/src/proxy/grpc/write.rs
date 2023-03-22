@@ -11,6 +11,7 @@ use ceresdbproto::storage::{
 };
 use cluster::config::SchemaConfig;
 use common_types::{
+    column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
     request_id::RequestId,
     row::{Row, RowGroupBuilder},
@@ -20,12 +21,13 @@ use common_types::{
 use common_util::error::BoxError;
 use http::StatusCode;
 use interpreters::{context::Context as InterpreterContext, factory::Factory, interpreter::Output};
-use log::debug;
+use log::{debug, error, info};
 use query_engine::executor::Executor as QueryExecutor;
 use snafu::{ensure, OptionExt, ResultExt};
 use sql::{
     frontend::{Context as FrontendContext, Frontend},
-    plan::{InsertPlan, Plan},
+    plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
+    planner::build_schema_from_write_table_request,
     provider::CatalogMetaProvider,
 };
 use table_engine::table::TableRef;
@@ -69,10 +71,13 @@ impl WriteContext {
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
     pub async fn handle_write(&self, ctx: Context, req: WriteRequest) -> WriteResponse {
         match self.handle_write_internal(ctx, req).await {
-            Err(e) => WriteResponse {
-                header: Some(error::build_err_header(e)),
-                ..Default::default()
-            },
+            Err(e) => {
+                error!("Failed to handle write, err:{e}");
+                WriteResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
+            }
             Ok(v) => v,
         }
     }
@@ -126,7 +131,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let mut success = 0;
         for insert_plan in plan_vec {
-            success += execute_plan(
+            success += execute_insert_plan(
                 request_id,
                 catalog,
                 &schema,
@@ -167,26 +172,54 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
         deadline,
         auto_create_table,
     } = write_context;
-
+    let schema_config = schema_config.cloned().unwrap_or_default();
     for write_table_req in table_requests {
         let table_name = &write_table_req.table;
         let mut table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
 
-        if table.is_none() && auto_create_table {
-            // TODO: remove this clone?
-            let schema_config = schema_config.cloned().unwrap_or_default();
-            create_table(
-                request_id,
-                &catalog,
-                &schema,
-                instance.clone(),
-                &write_table_req,
-                &schema_config,
-                deadline,
-            )
-            .await?;
-            // try to get table again
-            table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
+        match table.clone() {
+            None => {
+                if auto_create_table {
+                    create_table(
+                        request_id,
+                        &catalog,
+                        &schema,
+                        instance.clone(),
+                        &write_table_req,
+                        &schema_config,
+                        deadline,
+                    )
+                    .await?;
+                    // try to get table again
+                    table = try_get_table(&catalog, &schema, instance.clone(), table_name)?;
+                }
+            }
+            Some(t) => {
+                if auto_create_table {
+                    // The reasons for making the decision to add columns before writing are as
+                    // follows:
+                    // * If judged based on the error message returned, it may cause data that has
+                    //   already been successfully written to be written again and affect the
+                    //   accuracy of the data.
+                    // * Currently, the decision to add columns is made at the request level, not at
+                    //   the row level, so the cost is relatively small.
+                    let table_schema = t.schema();
+                    let columns =
+                        find_new_columns(&table_schema, &schema_config, &write_table_req)?;
+                    if !columns.is_empty() {
+                        execute_add_columns_plan(
+                            request_id,
+                            &catalog,
+                            &schema,
+                            instance.clone(),
+                            t,
+                            columns,
+                            deadline,
+                        )
+                        .await?;
+                    }
+                }
+            }
         }
 
         match table {
@@ -207,7 +240,7 @@ pub async fn write_request_to_insert_plan<Q: QueryExecutor + 'static>(
     Ok(plan_vec)
 }
 
-pub async fn execute_plan<Q: QueryExecutor + 'static>(
+pub async fn execute_insert_plan<Q: QueryExecutor + 'static>(
     request_id: RequestId,
     catalog: &str,
     schema: &str,
@@ -221,50 +254,15 @@ pub async fn execute_plan<Q: QueryExecutor + 'static>(
         insert_plan.rows.num_rows()
     );
     let plan = Plan::Insert(insert_plan);
-
-    instance
-        .limiter
-        .try_limit(&plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Insert is blocked",
-        })?;
-
-    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-        .build();
-    let interpreter_factory = Factory::new(
-        instance.query_executor.clone(),
-        instance.catalog_manager.clone(),
-        instance.table_engine.clone(),
-        instance.table_manipulator.clone(),
-    );
-    let interpreter = interpreter_factory
-        .create(interpreter_ctx, plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to create interpreter",
-        })?;
-
-    interpreter
-        .execute()
-        .await
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
-        })
-        .and_then(|output| match output {
-            Output::AffectedRows(n) => Ok(n),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "Invalid output type, expect AffectedRows, found Records",
-            }
-            .fail(),
-        })
+    let output = execute_plan(request_id, catalog, schema, instance, plan, deadline).await;
+    output.and_then(|output| match output {
+        Output::AffectedRows(n) => Ok(n),
+        Output::Records(_) => ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: "Invalid output type, expect AffectedRows, found Records",
+        }
+        .fail(),
+    })
 }
 
 fn try_get_table<Q: QueryExecutor + 'static>(
@@ -333,49 +331,15 @@ async fn create_table<Q: QueryExecutor + 'static>(
 
     debug!("Grpc handle create table begin, plan:{:?}", plan);
 
-    instance
-        .limiter
-        .try_limit(&plan)
-        .box_err()
-        .context(ErrWithCause {
+    let output = execute_plan(request_id, catalog, schema, instance, plan, deadline).await;
+    output.and_then(|output| match output {
+        Output::AffectedRows(_) => Ok(()),
+        Output::Records(_) => ErrNoCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Create table is blocked",
-        })?;
-
-    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-        // Use current ctx's catalog and schema as default catalog and schema
-        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-        .build();
-    let interpreter_factory = Factory::new(
-        instance.query_executor.clone(),
-        instance.catalog_manager.clone(),
-        instance.table_engine.clone(),
-        instance.table_manipulator.clone(),
-    );
-    let interpreter = interpreter_factory
-        .create(interpreter_ctx, plan)
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to create interpreter",
-        })?;
-
-    interpreter
-        .execute()
-        .await
-        .box_err()
-        .context(ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: "Failed to execute interpreter",
-        })
-        .and_then(|output| match output {
-            Output::AffectedRows(_) => Ok(()),
-            Output::Records(_) => ErrNoCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Invalid output type, expect AffectedRows, found Records",
-            }
-            .fail(),
-        })
+            msg: "Invalid output type, expect AffectedRows, found Records",
+        }
+        .fail(),
+    })
 }
 
 fn write_table_request_to_insert_plan(
@@ -574,6 +538,92 @@ fn convert_proto_value_to_datum(
         }
             .fail(),
     }
+}
+
+fn find_new_columns(
+    schema: &Schema,
+    schema_config: &SchemaConfig,
+    write_req: &WriteTableRequest,
+) -> Result<Vec<ColumnSchema>> {
+    let new_schema = build_schema_from_write_table_request(schema_config, write_req)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Build schema from write table request failed",
+        })?;
+
+    let columns = new_schema.columns();
+    let old_columns = schema.columns();
+
+    let new_columns = columns
+        .iter()
+        .filter(|column| !old_columns.iter().any(|c| c.name == column.name))
+        .cloned()
+        .collect();
+    Ok(new_columns)
+}
+
+async fn execute_add_columns_plan<Q: QueryExecutor + 'static>(
+    request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    table: TableRef,
+    columns: Vec<ColumnSchema>,
+    deadline: Option<Instant>,
+) -> Result<()> {
+    let table_name = table.name().to_string();
+    info!("Add columns start, request_id:{request_id}, table:{table_name}, columns:{columns:?}");
+
+    let plan = Plan::AlterTable(AlterTablePlan {
+        table,
+        operations: AlterTableOperation::AddColumn(columns),
+    });
+    let _ = execute_plan(request_id, catalog, schema, instance, plan, deadline).await?;
+
+    info!("Add columns success, request_id:{request_id}, table:{table_name}");
+    Ok(())
+}
+
+async fn execute_plan<Q: QueryExecutor + 'static>(
+    request_id: RequestId,
+    catalog: &str,
+    schema: &str,
+    instance: InstanceRef<Q>,
+    plan: Plan,
+    deadline: Option<Instant>,
+) -> Result<Output> {
+    instance
+        .limiter
+        .try_limit(&plan)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Request is blocked",
+        })?;
+
+    let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
+        // Use current ctx's catalog and schema as default catalog and schema
+        .default_catalog_and_schema(catalog.to_string(), schema.to_string())
+        .build();
+    let interpreter_factory = Factory::new(
+        instance.query_executor.clone(),
+        instance.catalog_manager.clone(),
+        instance.table_engine.clone(),
+        instance.table_manipulator.clone(),
+    );
+    let interpreter = interpreter_factory
+        .create(interpreter_ctx, plan)
+        .box_err()
+        .context(ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to create interpreter",
+        })?;
+
+    interpreter.execute().await.box_err().context(ErrWithCause {
+        code: StatusCode::INTERNAL_SERVER_ERROR,
+        msg: "Failed to execute interpreter",
+    })
 }
 
 #[cfg(test)]
