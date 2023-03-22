@@ -30,9 +30,8 @@ use server::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
     server::Builder,
-    table_engine::{MemoryTableEngine, TableEngineProxy},
 };
-use table_engine::engine::EngineRuntimes;
+use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::TableEngineProxy};
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},

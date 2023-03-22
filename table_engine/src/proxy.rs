@@ -1,55 +1,18 @@
 // Copyright 2022 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Table engine implementation
-
-use std::sync::Arc;
+//! Table engine proxy
 
 use async_trait::async_trait;
-use table_engine::{
+
+use crate::{
     engine::{
-        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, Result,
-        TableEngine, TableEngineRef, UnknownEngineType,
+        CloseTableRequest, CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngine,
+        TableEngineRef, UnknownEngineType,
     },
-    memory::MemoryTable,
+    memory::MemoryTableEngine,
     table::TableRef,
     ANALYTIC_ENGINE_TYPE, MEMORY_ENGINE_TYPE,
 };
-
-/// Memory table engine implementation
-// Mainly for test purpose now
-pub struct MemoryTableEngine;
-
-#[async_trait]
-impl TableEngine for MemoryTableEngine {
-    fn engine_type(&self) -> &str {
-        MEMORY_ENGINE_TYPE
-    }
-
-    async fn close(&self) -> Result<()> {
-        Ok(())
-    }
-
-    async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
-        Ok(Arc::new(MemoryTable::new(
-            request.table_name,
-            request.table_id,
-            request.table_schema,
-            MEMORY_ENGINE_TYPE.to_string(),
-        )))
-    }
-
-    async fn drop_table(&self, _request: DropTableRequest) -> Result<bool> {
-        Ok(true)
-    }
-
-    async fn open_table(&self, _request: OpenTableRequest) -> Result<Option<TableRef>> {
-        Ok(None)
-    }
-
-    async fn close_table(&self, _request: CloseTableRequest) -> Result<()> {
-        Ok(())
-    }
-}
 
 /// Route [CreateTableRequest] to the correct engine by its engine type
 pub struct TableEngineProxy {
@@ -65,14 +28,14 @@ impl TableEngine for TableEngineProxy {
         "TableEngineProxy"
     }
 
-    async fn close(&self) -> Result<()> {
+    async fn close(&self) -> crate::engine::Result<()> {
         self.memory.close().await?;
         self.analytic.close().await?;
 
         Ok(())
     }
 
-    async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
+    async fn create_table(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
         // TODO(yingwen): Use a map
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.create_table(request).await,
@@ -81,7 +44,7 @@ impl TableEngine for TableEngineProxy {
         }
     }
 
-    async fn drop_table(&self, request: DropTableRequest) -> Result<bool> {
+    async fn drop_table(&self, request: DropTableRequest) -> crate::engine::Result<bool> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.drop_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.drop_table(request).await,
@@ -90,7 +53,10 @@ impl TableEngine for TableEngineProxy {
     }
 
     /// Open table, return error if table not exists
-    async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
+    async fn open_table(
+        &self,
+        request: OpenTableRequest,
+    ) -> crate::engine::Result<Option<TableRef>> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.open_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.open_table(request).await,
@@ -99,7 +65,7 @@ impl TableEngine for TableEngineProxy {
     }
 
     /// Close table, it is ok to close a closed table.
-    async fn close_table(&self, request: CloseTableRequest) -> Result<()> {
+    async fn close_table(&self, request: CloseTableRequest) -> crate::engine::Result<()> {
         match request.engine.as_str() {
             MEMORY_ENGINE_TYPE => self.memory.close_table(request).await,
             ANALYTIC_ENGINE_TYPE => self.analytic.close_table(request).await,

@@ -912,9 +912,10 @@ mod tests {
         schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
     };
     use common_types::table::{DEFAULT_CLUSTER_VERSION, DEFAULT_SHARD_ID};
-    use server::table_engine::{MemoryTableEngine, TableEngineProxy};
     use table_engine::{
         engine::{TableEngineRef, TableState},
+        memory::MemoryTableEngine,
+        proxy::TableEngineProxy,
         ANALYTIC_ENGINE_TYPE,
     };
 

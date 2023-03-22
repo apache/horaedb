@@ -22,4 +22,3 @@ mod metrics;
 mod mysql;
 pub mod schema_config_provider;
 pub mod server;
-pub mod table_engine;
