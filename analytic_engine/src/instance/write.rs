@@ -183,7 +183,7 @@ impl WriteRowGroupSplitter {
     /// NOTE: The length of the `encoded_rows` should be the same as the number
     /// of rows in the `row_group`.
     pub fn split<'a>(
-        &'a self,
+        &'_ self,
         encoded_rows: Vec<ByteVec>,
         row_group: &'a RowGroup,
     ) -> SplitResult<'a> {
@@ -307,22 +307,7 @@ impl Instance {
             encoded_rows,
         } = encode_ctx;
 
-        if self.max_bytes_per_write_batch.is_none() {
-            let row_group_slicer = RowGroupSlicer::from(&row_group);
-            self.write_table_row_group(
-                worker_local,
-                table_data,
-                row_group_slicer,
-                index_in_writer,
-                encoded_rows,
-            )
-            .await?;
-
-            return Ok(row_group.num_rows());
-        }
-
-        let splitter = WriteRowGroupSplitter::new(self.max_bytes_per_write_batch.unwrap());
-        match splitter.split(encoded_rows, &row_group) {
+        match self.maybe_split_write_request(encoded_rows, &row_group) {
             SplitResult::Integrate {
                 encoded_rows,
                 row_group,
@@ -355,6 +340,22 @@ impl Instance {
         }
 
         Ok(row_group.num_rows())
+    }
+
+    fn maybe_split_write_request(
+        self: &Arc<Self>,
+        encoded_rows: Vec<ByteVec>,
+        row_group: &RowGroup,
+    ) -> SplitResult {
+        if self.max_bytes_per_write_batch.is_none() {
+            return SplitResult::Integrate {
+                encoded_rows,
+                row_group: RowGroupSlicer::from(row_group),
+            };
+        }
+
+        let splitter = WriteRowGroupSplitter::new(self.max_bytes_per_write_batch.unwrap());
+        splitter.split(encoded_rows, row_group)
     }
 
     async fn write_table_row_group(
