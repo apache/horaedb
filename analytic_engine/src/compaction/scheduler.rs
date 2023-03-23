@@ -476,6 +476,7 @@ impl ScheduleWorker {
             compression: table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
         };
+        let scan_options = self.scan_options.clone();
 
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
@@ -484,12 +485,12 @@ impl ScheduleWorker {
 
             let res = space_store
                 .compact_table(
-                    runtime,
-                    &table_data,
                     request_id,
+                    &table_data,
                     &compaction_task,
-                    &self.scan_options,
+                    scan_options,
                     &sst_write_options,
+                    runtime,
                 )
                 .await;
 

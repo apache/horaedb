@@ -726,12 +726,12 @@ impl Instance {
 impl SpaceStore {
     pub(crate) async fn compact_table(
         &self,
-        runtime: Arc<Runtime>,
-        table_data: &TableData,
         request_id: RequestId,
+        table_data: &TableData,
         task: &CompactionTask,
-        scan_options: &ScanOptions,
+        scan_options: ScanOptions,
         sst_write_options: &SstWriteOptions,
+        runtime: Arc<Runtime>,
     ) -> Result<()> {
         debug!(
             "Begin compact table, table_name:{}, id:{}, task:{:?}",
@@ -765,12 +765,12 @@ impl SpaceStore {
 
         for input in &task.compaction_inputs {
             self.compact_input_files(
-                runtime.clone(),
-                table_data,
                 request_id,
+                table_data,
                 input,
-                scan_options,
+                scan_options.clone(),
                 sst_write_options,
+                runtime.clone(),
                 &mut edit_meta,
             )
             .await?;
@@ -795,14 +795,15 @@ impl SpaceStore {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) async fn compact_input_files(
         &self,
-        runtime: Arc<Runtime>,
-        table_data: &TableData,
         request_id: RequestId,
+        table_data: &TableData,
         input: &CompactionInputFiles,
-        scan_options: &ScanOptions,
+        scan_options: ScanOptions,
         sst_write_options: &SstWriteOptions,
+        runtime: Arc<Runtime>,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
         debug!(
@@ -848,7 +849,7 @@ impl SpaceStore {
             projected_schema: projected_schema.clone(),
             predicate: Arc::new(Predicate::empty()),
             meta_cache: self.meta_cache.clone(),
-            scan_options: scan_options.clone(),
+            scan_options,
             runtime: runtime.clone(),
         };
         let iter_options = IterOptions {
