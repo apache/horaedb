@@ -150,7 +150,13 @@ impl EncodeContext {
     }
 }
 
+/// Split the write request into multiple batches whose size is determined by
+/// the `max_bytes_per_batch`.
 struct WriteRowGroupSplitter {
+    /// Max bytes per batch. Actually, the size of a batch is not exactly
+    /// ensured less than this `max_bytes_per_batch`, but it is guaranteed that
+    /// the batch contains at most one more row when its size exceeds this
+    /// `max_bytes_per_batch`.
     max_bytes_per_batch: usize,
 }
 
@@ -172,6 +178,10 @@ impl WriteRowGroupSplitter {
         }
     }
 
+    /// Split the write request into multiple batches.
+    ///
+    /// NOTE: The length of the `encoded_rows` should be the same as the number
+    /// of rows in the `row_group`.
     pub fn split<'a>(
         &'a self,
         encoded_rows: Vec<ByteVec>,
@@ -179,6 +189,7 @@ impl WriteRowGroupSplitter {
     ) -> SplitResult<'a> {
         let end_row_indexes = self.compute_batches(&encoded_rows);
         if end_row_indexes.len() <= 1 {
+            // No need to split.
             return SplitResult::Integrate {
                 encoded_rows,
                 row_group: RowGroupSlicer::from(row_group),
@@ -213,12 +224,19 @@ impl WriteRowGroupSplitter {
         }
     }
 
+    /// Compute the end row indexes in the original `encoded_rows` of each
+    /// batch.
     fn compute_batches(&self, encoded_rows: &[ByteVec]) -> Vec<usize> {
         let mut current_batch_size = 0;
         let mut end_row_indexes = Vec::new();
         for (row_idx, encoded_row) in encoded_rows.iter().enumerate() {
             let row_size = encoded_row.len();
             current_batch_size += row_size;
+
+            // If the current batch size exceeds the `max_bytes_per_batch`, freeze this
+            // batch by recording its end row index.
+            // Note that such check may cause the batch size exceeds the
+            // `max_bytes_per_batch`.
             if current_batch_size >= self.max_bytes_per_batch {
                 current_batch_size = 0;
                 end_row_indexes.push(row_idx + 1)
@@ -228,6 +246,7 @@ impl WriteRowGroupSplitter {
         if current_batch_size > 0 {
             end_row_indexes.push(encoded_rows.len());
         }
+
         end_row_indexes
     }
 }
