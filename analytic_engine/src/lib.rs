@@ -78,6 +78,8 @@ pub struct Config {
     /// Max buffer size for writing sst
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max bytes per write batch.
+    ///
+    /// If this is set, the atomicity of write request will be broken.
     pub max_bytes_per_write_batch: Option<ReadableSize>,
 
     /// Wal storage config
