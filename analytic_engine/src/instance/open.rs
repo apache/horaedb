@@ -44,6 +44,8 @@ use crate::{
     table::data::{TableData, TableDataRef},
 };
 
+const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
+
 impl Instance {
     /// Open a new instance
     pub async fn open(
@@ -65,11 +67,16 @@ impl Instance {
 
         let scheduler_config = ctx.config.compaction_config.clone();
         let bg_runtime = ctx.runtimes.bg_runtime.clone();
+        let scan_options_for_compaction = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+        };
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
             bg_runtime.clone(),
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
+            scan_options_for_compaction,
         ));
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());

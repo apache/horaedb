@@ -730,6 +730,7 @@ impl SpaceStore {
         table_data: &TableData,
         request_id: RequestId,
         task: &CompactionTask,
+        scan_options: &ScanOptions,
         sst_write_options: &SstWriteOptions,
     ) -> Result<()> {
         debug!(
@@ -768,6 +769,7 @@ impl SpaceStore {
                 table_data,
                 request_id,
                 input,
+                scan_options,
                 sst_write_options,
                 &mut edit_meta,
             )
@@ -799,6 +801,7 @@ impl SpaceStore {
         table_data: &TableData,
         request_id: RequestId,
         input: &CompactionInputFiles,
+        scan_options: &ScanOptions,
         sst_write_options: &SstWriteOptions,
         edit_meta: &mut VersionEditMeta,
     ) -> Result<()> {
@@ -838,8 +841,6 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        // TODO: make the scan_options configurable for compaction.
-        let scan_options = ScanOptions::default();
         let sst_read_options = SstReadOptions {
             reverse: false,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
@@ -847,7 +848,7 @@ impl SpaceStore {
             projected_schema: projected_schema.clone(),
             predicate: Arc::new(Predicate::empty()),
             meta_cache: self.meta_cache.clone(),
-            scan_options,
+            scan_options: scan_options.clone(),
             runtime: runtime.clone(),
         };
         let iter_options = IterOptions {
