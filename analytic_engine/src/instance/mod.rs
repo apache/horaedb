@@ -33,6 +33,7 @@ use wal::manager::{WalLocation, WalManagerRef};
 use crate::{
     compaction::scheduler::CompactionSchedulerRef,
     manifest::ManifestRef,
+    row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
@@ -173,6 +174,7 @@ pub struct Instance {
     pub(crate) write_sst_max_buffer_size: usize,
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
+    pub(crate) iter_options: Option<IterOptions>,
     pub(crate) remote_engine: Option<RemoteEngineRef>,
 }
 

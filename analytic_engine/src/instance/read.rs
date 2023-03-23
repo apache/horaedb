@@ -172,9 +172,7 @@ impl Instance {
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
-        let iter_options = IterOptions {
-            batch_size: table_options.num_rows_per_row_group,
-        };
+        let iter_options = self.make_iter_options(table_options.num_rows_per_row_group);
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
@@ -327,6 +325,12 @@ impl Instance {
         }
 
         read_view_by_time.into_values().collect()
+    }
+
+    fn make_iter_options(&self, num_rows_per_row_group: usize) -> IterOptions {
+        self.iter_options.clone().unwrap_or(IterOptions {
+            batch_size: num_rows_per_row_group,
+        })
     }
 }
 

@@ -35,6 +35,7 @@ use crate::{
     },
     manifest::{meta_data::TableManifestData, LoadRequest, ManifestRef},
     payload::{ReadPayload, WalDecoder},
+    row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
@@ -78,6 +79,10 @@ impl Instance {
             max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
         };
 
+        let iter_options = ctx
+            .config
+            .scan_batch_size
+            .map(|batch_size| IterOptions { batch_size });
         let instance = Arc::new(Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
@@ -93,6 +98,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
+            iter_options,
             scan_options,
             remote_engine: remote_engine_ref,
         });
