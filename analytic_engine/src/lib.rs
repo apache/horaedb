@@ -71,8 +71,10 @@ pub struct Config {
     /// End of global write buffer options.
 
     // Iterator scanning options
-    /// Batch size for iterator
+    /// Batch size for iterator.
     pub scan_batch_size: usize,
+    /// Max record batches in flight when scan
+    pub scan_max_record_batches_in_flight: usize,
     /// Sst background reading parallelism
     pub sst_background_read_parallelism: usize,
     /// Max buffer size for writing sst
@@ -108,8 +110,10 @@ impl Default for Config {
             /// Zero means disabling this param, give a positive value to enable
             /// it.
             db_write_buffer_size: 0,
+            #[allow(deprecated)]
             scan_batch_size: 500,
             sst_background_read_parallelism: 8,
+            scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             wal: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),

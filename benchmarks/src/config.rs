@@ -50,7 +50,7 @@ pub struct SstBenchConfig {
 
     /// Max number of projection columns.
     pub max_projections: usize,
-    pub read_batch_row_num: usize,
+    pub num_rows_per_row_group: usize,
     pub predicate: BenchPredicate,
     pub sst_meta_cache_cap: Option<usize>,
     pub sst_data_cache_cap: Option<usize>,
@@ -70,7 +70,7 @@ pub struct MergeSstBenchConfig {
 
     /// Max number of projection columns.
     pub max_projections: usize,
-    pub read_batch_row_num: usize,
+    pub num_rows_per_row_group: usize,
     pub predicate: BenchPredicate,
 }
 

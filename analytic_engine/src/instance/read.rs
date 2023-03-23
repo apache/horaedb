@@ -94,8 +94,6 @@ impl Instance {
         );
 
         let table_data = space_table.table_data();
-
-        let iter_options = self.iter_options.clone();
         let table_options = table_data.table_options();
 
         // Collect metrics.
@@ -108,12 +106,12 @@ impl Instance {
 
         if need_merge_sort {
             let merge_iters = self
-                .build_merge_iters(table_data, &request, iter_options, &table_options)
+                .build_merge_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, iter_options, &table_options)
+                .build_chain_iters(table_data, &request, &table_options)
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -155,27 +153,28 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
-        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<DedupIterator<MergeIterator>>> {
         // Current visible sequence
         let sequence = table_data.last_sequence();
         let projected_schema = request.projected_schema.clone();
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: request.order.is_in_desc_order(),
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
+            scan_options: self.scan_options.clone(),
         };
 
         let time_range = request.predicate.time_range();
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
+        let iter_options = IterOptions {
+            batch_size: table_options.num_rows_per_row_group,
+        };
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
@@ -226,7 +225,6 @@ impl Instance {
         &self,
         table_data: &TableData,
         request: &ReadRequest,
-        iter_options: IterOptions,
         table_options: &TableOptions,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
@@ -234,7 +232,6 @@ impl Instance {
         assert!(request.order.is_out_of_order());
 
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             // no need to read in order so just read in asc order by default.
             reverse: false,
             frequency: ReadFrequency::Frequent,
@@ -242,8 +239,8 @@ impl Instance {
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
             runtime: self.read_runtime().clone(),
-            background_read_parallelism: iter_options.sst_background_read_parallelism,
             num_rows_per_row_group: table_options.num_rows_per_row_group,
+            scan_options: self.scan_options.clone(),
         };
 
         let time_range = request.predicate.time_range();

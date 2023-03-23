@@ -6,7 +6,8 @@ use std::{cmp, sync::Arc, time::Instant};
 
 use analytic_engine::sst::{
     factory::{
-        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, SstReadHint, SstReadOptions,
+        Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+        SstReadOptions,
     },
     meta_data::cache::{MetaCache, MetaCacheRef},
 };
@@ -39,16 +40,19 @@ impl SstBench {
         let schema = runtime.block_on(util::schema_from_sst(&store, &sst_path, &meta_cache));
         let predicate = config.predicate.into_predicate();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
+        let scan_options = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: 1024,
+        };
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: config.read_batch_row_num,
             reverse: config.reverse,
             frequency: ReadFrequency::Frequent,
+            num_rows_per_row_group: config.num_rows_per_row_group,
             projected_schema,
             predicate,
             meta_cache,
+            scan_options,
             runtime: runtime.clone(),
-            background_read_parallelism: 1,
-            num_rows_per_row_group: config.read_batch_row_num,
         };
         let max_projections = cmp::min(config.max_projections, schema.num_columns());
 

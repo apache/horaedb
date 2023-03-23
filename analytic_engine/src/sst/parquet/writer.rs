@@ -333,7 +333,9 @@ mod tests {
     use crate::{
         row_iter::tests::build_record_batch_with_key,
         sst::{
-            factory::{Factory, FactoryImpl, ReadFrequency, SstReadOptions, SstWriteOptions},
+            factory::{
+                Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
+            },
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
@@ -411,17 +413,17 @@ mod tests {
 
             assert_eq!(15, sst_info.row_num);
 
+            let scan_options = ScanOptions::default();
             // read sst back to test
             let sst_read_options = SstReadOptions {
-                read_batch_row_num: 5,
                 reverse: false,
                 frequency: ReadFrequency::Frequent,
+                num_rows_per_row_group: 5,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
+                scan_options,
                 runtime: runtime.clone(),
-                num_rows_per_row_group: 5,
-                background_read_parallelism: 1,
             };
 
             let mut reader: Box<dyn SstReader + Send> = {

@@ -49,7 +49,7 @@ use crate::{
     },
     space::SpaceAndTable,
     sst::{
-        factory::{self, ReadFrequency, SstReadOptions, SstWriteOptions},
+        factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
         file::FileMeta,
         meta_data::SstMetaReader,
         writer::{MetaData, RecordBatchStream},
@@ -838,18 +838,21 @@ impl SpaceStore {
         let schema = table_data.schema();
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
+        // TODO: make the scan_options configurable for compaction.
+        let scan_options = ScanOptions::default();
         let sst_read_options = SstReadOptions {
-            read_batch_row_num: table_options.num_rows_per_row_group,
             reverse: false,
+            num_rows_per_row_group: table_options.num_rows_per_row_group,
             frequency: ReadFrequency::Once,
             projected_schema: projected_schema.clone(),
             predicate: Arc::new(Predicate::empty()),
             meta_cache: self.meta_cache.clone(),
+            scan_options,
             runtime: runtime.clone(),
-            background_read_parallelism: 1,
-            num_rows_per_row_group: table_options.num_rows_per_row_group,
         };
-        let iter_options = IterOptions::default();
+        let iter_options = IterOptions {
+            batch_size: table_options.num_rows_per_row_group,
+        };
         let merge_iter = {
             let space_id = table_data.space_id;
             let table_id = table_data.id;
@@ -881,12 +884,13 @@ impl SpaceStore {
         };
 
         let record_batch_stream = if table_options.need_dedup() {
-            row_iter::record_batch_with_key_iter_to_stream(
-                DedupIterator::new(request_id, merge_iter, iter_options),
-                &runtime,
-            )
+            row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
+                request_id,
+                merge_iter,
+                iter_options,
+            ))
         } else {
-            row_iter::record_batch_with_key_iter_to_stream(merge_iter, &runtime)
+            row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
         let sst_meta = {
