@@ -11,34 +11,26 @@ use ceresdbproto::storage::{
     value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
 };
 use common_types::{
-    column_schema::{self, ColumnSchema},
-    datum::{Datum, DatumKind},
-    record_batch::RecordBatch,
-    request_id::RequestId,
-    schema::RecordSchema,
-    time::Timestamp,
+    column_schema::ColumnSchema, datum::Datum, record_batch::RecordBatch, request_id::RequestId,
+    schema::RecordSchema, time::Timestamp,
 };
 use common_util::error::BoxError;
 use handlers::{
-    error::{InfluxDbHandler, Result},
+    error::{InfluxDbHandlerNoCause, InfluxDbHandlerWithCause, Result},
     query::QueryRequest,
 };
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
 use log::debug;
 use query_engine::executor::Executor as QueryExecutor;
-use serde::{
-    ser::{SerializeMap, SerializeSeq},
-    Serialize,
-};
-use snafu::{ensure, OptionExt, ResultExt};
+use serde::{ser::SerializeMap, Serialize};
+use snafu::{ensure, ResultExt};
 use sql::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
 use warp::{reject, reply, Rejection, Reply};
 
 use crate::{
     context::RequestContext,
     handlers,
-    handlers::error::InfluxDbHandlerInternal,
     instance::InstanceRef,
     proxy::grpc::write::{execute_insert_plan, write_request_to_insert_plan, WriteContext},
     schema_config_provider::SchemaConfigProviderRef,
@@ -85,36 +77,35 @@ impl From<Bytes> for WriteRequest {
 
 pub type WriteResponse = ();
 
-/// One result in group(defined by group by clause)
-///
-/// Influxdb names the result set series, so name each result in the set
-/// `OneSeries` here. Its format is like:
-/// {
-// 	"results": [{
-/// 		"statement_id": 0,
-/// 		"series": [{
-/// 			"name": "home",
-/// 			"tags": {
-/// 				"room":  "Living Room"
-/// 			},
-/// 			"columns": ["time", "co", "hum", "temp"],
-/// 			"values": [["2022-01-01T08:00:00Z", 0, 35.9, 21.1], ... ]
-/// 		}, ... ]
-/// 	}, ... ]
-/// }
+/// Influxql response organized in the same way with influxdb
 #[derive(Debug, Serialize)]
 pub struct InfluxqlResponse {
-    results: Vec<InfluxqlResult>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct InfluxqlResult {
-    statement_id: u32,
-    series: Vec<OneSeries>,
+    pub results: Vec<InfluxqlResult>,
 }
 
 #[derive(Debug)]
-pub struct OneSeries {
+pub struct InfluxqlResult {
+    statement_id: u32,
+    series: Option<Vec<OneSeries>>,
+}
+
+impl Serialize for InfluxqlResult {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut influxql_result = serializer.serialize_map(Some(4))?;
+        influxql_result.serialize_entry("statement_id", &self.statement_id)?;
+        if let Some(series) = &self.series {
+            influxql_result.serialize_entry("series", series)?;
+        }
+
+        influxql_result.end()
+    }
+}
+
+#[derive(Debug)]
+struct OneSeries {
     name: String,
     tags: Option<Tags>,
     columns: Vec<String>,
@@ -156,35 +147,46 @@ impl Serialize for Tags {
     }
 }
 
-/// Influxql response builder
-// #[derive(Serialize)]
-// #[serde(rename_all = "snake_case")]
+/// [InfluxqlResult] builder
 #[derive(Default)]
 pub struct InfluxqlResultBuilder {
+    /// Id of the related influxql
     statement_id: u32,
 
     /// Schema of influxql query result
     ///
-    /// Its format is like: measurement | tag_1..tag_n(defined by group by
-    /// clause) | time | value_column_1..value_column_n
+    /// Its format is like:
+    /// measurement |
+    /// tag_1..tag_n(columns in `group by`) |
+    /// time |
+    /// column_1..column_n(column in `projection` but not in `group by`)
     column_schemas: Vec<ColumnSchema>,
 
     /// Tags part in schema
     group_by_tag_col_idxs: Vec<usize>,
 
-    /// Value columns part in schema(include `time`)
+    /// Columns part in schema(include `time`)
     value_col_idxs: Vec<usize>,
 
-    /// Mapping series key(measurement + tag values) to column data
+    /// Mapping group key(`measurement` + `tag values`) to column values,
+    ///
+    /// NOTE: because tag keys in `group by` clause are same in each sub result,
+    /// we just use the `measurement` + `tag values` to distinguish them.
     group_key_to_idx: HashMap<GroupKey, usize>,
 
-    /// Column datas
+    /// Column values
     value_groups: Vec<Vec<Vec<Datum>>>,
 }
 
 impl InfluxqlResultBuilder {
-    fn new(record_schema: &RecordSchema, statement_id: u32) -> Result<Self> {
+    pub fn new(record_schema: &RecordSchema, statement_id: u32) -> Result<Self> {
         let column_schemas = record_schema.columns().to_owned();
+        ensure!(
+            !column_schemas.is_empty(),
+            InfluxDbHandlerNoCause {
+                msg: "empty schema",
+            }
+        );
 
         // Find the tags part and columns part from schema.
         let mut group_by_col_idxs = Vec::new();
@@ -192,13 +194,13 @@ impl InfluxqlResultBuilder {
 
         let mut col_iter = column_schemas.iter().enumerate();
         // The first column may be measurement column in normal.
-        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InfluxDbHandlerInternal {
+        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InfluxDbHandlerNoCause {
             msg: format!("invalid schema whose first column is not measurement column, schema:{column_schemas:?}"),
         });
 
         // The group by tags will be placed after measurement and before time column.
         let mut searching_group_by_tags = true;
-        while let Some((idx, col)) = col_iter.next() {
+        for (idx, col) in col_iter {
             if col.data_type.is_timestamp() {
                 searching_group_by_tags = false;
             }
@@ -220,11 +222,11 @@ impl InfluxqlResultBuilder {
         })
     }
 
-    fn add_record_batch(mut self, record_batch: RecordBatch) -> Result<Self> {
+    pub fn add_record_batch(&mut self, record_batch: RecordBatch) -> Result<()> {
         // Check schema's compatibility.
         ensure!(
-            record_batch.schema().columns() == &self.column_schemas,
-            InfluxDbHandlerInternal {
+            record_batch.schema().columns() == self.column_schemas,
+            InfluxDbHandlerNoCause {
                 msg: format!(
                     "conflict schema, origin:{:?}, new:{:?}",
                     self.column_schemas,
@@ -251,10 +253,10 @@ impl InfluxqlResultBuilder {
             value_groups.push(value_group);
         }
 
-        Ok(self)
+        Ok(())
     }
 
-    fn build(self) -> InfluxqlResult {
+    pub fn build(self) -> InfluxqlResult {
         let ordered_group_keys = {
             let mut ordered_pairs = self
                 .group_key_to_idx
@@ -273,17 +275,23 @@ impl InfluxqlResultBuilder {
             .zip(self.value_groups.into_iter())
             .map(|(group_key, value_group)| {
                 let name = group_key.measurement;
-                let tags = group_key
-                    .group_by_tag_values
-                    .into_iter()
-                    .enumerate()
-                    .map(|(tagk_idx, tagv)| {
-                        let tagk_col_idx = self.group_by_tag_col_idxs[tagk_idx];
-                        let tagk = self.column_schemas[tagk_col_idx].name.clone();
+                let tags = if group_key.group_by_tag_values.is_empty() {
+                    None
+                } else {
+                    let tags = group_key
+                        .group_by_tag_values
+                        .into_iter()
+                        .enumerate()
+                        .map(|(tagk_idx, tagv)| {
+                            let tagk_col_idx = self.group_by_tag_col_idxs[tagk_idx];
+                            let tagk = self.column_schemas[tagk_col_idx].name.clone();
 
-                        (tagk, tagv)
-                    })
-                    .collect::<Vec<_>>();
+                            (tagk, tagv)
+                        })
+                        .collect::<Vec<_>>();
+
+                    Some(Tags(tags))
+                };
 
                 let columns = self
                     .value_col_idxs
@@ -293,7 +301,7 @@ impl InfluxqlResultBuilder {
 
                 OneSeries {
                     name,
-                    tags: Some(Tags(tags)),
+                    tags,
                     columns,
                     values: value_group,
                 }
@@ -301,7 +309,7 @@ impl InfluxqlResultBuilder {
             .collect();
 
         InfluxqlResult {
-            series,
+            series: Some(series),
             statement_id: self.statement_id,
         }
     }
@@ -310,10 +318,14 @@ impl InfluxqlResultBuilder {
         let mut group_by_tag_values = Vec::with_capacity(self.group_by_tag_col_idxs.len());
         let measurement = {
             let measurement = record_batch.column(0).datum(row_idx);
-            if let Datum::String(m) = measurement {
-                m.to_string()
-            } else {
-                return InfluxDbHandlerInternal { msg: "" }.fail();
+            match measurement {
+                Datum::String(m) => m.to_string(),
+                other => {
+                    return InfluxDbHandlerNoCause {
+                        msg: format!("invalid measurement column, column:{other:?}"),
+                    }
+                    .fail()
+                }
             }
         };
 
@@ -323,7 +335,12 @@ impl InfluxqlResultBuilder {
                 match tag_datum {
                     Datum::Null => "".to_string(),
                     Datum::String(tag) => tag.to_string(),
-                    _ => return InfluxDbHandlerInternal { msg: "" }.fail(),
+                    other => {
+                        return InfluxDbHandlerNoCause {
+                            msg: format!("invalid tag column, column:{other:?}"),
+                        }
+                        .fail()
+                    }
                 }
             };
             group_by_tag_values.push(tag);
@@ -357,17 +374,6 @@ struct GroupKey {
     group_by_tag_values: Vec<String>,
 }
 
-#[derive(Hash, PartialEq, Eq)]
-struct TagKv {
-    key: String,
-    value: String,
-}
-
-struct Columns {
-    names: Vec<String>,
-    data: Vec<Datum>,
-}
-
 impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
     pub fn new(instance: InstanceRef<Q>, schema_config_provider: SchemaConfigProviderRef) -> Self {
         Self {
@@ -376,14 +382,15 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
         }
     }
 
-    async fn query(
-        &self,
-        ctx: RequestContext,
-        req: QueryRequest,
-    ) -> Result<handlers::query::Response> {
-        handlers::query::handle_query(&ctx, self.instance.clone(), req)
+    async fn query(&self, ctx: RequestContext, req: QueryRequest) -> Result<InfluxqlResponse> {
+        let output = handlers::query::handle_query(&ctx, self.instance.clone(), req)
             .await
-            .map(handlers::query::convert_output)
+            .box_err()
+            .context(InfluxDbHandlerWithCause {
+                msg: "failed to query by influxql",
+            })?;
+
+        convert_influxql_output(output)
     }
 
     async fn write(&self, ctx: RequestContext, req: WriteRequest) -> Result<WriteResponse> {
@@ -396,7 +403,7 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
             .schema_config_provider
             .schema_config(schema)
             .box_err()
-            .with_context(|| InfluxDbHandler {
+            .with_context(|| InfluxDbHandlerWithCause {
                 msg: format!("get schema config failed, schema:{schema}"),
             })?;
 
@@ -411,7 +418,7 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
         )
         .await
         .box_err()
-        .with_context(|| InfluxDbHandler {
+        .with_context(|| InfluxDbHandlerWithCause {
             msg: "write request to insert plan",
         })?;
 
@@ -427,7 +434,7 @@ impl<Q: QueryExecutor + 'static> InfluxDb<Q> {
             )
             .await
             .box_err()
-            .with_context(|| InfluxDbHandler {
+            .with_context(|| InfluxDbHandlerWithCause {
                 msg: "execute plan",
             })?;
         }
@@ -444,7 +451,7 @@ fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableRequest>> {
     let mut req_by_measurement = HashMap::new();
     let default_ts = Timestamp::now().as_i64();
     for line in influxdb_line_protocol::parse_lines(&req.lines) {
-        let mut line = line.box_err().with_context(|| InfluxDbHandler {
+        let mut line = line.box_err().with_context(|| InfluxDbHandlerWithCause {
             msg: "invalid line",
         })?;
 
@@ -526,9 +533,35 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
     Value { value: Some(v) }
 }
 
-// fn convert_query_result(output: Output) -> {
+fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
+    // TODO: now, we just support one influxql in each query.
+    let influxql_result = if let Output::Records(records) = output {
+        if records.is_empty() {
+            InfluxqlResult {
+                statement_id: 0,
+                series: None,
+            }
+        } else {
+            // All record schemas in one query result should be same.
+            let record_schema = records.first().unwrap().schema();
+            let mut builder = InfluxqlResultBuilder::new(record_schema, 0)?;
+            for record in records {
+                builder.add_record_batch(record)?;
+            }
 
-// }
+            builder.build()
+        }
+    } else {
+        return InfluxDbHandlerNoCause {
+            msg: "output in influxql should not be affected rows",
+        }
+        .fail();
+    };
+
+    Ok(InfluxqlResponse {
+        results: vec![influxql_result],
+    })
+}
 
 // TODO: Request and response type don't match influxdb's API now.
 pub async fn query<Q: QueryExecutor + 'static>(
@@ -556,7 +589,15 @@ pub async fn write<Q: QueryExecutor + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use common_types::tests::build_schema;
+    use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
+    use common_types::{
+        column::{ColumnBlock, ColumnBlockBuilder},
+        column_schema,
+        datum::DatumKind,
+        schema,
+        string::StringBytes,
+    };
+    use json_pretty::PrettyFormatter;
 
     use super::*;
 
@@ -671,19 +712,161 @@ mod tests {
     }
 
     #[test]
-    fn test_print() {
+    fn test_influxql_result() {
+        let record_schema = build_test_record_schema();
+        let column_blocks = build_test_column_blocks();
+        let record_batch = RecordBatch::new(record_schema, column_blocks).unwrap();
 
-
-        let one_series = OneSeries {
-            name: "test".to_string(),
-            tags: None,
-            columns: vec!["column1".to_string(), "column2".to_string()],
-            values: vec![
-                vec![Datum::Int32(1), Datum::Int32(2)],
-                vec![Datum::Int32(2), Datum::Int32(2)],
-            ],
+        let mut builder = InfluxqlResultBuilder::new(record_batch.schema(), 0).unwrap();
+        builder.add_record_batch(record_batch).unwrap();
+        let iql_results = vec![builder.build()];
+        let iql_response = InfluxqlResponse {
+            results: iql_results,
         };
+        let iql_result_json =
+            PrettyFormatter::from_str(&serde_json::to_string(&iql_response).unwrap()).pretty();
+        let expected = PrettyFormatter::from_str(r#"{"results":[{"statement_id":0,"series":[{"name":"m1","tags":{"tag":"tv1"},
+                            "columns":["time","field1","field2"],"values":[[10001,"fv1",1]]},
+                            {"name":"m1","tags":{"tag":"tv2"},"columns":["time","field1","field2"],"values":[[100002,"fv2",2]]},
+                            {"name":"m1","tags":{"tag":"tv3"},"columns":["time","field1","field2"],"values":[[10003,"fv3",3]]},
+                            {"name":"m1","tags":{"tag":""},"columns":["time","field1","field2"],"values":[[10007,null,null]]},
+                            {"name":"m2","tags":{"tag":"tv4"},"columns":["time","field1","field2"],"values":[[10004,"fv4",4]]},
+                            {"name":"m2","tags":{"tag":"tv5"},"columns":["time","field1","field2"],"values":[[100005,"fv5",5]]},
+                            {"name":"m2","tags":{"tag":"tv6"},"columns":["time","field1","field2"],"values":[[10006,"fv6",6]]}]}]}"#).pretty();
+        assert_eq!(expected, iql_result_json);
+    }
 
-        println!("{}", serde_json::to_string(&one_series).unwrap());
+    fn build_test_record_schema() -> RecordSchema {
+        let schema = schema::Builder::new()
+            .auto_increment_column_id(true)
+            .add_key_column(
+                column_schema::Builder::new("time".to_string(), DatumKind::Timestamp)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("tag".to_string(), DatumKind::String)
+                    .is_tag(true)
+                    .is_nullable(true)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                column_schema::Builder::new("field1".to_string(), DatumKind::String)
+                    .is_nullable(true)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .add_normal_column(
+                // The data type of column is `UInt32`, and the type of default value expr is
+                // `Int64`. So we use this column to cover the test, which has
+                // different type.
+                column_schema::Builder::new("field2".to_string(), DatumKind::UInt64)
+                    .is_nullable(true)
+                    .build()
+                    .expect("should succeed build column schema"),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // Record schema
+        let arrow_schema = schema.to_arrow_schema_ref();
+        let fields = arrow_schema.fields.to_owned();
+        let measurement_field = ArrowField::new(
+            "ceresdb::measurement".to_string(),
+            schema::DataType::Utf8,
+            false,
+        );
+        let project_fields = vec![
+            measurement_field,
+            fields[1].clone(),
+            fields[0].clone(),
+            fields[2].clone(),
+            fields[3].clone(),
+        ];
+        let project_arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
+            project_fields,
+            arrow_schema.metadata().clone(),
+        ));
+
+        RecordSchema::try_from(project_arrow_schema).unwrap()
+    }
+
+    fn build_test_column_blocks() -> Vec<ColumnBlock> {
+        let mut measurement_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
+        let mut tag_builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
+        let mut time_builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 3);
+        let mut field_builder1 = ColumnBlockBuilder::with_capacity(&DatumKind::String, 3);
+        let mut field_builder2 = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 3);
+
+        // Data in measurement1
+        let measurement1 = Datum::String(StringBytes::copy_from_str("m1"));
+        let tags1 = vec!["tv1".to_string(), "tv2".to_string(), "tv3".to_string()]
+            .into_iter()
+            .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str())))
+            .collect::<Vec<_>>();
+        let times1 = vec![10001_i64, 100002, 10003]
+            .into_iter()
+            .map(|v| Datum::Timestamp(v.into()))
+            .collect::<Vec<_>>();
+        let fields1 = vec!["fv1".to_string(), "fv2".to_string(), "fv3".to_string()]
+            .into_iter()
+            .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str())))
+            .collect::<Vec<_>>();
+        let fields2 = vec![1_u64, 2, 3]
+            .into_iter()
+            .map(Datum::UInt64)
+            .collect::<Vec<_>>();
+
+        let measurement2 = Datum::String(StringBytes::copy_from_str("m2"));
+        let tags2 = vec!["tv4".to_string(), "tv5".to_string(), "tv6".to_string()]
+            .into_iter()
+            .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str())))
+            .collect::<Vec<_>>();
+        let times2 = vec![10004_i64, 100005, 10006]
+            .into_iter()
+            .map(|v| Datum::Timestamp(v.into()))
+            .collect::<Vec<_>>();
+        let fields3 = vec!["fv4".to_string(), "fv5".to_string(), "fv6".to_string()]
+            .into_iter()
+            .map(|v| Datum::String(StringBytes::copy_from_str(v.as_str())))
+            .collect::<Vec<_>>();
+        let fields4 = vec![4_u64, 5, 6]
+            .into_iter()
+            .map(Datum::UInt64)
+            .collect::<Vec<_>>();
+
+        for idx in 0..3 {
+            measurement_builder.append(measurement1.clone()).unwrap();
+            tag_builder.append(tags1[idx].clone()).unwrap();
+            time_builder.append(times1[idx].clone()).unwrap();
+            field_builder1.append(fields1[idx].clone()).unwrap();
+            field_builder2.append(fields2[idx].clone()).unwrap();
+        }
+        measurement_builder.append(measurement1).unwrap();
+        tag_builder.append(Datum::Null).unwrap();
+        time_builder.append(Datum::Timestamp(10007.into())).unwrap();
+        field_builder1.append(Datum::Null).unwrap();
+        field_builder2.append(Datum::Null).unwrap();
+
+        for idx in 0..3 {
+            measurement_builder.append(measurement2.clone()).unwrap();
+            tag_builder.append(tags2[idx].clone()).unwrap();
+            time_builder.append(times2[idx].clone()).unwrap();
+            field_builder1.append(fields3[idx].clone()).unwrap();
+            field_builder2.append(fields4[idx].clone()).unwrap();
+        }
+
+        vec![
+            measurement_builder.build(),
+            tag_builder.build(),
+            time_builder.build(),
+            field_builder1.build(),
+            field_builder2.build(),
+        ]
     }
 }

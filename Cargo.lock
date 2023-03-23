@@ -3083,6 +3083,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "json_pretty"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c9fe3f290d2cb8660e3e051352ea55a404788d213a106a33ec8802447c4a762"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5583,6 +5589,7 @@ dependencies = [
  "http",
  "influxdb_line_protocol",
  "interpreters",
+ "json_pretty",
  "lazy_static",
  "log",
  "logger",

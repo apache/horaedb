@@ -74,10 +74,10 @@ pub enum Error {
     },
 
     #[snafu(display("InfluxDb handler failed, msg:{}, source:{}", msg, source))]
-    InfluxDbHandler { msg: String, source: GenericError },
+    InfluxDbHandlerWithCause { msg: String, source: GenericError },
 
     #[snafu(display("InfluxDb handler failed, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    InfluxDbHandlerInternal { msg: String, backtrace: Backtrace },
+    InfluxDbHandlerNoCause { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
