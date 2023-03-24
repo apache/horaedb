@@ -58,6 +58,7 @@ arrow_ipc = { version = "32.0.0" }
 arrow_ext = { path = "components/arrow_ext" }
 analytic_engine = { path = "analytic_engine" }
 arena = { path = "components/arena" }
+async-stream = "0.3.4"
 async-trait = "0.1.53"
 base64 = "0.13"
 bytes = "1.1.0"

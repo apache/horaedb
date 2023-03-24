@@ -18,6 +18,7 @@ test = ["tempfile"]
 arc-swap = "1.4.0"
 arena = { workspace = true }
 arrow = { workspace = true }
+async-stream = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }

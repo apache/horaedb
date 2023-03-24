@@ -5,6 +5,7 @@
 use async_trait::async_trait;
 use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
 use common_util::error::BoxError;
+use async_stream::try_stream;
 
 use crate::sst::writer::RecordBatchStream;
 
@@ -34,11 +35,12 @@ pub trait RecordBatchWithKeyIterator: Send {
 }
 
 pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(
-    iter: I,
+    mut iter: I,
 ) -> RecordBatchStream {
-    let record_batch_stream = futures::stream::unfold(iter, |mut iter| async {
-        let item = iter.next_batch().await.box_err().transpose();
-        item.map(|item| (item, iter))
-    });
+    let record_batch_stream=try_stream!{
+        while let Some(batch) = iter.next_batch().await.box_err().transpose() {
+            yield batch?;
+        }
+    };
     Box::new(Box::pin(record_batch_stream))
 }
