@@ -1202,7 +1202,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "serde",
- "time 0.1.44",
+ "time 0.1.45",
  "wasm-bindgen",
  "winapi",
 ]
@@ -1402,7 +1402,7 @@ dependencies = [
  "slog-global",
  "snafu 0.6.10",
  "tempfile",
- "time 0.1.44",
+ "time 0.3.15",
  "tokio",
  "tokio-test",
  "toml 0.7.3",
@@ -3663,7 +3663,7 @@ dependencies = [
  "serde_json",
  "sha1 0.6.1",
  "sha2 0.8.2",
- "time 0.1.44",
+ "time 0.1.45",
  "twox-hash",
  "uuid 0.7.4",
 ]
@@ -5280,7 +5280,7 @@ dependencies = [
  "libc",
  "rand 0.3.23",
  "rustc-serialize",
- "time 0.1.44",
+ "time 0.1.45",
 ]
 
 [[package]]
@@ -6320,9 +6320,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.44"
+version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db9e6914ab8b1ae1c260a4ae7a49b6c5611b40328a735b21862567685e73255"
+checksum = "1b797afad3f312d1c66a56d11d0316f916356d11bd158fbc6ca6389ff6bf805a"
 dependencies = [
  "libc",
  "wasi 0.10.0+wasi-snapshot-preview1",

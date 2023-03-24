@@ -31,7 +31,7 @@ prometheus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-time = "0.1"
+time = "0.3"
 tokio = { workspace = true }
 toml = { workspace = true }
 
