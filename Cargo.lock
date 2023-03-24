@@ -2884,11 +2884,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "influxdb_line_protocol"
-version = "0.1.0"
-source = "git+https://github.com/jiacai2050/influxdb_line_protocol#14e00a3dbc99a5edff226b92e3496314b086acf4"
+name = "influxdb-line-protocol"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1192416847e724d001c1f410cf348f27978a50b30f3473afbf73062cada2697a"
 dependencies = [
  "bytes 1.4.0",
+ "log",
  "nom 7.1.1",
  "smallvec",
  "snafu 0.7.1",
@@ -5581,7 +5583,7 @@ dependencies = [
  "df_operator",
  "futures 0.3.25",
  "http",
- "influxdb_line_protocol",
+ "influxdb-line-protocol",
  "interpreters",
  "lazy_static",
  "log",
