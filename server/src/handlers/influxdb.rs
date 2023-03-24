@@ -84,13 +84,13 @@ pub type WriteResponse = ();
 /// Influxql response organized in the same way with influxdb.
 ///
 /// The basic example:
+/// ```json
 /// {"results":[{"statement_id":0,"series":[{"name":"mymeas",
-///                                          
-/// "columns":["time","myfield","mytag1","mytag2"],                             
-/// "values":[["2017-03-01T00:16:18Z",33.1,null,null],                          
-/// ["2017-03-01T00:17:18Z",12.4,"12","14"]]}]}]}
-///
-/// You can see more details in:
+///                                          "columns":["time","myfield","mytag1","mytag2"],
+///                                          "values":[["2017-03-01T00:16:18Z",33.1,null,null],
+///                                                    ["2017-03-01T00:17:18Z",12.4,"12","14"]]}]}]}
+/// ```
+/// More details refer to:
 ///   https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-data-with-a-select-statement
 #[derive(Debug, Serialize)]
 pub struct InfluxqlResponse {
@@ -502,32 +502,35 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
 
 fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
     // TODO: now, we just support one influxql in each query.
-    if let Output::Records(records) = output {
-        let influxql_result = if records.is_empty() {
-            OneInfluxqlResult {
-                statement_id: 0,
-                series: None,
+    let records = match output {
+        Output::Records(records) => records,
+        Output::AffectedRows(_) => {
+            return InfluxDbHandlerNoCause {
+                msg: "output in influxql should not be affected rows",
             }
-        } else {
-            // All record schemas in one query result should be same.
-            let record_schema = records.first().unwrap().schema();
-            let mut builder = InfluxqlResultBuilder::new(record_schema, 0)?;
-            for record in records {
-                builder.add_record_batch(record)?;
-            }
+            .fail()
+        }
+    };
 
-            builder.build()
-        };
+    let influxql_result = if records.is_empty() {
+        OneInfluxqlResult {
+            statement_id: 0,
+            series: None,
+        }
+    } else {
+        // All record schemas in one query result should be same.
+        let record_schema = records.first().unwrap().schema();
+        let mut builder = InfluxqlResultBuilder::new(record_schema, 0)?;
+        for record in records {
+            builder.add_record_batch(record)?;
+        }
 
-        return Ok(InfluxqlResponse {
-            results: vec![influxql_result],
-        });
-    }
+        builder.build()
+    };
 
-    InfluxDbHandlerNoCause {
-        msg: "output in influxql should not be affected rows",
-    }
-    .fail()
+    Ok(InfluxqlResponse {
+        results: vec![influxql_result],
+    })
 }
 
 // TODO: Request and response type don't match influxdb's API now.
