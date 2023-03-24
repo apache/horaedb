@@ -161,6 +161,8 @@ impl InfluxqlResultBuilder {
         let mut group_by_col_idxs = Vec::new();
         let mut value_col_idxs = Vec::new();
 
+        // The following index searching logic is derived from the fixed format
+        // described when introducing `column_schemas`.
         let mut col_iter = column_schemas.iter().enumerate();
         // The first column may be measurement column in normal.
         ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InfluxDbHandlerNoCause {
@@ -227,11 +229,7 @@ impl InfluxqlResultBuilder {
 
     pub fn build(self) -> OneInfluxqlResult {
         let ordered_group_keys = {
-            let mut ordered_pairs = self
-                .group_key_to_idx
-                .clone()
-                .into_iter()
-                .collect::<Vec<_>>();
+            let mut ordered_pairs = self.group_key_to_idx.into_iter().collect::<Vec<_>>();
             ordered_pairs.sort_by(|a, b| a.1.cmp(&b.1));
             ordered_pairs
                 .into_iter()
@@ -504,8 +502,8 @@ fn convert_influx_value(field_value: FieldValue) -> Value {
 
 fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
     // TODO: now, we just support one influxql in each query.
-    let influxql_result = if let Output::Records(records) = output {
-        if records.is_empty() {
+    if let Output::Records(records) = output {
+        let influxql_result = if records.is_empty() {
             OneInfluxqlResult {
                 statement_id: 0,
                 series: None,
@@ -519,17 +517,17 @@ fn convert_influxql_output(output: Output) -> Result<InfluxqlResponse> {
             }
 
             builder.build()
-        }
-    } else {
-        return InfluxDbHandlerNoCause {
-            msg: "output in influxql should not be affected rows",
-        }
-        .fail();
-    };
+        };
 
-    Ok(InfluxqlResponse {
-        results: vec![influxql_result],
-    })
+        return Ok(InfluxqlResponse {
+            results: vec![influxql_result],
+        });
+    }
+
+    InfluxDbHandlerNoCause {
+        msg: "output in influxql should not be affected rows",
+    }
+    .fail()
 }
 
 // TODO: Request and response type don't match influxdb's API now.
