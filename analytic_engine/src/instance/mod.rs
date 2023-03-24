@@ -36,7 +36,7 @@ use crate::{
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
         meta_data::cache::MetaCacheRef,
     },
@@ -175,7 +175,8 @@ pub struct Instance {
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
     /// Options for scanning sst
-    pub(crate) iter_options: IterOptions,
+    pub(crate) scan_options: ScanOptions,
+    pub(crate) iter_options: Option<IterOptions>,
     pub(crate) remote_engine: Option<RemoteEngineRef>,
 }
 

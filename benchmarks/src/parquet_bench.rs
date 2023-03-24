@@ -48,7 +48,7 @@ impl ParquetBench {
             _predicate: config.predicate.into_predicate(),
             runtime: Arc::new(runtime),
             is_async: config.is_async,
-            batch_size: config.read_batch_row_num,
+            batch_size: config.num_rows_per_row_group,
         }
     }
 

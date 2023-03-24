@@ -38,11 +38,13 @@ use crate::{
     row_iter::IterOptions,
     space::{Space, SpaceContext, SpaceId, SpaceRef},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
     table::data::{TableData, TableDataRef},
 };
+
+const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 impl Instance {
     /// Open a new instance
@@ -65,20 +67,29 @@ impl Instance {
 
         let scheduler_config = ctx.config.compaction_config.clone();
         let bg_runtime = ctx.runtimes.bg_runtime.clone();
+        let scan_options_for_compaction = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+        };
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
             bg_runtime.clone(),
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_bytes() as usize,
+            scan_options_for_compaction,
         ));
 
         let file_purger = FilePurger::start(&bg_runtime, store_picker.default_store().clone());
 
-        let iter_options = IterOptions {
-            batch_size: ctx.config.scan_batch_size,
-            sst_background_read_parallelism: ctx.config.sst_background_read_parallelism,
+        let scan_options = ScanOptions {
+            background_read_parallelism: ctx.config.sst_background_read_parallelism,
+            max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
         };
 
+        let iter_options = ctx
+            .config
+            .scan_batch_size
+            .map(|batch_size| IterOptions { batch_size });
         let instance = Arc::new(Instance {
             space_store,
             runtimes: ctx.runtimes.clone(),
@@ -99,6 +110,7 @@ impl Instance {
                 .max_bytes_per_write_batch
                 .map(|v| v.as_bytes() as usize),
             iter_options,
+            scan_options,
             remote_engine: remote_engine_ref,
         });
 

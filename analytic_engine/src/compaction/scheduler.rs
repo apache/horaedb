@@ -40,7 +40,7 @@ use crate::{
     instance::{
         flush_compaction::TableFlushOptions, write_worker::CompactionNotifier, Instance, SpaceStore,
     },
-    sst::factory::SstWriteOptions,
+    sst::factory::{ScanOptions, SstWriteOptions},
     table::data::TableDataRef,
     TableOptions,
 };
@@ -289,6 +289,7 @@ impl SchedulerImpl {
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
         write_sst_max_buffer_size: usize,
+        scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
@@ -303,6 +304,7 @@ impl SchedulerImpl {
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
             write_sst_max_buffer_size,
+            scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -371,6 +373,7 @@ struct ScheduleWorker {
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
     write_sst_max_buffer_size: usize,
+    scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
@@ -473,6 +476,7 @@ impl ScheduleWorker {
             compression: table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
         };
+        let scan_options = self.scan_options.clone();
 
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
@@ -481,11 +485,12 @@ impl ScheduleWorker {
 
             let res = space_store
                 .compact_table(
-                    runtime,
-                    &table_data,
                     request_id,
+                    &table_data,
                     &compaction_task,
+                    scan_options,
                     &sst_write_options,
+                    runtime,
                 )
                 .await;
 

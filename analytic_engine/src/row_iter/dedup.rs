@@ -229,7 +229,8 @@ mod tests {
             ],
         );
 
-        let mut iter = DedupIterator::new(RequestId::next_id(), iter, IterOptions::default());
+        let mut iter =
+            DedupIterator::new(RequestId::next_id(), iter, IterOptions { batch_size: 500 });
         check_iterator(
             &mut iter,
             vec![
